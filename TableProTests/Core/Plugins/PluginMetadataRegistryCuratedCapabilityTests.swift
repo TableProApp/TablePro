@@ -109,6 +109,22 @@ private final class MockDynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockHanaPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock SAP HANA"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed SAP HANA plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SAP HANA"
+    static let databaseDisplayName = "SAP HANA"
+    static let iconName = "cylinder"
+    static let defaultPort = 443
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockTrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock Trino"
     static let pluginVersion = "1.0.0"
@@ -333,6 +349,60 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         let built = registry.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
 
         #expect(built.schema.implicitSchemaName == nil)
+    }
+
+    @Test("SAP HANA keeps Verify Identity and forced TLS when its plugin registers")
+    func hanaKeepsItsTLSDefaults() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockHanaPlugin.self)
+
+        #expect(built.capabilities.defaultSSLMode == .verifyIdentity)
+        #expect(built.capabilities.supportsOpportunisticTLS == false)
+        #expect(built.capabilities.tlsImpliedPorts == [443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("SAP HANA keeps LOB and spatial columns out of a keyless row match when its plugin registers")
+    @MainActor
+    func hanaKeepsItsRowMatchExclusions() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockHanaPlugin.self)
+        let prefixes = built.schema.rowMatchExcludedTypePrefixes
+        let columns = [
+            "ID": "INTEGER", "NAME": "NVARCHAR(100)", "RAW": "VARBINARY(16)", "AT": "TIMESTAMP",
+            "PHOTO": "BLOB", "NOTES": "CLOB", "BODY": "NCLOB", "SEARCHABLE": "TEXT", "BYTES": "BINTEXT",
+            "SHAPE": "ST_GEOMETRY(4326)", "SPOT": "ST_POINT"
+        ].map { name, type in
+            ColumnInfo(name: name, dataType: type, isNullable: true, isPrimaryKey: false)
+        }
+
+        #expect(
+            QueryExecutor.columns(in: columns, typedAnyOf: prefixes)
+                == ["PHOTO", "NOTES", "BODY", "SEARCHABLE", "BYTES", "SHAPE", "SPOT"]
+        )
+    }
+
+    @Test("The curated SAP HANA entry declares what its plugin declares")
+    func hanaCuratedEntryMatchesThePlugin() throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == "SAP HANA" }?.snapshot
+        )
+        let dialect = try #require(curated.editor.sqlDialect)
+        let plan = try #require(curated.explainVariants.first)
+
+        #expect(curated.defaultPort == 443)
+        #expect(curated.supportsForeignKeys == true)
+        #expect(curated.explainVariants.count == 1)
+        #expect(plan.sqlPrefix == "EXPLAIN PLAN FOR")
+        #expect(plan.format == .indentedText)
+        #expect(dialect.regexSyntax == .unsupported)
+        #expect(dialect.autoLimitStyle == .limit)
+        #expect(dialect.caseSensitivityStyle == .caseFoldFunction)
+        #expect(dialect.lexicalFeatures == SQLLexicalFeatures.dollarAndHashInIdentifiers)
+        #expect(curated.capabilities.defaultSSLMode == .verifyIdentity)
+        #expect(curated.capabilities.supportsOpportunisticTLS == false)
     }
 
     @Test("Trino keeps its TLS port, system trust and no plaintext fallback when its plugin registers")

@@ -54,6 +54,29 @@ struct SSLPaneViewModelTests {
         #expect(viewModel.mode == .disabled)
     }
 
+    private func verifyIdentityIssues(for type: DatabaseType, caCertPath: String = "") -> [String] {
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.network.type = type
+        coordinator.ssl.select(.verifyIdentity)
+        coordinator.ssl.caCertPath = caCertPath
+        return coordinator.ssl.validationIssues
+    }
+
+    @Test("Verify Identity without a CA file saves for SAP HANA and Kafka, which trust the system roots")
+    func systemTrustStoreEnginesNeedNoCAFile() {
+        for type in [DatabaseType.sapHana, .kafka] {
+            #expect(type.verifiesServerWithSystemTrust)
+            #expect(verifyIdentityIssues(for: type).isEmpty)
+        }
+    }
+
+    @Test("Verify Identity without a CA file is refused for engines that need one")
+    func fileTrustEnginesStillRequireACAFile() {
+        #expect(!DatabaseType.postgresql.verifiesServerWithSystemTrust)
+        #expect(verifyIdentityIssues(for: .postgresql).count == 1)
+        #expect(verifyIdentityIssues(for: .postgresql, caCertPath: "/tmp/ca.pem").isEmpty)
+    }
+
     @Test("A Trino port of 443 escalates the type default to Verify Identity, and another port reverts it")
     func testReconcileFollowsTheTLSPort() {
         let viewModel = SSLPaneViewModel()

@@ -52,6 +52,7 @@ extension DatabaseType {
     static let trino = DatabaseType(rawValue: "Trino")
     static let weaviate = DatabaseType(rawValue: "Weaviate")
     static let kafka = DatabaseType(rawValue: "Kafka")
+    static let sapHana = DatabaseType(rawValue: "SAP HANA")
 }
 
 extension DatabaseType: Codable {

@@ -8235,6 +8235,9 @@
     "%lld ^[table](inflect: true) to export" : {
 
     },
+    "%lld large object values were longer than 64 MiB and were cut short." : {
+
+    },
     "%lld × %lld" : {
       "localizations" : {
         "en" : {
@@ -30851,6 +30854,9 @@
           }
         }
       }
+    },
+    "Choose a SAP HANA schema first." : {
+
     },
     "Choose port automatically" : {
       "localizations" : {
@@ -60141,6 +60147,12 @@
     "Enter the OAuth client ID and client secret for this connection, then sign in again." : {
 
     },
+    "Enter the SAP HANA host name." : {
+
+    },
+    "Enter the SAP HANA user name." : {
+
+    },
     "Enter the passphrase for SSH key \"%@\":" : {
       "localizations" : {
         "ko" : {
@@ -85195,6 +85207,9 @@
     "Leave blank to find it on your PATH. Apps launched from the Dock do not inherit your shell's PATH, so a tool installed somewhere unusual needs its full path here." : {
 
     },
+    "Leave empty unless the certificate names another host" : {
+
+    },
     "Leave the comment empty to remove it." : {
 
     },
@@ -90195,6 +90210,9 @@
           }
         }
       }
+    },
+    "Lost connection to the SAP HANA server." : {
+
     },
     "macOS will ask for your login password" : {
       "localizations" : {
@@ -105992,6 +106010,9 @@
         }
       }
     },
+    "Parameter %lld is an OUT parameter, which TablePro cannot bind." : {
+
+    },
     "number sign" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -106557,6 +106578,45 @@
           }
         }
       }
+    },
+    "SAP HANA did not return the table definition." : {
+
+    },
+    "SAP HANA reported an error." : {
+
+    },
+    "SAP HANA returned no definition for this view." : {
+
+    },
+    "SAP's in-memory SQL database" : {
+
+    },
+    "TLS Server Name" : {
+
+    },
+    "The SAP HANA schema name cannot be empty." : {
+
+    },
+    "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
+
+    },
+    "Value %1$lld, \"%2$@\", has more decimal places than the column allows." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a boolean. SAP HANA expects TRUE or FALSE." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a date and time. SAP HANA expects YYYY-MM-DD HH:MM:SS." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a decimal number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a time. SAP HANA expects HH:MM:SS." : {
+
     },
     "on %@" : {
       "comment" : "A sentence fragment describing the table on which the operation is performed.",
@@ -121034,6 +121094,9 @@
           }
         }
       }
+    },
+    "SAP HANA returned a result TablePro could not read." : {
+
     },
     "quotation mark" : {
       "extractionState" : "manual",
@@ -147872,6 +147935,9 @@
         }
       }
     },
+    "Set both a client certificate and a client key, or neither." : {
+
+    },
     "Stage" : {
 
     },
@@ -150973,6 +151039,9 @@
           }
         }
       }
+    },
+    "TablePro could not reach the SAP HANA server." : {
+
     },
     "The procedures and functions in %1$@ could not be listed: %2$@" : {
 
@@ -154524,6 +154593,21 @@
       }
     },
     "Table Type" : {
+
+    },
+    "TablePro could not reach the SAP HANA server within %lld seconds." : {
+
+    },
+    "The SAP HANA connection is closed." : {
+
+    },
+    "The SAP HANA connection settings are not valid." : {
+
+    },
+    "The SAP HANA driver failed unexpectedly." : {
+
+    },
+    "The SAP HANA port must be between 1 and 65535." : {
 
     },
     "The source's definition could not be read: %@" : {
@@ -158213,6 +158297,9 @@
           }
         }
       }
+    },
+    "The SAP HANA statement was cancelled." : {
+
     },
     "The code expires in 15 minutes." : {
       "localizations" : {
@@ -161923,6 +162010,9 @@
 
     },
     "The statement before it stays applied." : {
+
+    },
+    "The statement ran longer than the query timeout and was stopped." : {
 
     },
     "The statements may or may not be saved. Check the table before running them again." : {
@@ -184705,6 +184795,18 @@
 
     },
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a timestamp. SAP HANA expects YYYY-MM-DD HH:MM:SS.FFFFFFF." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a whole number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not hex-encoded well-known binary, the form SAP HANA takes for a spatial value." : {
 
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {

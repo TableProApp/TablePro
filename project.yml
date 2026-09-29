@@ -105,6 +105,36 @@ targetTemplates:
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         WRAPPER_EXTENSION: tableplugin
 
+  # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds
+  # and this phase copies into Contents/MacOS, where the plugin looks it up. A missing helper
+  # stops the build with "Build input file cannot be found" naming its path. The copy is signed
+  # in a directory from mktemp: the user-script sandbox lets the phase write its declared output
+  # and nothing beside it, codesign writes a temporary file next to whatever it signs, and it
+  # reads every parent of that file, which the sandbox refuses inside the build folders.
+  HanaHelperEmbedding:
+    postBuildScripts:
+      - name: Embed tablepro-hana-helper
+        inputFiles:
+          - $(SRCROOT)/Native/HanaBridge/bin/tablepro-hana-helper
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/tablepro-hana-helper
+        script: |
+          set -eu
+          helper="$SCRIPT_INPUT_FILE_0"
+          for arch in $ARCHS; do
+              if ! /usr/bin/lipo "$helper" -verify_arch "$arch"; then
+                  echo "error: $helper has no $arch slice. Run scripts/build-hana.sh $arch, or both." >&2
+                  exit 1
+              fi
+          done
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          cp "$helper" "$staging/tablepro-hana-helper"
+          if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
+              /usr/bin/codesign --force --options runtime --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$staging/tablepro-hana-helper"
+          fi
+          cp -f "$staging/tablepro-hana-helper" "$SCRIPT_OUTPUT_FILE_0"
+
 targets:
 
   # ─── Application ──────────────────────────────────────────────────────────────
@@ -1292,6 +1322,28 @@ targets:
           - -liconv
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
 
+  HanaDriver:
+    templates: [DriverPlugin, HanaHelperEmbedding]
+    templateAttributes:
+      folder: HanaDriverPlugin
+      principalClass: HanaPlugin
+
+  HanaDriverTests:
+    type: bundle.unit-test
+    platform: macOS
+    templates: [HanaHelperEmbedding]
+    sources:
+      - path: Plugins/HanaDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+      - Plugins/HanaDriverPluginTests
+    dependencies:
+      - target: TableProPluginKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
   ElasticsearchDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1498,6 +1550,7 @@ aggregateTargets:
       - DynamoDBDriverPlugin
       - ElasticsearchDriverPlugin
       - EtcdDriverPlugin
+      - HanaDriver
       - JSONExport
       - JSONImport
       - KafkaDriverPlugin
@@ -1537,6 +1590,16 @@ schemes:
       config: Debug
       targets:
         - name: DamengDriverTests
+
+  HanaDriverTests:
+    build:
+      targets:
+        HanaDriverTests: test
+      buildImplicitDependencies: true
+    test:
+      config: Debug
+      targets:
+        - name: HanaDriverTests
 
   TablePro:
     build:
