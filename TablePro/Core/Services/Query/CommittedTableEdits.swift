@@ -55,9 +55,12 @@ struct TableNameHazards: Sendable, Equatable {
 ///
 /// Success is not enough on an engine whose DDL is transactional: `BEGIN; DROP TABLE people;
 /// ROLLBACK` succeeds three times and leaves the table where it was. So the text's own `BEGIN`,
-/// `COMMIT` and `ROLLBACK` are followed from a session known to hold no transaction, and an edit
-/// still inside one when the statements end is dropped, because nothing here will see how it ends.
-/// A run that began inside a transaction, or on a session that could not say, adopts nothing.
+/// `COMMIT` and `ROLLBACK` are followed, and only between two answers from the session that it
+/// held no transaction, one before the first statement and one after the last. The text alone
+/// cannot be trusted even then: under SQL Server's `IMPLICIT_TRANSACTIONS`, set by an earlier run
+/// or by the server's defaults, a `DROP` opens a transaction no statement shows. A run that ends
+/// inside a transaction, closes one it never opened, or leaves one open that the session says is
+/// closed has met such a transaction, and adopts nothing.
 enum CommittedTableEdits {
     static func edits(
         in succeeded: SucceededStatements,
@@ -82,9 +85,9 @@ private struct TableEditWalk {
     /// is SQL Server's `@@TRANCOUNT`; on engines where one `COMMIT` ends everything this can only
     /// hold an edit back, never let one through early.
     private var depth = 0
-    /// False when the session held a transaction the text cannot see the end of, in which case
-    /// the walk only keeps the hazards current.
-    private let adopts: Bool
+    /// False when the session held a transaction at either end, or the text and the session
+    /// disagreed about one, in which case the walk only keeps the hazards current.
+    private var adopts: Bool
     private var tracksTransactions = true
     private var pending: [TableCatalogEdit] = []
     private(set) var committed: [TableCatalogEdit] = []
@@ -93,28 +96,33 @@ private struct TableEditWalk {
     init(dialect: TableEditDialect, scope: DatabaseScope, commit: StatementCommitEvidence, hazards: TableNameHazards) {
         self.dialect = dialect
         context = TableNameContext(database: scope.database.nilIfEmpty, schema: scope.schema)
-        adopts = Self.startsOutsideTransactions(commit, dialect: dialect)
+        adopts = Self.runsOutsideTransactions(commit, dialect: dialect)
         self.hazards = hazards
-        if case .runStartedIn(_, .committed) = commit {
+        if case .runStartedIn(_, _, .committed) = commit {
             depth = 1
         }
     }
 
-    private static func startsOutsideTransactions(_ evidence: StatementCommitEvidence, dialect: TableEditDialect) -> Bool {
+    private static func runsOutsideTransactions(_ evidence: StatementCommitEvidence, dialect: TableEditDialect) -> Bool {
         guard !dialect.commitsDDLImplicitly else { return true }
         switch evidence {
         case .statementLeftSession(let state):
             return state.holdsNoTransaction
-        case .runStartedIn(let state, let appTransaction):
-            return state.holdsNoTransaction && appTransaction != .rolledBack
+        case .runStartedIn(let start, let end, let appTransaction):
+            return start.holdsNoTransaction && end.holdsNoTransaction && appTransaction != .rolledBack
         }
     }
 
     /// The app's own `COMMIT`, which closes the transaction the walk opened for it, unless a
-    /// `ROLLBACK` or `COMMIT` in the text already ended it.
+    /// `ROLLBACK` or `COMMIT` in the text already ended it. A transaction the text still holds
+    /// after that was closed by something it does not show, since the session says none is open.
     mutating func finish(_ evidence: StatementCommitEvidence) {
-        guard case .runStartedIn(_, .committed) = evidence else { return }
-        read(.commits)
+        if case .runStartedIn(_, _, .committed) = evidence, depth > 0 {
+            endTransaction()
+        }
+        if depth > 0 {
+            disown()
+        }
     }
 
     mutating func read(_ statement: TableEditStatement) {
@@ -130,15 +138,23 @@ private struct TableEditWalk {
         case .beginsTransaction:
             depth += 1
         case .commits:
-            guard depth > 0 else { return }
-            depth -= 1
-            guard depth == 0 else { return }
-            committed += pending
-            pending.removeAll()
+            guard depth > 0 else {
+                disown()
+                return
+            }
+            endTransaction()
         case .rollsBack:
+            guard depth > 0 else {
+                disown()
+                return
+            }
             pending.removeAll()
             depth = 0
         case .rollsBackToSavepoint:
+            guard depth > 0 else {
+                disown()
+                return
+            }
             pending.removeAll()
         case .losesTransactionTracking:
             pending.removeAll()
@@ -150,6 +166,23 @@ private struct TableEditWalk {
         case .createsTemporaryTable, .runsUnseenCode, .other:
             break
         }
+    }
+
+    private mutating func endTransaction() {
+        depth -= 1
+        guard depth == 0 else { return }
+        committed += pending
+        pending.removeAll()
+    }
+
+    /// The text and the session disagree about the transaction, so what the text says was
+    /// committed is not known to be. On PostgreSQL a stray `COMMIT` or `ROLLBACK` is only a
+    /// warning, and this holds back a drop that did commit, which keeps its settings in place.
+    private mutating func disown() {
+        guard !dialect.commitsDDLImplicitly else { return }
+        adopts = false
+        committed.removeAll()
+        pending.removeAll()
     }
 
     private func place(_ name: SQLObjectName) -> TablePlacement? {

@@ -28,6 +28,9 @@ private struct MultiStatementRun {
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
     let startState: PluginSessionTransactionState
+    /// What the session held once the run ended, asked of a run that joined the session's
+    /// transaction or drops or renames a table, and `.unknown` for any other.
+    let endState: PluginSessionTransactionState
     var failureOutput: PluginServerOutput = .none
 }
 
@@ -317,6 +320,9 @@ extension QueryExecutionCoordinator {
                 grammar: grammar
             )
         }
+        let asksEndState = SucceededStatements.runNeedsEndState(
+            prepared.map(\.sentSQL), databaseType: conn.type, grammar: grammar
+        )
 
         let multiStatementTask = Task { [weak self, parent] in
             guard let self else { return }
@@ -326,6 +332,7 @@ extension QueryExecutionCoordinator {
                 scope: scope,
                 mode: transactionKind.transactionAccessMode,
                 plan: plan,
+                asksEndState: asksEndState,
                 claim: claim,
                 lease: lease
             )
@@ -349,7 +356,9 @@ extension QueryExecutionCoordinator {
                 scope: scope,
                 databaseType: conn.type,
                 statements: prepared.prefix(outcome.succeededCount).map(\.sentSQL),
-                commit: .run(startedIn: run.startState, plan: run.plan, completed: outcome.isCompleted)
+                commit: .run(
+                    startedIn: run.startState, endedIn: run.endState, plan: run.plan, completed: outcome.isCompleted
+                )
             )))
 
             switch outcome {
@@ -436,6 +445,7 @@ extension QueryExecutionCoordinator {
         scope: DatabaseScope,
         mode: PluginTransactionAccessMode,
         plan: BatchTransactionPlan,
+        asksEndState: Bool,
         claim: TabExecutionClaim,
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
@@ -468,15 +478,24 @@ extension QueryExecutionCoordinator {
                     }
                 }
                 guard sessionPlan == .sessionTransaction else {
+                    let endState: PluginSessionTransactionState = asksEndState
+                        ? await driver.heldSessionTransactionState()
+                        : .unknown
                     return MultiStatementRun(
-                        outcome: outcome, plan: sessionPlan, sessionState: .idle, startState: startState
+                        outcome: outcome,
+                        plan: sessionPlan,
+                        sessionState: .idle,
+                        startState: startState,
+                        endState: endState
                     )
                 }
+                let sessionState = await driver.heldSessionTransactionState()
                 return MultiStatementRun(
                     outcome: outcome,
                     plan: sessionPlan,
-                    sessionState: await driver.heldSessionTransactionState(),
-                    startState: startState
+                    sessionState: sessionState,
+                    startState: startState,
+                    endState: sessionState
                 )
             }
             run.failureOutput = failureOutput.output
@@ -484,14 +503,19 @@ extension QueryExecutionCoordinator {
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
                 return MultiStatementRun(
-                    outcome: .cancelled(results: []), plan: plan, sessionState: .unknown, startState: .unknown
+                    outcome: .cancelled(results: []),
+                    plan: plan,
+                    sessionState: .unknown,
+                    startState: .unknown,
+                    endState: .unknown
                 )
             }
             return MultiStatementRun(
                 outcome: .failed(results: [], failure: .connection, errorDescription: error.localizedDescription),
                 plan: plan,
                 sessionState: .unknown,
-                startState: .unknown
+                startState: .unknown,
+                endState: .unknown
             )
         }
     }

@@ -16,7 +16,7 @@ struct CommittedTableEditsTests {
         on type: DatabaseType = .postgresql,
         database: String = "shop",
         schema: String? = "public",
-        commit: StatementCommitEvidence = .runStartedIn(.idle, appTransaction: .none)
+        commit: StatementCommitEvidence = .runStartedIn(.idle, endedIn: .idle, appTransaction: .none)
     ) -> [TableCatalogEdit] {
         var hazards = TableNameHazards()
         return edits(statements, on: type, database: database, schema: schema, commit: commit, hazards: &hazards)
@@ -27,7 +27,7 @@ struct CommittedTableEditsTests {
         on type: DatabaseType = .postgresql,
         database: String = "shop",
         schema: String? = "public",
-        commit: StatementCommitEvidence = .runStartedIn(.idle, appTransaction: .none),
+        commit: StatementCommitEvidence = .runStartedIn(.idle, endedIn: .idle, appTransaction: .none),
         hazards: inout TableNameHazards
     ) -> [TableCatalogEdit] {
         let succeeded = SucceededStatements(
@@ -47,6 +47,13 @@ struct CommittedTableEditsTests {
         _ name: String, to newName: String, database: String = "shop", schema: String? = "public"
     ) -> TableCatalogEdit {
         .renamed(TablePlacement(database: database, schema: schema, name: name), to: newName, kind: .table)
+    }
+
+    private static func sqlServerEdits(
+        _ statements: [String],
+        commit: StatementCommitEvidence = .runStartedIn(.idle, endedIn: .idle, appTransaction: .none)
+    ) -> [TableCatalogEdit] {
+        edits(statements, on: .mssql, database: "sales", schema: "dbo", commit: commit)
     }
 
     // MARK: - The reported case
@@ -127,11 +134,16 @@ struct CommittedTableEditsTests {
         #expect(Self.edits(["BEGIN", "DROP TABLE public.people", "ROLLBACK TO SAVEPOINT s", "COMMIT"]).isEmpty)
     }
 
-    @Test("A drop the script commits is a drop, and one still open at the end is not")
+    @Test("A drop the script commits is a drop, and a run that ends with a transaction open adopts nothing")
     func committedAndOpenDrops() {
         #expect(Self.edits(["BEGIN", "DROP TABLE public.people", "COMMIT"]) == [Self.dropped("people")])
         #expect(Self.edits(["BEGIN", "DROP TABLE public.people", "END"]) == [Self.dropped("people")])
-        #expect(Self.edits(["DROP TABLE public.a", "BEGIN", "DROP TABLE public.b"]) == [Self.dropped("a")])
+        #expect(
+            Self.edits(
+                ["DROP TABLE public.a", "BEGIN", "DROP TABLE public.b"],
+                commit: .runStartedIn(.idle, endedIn: .inTransaction, appTransaction: .none)
+            ).isEmpty
+        )
     }
 
     @Test("A COMMIT inside a nested transaction does not commit the outer one")
@@ -153,33 +165,97 @@ struct CommittedTableEditsTests {
         )
     }
 
-    @Test("A run that started inside a transaction, or on a session that could not say, is not read")
+    @Test("A run that started or ended inside a transaction, or on a session that could not say, is not read")
     func runStartedInTransaction() {
         #expect(
-            Self.edits(["DROP TABLE public.people"], commit: .runStartedIn(.inTransaction, appTransaction: .none))
+            Self.edits(
+                ["DROP TABLE public.people"], commit: .runStartedIn(.inTransaction, endedIn: .idle, appTransaction: .none)
+            ).isEmpty
+        )
+        #expect(
+            Self.edits(
+                ["DROP TABLE public.people", "COMMIT"], commit: .runStartedIn(.unknown, endedIn: .idle, appTransaction: .none)
+            ).isEmpty
+        )
+        #expect(
+            Self.edits(
+                ["DROP TABLE public.people"], commit: .runStartedIn(.idle, endedIn: .unknown, appTransaction: .none)
+            ).isEmpty
+        )
+        #expect(
+            Self.edits(
+                ["DROP TABLE public.people"], commit: .runStartedIn(.idle, endedIn: .abortedTransaction, appTransaction: .none)
+            ).isEmpty
+        )
+    }
+
+    /// `SET IMPLICIT_TRANSACTIONS ON` in an earlier run leaves `@@TRANCOUNT` at 0 until the next
+    /// `DROP`, which then opens a transaction no statement in the script shows.
+    @Test("A SQL Server script run under implicit transactions from an earlier run adopts nothing")
+    func implicitTransactionsFromAnEarlierRun() {
+        let endsOpen = StatementCommitEvidence.runStartedIn(.idle, endedIn: .inTransaction, appTransaction: .none)
+        #expect(Self.sqlServerEdits(["DROP TABLE dbo.people", "SELECT 1"], commit: endsOpen).isEmpty)
+        #expect(Self.sqlServerEdits(["DROP TABLE dbo.people", "ROLLBACK"]).isEmpty)
+        #expect(Self.sqlServerEdits(["DROP TABLE dbo.people", "COMMIT"]).isEmpty)
+        #expect(
+            Self.sqlServerEdits(["DROP TABLE dbo.a", "BEGIN TRAN", "DROP TABLE dbo.b", "COMMIT TRAN"], commit: endsOpen)
                 .isEmpty
         )
         #expect(
-            Self.edits(["DROP TABLE public.people", "COMMIT"], commit: .runStartedIn(.unknown, appTransaction: .none))
-                .isEmpty
+            Self.sqlServerEdits(
+                ["DROP TABLE dbo.people"],
+                commit: .run(startedIn: .idle, endedIn: .inTransaction, plan: .appTransaction, completed: true)
+            ).isEmpty
         )
     }
+
+    /// Under `XACT_ABORT` a failed statement rolls back everything, the `DROP` an implicit
+    /// transaction held included, and the run reports only the statements before it.
+    @Test("A transaction the text left open that the session says is closed was ended unseen")
+    func transactionClosedUnseen() {
+        #expect(Self.sqlServerEdits(["DROP TABLE dbo.a", "BEGIN TRAN"]).isEmpty)
+        #expect(Self.edits(["DROP TABLE public.a", "BEGIN", "DROP TABLE public.b"]).isEmpty)
+    }
+
+    @Test("A run on a SQL Server session that commits as it goes adopts what it dropped")
+    func sqlServerAutocommitRun() {
+        #expect(
+            Self.sqlServerEdits(["DROP TABLE dbo.people", "SELECT 1"])
+                == [Self.dropped("people", database: "sales", schema: "dbo")]
+        )
+    }
+
+    @Test("A stray COMMIT or ROLLBACK changes nothing on an engine that commits DDL as it runs")
+    func strayTransactionControlOnImplicitCommitEngines() {
+        #expect(Self.edits(["DROP TABLE people", "ROLLBACK"], on: .mysql, schema: nil) == [Self.dropped("people", schema: nil)])
+        #expect(
+            Self.edits(
+                ["DROP TABLE people", "BEGIN"], on: .mysql, schema: nil,
+                commit: .runStartedIn(.idle, endedIn: .inTransaction, appTransaction: .none)
+            ) == [Self.dropped("people", schema: nil)]
+        )
+    }
+
 
     @Test("A run the app wrapped counts once the app committed it, and not once it rolled it back")
     func appTransaction() {
         #expect(
             Self.edits(
                 ["DROP TABLE public.people", "INSERT INTO log VALUES (1)"],
-                commit: .run(startedIn: .idle, plan: .appTransaction, completed: true)
+                commit: .run(startedIn: .idle, endedIn: .idle, plan: .appTransaction, completed: true)
             ) == [Self.dropped("people")]
         )
         #expect(
-            Self.edits(["DROP TABLE public.people"], commit: .run(startedIn: .idle, plan: .appTransaction, completed: false))
-                .isEmpty
+            Self.edits(
+                ["DROP TABLE public.people"],
+                commit: .run(startedIn: .idle, endedIn: .idle, plan: .appTransaction, completed: false)
+            ).isEmpty
         )
         #expect(
-            Self.edits(["DROP TABLE public.people"], commit: .run(startedIn: .idle, plan: .autocommit, completed: false))
-                == [Self.dropped("people")]
+            Self.edits(
+                ["DROP TABLE public.people"],
+                commit: .run(startedIn: .idle, endedIn: .idle, plan: .autocommit, completed: false)
+            ) == [Self.dropped("people")]
         )
     }
 
@@ -187,7 +263,7 @@ struct CommittedTableEditsTests {
     /// it, and that `ROLLBACK` is what ends the app's transaction.
     @Test("A ROLLBACK inside a run the app wrapped takes back what came before it")
     func rollbackInsideTheAppTransaction() {
-        let wrapped = StatementCommitEvidence.run(startedIn: .idle, plan: .appTransaction, completed: true)
+        let wrapped = StatementCommitEvidence.run(startedIn: .idle, endedIn: .idle, plan: .appTransaction, completed: true)
         #expect(Self.edits(["DROP TABLE public.t", "ROLLBACK"], commit: wrapped).isEmpty)
         #expect(
             Self.edits(["DROP TABLE public.t", "ROLLBACK", "DROP TABLE public.u"], commit: wrapped)
@@ -383,6 +459,22 @@ struct SucceededStatementsProbeTests {
         #expect(report?.commit == .statementLeftSession(.unknown))
     }
 
+    @Test("A run asks the session how it ended only when it drops or renames a table on a transactional engine")
+    func runNeedsEndState() {
+        #expect(SucceededStatements.runNeedsEndState(
+            ["SELECT 1", "DROP TABLE dbo.people"], databaseType: .mssql, grammar: DatabaseType.mssql.lexicalGrammar
+        ))
+        #expect(!SucceededStatements.runNeedsEndState(
+            ["SELECT 1", "INSERT INTO t VALUES (1)"], databaseType: .postgresql, grammar: DatabaseType.postgresql.lexicalGrammar
+        ))
+        #expect(!SucceededStatements.runNeedsEndState(
+            ["DROP TABLE people"], databaseType: .mysql, grammar: DatabaseType.mysql.lexicalGrammar
+        ))
+        #expect(!SucceededStatements.runNeedsEndState(
+            ["DROP TABLE people"], databaseType: .snowflake, grammar: DatabaseType.snowflake.lexicalGrammar
+        ))
+    }
+
     @Test("A temporary table's creation and a procedure call are reported without asking the session")
     func hazardsAreReported() async {
         let created = await Self.probe("CREATE TEMP TABLE people (id int)", on: .sqlite, state: .inTransaction)
@@ -428,6 +520,52 @@ struct ScriptBatchProgressTests {
         #expect(batches.count == 3)
         #expect(progress.completedBatchCount == 1)
         #expect(progress.startState == .idle)
+        #expect(progress.endState == .idle)
+        let succeeded = progress.succeededStatements(
+            of: batches, scope: Self.scope(of: connection), databaseType: .mssql
+        )
+        #expect(succeeded?.statements == ["DROP TABLE dbo.people"])
+        var hazards = TableNameHazards()
+        let edits = succeeded.map { CommittedTableEdits.edits(in: $0, grammar: grammar, hazards: &hazards) }
+        #expect(edits == [.dropped(TablePlacement(database: "sales", schema: "dbo", name: "people"), kind: .table)])
+    }
+
+    /// `SET IMPLICIT_TRANSACTIONS ON` in an earlier call leaves `@@TRANCOUNT` at 0 until the
+    /// script's `DROP` opens a transaction that nothing in the script commits.
+    @Test("A script that leaves the session inside a transaction records it, and adopts nothing")
+    func scriptEndingInsideATransaction() async throws {
+        let connection = TestFixtures.makeConnection(database: "sales", type: .mssql)
+        let driver = ScriptAnsweringDriver(
+            connection: connection, transactionState: .idle, transactionStateAfterBatches: .inTransaction
+        )
+        let grammar = DatabaseType.mssql.lexicalGrammar
+        let batches = QueryBatchPlanner.batches(
+            in: "DROP TABLE dbo.people\nGO\nSELECT 1",
+            model: QueryStatementModel.forDatabaseType(.mssql),
+            grammar: grammar
+        )
+        let progress = ScriptBatchProgress()
+
+        _ = try await ScriptBatchRun.run(batches, startLines: [1, 3], rowCap: 100, driver: driver, progress: progress)
+
+        #expect(progress.startState == .idle)
+        #expect(progress.endState == .inTransaction)
+        let succeeded = try #require(
+            progress.succeededStatements(of: batches, scope: Self.scope(of: connection), databaseType: .mssql)
+        )
+        var hazards = TableNameHazards()
+        #expect(CommittedTableEdits.edits(in: succeeded, grammar: grammar, hazards: &hazards).isEmpty)
+    }
+
+    @Test("A script that never started reports nothing")
+    func scriptThatNeverStarted() {
+        let connection = TestFixtures.makeConnection(database: "sales", type: .mssql)
+        let progress = ScriptBatchProgress()
+        #expect(progress.succeededStatements(of: [], scope: Self.scope(of: connection), databaseType: .mssql) == nil)
+    }
+
+    private static func scope(of connection: DatabaseConnection) -> DatabaseScope {
+        DatabaseScope(connectionId: connection.id, database: "sales", schema: "dbo")
     }
 }
 

@@ -143,30 +143,24 @@ extension DatabaseAccessBridge {
         return run.outcome(executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
     }
 
-    /// A batch that finished before a later one failed has already committed on SQL Server, whose
-    /// scripts run with no transaction of the app's around them, so what it dropped or renamed is
-    /// reported whatever became of the rest.
     private static func postSucceededBatches(
         of batches: [ExecutableBatch],
         progress: ScriptBatchProgress,
         scope: DatabaseScope,
         databaseType: DatabaseType
     ) {
-        let completed = progress.completedBatchCount
-        guard completed > 0 else { return }
-        CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
-            scope: scope,
-            databaseType: databaseType,
-            statements: batches.prefix(completed).flatMap { $0.statements.map(\.sql) },
-            commit: .runStartedIn(progress.startState, appTransaction: .none)
-        )))
+        guard let succeeded = progress.succeededStatements(of: batches, scope: scope, databaseType: databaseType) else {
+            return
+        }
+        CatalogChangeService.post(.statementsSucceeded(succeeded))
     }
 }
 
-/// How far a script got, readable after it threw.
+/// How far a script got, and what the session held before and after it, readable after it threw.
 final class ScriptBatchProgress: Sendable {
     private struct State {
         var startState: PluginSessionTransactionState = .unknown
+        var endState: PluginSessionTransactionState = .unknown
         var completedBatchCount = 0
     }
 
@@ -174,6 +168,10 @@ final class ScriptBatchProgress: Sendable {
 
     var startState: PluginSessionTransactionState {
         state.withLock { $0.startState }
+    }
+
+    var endState: PluginSessionTransactionState {
+        state.withLock { $0.endState }
     }
 
     var completedBatchCount: Int {
@@ -184,8 +182,31 @@ final class ScriptBatchProgress: Sendable {
         state.withLock { $0.startState = startState }
     }
 
+    func end(in endState: PluginSessionTransactionState) {
+        state.withLock { $0.endState = endState }
+    }
+
     func completeBatch() {
         state.withLock { $0.completedBatchCount += 1 }
+    }
+
+    /// A batch that finished before a later one failed has already committed on SQL Server, whose
+    /// scripts run with no transaction of the app's around them, so what it dropped or renamed is
+    /// reported whatever became of the rest. A script stopped by a timeout or a lost connection
+    /// never hears what the session held at the end, and adopts nothing.
+    func succeededStatements(
+        of batches: [ExecutableBatch],
+        scope: DatabaseScope,
+        databaseType: DatabaseType
+    ) -> SucceededStatements? {
+        let current = state.withLock { $0 }
+        guard current.completedBatchCount > 0 else { return nil }
+        return SucceededStatements(
+            scope: scope,
+            databaseType: databaseType,
+            statements: batches.prefix(current.completedBatchCount).flatMap { $0.statements.map(\.sql) },
+            commit: .runStartedIn(current.startState, endedIn: current.endState, appTransaction: .none)
+        )
     }
 }
 
@@ -213,20 +234,24 @@ struct ScriptBatchRun: Sendable {
             let answer = try await repeatedAnswer(to: batch, rowCap: rowCap, driver: driver)
             answers.append(answer)
             guard answer.errors.isEmpty else {
+                let endState = await driver.heldSessionTransactionState()
+                progress.end(in: endState)
                 let context = MultiStatementFailureContext(
                     failure: .batch(sql: batch.sql),
                     errorDescription: BatchErrorText.describe(answer.errors, batchStartLine: startLine) ?? "",
                     executedCount: answers.count,
                     totalCount: batches.count,
                     plan: plan,
-                    sessionState: await driver.heldSessionTransactionState(),
+                    sessionState: endState,
                     unit: .batch
                 )
                 throw DatabaseError.queryFailed(context.report().message)
             }
             progress.completeBatch()
         }
-        return ScriptBatchRun(answers: answers, sessionState: await driver.heldSessionTransactionState())
+        let endState = await driver.heldSessionTransactionState()
+        progress.end(in: endState)
+        return ScriptBatchRun(answers: answers, sessionState: endState)
     }
 
     /// `GO 5` sends the batch five times and keeps every answer. A repetition that raised an error ends the

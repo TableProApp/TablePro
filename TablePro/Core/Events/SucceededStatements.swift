@@ -21,17 +21,22 @@ enum AppTransactionOutcome: Sendable, Equatable {
 enum StatementCommitEvidence: Sendable, Equatable {
     /// One statement, and what the session held once it had run.
     case statementLeftSession(PluginSessionTransactionState)
-    /// Several statements, what the session held before the first of them, and what became of a
-    /// transaction the app opened around them.
-    case runStartedIn(PluginSessionTransactionState, appTransaction: AppTransactionOutcome)
+    /// Several statements, what the session held before the first of them and once the last had
+    /// run, and what became of a transaction the app opened around them.
+    case runStartedIn(
+        PluginSessionTransactionState,
+        endedIn: PluginSessionTransactionState,
+        appTransaction: AppTransactionOutcome
+    )
 
     static func run(
-        startedIn state: PluginSessionTransactionState,
+        startedIn start: PluginSessionTransactionState,
+        endedIn end: PluginSessionTransactionState,
         plan: BatchTransactionPlan,
         completed: Bool
     ) -> StatementCommitEvidence {
-        guard plan.opensTransaction else { return .runStartedIn(state, appTransaction: .none) }
-        return .runStartedIn(state, appTransaction: completed ? .committed : .rolledBack)
+        guard plan.opensTransaction else { return .runStartedIn(start, endedIn: end, appTransaction: .none) }
+        return .runStartedIn(start, endedIn: end, appTransaction: completed ? .committed : .rolledBack)
     }
 }
 
@@ -65,6 +70,18 @@ struct SucceededStatements: Sendable, Equatable {
         return SucceededStatements(
             scope: scope, databaseType: databaseType, statements: [sql], commit: .statementLeftSession(state)
         )
+    }
+
+    /// Whether a run of these statements has to ask the session what it holds once the last has
+    /// run. Only a drop or a rename on an engine whose DDL a transaction can take back is judged by
+    /// the answer, and on SQL Server asking is a round trip.
+    static func runNeedsEndState(
+        _ statements: [String],
+        databaseType: DatabaseType,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
+        guard let dialect = TableEditDialect.of(databaseType), !dialect.commitsDDLImplicitly else { return false }
+        return statements.contains { TableEditStatementParser.parse($0, dialect: dialect, grammar: grammar).editsTable }
     }
 }
 

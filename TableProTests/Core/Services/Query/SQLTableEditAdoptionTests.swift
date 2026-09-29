@@ -59,7 +59,7 @@ struct SQLTableEditAdoptionTests {
         func run(
             _ statements: [String],
             schema: String? = "public",
-            commit: StatementCommitEvidence = .runStartedIn(.idle, appTransaction: .none)
+            commit: StatementCommitEvidence = .runStartedIn(.idle, endedIn: .idle, appTransaction: .none)
         ) {
             service.record(.statementsSucceeded(SucceededStatements(
                 scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: schema),
@@ -136,6 +136,25 @@ struct SQLTableEditAdoptionTests {
         harness.run(["DROP TABLE public.people"], commit: .statementLeftSession(.inTransaction))
 
         #expect(harness.store.droppedTables.isEmpty)
+    }
+
+    /// `SET IMPLICIT_TRANSACTIONS ON` in an earlier run leaves the session holding nothing until
+    /// the script's `DROP`, which opens a transaction a later `ROLLBACK` can still undo.
+    @Test("A SQL Server drop left uncommitted by an earlier run's implicit transactions keeps the settings")
+    func implicitTransactionDropKeepsSettings() throws {
+        let harness = try makeHarness(type: .mssql, browseSchema: "dbo")
+        defer { tearDown(harness) }
+        harness.favorites.addFavorite(name: "people", schema: "dbo", database: "shop", connectionId: harness.connection.id)
+
+        harness.run(
+            ["DROP TABLE dbo.people", "SELECT 1"],
+            schema: "dbo",
+            commit: .runStartedIn(.idle, endedIn: .inTransaction, appTransaction: .none)
+        )
+        harness.run(["DROP TABLE dbo.people", "ROLLBACK"], schema: "dbo")
+
+        #expect(harness.store.droppedTables.isEmpty)
+        #expect(harness.favorites.favorites(for: harness.connection.id) == [harness.favorite("people", schema: "dbo")])
     }
 
     @Test("A favorite the sidebar saved without a schema is found for a table SQL named with one")

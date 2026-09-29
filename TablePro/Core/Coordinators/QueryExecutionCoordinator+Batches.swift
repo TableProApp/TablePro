@@ -340,7 +340,9 @@ extension QueryExecutionCoordinator {
             scope: scope,
             databaseType: connection.type,
             statements: prepared.prefix(run.outcome.succeededCount).flatMap { $0.batch.statements.map(\.sql) },
-            commit: .run(startedIn: run.startState, plan: run.plan, completed: run.outcome.isCompleted)
+            commit: .run(
+                startedIn: run.startState, endedIn: run.sessionState, plan: run.plan, completed: run.outcome.isCompleted
+            )
         )))
     }
 
