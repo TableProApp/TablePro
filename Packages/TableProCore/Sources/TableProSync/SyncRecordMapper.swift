@@ -131,7 +131,7 @@ public enum SyncRecordMapper {
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = SafeModeLevel(wireValue: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let queryTimeout = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
         var sshConfig: SSHConfiguration?
         if let sshData = fields[.sshConfigJson] as? Data {
@@ -184,16 +184,6 @@ public enum SyncRecordMapper {
             sortOrder: sortOrder,
             isFavorite: isFavorite
         )
-    }
-
-    private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .off }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "silent": return .off
-        case "alert", "alertFull", "safeMode", "safeModeFull": return .confirmWrites
-        default: return isReadOnly ? .readOnly : .off
-        }
     }
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
