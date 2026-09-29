@@ -57,41 +57,6 @@ struct ImportDataSinkAdapterMappingTests {
         try await sink.insertRow(["NAME": .text("Ada")])
     }
 
-    @Test("A spelling the mapping was not made from still reaches the field it matches ignoring case")
-    func unknownSpellingFolds() {
-        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "id"])
-
-        let (columns, values) = sink.mappedColumnsAndValues(["NAME": .text("Ada")])
-
-        #expect(columns == ["name"])
-        #expect(values == [.text("Ada")])
-    }
-
-    /// The mapping alone cannot tell a skipped field from a header cased differently, so a document
-    /// carrying only the skipped spelling had its value written into the column its twin maps to.
-    @Test("A field the user skipped is never written into the column its case twin maps to")
-    func skippedCaseTwinIsNotFolded() async {
-        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
-
-        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("x")])
-
-        #expect(columns.isEmpty)
-        await #expect(throws: PluginImportError.self) {
-            try await sink.insertRow(["NAME": .text("x")])
-        }
-    }
-
-    @Test("An unknown spelling beside a skipped field of the same name reaches no column")
-    func unknownSpellingBesideASkippedTwinDoesNotFold() {
-        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
-
-        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("skipped"), "name": .text("unknown")])
-
-        #expect(columns.isEmpty)
-    }
-
-    /// Every name used to be folded, so the twin landed on the mapped field's column and the INSERT
-    /// named it twice.
     @Test("A field whose twin differing only by case is mapped exactly is left out")
     func caseTwinOfAMappedFieldStaysUnmapped() {
         let sink = adapter(mapping: ["Email": "email"])
@@ -110,6 +75,43 @@ struct ImportDataSinkAdapterMappingTests {
 
         #expect(columns == ["home_email", "work_email"])
         #expect(values == [.text("home"), .text("work")])
+    }
+
+    @Test("A field the sheet listed and the user skipped never folds onto its twin's column")
+    func skippedFieldNeverFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["email": .text("home")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of two listed fields that differ only by case reaches neither, mapped or skipped")
+    func newSpellingOfListedCaseTwinsDoesNotFold() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email", "email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("A new spelling of one listed field still reaches its column")
+    func newSpellingOfOneListedFieldFolds() {
+        let sink = adapter(mapping: ["Email": "email"], sourceFields: ["Email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("x")])
+    }
+
+    @Test("An unknown spelling beside a skipped field of the same name reaches no column")
+    func unknownSpellingBesideASkippedTwinDoesNotFold() {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("skipped"), "name": .text("unknown")])
+
+        #expect(columns.isEmpty)
     }
 
     @Test("A third spelling of two mapped fields that differ only by case reaches neither column")

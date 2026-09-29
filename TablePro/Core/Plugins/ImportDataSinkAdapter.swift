@@ -15,17 +15,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
     private let grammar: SQLLexicalGrammar
-    private let columnMapping: [String: String]
-
-    /// A lowercased field name to the one mapping key that lowercases to it. A name two keys share,
-    /// `Name` and `name`, is left out, because a third spelling could mean either.
-    private let mappingKeyByFoldedName: [String: String]
-
-    /// Every field the mapping was made from, the ones it leaves out included. The mapping alone
-    /// cannot tell a field the user skipped from a header cased differently, and folding the
-    /// skipped one wrote it into the column its twin was mapped to.
+    private let exactMapping: [String: String]
+    private let foldedMapping: [String: String]
     private let sourceFields: Set<String>
-
+    private let sourceFieldsPerFoldedName: [String: Int]
     private let rowGenerator: SQLStatementGenerator?
 
     /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
@@ -57,10 +50,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.grammar = databaseType.lexicalGrammar
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
-        self.columnMapping = columnMapping
-        self.mappingKeyByFoldedName = Dictionary(grouping: columnMapping.keys, by: { $0.lowercased() })
-            .compactMapValues { $0.count == 1 ? $0.first : nil }
+        self.exactMapping = columnMapping
         self.sourceFields = sourceFields
+        self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
+        self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
+            .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
@@ -205,45 +199,26 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         String(localized: "No values in this row matched the column mapping")
     }
 
-    /// Exact names first. Folding every name used to put `Name` and `name` on one key, so a
-    /// source table holding both wrote one column twice and the server refused the INSERT.
-    internal func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
+    /// Exact names first. A case-insensitive match is only a fallback for a field the sheet never
+    /// listed, such as a JSON key respelled past the sample, and only when that spelling points at
+    /// one listed field, one mapping key and one field of the row, none of them already matched.
+    func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
         var pairs: [(column: String, value: PluginCellValue)] = []
-        var unknown: [(field: String, value: PluginCellValue)] = []
+        var matchedNames = Set<String>()
         for (field, value) in values {
-            if let column = columnMapping[field] {
-                pairs.append((column, value))
-            } else if !sourceFields.contains(field) {
-                unknown.append((field, value))
-            }
+            guard let column = exactMapping[field] else { continue }
+            pairs.append((column, value))
+            matchedNames.insert(field.lowercased())
         }
-        if !unknown.isEmpty {
-            pairs += caseFoldedPairs(unknown, in: values)
+        let unmatched = values.filter { exactMapping[$0.key] == nil && !sourceFields.contains($0.key) }
+        for (folded, group) in Dictionary(grouping: unmatched, by: { $0.key.lowercased() }) {
+            guard group.count == 1, let entry = group.first, !matchedNames.contains(folded),
+                  sourceFieldsPerFoldedName[folded, default: 0] <= 1,
+                  let column = foldedMapping[folded] else { continue }
+            pairs.append((column, entry.value))
         }
         pairs.sort { $0.column < $1.column }
         return (pairs.map(\.column), pairs.map(\.value))
-    }
-
-    /// A field the mapping was not made from, such as a JSON key first seen past the sampled
-    /// documents, still reaches the key it matches ignoring case, but only when nothing else in the
-    /// row answers to that name: not the key's own spelling, and not a second field.
-    private func caseFoldedPairs(
-        _ unknown: [(field: String, value: PluginCellValue)],
-        in values: [String: PluginCellValue]
-    ) -> [(column: String, value: PluginCellValue)] {
-        var fieldsPerFoldedName: [String: Int] = [:]
-        for field in values.keys {
-            fieldsPerFoldedName[field.lowercased(), default: 0] += 1
-        }
-        var pairs: [(column: String, value: PluginCellValue)] = []
-        for (field, value) in unknown {
-            let folded = field.lowercased()
-            guard fieldsPerFoldedName[folded] == 1,
-                  let key = mappingKeyByFoldedName[folded],
-                  let column = columnMapping[key] else { continue }
-            pairs.append((column, value))
-        }
-        return pairs
     }
 
     func deleteAllRowsFromTargetTable() async throws {

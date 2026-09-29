@@ -157,9 +157,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
 
-        discardCoalescedUndoRun()
+        discardUndoHistory()
         pending.clear()
-        undoManagerProvider?()?.removeAllActions(withTarget: self)
 
         hasChanges = false
         if triggerReload {
@@ -356,6 +355,11 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func discardCoalescedUndoRun() {
         coalescedEdits.removeAll()
         coalescedOrder.removeAll()
+    }
+
+    private func discardUndoHistory() {
+        discardCoalescedUndoRun()
+        undoManagerProvider?()?.removeAllActions(withTarget: self)
     }
 
     func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
@@ -730,7 +734,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
-        discardCoalescedUndoRun()
+        discardUndoHistory()
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

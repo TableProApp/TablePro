@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Column mappings remembered per table for CSV, JSON and Excel imports, plus Match by Name and Match by Position. (#3172)
 
 ### Fixed
 
@@ -18,9 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
+- Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
+- Import sheet ignoring a CSV or Excel option change until the next edit, then resetting the column mapping.
+- Import sheet showing an earlier table's columns after switching tables while the first was still loading.
+- CSV import failing on every row when two headers differ only by case.
+- CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
+- Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Table Transfer emptying a destination table, then failing, when two source columns map to one column.
-- File import failing, or writing a skipped field, when two fields differ only by case.
 
 ## [0.76.1] - 2026-09-29
 
