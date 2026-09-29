@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
 - `pg_terminate_backend`, `nextval` and other state-changing calls treated as reads by Safe Mode and external clients.
+- `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
 
 ## [0.76.1] - 2026-09-29
 

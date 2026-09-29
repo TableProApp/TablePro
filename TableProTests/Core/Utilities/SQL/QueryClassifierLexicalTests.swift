@@ -271,6 +271,17 @@ struct QueryClassifierLexicalTests {
         #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .safe)
     }
 
+    @Test("EXPLAIN spelled ANALYSE runs its statement, measured on PostgreSQL 17.11", arguments: [
+        "EXPLAIN ANALYSE DELETE FROM users",
+        "EXPLAIN ANALYSE VERBOSE DELETE FROM users",
+        "EXPLAIN (ANALYSE) DELETE FROM users",
+        "EXPLAIN (ANALYSE, BUFFERS) DELETE FROM users",
+        "EXPLAIN ANALYSE SELECT pg_terminate_backend(123)",
+    ])
+    func explainAnalyseRunsItsStatement(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
+
     @Test("A long run of calls behind unopened quotes is read in one pass", .timeLimit(.minutes(1)))
     func unopenedQuotedCalleesAreReadInOnePass() {
         let sql = "SELECT " + String(repeating: "a](", count: 100_000)
