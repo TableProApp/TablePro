@@ -40,6 +40,7 @@ struct ParsedConnectionURL {
     let useSrv: Bool
     let mongoQueryParams: [String: String]
     let multiHost: String?
+    let additionalFields: [String: String]
 
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
@@ -149,7 +150,8 @@ struct ConnectionURLParser {
                 safeModeLevel: nil,
                 useSrv: false,
                 mongoQueryParams: [:],
-                multiHost: nil
+                multiHost: nil,
+                additionalFields: [:]
             ))
         }
 
@@ -224,6 +226,7 @@ struct ConnectionURLParser {
             }
         }
         let effectivePort = isSrv ? nil : port
+        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
 
         return .success(ParsedConnectionURL(
             type: dbType,
@@ -232,8 +235,8 @@ struct ConnectionURLParser {
             database: database,
             username: username,
             password: password,
-            sslMode: sslMode,
-            disablesTLS: ext.disablesTLS,
+            sslMode: tls.sslMode,
+            disablesTLS: tls.disablesTLS,
             authSource: ext.authSource,
             sshHost: nil,
             sshPort: nil,
@@ -258,7 +261,8 @@ struct ConnectionURLParser {
             safeModeLevel: ext.safeModeLevel,
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
-            multiHost: nil
+            multiHost: nil,
+            additionalFields: tls.additionalFields
         ))
     }
 
@@ -401,6 +405,7 @@ struct ConnectionURLParser {
         let ext = parseSSHQueryString(queryString, dbType: dbType)
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
         port = significantPort(port, for: dbType, sslMode: sslMode)
+        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -427,8 +432,8 @@ struct ConnectionURLParser {
             database: database,
             username: dbUsername,
             password: dbPassword,
-            sslMode: sslMode,
-            disablesTLS: ext.disablesTLS,
+            sslMode: tls.sslMode,
+            disablesTLS: tls.disablesTLS,
             authSource: ext.authSource,
             sshHost: sshHost,
             sshPort: sshPort,
@@ -453,7 +458,8 @@ struct ConnectionURLParser {
             safeModeLevel: ext.safeModeLevel,
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
-            multiHost: nil
+            multiHost: nil,
+            additionalFields: tls.additionalFields
         ))
     }
 
@@ -553,7 +559,8 @@ struct ConnectionURLParser {
             safeModeLevel: ext.safeModeLevel,
             useSrv: isSrv,
             mongoQueryParams: ext.mongoQueryParams,
-            multiHost: multiHost
+            multiHost: multiHost,
+            additionalFields: [:]
         )
     }
 
@@ -592,6 +599,26 @@ struct ConnectionURLParser {
             guard requestsTLS || portImpliesTLS else { return nil }
             if let tlsVerification { return tlsVerification }
             return requestsTLS ? type.sslModeWhenTLSEnabled : nil
+        }
+    }
+
+    private struct ImportedTLS {
+        let sslMode: SSLMode?
+        let disablesTLS: Bool
+        let additionalFields: [String: String]
+
+        init(sslMode: SSLMode?, disablesTLS: Bool, type: DatabaseType) {
+            guard type == .etcd else {
+                self.sslMode = sslMode
+                self.disablesTLS = disablesTLS
+                self.additionalFields = [:]
+                return
+            }
+            self.sslMode = nil
+            self.disablesTLS = false
+            self.additionalFields = [
+                EtcdTLSModeField.fieldId: EtcdTLSModeField.fieldValue(for: sslMode ?? .disabled)
+            ]
         }
     }
 
