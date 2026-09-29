@@ -66,6 +66,22 @@ struct ConnectionFormClipboardTests {
         #expect(clipboard.ssl.mode == imported.ssl.mode)
     }
 
+    @Test(
+        "ssl=1 and ssl=require on the clipboard turn TLS on as ssl=true does",
+        arguments: [
+            "postgresql://u@db.example.com/app",
+            "mysql://root@db.example.com/app",
+            "redis://cache.example.com"
+        ],
+        ["1", "require"]
+    )
+    func sslFlagSpellingsTurnTLSOn(_ base: String, _ value: String) throws {
+        let spelled = try formApplyingClipboard("\(base)?ssl=\(value)")
+        let canonical = try formApplyingClipboard("\(base)?ssl=true")
+        #expect(spelled.ssl.mode == canonical.ssl.mode)
+        #expect(spelled.ssl.mode == .required)
+    }
+
     @Test("Host, credentials and database from the clipboard reach the form")
     func connectionFieldsReachTheForm() throws {
         let coordinator = try formApplyingClipboard("postgres://alice:p%40ss@db.example.com:6000/sales")
