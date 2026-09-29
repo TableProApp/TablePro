@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
 - Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
+- CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
 
 ## [0.76.1] - 2026-09-29
 

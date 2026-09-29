@@ -545,6 +545,9 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
       - Plugins/MQLExportPlugin/MQLCollectionDefinition.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MQLExportPlugin/MQLExportModels.swift
+      - Plugins/MQLExportPlugin/MQLExportOptionsView.swift
+      - Plugins/MQLExportPlugin/MQLExportPlugin.swift
       - Plugins/MQLExportPlugin/MQLScriptLexer.swift
       - Plugins/MQLExportPlugin/MQLScriptValue.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
@@ -797,6 +800,10 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXExportModels.swift
+      - Plugins/XLSXExportPlugin/XLSXExportOptionsView.swift
+      - Plugins/XLSXExportPlugin/XLSXExportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXWriter.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
       - Plugins/XMLExportPlugin/XMLExportModels.swift
