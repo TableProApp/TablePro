@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
+- Missing Terminate button on ClickHouse server dashboard sessions that MCP could terminate.
 
 ## [0.76.1] - 2026-09-29
 
