@@ -68,13 +68,16 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: "com.TablePro.password.\(id.uuidString)") == nil)
     }
 
-    private func importedSSH(_ ssh: ExportableSSHConfig) throws -> SSHConfiguration {
+    private func importedConnection(
+        ssh: ExportableSSHConfig? = nil,
+        safeModeLevel: String? = nil
+    ) throws -> DatabaseConnection {
         let fixture = try AppStateFixture()
         let appState = fixture.makeState(syncEnabled: false, secureStore: MockSecureStore())
         let imported = ExportableConnection(
             name: "Bastion", host: "db-1", port: 5_432, database: "", username: "",
             type: DatabaseType.postgresql.rawValue, sshConfig: ssh, sslConfig: nil, color: nil, tagName: nil,
-            groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil, additionalFields: nil,
+            groupName: nil, sshProfileId: nil, safeModeLevel: safeModeLevel, aiPolicy: nil, additionalFields: nil,
             redisDatabase: nil, startupCommands: nil, localOnly: nil
         )
         let item = ImportItem(connection: imported, status: .ready)
@@ -90,7 +93,43 @@ struct IOSConnectionImportServiceTests {
         )
 
         #expect(result.importedCount == 1)
-        return try #require(appState.connections.first?.sshConfiguration)
+        return try #require(appState.connections.first)
+    }
+
+    private func importedSSH(_ ssh: ExportableSSHConfig) throws -> SSHConfiguration {
+        let connection = try importedConnection(ssh: ssh)
+        return try #require(connection.sshConfiguration)
+    }
+
+    @Test(
+        "A Mac confirmation level imports as Confirm Writes",
+        arguments: ["alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func macConfirmationLevelImportsAsConfirmWrites(_ wireValue: String) throws {
+        #expect(try importedConnection(safeModeLevel: wireValue).safeModeLevel == .confirmWrites)
+    }
+
+    @Test("A Mac Silent connection and a file with no level import as Off")
+    func macSilentImportsAsOff() throws {
+        #expect(try importedConnection(safeModeLevel: "silent").safeModeLevel == .off)
+        #expect(try importedConnection(safeModeLevel: nil).safeModeLevel == .off)
+    }
+
+    @Test("An iOS level imports unchanged", arguments: SafeModeLevel.allCases)
+    func iOSLevelImportsUnchanged(_ level: SafeModeLevel) throws {
+        #expect(try importedConnection(safeModeLevel: level.rawValue).safeModeLevel == level)
+    }
+
+    @Test("A Read-Only level imports with the legacy read-only flag set")
+    func readOnlyLevelSetsLegacyFlag() throws {
+        #expect(try importedConnection(safeModeLevel: "readOnly").isReadOnly)
+        #expect(try !importedConnection(safeModeLevel: "safeModeFull").isReadOnly)
+        #expect(try !importedConnection(safeModeLevel: nil).isReadOnly)
+    }
+
+    @Test("An unrecognized level imports as Confirm Writes instead of Off")
+    func unrecognizedLevelImportsAsConfirmWrites() throws {
+        #expect(try importedConnection(safeModeLevel: "someFutureLevel").safeModeLevel == .confirmWrites)
     }
 
     @Test("an imported jump host keeps its port, auth method and key path")
