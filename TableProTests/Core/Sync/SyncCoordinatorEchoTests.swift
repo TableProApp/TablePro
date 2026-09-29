@@ -252,6 +252,74 @@ struct SyncCoordinatorEchoTests {
         #expect(tracker.dirtyRecords(for: .connection).contains(connectionId.uuidString))
     }
 
+    @Test("A connection's own echo keeps this Mac's External Clients level and transport modes")
+    func connectionEchoKeepsDeviceLocalState() async throws {
+        let connection = Self.makeConnectionWithDeviceLocalState(name: "Primary")
+        connections.addConnection(connection)
+        let transport = ScriptedSyncTransport(
+            zoneID: Self.zoneID,
+            pulled: { pushed in PullResult(changedRecords: pushed, deletedRecordIDs: [], newToken: nil) }
+        )
+
+        let failure = await makeCoordinator(transport: transport).runSyncCycle()
+
+        let pulled = try #require(connections.loadConnection(id: connection.id))
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: Self.zoneID)
+        #expect(failure == nil)
+        #expect(await transport.pushedRecords.map(\.recordID).contains(recordID))
+        #expect(pulled.externalAccess == .blocked)
+        #expect(pulled.socksProxyMode == connection.socksProxyMode)
+        #expect(pulled.tunnelCommandMode == connection.tunnelCommandMode)
+    }
+
+    @Test("A connection renamed on another device keeps this Mac's External Clients level and transport modes")
+    func remoteRenameKeepsDeviceLocalState() async throws {
+        let connection = Self.makeConnectionWithDeviceLocalState(name: "Primary")
+        connections.addConnection(connection)
+        var remote = connection
+        remote.name = "Renamed"
+        let remoteRecord = SyncRecordMapper.toCKRecord(remote, in: Self.zoneID)
+        let transport = ScriptedSyncTransport(
+            zoneID: Self.zoneID,
+            pulled: { _ in PullResult(changedRecords: [remoteRecord], deletedRecordIDs: [], newToken: nil) }
+        )
+
+        let failure = await makeCoordinator(transport: transport).runSyncCycle()
+
+        let pulled = try #require(connections.loadConnection(id: connection.id))
+        #expect(failure == nil)
+        #expect(pulled.name == "Renamed")
+        #expect(pulled.externalAccess == .blocked)
+        #expect(pulled.socksProxyMode == connection.socksProxyMode)
+        #expect(pulled.tunnelCommandMode == connection.tunnelCommandMode)
+    }
+
+    @Test("A connection edited during its push keeps this Mac's External Clients level and transport modes")
+    func connectionEchoMergeKeepsDeviceLocalState() async throws {
+        let connection = Self.makeConnectionWithDeviceLocalState(name: "Primary")
+        connections.addConnection(connection)
+        let connectionId = connection.id
+        var remote = connection
+        remote.port = 6_543
+        let remoteRecord = SyncRecordMapper.toCKRecord(remote, in: Self.zoneID)
+        let store = connections
+        let transport = ScriptedSyncTransport(
+            zoneID: Self.zoneID,
+            duringPush: { _ = store.mutateConnections(ids: [connectionId]) { $0.name = "Renamed" } },
+            pulled: { _ in PullResult(changedRecords: [remoteRecord], deletedRecordIDs: [], newToken: nil) }
+        )
+
+        let failure = await makeCoordinator(transport: transport).runSyncCycle()
+
+        let merged = try #require(connections.loadConnection(id: connectionId))
+        #expect(failure == nil)
+        #expect(merged.name == "Renamed")
+        #expect(merged.port == 6_543)
+        #expect(merged.externalAccess == .blocked)
+        #expect(merged.socksProxyMode == connection.socksProxyMode)
+        #expect(merged.tunnelCommandMode == connection.tunnelCommandMode)
+    }
+
     @Test("A record held back as this Mac's own echo is not cached as the server's copy")
     func withheldEchoIsNotCached() async throws {
         let tag = ConnectionTag(name: "staging")
@@ -415,6 +483,19 @@ struct SyncCoordinatorEchoTests {
         #expect(outcome == .skipped)
         #expect(await favorites.fetchFavorite(id: original.id)?.query == "SELECT 2")
         #expect(tracker.dirtyRecords(for: .favorite).contains(original.id.uuidString))
+    }
+
+    private static func makeConnectionWithDeviceLocalState(name: String) -> DatabaseConnection {
+        var connection = TestFixtures.makeConnection(name: name, type: .postgresql)
+        connection.port = 5_432
+        connection.externalAccess = .blocked
+        connection.socksProxyMode = .inline(
+            SOCKSProxyConfiguration(host: "proxy.internal", port: 1_080, username: "relay")
+        )
+        connection.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
+        )
+        return connection
     }
 
     private static func rename(_ id: UUID, to name: String, in storage: TagStorage) {

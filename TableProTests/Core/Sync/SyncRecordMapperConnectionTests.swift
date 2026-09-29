@@ -7,10 +7,55 @@ import Testing
 struct SyncRecordMapperConnectionTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
+    private static let writtenToRecord: Set<String> = [
+        "id",
+        "name",
+        "host",
+        "port",
+        "database",
+        "username",
+        "type",
+        "sshConfig",
+        "sslConfig",
+        "color",
+        "tagIds",
+        "groupId",
+        "sshProfileId",
+        "preferredSafeModeLevel",
+        "aiPolicy",
+        "aiRules",
+        "aiAlwaysAllowedTools",
+        "additionalFields",
+        "redisDatabase",
+        "startupCommands",
+        "sortOrder",
+        "isFavorite"
+    ]
+
+    private static let rebuiltFromRecord: Set<String> = ["sshTunnelMode"]
+
+    private static let keptFromThisMac: Set<String> = [
+        "localOnly",
+        "isSample",
+        "passwordSource",
+        "credentialMode",
+        "externalAccess",
+        "cloudflareTunnelMode",
+        "cloudSQLProxyMode",
+        "socksProxyMode",
+        "tunnelCommandMode"
+    ]
+
+    private static func storedValues(of connection: DatabaseConnection) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: Mirror(reflecting: connection).children.compactMap { child in
+            child.label.map { ($0, String(describing: child.value)) }
+        })
+    }
+
     private func makeFullyPopulatedConnection() -> DatabaseConnection {
         var connection = DatabaseConnection(name: "Production")
         connection.host = "db.example.com"
-        connection.port = 5432
+        connection.port = 5_432
         connection.database = "app"
         connection.username = "admin"
         connection.type = .postgresql
@@ -28,6 +73,91 @@ struct SyncRecordMapperConnectionTests {
         connection.isFavorite = true
         connection.additionalFields = ["schema": "public"]
         return connection
+    }
+
+    private func makeConnectionWithDeviceLocalState() -> DatabaseConnection {
+        var connection = DatabaseConnection(
+            name: "Warehouse",
+            host: "db.example.com",
+            port: 5_432,
+            database: "app",
+            username: "admin",
+            type: .postgresql
+        )
+        connection.localOnly = true
+        connection.isSample = true
+        connection.passwordSource = .env(variable: "WAREHOUSE_PASSWORD")
+        connection.credentialMode = .profile(id: UUID())
+        connection.externalAccess = .blocked
+        connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.access.example.com"))
+        connection.cloudSQLProxyMode = .inline(
+            CloudSQLProxyConfiguration(instanceConnectionName: "project:region:instance")
+        )
+        connection.socksProxyMode = .inline(
+            SOCKSProxyConfiguration(host: "proxy.internal", port: 1_080, username: "relay")
+        )
+        connection.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
+        )
+        return connection
+    }
+
+    @Test("A connection back from the wire is its local copy again once it adopts that copy's device-local state")
+    func deviceLocalStateCompletesTheRoundTrip() throws {
+        let local = makeConnectionWithDeviceLocalState()
+        let decoded = try SyncRecordMapper.toConnection(SyncRecordMapper.toCKRecord(local, in: zoneID))
+
+        #expect(decoded.adoptingDeviceLocalState(from: local) == local)
+    }
+
+    @Test("Adopting device-local state keeps every synced value another device sent")
+    func adoptingDeviceLocalStateKeepsSyncedValues() throws {
+        let local = makeConnectionWithDeviceLocalState()
+        var remote = local
+        remote.name = "Renamed"
+        remote.host = "replica.example.com"
+        remote.safeModeLevel = .readOnly
+        let decoded = try SyncRecordMapper.toConnection(SyncRecordMapper.toCKRecord(remote, in: zoneID))
+
+        #expect(decoded.adoptingDeviceLocalState(from: local) == remote)
+    }
+
+    @Test("Every stored connection property is written to the record, rebuilt from it, or kept from this Mac")
+    func everyStoredPropertyIsClassified() {
+        let stored = Set(Self.storedValues(of: DatabaseConnection(name: "")).keys)
+        let classified = Self.writtenToRecord.union(Self.rebuiltFromRecord).union(Self.keptFromThisMac)
+        let unclassified = stored.subtracting(classified)
+
+        #expect(
+            unclassified.isEmpty,
+            """
+            DatabaseConnection gained \(unclassified.sorted().joined(separator: ", ")).
+            Write each one to the connection record and add it to writtenToRecord,
+            or add it to keptFromThisMac and to adoptingDeviceLocalState(from:).
+            An unclassified property is reset to its default by every pull that carries the connection.
+            """
+        )
+        #expect(classified.subtracting(stored).isEmpty)
+    }
+
+    @Test("No connection property is both synced and kept from this Mac")
+    func classificationsDoNotOverlap() {
+        #expect(Self.writtenToRecord.isDisjoint(with: Self.rebuiltFromRecord))
+        #expect(Self.writtenToRecord.isDisjoint(with: Self.keptFromThisMac))
+        #expect(Self.rebuiltFromRecord.isDisjoint(with: Self.keptFromThisMac))
+    }
+
+    @Test("The round-trip fixture sets every device-local property away from its default")
+    func roundTripFixtureCoversEveryDeviceLocalProperty() {
+        let defaults = Self.storedValues(of: DatabaseConnection(name: ""))
+        let fixture = Self.storedValues(of: makeConnectionWithDeviceLocalState())
+
+        let leftAtDefault = Self.keptFromThisMac.filter { fixture[$0] == defaults[$0] }
+
+        #expect(
+            leftAtDefault.isEmpty,
+            "Set \(leftAtDefault.sorted().joined(separator: ", ")) in makeConnectionWithDeviceLocalState()."
+        )
     }
 
     @Test("An unverified field is never written to a record")
@@ -62,7 +192,7 @@ struct SyncRecordMapperConnectionTests {
 
         #expect(record["name"] as? String == "Production")
         #expect(record["host"] as? String == "db.example.com")
-        #expect(record["port"] as? Int64 == 5432)
+        #expect(record["port"] as? Int64 == 5_432)
         #expect(record["startupCommands"] as? String == "SET search_path TO public")
     }
 
