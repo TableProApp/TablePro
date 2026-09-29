@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV import failing on every row when two headers differ only by case.
 - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
 - Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Import sheet creating, emptying or filling tables in another database after a database switch in another window.
+- Import sheet discarding a new table's column edits when a CSV or Excel option changes.
 
 ## [0.76.1] - 2026-09-29
 
