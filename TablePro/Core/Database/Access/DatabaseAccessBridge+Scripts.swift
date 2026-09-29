@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 import TableProSQLGrammar
 
@@ -115,6 +116,7 @@ extension DatabaseAccessBridge {
             databaseType: databaseType
         )
 
+        let progress = ScriptBatchProgress()
         let run: ScriptBatchRun
         do {
             run = try await runRacingTimeout(
@@ -124,17 +126,66 @@ extension DatabaseAccessBridge {
                 owner: owner,
                 timeoutSeconds: timeoutSeconds
             ) { driver in
-                try await ScriptBatchRun.run(batches, startLines: startLines, rowCap: rowCap, driver: driver)
+                try await ScriptBatchRun.run(
+                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress
+                )
             }
         } catch {
             if classification.tier != .safe {
                 CatalogChangeService.post(statementsRan)
             }
+            Self.postSucceededBatches(of: batches, progress: progress, scope: scope, databaseType: databaseType)
             throw error
         }
 
         CatalogChangeService.post(statementsRan)
+        Self.postSucceededBatches(of: batches, progress: progress, scope: scope, databaseType: databaseType)
         return run.outcome(executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    /// A batch that finished before a later one failed has already committed on SQL Server, whose
+    /// scripts run with no transaction of the app's around them, so what it dropped or renamed is
+    /// reported whatever became of the rest.
+    private static func postSucceededBatches(
+        of batches: [ExecutableBatch],
+        progress: ScriptBatchProgress,
+        scope: DatabaseScope,
+        databaseType: DatabaseType
+    ) {
+        let completed = progress.completedBatchCount
+        guard completed > 0 else { return }
+        CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
+            scope: scope,
+            databaseType: databaseType,
+            statements: batches.prefix(completed).flatMap { $0.statements.map(\.sql) },
+            commit: .runStartedIn(progress.startState, appTransaction: .none)
+        )))
+    }
+}
+
+/// How far a script got, readable after it threw.
+final class ScriptBatchProgress: Sendable {
+    private struct State {
+        var startState: PluginSessionTransactionState = .unknown
+        var completedBatchCount = 0
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var startState: PluginSessionTransactionState {
+        state.withLock { $0.startState }
+    }
+
+    var completedBatchCount: Int {
+        state.withLock { $0.completedBatchCount }
+    }
+
+    func begin(in startState: PluginSessionTransactionState) {
+        state.withLock { $0.startState = startState }
+    }
+
+    func completeBatch() {
+        state.withLock { $0.completedBatchCount += 1 }
     }
 }
 
@@ -150,9 +201,12 @@ struct ScriptBatchRun: Sendable {
         _ batches: [ExecutableBatch],
         startLines: [Int],
         rowCap: Int,
-        driver: DatabaseDriver
+        driver: DatabaseDriver,
+        progress: ScriptBatchProgress
     ) async throws -> ScriptBatchRun {
-        let plan = BatchTransactionPlan.autocommit.joining(await driver.heldSessionTransactionState())
+        let startState = await driver.heldSessionTransactionState()
+        progress.begin(in: startState)
+        let plan = BatchTransactionPlan.autocommit.joining(startState)
         var answers: [QueryBatchResult] = []
         for (batch, startLine) in zip(batches, startLines) {
             try Task.checkCancellation()
@@ -170,6 +224,7 @@ struct ScriptBatchRun: Sendable {
                 )
                 throw DatabaseError.queryFailed(context.report().message)
             }
+            progress.completeBatch()
         }
         return ScriptBatchRun(answers: answers, sessionState: await driver.heldSessionTransactionState())
     }

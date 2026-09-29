@@ -65,6 +65,7 @@ private struct BatchRun {
     let outcome: BatchStatementOutcome<BatchOutput>
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
+    let startState: PluginSessionTransactionState
     var failureOutput: PluginServerOutput = .none
 }
 
@@ -137,7 +138,7 @@ extension QueryExecutionCoordinator {
         let batchTask = Task { [weak self, parent] in
             guard let self else { return }
             let run = await runBatches(prepared, scope: scope, mode: mode, claim: claim, lease: lease)
-            postRanStatements(of: prepared, outcome: run.outcome, connection: conn)
+            postRanStatements(of: prepared, run: run, scope: scope, connection: conn)
 
             let sessionNotice = Self.runNotice(outcome: run.outcome, sessionState: run.sessionState)
             switch run.outcome {
@@ -236,7 +237,8 @@ extension QueryExecutionCoordinator {
                 route: DatabaseManager.shared.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease)
             ) { driver in
-                let plan = BatchTransactionPlan.autocommit.joining(await driver.heldSessionTransactionState())
+                let startState = await driver.heldSessionTransactionState()
+                let plan = BatchTransactionPlan.autocommit.joining(startState)
                 let outcome = await BatchStatementRun.run(
                     prepared,
                     plan: plan,
@@ -251,18 +253,21 @@ extension QueryExecutionCoordinator {
                     try await Self.runBatch(batch, driver: driver, failureOutput: failureOutput)
                 }
                 let sessionState = await driver.heldSessionTransactionState()
-                return BatchRun(outcome: outcome, plan: plan, sessionState: sessionState)
+                return BatchRun(outcome: outcome, plan: plan, sessionState: sessionState, startState: startState)
             }
             run.failureOutput = failureOutput.output
             return run
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
-                return BatchRun(outcome: .cancelled(results: []), plan: .autocommit, sessionState: .unknown)
+                return BatchRun(
+                    outcome: .cancelled(results: []), plan: .autocommit, sessionState: .unknown, startState: .unknown
+                )
             }
             return BatchRun(
                 outcome: .failed(results: [], failure: .connection, errorDescription: error.localizedDescription),
                 plan: .autocommit,
-                sessionState: .unknown
+                sessionState: .unknown,
+                startState: .unknown
             )
         }
     }
@@ -316,11 +321,12 @@ extension QueryExecutionCoordinator {
     /// fetch, missing what did leaves the sidebar wrong.
     private func postRanStatements(
         of prepared: [PreparedBatch],
-        outcome: BatchStatementOutcome<BatchOutput>,
+        run: BatchRun,
+        scope: DatabaseScope,
         connection: DatabaseConnection
     ) {
         let ranCount: Int
-        switch outcome {
+        switch run.outcome {
         case .completed, .cancelled:
             ranCount = prepared.count
         case .failed(let outputs, let failure, _):
@@ -330,6 +336,12 @@ extension QueryExecutionCoordinator {
         CatalogChangeService.post(
             .statementsRan(connectionId: connection.id, statements: statements, databaseType: connection.type)
         )
+        CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
+            scope: scope,
+            databaseType: connection.type,
+            statements: prepared.prefix(run.outcome.succeededCount).flatMap { $0.batch.statements.map(\.sql) },
+            commit: .run(startedIn: run.startState, plan: run.plan, completed: run.outcome.isCompleted)
+        )))
     }
 
     // MARK: - Results

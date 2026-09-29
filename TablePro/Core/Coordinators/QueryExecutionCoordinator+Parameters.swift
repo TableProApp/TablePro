@@ -27,6 +27,7 @@ private struct MultiStatementRun {
     let outcome: BatchStatementOutcome<QueryResult>
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
+    let startState: PluginSessionTransactionState
     var failureOutput: PluginServerOutput = .none
 }
 
@@ -153,28 +154,31 @@ extension QueryExecutionCoordinator {
 
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
+        let grammar = parent.lexicalGrammar
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
             let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             do {
-                let fetchResult = try await DatabaseManager.shared.withScopedDriver(
+                let (fetchResult, tableEdits) = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
-                    try await queryExecutor.executeQuery(
+                    let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
                         parameters: boundValues.values,
                         rowCap: rowCap,
                         capturingOutputInto: failureOutput
                     )
+                    let edits = await SucceededStatements.single(
+                        statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
+                    )
+                    return (fetched, edits)
                 }
-                CatalogChangeService.post(
-                    .statementsRan(connectionId: conn.id, statements: [statement.sql], databaseType: conn.type)
-                )
+                MainContentCoordinator.postStatementRan(statement.sql, on: conn, succeeded: tableEdits)
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -341,6 +345,12 @@ extension QueryExecutionCoordinator {
             CatalogChangeService.post(
                 .statementsRan(connectionId: conn.id, statements: ranStatements, databaseType: conn.type)
             )
+            CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
+                scope: scope,
+                databaseType: conn.type,
+                statements: prepared.prefix(outcome.succeededCount).map(\.sentSQL),
+                commit: .run(startedIn: run.startState, plan: run.plan, completed: outcome.isCompleted)
+            )))
 
             switch outcome {
             case .cancelled(let results):
@@ -436,7 +446,8 @@ extension QueryExecutionCoordinator {
                 route: DatabaseManager.shared.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease)
             ) { driver in
-                let sessionPlan = plan.joining(await driver.heldSessionTransactionState())
+                let startState = await driver.heldSessionTransactionState()
+                let sessionPlan = plan.joining(startState)
                 let outcome = await BatchStatementRun.run(
                     prepared,
                     plan: sessionPlan,
@@ -457,24 +468,30 @@ extension QueryExecutionCoordinator {
                     }
                 }
                 guard sessionPlan == .sessionTransaction else {
-                    return MultiStatementRun(outcome: outcome, plan: sessionPlan, sessionState: .idle)
+                    return MultiStatementRun(
+                        outcome: outcome, plan: sessionPlan, sessionState: .idle, startState: startState
+                    )
                 }
                 return MultiStatementRun(
                     outcome: outcome,
                     plan: sessionPlan,
-                    sessionState: await driver.heldSessionTransactionState()
+                    sessionState: await driver.heldSessionTransactionState(),
+                    startState: startState
                 )
             }
             run.failureOutput = failureOutput.output
             return run
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
-                return MultiStatementRun(outcome: .cancelled(results: []), plan: plan, sessionState: .unknown)
+                return MultiStatementRun(
+                    outcome: .cancelled(results: []), plan: plan, sessionState: .unknown, startState: .unknown
+                )
             }
             return MultiStatementRun(
                 outcome: .failed(results: [], failure: .connection, errorDescription: error.localizedDescription),
                 plan: plan,
-                sessionState: .unknown
+                sessionState: .unknown,
+                startState: .unknown
             )
         }
     }
