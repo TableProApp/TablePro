@@ -154731,7 +154731,16 @@
         }
       }
     },
+    "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
+
+    },
     "TablePro connects to the first host over a tunnel. Replica set failover is not available." : {
+
+    },
+    "TablePro connects to the first host over a tunnel. The other hosts are not used." : {
+
+    },
+    "TablePro connects to the first node over a tunnel, as a single server. Keys on other nodes cannot be reached." : {
 
     },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
@@ -182645,6 +182654,9 @@
 
     },
     "Sentinel %@ sent a reply TablePro could not read (%@)." : {
+
+    },
+    "Sentinel mode cannot run through a tunnel. Set Connection Mode to Standalone and enter a data node, or turn the tunnel off." : {
 
     },
     "Sentinel %@ refused the request: %@" : {
