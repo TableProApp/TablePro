@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text.
+- MongoDB refusing text like `[DRAFT] Chapter one...` as a value shortened for display.
 
 ## [0.76.1] - 2026-09-29
 

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct ElasticsearchWriteRequest: Equatable {
@@ -101,6 +102,9 @@ struct ElasticsearchStatementGenerator {
             }
         }
 
+        if let column = shortenedColumn(in: values) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.shortenedValueReason(column))
+        }
         if let reason = unwritableInsertValue(in: change, values: values) {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: reason)
         }
@@ -120,6 +124,14 @@ struct ElasticsearchStatementGenerator {
             return .init(method: "PUT", path: docPath(id: id), body: body)
         }
         return .init(method: "POST", path: "/\(encodedIndex)/_doc\(Self.refreshQuery)", body: body)
+    }
+
+    private func shortenedColumn(in values: [String: PluginCellValue]) -> String? {
+        columns.first { values[$0].map(Self.isShortened) ?? false }
+    }
+
+    private static func isShortened(_ value: PluginCellValue) -> Bool {
+        value.asText.map(JSONTruncation.isIncompleteStructure) ?? false
     }
 
     /// A new row's leaf value reaches the server only inside its array, so one the user typed, one
@@ -186,6 +198,9 @@ struct ElasticsearchStatementGenerator {
                 )
             }
             if let text = cellChange.newValue.asText {
+                guard !Self.isShortened(cellChange.newValue), !Self.isShortened(cellChange.oldValue) else {
+                    throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.shortenedValueReason(column))
+                }
                 doc[column] = jsonValue(text, for: column)
             } else {
                 doc[column] = NSNull()
@@ -215,6 +230,15 @@ struct ElasticsearchStatementGenerator {
 
     private static func metadataReason(_ column: String) -> String {
         String(format: String(localized: "'%@' is document metadata and cannot be edited."), column)
+    }
+
+    private static func shortenedValueReason(_ column: String) -> String {
+        String(
+            format: String(
+                localized: "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query."
+            ),
+            column
+        )
     }
 
     private static var missingIdReason: String {

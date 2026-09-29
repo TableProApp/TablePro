@@ -344,11 +344,11 @@ struct SurrealStatementGeneratorTests {
             cellChanges: [(columnIndex: 2, columnName: "age", oldValue: .text("30"), newValue: .text("31"))],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
 
         #expect(statement.statement.contains("UPDATE $p0 SET age = $p1;"))
         #expect(!statement.statement.contains("CONTENT"))
@@ -368,35 +368,35 @@ struct SurrealStatementGeneratorTests {
             cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("a"), newValue: .text("'; REMOVE TABLE person; --"))],
             originalRow: [.text("person:alice"), .text("a"), .null]
         )
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
         #expect(!statement.statement.contains("REMOVE TABLE"))
         #expect(decoded(statement.parameters[1]) == .string("'; REMOVE TABLE person; --"))
     }
 
     @Test("An insert omits a blank id so the server mints one")
     func insert() throws {
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [], insertedRowData: [0: [.text(""), .text("Carol"), .text("22")]],
             deletedRowIndices: [], insertedRowIndices: [0]
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
         #expect(statement.statement.contains("CREATE person SET name = $p0, age = $p1;"))
         #expect(decoded(statement.parameters[1]) == .int(22))
     }
 
     @Test("An insert with an explicit id binds it as a record id")
     func insertWithId() throws {
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [], insertedRowData: [0: [.text("person:carol"), .text("Carol"), .null]],
             deletedRowIndices: [], insertedRowIndices: [0]
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
         #expect(statement.statement.contains("CREATE $p0 SET name = $p1;"))
         #expect(decoded(statement.parameters[0])
             == .recordId(SurrealRecordID(table: "person", id: .string("carol"))))
@@ -408,56 +408,185 @@ struct SurrealStatementGeneratorTests {
             rowIndex: 0, type: .delete, cellChanges: [],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
         #expect(statement.statement.contains("DELETE $p0;"))
         #expect(statement.parameters.count == 1)
     }
 
     @Test("The auto-id marker on insert lets the server mint the id")
     func autoDefaultInsertId() throws {
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [], insertedRowData: [0: [.text("__DEFAULT__"), .text("Carol"), .text("22")]],
             deletedRowIndices: [], insertedRowIndices: [0]
         )
-        let statement = try #require(statements.first)
+        let statement = try #require(writes.first)
         #expect(statement.statement.contains("CREATE person SET"))
         #expect(!statement.statement.contains("__DEFAULT__"))
         #expect(!statement.statement.contains("person:__DEFAULT__"))
     }
 
     @Test("The auto-id marker on an updated field is skipped, never written literally")
-    func autoDefaultUpdateField() {
+    func autoDefaultUpdateField() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("Alice"), newValue: .text("__DEFAULT__"))],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
-        #expect(statements.isEmpty, "an all-default update produces no statement, not a literal write")
+        #expect(writes.isEmpty, "an all-default update produces no statement, not a literal write")
     }
 
     @Test("The id column is never written")
-    func immutableId() {
+    func immutableId() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [(columnIndex: 0, columnName: "id", oldValue: .text("person:a"), newValue: .text("person:b"))],
             originalRow: [.text("person:a"), .text("Alice"), .null]
         )
-        let statements = SurrealStatementGenerator.statements(
+        let writes = try SurrealStatementGenerator.rowWrites(
             table: "person", scope: scope, columns: columns, kinds: kinds,
             changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
-        #expect(statements.isEmpty)
+        #expect(writes.isEmpty)
+    }
+
+    @Test("Each statement names the change it writes")
+    func writesNameTheirChange() throws {
+        let original: [PluginCellValue] = [.text("person:alice"), .text("Alice"), .text("30")]
+        let writes = try SurrealStatementGenerator.rowWrites(
+            table: "person", scope: scope, columns: columns, kinds: kinds,
+            changes: [
+                PluginRowChange(
+                    rowIndex: 0,
+                    type: .update,
+                    cellChanges: [(columnIndex: 2, columnName: "age", oldValue: .text("30"), newValue: .text("31"))],
+                    originalRow: original
+                ),
+                PluginRowChange(rowIndex: 1, type: .insert, cellChanges: [], originalRow: nil),
+                PluginRowChange(rowIndex: 2, type: .delete, cellChanges: [], originalRow: original),
+            ],
+            insertedRowData: [1: [.text(""), .text("Carol"), .text("22")]],
+            deletedRowIndices: [2],
+            insertedRowIndices: [1]
+        )
+        #expect(writes.map(\.rowIndices) == [[0], [1], [2]])
+    }
+
+    private let documentColumns = ["id", "tags", "meta"]
+    private let documentKinds: [String: SurrealFieldKind] = ["tags": SurrealFieldKind.parse("array<string>")]
+
+    private func tagArray(count: Int) -> String {
+        SurrealValue.array((0..<count).map { .string("tag-\($0)") }).displayText
+    }
+
+    private func shortenedTags() -> String {
+        tagArray(count: 1_500)
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func documentEdit(
+        _ column: String,
+        from old: String,
+        to new: PluginCellValue,
+        beside original: [PluginCellValue] = [.text("post:one"), .null, .null]
+    ) -> PluginRowChange {
+        let columnIndex = documentColumns.firstIndex(of: column) ?? 0
+        var originalRow = original
+        originalRow[columnIndex] = .text(old)
+        return PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: columnIndex, columnName: column, oldValue: .text(old), newValue: new)],
+            originalRow: originalRow
+        )
+    }
+
+    private func documentWrite(_ change: PluginRowChange) throws -> PluginRowWrite {
+        let writes = try SurrealStatementGenerator.rowWrites(
+            table: "post", scope: scope, columns: documentColumns, kinds: documentKinds,
+            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        return try #require(writes.first)
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"tag-0\"", with: "\"tag-Z\"")
+        #expect(throws: shortenedRefusal("tags")) {
+            try documentWrite(documentEdit("tags", from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to a schemaless array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("meta")) {
+            try documentWrite(documentEdit("meta", from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a schemaless value shortened right after an object is refused")
+    func insertRefusesAValueShortenedAfterAnObject() throws {
+        let shortened = SurrealValue.array(
+            Array(repeating: .object([(key: "k", value: .string("v"))]), count: 1_500)
+        ).displayText
+        try #require(shortened.hasSuffix("}..."))
+        #expect(throws: shortenedRefusal("meta")) {
+            try SurrealStatementGenerator.rowWrites(
+                table: "post", scope: scope, columns: documentColumns, kinds: documentKinds,
+                changes: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+                insertedRowData: [0: [.text(""), .null, .text(shortened)]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = tagArray(count: 800)
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("tags")) {
+            try documentWrite(documentEdit("tags", from: shortenedTags(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let write = try documentWrite(documentEdit("tags", from: shortenedTags(), to: .null))
+        #expect(write.statement.contains("UPDATE $p0 SET tags = $p1;"))
+        #expect(decoded(write.parameters[1]) == .null)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = documentEdit(
+            "meta", from: "0", to: .text("1"), beside: [.text("post:one"), .text(shortenedTags()), .null]
+        )
+        let write = try documentWrite(change)
+        #expect(write.statement.contains("UPDATE $p0 SET meta = $p1;"))
+        #expect(decoded(write.parameters[1]) == .int(1))
     }
 }
 
@@ -477,7 +606,7 @@ struct SurrealCellCoderTests {
         #expect(value(#"{"a":1}"#, "object") == .object([(key: "a", value: .int(1))]))
         #expect(value("2024-09-15T12:34:56.789Z", "datetime")
             == .datetime(seconds: 1_726_403_696, nanoseconds: 789_000_000))
-        #expect(value("1h30m", "duration") == .duration(seconds: 5400, nanoseconds: 0))
+        #expect(value("1h30m", "duration") == .duration(seconds: 5_400, nanoseconds: 0))
     }
 
     @Test("With no known kind, numeric and bool text is typed, not left a string")
@@ -527,7 +656,7 @@ struct SurrealDBConnectionConfigTests {
         var fields = ["sdbAuthLevel": level]
         fields.merge(extra) { _, new in new }
         return SurrealDBConnectionConfig(config: DriverConnectionConfig(
-            host: "localhost", port: 8000, username: "root", password: "secret",
+            host: "localhost", port: 8_000, username: "root", password: "secret",
             database: namespace, ssl: SSLConfiguration(), additionalFields: fields
         ))
     }
