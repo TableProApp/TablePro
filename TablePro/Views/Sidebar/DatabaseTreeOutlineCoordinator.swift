@@ -331,7 +331,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         FavoriteTablesStorage.FavoriteEntry(
             connectionId: connectionId,
             database: ref.database,
-            schema: ref.table.schema,
+            schema: ref.favoriteSchema,
             name: ref.table.name
         )
     }

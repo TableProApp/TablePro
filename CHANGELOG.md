@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- App pausing while renaming or dropping a database or schema that holds many favorite tables.
+- iCloud sync mixing up two favorite tables whose names contain a vertical bar.
+- iCloud sync sending both a save and a deletion for an item unstarred and starred again, or renamed back, before it ran.
+- Favorite table starred again while its removal was syncing to iCloud disappearing when the sync finished.
 
 ## [0.76.1] - 2026-09-29
 

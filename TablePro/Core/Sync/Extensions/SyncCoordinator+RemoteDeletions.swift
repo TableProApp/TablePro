@@ -52,13 +52,21 @@ struct SyncRemoteDeletionEffects {
     var connectionsChanged = false
     var groupsOrTagsChanged = false
     var persistenceFailed = false
+    var tableFavoriteIdsToRetire: Set<String> = []
 }
 
 extension SyncCoordinator {
-    func applyRemoteDeletions(_ pending: SyncPendingDeletions) -> SyncRemoteDeletionEffects {
+    func applyRemoteDeletions(
+        _ pending: SyncPendingDeletions,
+        alongside tableFavorites: [FavoriteTablesStorage.FavoriteEntry]
+    ) -> SyncRemoteDeletionEffects {
         var effects = SyncRemoteDeletionEffects()
         effects.connectionsChanged = !pending.connections.isEmpty
         effects.groupsOrTagsChanged = !pending.groups.isEmpty || !pending.tags.isEmpty
+        effects.tableFavoriteIdsToRetire = services.favoriteTablesStorage.applyRemote(
+            saved: tableFavorites,
+            deletedIds: pending.tableFavorites
+        )
 
         let persisted = [
             applyRemoteConnectionDeletions(pending.connections),
@@ -68,10 +76,6 @@ extension SyncCoordinator {
             applyRemoteCredentialProfileDeletions(pending.credentialProfiles)
         ]
         effects.persistenceFailed = persisted.contains(false)
-
-        for id in pending.tableFavorites {
-            services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
-        }
         return effects
     }
 
@@ -89,6 +93,8 @@ extension SyncCoordinator {
         ConnectionLocalState.purge(
             connectionIds: deletedIds,
             origin: .remote,
+            favoriteTables: services.favoriteTablesStorage,
+            favoriteDatabases: services.favoriteDatabasesStorage,
             sqlFavorites: services.sqlFavoriteManager,
             queryHistory: services.queryHistoryManager
         )

@@ -103,10 +103,15 @@ final class SyncChangeTracker: Sendable {
         let dirty = Set(SyncRecordType.allCases.flatMap { type in
             metadataStorage.dirtyIds(for: type).map { SyncRecordIdentity(type: type, id: $0) }
         })
+        let tombstoned = Set(SyncRecordType.allCases.flatMap { type in
+            metadataStorage.tombstones(for: type).map { SyncRecordIdentity(type: type, id: $0.id) }
+        })
         return editGenerations.withLock { state in
             SyncEditSnapshot(
                 dirty: dirty,
-                generations: Dictionary(uniqueKeysWithValues: dirty.map { ($0, state.generation(of: $0)) })
+                generations: Dictionary(
+                    uniqueKeysWithValues: dirty.union(tombstoned).map { ($0, state.generation(of: $0)) }
+                )
             )
         }
     }

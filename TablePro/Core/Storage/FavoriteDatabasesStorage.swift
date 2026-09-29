@@ -60,46 +60,48 @@ internal final class FavoriteDatabasesStorage {
             database: database,
             environment: environment
         )
-        notify(after: mutate { Self.upsert(entry, into: &$0) })
+        commit(sync: .track) { Self.upsert(entry, into: &$0) }
     }
 
     internal func setFavoriteWithoutSync(_ entry: FavoriteDatabaseEntry) {
-        notify(after: mutate { Self.upsert(entry, into: &$0) }, skipSync: true)
+        commit(sync: .discard) { Self.upsert(entry, into: &$0) }
     }
 
-    /// A favourite follows its database's new name rather than being dropped, because the tag the
-    /// user put on it is about the database, not about what it is called. It is synced, so the
-    /// entry is written before the removal is announced.
     internal func rename(database oldName: String, to newName: String, connectionId: UUID) {
-        guard let existing = favorites(for: connectionId).first(where: { $0.database == oldName }) else { return }
-        setFavorite(database: newName, environment: existing.environment, connectionId: connectionId)
-        removeFavorite(database: oldName, connectionId: connectionId)
+        commit(sync: .track) { favorites in
+            guard let existing = favorites.first(where: {
+                $0.connectionId == connectionId && $0.database == oldName
+            }) else { return }
+            favorites.remove(existing)
+            Self.upsert(
+                FavoriteDatabaseEntry(connectionId: connectionId, database: newName, environment: existing.environment),
+                into: &favorites
+            )
+        }
     }
 
     internal func removeFavorite(database: String, connectionId: UUID) {
-        notify(after: mutate { favorites in
-            guard let existing = favorites.first(where: {
-                $0.connectionId == connectionId && $0.database == database
-            }) else { return .noChange }
-            favorites.remove(existing)
-            return .removed(existing)
-        })
+        commit(sync: .track) { favorites in
+            favorites = favorites.filter { !($0.connectionId == connectionId && $0.database == database) }
+        }
     }
 
     internal func removeFavoriteWithoutSync(id: String) {
-        notify(after: mutate { favorites in
-            guard let entry = favorites.first(where: { Self.syncId(for: $0) == id }) else { return .noChange }
-            favorites.remove(entry)
-            return .removed(entry)
-        }, skipSync: true)
+        commit(sync: .discard) { favorites in
+            favorites = favorites.filter { Self.syncId(for: $0) != id }
+        }
     }
 
     internal func removeFavorites(for connectionId: UUID) {
-        removeFavorites(for: connectionId, skipSync: false)
+        commit(sync: .track) { favorites in
+            favorites = favorites.filter { $0.connectionId != connectionId }
+        }
     }
 
     internal func removeFavoritesWithoutSync(for connectionId: UUID) {
-        removeFavorites(for: connectionId, skipSync: true)
+        commit(sync: .discard) { favorites in
+            favorites = favorites.filter { $0.connectionId != connectionId }
+        }
     }
 
     /// The composite id never includes the environment. A record keyed on a mutable payload is
@@ -109,74 +111,39 @@ internal final class FavoriteDatabasesStorage {
         (entry.connectionId.uuidString + "|" + entry.database).sha256
     }
 
-    private func removeFavorites(for connectionId: UUID, skipSync: Bool) {
-        var favorites = loadFavorites()
-        let removed = favorites.filter { $0.connectionId == connectionId }
-        guard !removed.isEmpty else { return }
-        favorites.subtract(removed)
-        persist(favorites)
-
-        guard !skipSync else {
-            syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
-            postChangeNotification()
-            return
-        }
-        for entry in removed {
-            syncTracker.markDeleted(.favoriteDatabase, id: Self.syncId(for: entry))
-        }
-        postChangeNotification()
+    private enum SyncTracking {
+        case track
+        case discard
     }
 
-    private enum TrackedAction {
-        case noChange
-        case changed(FavoriteDatabaseEntry)
-        case removed(FavoriteDatabaseEntry)
-    }
-
-    /// Re-picking the environment a database already has is not a change. Persisting it anyway
-    /// posts a notification that rebuilds every visible tree row in every window for nothing.
-    private static func upsert(
-        _ entry: FavoriteDatabaseEntry,
-        into favorites: inout Set<FavoriteDatabaseEntry>
-    ) -> TrackedAction {
-        guard !entry.database.isEmpty else { return .noChange }
+    private static func upsert(_ entry: FavoriteDatabaseEntry, into favorites: inout Set<FavoriteDatabaseEntry>) {
+        guard !entry.database.isEmpty else { return }
         if let existing = favorites.first(where: { $0.id == entry.id }) {
-            guard existing.environment != entry.environment else { return .noChange }
+            guard existing.environment != entry.environment else { return }
             favorites.remove(existing)
         }
         favorites.insert(entry)
-        return .changed(entry)
     }
 
-    private func mutate(_ block: (inout Set<FavoriteDatabaseEntry>) -> TrackedAction) -> TrackedAction {
-        var favorites = loadFavorites()
-        let action = block(&favorites)
-        guard case .noChange = action else {
-            persist(favorites)
-            return action
-        }
-        return action
-    }
+    private func commit(sync: SyncTracking, _ edit: (inout Set<FavoriteDatabaseEntry>) -> Void) {
+        let previous = loadFavorites()
+        var favorites = previous
+        edit(&favorites)
+        let previousById = Dictionary(previous.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let currentIds = Set(favorites.map(\.id))
+        let removedIds = previous.filter { !currentIds.contains($0.id) }.map(Self.syncId(for:))
+        let changedIds = favorites.filter { previousById[$0.id] != $0 }.map(Self.syncId(for:))
+        guard !removedIds.isEmpty || !changedIds.isEmpty else { return }
 
-    /// Persist first, then notify: `markDeleted` posts a change that can start a sync, and a sync
-    /// that reads a file still holding the deleted entry re-uploads it.
-    private func notify(after action: TrackedAction, skipSync: Bool = false) {
-        switch action {
-        case .noChange:
-            return
-        case .changed(let entry):
-            if !skipSync {
-                syncTracker.markDirty(.favoriteDatabase, id: Self.syncId(for: entry))
-            }
-            postChangeNotification()
-        case .removed(let entry):
-            if skipSync {
-                syncTracker.discardDirty(.favoriteDatabase, ids: [Self.syncId(for: entry)])
-            } else {
-                syncTracker.markDeleted(.favoriteDatabase, id: Self.syncId(for: entry))
-            }
-            postChangeNotification()
+        persist(favorites)
+        switch sync {
+        case .track:
+            syncTracker.markDeleted(.favoriteDatabase, ids: removedIds)
+            syncTracker.markDirty(.favoriteDatabase, ids: changedIds)
+        case .discard:
+            syncTracker.discardDirty(.favoriteDatabase, ids: removedIds)
         }
+        postChangeNotification()
     }
 
     private func postChangeNotification() {

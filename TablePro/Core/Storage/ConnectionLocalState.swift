@@ -27,6 +27,8 @@ internal enum ConnectionLocalState {
         origin: Origin,
         appSettings: AppSettingsStorage = .shared,
         tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores,
+        favoriteTables: FavoriteTablesStorage = .shared,
+        favoriteDatabases: FavoriteDatabasesStorage = .shared,
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults
@@ -37,7 +39,7 @@ internal enum ConnectionLocalState {
             purgeLiveState(connectionId)
             appSettings.saveLastDatabase(nil, for: connectionId)
             appSettings.saveLastSchema(nil, for: connectionId)
-            purgeFavorites(connectionId, origin: origin)
+            purgeFavorites(connectionId, origin: origin, tables: favoriteTables, databases: favoriteDatabases)
             SidebarPersistenceKey.removeAll(connectionId: connectionId)
             RecentTablesStore.shared.removeEntries(for: connectionId)
             HistoryPanelPreferencesStorage.remove(for: connectionId)
@@ -125,14 +127,19 @@ internal enum ConnectionLocalState {
         ConnectionDataCache.removeConnection(connectionId)
     }
 
-    private static func purgeFavorites(_ connectionId: UUID, origin: Origin) {
+    private static func purgeFavorites(
+        _ connectionId: UUID,
+        origin: Origin,
+        tables: FavoriteTablesStorage,
+        databases: FavoriteDatabasesStorage
+    ) {
         switch origin {
         case .local:
-            FavoriteTablesStorage.shared.removeFavorites(for: connectionId)
-            FavoriteDatabasesStorage.shared.removeFavorites(for: connectionId)
+            tables.removeFavorites(for: connectionId)
+            databases.removeFavorites(for: connectionId)
         case .remote:
-            FavoriteTablesStorage.shared.removeFavoritesWithoutSync(for: connectionId)
-            FavoriteDatabasesStorage.shared.removeFavoritesWithoutSync(for: connectionId)
+            tables.removeFavoritesWithoutSync(for: connectionId)
+            databases.removeFavoritesWithoutSync(for: connectionId)
         }
     }
 }

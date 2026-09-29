@@ -44,17 +44,23 @@ struct CatalogEditAdoption {
     private let schemaService: SchemaService
     private let connectionStorage: ConnectionStorage
     private let appSettings: AppSettingsStorage
+    private let favoriteTables: FavoriteTablesStorage
+    private let favoriteDatabases: FavoriteDatabasesStorage
 
     init(
         databaseManager: DatabaseManager = .shared,
         schemaService: SchemaService = .shared,
         connectionStorage: ConnectionStorage = .shared,
-        appSettings: AppSettingsStorage = .shared
+        appSettings: AppSettingsStorage = .shared,
+        favoriteTables: FavoriteTablesStorage = .shared,
+        favoriteDatabases: FavoriteDatabasesStorage = .shared
     ) {
         self.databaseManager = databaseManager
         self.schemaService = schemaService
         self.connectionStorage = connectionStorage
         self.appSettings = appSettings
+        self.favoriteTables = favoriteTables
+        self.favoriteDatabases = favoriteDatabases
     }
 
     /// Where the object lives. A reference without a database means the one being browsed, and the
@@ -75,12 +81,11 @@ struct CatalogEditAdoption {
     func adoptDroppedTables(_ refs: [DatabaseTreeTableRef], connectionId: UUID) {
         let dropped = Set(refs)
         updatePendingOperations(connectionId: connectionId) { dropped.contains($0) ? nil : $0 }
+        let droppedFavorites = Set(refs.map { favoriteEntry(for: $0, connectionId: connectionId) })
+        favoriteTables.retarget(connectionId: connectionId) { droppedFavorites.contains($0) ? nil : $0 }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         for ref in refs {
             sidebarState.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
-            FavoriteTablesStorage.shared.removeFavorite(
-                name: ref.table.name, schema: ref.favoriteSchema, database: ref.database, connectionId: connectionId
-            )
             guard let scope = objectScope(for: ref, connectionId: connectionId) else { continue }
             let tableScope = TableScope(
                 connectionId: connectionId, database: scope.database, schema: scope.schema, table: ref.table.name
@@ -101,7 +106,11 @@ struct CatalogEditAdoption {
         for store in TableScopedSettingsRegistry.stores {
             store.renameTable(from: oldScope, to: newScope)
         }
-        moveFavorite(ref, to: newName, connectionId: connectionId)
+        let oldFavorite = favoriteEntry(for: ref, connectionId: connectionId)
+        let newFavorite = FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId, database: ref.database, schema: ref.favoriteSchema, name: newName
+        )
+        favoriteTables.retarget(connectionId: connectionId) { $0 == oldFavorite ? newFavorite : $0 }
         SharedSidebarState.forConnection(connectionId).renameRecentTable(
             database: ref.database, schema: ref.schema, from: ref.table.name, to: newName
         )
@@ -117,7 +126,7 @@ struct CatalogEditAdoption {
                 database: oldDatabase, schema: nil, toDatabase: newName, toSchema: nil, connectionId: connectionId
             )
             SharedSidebarState.forConnection(connectionId).renameRecentDatabase(from: oldDatabase, to: newName)
-            FavoriteDatabasesStorage.shared.rename(database: oldDatabase, to: newName, connectionId: connectionId)
+            favoriteDatabases.rename(database: oldDatabase, to: newName, connectionId: connectionId)
             retargetDatabaseFilter(from: oldDatabase, to: newName, connectionId: connectionId)
             retargetSavedConnectionDatabase(from: oldDatabase, to: newName, connectionId: connectionId)
             retargetBrowseCursor(session.connection, from: oldDatabase, to: newName)
@@ -151,9 +160,7 @@ struct CatalogEditAdoption {
         for store in TableScopedSettingsRegistry.stores {
             store.dropContainer(connectionId: connectionId, database: database, schema: schema)
         }
-        FavoriteTablesStorage.shared.removeFavorites(
-            inDatabase: database, schema: schema, connectionId: connectionId
-        )
+        favoriteTables.removeFavorites(inDatabase: database, schema: schema, connectionId: connectionId)
 
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         /// A dropped schema takes its own Recent entries with it and leaves its siblings alone.
@@ -165,7 +172,7 @@ struct CatalogEditAdoption {
             return
         }
         guard container.kind == .database else { return }
-        FavoriteDatabasesStorage.shared.removeFavorite(database: database, connectionId: connectionId)
+        favoriteDatabases.removeFavorite(database: database, connectionId: connectionId)
         clearSavedConnectionDatabase(named: database, connectionId: connectionId)
         sidebarState.clearRecentTables(inDatabase: database)
         var selected = sidebarState.databaseFilterSelected
@@ -230,18 +237,13 @@ struct CatalogEditAdoption {
         }
     }
 
-    /// Reads and writes the entry with `favoriteSchema`, the spelling the only writer of a table
-    /// favorite uses. Asking with the row's own schema instead missed the entry outright in a
-    /// hierarchical tree, where the schema hangs on the node and not on the `TableInfo`, so a
-    /// renamed table silently lost its star.
-    private func moveFavorite(_ ref: DatabaseTreeTableRef, to newName: String, connectionId: UUID) {
-        let storage = FavoriteTablesStorage.shared
-        let schema = ref.favoriteSchema
-        guard storage.isFavorite(
-            name: ref.table.name, schema: schema, database: ref.database, connectionId: connectionId
-        ) else { return }
-        storage.removeFavorite(name: ref.table.name, schema: schema, database: ref.database, connectionId: connectionId)
-        storage.addFavorite(name: newName, schema: schema, database: ref.database, connectionId: connectionId)
+    private func favoriteEntry(
+        for ref: DatabaseTreeTableRef,
+        connectionId: UUID
+    ) -> FavoriteTablesStorage.FavoriteEntry {
+        FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId, database: ref.database, schema: ref.favoriteSchema, name: ref.table.name
+        )
     }
 
     private func retargetContainer(
@@ -266,17 +268,14 @@ struct CatalogEditAdoption {
                 toDatabase: toDatabase, toSchema: toSchema
             )
         }
-        let storage = FavoriteTablesStorage.shared
-        for entry in storage.favorites(for: connectionId) where entry.database == database {
-            if let schema, entry.schema != schema { continue }
-            storage.removeFavorite(
-                name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
-            )
-            storage.addFavorite(
-                name: entry.name,
-                schema: schema == nil ? entry.schema : toSchema,
+        favoriteTables.retarget(connectionId: connectionId) { entry in
+            guard entry.database == database else { return entry }
+            if let schema, entry.schema != schema { return entry }
+            return FavoriteTablesStorage.FavoriteEntry(
+                connectionId: connectionId,
                 database: toDatabase,
-                connectionId: connectionId
+                schema: schema == nil ? entry.schema : toSchema,
+                name: entry.name
             )
         }
     }
