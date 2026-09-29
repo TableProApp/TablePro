@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep a release's complete Markdown, with new features before fixes.
+"""Keep a release's complete Markdown, with its sections in Keep a Changelog order.
 
 With --highlights-only, emit just the lead block: the lines a version section carries before its
 first `### ` heading. That is what the update window and the What's New surface read, because the
@@ -22,8 +22,12 @@ SECTION_ORDER = {
     "new features": 1,
     "changed": 2,
     "performance": 2,
-    "fixed": 3,
+    "deprecated": 3,
+    "removed": 4,
+    "fixed": 5,
+    "security": 6,
 }
+UNKNOWN_SECTION_ORDER = 7
 
 MAX_HIGHLIGHT_LINES = 6
 
@@ -58,7 +62,7 @@ def extract_sections(changelog, version):
         if found:
             heading = re.match(r"^### (.+?)\s*$", line)
             if heading:
-                sections.append((SECTION_ORDER.get(heading[1].casefold(), 4), []))
+                sections.append((SECTION_ORDER.get(heading[1].casefold(), UNKNOWN_SECTION_ORDER), []))
             sections[-1][1].append(line)
     return sections
 

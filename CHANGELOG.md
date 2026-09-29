@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for.
 - Release highlights in the update dialog run together into one paragraph.
+- Removed and Deprecated listed after Fixed in GitHub release notes.
 
 ## [0.76.1] - 2026-09-29
 

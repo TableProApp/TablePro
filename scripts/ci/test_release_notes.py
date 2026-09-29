@@ -91,18 +91,24 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(notes, body)
 
-    def test_features_precede_fixes_without_dropping_other_sections(self):
+    def test_sections_follow_keep_a_changelog_order_without_dropping_any(self):
         intro = "All changes in this release."
         fixed = "### Fixed\n\n- Fix one\n- Fix two"
         security = "### Security\n\n- Security fix"
         features = "### Added\n\n- Feature one\n  - Nested detail\n- Feature two"
         changed = "### Changed\n\n- Improvement"
+        deprecated = "### Deprecated\n\n- Deprecated behavior"
         removed = "### Removed\n\n- Removed behavior"
+        unknown = "### Notes\n\n- Unlisted heading"
         result, notes = self.extract(
-            "## [1.2.3]\n\n" + "\n\n".join([intro, fixed, security, features, changed, removed])
+            "## [1.2.3]\n\n"
+            + "\n\n".join([intro, unknown, fixed, security, removed, features, deprecated, changed])
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(notes, "\n\n".join([intro, features, changed, fixed, security, removed]) + "\n")
+        self.assertEqual(
+            notes,
+            "\n\n".join([intro, features, changed, deprecated, removed, fixed, security, unknown]) + "\n",
+        )
 
     def test_features_heading_aliases_are_first(self):
         for heading in ("Features", "New Features"):
