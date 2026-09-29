@@ -509,7 +509,7 @@ struct SurrealCellCoderTests {
         #expect(value(#"{"a":1}"#, "object") == .object([(key: "a", value: .int(1))]))
         #expect(value("2024-09-15T12:34:56.789Z", "datetime")
             == .datetime(seconds: 1_726_403_696, nanoseconds: 789_000_000))
-        #expect(value("1h30m", "duration") == .duration(seconds: 5400, nanoseconds: 0))
+        #expect(value("1h30m", "duration") == .duration(seconds: 5_400, nanoseconds: 0))
     }
 
     @Test("With no known kind, numeric and bool text is typed, not left a string")
@@ -559,7 +559,7 @@ struct SurrealDBConnectionConfigTests {
         var fields = ["sdbAuthLevel": level]
         fields.merge(extra) { _, new in new }
         return SurrealDBConnectionConfig(config: DriverConnectionConfig(
-            host: "localhost", port: 8000, username: "root", password: "secret",
+            host: "localhost", port: 8_000, username: "root", password: "secret",
             database: namespace, ssl: SSLConfiguration(), additionalFields: fields
         ))
     }
