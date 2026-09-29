@@ -323,6 +323,8 @@ The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON s
 - **Existing table**: map each JSON field to a column. Fields auto-match by name; switch one off to skip it. A column with no matching field keeps its default or NULL. The list holds tables and partitioned tables, and the server routes each row to the right partition.
 - **New table**: the name field opens on a name derived from the file, already selected, so one keystroke replaces it. Review the inferred columns underneath. Name, type, primary key, nullable flag, and default are all editable before the table is created.
 
+Both lists come from every row in the file. A key that only the last rows carry is still offered, and an inferred type fits every value the field holds, so a field that is a number in all rows but one is typed as text.
+
 The proposed name drops the extension, turns spaces and punctuation into underscores, and lowercases the result. Letters from any script are kept as they are. On Oracle the name comes through in upper case instead, and is cut to 30 bytes rather than 63. A name an existing table or view already holds gains a numeric suffix, so re-importing `users.csv` next to a `users` table proposes `users_2`. Whatever you type over it is held to the same rules: a name already taken, one longer than the engine allows, or one starting with a prefix the engine keeps for itself is reported in the sheet, with **Import** off until it changes.
 
 Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text. In a new PostgreSQL table their column is `jsonb`, or `json` on 9.2 and 9.3, and `text` on 9.1, which has no JSON type.

@@ -28,6 +28,16 @@ struct RowImportSheet: View {
         case newTable
     }
 
+    /// What the field list on screen is read for. Detection reads the whole file, so it runs only
+    /// for the destination on screen, and a request that changes or a sheet that closes cancels the
+    /// read still running for the old one.
+    private struct FieldDetectionRequest: Hashable {
+        let destination: Destination
+        let targetTable: String?
+        let detectionSignature: String
+        let attempt: Int
+    }
+
     private struct FieldMapping: Identifiable {
         let field: PluginImportField
         var include: Bool
@@ -74,8 +84,12 @@ struct RowImportSheet: View {
     @State private var proposedTableName: String = ""
     @State private var newColumns: [NewColumn] = []
     @State private var newColumnsLoaded = false
+    /// The table `mappings` were built for. Switching destination and back keeps the user's edits
+    /// rather than reading the file again and replacing them with fresh matches.
+    @State private var mappedTable: String?
     @State private var isLoadingContext = false
     @State private var loadError: String?
+    @State private var detectionAttempt = 0
 
     /// Moving focus here also selects the whole proposed name, measured rather than assumed:
     /// SwiftUI hands the field editor a full selection when `@FocusState` lands on text already in
@@ -166,21 +180,23 @@ struct RowImportSheet: View {
                 plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
             suggestNewTableName()
             await loadTables()
-            await loadNewColumns()
+        }
+        .task(id: fieldDetectionRequest) {
+            await loadFields(for: fieldDetectionRequest)
         }
         .onChange(of: destination) { newValue in
             guard newValue == .newTable else { return }
             suggestNewTableName()
             newTableNameFocused = true
         }
-        .onChange(of: selectedTargetTable) { newValue in
+        .onChange(of: selectedTargetTable) { _ in
             mappings = []
             targetColumns = []
-            guard destination == .existingTable, let table = newValue else { return }
-            Task { await loadExistingContext(table: table) }
+            mappedTable = nil
         }
         .onChange(of: currentPlugin?.fieldDetectionSignature) { _ in
-            Task { await redetectFields() }
+            newColumnsLoaded = false
+            mappedTable = nil
         }
         .onDisappear {
             importTask?.cancel()
@@ -369,24 +385,18 @@ struct RowImportSheet: View {
             Text(reason)
         } actions: {
             Button(String(localized: "Try Again")) {
-                Task { await retryLoad() }
+                retryLoad()
             }
         }
     }
 
-    @MainActor
-    private func retryLoad() async {
+    private func retryLoad() {
         loadError = nil
         newColumnsLoaded = false
         newColumns = []
         mappings = []
-        switch destination {
-        case .newTable:
-            await loadNewColumns()
-        case .existingTable:
-            guard let table = selectedTargetTable else { return }
-            await loadExistingContext(table: table)
-        }
+        mappedTable = nil
+        detectionAttempt += 1
     }
 
     private func placeholder(_ message: String) -> some View {
@@ -716,27 +726,39 @@ struct RowImportSheet: View {
         newTableName = suggestion
     }
 
-    /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the
-    /// whole workbook, the CSV one reads a megabyte. Every state write stays on the main actor,
-    /// only the parse leaves it.
-    nonisolated private static func detectFields(
-        plugin: any ImportFormatPlugin,
-        at url: URL,
-        targetTable: String?
-    ) async throws -> [PluginImportField] {
-        try await Task.detached {
-            try plugin.detectSourceFields(at: url, targetTable: targetTable)
-        }.value
+    private var fieldDetectionRequest: FieldDetectionRequest {
+        FieldDetectionRequest(
+            destination: destination,
+            targetTable: destination == .existingTable ? selectedTargetTable : nil,
+            detectionSignature: currentPlugin?.fieldDetectionSignature ?? "",
+            attempt: detectionAttempt
+        )
+    }
+
+    /// A cancelled load leaves every piece of state to the load that replaced it, or to nobody once
+    /// the sheet has closed. Only the current request clears the loading indicator.
+    @MainActor
+    private func loadFields(for request: FieldDetectionRequest) async {
+        isLoadingContext = true
+        loadError = nil
+        switch request.destination {
+        case .newTable:
+            await loadNewColumns()
+        case .existingTable:
+            if let table = request.targetTable {
+                await loadExistingContext(table: table)
+            }
+        }
+        guard !Task.isCancelled else { return }
+        isLoadingContext = false
     }
 
     @MainActor
     private func loadNewColumns() async {
         guard !newColumnsLoaded, let plugin = currentPlugin else { return }
-        isLoadingContext = true
-        loadError = nil
-        defer { isLoadingContext = false }
         do {
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
+            guard !Task.isCancelled else { return }
             let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
             newColumns = fields.map { field in
                 NewColumn(
@@ -755,6 +777,7 @@ struct RowImportSheet: View {
             }
             newColumnsLoaded = true
         } catch {
+            guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
             Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
@@ -762,38 +785,26 @@ struct RowImportSheet: View {
 
     @MainActor
     private func loadExistingContext(table: String) async {
-        guard let plugin = currentPlugin,
+        guard mappedTable != table, let plugin = currentPlugin,
               DatabaseManager.shared.browseScope(for: connection.id) != nil else { return }
-        isLoadingContext = true
-        loadError = nil
-        defer { isLoadingContext = false }
         do {
             let columns = try await DatabaseManager.shared.withBrowseMetadataDriver(
                 connectionId: connection.id
             ) { driver in
                 try await driver.fetchColumns(table: table)
             }.map(\.name)
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: table)
+            guard !Task.isCancelled else { return }
             targetColumns = columns
             mappings = fields.map { field in
                 let match = columns.first { $0.caseInsensitiveCompare(field.name) == .orderedSame }
                 return FieldMapping(field: field, include: match != nil, targetColumn: match)
             }
+            mappedTable = table
         } catch {
+            guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
             Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
-        }
-    }
-
-    @MainActor
-    private func redetectFields() async {
-        switch destination {
-        case .existingTable:
-            guard let table = selectedTargetTable else { return }
-            await loadExistingContext(table: table)
-        case .newTable:
-            newColumnsLoaded = false
-            await loadNewColumns()
         }
     }
 

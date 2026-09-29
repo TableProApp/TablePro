@@ -60,20 +60,20 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         var unreadableLineCount = 0
         if JSONImportParsing.isLineDelimited(url) {
             progress.setEstimatedTotal(max(1, Int(source.fileSizeBytes() / 256)))
-            var lines = url.lines.makeAsyncIterator()
-            var lineNumber = 0
+            var lines = try JSONLineReader(url: url, checkCancellation: progress.checkCancellation)
+            defer { lines.close() }
             let skipsErrors = settings.errorHandling == .skipAndContinue
             outcome = try await RowImportRunner.run(
                 configuration: configuration, sink: sink, progress: progress
             ) {
                 var batch: [RowImportRunner.Entry] = []
-                while batch.count < Self.batchSize, let line = try await lines.next() {
-                    lineNumber += 1
-                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { continue }
+                var linesRead = 0
+                while linesRead < Self.batchSize, let line = try lines.next() {
+                    linesRead += 1
+                    let lineNumber = lines.lineNumber
                     do {
-                        let row = try JSONImportParsing.parseRow(fromLine: trimmed)
-                        guard !row.isEmpty else { continue }
+                        let row = try autoreleasepool { try JSONImportParsing.parseRow(fromLine: line) }
+                        guard let row, !row.isEmpty else { continue }
                         batch.append((lineNumber, row))
                     } catch {
                         guard skipsErrors else { throw error }
@@ -87,7 +87,7 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
                         }
                     }
                 }
-                return batch.isEmpty ? nil : batch
+                return linesRead == 0 ? nil : batch
             }
         } else {
             let rawRows = try JSONImportParsing.parseRows(at: url, targetTable: sink.targetTable)
@@ -119,7 +119,6 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     // MARK: - Source introspection
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
-        let rows = try JSONImportParsing.sampleRawRows(at: url, targetTable: targetTable, limit: 200)
-        return JSONImportParsing.detectFields(in: rows)
+        try JSONImportParsing.detectFields(at: url, targetTable: targetTable)
     }
 }

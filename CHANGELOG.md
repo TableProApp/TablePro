@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
+- JSON import leaving out fields first seen after row 200, and typing columns from those rows alone.
+- No fields found in a JSON Lines file with CRLF line endings or multi-byte text near its first 256 KB.
+- JSON Lines rows with U+2028, U+2029 or U+0085 in a string failing to import, and invalid UTF-8 imported as U+FFFD.
+- JSON Lines import stalling while GitHub Copilot is enabled.
 
 ## [0.76.1] - 2026-09-29
 
