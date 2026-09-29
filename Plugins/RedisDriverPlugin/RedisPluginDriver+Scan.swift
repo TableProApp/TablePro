@@ -79,10 +79,13 @@ extension RedisPluginDriver {
         connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
-        let capped = Array(page.keys.prefix(PluginRowLimits.emergencyMax))
-        let truncated = page.isIncomplete || page.keys.count > PluginRowLimits.emergencyMax
+        let outcome = RedisScanPageOutcome(page: page, rowLimit: PluginRowLimits.emergencyMax)
         return try await buildKeyBrowseResult(
-            keys: capped, connection: conn, startTime: startTime, isTruncated: truncated
+            keys: outcome.keys,
+            connection: conn,
+            startTime: startTime,
+            isTruncated: outcome.isTruncated,
+            statusMessage: outcome.statusMessage
         )
     }
 }
