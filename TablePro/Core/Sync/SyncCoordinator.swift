@@ -551,38 +551,39 @@ final class SyncCoordinator: ObservableObject {
                 Self.logger.info("Kept a local edit made while its record was being pushed")
                 continue
             }
-            switch record.recordType {
-            case SyncRecordType.connection.rawValue where settings.syncConnections:
+            guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            switch type {
+            case .connection:
                 switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
                 case .applied: actualConnectionChanges = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
+            case .group:
                 switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
+            case .tag:
                 switch applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
+            case .sshProfile:
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
-            case SyncRecordType.credentialProfile.rawValue where settings.syncCredentialProfiles:
+            case .credentialProfile:
                 if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
                     persistenceFailed = true
                 }
-            case SyncRecordType.settings.rawValue where settings.syncSettings:
+            case .settings:
                 applyRemoteSettings(record)
-            case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
+            case .tableFavorite:
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
-            case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
+            case .favoriteDatabase:
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
-            default:
+            case .favorite, .favoriteFolder:
                 break
             }
         }
