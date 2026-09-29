@@ -183,6 +183,15 @@ class ReleaseHighlightsTests(unittest.TestCase):
         self.assertNotIn("### Added", notes)
         self.assertNotIn("- One.", notes)
 
+    def test_highlights_are_separate_markdown_paragraphs(self):
+        expected = "Faster grid scrolling on wide results.\n\nMap view for geometry columns.\n"
+        spaced = self.WITH_LEAD.replace("results.\nMap", "results.\n\n\nMap")
+        for changelog in (self.WITH_LEAD, spaced):
+            with self.subTest(changelog=changelog):
+                result, notes = self.extract(changelog)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(notes, expected)
+
     def test_falls_back_to_the_full_notes_when_there_is_no_lead_block(self):
         result, notes = self.extract(self.WITHOUT_LEAD)
         self.assertEqual(result.returncode, 0, result.stderr)

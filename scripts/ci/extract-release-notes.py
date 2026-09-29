@@ -75,7 +75,7 @@ def extract_notes(changelog, version):
 
 
 def extract_highlights(changelog, version, require_lead=False):
-    """The lead block, capped at MAX_HIGHLIGHT_LINES.
+    """The lead block, capped at MAX_HIGHLIGHT_LINES, as one Markdown paragraph per line.
 
     Falls back to the full notes when a version has none, unless `require_lead`. The feed wants
     the fallback, because failing a release forty minutes in over a missing heading is worse than
@@ -83,12 +83,12 @@ def extract_highlights(changelog, version, require_lead=False):
     something to compile into the product.
     """
     sections = extract_sections(changelog, version)
-    lead = [line for line in sections[0][1] if line.strip()]
+    lead = [line.rstrip("\r\n") for line in sections[0][1] if line.strip()]
     if not lead:
         if require_lead:
             raise ValueError(f"Version {version} has no lead block in CHANGELOG.md")
         return extract_notes(changelog, version)
-    return "".join(lead[:MAX_HIGHLIGHT_LINES])
+    return "\n\n".join(lead[:MAX_HIGHLIGHT_LINES]) + "\n"
 
 
 def main(argv=None):
