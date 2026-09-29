@@ -15,6 +15,7 @@ import TableProSSHTransport
 /// the catch-all "credentials or private key" message.
 enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     case password
+    case passwordMissing
     case verificationCode
     case privateKey
     case agentUnavailable(AgentSocketOrigin)
@@ -32,7 +33,7 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     /// Hand-written because the two agent cases carry the socket source they are about, which
     /// stops `CaseIterable` synthesising this.
     static var allCases: [AuthFailureReason] {
-        [.password, .verificationCode, .privateKey]
+        [.password, .passwordMissing, .verificationCode, .privateKey]
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
@@ -104,6 +105,8 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
             switch reason {
             case .password:
                 return String(localized: "SSH password rejected. Check the password and try again.")
+            case .passwordMissing:
+                return String(localized: "No SSH password was found for this connection. Enter it in the SSH settings and try again.")
             case .verificationCode:
                 return String(localized: "Verification code rejected. Get a new code from your authenticator app and try again.")
             case .privateKey:

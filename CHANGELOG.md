@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Client certificate and key dropped by SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels.
 - SOCKS proxy dialing the hidden Host instead of the first host-list entry.
+- "SSH password rejected" shown for a Password-auth SSH tunnel with no saved password.
 
 ## [0.76.1] - 2026-09-29
 

@@ -102791,6 +102791,9 @@
     "No SSH agent answered on the socket from %@. Check that agent is running." : {
 
     },
+    "No SSH password was found for this connection. Enter it in the SSH settings and try again." : {
+
+    },
     "No SSH servers yet." : {
 
     },

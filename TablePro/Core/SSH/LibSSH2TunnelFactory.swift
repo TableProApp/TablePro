@@ -527,7 +527,7 @@ internal enum LibSSH2TunnelFactory {
             // Sequel Ace's behavior.
             guard let sshPassword = credentials.sshPassword else {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
-                throw SSHTunnelError.authenticationFailed(reason: .password)
+                throw SSHTunnelError.authenticationFailed(reason: .passwordMissing)
             }
             return CompositeAuthenticator(authenticators: [
                 PasswordAuthenticator(password: sshPassword),
