@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- Client certificate and key dropped by SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels.
 
 ## [0.76.1] - 2026-09-29
 
