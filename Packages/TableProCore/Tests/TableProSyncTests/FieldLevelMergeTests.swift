@@ -159,6 +159,79 @@ struct FieldLevelMergeTests {
 
         #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
     }
+
+    private func macServerRecord(safeModeLevel macLevel: String) throws -> CKRecord {
+        let record = SyncRecordMapper.toRecord(makeConnection(), zoneID: zoneID)
+        record["safeModeLevel"] = macLevel as CKRecordValue
+        return try roundTripped(record)
+    }
+
+    @Test(
+        "A rename keeps a Safe Mode level the Mac set and this platform cannot name",
+        arguments: ["silent", "alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func renameKeepsMacSafeModeLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.name = "Renamed"
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == macLevel)
+        #expect(serverRecord["name"] as? String == "Renamed")
+    }
+
+    @Test(
+        "A reorder keeps a Safe Mode level the Mac set and this platform cannot name",
+        arguments: ["alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func reorderKeepsMacSafeModeLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.sortOrder = 7
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == macLevel)
+    }
+
+    @Test(
+        "Changing the Safe Mode level on this platform replaces the Mac's level",
+        arguments: ["alert", "alertFull", "safeMode", "safeModeFull"]
+    )
+    func changedSafeModeLevelReplacesMacLevel(_ macLevel: String) throws {
+        let serverRecord = try macServerRecord(safeModeLevel: macLevel)
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .off
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "off")
+        #expect(SyncRecordMapper.toConnection(serverRecord)?.safeModeLevel == .off)
+    }
+
+    @Test("Raising the level to Read-Only replaces a Mac confirmation level")
+    func readOnlyReplacesMacConfirmationLevel() throws {
+        let serverRecord = try macServerRecord(safeModeLevel: "safeModeFull")
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .readOnly
+        connection.isReadOnly = true
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "readOnly")
+    }
+
+    @Test("Raising the level from the Mac's Silent replaces it")
+    func raisingFromSilentReplacesMacLevel() throws {
+        let serverRecord = try macServerRecord(safeModeLevel: "silent")
+        var connection = try #require(SyncRecordMapper.toConnection(serverRecord))
+
+        connection.safeModeLevel = .confirmWrites
+        SyncRecordMapper.updateRecord(serverRecord, with: connection)
+
+        #expect(serverRecord["safeModeLevel"] as? String == "confirmWrites")
+    }
 }
 
 @Suite("Sync record cache")

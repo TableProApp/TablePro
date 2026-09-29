@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
+- Mac Alert (Full), Safe Mode and Safe Mode (Full) levels dropped to Alert by any edit to the connection on iOS.
 
 ## [0.76.1] - 2026-09-29
 
