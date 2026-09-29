@@ -590,7 +590,9 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F4B942",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter, structureEdits: .postgreSQL),
+                structureEditing: SchemaEditingSupport(
+                    columnReorder: .rebuild, foreignKeyEdit: .alter, structureEdits: .postgreSQL
+                ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
