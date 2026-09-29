@@ -58,6 +58,34 @@ struct JSONImportFieldDetectionTests {
         #expect(fields.map(\.name) == ["id", "total"])
     }
 
+    /// A JSON Lines file's fields do not depend on the table, and the import sheet asks again on
+    /// every table pick. The second ask is answered without opening the file, which a file that
+    /// can no longer be read proves: permissions are not part of what marks a file as changed.
+    @Test("Picking another table does not read a JSON Lines file again")
+    func anotherTableReusesTheFieldsOfAJSONLinesFile() throws {
+        let url = try write(Data("{\"id\":1,\"name\":\"Ada\"}\n".utf8), fileExtension: "ndjson")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+        }
+        let plugin = JSONImportPlugin()
+        #expect(try plugin.detectSourceFields(at: url, targetTable: "people").map(\.name) == ["id", "name"])
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+
+        #expect(try plugin.detectSourceFields(at: url, targetTable: "authors").map(\.name) == ["id", "name"])
+    }
+
+    @Test("A table-keyed JSON file still gives each table its own fields")
+    func tableKeyedFileIsReadForEachTable() throws {
+        let json = #"{"users":[{"id":1,"email":"a@b.c"}],"orders":[{"id":1,"total":2.5}]}"#
+        let url = try write(Data(json.utf8), fileExtension: "json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plugin = JSONImportPlugin()
+        #expect(try plugin.detectSourceFields(at: url, targetTable: "users").map(\.name) == ["email", "id"])
+        #expect(try plugin.detectSourceFields(at: url, targetTable: "orders").map(\.name) == ["id", "total"])
+    }
+
     @Test("A field's type fits every value in the file, not only the first rows")
     func typeFitsEveryValue() throws {
         var lines = (1...300).map { #"{"code":\#($0)}"# }

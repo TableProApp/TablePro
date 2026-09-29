@@ -28,14 +28,11 @@ struct RowImportSheet: View {
         case newTable
     }
 
-    /// What the field list on screen is read for. Detection reads the whole file, so it runs only
-    /// for the destination on screen, and a request that changes or a sheet that closes cancels the
-    /// read still running for the old one.
-    private struct FieldDetectionRequest: Hashable {
+    /// Detection reads the whole file, so it runs only for the destination on screen, and a request
+    /// that changes or a sheet that closes cancels the read still running for the old one.
+    private struct FieldDetectionTask: Hashable {
         let destination: Destination
-        let targetTable: String?
-        let detectionSignature: String
-        let attempt: Int
+        let request: ImportFieldDetectionRequest
     }
 
     private struct FieldMapping: Identifiable {
@@ -76,20 +73,23 @@ struct RowImportSheet: View {
     @State private var isLoadingTables = false
     @State private var selectedTargetTable: String?
     @State private var targetColumns: [String] = []
-    @State private var mappings: [FieldMapping] = []
+
+    /// Each list keeps the request it was read for, so switching destination and back keeps the
+    /// user's edits rather than reading the file again and replacing them with fresh matches.
+    @State private var mappings = ImportFieldList<FieldMapping>()
     @State private var newTableName: String = ""
 
     /// The last name this sheet proposed, so a second pass can tell its own guess from what
     /// the user typed over it.
     @State private var proposedTableName: String = ""
-    @State private var newColumns: [NewColumn] = []
-    @State private var newColumnsLoaded = false
-    /// The table `mappings` were built for. Switching destination and back keeps the user's edits
-    /// rather than reading the file again and replacing them with fresh matches.
-    @State private var mappedTable: String?
+    @State private var newColumns = ImportFieldList<NewColumn>()
     @State private var isLoadingContext = false
     @State private var loadError: String?
     @State private var detectionAttempt = 0
+
+    /// Redraws the sheet when an option changes, so the field detection request sees the plugin's
+    /// new `fieldDetectionSignature`.
+    @StateObject private var pluginObservation: ImportPluginObservation
 
     /// Moving focus here also selects the whole proposed name, measured rather than assumed:
     /// SwiftUI hands the field editor a full selection when `@FocusState` lands on text already in
@@ -121,6 +121,16 @@ struct RowImportSheet: View {
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
+
+    init(isPresented: Binding<Bool>, connection: DatabaseConnection, fileURL: URL, formatId: String) {
+        _isPresented = isPresented
+        self.connection = connection
+        self.fileURL = fileURL
+        self.formatId = formatId
+        _pluginObservation = StateObject(
+            wrappedValue: ImportPluginObservation(plugin: PluginManager.shared.importPlugin(forFormat: formatId))
+        )
+    }
 
     // MARK: - Derived catalog state
 
@@ -181,22 +191,13 @@ struct RowImportSheet: View {
             suggestNewTableName()
             await loadTables()
         }
-        .task(id: fieldDetectionRequest) {
-            await loadFields(for: fieldDetectionRequest)
+        .task(id: fieldDetectionTask) {
+            await loadFields(for: fieldDetectionTask)
         }
         .onChange(of: destination) { newValue in
             guard newValue == .newTable else { return }
             suggestNewTableName()
             newTableNameFocused = true
-        }
-        .onChange(of: selectedTargetTable) { _ in
-            mappings = []
-            targetColumns = []
-            mappedTable = nil
-        }
-        .onChange(of: currentPlugin?.fieldDetectionSignature) { _ in
-            newColumnsLoaded = false
-            mappedTable = nil
         }
         .onDisappear {
             importTask?.cancel()
@@ -247,9 +248,6 @@ struct RowImportSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if isLoadingContext {
-                ProgressView().controlSize(.small)
-            }
         }
     }
 
@@ -356,24 +354,33 @@ struct RowImportSheet: View {
     private var contentArea: some View {
         if let loadError {
             unreadableFile(reason: loadError)
+        } else if isLoadingContext {
+            readingFile
         } else {
             switch destination {
             case .existingTable:
                 if selectedTargetTable == nil {
                     placeholder("Choose a destination table to map fields.")
-                } else if mappings.isEmpty {
+                } else if mappings.rows.isEmpty {
                     placeholder("No fields found in the file.")
                 } else {
                     mappingTable
                 }
             case .newTable:
-                if newColumns.isEmpty {
+                if newColumns.rows.isEmpty {
                     placeholder("No columns found in the file.")
                 } else {
                     newColumnsTable
                 }
             }
         }
+    }
+
+    /// A read takes seconds on a large file, and until it ends the list is empty, which the
+    /// placeholders below would report as a file with no fields in it.
+    private var readingFile: some View {
+        ProgressView(String(localized: "Reading the file…"))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
@@ -392,10 +399,6 @@ struct RowImportSheet: View {
 
     private func retryLoad() {
         loadError = nil
-        newColumnsLoaded = false
-        newColumns = []
-        mappings = []
-        mappedTable = nil
         detectionAttempt += 1
     }
 
@@ -433,7 +436,7 @@ struct RowImportSheet: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(mappings) { row in
+                    ForEach(mappings.rows) { row in
                         mappingRow(row)
                     }
                 }
@@ -504,7 +507,7 @@ struct RowImportSheet: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(newColumns) { row in
+                    ForEach(newColumns.rows) { row in
                         newColumnRow(row)
                     }
                 }
@@ -557,37 +560,37 @@ struct RowImportSheet: View {
     // MARK: - Bindings
 
     private func mappingBinding(_ row: FieldMapping) -> Binding<FieldMapping> {
-        guard let index = mappings.firstIndex(where: { $0.id == row.id }) else {
+        guard let index = mappings.rows.firstIndex(where: { $0.id == row.id }) else {
             return .constant(row)
         }
-        return $mappings[index]
+        return $mappings.rows[index]
     }
 
     private func columnBinding(_ row: NewColumn) -> Binding<NewColumn> {
-        guard let index = newColumns.firstIndex(where: { $0.id == row.id }) else {
+        guard let index = newColumns.rows.firstIndex(where: { $0.id == row.id }) else {
             return .constant(row)
         }
-        return $newColumns[index]
+        return $newColumns.rows[index]
     }
 
     private var allMappingsIncluded: Binding<Bool> {
         Binding(
-            get: { !mappings.isEmpty && mappings.allSatisfy(\.include) },
-            set: { value in for index in mappings.indices { mappings[index].include = value } }
+            get: { !mappings.rows.isEmpty && mappings.rows.allSatisfy(\.include) },
+            set: { value in for index in mappings.rows.indices { mappings.rows[index].include = value } }
         )
     }
 
     private var allColumnsIncluded: Binding<Bool> {
         Binding(
-            get: { !newColumns.isEmpty && newColumns.allSatisfy(\.include) },
-            set: { value in for index in newColumns.indices { newColumns[index].include = value } }
+            get: { !newColumns.rows.isEmpty && newColumns.rows.allSatisfy(\.include) },
+            set: { value in for index in newColumns.rows.indices { newColumns.rows[index].include = value } }
         )
     }
 
     private var validationMessage: String? {
         switch destination {
         case .existingTable:
-            let columns = mappings.filter { $0.include }.compactMap { $0.targetColumn?.lowercased() }
+            let columns = mappings.rows.filter { $0.include }.compactMap { $0.targetColumn?.lowercased() }
             if Set(columns).count != columns.count {
                 return String(localized: "Each column can be mapped from only one field.")
             }
@@ -614,7 +617,7 @@ struct RowImportSheet: View {
                     )
                 }
             }
-            let names = newColumns
+            let names = newColumns.rows
                 .filter { $0.include }
                 .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
             if names.contains(where: \.isEmpty) {
@@ -663,10 +666,10 @@ struct RowImportSheet: View {
         guard !(importService?.state.isImporting ?? false), validationMessage == nil else { return false }
         switch destination {
         case .existingTable:
-            return selectedTargetTable != nil && mappings.contains { $0.include && $0.targetColumn != nil }
+            return selectedTargetTable != nil && mappings.rows.contains { $0.include && $0.targetColumn != nil }
         case .newTable:
             return !newTableName.trimmingCharacters(in: .whitespaces).isEmpty
-                && newColumns.contains { $0.include && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+                && newColumns.rows.contains { $0.include && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
         }
     }
 
@@ -726,41 +729,43 @@ struct RowImportSheet: View {
         newTableName = suggestion
     }
 
-    private var fieldDetectionRequest: FieldDetectionRequest {
-        FieldDetectionRequest(
+    private var fieldDetectionTask: FieldDetectionTask {
+        FieldDetectionTask(
             destination: destination,
-            targetTable: destination == .existingTable ? selectedTargetTable : nil,
-            detectionSignature: currentPlugin?.fieldDetectionSignature ?? "",
-            attempt: detectionAttempt
+            request: ImportFieldDetectionRequest(
+                targetTable: destination == .existingTable ? selectedTargetTable : nil,
+                detectionSignature: currentPlugin?.fieldDetectionSignature ?? "",
+                attempt: detectionAttempt
+            )
         )
     }
 
     /// A cancelled load leaves every piece of state to the load that replaced it, or to nobody once
     /// the sheet has closed. Only the current request clears the loading indicator.
     @MainActor
-    private func loadFields(for request: FieldDetectionRequest) async {
+    private func loadFields(for task: FieldDetectionTask) async {
         isLoadingContext = true
         loadError = nil
-        switch request.destination {
+        switch task.destination {
         case .newTable:
-            await loadNewColumns()
+            await loadNewColumns(for: task.request)
         case .existingTable:
-            if let table = request.targetTable {
-                await loadExistingContext(table: table)
-            }
+            await loadExistingContext(for: task.request)
         }
         guard !Task.isCancelled else { return }
         isLoadingContext = false
     }
 
     @MainActor
-    private func loadNewColumns() async {
-        guard !newColumnsLoaded, let plugin = currentPlugin else { return }
+    private func loadNewColumns(for request: ImportFieldDetectionRequest) async {
+        guard newColumns.needsRead(for: request) else { return }
+        newColumns.discard()
+        guard let plugin = currentPlugin else { return }
         do {
             let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
             guard !Task.isCancelled else { return }
             let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
-            newColumns = fields.map { field in
+            let columns = fields.map { field in
                 NewColumn(
                     field: field,
                     include: true,
@@ -775,7 +780,7 @@ struct RowImportSheet: View {
                     defaultValue: ""
                 )
             }
-            newColumnsLoaded = true
+            newColumns.finishRead(columns, for: request)
         } catch {
             guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
@@ -784,8 +789,11 @@ struct RowImportSheet: View {
     }
 
     @MainActor
-    private func loadExistingContext(table: String) async {
-        guard mappedTable != table, let plugin = currentPlugin,
+    private func loadExistingContext(for request: ImportFieldDetectionRequest) async {
+        guard mappings.needsRead(for: request) else { return }
+        mappings.discard()
+        targetColumns = []
+        guard let table = request.targetTable, let plugin = currentPlugin,
               DatabaseManager.shared.browseScope(for: connection.id) != nil else { return }
         do {
             let columns = try await DatabaseManager.shared.withBrowseMetadataDriver(
@@ -796,11 +804,11 @@ struct RowImportSheet: View {
             let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             guard !Task.isCancelled else { return }
             targetColumns = columns
-            mappings = fields.map { field in
+            let rows = fields.map { field in
                 let match = columns.first { $0.caseInsensitiveCompare(field.name) == .orderedSame }
                 return FieldMapping(field: field, include: match != nil, targetColumn: match)
             }
-            mappedTable = table
+            mappings.finishRead(rows, for: request)
         } catch {
             guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
@@ -840,7 +848,7 @@ struct RowImportSheet: View {
 
     private func existingMapping() -> [String: String] {
         var mapping: [String: String] = [:]
-        for entry in mappings where entry.include {
+        for entry in mappings.rows where entry.include {
             if let column = entry.targetColumn {
                 mapping[entry.field.name] = column
             }
@@ -850,14 +858,14 @@ struct RowImportSheet: View {
 
     private func newTableMapping() -> [String: String] {
         var mapping: [String: String] = [:]
-        for column in newColumns where column.include && !column.name.trimmingCharacters(in: .whitespaces).isEmpty {
+        for column in newColumns.rows where column.include && !column.name.trimmingCharacters(in: .whitespaces).isEmpty {
             mapping[column.field.name] = column.name
         }
         return mapping
     }
 
     private func newTableDefinition(tableName: String) -> PluginCreateTableDefinition? {
-        let included = newColumns.filter {
+        let included = newColumns.rows.filter {
             $0.include
                 && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
                 && !$0.type.trimmingCharacters(in: .whitespaces).isEmpty

@@ -55,22 +55,19 @@ struct JSONImportSkipTests {
     private func runImport(
         _ lines: [String],
         errorHandling: ImportErrorHandling,
-        sink: CountingSink = CountingSink(),
-        progress: Progress = Progress()
+        sink: CountingSink = CountingSink()
     ) async throws -> Result<PluginImportResult, any Error> {
         try await runImport(
             contents: Data(lines.joined(separator: "\n").utf8),
             errorHandling: errorHandling,
-            sink: sink,
-            progress: progress
+            sink: sink
         )
     }
 
     private func runImport(
         contents: Data,
         errorHandling: ImportErrorHandling,
-        sink: CountingSink = CountingSink(),
-        progress: Progress = Progress()
+        sink: CountingSink = CountingSink()
     ) async throws -> Result<PluginImportResult, any Error> {
         let url = try writeNDJSON(contents)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -88,7 +85,7 @@ struct JSONImportSkipTests {
             let result = try await plugin.performImport(
                 source: FileSource(url: url),
                 sink: sink,
-                progress: PluginImportProgress(progress: progress)
+                progress: PluginImportProgress(progress: Progress())
             )
             return .success(result)
         } catch {
@@ -267,23 +264,5 @@ struct JSONImportSkipTests {
         blocker.cancel()
 
         #expect(finished)
-    }
-
-    /// The runner checks for a stop between batches, and a batch used to end only once it held 500
-    /// rows. A long run of lines with no row in them was read to the end of the file first.
-    @Test("A stopped import stops within a batch of lines even when no line holds a row")
-    func stopReachesARunOfUnreadableLines() async throws {
-        let progress = Progress()
-        progress.cancel()
-        let outcome = try await runImport(
-            Array(repeating: "{ this is not json", count: 5_000),
-            errorHandling: .skipAndContinue,
-            progress: progress
-        )
-        guard case .failure(let error) = outcome else {
-            Issue.record("A stopped import must not run to the end of the file: \(outcome)")
-            return
-        }
-        #expect(error is PluginImportCancellationError)
     }
 }

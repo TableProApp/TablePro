@@ -113,6 +113,10 @@ enum JSONImportParsing {
         guard isLineDelimited(url) else {
             return try detectFields(in: try parseRows(at: url, targetTable: targetTable))
         }
+        return try detectFields(inLinesAt: url)
+    }
+
+    static func detectFields(inLinesAt url: URL) throws -> [PluginImportField] {
         var survey = JSONFieldSurvey()
         var lines = try JSONLineReader(url: url)
         defer { lines.close() }
