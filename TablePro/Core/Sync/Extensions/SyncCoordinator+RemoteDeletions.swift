@@ -77,14 +77,16 @@ extension SyncCoordinator {
     private func applyRemoteConnectionDeletions(_ ids: Set<UUID>) -> Bool {
         guard !ids.isEmpty else { return true }
         var connections = services.connectionStorage.loadConnections()
-        connections.removeAll { ids.contains($0.id) }
+        let deletedIds = ids.subtracting(connections.filter(\.localOnly).map(\.id))
+        guard !deletedIds.isEmpty else { return true }
+        connections.removeAll { deletedIds.contains($0.id) }
         guard services.connectionStorage.saveConnections(connections) else {
             Self.logger.error("Failed to apply remote connection deletions: persistence error")
             return false
         }
-        changeTracker.discardDirty(.connection, ids: ids.map(\.uuidString))
+        changeTracker.discardDirty(.connection, ids: deletedIds.map(\.uuidString))
         ConnectionLocalState.purge(
-            connectionIds: ids,
+            connectionIds: deletedIds,
             origin: .remote,
             sqlFavorites: services.sqlFavoriteManager,
             queryHistory: services.queryHistoryManager

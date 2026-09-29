@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
+- **Local only** connections taking edits and deletions made on another device.
 - Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
 - Every row of a UTF-16 data file rewritten on save.
 - Latin-1 and Windows-1252 SQL dumps importing double-encoded text through their own `SET NAMES`.
