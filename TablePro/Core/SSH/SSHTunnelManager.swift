@@ -83,6 +83,7 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case configExpansionFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
+    case usernameMissing(host: String)
     case authenticationFailed(reason: AuthFailureReason)
     case connectionTimeout
     case hostKeyVerificationFailed
@@ -101,6 +102,11 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
             return String(format: String(localized: "SSH tunnel already exists for connection: %@"), id.uuidString)
         case .noAvailablePort:
             return String(localized: "No available local port for SSH tunnel")
+        case .usernameMissing(let host):
+            return String(
+                format: String(localized: "SSH username not set. Add it to the form, or add a User line for %@ in ~/.ssh/config."),
+                host
+            )
         case .authenticationFailed(let reason):
             switch reason {
             case .password:

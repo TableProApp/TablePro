@@ -149,4 +149,17 @@ struct PostgreSQLDumpToolCompatibilityTests {
         #expect(message.contains("PostgreSQL 19 needs pg_dump 19 or later."))
         #expect(message.contains("brew install libpq"))
     }
+
+    @Test("Every refusal is plain text")
+    func refusalsArePlainText() throws {
+        let found = [PostgreSQLDumpToolCompatibility.Candidate(path: "/a", version: try version("17.11"))]
+        for server in ["9.1.24", "19.0", "7.4.30"] {
+            let message = PostgreSQLDumpToolCompatibility.refusal(
+                for: try version(server),
+                found: found,
+                toolName: "pg_dump"
+            )
+            #expect(!message.contains("`"), "\(server)")
+        }
+    }
 }

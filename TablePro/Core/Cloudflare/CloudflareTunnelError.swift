@@ -17,7 +17,7 @@ enum CloudflareTunnelError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .binaryNotFound:
-            return String(localized: "cloudflared was not found. Install it with `brew install cloudflared`, or set its path in the connection's Cloudflare Tunnel settings.")
+            return String(localized: "cloudflared was not found. Install it with “brew install cloudflared”, or set its path in the connection's Cloudflare Tunnel settings.")
         case .noAvailablePort:
             return String(localized: "No available local port for the Cloudflare tunnel.")
         case .startupFailed(let stderrTail):

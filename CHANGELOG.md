@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Client certificate and key dropped by SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels.
 - SOCKS proxy dialing the hidden Host instead of the first host-list entry.
 - "SSH password rejected" shown for a Password-auth SSH tunnel with no saved password.
+- Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 
 ## [0.76.1] - 2026-09-29
 

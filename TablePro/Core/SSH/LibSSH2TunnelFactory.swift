@@ -188,9 +188,7 @@ internal enum LibSSH2TunnelFactory {
         }
 
         if resolvedPrimary.username.isEmpty {
-            throw SSHTunnelError.tunnelCreationFailed(
-                "SSH username not set. Add it to the form or set `User` for `\(config.host)` in ~/.ssh/config."
-            )
+            throw SSHTunnelError.usernameMissing(host: config.host)
         }
 
         let firstHop = resolvedJumps.first ?? resolvedPrimary
