@@ -145,6 +145,22 @@ struct ExternalStatementGateTests {
         #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
     }
 
+    @Test(
+        "Stopping another session is refused on a connection read only for external clients",
+        arguments: [
+            ("SELECT pg_terminate_backend(123)", DatabaseType.postgresql),
+            ("SELECT pg_cancel_backend(123)", DatabaseType.postgresql),
+            ("SELECT pg_terminate_backend(123)", DatabaseType.redshift),
+            ("SELECT pg_cancel_backend(123)", DatabaseType.cockroachdb),
+            ("SELECT query_to_xml('SELECT pg_terminate_backend(123)', true, false, '')", DatabaseType.postgresql),
+            ("KILL 123", DatabaseType.mysql),
+        ]
+    )
+    func stoppingASessionRefusedOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
+        let refused = refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly))
+        #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
     @Test("A write SQL Server runs without a terminator is refused on a connection read only for external clients",
           arguments: ["SELECT 1\nDROP TABLE t", "PRINT 'x' UPDATE t SET c = 1", "SELECT 1\nUPDATE [t] SET c = 1"])
     func unterminatedWriteRefusedOnReadOnlyConnection(sql: String) {

@@ -295,7 +295,10 @@ private extension QueryClassifier {
         let projection = StatementProjection(statement: statement, grammar: grammar)
         let body = projection.body
         let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
-        let base = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let base = keywordTier.tier == .safe
+            ? keywordTier.escalated(to: stateChangingCallTier(projection))
+            : keywordTier
         var classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
         if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType) {
             classification = classification.escalated(with: dynamic)
@@ -368,6 +371,19 @@ private extension QueryClassifier {
         }
 
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    static func stateChangingCallTier(_ projection: StatementProjection) -> QueryTier {
+        guard !explainPrefixes.contains(leadingCodeKeyword(projection.body)) else { return .safe }
+        let calls = SQLFunctionCallScanner.calls(
+            in: projection.statement as NSString,
+            code: projection.code as NSString
+        )
+        let changesState = calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            return SQLStateChangingFunctions.contains(name)
+        }
+        return changesState ? .write : .safe
     }
 
     private static let routineDefinitionKinds: Set<String> = [
