@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Folders for tables and views in the sidebar, synced with iCloud. (#3167)
 
 ### Fixed
 

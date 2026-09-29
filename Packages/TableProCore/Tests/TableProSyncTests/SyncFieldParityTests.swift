@@ -41,6 +41,8 @@ struct SyncFieldParityTests {
         "SQLFavoriteFolderSyncField",
         "SSHProfileSyncField",
         "CredentialProfileSyncField",
+        "TableFolderSyncField",
+        "TableFolderItemSyncField",
     ]
 
     /// Connection fields only one platform has a model property for. Each is a feature the other

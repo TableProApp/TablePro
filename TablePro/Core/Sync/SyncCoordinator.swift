@@ -86,6 +86,16 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.info("No local connections — cleared sync token for full fetch")
         }
 
+        /// A pull returns only what changed since the token, so records of a type an earlier build
+        /// did not sync were passed over for good. The first run of a build that syncs more types
+        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
+        /// upgrades later. Counted over the types verified in Production, because an unverified type
+        /// has no records on the server to fetch.
+        if metadataStorage.adoptReadableRecordTypes(Set(SyncRecordType.verifiedInProduction.map(\.rawValue))) {
+            metadataStorage.saveToken(nil)
+            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
+        }
+
         Task {
             await checkAccountStatus()
             evaluateStatus()
@@ -276,6 +286,10 @@ final class SyncCoordinator: ObservableObject {
             ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
         )
 
+        let tableFolderIds = tableFolderSyncIds()
+        changeTracker.markDirty(.tableFolder, ids: tableFolderIds.folders)
+        changeTracker.markDirty(.tableFolderItem, ids: tableFolderIds.items)
+
         let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
         let columnLayoutCategories = columnLayouts().customizedStorageKeys()
             .map { FileColumnLayoutPersister.syncCategory(for: $0) }
@@ -287,6 +301,7 @@ final class SyncCoordinator: ObservableObject {
             "tags=\(tags.count)",
             "sshProfiles=\(sshProfiles.count)",
             "favoriteTables=\(favoriteTables.count)",
+            "tableFolders=\(tableFolderIds.folders.count)",
             "settings=\(AppSettingsCategory.synced.count + 1)"
         ].joined(separator: ", ")
         Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
@@ -390,7 +405,7 @@ final class SyncCoordinator: ObservableObject {
         guard !batch.records.isEmpty || !deletions.isEmpty else { return PushReport() }
 
         let identities = SyncRecordMapper.identities(for: pushedLocalIds(snapshot), in: zoneID)
-        let outcome: PushOutcome
+        var outcome: PushOutcome
         var interruption: Error?
         do {
             outcome = try await transport.push(records: batch.records, deletions: deletions)
@@ -401,6 +416,10 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.error("Push failed: \(error.localizedDescription)")
             return PushReport(error: error)
         }
+        /// A deletion of a record the server never had, one created and deleted between two
+        /// pushes, is done already. Counted as a failure, its tombstone stayed and every later
+        /// sync failed on it. The iPhone coordinator already settles these the same way.
+        outcome.acceptMissingDeletions(of: deletions)
 
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))
@@ -545,6 +564,7 @@ final class SyncCoordinator: ObservableObject {
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
+        var tableFolderRecords: [CKRecord] = []
 
         for record in result.changedRecords {
             if let echoGuard, echoGuard.withholds(record.recordID, tracker: changeTracker) {
@@ -582,10 +602,13 @@ final class SyncCoordinator: ObservableObject {
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
             case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
+            case SyncRecordType.tableFolder.rawValue, SyncRecordType.tableFolderItem.rawValue:
+                if settings.syncTableFolders { tableFolderRecords.append(record) }
             default:
                 break
             }
         }
+        applyRemoteTableFolderRecords(tableFolderRecords)
 
         let deletions = applyRemoteDeletions(SyncPendingDeletions.parse(result.deletedRecordIDs, settings: settings))
         actualConnectionChanges = actualConnectionChanges || deletions.connectionsChanged

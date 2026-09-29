@@ -23,6 +23,9 @@ extension DatabaseTreeOutlineCoordinator {
                 let hasMatches = flatItemCount(for: kind) > 0
                 setExpanded(sectionNode, viewModel?.effectiveExpanded(kind: kind, hasMatches: hasMatches) ?? true)
                 if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
+            case .foldersSection:
+                setExpanded(sectionNode, searching || (viewModel?.isFoldersExpanded ?? true))
+                if outlineView.isItemExpanded(sectionNode) { restoreFolderExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
             case .schema:
@@ -119,9 +122,23 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// A folder is open unless the user closed it, and every folder is open while a search runs, so
+    /// a match inside one is on screen rather than behind a closed triangle.
+    private func restoreFolderExpansion(under parent: DatabaseTreeNode) {
+        guard let outlineView = self.outlineView else { return }
+        let searching = !searchText.isEmpty
+        for folderNode in resolvedChildren(of: parent) {
+            guard let ref = folderNode.folderRef else { continue }
+            let collapsed = windowState?.collapsedTableFolders.contains(ref.folder.id) ?? false
+            setExpanded(folderNode, searching || !collapsed)
+            if outlineView.isItemExpanded(folderNode) { restorePartitionExpansion(under: folderNode) }
+        }
+    }
+
     private func restoreObjectGroupExpansion(under parent: DatabaseTreeNode) {
         guard let outlineView = self.outlineView else { return }
         let searching = !searchText.isEmpty
+        restoreFolderExpansion(under: parent)
         for groupNode in resolvedChildren(of: parent) {
             guard case .containerObjectKindSection(let group) = groupNode.kind else { continue }
             let expanded = DatabaseTreeFilter.objectGroupIsExpanded(
@@ -146,7 +163,9 @@ extension DatabaseTreeOutlineCoordinator {
             restoreObjectGroupExpansion(under: node)
         case .schema, .hierarchicalSchemaSection:
             restoreObjectGroupExpansion(under: node)
-        case .objectKindSection, .containerObjectKindSection, .table, .partition:
+        case .foldersSection:
+            restoreFolderExpansion(under: node)
+        case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition:
             restorePartitionExpansion(under: node)
         case .recentSection, .recentTable, .database, .routine, .trigger,
              .userType, .status, .redisKeysSection, .redisNode:
@@ -167,6 +186,14 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
+        case .foldersSection:
+            viewModel?.isFoldersExpanded = expanded
+        case .tableFolder(let ref):
+            if expanded {
+                windowState?.collapsedTableFolders.remove(ref.folder.id)
+            } else {
+                windowState?.collapsedTableFolders.insert(ref.folder.id)
+            }
         case .objectKindSection(let kind):
             viewModel?.expanded[kind] = expanded
         case .containerObjectKindSection(let group):
@@ -221,8 +248,8 @@ extension DatabaseTreeOutlineCoordinator {
             loadPartitions(ref.tableRef ?? ref.parent)
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaObjects(schema)
-        case .recentSection, .recentTable, .routine, .trigger, .userType, .status,
-             .objectKindSection, .containerObjectKindSection,
+        case .recentSection, .recentTable, .foldersSection, .tableFolder, .routine, .trigger, .userType,
+             .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode:
             break
         }

@@ -51,6 +51,7 @@ internal enum SidebarMenuCommand: Equatable {
     case createSchema(database: String?)
     case editSchema(DatabaseContainerRef)
     case toggleFavorite(DatabaseTreeTableRef)
+    case tableFolder(TableFolderCommand)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents
     case useAsActive(DatabaseContainerRef)
@@ -81,4 +82,15 @@ internal enum SidebarMenuCommand: Equatable {
     case toggleSystemContainers
     case togglePartitions
     case setRowSize(SidebarRowSizePreference)
+}
+
+/// Folders only record which objects belong to them, so none of these reaches the database and
+/// none is withheld on a read-only connection.
+internal enum TableFolderCommand: Equatable {
+    case create(TableFolderContainer)
+    case createHolding([DatabaseTreeTableRef])
+    case move([DatabaseTreeTableRef], into: TableFolder)
+    case remove([DatabaseTreeTableRef])
+    case rename(TableFolder)
+    case delete(TableFolder)
 }

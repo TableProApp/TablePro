@@ -8235,6 +8235,9 @@
     "%lld ^[table](inflect: true) to export" : {
 
     },
+    "%lld items" : {
+
+    },
     "%lld large object values were longer than 64 MiB and were cut short." : {
 
     },
@@ -71129,6 +71132,9 @@
     "Folder of Parquet files" : {
 
     },
+    "Folders" : {
+
+    },
     "Follow-up on step %d \"%@\" (%@): %@" : {
       "localizations" : {
         "en" : {
@@ -94808,6 +94814,9 @@
         }
       }
     },
+    "Move to Folder" : {
+
+    },
     "Move to Group" : {
       "localizations" : {
         "ko" : {
@@ -96829,6 +96838,9 @@
           }
         }
       }
+    },
+    "New Folder %lld" : {
+
     },
     "New Group" : {
       "localizations" : {
@@ -125626,6 +125638,9 @@
         }
       }
     },
+    "Remove from Folder" : {
+
+    },
     "Remove from Group" : {
       "localizations" : {
         "ko" : {
@@ -126395,6 +126410,9 @@
           }
         }
       }
+    },
+    "Rename Folder" : {
+
     },
     "Rename Group" : {
       "extractionState" : "stale",
@@ -153635,6 +153653,9 @@
           }
         }
       }
+    },
+    "Table Folders" : {
+
     },
     "Table Info" : {
       "extractionState" : "stale",

@@ -1,6 +1,6 @@
 ---
 title: Connection window
-description: The toolbar, the Actions menu, the sidebar's list chooser, and the trailing pane
+description: The toolbar, the Actions menu, the sidebar's list chooser and folders, and the trailing pane
 ---
 
 Nothing in the titlebar is fixed furniture. The toolbar carries the commands for the tab you are on, and what it leaves out is one click away under **Actions** or in the menu bar.
@@ -105,6 +105,32 @@ Until the sidebar has read a schema's objects, only its tables and views match. 
 </Frame>
 
 Type a dot to filter by schema. `attendance.time` keeps the objects in `attendance` whose names contain `time`, `attendance.` shows everything in `attendance`, and `shop.attendance.time` names the database too. A table whose own name holds a dot, such as `audit.events`, still matches when you type that name. [Open Quickly](/features/open-quickly#other-schemas) takes the same form with fuzzy matching.
+
+## Folders
+
+A folder groups the tables and views of one database or schema. It exists only in TablePro, so filing a table into one changes nothing on the server.
+
+<Steps>
+  <Step title="Make a folder">
+    Right-click a table and choose **Move to > New Folder**, or right-click **Tables** and choose **New Folder**. Type a name and press `Return`.
+  </Step>
+  <Step title="File objects into it">
+    Drag tables and views onto the folder, or right-click one and choose **Move to** and the folder. A selection moves together.
+  </Step>
+</Steps>
+
+A filed object moves out of its **Tables** or **Views** section and into the folder. With **View > Sidebar as List** the folders sit under **Folders**, above **Tables**. With **View > Sidebar as Tree** each database or schema lists its own folders above its object kinds.
+
+<Frame caption="Two folders above the Tables section of the sample database">
+  <img className="block dark:hidden" src="/images/sidebar-table-folders.png" alt="Sidebar with a Folders section holding Music, with Album and Artist, and Sales, with Invoice and InvoiceLine, above the Tables section" />
+  <img className="hidden dark:block" src="/images/sidebar-table-folders-dark.png" alt="Sidebar with a Folders section holding Music, with Album and Artist, and Sales, with Invoice and InvoiceLine, above the Tables section" />
+</Frame>
+
+To take an object out, choose **Remove from Folder**, or drag it onto its **Tables** or **Views** section. Right-click a folder to rename it or choose **Delete Folder**. Deleting puts its objects back in their sections without asking, and `Cmd+Z` restores it.
+
+The filter field reaches inside folders. A folder holding a match opens to show it, and a folder without one is hidden until the field is cleared.
+
+Renaming or dropping a table from the sidebar keeps its folder in step. SQL run in the editor does not: a table renamed with `RENAME TABLE` drops out of its folder, so file it again under its new name.
 
 ## The trailing pane
 
