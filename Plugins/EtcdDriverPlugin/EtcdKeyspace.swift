@@ -23,7 +23,7 @@ internal struct EtcdKeyspace: Equatable, Sendable {
     }
 
     var keysOnlyListing: String {
-        "get \(Self.quotedArgument(root)) --prefix --keys-only"
+        "get \(EtcdCommandArgument.quoted(root)) --prefix --keys-only"
     }
 
     func tableName(forKey key: String) -> String {
@@ -55,14 +55,14 @@ internal struct EtcdKeyspace: Equatable, Sendable {
     }
 
     func exportQuery(forTable table: String) -> String {
-        "get \(Self.quotedArgument(prefix(forTable: table))) --prefix"
+        "get \(EtcdCommandArgument.quoted(prefix(forTable: table))) --prefix"
     }
 
     func dropStatement(forTable table: String) -> String? {
         let prefix = prefix(forTable: table)
         let coversWholeRoot = prefix == root
         guard !coversWholeRoot else { return nil }
-        return "del \(Self.quotedArgument(prefix)) --prefix"
+        return "del \(EtcdCommandArgument.quoted(prefix)) --prefix"
     }
 
     func truncateStatements(forTable table: String) -> [String]? {
@@ -73,16 +73,5 @@ internal struct EtcdKeyspace: Equatable, Sendable {
         let scalars = key[...].unicodeScalars
         guard scalars.starts(with: root.unicodeScalars) else { return scalars }
         return scalars.dropFirst(root.unicodeScalars.count)
-    }
-
-    private static func quotedArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
-        guard needsQuoting else { return value }
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-        return "\"\(escaped)\""
     }
 }

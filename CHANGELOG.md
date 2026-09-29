@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local only** connections taking edits and deletions made on another device.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - etcd `(root)` Delete and Truncate erasing the whole Key Prefix Root, and a root with no trailing `/` reaching sibling keys.
+- etcd commands and saved edits reaching a different key when the key starts with a combining mark.
 
 ## [0.76.1] - 2026-09-29
 

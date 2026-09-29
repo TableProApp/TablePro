@@ -163,7 +163,7 @@ struct EtcdKeyspaceDeletionScopeTests {
         "/myapp/a/\u{301}",
         "/myapp/ab/1",
         "/myapp/b/1",
-        "/myapp/solo",
+        "/myapp/solo"
     ]
 
     private static let keysUnderEmptyRoot = [
@@ -171,27 +171,33 @@ struct EtcdKeyspaceDeletionScopeTests {
         "//x",
         "/a/1",
         "/solo",
+        "\u{301}x/1",
         "a/1",
         "ab/1",
         "solo",
+        "x/1"
     ]
 
     @Test("Every row's delete covers exactly the keys that row lists")
-    func deleteCoversExactlyTheListedKeys() {
-        assertDeletionScopes(keyspace: EtcdKeyspace(keyPrefixRoot: "/myapp"), keys: Self.keysUnderMyApp)
-        assertDeletionScopes(keyspace: EtcdKeyspace(keyPrefixRoot: ""), keys: Self.keysUnderEmptyRoot)
+    func deleteCoversExactlyTheListedKeys() throws {
+        try assertDeletionScopes(keyspace: EtcdKeyspace(keyPrefixRoot: "/myapp"), keys: Self.keysUnderMyApp)
+        try assertDeletionScopes(keyspace: EtcdKeyspace(keyPrefixRoot: ""), keys: Self.keysUnderEmptyRoot)
     }
 
-    private func assertDeletionScopes(keyspace: EtcdKeyspace, keys: [String]) {
+    private func assertDeletionScopes(keyspace: EtcdKeyspace, keys: [String]) throws {
         let tables = Set(keys.map(keyspace.tableName(forKey:)))
         for table in tables {
             guard let statement = keyspace.dropStatement(forTable: table) else {
                 #expect(table == EtcdKeyspace.rootTableName)
                 continue
             }
-            let prefix = keyspace.prefix(forTable: table)
-            #expect(statement == "del \(prefix) --prefix")
-            let deleted = keys.filter { $0.utf8.starts(with: prefix.utf8) }
+            guard case let .del(deletedPrefix, isPrefix) = try EtcdCommandParser.parse(statement) else {
+                Issue.record("Row \(table) drops with \(statement), which is not a del")
+                continue
+            }
+            #expect(isPrefix)
+            #expect(Array(deletedPrefix.unicodeScalars) == Array(keyspace.prefix(forTable: table).unicodeScalars))
+            let deleted = keys.filter { $0.utf8.starts(with: deletedPrefix.utf8) }
             let listed = keys.filter { keyspace.tableName(forKey: $0) == table }
             #expect(deleted == listed, "Row \(table) deletes \(deleted) but lists \(listed)")
         }

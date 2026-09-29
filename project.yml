@@ -512,6 +512,7 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
+      - Plugins/EtcdDriverPlugin/EtcdCommandArgument.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
       - Plugins/EtcdDriverPlugin/EtcdKeyspace.swift
