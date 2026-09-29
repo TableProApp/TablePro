@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 
+### Security
+
+- Redis Verify Identity accepting a server certificate issued for another host.
+
 ## [0.76.1] - 2026-09-29
 
 ### Changed
