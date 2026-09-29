@@ -1125,7 +1125,7 @@ extension PluginMetadataRegistry {
             + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
-            + weaviatePluginDefaults()
+            + weaviatePluginDefaults() + hanaPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

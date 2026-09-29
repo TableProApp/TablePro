@@ -63,8 +63,9 @@ env:
 jobs:
   # Reproduces the paths filter this workflow used to carry on `on: pull_request`. Keep this
   # list and the `push:` paths above identical, so a pull request and a push to main run the
-  # same suites. `Native/` is on both because the Dameng steps below build and test the Rust
-  # bridge that lives there, and a bridge-only change would otherwise compile nowhere.
+  # same suites. `Native/` is on both because the Dameng and SAP HANA steps below build and test
+  # the Rust and Go bridges that live there, and a bridge-only change would otherwise compile
+  # nowhere.
   changes:
     name: Detect relevant changes
     runs-on: ubuntu-latest
@@ -194,6 +195,17 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
+      - name: Set up Go for the SAP HANA helper
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: Native/HanaBridge/go.mod
+          cache-dependency-path: Native/HanaBridge/go.sum
+
+      # Xcode copies tablepro-hana-helper into HanaDriver and HanaDriverTests and never builds
+      # it, so both targets fail with "Build input file cannot be found" until this has run.
+      - name: Build the SAP HANA helper
+        run: scripts/build-hana.sh arm64
+
       # Only the bridge's own FFI tests live here. The DM8 protocol crates are a pinned
       # revision of TableProApp/rust-dameng and carry their own suite in that repository.
       # Run from the bridge directory so rustup reads its rust-toolchain.toml: rustup resolves
@@ -202,6 +214,26 @@ jobs:
       - name: Test Dameng native bridge
         working-directory: Native/DamengBridge
         run: cargo test --locked
+
+      # Only the helper's own tests, none of which needs a HANA server. Run from the bridge
+      # directory so the go command reads its go.mod and builds with the toolchain it pins.
+      # staticcheck and govulncheck are pinned here and fetched by `go run`, so they never
+      # enter the helper's go.mod.
+      - name: Test the SAP HANA helper
+        working-directory: Native/HanaBridge
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite: $unformatted"
+            exit 1
+          fi
+          go mod verify
+          go mod tidy -diff
+          go vet ./...
+          go test -race ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, and the project only
       # needs the variable to resolve, so an empty value is enough and no secret is read here.
@@ -267,15 +299,30 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
-      # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
-      # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
-      # step nothing runs them and they rot silently.
+      # DamengDriverTests and HanaDriverTests are the plugin-owned unit bundles, so they cannot
+      # move into TableProTests the way pure-logic plugin tests do: the Dameng suites import the
+      # plugin's C bridge module (CDameng), and HanaDriverTests compiles the whole plugin and
+      # carries tablepro-hana-helper in its own Contents/MacOS, where the plugin looks for it.
+      # Without these steps nothing runs them and they rot silently.
       - name: Build the Dameng driver tests
         run: |
           set -o pipefail
           xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme DamengDriverTests \
+            -destination "$TEST_DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Build the SAP HANA driver tests
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme HanaDriverTests \
             -destination "$TEST_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
             -clonedSourcePackagesDirPath ~/.spm-cache \
@@ -352,6 +399,15 @@ jobs:
           set -o pipefail
           xcodebuild test-without-building \
             -xctestrun "$DAMENG_XCTESTRUN" \
+            -destination "$TEST_DESTINATION" \
+            -parallel-testing-enabled NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Run SAP HANA driver tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -xctestrun "$HANA_XCTESTRUN" \
             -destination "$TEST_DESTINATION" \
             -parallel-testing-enabled NO \
             | xcbeautify --renderer github-actions

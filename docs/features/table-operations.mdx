@@ -60,6 +60,7 @@ The statement runs at once instead of joining the drop and truncate queue, so **
 | Snowflake | Yes | No | Yes |
 | Trino | Depends on the connector | No | Yes |
 | Teradata | Yes | No | No |
+| SAP HANA | No | No | No |
 | MongoDB | Yes | No | No |
 
 No other engine has a rename, so the item never appears on Cassandra, DynamoDB, Elasticsearch, etcd, Kafka, Redis, SurrealDB, Typesense or Beancount. What resembles one there is a copy followed by a delete, and it changes record identity.
@@ -143,6 +144,7 @@ Dropping a schema permanently deletes everything in it. On PostgreSQL and Dameng
 | SQL Server | No | No | No |
 | Oracle | No | No | No |
 | Dameng | No | No | No |
+| SAP HANA | No | No | No |
 | Snowflake | No | No | No |
 | Trino | No | No | No |
 | DuckDB | No | No | No |

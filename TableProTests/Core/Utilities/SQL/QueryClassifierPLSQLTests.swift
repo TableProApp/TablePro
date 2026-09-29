@@ -43,6 +43,12 @@ struct QueryClassifierPLSQLTests {
         #expect(QueryClassifier.classifyTier(sql, databaseType: .oracle) == .write)
     }
 
+    @Test("SQLScript's EXEC is not a dynamic statement opener in Oracle PL/SQL")
+    func execIsNotReadAsDynamicSQLOnOracle() {
+        let sql = "BEGIN\n  -- to undo: exec 'DROP TABLE staging'\n  INSERT INTO audit_log VALUES (1);\nEND;"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .oracle) == .write)
+    }
+
     @Test("A delete without a WHERE inside a block is dangerous", arguments: [
         "BEGIN DELETE FROM orders; END;",
         "BEGIN IF 1 = 1 THEN DELETE FROM orders; END IF; END;",

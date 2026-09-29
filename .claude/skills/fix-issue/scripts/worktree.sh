@@ -71,11 +71,13 @@ for framework in "$MAIN_ROOT"/Libs/ios/*.xcframework; do
     [ -e "$framework" ] && ln -sfn "$framework" "$DIR/Libs/ios/$(basename "$framework")"
 done
 link "$MAIN_ROOT/Native/DamengBridge/lib" "$DIR/Native/DamengBridge/lib"
+link "$MAIN_ROOT/Native/HanaBridge/bin" "$DIR/Native/HanaBridge/bin"
 
 missing=""
 [ -e "$DIR/Configs/Secrets.xcconfig" ] || missing="$missing Configs/Secrets.xcconfig"
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
 [ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
+[ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
 ls "$DIR"/Libs/ios/*.xcframework > /dev/null 2>&1 || missing="$missing Libs/ios/*.xcframework"
 if [ -n "$missing" ]; then

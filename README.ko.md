@@ -84,6 +84,7 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 | MongoDB | 플러그인 |
 | Oracle Database | 플러그인 |
 | Dameng DM8 | 플러그인 |
+| SAP HANA | 플러그인 |
 | DuckDB | 플러그인 |
 | Beancount | 플러그인 |
 | Cassandra / ScyllaDB | 플러그인 |

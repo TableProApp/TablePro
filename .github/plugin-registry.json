@@ -172,6 +172,20 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
     },
+    "hana": {
+      "target": "HanaDriver",
+      "bundleName": "HanaDriver",
+      "bundleId": "com.TablePro.HanaDriver",
+      "bundled": false,
+      "displayName": "SAP HANA Driver",
+      "summary": "SAP HANA SQL driver via SAP/go-hdb",
+      "databaseTypeIds": [
+        "SAP HANA"
+      ],
+      "icon": "cylinder",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/sap-hana"
+    },
     "html": {
       "target": "HTMLExport",
       "bundleName": "HTMLExport",
