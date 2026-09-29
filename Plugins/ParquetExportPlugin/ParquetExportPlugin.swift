@@ -61,21 +61,9 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
     ) async throws -> ExportFormatResult {
         guard !tables.isEmpty else { return ExportFormatResult() }
         var warnings: [String] = []
-        var written: [URL] = []
 
-        for (index, table) in tables.enumerated() {
-            try progress.checkCancellation()
-            progress.setCurrentTable(table.qualifiedName, index: index + 1)
-            let fileURL = tables.count == 1
-                ? destination
-                : ParquetFileNaming.perTableURL(destination: destination, table: table.name)
-            do {
-                try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
-                written.append(fileURL)
-            } catch {
-                for url in written { try? FileManager.default.removeItem(at: url) }
-                throw error
-            }
+        try await ParquetTableFiles.write(tables, destination: destination, progress: progress) { table, fileURL in
+            try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
         }
 
         if tables.count > 1 {

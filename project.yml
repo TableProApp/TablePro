@@ -532,6 +532,7 @@ targets:
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
+      - Plugins/ParquetExportPlugin/ParquetTableFiles.swift
       - Plugins/ParquetExportPlugin/ParquetTypeMapper.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
