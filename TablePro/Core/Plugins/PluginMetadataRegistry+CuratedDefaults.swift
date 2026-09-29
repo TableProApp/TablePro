@@ -197,7 +197,7 @@ extension PluginMetadataRegistry {
 
         let pgpassField = ConnectionField(
             id: "usePgpass",
-            label: String(localized: "Use Password File"),
+            label: String(localized: "Use ~/.pgpass"),
             defaultValue: "false",
             fieldType: .toggle,
             section: .authentication,

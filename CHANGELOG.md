@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connect errors a server answered through PGlite, such as a missing database, reported as an unreachable socket server.
 - REINDEX VERBOSE offered on PostgreSQL 9.1 to 9.4, where it fails, and ignored when reindexing a whole database.
 - PGlite saying it cannot change the order of a table's columns.
+- `Use ~/.pgpass` toggle named `Use Password File` on Redshift and CockroachDB.
 
 ## [0.76.1] - 2026-09-29
 

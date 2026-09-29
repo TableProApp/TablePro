@@ -174474,7 +174474,6 @@
       }
     },
     "Use ~/.pgpass" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174816,40 +174815,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 IAM 資料庫驗證"
-          }
-        }
-      }
-    },
-    "Use Password File" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호 파일 사용"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parola Dosyası Kullan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng file mật khẩu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密码文件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密碼檔案"
           }
         }
       }
