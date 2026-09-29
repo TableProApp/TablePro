@@ -149,9 +149,22 @@ struct ParquetTypeMapperTests {
 
     @Test("Floating families and undeclared exact numerics map to DOUBLE")
     func doubleFamilies() {
-        for type in ["numeric", "FLOAT", "double precision", "REAL", "money"] {
+        for type in ["numeric", "FLOAT", "double precision", "REAL"] {
             #expect(mapped(type) == "DOUBLE", "\(type)")
         }
+    }
+
+    @Test("PostgreSQL money keeps its text, since it carries a currency symbol no cast can read")
+    func postgresMoneyStaysText() {
+        #expect(mapped("money", on: "PostgreSQL") == "VARCHAR")
+        #expect(mapped("MONEY", on: "PostgreSQL") == "VARCHAR")
+    }
+
+    @Test("SQL Server money keeps its exact four decimal places")
+    func sqlServerMoneyIsFixedPoint() {
+        #expect(mapped("money", on: "SQL Server") == "DECIMAL(19,4)")
+        #expect(mapped("smallmoney", on: "SQL Server") == "DECIMAL(10,4)")
+        #expect(mapped("SMALLMONEY", on: "SQL Server") == "DECIMAL(10,4)")
     }
 
     @Test("An exact numeric with no usable declaration maps to DOUBLE")

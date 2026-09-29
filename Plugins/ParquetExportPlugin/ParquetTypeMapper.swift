@@ -16,6 +16,7 @@ public enum ParquetTypeMapper {
     /// to cast becomes null rather than failing the export, which is what `TRY_CAST` gives.
     public static func duckDBType(forColumnType typeName: String, databaseTypeId: String) -> String {
         let base = baseName(typeName)
+        if let moneyType = fixedPointMoneyTypes[databaseTypeId]?[base] { return moneyType }
         if integerTypes.contains(base) { return "BIGINT" }
         if exactNumericTypes.contains(base) {
             guard !enginesIgnoringDeclaredPrecision.contains(databaseTypeId) else { return "DOUBLE" }
@@ -69,6 +70,10 @@ public enum ParquetTypeMapper {
         "SQLite", "libSQL", "Turso", "Cloudflare D1"
     ]
 
+    private static let fixedPointMoneyTypes: [String: [String: String]] = [
+        "SQL Server": ["money": "DECIMAL(19,4)", "smallmoney": "DECIMAL(10,4)"]
+    ]
+
     private static let integerTypes: Set<String> = [
         "int", "int2", "int4", "int8", "integer", "smallint", "bigint", "tinyint",
         "mediumint", "serial", "bigserial", "smallserial", "year"
@@ -77,7 +82,7 @@ public enum ParquetTypeMapper {
     private static let exactNumericTypes: Set<String> = ["decimal", "numeric", "number"]
 
     private static let approximateNumericTypes: Set<String> = [
-        "float", "float4", "float8", "double", "real", "money", "binary_float", "binary_double"
+        "float", "float4", "float8", "double", "real", "binary_float", "binary_double"
     ]
 
     private static let booleanTypes: Set<String> = ["bool", "boolean", "bit"]
