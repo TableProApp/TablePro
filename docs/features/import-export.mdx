@@ -346,7 +346,7 @@ The workbook is read whole rather than streamed, because a sheet's rows refer ba
 
 ### Import CSV
 
-CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file. Changing any option reads the file again. A field that is still there keeps the column it was mapped to. In a new table it keeps each column setting you changed, and the ones you left alone follow the new read, such as a type inferred again from trimmed values.
+CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file. Changing any option reads the file again. A field that is still there keeps the column it was mapped to. In a new table each column setting you changed stays with its field, even through a read that misses the field, such as one with the wrong delimiter. Settings you left alone follow the new read, such as a type inferred again from trimmed values.
 
 | Option | What it does | Default |
 |--------|-------------|---------|

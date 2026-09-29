@@ -27,22 +27,46 @@ internal struct NewTableColumnSettings: Equatable {
             defaultValue: ""
         )
     }
+}
 
-    /// A setting still equal to what the sheet proposed was never changed, so it takes the new
-    /// proposal. One the user moved away from the proposal is theirs and stays. A type that differs
-    /// from the proposal only in case is the proposal, because the type menu offers the dialect's
-    /// own spelling of it.
-    internal func keepingEdits(
-        madeTo earlier: NewTableColumnSettings,
-        over proposal: NewTableColumnSettings
-    ) -> NewTableColumnSettings {
+/// What the user set on one column, each setting nil until a write changes it. A read never touches
+/// it, so a setting stays the user's even when a later read proposes the same value.
+internal struct NewTableColumnEdits: Equatable {
+    internal var include: Bool?
+    internal var name: String?
+    internal var type: String?
+    internal var isPrimaryKey: Bool?
+    internal var isNullable: Bool?
+    internal var defaultValue: String?
+
+    internal var isEmpty: Bool {
+        self == NewTableColumnEdits()
+    }
+
+    internal func applied(to proposal: NewTableColumnSettings) -> NewTableColumnSettings {
         NewTableColumnSettings(
-            include: include == earlier.include ? proposal.include : include,
-            name: name == earlier.name ? proposal.name : name,
-            type: type.caseInsensitiveCompare(earlier.type) == .orderedSame ? proposal.type : type,
-            isPrimaryKey: isPrimaryKey == earlier.isPrimaryKey ? proposal.isPrimaryKey : isPrimaryKey,
-            isNullable: isNullable == earlier.isNullable ? proposal.isNullable : isNullable,
-            defaultValue: defaultValue == earlier.defaultValue ? proposal.defaultValue : defaultValue
+            include: include ?? proposal.include,
+            name: name ?? proposal.name,
+            type: type ?? proposal.type,
+            isPrimaryKey: isPrimaryKey ?? proposal.isPrimaryKey,
+            isNullable: isNullable ?? proposal.isNullable,
+            defaultValue: defaultValue ?? proposal.defaultValue
+        )
+    }
+
+    /// A type differing only in case is not a change: the type menu offers the dialect's own
+    /// spelling of the type on show, and choosing it again writes that spelling back.
+    internal func recording(
+        _ settings: NewTableColumnSettings,
+        over shown: NewTableColumnSettings
+    ) -> NewTableColumnEdits {
+        NewTableColumnEdits(
+            include: settings.include == shown.include ? include : settings.include,
+            name: settings.name == shown.name ? name : settings.name,
+            type: settings.type.caseInsensitiveCompare(shown.type) == .orderedSame ? type : settings.type,
+            isPrimaryKey: settings.isPrimaryKey == shown.isPrimaryKey ? isPrimaryKey : settings.isPrimaryKey,
+            isNullable: settings.isNullable == shown.isNullable ? isNullable : settings.isNullable,
+            defaultValue: settings.defaultValue == shown.defaultValue ? defaultValue : settings.defaultValue
         )
     }
 }
@@ -51,12 +75,26 @@ internal struct NewTableColumnSettings: Equatable {
 internal struct NewTableColumn: Identifiable {
     internal let field: PluginImportField
 
-    /// What the sheet offered for this field on the read that produced it, so the next read can tell
-    /// the user's changes from the sheet's own guesses.
+    /// What the latest read proposes for this field.
     internal let proposal: NewTableColumnSettings
-    internal var settings: NewTableColumnSettings
+    internal private(set) var edits: NewTableColumnEdits
+
+    internal init(
+        field: PluginImportField,
+        proposal: NewTableColumnSettings,
+        edits: NewTableColumnEdits = NewTableColumnEdits()
+    ) {
+        self.field = field
+        self.proposal = proposal
+        self.edits = edits
+    }
 
     internal var id: String { field.name }
+
+    internal var settings: NewTableColumnSettings {
+        get { edits.applied(to: proposal) }
+        set { edits = edits.recording(newValue, over: settings) }
+    }
 }
 
 internal enum NewTableColumnProblem: Equatable {
@@ -68,22 +106,31 @@ internal enum NewTableColumnProblem: Equatable {
 /// what the user changed.
 ///
 /// Changing a parsing option reads the file again, and rebuilding the columns from that read threw
-/// away every rename, type, key, nullability, default and exclusion the user had set. A field that
-/// survives the read keeps each setting the user changed, and each setting left as proposed follows
-/// the read, the way the sheet's table name keeps what the user typed over its own suggestion.
+/// away every rename, type, key, nullability, default and exclusion the user had set. Each field
+/// keeps the settings the user set, and each setting left alone follows the read, the way the
+/// sheet's table name keeps what the user typed over its own suggestion.
 internal struct NewTableDraft {
     internal var columns: [NewTableColumn] = []
+
+    /// A wrong delimiter reads other fields for one read, and correcting it brings these back.
+    private var setAsideEdits: [String: NewTableColumnEdits] = [:]
 
     internal mutating func load(
         fields: [PluginImportField],
         proposingType proposedType: (PluginImportFieldType) -> String
     ) {
-        let earlier = Dictionary(columns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        columns = fields.map { field in
-            let proposal = NewTableColumnSettings.proposed(name: field.name, type: proposedType(field.inferredType))
-            let settings = earlier[field.name].map { $0.settings.keepingEdits(madeTo: $0.proposal, over: proposal) }
-            return NewTableColumn(field: field, proposal: proposal, settings: settings ?? proposal)
+        var edits = setAsideEdits
+        for column in columns {
+            edits[column.id] = column.edits
         }
+        columns = fields.map { field in
+            NewTableColumn(
+                field: field,
+                proposal: .proposed(name: field.name, type: proposedType(field.inferredType)),
+                edits: edits.removeValue(forKey: field.name) ?? NewTableColumnEdits()
+            )
+        }
+        setAsideEdits = edits.filter { !$0.value.isEmpty }
     }
 
     internal var includesEveryColumn: Bool {

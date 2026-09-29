@@ -110,19 +110,72 @@ struct NewTableDraftTests {
         #expect(try settings(of: "amount", in: draft).type == "REAL")
     }
 
-    @Test("A setting changed and then put back follows the read like one never changed")
-    func revertedSettingFollowsTheRead() throws {
+    /// Nothing on screen tells a type the user picked from one the sheet proposed, so a type picked
+    /// last is the one kept, whether or not it is also what the sheet had proposed.
+    @Test("A setting changed and then put back to the proposal stays what the user picked")
+    func settingPutBackStaysPicked() throws {
         var draft = makeDraft([field("amount")])
         try edit("amount", in: &draft) { $0.type = "BIGINT" }
         try edit("amount", in: &draft) { $0.type = "TEXT" }
 
         draft.load(fields: [field("amount", .integer)], proposingType: Self.sqlType)
 
-        #expect(try settings(of: "amount", in: draft).type == "INTEGER")
+        #expect(try settings(of: "amount", in: draft).type == "TEXT")
     }
 
-    /// The proposal a later read compares against is the one that read made, not the first one, so
-    /// the user's edit is judged against what the sheet was showing when it was made.
+    @Test("Writing back what the sheet shows records no edit")
+    func writingBackTheShownSettingsIsNotAnEdit() throws {
+        var draft = makeDraft([field("amount", .integer)])
+        try edit("amount", in: &draft) {
+            $0.type = "INTEGER"
+            $0.include = true
+            $0.isNullable = true
+        }
+        draft.setAllIncluded(true)
+
+        #expect(draft.columns.allSatisfy { $0.edits.isEmpty })
+    }
+
+    /// ` 42 ` reads as text untrimmed and as a number trimmed, so Trim on and then off again.
+    @Test("A type the user chose stays after a read proposes that same type and a later read another")
+    func chosenTypeOutlivesAMatchingProposal() throws {
+        var draft = makeDraft([field("code")])
+        try edit("code", in: &draft) { $0.type = "INTEGER" }
+
+        draft.load(fields: [field("code", .integer)], proposingType: Self.sqlType)
+        #expect(try settings(of: "code", in: draft).type == "INTEGER")
+
+        draft.load(fields: [field("code")], proposingType: Self.sqlType)
+        #expect(try settings(of: "code", in: draft).type == "INTEGER")
+    }
+
+    /// A `;` picked by mistake on a comma-separated file reads one field, `id,name,notes`, and picking
+    /// `,` again brings the three back.
+    @Test("A field one read misses gets its edits back when a later read has it again")
+    func editsReturnWithAFieldOneReadMissed() throws {
+        var draft = makeDraft([field("id", .integer), field("name"), field("notes")])
+        try edit("id", in: &draft) {
+            $0.name = "person_id"
+            $0.isPrimaryKey = true
+        }
+        try edit("notes", in: &draft) { $0.include = false }
+
+        draft.load(fields: [field("id,name,notes")], proposingType: Self.sqlType)
+        #expect(draft.fields == ["id,name,notes"])
+        #expect(try settings(of: "id,name,notes", in: draft) == .proposed(name: "id,name,notes", type: "TEXT"))
+        try edit("id,name,notes", in: &draft) { $0.name = "everything" }
+
+        draft.load(fields: [field("id", .integer), field("name"), field("notes")], proposingType: Self.sqlType)
+        #expect(try settings(of: "id", in: draft) == NewTableColumnSettings(
+            include: true, name: "person_id", type: "INTEGER", isPrimaryKey: true, isNullable: true, defaultValue: ""
+        ))
+        #expect(try settings(of: "name", in: draft) == .proposed(name: "name", type: "TEXT"))
+        #expect(try settings(of: "notes", in: draft).include == false)
+
+        draft.load(fields: [field("id,name,notes")], proposingType: Self.sqlType)
+        #expect(try settings(of: "id,name,notes", in: draft).name == "everything")
+    }
+
     @Test("An edit survives several re-reads, and a later read's own proposals stay unedited")
     func editsSurviveSeveralReads() throws {
         var draft = makeDraft([field("amount"), field("code")])
@@ -135,7 +188,7 @@ struct NewTableDraftTests {
         #expect(try settings(of: "code", in: draft).name == "sku")
     }
 
-    @Test("Fields follow the new read: a vanished one is dropped, a new one is proposed, order is the file's")
+    @Test("Fields follow the new read: a vanished one leaves the list, a new one is proposed, order is the file's")
     func fieldsFollowTheNewRead() throws {
         var draft = makeDraft([field("a"), field("b"), field("c")])
         try edit("b", in: &draft) { $0.name = "renamed" }
