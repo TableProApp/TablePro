@@ -131,11 +131,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
-        PostgreSQLMaintenance.operations.map(\.name)
+        PostgreSQLMaintenance.operations(capabilities: versionedCapabilities).map(\.name)
     }
 
     func maintenanceOperations() -> [PluginMaintenanceOperation]? {
-        PostgreSQLMaintenance.operations
+        PostgreSQLMaintenance.operations(capabilities: versionedCapabilities)
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {

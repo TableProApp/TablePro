@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.
 - Empty Check Constraints tab and no check constraints in MCP `describe_table` on CockroachDB.
 - Connect errors a server answered through PGlite, such as a missing database, reported as an unreachable socket server.
+- REINDEX VERBOSE offered on PostgreSQL 9.1 to 9.4, where it fails, and ignored when reindexing a whole database.
 
 ## [0.76.1] - 2026-09-29
 
