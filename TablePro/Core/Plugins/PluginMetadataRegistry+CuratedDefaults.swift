@@ -549,7 +549,7 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsCheckConstraints: true,
-                    supportsCheckConstraintEditing: true,
+                    supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred
                 ),
