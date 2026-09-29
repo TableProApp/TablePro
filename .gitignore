@@ -175,6 +175,7 @@ Native/DamengBridge/**/target/
 # slipped past it and was committed, pointing at one machine's absolute path. Every checkout
 # elsewhere then got a dangling link and `mkdir -p` in build-dameng.sh failed on it.
 Native/DamengBridge/lib
+Native/HanaBridge/bin
 
 # Issue analysis blueprints (local only)
 .analysis/

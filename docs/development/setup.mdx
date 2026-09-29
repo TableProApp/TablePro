@@ -18,6 +18,8 @@ runs on, not what you build on.
 | SwiftLint | any | `brew install swiftlint`. The release workflow runs `swiftlint lint --strict` |
 | SwiftFormat | any | `brew install swiftformat`. Not run in CI |
 | GitHub CLI | any | `brew install gh`. Optional: `scripts/download-libs.sh` falls back to `curl` |
+| Go | 1.27.1 | `brew install go`. Only for the SAP HANA plugin: run `scripts/build-hana.sh` with no argument, which builds the helper for both architectures, before building `HanaDriver` or `AllPlugins`. A thin `arm64` or `x86_64` helper only works in a build of that one architecture. The script builds with exactly 1.27.1 and fetches it when the installed `go` is another release |
+| Rust | 1.91.1 | Install [rustup](https://rustup.rs). Only for the Dameng plugin: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins`. The script installs 1.91.1 through rustup |
 
 The Swift language mode comes from `SWIFT_VERSION = 6.0` in `Configs/Base.xcconfig`, and each
 package under `Packages/` sets its own through `swift-tools-version: 6.0`. Never pass
@@ -201,6 +203,16 @@ It is generated, not committed. Run `scripts/generate-project.sh`.
 
 `Libs/` is empty or stale. Run `scripts/download-libs.sh`, or `scripts/download-libs.sh --force` to
 overwrite what is already there.
+
+### `Build input file cannot be found: '…/tablepro-hana-helper'`
+
+`HanaDriver` and `HanaDriverTests` copy the SAP HANA helper into their bundle, and Xcode does not
+build it. Run `scripts/build-hana.sh` with no argument, then build again.
+
+### `…/tablepro-hana-helper has no … slice`
+
+The helper was built thin for the other architecture, and every architecture Xcode builds needs a
+slice. Run `scripts/build-hana.sh` with no argument, which builds both, then build again.
 
 ### `Libs does not match the checksums committed in git.`
 

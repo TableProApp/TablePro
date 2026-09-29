@@ -84,6 +84,7 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 | MongoDB | Plugin |
 | Oracle Database | Plugin |
 | Dameng DM8 | Plugin |
+| SAP HANA | Plugin |
 | DuckDB | Plugin |
 | Beancount | Plugin |
 | Cassandra / ScyllaDB | Plugin |

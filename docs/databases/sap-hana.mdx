@@ -1,0 +1,165 @@
+---
+title: SAP HANA
+description: SAP HANA Cloud and on-premises HANA 2.0, with TLS, schema browsing, catalog DDL and plans
+---
+
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Give a HANA Cloud instance its SQL endpoint host, a user and a password, and leave the rest: port `443` and **Verify Identity**, checked against the certificates your Mac already trusts, are the defaults. An on-premises server needs its own port, listed under [Connection settings](#connection-settings). The driver speaks HANA's SQL protocol through SAP's open source [go-hdb](https://github.com/SAP/go-hdb) library, so the SAP HANA client, ODBC and SQLDBC stay off your Mac.
+
+<RegistryPlugin name="SAP HANA" plugin="SAP HANA Driver" />
+
+## Quick setup
+
+Click **New Connection…**, choose **SAP HANA**, enter the host, username and password, and click **Save & Connect**. SAP HANA Cloud and SAP HANA 2.0 servers connect, HANA Express included.
+
+In SAP HANA Cloud Central, the instance's **SQL Endpoint** reads `host:443`. The part before `:443` goes in **Host**.
+
+## Connection settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | - | SQL endpoint or server hostname |
+| **Port** | `443` | The HANA Cloud port. On-premises ports are in the next table |
+| **Schema** | - | Optional. The schema the session starts in. Empty uses your user's default schema |
+| **Username** | - | Database user |
+| **Password** | - | Stored in the macOS Keychain |
+| **SSL Mode** | Verify Identity | On the **Network** tab. There is no fallback to plain TCP |
+| **TLS Server Name** | Empty | On the **Options** tab. The name **Verify Identity** checks the certificate against. Empty uses the host |
+
+Schema names are case-sensitive. HANA stores an unquoted name in uppercase, so a schema created as `app` is `APP`, and **Schema** has to say `APP`.
+
+On premises, each database has its own SQL port, built from the two-digit instance number `NN`:
+
+| Database | Port |
+|---|---|
+| System database | `3NN13` |
+| First tenant database, or a single-container system | `3NN15` |
+| Further tenant databases | From `3NN40` on, so `3NN41` for the next one |
+| HANA Express system database | `39013` |
+| HANA Express tenant `HXE` | `39015` |
+
+`SELECT DATABASE_NAME, SQL_PORT FROM SYS_DATABASES.M_SERVICES WHERE SQL_PORT <> 0`, run on the system database, lists every tenant's port.
+
+One connection reaches one database. A tenant and the system database are two connections, so there is no database to switch between; the schema picker switches schema instead, on the same session and without reconnecting. `SYS`, `SYS_DATABASES` and HANA's own `_SYS_` schemas are system schemas: the schema picker lists them last, and the sidebar shows them only with [**Show system databases and schemas**](/customization/general-settings#tabs-and-sidebar) on, or when one is the schema in use. An open tab stays on the schema it started with. See [Tabs](/features/tabs#where-a-tab-points).
+
+## Connection URL
+
+```text
+hdb://user:password@host:443/SCHEMA
+```
+
+The path is the starting schema. See [Connection URL Reference](/connections/urls).
+
+## Authentication
+
+Username and password, over HANA's SCRAM-PBKDF2-SHA256 exchange, so the password itself never crosses the network. X.509 certificate, JWT, SAML, Kerberos and LDAP logons do not connect: log on as a database user with a password.
+
+**Client Certificate** and **Client Key** on the **Network** tab are for a server that requires mutual TLS, and the password is still asked for. Both take PEM files, and the key must not be encrypted.
+
+## Running and stopping queries
+
+**Stop** sends `ALTER SYSTEM CANCEL SESSION` for your session from a second session under the same user. The statement ends with its changes rolled back, and the connection stays.
+
+The connection closes instead when the server refuses that statement or takes more than 10 seconds to answer it, and when the statement is still running 30 seconds after **Stop**. If the driver itself has not answered 40 seconds after **Stop**, it is shut down. Each case reconnects on the schema you were using, without your temporary tables and session variables. [Troubleshooting](#stop-reconnects-instead-of-cancelling) says what to change.
+
+The [query timeout](/customization/general-settings#query-timeout) sends the same cancel and closes the connection in the same cases, short of shutting the driver down. When the cancel works, the error says the timeout was reached.
+
+### Explain
+
+**Query > Explain Query** runs `EXPLAIN PLAN` for the statement, reads the operators HANA stored in `SYS.EXPLAIN_PLAN_TABLE`, and deletes them again. The statement itself does not run. Each line of the plan is one operator, indented under its parent, with its table, estimated output rows and subtree cost. On HANA Cloud and HANA 2.0 SPS07 or later, the user needs the `OPTIMIZER ADMIN` privilege. See [EXPLAIN Visualization](/features/explain-visualization).
+
+## Values
+
+| HANA type | Shown as |
+|---|---|
+| `DATE` | `2024-01-31` |
+| `TIME` | `13:45:00` |
+| `SECONDDATE` | `2024-01-31 13:45:00` |
+| `TIMESTAMP` | `2024-01-31 13:45:00.1234567`, always seven fraction digits |
+| `DECIMAL`, `SMALLDECIMAL` | Exact, with the column's scale kept: `1.500`. A floating `DECIMAL` with an exponent past 64 in either direction uses E notation |
+| `REAL`, `DOUBLE` | The fewest digits that read back as the same number. Plain notation from `1e-7` up to `1e21`, so `1000000` rather than `1e+06`, and exponent notation outside that range |
+| `BOOLEAN` | `TRUE`, `FALSE` |
+| `NCLOB`, `CLOB`, `TEXT`, `BINTEXT` | Text, up to 64 MiB |
+| `BLOB`, `VARBINARY`, `BINARY` | Binary, up to 64 MiB for a `BLOB` |
+| `ST_GEOMETRY`, `ST_POINT` | Hex WKB. `shape.ST_AsWKT()` in the query returns WKT text instead |
+
+Dates and times are the stored wall-clock value, with no time zone added. HANA's empty date is a value rather than `NULL` and shows as `0000-00-00`, with `00:00:00` and the fraction after it on the longer types.
+
+A value longer than 64 MiB is cut at 64 MiB, and the result's message counts the cut cells.
+
+Query parameters and values typed into the grid go to the server as bound parameters, never pasted into the SQL. Dates and times take the forms in the table, the empty date included, with a `T` between date and time also accepted and the fraction optional. `BOOLEAN` takes `TRUE`, `FALSE`, `1` or `0`. A `DECIMAL` value with more fraction digits than the column's scale is refused rather than rounded.
+
+## Structure
+
+The **Structure** tab reads the columns of tables and views, the primary key, identity columns, indexes with their type, and foreign keys with their update and delete rules, from HANA's `SYS` catalog views.
+
+The DDL view is built from the same catalog: `CREATE COLUMN TABLE` or `CREATE ROW TABLE`, each type with its length and scale, defaults, `NOT NULL`, identity and the primary key, followed by a `CREATE INDEX` for each other index and a `COMMENT ON` for each comment. A unique constraint comes back as a `CREATE UNIQUE INDEX`. Partitioning and other table options are not in it. A view's DDL is `CREATE VIEW` over the definition HANA stored.
+
+## SSL/TLS
+
+| Mode | What happens |
+|---|---|
+| **Disabled** | Plain TCP. HANA Cloud refuses it |
+| **Preferred** | TLS, certificate not checked. There is no plain fallback, so this is the same as Required |
+| **Required (skip verify)** | TLS, certificate not checked |
+| **Verify CA** | Certificate chain checked against **CA Certificate**, which this mode requires. The hostname is not checked |
+| **Verify Identity** | Chain checked against **CA Certificate**, or against the macOS trust store when it is empty, and the certificate must name **TLS Server Name**, or the host when that is empty |
+
+Keep **Verify Identity** for HANA Cloud, whose certificates chain to DigiCert roots macOS already trusts. For an on-premises server with a self-signed or internal certificate, point **CA Certificate** at the certificate or the CA that signed it. Every mode that encrypts uses TLS 1.2 or later.
+
+## Limitations
+
+- No SSH tunnel, SOCKS proxy, Cloudflare tunnel or tunnel command. For an on-premises server, forward a port yourself, for example `ssh -N -L 30015:hana-host:30015 bastion`, connect to `127.0.0.1`, and put `hana-host` in **TLS Server Name** so Verify Identity still passes.
+- **Structure** saves nothing. Add or change columns, indexes and keys with `ALTER TABLE` in the SQL editor.
+- Procedures, functions and triggers are not in the sidebar. Read one with `SELECT DEFINITION FROM SYS.PROCEDURES WHERE SCHEMA_NAME = 'APP' AND PROCEDURE_NAME = 'P'`, or from `SYS.FUNCTIONS` and `SYS.TRIGGERS` by their own name columns.
+- Every statement commits as it runs. A batch or a grid save that fails partway keeps the statements before the failure, so check what landed before running it again. A statement that binds a `BLOB`, `CLOB` or `NCLOB` value runs in a transaction of its own, which resets the session's `SET TRANSACTION` isolation level and access mode.
+- **matches regex** in the filter bar runs as a plain contains match. For a pattern, write `WHERE col LIKE_REGEXPR 'pattern'` in the SQL editor.
+- A single result larger than 2 GiB fails with "The SAP HANA driver failed unexpectedly." Export and [Copy and duplicate](/features/copy-objects) read a whole table or result into memory before writing, and stop at 5,000,000 rows. Export a larger table in slices, with a `WHERE` on a key range or `LIMIT` and `OFFSET`.
+- [Compare & Sync](/features/compare-sync) is not available.
+- A `CALL` with query parameters runs, but its result sets are not shown, and a procedure with `OUT` parameters is refused. Write the arguments into the statement to see the result sets.
+
+## Troubleshooting
+
+### authentication failed
+
+HANA does not say which part was wrong. Check the username and password, that the user is not locked or deactivated, and that it logs on with a password rather than only through SSO or a certificate.
+
+### The server's TLS certificate could not be verified against any trusted root.
+
+The chain does not end at a certificate on your Mac. Set **CA Certificate** to the server's certificate or its CA as PEM. To test without it, **Required (skip verify)** encrypts without checking.
+
+### The server's TLS certificate does not match the hostname being connected to.
+
+Connecting by IP address, or through a name the certificate does not carry, fails **Verify Identity**. Put the name the certificate carries in **TLS Server Name**, or use **Verify CA**, which checks the chain and not the name.
+
+### The server does not accept encrypted connections but TablePro is configured to require TLS.
+
+The port answered in plain TCP. An on-premises or HANA Express server speaks TLS only once it has a server certificate. Configure one on the server, or set **SSL Mode** to **Disabled** for a server on a private network.
+
+### TablePro could not reach the SAP HANA server.
+
+Nothing answered at the host and port. Check both against the instance's SQL endpoint. A HANA Cloud instance accepts connections only from the IP addresses allowed in **SAP HANA Cloud Central**, under the instance's **Connections** settings, so add your Mac's public address there. The same message with "within 30 seconds" means the server took longer than that to answer.
+
+### Lost connection to the SAP HANA server.
+
+The network dropped, the server ended the session, or the driver failed. A driver failure drops that connection's session and TablePro keeps running. The connection reconnects on its own. Right after **Stop**, see [Stop reconnects instead of cancelling](#stop-reconnects-instead-of-cancelling).
+
+### insufficient privilege: …
+
+On **Query > Explain Query**, the user lacks `OPTIMIZER ADMIN`. Anywhere else, it lacks a privilege on the object the statement names. An administrator grants the first with `GRANT OPTIMIZER ADMIN TO user`.
+
+### Stop reconnects instead of cancelling
+
+The statement fails with "Lost connection to the SAP HANA server." for one of three reasons: the server refused `ALTER SYSTEM CANCEL SESSION` or did not answer it within 10 seconds, the statement was still running 30 seconds after **Stop**, or the driver had not answered 40 seconds after it. SAP files stopping a session under the `SESSION ADMIN` system privilege, which reaches every other user's session too, so check that the user holds it. With `GRANT SESSION ADMIN TO user` in place the server accepts the cancel, and a statement that takes longer than 30 seconds to stop still reconnects.
+
+### A schema or table is missing
+
+The `SYS` catalog views show only the objects your user holds a privilege on. `CATALOG READ` lists all of them without granting access to their data.
+
+## Related
+
+- [SSL/TLS](/connections/ssl)
+- [EXPLAIN Visualization](/features/explain-visualization)
+- [Query Parameters](/features/query-parameters)
+- [Plugins & Themes](/features/plugins)

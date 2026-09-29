@@ -84,6 +84,7 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 | MongoDB | 插件 |
 | Oracle Database | 插件 |
 | 达梦 DM8 | 插件 |
+| SAP HANA | 插件 |
 | DuckDB | 插件 |
 | Cassandra / ScyllaDB | 插件 |
 | Etcd | 插件 |

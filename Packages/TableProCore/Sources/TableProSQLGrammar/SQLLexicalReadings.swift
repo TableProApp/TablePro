@@ -100,7 +100,8 @@ enum SQLLexicalRelevance {
     static func facts(triggeredBy text: NSString) -> SQLLexicalGrammar {
         let length = text.length
         var facts: SQLLexicalGrammar = [
-            .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements, .cqlBatches,
+            .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
+            .sqlScriptBlocks, .cqlBatches,
         ]
         var blockCommentOpeners = 0
         var index = 0

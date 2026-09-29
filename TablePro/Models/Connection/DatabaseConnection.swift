@@ -380,6 +380,24 @@ extension DatabaseConnection {
     static let preview = DatabaseConnection(name: "Preview Connection")
 }
 
+// MARK: - Device-Local State
+
+internal extension DatabaseConnection {
+    func adoptingDeviceLocalState(from local: DatabaseConnection) -> DatabaseConnection {
+        var adopted = self
+        adopted.localOnly = local.localOnly
+        adopted.isSample = local.isSample
+        adopted.passwordSource = local.passwordSource
+        adopted.credentialMode = local.credentialMode
+        adopted.externalAccess = local.externalAccess
+        adopted.cloudflareTunnelMode = local.cloudflareTunnelMode
+        adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
+        adopted.socksProxyMode = local.socksProxyMode
+        adopted.tunnelCommandMode = local.tunnelCommandMode
+        return adopted
+    }
+}
+
 // MARK: - Display Helpers
 
 extension DatabaseConnection {
