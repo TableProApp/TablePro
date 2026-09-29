@@ -274,13 +274,14 @@ private struct Reader {
         return isAtEnd ? .rename(pairs, kind: .table) : .other
     }
 
-    /// `CREATE TEMPORARY TABLE people`, or SQLite's `CREATE TABLE temp.people`, shadows the real
-    /// `people` for the rest of the session, so a bare `DROP TABLE people` after it drops the
-    /// temporary one.
+    /// `CREATE TEMPORARY TABLE people`, or SQLite's `CREATE TABLE temp.people` and
+    /// `CREATE VIRTUAL TABLE temp.people USING fts5(...)`, shadows the real `people` for the rest of
+    /// the session, so a bare `DROP TABLE people` after it drops the temporary one.
     mutating func createTemporaryTable(dialect: TableEditDialect) -> TableEditStatement {
         if accept("OR"), !accept("REPLACE") { return .other }
         _ = accept("GLOBAL") || accept("LOCAL") || accept("PRIVATE")
         let saysTemporary = accept("TEMPORARY") || accept("TEMP")
+        _ = accept("VIRTUAL")
         guard accept("TABLE") || accept("VIEW") else { return .other }
         var lookahead = self
         if lookahead.accept("IF"), lookahead.accept("NOT"), lookahead.accept("EXISTS") {

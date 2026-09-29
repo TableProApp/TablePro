@@ -340,6 +340,24 @@ struct CommittedTableEditsTests {
         #expect(sqliteQualified.temporaryNames == ["people"])
     }
 
+    @Test("A temporary table renamed onto a real table's name keeps shadowing it")
+    func renamedTemporaryTable() {
+        var hazards = TableNameHazards()
+        #expect(
+            Self.edits(
+                ["CREATE TEMP TABLE scratch (id int)", "ALTER TABLE scratch RENAME TO people", "DROP TABLE people"],
+                on: .sqlite, database: "/tmp/app.db", schema: nil, hazards: &hazards
+            ).isEmpty
+        )
+        #expect(hazards.temporaryNames == ["scratch", "people"])
+        var qualified = TableNameHazards()
+        _ = Self.edits(
+            ["ALTER TABLE temp.scratch RENAME TO orders"], on: .sqlite, database: "/tmp/app.db", schema: nil,
+            hazards: &qualified
+        )
+        #expect(qualified.temporaryNames == ["orders"])
+    }
+
     @Test("A temporary table is remembered even when its transaction is one the text cannot judge")
     func temporaryTableInsideATransaction() {
         var hazards = TableNameHazards()

@@ -34,12 +34,26 @@ struct TableNameHazards: Sendable, Equatable {
             guard dialect.temporaryTablesShadowRealOnes,
                   let table = name.parts.last.flatMap(dialect.folded) else { return }
             temporaryNames.insert(table.lowercased())
+        case .rename(let pairs, _):
+            guard dialect.temporaryTablesShadowRealOnes else { return }
+            for pair in pairs where isTemporary(pair.from, dialect: dialect) {
+                guard let target = pair.to.parts.last.flatMap(dialect.folded) else { continue }
+                temporaryNames.insert(target.lowercased())
+            }
         case .losesSchemaContext, .runsUnseenCode:
             namesMayBeShadowed = true
-        case .drop, .rename, .beginsTransaction, .commits, .rollsBack, .rollsBackToSavepoint,
+        case .drop, .beginsTransaction, .commits, .rollsBack, .rollsBackToSavepoint,
              .losesTransactionTracking, .selectsDatabase, .controlsFlow, .other:
             break
         }
+    }
+
+    /// A temporary table keeps shadowing under the name it is renamed to, as SQLite's
+    /// `ALTER TABLE scratch RENAME TO people` does.
+    private func isTemporary(_ name: SQLObjectName, dialect: TableEditDialect) -> Bool {
+        if name.parts.dropLast().contains(where: { dialect.namesTemporaryContainer($0.text) }) { return true }
+        guard let table = name.parts.last.flatMap(dialect.folded) else { return false }
+        return temporaryNames.contains(table.lowercased())
     }
 
     /// Whether `name`, placed as `table`, may be something other than the table the app keeps

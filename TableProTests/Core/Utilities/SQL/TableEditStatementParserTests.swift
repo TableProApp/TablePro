@@ -271,6 +271,11 @@ struct TableEditStatementParserTests {
     @Test("A temporary table's creation is read with its name")
     func temporaryTableCreation() throws {
         #expect(
+            try Self.parse("CREATE VIRTUAL TABLE temp.people USING fts5(body)", .sqlite)
+                == .createsTemporaryTable(Self.name(Self.bare("temp"), Self.bare("people")))
+        )
+        #expect(try Self.parse("CREATE VIRTUAL TABLE people USING fts5(body)", .sqlite) == .other)
+        #expect(
             try Self.parse("CREATE TEMPORARY TABLE IF NOT EXISTS people (id int)", .mysql)
                 == .createsTemporaryTable(Self.name(Self.bare("people")))
         )
