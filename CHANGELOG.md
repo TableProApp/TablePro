@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
+
 ## [0.76.1] - 2026-09-29
 
 ### Changed
