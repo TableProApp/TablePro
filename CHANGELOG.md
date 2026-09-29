@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - **Local only** connections taking edits and deletions made on another device.
+- Oracle, Snowflake and Dameng `NUMBER` rounded or left empty, and `DECIMAL` losing digits, in Parquet exports.
+- Oracle `BINARY_FLOAT` and `BINARY_DOUBLE` columns written as text in Parquet exports.
 
 ## [0.76.1] - 2026-09-29
 

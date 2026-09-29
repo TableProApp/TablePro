@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 
 struct MarkdownExportEscapingTests {
-
     /// A pipe closes a cell, so a value holding one would end the cell early and shift every
     /// column after it.
     @Test("A pipe in a value is escaped")
@@ -66,7 +65,6 @@ struct MarkdownExportEscapingTests {
 }
 
 struct HTMLExportEscapingTests {
-
     /// Every value in an export comes from the database, so a value holding markup reaches a file
     /// someone opens in a browser.
     @Test("Markup characters are escaped")
@@ -98,7 +96,6 @@ struct HTMLExportEscapingTests {
 }
 
 struct XMLExportEscapingTests {
-
     @Test("The five predefined entities are escaped")
     func entitiesAreEscaped() {
         #expect(XMLEscaping.text("<a & b>") == "&lt;a &amp; b&gt;")
@@ -139,43 +136,92 @@ struct XMLExportEscapingTests {
 }
 
 struct ParquetTypeMapperTests {
+    private func mapped(_ typeName: String, on databaseTypeId: String = "PostgreSQL") -> String {
+        ParquetTypeMapper.duckDBType(forColumnType: typeName, databaseTypeId: databaseTypeId)
+    }
 
     @Test("Integer families map to BIGINT")
     func integerFamilies() {
         for type in ["INT", "int4", "BIGINT", "smallint", "TINYINT", "SERIAL", "MEDIUMINT"] {
-            #expect(ParquetTypeMapper.duckDBType(forColumnType: type) == "BIGINT", "\(type)")
+            #expect(mapped(type) == "BIGINT", "\(type)")
         }
     }
 
-    @Test("Decimal families map to DOUBLE")
-    func decimalFamilies() {
-        for type in ["DECIMAL(10,2)", "numeric", "FLOAT", "double precision", "REAL", "money"] {
-            #expect(ParquetTypeMapper.duckDBType(forColumnType: type) == "DOUBLE", "\(type)")
+    @Test("Floating families and undeclared exact numerics map to DOUBLE")
+    func doubleFamilies() {
+        for type in ["numeric", "FLOAT", "double precision", "REAL", "money"] {
+            #expect(mapped(type) == "DOUBLE", "\(type)")
         }
+    }
+
+    @Test("An exact numeric with no usable declaration maps to DOUBLE")
+    func undeclaredExactNumericIsDouble() {
+        let types = ["number", "NUMBER", "NUMBER(*,0)", "numeric", "numeric(65,30)", "NUMBER(2,5)"]
+        for type in types {
+            #expect(mapped(type, on: "Oracle") == "DOUBLE", "\(type)")
+        }
+    }
+
+    @Test("A declared exact numeric keeps its precision and scale")
+    func declaredExactNumericKeepsPrecision() {
+        let expected: [String: String] = [
+            "NUMBER(10,2)": "DECIMAL(10,2)",
+            "number(10, 2)": "DECIMAL(10,2)",
+            "NUMBER(19)": "DECIMAL(19,0)",
+            "number(38)": "DECIMAL(38,0)",
+            "DECIMAL(10,2)": "DECIMAL(10,2)",
+            "numeric(38,10)": "DECIMAL(38,10)"
+        ]
+        for (type, duckDBType) in expected {
+            #expect(mapped(type, on: "Oracle") == duckDBType, "\(type)")
+        }
+    }
+
+    @Test("An exact numeric declared with scale 0 and at most 18 digits maps to BIGINT")
+    func exactNumericWithScaleZeroIsAnInteger() {
+        let types = ["number(10)", "NUMBER(18)", "NUMBER(18,0)", "number(1, 0)", "DECIMAL(10,0)", "numeric(5)"]
+        for type in types {
+            #expect(mapped(type, on: "Oracle") == "BIGINT", "\(type)")
+        }
+    }
+
+    @Test("SQLite-family engines ignore a declared precision, so their exact numerics map to DOUBLE")
+    func sqliteFamilyIgnoresDeclaredPrecision() {
+        for engine in ["SQLite", "libSQL", "Turso", "Cloudflare D1"] {
+            for type in ["DECIMAL(10,2)", "NUMERIC(10)", "number(19)"] {
+                #expect(mapped(type, on: engine) == "DOUBLE", "\(type) on \(engine)")
+            }
+        }
+    }
+
+    @Test("Oracle's binary floating point types map to DOUBLE")
+    func oracleBinaryFloatsAreDoubles() {
+        #expect(mapped("binary_float", on: "Oracle") == "DOUBLE")
+        #expect(mapped("BINARY_DOUBLE", on: "Oracle") == "DOUBLE")
     }
 
     @Test("Temporal families keep their own types")
     func temporalFamilies() {
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "DATE") == "DATE")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "timestamp with time zone") == "TIMESTAMP")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "datetime") == "TIMESTAMP")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "TIME") == "TIME")
+        #expect(mapped("DATE") == "DATE")
+        #expect(mapped("timestamp with time zone") == "TIMESTAMP")
+        #expect(mapped("datetime") == "TIMESTAMP")
+        #expect(mapped("TIME") == "TIME")
     }
 
     @Test("Booleans and binaries map to their own types")
     func booleanAndBinary() {
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "BOOLEAN") == "BOOLEAN")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "bytea") == "BLOB")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "VARBINARY(50)") == "BLOB")
+        #expect(mapped("BOOLEAN") == "BOOLEAN")
+        #expect(mapped("bytea") == "BLOB")
+        #expect(mapped("VARBINARY(50)") == "BLOB")
     }
 
     /// An unknown type is written as text rather than guessed at. A wrong guess writes a Parquet
     /// file whose column type disagrees with the data in it.
     @Test("An unknown type falls back to VARCHAR")
     func unknownFallsBack() {
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "geography") == "VARCHAR")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "") == "VARCHAR")
-        #expect(ParquetTypeMapper.duckDBType(forColumnType: "hstore") == "VARCHAR")
+        #expect(mapped("geography") == "VARCHAR")
+        #expect(mapped("") == "VARCHAR")
+        #expect(mapped("hstore") == "VARCHAR")
     }
 
     /// A type name carries its width in parentheses and sometimes a modifier after a space, and
@@ -211,7 +257,6 @@ struct ParquetTypeMapperTests {
 }
 
 struct PluginRowWritersTests {
-
     /// The values in an export come from the database rather than from the person opening the
     /// file, so a value that a spreadsheet would run as a formula is neutralised.
     @Test("Formula leads are neutralised and the value is then quoted")

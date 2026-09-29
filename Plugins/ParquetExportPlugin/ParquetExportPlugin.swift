@@ -109,7 +109,8 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
             case .header(let header):
                 columns = header.columns
                 let types = columns.map { column in
-                    ParquetTypeMapper.duckDBType(forColumnType: declaredTypes[column] ?? "")
+                    ParquetTypeMapper.duckDBType(
+                        forColumnType: declaredTypes[column] ?? "", databaseTypeId: dataSource.databaseTypeId)
                 }
                 try staging.createTable(columns: columns, types: types)
                 created = true
