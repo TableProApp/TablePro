@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
 - CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
 - MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
+- XLSX export writing duplicate sheet names that Excel only opens after a repair.
 
 ## [0.76.1] - 2026-09-29
 
