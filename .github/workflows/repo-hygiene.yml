@@ -158,6 +158,9 @@ jobs:
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
 
+      - name: Validate the DMG script's arguments
+        run: bash scripts/ci/test_create_dmg_args.sh
+
       - name: Validate changelog contributor credits
         run: python3 scripts/ci/test_changelog_credits.py
 
