@@ -147,8 +147,8 @@ enum QueryClassifier {
                 worst.escalated(with: statementClassification(inner, grammar: grammar, databaseType: databaseType))
             }
         }
-        if runsPLSQL(statement, grammar: grammar) {
-            return plsqlBlockClassification(statement, grammar: grammar, databaseType: databaseType)
+        if runsProceduralBlock(statement, grammar: grammar) {
+            return proceduralBlockClassification(statement, grammar: grammar, databaseType: databaseType)
         }
         return sqlClassification(statement, grammar: grammar, databaseType: databaseType)
     }
@@ -167,8 +167,8 @@ enum QueryClassifier {
         if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
             return batch.contains { statementDeletesEverything($0, grammar: grammar, databaseType: databaseType) }
         }
-        if runsPLSQL(statement, grammar: grammar) {
-            return plsqlBlockDeletesEverything(statement, grammar: grammar)
+        if runsProceduralBlock(statement, grammar: grammar) {
+            return proceduralBlockDeletesEverything(statement, grammar: grammar)
         }
         let code = SQLCodeProjection.code(of: statement, grammar: grammar).uppercased()
         guard leadingCodeKeyword(code) == "DELETE" else { return false }

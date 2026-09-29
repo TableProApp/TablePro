@@ -342,7 +342,7 @@ extension MainContentCoordinator {
         let subject = operation.target(tableName) ?? scope.database
         Task { [weak self] in
             guard let self else { return }
-            let decision = await ExecutionGateProvider.shared.authorize(
+            let decision = await self.executionGate.authorize(
                 OperationRequest(
                     connectionId: self.connectionId,
                     databaseType: self.connection.type,

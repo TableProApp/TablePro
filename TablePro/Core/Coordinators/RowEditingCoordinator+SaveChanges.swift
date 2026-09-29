@@ -114,7 +114,7 @@ extension RowEditingCoordinator {
             /// The gate and the confirmation alert show the plan with its values written in.
             /// Approving `UPDATE "users" SET "email" = ? WHERE "id" = ?` is approving nothing:
             /// it names no row and no value.
-            let decision = await ExecutionGateProvider.shared.authorize(
+            let decision = await parent.executionGate.authorize(
                 OperationRequest(
                     connectionId: connId,
                     databaseType: parent.connection.type,

@@ -26,12 +26,12 @@ The certificate rows appear only once **SSL Mode** is anything but Disabled. Eac
 
 | Field | When it appears | What it takes |
 |---|---|---|
-| **Certificate**, under **CA Certificate** | Verify CA and Verify Identity only | The PEM or DER certificate the server's certificate chains to, for example `/path/to/ca-cert.pem`. Saving without it is blocked, except under Verify Identity on ClickHouse and Trino, which check the system trust store when it is empty |
+| **Certificate**, under **CA Certificate** | Verify CA and Verify Identity only | The PEM or DER certificate the server's certificate chains to, for example `/path/to/ca-cert.pem`. Saving without it is blocked, except under Verify Identity on ClickHouse, Kafka, SAP HANA and Trino, which check the system trust store when it is empty |
 | **Client Certificate** | Any mode but Disabled | Your certificate, for a server that enforces mutual TLS. Optional otherwise |
 | **Client Key** | Any mode but Disabled | The matching private key. Required once a client certificate is set |
 | **Key Passphrase** | Once **Client Key** has a path, on drivers that support it (Cassandra and ScyllaDB) | The passphrase of an encrypted key. Stored in the Keychain |
 
-SQL Server shows no certificate fields at all and verifies against the system trust store. See [SQL Server](/databases/mssql#limitations).
+SQL Server shows no certificate fields at all and verifies against the system trust store. See [SQL Server](/databases/mssql#limitations). Under Verify Identity, SAP HANA and Kafka verify against the system trust store when **Certificate** is left empty. See [SAP HANA](/databases/sap-hana#ssl%2Ftls).
 
 ## Per-driver defaults
 
@@ -46,6 +46,7 @@ A new connection starts on the mode that matches the driver's own default, and s
 | MongoDB, Redis, Cassandra, ClickHouse, Elasticsearch, Typesense, SurrealDB, Weaviate | Disabled | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
 | etcd | Disabled | Nothing. The driver never reads these fields. Set **TLS Mode** on the Options section instead, and see [etcd](/databases/etcd) |
 | Trino | Disabled | Sends every request over HTTPS with no fallback, again like Required |
+| SAP HANA | Verify Identity | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
 | Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. A red warning appears under the picker; use Required to enforce TCPS |
 | Snowflake, BigQuery, Spanner, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
 | SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS section |

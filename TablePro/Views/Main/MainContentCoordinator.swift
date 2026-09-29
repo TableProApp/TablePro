@@ -166,6 +166,7 @@ final class MainContentCoordinator: ObservableObject {
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
+    internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
     let windowSidebarState: WindowSidebarState
     /// Which tab each of this connection's containers was last on, so the connections strip lands
     /// on that container's work instead of leaving a tab from another database on screen.
@@ -1175,7 +1176,7 @@ final class MainContentCoordinator: ObservableObject {
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
-                let decision = await ExecutionGateProvider.shared.authorize(
+                let decision = await executionGate.authorize(
                     OperationRequest(
                         connectionId: connectionId,
                         databaseType: connection.type,
