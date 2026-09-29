@@ -56,6 +56,46 @@ struct ImportDataSinkAdapterMappingTests {
         try await sink.insertRow(["NAME": .text("Ada")])
     }
 
+    /// Every name used to be folded, so the twin landed on the mapped field's column and the INSERT
+    /// named it twice.
+    @Test("A field whose twin differing only by case is mapped exactly is left out")
+    func caseTwinOfAMappedFieldStaysUnmapped() {
+        let sink = adapter(mapping: ["Email": "email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["email"])
+        #expect(values == [.text("work")])
+    }
+
+    @Test("Two fields that differ only by case reach their own columns")
+    func caseTwinsReachTheirOwnColumns() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, values) = sink.mappedColumnsAndValues(["Email": .text("work"), "email": .text("home")])
+
+        #expect(columns == ["home_email", "work_email"])
+        #expect(values == [.text("home"), .text("work")])
+    }
+
+    @Test("A third spelling of two mapped fields that differ only by case reaches neither column")
+    func ambiguousMappingKeysDoNotFold() {
+        let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["EMAIL": .text("x")])
+
+        #expect(columns.isEmpty)
+    }
+
+    @Test("Two unknown spellings of one mapped field in a row reach neither column")
+    func ambiguousRowKeysDoNotFold() {
+        let sink = adapter(mapping: ["Name": "name"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("a"), "name": .text("b"), "id": .text("1")])
+
+        #expect(columns.isEmpty)
+    }
+
     /// A row carrying nothing has nothing to lose, so it passes through. Only a row holding values
     /// that reach no column is worth stopping for, and conflating the two would turn an empty
     /// object in an NDJSON file into a failed import.

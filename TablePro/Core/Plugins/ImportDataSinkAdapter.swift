@@ -16,6 +16,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let databaseType: DatabaseType
     private let grammar: SQLLexicalGrammar
     private let columnMapping: [String: String]
+
+    /// A lowercased field name to the one mapping key that lowercases to it. A name two keys share,
+    /// `Name` and `name`, is left out, because a third spelling could mean either.
+    private let mappingKeyByFoldedName: [String: String]
+
     private let rowGenerator: SQLStatementGenerator?
 
     /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
@@ -46,10 +51,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.grammar = databaseType.lexicalGrammar
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
-        self.columnMapping = Dictionary(
-            columnMapping.map { ($0.key.lowercased(), $0.value) },
-            uniquingKeysWith: { _, last in last }
-        )
+        self.columnMapping = columnMapping
+        self.mappingKeyByFoldedName = Dictionary(grouping: columnMapping.keys, by: { $0.lowercased() })
+            .compactMapValues { $0.count == 1 ? $0.first : nil }
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
@@ -98,14 +102,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for \(targetTable)")
         }
 
-        var columns: [String] = []
-        var bindValues: [PluginCellValue] = []
-        for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
-            columns.append(column)
-            bindValues.append(value)
-        }
-
+        let (columns, bindValues) = mappedColumnsAndValues(values)
         guard !columns.isEmpty else {
             guard values.isEmpty else {
                 throw PluginImportError.importFailed(Self.unmappedRowMessage)
@@ -201,14 +198,46 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         String(localized: "No values in this row matched the column mapping")
     }
 
-    private func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
+    /// Exact names first. Folding every name used to put `Name` and `name` on one key, so a
+    /// source table holding both wrote one column twice and the server refused the INSERT.
+    internal func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
         var pairs: [(column: String, value: PluginCellValue)] = []
+        var unspelled: [(field: String, value: PluginCellValue)] = []
         for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
+            guard let column = columnMapping[field] else {
+                unspelled.append((field, value))
+                continue
+            }
             pairs.append((column, value))
+        }
+        if !unspelled.isEmpty {
+            pairs += caseFoldedPairs(unspelled, in: values)
         }
         pairs.sort { $0.column < $1.column }
         return (pairs.map(\.column), pairs.map(\.value))
+    }
+
+    /// A field spelled like no mapping key still reaches the key it matches ignoring case, such as
+    /// a header cased differently from the one the mapping was made from, but only when nothing
+    /// else in the row answers to that name: not the key's own spelling, and not a second field.
+    private func caseFoldedPairs(
+        _ unspelled: [(field: String, value: PluginCellValue)],
+        in values: [String: PluginCellValue]
+    ) -> [(column: String, value: PluginCellValue)] {
+        var fieldsPerFoldedName: [String: Int] = [:]
+        for entry in unspelled {
+            fieldsPerFoldedName[entry.field.lowercased(), default: 0] += 1
+        }
+        var pairs: [(column: String, value: PluginCellValue)] = []
+        for (field, value) in unspelled {
+            let folded = field.lowercased()
+            guard fieldsPerFoldedName[folded] == 1,
+                  let key = mappingKeyByFoldedName[folded],
+                  values[key] == nil,
+                  let column = columnMapping[key] else { continue }
+            pairs.append((column, value))
+        }
+        return pairs
     }
 
     func deleteAllRowsFromTargetTable() async throws {

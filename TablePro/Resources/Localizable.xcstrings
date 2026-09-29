@@ -3471,6 +3471,9 @@
     "%@ loses its default" : {
 
     },
+    "%@ mapped more than once" : {
+
+    },
     "%@ matches" : {
 
     },
@@ -5929,6 +5932,9 @@
       }
     },
     "%1$@: %2$@ had no column of that name on the destination." : {
+
+    },
+    "%1$@: more than one source column is mapped to %2$@." : {
 
     },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
@@ -19906,6 +19912,9 @@
       }
     },
     "Another profile already has this name." : {
+
+    },
+    "Another source column is mapped to the same destination column." : {
 
     },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
@@ -57293,6 +57302,9 @@
       }
     },
     "Each database is written to its own file." : {
+
+    },
+    "Each destination column can be mapped from only one source column." : {
 
     },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {

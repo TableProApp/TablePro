@@ -25,27 +25,31 @@ enum TableColumnMatcher {
         let unmatchedDestination: [String]
 
         var isEmpty: Bool { mapping.isEmpty }
+
+        /// Destination columns more than one source column is mapped to. The INSERT would name
+        /// each of them twice, which every engine refuses, so the transfer cannot run until the
+        /// user moves one.
+        var contestedDestinations: [String] {
+            TableColumnMatcher.contestedDestinations(in: mapping)
+        }
     }
 
-    /// Case-insensitive, because engines disagree about identifier folding and a transfer from a
-    /// case-folding engine to a case-preserving one would otherwise match nothing.
+    /// Exact spelling first, then case-insensitive, because engines disagree about identifier
+    /// folding and a transfer from a case-folding engine to a case-preserving one would otherwise
+    /// match nothing. A destination column goes to one source column at most, so `Name` and `name`
+    /// on the source never both land on a lone `name`.
     static func match(source: [String], destination: [String]) -> Match {
-        var destinationByFolded: [String: String] = [:]
-        for column in destination {
-            destinationByFolded[column.lowercased()] = column
-        }
-
+        let targets = pair(source, with: destination)
         var mapping: [String: String] = [:]
         var unmatchedSource: [String] = []
-        var claimed: Set<String> = []
-        for column in source {
-            guard let target = destinationByFolded[column.lowercased()] else {
+        for (column, target) in zip(source, targets) {
+            guard let target else {
                 unmatchedSource.append(column)
                 continue
             }
             mapping[column] = target
-            claimed.insert(target)
         }
+        let claimed = Set(mapping.values)
         return Match(
             mapping: mapping,
             unmatchedSource: unmatchedSource,
@@ -53,9 +57,22 @@ enum TableColumnMatcher {
         )
     }
 
+    /// The automatic match with the user's overrides laid over it.
+    static func match(
+        source: [String],
+        destination: [String],
+        overrides: [String: String?]
+    ) -> Match {
+        let automatic = match(source: source, destination: destination)
+        guard !overrides.isEmpty else { return automatic }
+        return applying(overrides: overrides, to: automatic, destination: destination)
+    }
+
     /// Applies the user's overrides over an automatic match. An override to nil excludes the
     /// column, which is how a source column with no destination is deliberately dropped rather
-    /// than failing the transfer.
+    /// than failing the transfer. An override may point at a column another source column
+    /// already holds; that is kept and reported through `contestedDestinations`, not resolved
+    /// by quietly unmapping the other one.
     static func applying(
         overrides: [String: String?],
         to match: Match,
@@ -78,5 +95,39 @@ enum TableColumnMatcher {
             unmatchedSource: unmatchedSource.sorted(),
             unmatchedDestination: destination.filter { !claimed.contains($0) }
         )
+    }
+
+    /// Destination columns named by more than one entry of `mapping`, sorted.
+    static func contestedDestinations(in mapping: [String: String]) -> [String] {
+        var sourceCount: [String: Int] = [:]
+        for target in mapping.values {
+            sourceCount[target, default: 0] += 1
+        }
+        return sourceCount.filter { $0.value > 1 }.keys.sorted()
+    }
+
+    /// Pairs each name with a candidate of the same spelling, then with a candidate left over that
+    /// differs only by case, earlier names first. A candidate is paired with one name at most.
+    private static func pair(_ names: [String], with candidates: [String]) -> [String?] {
+        var pairs = [String?](repeating: nil, count: names.count)
+        var claimed = Set<String>()
+        let spelled = Set(candidates)
+        for (index, name) in names.enumerated() {
+            guard spelled.contains(name), !claimed.contains(name) else { continue }
+            pairs[index] = name
+            claimed.insert(name)
+        }
+
+        var unclaimedByFolded: [String: [String]] = [:]
+        for candidate in candidates where !claimed.contains(candidate) {
+            unclaimedByFolded[candidate.lowercased(), default: []].append(candidate)
+        }
+        for (index, name) in names.enumerated() where pairs[index] == nil {
+            let folded = name.lowercased()
+            guard var remaining = unclaimedByFolded[folded], !remaining.isEmpty else { continue }
+            pairs[index] = remaining.removeFirst()
+            unclaimedByFolded[folded] = remaining
+        }
+        return pairs
     }
 }
