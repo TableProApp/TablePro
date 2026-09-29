@@ -27839,7 +27839,7 @@
     "Cassandra columns have no default value." : {
 
     },
-    "Cassandra filters cannot match any one of several conditions. Use Match All." : {
+    "Cassandra filters can only require every condition to match." : {
 
     },
     "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
