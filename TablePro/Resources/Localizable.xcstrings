@@ -108505,6 +108505,9 @@
         }
       }
     },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
+    },
     "Open in Window" : {
       "localizations" : {
         "ko" : {
