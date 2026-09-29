@@ -28,7 +28,7 @@ final class RowImportMappingMemoryUITests: UITestCase {
         let title = first.popUpButtons["Column for Title"].firstMatch
         XCTAssertTrue(title.waitToExist(timeout: 20), "The sheet must list the Title field")
         XCTAssertEqual(title.value as? String, "Skip", "Title matches no Genre column by name")
-        first.checkBoxes["Import Title"].firstMatch.click()
+        first.checkBoxes.matching(NSPredicate(format: "label CONTAINS %@", "Import Title")).firstMatch.click()
         choose("Name", from: title)
         first.buttons["Import"].firstMatch.click()
 
