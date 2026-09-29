@@ -109,7 +109,7 @@ final class PluginManager: ObservableObject {
     /// learned about a table another connection changed. The defaults approve every save, find
     /// every save finished and keep nothing, so an already-built plugin keeps loading and saves as
     /// before.
-    nonisolated static let currentPluginKitVersion = 33
+    nonisolated static let currentPluginKitVersion = 34
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

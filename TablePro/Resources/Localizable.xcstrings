@@ -350,6 +350,9 @@
         }
       }
     },
+    "Use Saved Mapping" : {
+
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -90988,6 +90991,9 @@
         }
       }
     },
+    "Match by Position" : {
+
+    },
     "Match case exactly" : {
       "localizations" : {
         "ko" : {
@@ -91021,6 +91027,9 @@
           }
         }
       }
+    },
+    "Match Columns" : {
+
     },
     "Match System" : {
       "comment" : "Text for a sidebar row size preference that matches the system's sidebar row size.",
@@ -128690,6 +128699,9 @@
           }
         }
       }
+    },
+    "Restored the mapping saved for %@." : {
+
     },
     "Restored “%@” from %@" : {
       "localizations" : {
