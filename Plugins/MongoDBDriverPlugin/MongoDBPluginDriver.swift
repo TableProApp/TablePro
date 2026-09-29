@@ -835,18 +835,23 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     switch try await runtime.exportPlan(for: trimmed, database: db) {
                     case .cursor(let plan, let databaseSwitch, let writes):
                         if let databaseSwitch { self.currentDb = databaseSwitch }
+                        let census = MongoFieldCensus.request(
+                            for: plan, limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
+                        )
                         let inner = plan.isFind
                             ? conn.streamFind(
                                 database: plan.database, collection: plan.collection,
                                 filter: plan.filter,
                                 optionsJson: plan.options.findOptionsJson(
                                     limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
-                                )
+                                ),
+                                census: census
                             )
                             : conn.streamAggregate(
                                 database: plan.database, collection: plan.collection,
                                 pipeline: plan.pipeline,
-                                optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout)
+                                optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout),
+                                census: census
                             )
                         do {
                             for try await element in inner {
