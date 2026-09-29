@@ -446,6 +446,58 @@ struct SyncCoordinatorEchoTests {
         #expect(!tracker.dirtyRecords(for: .connection).contains(connection.id.uuidString))
     }
 
+    @Test("A local-only connection keeps its host and Safe Mode when a pull carries its old iCloud copy")
+    func localOnlyConnectionIgnoresRemoteEdit() async throws {
+        var connection = TestFixtures.makeConnection(name: "Primary")
+        connection.host = "db.internal"
+        connection.preferredSafeModeLevel = .readOnly
+        connection.localOnly = true
+        connections.addConnection(connection)
+        var remote = connection
+        remote.localOnly = false
+        remote.host = "db.elsewhere"
+        remote.preferredSafeModeLevel = .silent
+        let remoteRecord = SyncRecordMapper.toCKRecord(remote, in: Self.zoneID)
+
+        let acknowledged = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .applyPullResult(PullResult(changedRecords: [remoteRecord], deletedRecordIDs: [], newToken: nil))
+
+        let stored = try #require(connections.loadConnection(id: connection.id))
+        #expect(acknowledged)
+        #expect(stored.host == "db.internal")
+        #expect(stored.preferredSafeModeLevel == .readOnly)
+        #expect(stored.localOnly)
+    }
+
+    @Test("A local-only connection and its saved queries survive a pull that deletes its iCloud copy")
+    func localOnlyConnectionKeepsSavedQueriesOnRemoteDeletion() async throws {
+        var localOnly = TestFixtures.makeConnection(name: "Kept")
+        localOnly.localOnly = true
+        connections.addConnection(localOnly)
+        let synced = TestFixtures.makeConnection(name: "Removed")
+        connections.addConnection(synced)
+        let keptQuery = SQLFavorite(name: "Kept", query: "SELECT 1", connectionId: localOnly.id)
+        let removedQuery = SQLFavorite(name: "Removed", query: "SELECT 2", connectionId: synced.id)
+        #expect(await favorites.addFavorite(keptQuery))
+        #expect(await favorites.addFavorite(removedQuery))
+        let deletions = [localOnly, synced].map {
+            SyncRecordMapper.recordID(type: .connection, id: $0.id.uuidString, in: Self.zoneID)
+        }
+
+        let acknowledged = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .applyPullResult(PullResult(changedRecords: [], deletedRecordIDs: deletions, newToken: nil))
+
+        #expect(acknowledged)
+        #expect(connections.loadConnection(id: localOnly.id)?.name == "Kept")
+        #expect(connections.loadConnection(id: synced.id) == nil)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while await favorites.fetchFavorite(id: removedQuery.id) != nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await favorites.fetchFavorite(id: removedQuery.id) == nil)
+        #expect(await favorites.fetchFavorite(id: keptQuery.id) != nil)
+    }
+
     @Test("Marks with no record behind them are dropped once their stores read cleanly")
     func unreachableMarksAreDropped() async {
         let missingTag = UUID().uuidString

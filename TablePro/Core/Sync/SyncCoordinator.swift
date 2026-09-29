@@ -669,6 +669,7 @@ final class SyncCoordinator: ObservableObject {
 
         var connections = services.connectionStorage.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
+            guard !connections[index].localOnly else { return .skipped }
             var incoming = remoteConnection
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 guard let reconciled = mergeLocalEdits(
