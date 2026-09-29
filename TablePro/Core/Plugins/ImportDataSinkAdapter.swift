@@ -48,7 +48,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         databaseType: DatabaseType,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
-        sourceFields: [String] = [],
+        sourceFields: Set<String> = [],
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.isCancelled = isCancelled
@@ -60,7 +60,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.columnMapping = columnMapping
         self.mappingKeyByFoldedName = Dictionary(grouping: columnMapping.keys, by: { $0.lowercased() })
             .compactMapValues { $0.count == 1 ? $0.first : nil }
-        self.sourceFields = Set(sourceFields)
+        self.sourceFields = sourceFields
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,

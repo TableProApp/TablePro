@@ -58,7 +58,7 @@ final class ImportService: ObservableObject {
         knownStatementCount: Int? = nil,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
-        sourceFields: [String] = []
+        sourceFields: Set<String> = []
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -211,7 +211,7 @@ final class ImportService: ObservableObject {
         progress: PluginImportProgress,
         targetTable: String?,
         columnMapping: [String: String],
-        sourceFields: [String]
+        sourceFields: Set<String>
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,

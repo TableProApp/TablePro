@@ -168,7 +168,7 @@ final class TableTransferService: ObservableObject {
                 databaseType: request.destinationType,
                 targetTable: object.name,
                 columnMapping: mapping,
-                sourceFields: request.sourceColumns[object.name] ?? [],
+                sourceFields: Set(request.sourceColumns[object.name] ?? []),
                 isCancelled: { [flag = cancellationFlag] in flag.isCancelled }
             )
             try await transferOne(object: object, from: source, into: sink, request: request)

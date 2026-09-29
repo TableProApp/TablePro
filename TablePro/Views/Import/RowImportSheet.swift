@@ -811,7 +811,7 @@ struct RowImportSheet: View {
             runImport(
                 targetTable: table,
                 mapping: existingMapping(),
-                sourceFields: mappings.map(\.field.name),
+                sourceFields: Set(mappings.map(\.field.name)),
                 newTable: nil,
                 scope: scope
             )
@@ -825,7 +825,7 @@ struct RowImportSheet: View {
             runImport(
                 targetTable: name,
                 mapping: newTableMapping(),
-                sourceFields: newColumns.map(\.field.name),
+                sourceFields: Set(newColumns.map(\.field.name)),
                 newTable: definition,
                 scope: scope
             )
@@ -889,7 +889,7 @@ struct RowImportSheet: View {
     private func runImport(
         targetTable: String,
         mapping: [String: String],
-        sourceFields: [String],
+        sourceFields: Set<String>,
         newTable: PluginCreateTableDefinition?,
         scope: DatabaseScope
     ) {

@@ -14,7 +14,7 @@ import Testing
 /// line, and the stop modes halt on a mapping that matches nothing.
 @MainActor
 struct ImportDataSinkAdapterMappingTests {
-    private func adapter(mapping: [String: String], sourceFields: [String] = []) -> ImportDataSinkAdapter {
+    private func adapter(mapping: [String: String], sourceFields: Set<String> = []) -> ImportDataSinkAdapter {
         ImportDataSinkAdapter(
             driver: MockDatabaseDriver(),
             databaseType: .mysql,
