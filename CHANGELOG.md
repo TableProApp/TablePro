@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Fixed
 
@@ -18,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
+- Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
+- Every row of a UTF-16 data file rewritten on save.
+- Latin-1 and Windows-1252 SQL dumps importing double-encoded text through their own `SET NAMES`.
+- Data file window stuck on an error after reloading it with the wrong encoding.
+- Encoding chosen in File Properties lost when another app changes the file.
+- No columns found for a JSON Lines file over 256 KB with non-ASCII text.
+- VoiceOver reading the data file status bar's delimiter and encoding as only "File format".
+- CSV import writing bytes it could not read into the table as Latin-1 text.
+- Data file window picking up another app's in-place writes on HFS+ and exFAT volumes.
+- Wrong row number and blank-looking characters in the data file save error for text the encoding cannot store.
+- Yen sign failing to save in Shift JIS and EUC-JP data files and SQL files.
+- CSV import with single quotes merging rows at a double quote inside a field.
+- Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
+- Shortcuts rejecting CSV and JSON files that are not UTF-8.
 
 ## [0.76.1] - 2026-09-29
 

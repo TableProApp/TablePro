@@ -183,4 +183,33 @@ struct JSONImportPluginTests {
         #expect(fields.first { $0.name == "name" }?.inferredType == .text)
         #expect(fields.first { $0.name == "id" }?.sampleValue == "1")
     }
+
+    // MARK: - JSON Lines sample
+
+    @Test("A JSON Lines sample cut inside a Japanese character still lists its fields")
+    func testSampleCutInsideAMultiByteCharacter() throws {
+        let line = Data("{\"名前\":\"山田太郎\",\"住所\":\"東京都港区\"}\n".utf8)
+        var body = Data()
+        while body.count <= JSONImportParsing.sampleLength {
+            body.append(line)
+        }
+        var file = body
+        while String(data: file.prefix(JSONImportParsing.sampleLength), encoding: .utf8) != nil {
+            file.insert(0x0A, at: 0)
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("JSONImportPluginTests-\(UUID().uuidString).jsonl")
+        try file.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let rows = try JSONImportParsing.sampleRawRows(at: url, targetTable: nil, limit: 5)
+        #expect(rows.count == 5)
+        #expect(rows.first?["名前"] as? String == "山田太郎")
+    }
+
+    @Test("A sample of whole characters decodes unchanged")
+    func testSampleOfWholeCharacters() {
+        #expect(JSONImportParsing.utf8Text(ofSample: Data("{\"a\":\"日本\"}".utf8)) == "{\"a\":\"日本\"}")
+        #expect(JSONImportParsing.utf8Text(ofSample: Data([0x7B, 0xE6, 0x97])) == "{")
+    }
 }

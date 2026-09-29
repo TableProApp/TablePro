@@ -242,4 +242,68 @@ struct FileTextLoaderTests {
         #expect(loaded.textEncoding == .utf8)
         #expect(header.textEncoding == .utf8)
     }
+
+    private static let japaneseScript = """
+    -- @name: 在庫一覧
+    SELECT 商品コード, 商品名 FROM 在庫 WHERE 区分 = 'ｻﾞｲｺｶﾝﾘｽﾙ';
+    INSERT INTO 顧客 (氏名, 住所) VALUES ('髙橋 太郎', '東京都港区芝公園４－２－８');
+    UPDATE 顧客 SET 備考 = 'ポイント交換済み' WHERE 氏名 = '山﨑 花子';
+
+    """
+
+    @Test("A Shift JIS script with no recorded encoding opens as Shift JIS")
+    func readsAnUnmarkedShiftJISFile() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .shiftJIS, allowLossyConversion: false))
+
+        let loaded = try #require(try load(bytes))
+        let header = try #require(try loadHeader(of: bytes))
+
+        #expect(loaded.encoding == .shiftJIS)
+        #expect(loaded.content == Self.japaneseScript)
+        #expect(header.encoding == .shiftJIS)
+        #expect(SQLFrontmatter.parse(header.content).name == "在庫一覧")
+    }
+
+    @Test("A UTF-16 script without a byte order mark opens as UTF-16")
+    func readsAnUnmarkedUTF16File() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .utf16LittleEndian))
+
+        let loaded = try #require(try load(bytes))
+
+        #expect(loaded.encoding == .utf16LittleEndian)
+        #expect(loaded.content == Self.japaneseScript)
+    }
+
+    @Test("A Western script with no recorded encoding still opens as ISO Latin-1")
+    func westernBytesStayLatin1() throws {
+        let bytes = try #require("-- @name: Caf\u{E9}\nSELECT 'cr\u{E8}me br\u{FB}l\u{E9}e';\n".data(using: .isoLatin1))
+
+        let loaded = try #require(try load(bytes))
+
+        #expect(loaded.encoding == .isoLatin1)
+    }
+
+    @Test("A UTF-16 script of plain ASCII with no byte order mark opens as UTF-16, header and body alike")
+    func readsAnUnmarkedASCIIUTF16File() throws {
+        let text = "-- @name: Report\nSELECT id, name FROM customers;\nINSERT INTO t VALUES (1, 'abc');\n"
+        for encoding in [String.Encoding.utf16LittleEndian, .utf16BigEndian] {
+            let bytes = try #require(text.data(using: encoding))
+
+            let loaded = try #require(try load(bytes))
+            let header = try #require(try loadHeader(of: bytes))
+
+            #expect(loaded.encoding == encoding)
+            #expect(loaded.content == text)
+            #expect(header.encoding == encoding)
+            #expect(SQLFrontmatter.parse(header.content).name == "Report")
+        }
+    }
+
+    @Test("Version history reads an older commit in the encoding the working copy resolved to")
+    func resolvedEncodingFollowsDetection() throws {
+        let bytes = try #require(Self.japaneseScript.data(using: .shiftJIS, allowLossyConversion: false))
+        let encoding = try withFile(bytes) { FileTextLoader.resolvedEncoding(of: $0) }
+        #expect(encoding == .shiftJIS)
+        #expect(FileTextLoader.decode(bytes, declaredEncoding: encoding) == Self.japaneseScript)
+    }
 }
