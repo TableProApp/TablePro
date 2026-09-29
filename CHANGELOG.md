@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local only** connections taking edits and deletions made on another device.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
+- Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
 
 ## [0.76.1] - 2026-09-29
 
