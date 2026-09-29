@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Missing Terminate button on ClickHouse server dashboard sessions that MCP could terminate.
 - SQLite server dashboard showing Cache Size as "-2000 pages".
 - Untranslatable "% used" on the Typesense server dashboard.
+- SQL Server and ClickHouse server dashboards listing their own monitoring session.
 
 ## [0.76.1] - 2026-09-29
 

@@ -17,7 +17,7 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
             FROM sys.dm_exec_sessions s
             LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
             OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
-            WHERE s.is_user_process = 1
+            WHERE s.is_user_process = 1 AND s.session_id <> @@SPID
             ORDER BY r.total_elapsed_time DESC
             """
         let result = try await execute(sql)
@@ -93,7 +93,7 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
             FROM sys.dm_exec_sessions s
             JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
             OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
-            WHERE s.is_user_process = 1 AND r.total_elapsed_time > 1000
+            WHERE s.is_user_process = 1 AND s.session_id <> @@SPID AND r.total_elapsed_time > 1000
             ORDER BY r.total_elapsed_time DESC
             """
         let result = try await execute(sql)

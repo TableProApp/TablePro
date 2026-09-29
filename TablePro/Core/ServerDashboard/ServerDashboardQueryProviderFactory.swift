@@ -39,7 +39,7 @@ enum ServerDashboardQueryProviderFactory {
         case .mssql:
             return MSSQLDashboardProvider()
         case .clickhouse:
-            return ClickHouseDashboardProvider()
+            return ClickHouseDashboardProvider(serverVersion: serverVersion)
         case .duckdb:
             return DuckDBDashboardProvider()
         case .sqlite:
