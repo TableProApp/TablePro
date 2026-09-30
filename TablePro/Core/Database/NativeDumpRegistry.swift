@@ -277,11 +277,9 @@ enum NativeDumpRegistry {
                         ]
                     },
                     restoreArguments: { request, _ in
-                        mongoConnectionFlags(request) + [
-                            "--nsInclude=\(request.database).*",
-                            "--gzip",
-                            "--archive=\(request.fileURL.path)"
-                        ]
+                        mongoConnectionFlags(request)
+                            + NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
+                            + ["--gzip", "--archive=\(request.fileURL.path)"]
                     }
                 )
             ),

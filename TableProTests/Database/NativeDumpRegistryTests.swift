@@ -179,10 +179,21 @@ struct NativeDumpRegistryTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--config=") })
     }
 
-    @Test("MongoDB names the database on backup and scopes the namespace on restore")
+    @Test("MongoDB names the database on backup and renames the archive into the target on restore")
     func mongoScopesItsDatabase() throws {
         #expect(try command(.mongodb, kind: .backup).arguments.contains("--db=sales"))
-        #expect(try command(.mongodb, kind: .restore).arguments.contains("--nsInclude=sales.*"))
+        let restore = try command(.mongodb, kind: .restore).arguments
+        #expect(restore.contains("--nsFrom=$db$.$coll$"))
+        #expect(restore.contains("--nsTo=sales.$coll$"))
+        #expect(!restore.contains { $0.hasPrefix("--nsInclude") })
+    }
+
+    @Test("A restore target keeps an asterisk literal, which mongorestore reads as part of the name")
+    func mongoRestoreTargetIsLiteral() {
+        #expect(
+            NativeDumpArgumentQuoting.mongoRestoreRenaming(into: "we*ird")
+                == ["--nsFrom=$db$.$coll$", "--nsTo=we*ird.$coll$"]
+        )
     }
 
     /// The database is a file the tool opens, so there is nothing to authenticate to.
