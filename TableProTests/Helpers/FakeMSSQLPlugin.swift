@@ -13,6 +13,13 @@ import os
 import TableProPluginKit
 
 final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    struct CreatedDriverConfiguration: Equatable, Sendable {
+        let host: String
+        let username: String
+        let connectTimeoutSeconds: Int?
+        let queryTimeoutSeconds: Int?
+    }
+
     static let pluginName = "Fake MSSQL Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Test stub for MSSQL plugin lookups"
@@ -45,6 +52,9 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 
     private static let connectFailures = OSAllocatedUnfairLock<[String: ConnectFailure]>(initialState: [:])
+    private static let createdDriverConfigurations = OSAllocatedUnfairLock<[String: [CreatedDriverConfiguration]]>(
+        initialState: [:]
+    )
 
     static func failConnect(for connectionId: UUID, with error: any Error & Sendable, after delay: Duration = .zero) {
         connectFailures.withLock { $0[connectionId.uuidString] = ConnectFailure(error: error, delay: delay) }
@@ -54,8 +64,29 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         _ = connectFailures.withLock { $0.removeValue(forKey: connectionId.uuidString) }
     }
 
+    static func configurations(for connectionId: UUID) -> [CreatedDriverConfiguration] {
+        createdDriverConfigurations.withLock { $0[connectionId.uuidString] ?? [] }
+    }
+
+    static func recordConfigurations(for connectionId: UUID) {
+        createdDriverConfigurations.withLock { $0[connectionId.uuidString] = [] }
+    }
+
+    static func clearConfigurations(for connectionId: UUID) {
+        _ = createdDriverConfigurations.withLock { $0.removeValue(forKey: connectionId.uuidString) }
+    }
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         let connectionId = config.additionalFields["connectionId"] ?? ""
+        let createdConfiguration = CreatedDriverConfiguration(
+            host: config.host,
+            username: config.username,
+            connectTimeoutSeconds: config.additionalFields["connectTimeoutSeconds"].flatMap(Int.init),
+            queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap(Int.init)
+        )
+        Self.createdDriverConfigurations.withLock {
+            $0[connectionId]?.append(createdConfiguration)
+        }
         guard let failure = Self.connectFailures.withLock({ $0[connectionId] }) else {
             return FakeMSSQLPluginDriver()
         }
@@ -71,12 +102,14 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var currentSchema: String? { "dbo" }
     var parameterStyle: ParameterStyle { .questionMark }
+    var applyQueryTimeoutValues: [Int] { queryTimeoutValues.withLock { $0 } }
 
     /// The one fact a driver reports about a connection the server has closed under it.
     var hasLostConnection = false
     private(set) var disconnectCallCount = 0
     private let connectFailure: (any Error & Sendable)?
     private let connectDelay: Duration
+    private let queryTimeoutValues = OSAllocatedUnfairLock<[Int]>(initialState: [])
 
     init(connectFailure: (any Error & Sendable)? = nil, connectDelay: Duration = .zero) {
         self.connectFailure = connectFailure
@@ -90,6 +123,10 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let connectFailure { throw connectFailure }
     }
     func disconnect() { disconnectCallCount += 1 }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        queryTimeoutValues.withLock { $0.append(seconds) }
+    }
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)

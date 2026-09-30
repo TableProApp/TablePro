@@ -5,6 +5,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
     public static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
     public static let connectTimeoutSecondsRange = 1 ... 600
+    public static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
     public var id: UUID
     public var name: String
@@ -93,7 +94,9 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.color = color
         self.isReadOnly = isReadOnly
         self.safeModeLevel = safeModeLevel
-        self.queryTimeoutSeconds = queryTimeoutSeconds.flatMap { $0 >= 0 ? $0 : nil }
+        self.queryTimeoutSeconds = queryTimeoutSeconds.flatMap {
+            Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
+        }
         self.additionalFields = additionalFields
         self.sshEnabled = sshEnabled
         self.sshConfiguration = sshConfiguration
@@ -138,7 +141,7 @@ extension DatabaseConnection: Codable {
             safeModeLevel = isReadOnly ? .readOnly : .off
         }
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds)
-            .flatMap { $0 >= 0 ? $0 : nil }
+            .flatMap { Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         sshEnabled = try container.decodeIfPresent(Bool.self, forKey: .sshEnabled) ?? false
         sshConfiguration = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfiguration)

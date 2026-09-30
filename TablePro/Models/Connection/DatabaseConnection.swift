@@ -149,6 +149,7 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 struct DatabaseConnection: Identifiable, Hashable {
     static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
     static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
     let id: UUID
     var name: String
@@ -272,9 +273,14 @@ struct DatabaseConnection: Identifiable, Hashable {
     }
 
     var queryTimeoutSeconds: Int? {
-        get { additionalFields[Self.queryTimeoutSecondsKey].flatMap(Int.init) }
+        get {
+            guard let value = additionalFields[Self.queryTimeoutSecondsKey].flatMap(Int.init),
+                  Self.queryTimeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
         set {
-            if let newValue {
+            if let newValue, Self.queryTimeoutSecondsRange.contains(newValue) {
                 additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
             } else {
                 additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)

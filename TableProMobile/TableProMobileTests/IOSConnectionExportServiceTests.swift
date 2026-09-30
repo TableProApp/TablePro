@@ -145,4 +145,17 @@ struct IOSConnectionExportServiceTests {
         #expect(exported.queryTimeoutSeconds == 0)
         #expect(exported.additionalFields == ["schema": "public"])
     }
+
+    @Test("Export drops a query timeout unsafe for millisecond APIs")
+    func exportDropsUnsafeQueryTimeout() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        var connection = DatabaseConnection(name: "Prod", type: .postgresql)
+        connection.queryTimeoutSeconds = DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1
+
+        let exported = try #require(
+            IOSConnectionExportService.buildEnvelope([connection], appState: state).connections.first
+        )
+
+        #expect(exported.queryTimeoutSeconds == nil)
+    }
 }

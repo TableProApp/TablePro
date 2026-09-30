@@ -21,7 +21,8 @@ private final class BigQueryRecordingHTTPClient: GoogleHTTPClient, @unchecked Se
         ) else {
             throw URLError(.badServerResponse)
         }
-        return (Data(), response)
+        let body = #"{"access_token":"access-token","expires_in":3600}"#
+        return (Data(body.utf8), response)
     }
 }
 
@@ -164,6 +165,35 @@ struct BigQueryCredentialFactoryTests {
         phase.finish()
         _ = try await client.send(request)
         #expect(base.request?.timeoutInterval == 30)
+    }
+
+    @Test("OAuth token exchange receives the credential factory's connect deadline", .timeLimit(.minutes(1)))
+    func oauthTokenExchangeUsesConnectDeadline() async throws {
+        let budgetMilliseconds = 2_500
+        let http = BigQueryRecordingHTTPClient()
+        let phase = PluginConnectTimeoutPhase(
+            deadline: PluginConnectDeadline(milliseconds: budgetMilliseconds)
+        )
+        let resolved = try BigQueryCredentialFactory.credentials(
+            fields: [
+                "bqAuthMethod": "oauth",
+                "bqOAuthClientId": "client",
+                "bqOAuthClientSecret": "secret",
+                "bqProjectId": "project"
+            ],
+            password: "",
+            readFile: { _ in nil },
+            environment: [:],
+            http: http,
+            refreshTokenStore: GoogleInMemoryRefreshTokenStore(["client": "refresh"]),
+            connectTimeoutPhase: phase
+        )
+
+        #expect(try await resolved.tokenProvider.accessToken() == "access-token")
+
+        let timeout = try #require(http.request?.timeoutInterval)
+        #expect(timeout > 0)
+        #expect(timeout <= TimeInterval(budgetMilliseconds) / 1_000)
     }
 }
 

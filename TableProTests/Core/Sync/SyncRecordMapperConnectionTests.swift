@@ -247,8 +247,11 @@ struct SyncRecordMapperConnectionTests {
         #expect(updated[ConnectionSyncField.additionalFieldsJson.key] == nil)
     }
 
-    @Test("Invalid synced timeouts become defaults and explicit query wins over legacy JSON")
-    func invalidSyncedTimeoutsAreDiscarded() throws {
+    @Test(
+        "Invalid synced timeouts become defaults and explicit query wins over legacy JSON",
+        arguments: [-1, DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1]
+    )
+    func invalidSyncedTimeoutsAreDiscarded(_ invalidQueryTimeout: Int) throws {
         let connection = makeFullyPopulatedConnection()
         let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
@@ -256,7 +259,7 @@ struct SyncRecordMapperConnectionTests {
         fields[.connectionId] = connection.id.uuidString
         fields[.name] = connection.name
         fields[.type] = connection.type.rawValue
-        fields[.queryTimeoutSeconds] = Int64(-1)
+        fields[.queryTimeoutSeconds] = Int64(invalidQueryTimeout)
         fields[.additionalFieldsJson] = try JSONEncoder().encode([
             DatabaseConnection.connectTimeoutSecondsKey: "601",
             DatabaseConnection.queryTimeoutSecondsKey: "30",

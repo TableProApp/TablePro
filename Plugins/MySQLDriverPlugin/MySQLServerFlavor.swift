@@ -39,7 +39,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     static let databendVariant = "Databend"
     static let oceanbaseVariant = "OceanBase"
 
-    static let oceanbaseUnlimitedQueryTimeoutMicroseconds = 3_216_672_000_000_000
+    static let oceanbaseUnlimitedQueryTimeoutMicroseconds: Int64 = 3_216_672_000_000_000
 
     static func fromBanner(_ banner: String?) -> MySQLServerFlavor {
         guard let banner else { return .mysql }
@@ -151,16 +151,19 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     }
 
     func queryTimeoutStatements(seconds: Int) -> [String] {
+        let seconds = PluginQueryTimeout.boundedSeconds(seconds)
         switch self {
         case .mariadb:
             return ["SET SESSION max_statement_time = \(seconds)"]
         case .databend:
             return ["SET max_execute_time_in_seconds = \(seconds)"]
         case .oceanbase:
-            let microseconds = seconds > 0 ? seconds * 1_000_000 : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
+            let microseconds = seconds > 0
+                ? PluginQueryTimeout.microseconds(seconds)
+                : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
             return ["SET SESSION ob_query_timeout = \(microseconds)", "SET SESSION max_execution_time = 0"]
         case .mysql, .tidb:
-            return ["SET SESSION max_execution_time = \(seconds * 1_000)"]
+            return ["SET SESSION max_execution_time = \(PluginQueryTimeout.milliseconds(seconds))"]
         }
     }
 

@@ -22,6 +22,7 @@ actor SQLiteLocalBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
 
     private var db: OpaquePointer?
+    nonisolated private let busyTimeout = LibSQLBusyTimeoutState()
 
     var isConnected: Bool { db != nil }
 
@@ -41,6 +42,11 @@ actor SQLiteLocalBackend {
             throw error
         }
         SQLiteAuthorizer.install(on: db)
+        sqlite3_busy_handler(
+            db,
+            libSQLBusyTimeoutHandler,
+            Unmanaged.passUnretained(busyTimeout).toOpaque()
+        )
     }
 
     private func loadExtensions(_ extensions: [LoadableExtension], into db: OpaquePointer) throws {
@@ -62,8 +68,11 @@ actor SQLiteLocalBackend {
     }
 
     func applyBusyTimeout(_ milliseconds: Int32) {
-        guard let db else { return }
-        sqlite3_busy_timeout(db, milliseconds)
+        busyTimeout.setTimeout(milliseconds: milliseconds)
+    }
+
+    nonisolated func cancelBusyWait() {
+        busyTimeout.cancel()
     }
 
     var dbHandleForInterrupt: Int { db.map { Int(bitPattern: $0) } ?? 0 }
@@ -79,6 +88,7 @@ actor SQLiteLocalBackend {
         guard let db else {
             throw LibSQLError.notConnected
         }
+        busyTimeout.beginOperation()
 
         let startTime = Date()
         var statement: OpaquePointer?
@@ -136,6 +146,7 @@ actor SQLiteLocalBackend {
         guard let db else {
             throw LibSQLError.notConnected
         }
+        busyTimeout.beginOperation()
 
         var statement: OpaquePointer?
 

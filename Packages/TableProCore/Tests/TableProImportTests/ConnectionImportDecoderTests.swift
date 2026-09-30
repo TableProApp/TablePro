@@ -124,6 +124,17 @@ final class ConnectionImportDecoderTests: XCTestCase {
         XCTAssertEqual(imported.additionalFields, ["schema": "public"])
     }
 
+    func testImportAcceptsMaximumSafeQueryTimeoutAndRejectsTheNextSecond() throws {
+        let maximum = Int(Int32.max) / 1_000
+        let connections = [maximum, maximum + 1].map { makeConnection(queryTimeoutSeconds: $0) }
+        let data = try ConnectionImportDecoder.encode(makeEnvelope(connections: connections))
+
+        let decoded = try ConnectionImportDecoder.decodeData(data)
+
+        XCTAssertEqual(decoded.connections[0].queryTimeoutSeconds, maximum)
+        XCTAssertNil(decoded.connections[1].queryTimeoutSeconds)
+    }
+
     func testFutureFormatVersionThrows() throws {
         let envelope = ConnectionExportEnvelope(
             formatVersion: 999, exportedAt: Date(), appVersion: "1.0",

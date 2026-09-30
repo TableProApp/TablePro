@@ -814,8 +814,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
-        let ms = seconds * 1_000
+        let ms = seconds > 0 ? PluginQueryTimeout.milliseconds(seconds) : -1
         _ = try await execute(query: "SET LOCK_TIMEOUT \(ms)")
     }
 

@@ -12,8 +12,14 @@ enum ConnectionTimeoutPolicy {
     }
 
     static func effectiveQueryTimeoutSeconds(configuredSeconds: Int?, globalSeconds: Int) -> Int {
-        guard let configuredSeconds, configuredSeconds >= 0 else {
-            return max(0, globalSeconds)
+        let validatedGlobalSeconds = min(
+            max(globalSeconds, DatabaseConnection.queryTimeoutSecondsRange.lowerBound),
+            DatabaseConnection.queryTimeoutSecondsRange.upperBound
+        )
+        guard let configuredSeconds,
+              DatabaseConnection.queryTimeoutSecondsRange.contains(configuredSeconds)
+        else {
+            return validatedGlobalSeconds
         }
         return configuredSeconds
     }

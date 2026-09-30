@@ -135,7 +135,7 @@ struct RemoteDatabaseFileTests {
             try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64
         )
 
-        let verdict = DatabaseFileIntegrity.verifyDownload(
+        let verdict = try verifyDownload(
             at: url, expectedBytes: full + 4_096, runsIntegrityCheck: true
         )
         #expect(verdict == .wrongSize(expected: full + 4_096, actual: full))
@@ -150,7 +150,7 @@ struct RemoteDatabaseFileTests {
         let url = directory.appendingPathComponent("empty.db")
         FileManager.default.createFile(atPath: url.path, contents: Data())
 
-        let verdict = DatabaseFileIntegrity.verifyDownload(
+        let verdict = try verifyDownload(
             at: url, expectedBytes: 0, runsIntegrityCheck: true
         )
         #expect(verdict == .notADatabase)
@@ -165,7 +165,7 @@ struct RemoteDatabaseFileTests {
         let payload = Data(repeating: 0x41, count: 64)
         try payload.write(to: url)
 
-        let verdict = DatabaseFileIntegrity.verifyDownload(
+        let verdict = try verifyDownload(
             at: url, expectedBytes: UInt64(payload.count), runsIntegrityCheck: true
         )
         #expect(verdict == .ok || verdict == .notADatabase)
@@ -184,7 +184,7 @@ struct RemoteDatabaseFileTests {
         )
 
         #expect(DatabaseFileIntegrity.fileKind(at: url) == .sqlite)
-        #expect(DatabaseFileIntegrity.verifyDownload(
+        #expect(try verifyDownload(
             at: url, expectedBytes: size, runsIntegrityCheck: true
         ) == .ok)
     }
@@ -201,9 +201,84 @@ struct RemoteDatabaseFileTests {
         )
 
         #expect(DatabaseFileIntegrity.fileKind(at: url) == .sqlite)
-        #expect(DatabaseFileIntegrity.verifyDownload(
+        #expect(try verifyDownload(
             at: url, expectedBytes: size, runsIntegrityCheck: true
         ) == .ok)
+    }
+
+    @Test("SQLite integrity verification keeps the remote-file connection deadline")
+    func integrityVerificationKeepsConnectionDeadline() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("deadline.db")
+        try makeLargeSQLiteDatabase(at: url)
+        let size = try fileSize(at: url)
+        let endpoint = ConnectionTimeoutEndpoint.remoteFile("db.example.com:22")
+        let interruption = IntegrityInterruptionProbe(behavior: .expireDeadline)
+
+        let wasAttributed = await BoundedCall.resultOnItsOwnThread(
+            within: .seconds(2),
+            onDeadline: { interruption.forceCancellation() }
+        ) {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 7,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(200))
+            )
+            do {
+                _ = try DatabaseFileIntegrity.verifyDownload(
+                    at: url,
+                    expectedBytes: size,
+                    runsIntegrityCheck: true,
+                    deadline: deadline,
+                    timeoutEndpoint: endpoint,
+                    isCancelled: { interruption.poll() }
+                )
+                return false
+            } catch let error as ConnectionTimeoutError {
+                return error == ConnectionTimeoutError(endpoint: endpoint, configuredSeconds: 7)
+            } catch {
+                return false
+            }
+        }
+
+        #expect(wasAttributed == true)
+        #expect(interruption.reachedProgressHandler)
+    }
+
+    @Test("Cancelling SQLite integrity verification reports task cancellation")
+    func cancellingIntegrityVerificationReportsCancellation() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = directory.appendingPathComponent("cancel.db")
+        try makeLargeSQLiteDatabase(at: url)
+        let size = try fileSize(at: url)
+        let interruption = IntegrityInterruptionProbe(behavior: .cancel)
+
+        let wasCancelled = await BoundedCall.resultOnItsOwnThread(
+            within: .seconds(2),
+            onDeadline: { interruption.forceCancellation() }
+        ) {
+            do {
+                _ = try DatabaseFileIntegrity.verifyDownload(
+                    at: url,
+                    expectedBytes: size,
+                    runsIntegrityCheck: true,
+                    deadline: ConnectionDeadline(configuredSeconds: 60),
+                    timeoutEndpoint: .remoteFile("db.example.com:22"),
+                    isCancelled: { interruption.poll() }
+                )
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        #expect(wasCancelled == true)
+        #expect(interruption.reachedProgressHandler)
     }
 
     /// The measurement the sidecar rule exists for.
@@ -306,5 +381,93 @@ struct RemoteDatabaseFileTests {
         for index in 0..<extraRows {
             sqlite3_exec(handle, "INSERT INTO t(v) VALUES ('row\(index)')", nil, nil, nil)
         }
+    }
+
+    private func makeLargeSQLiteDatabase(at url: URL) throws {
+        var handle: OpaquePointer?
+        guard sqlite3_open(url.path, &handle) == SQLITE_OK, let handle else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { sqlite3_close(handle) }
+
+        let result = sqlite3_exec(
+            handle,
+            """
+            PRAGMA page_size=512;
+            CREATE TABLE payload(id INTEGER PRIMARY KEY, value BLOB);
+            WITH RECURSIVE counter(value) AS (
+                SELECT 1
+                UNION ALL
+                SELECT value + 1 FROM counter WHERE value < 20000
+            )
+            INSERT INTO payload SELECT value, zeroblob(256) FROM counter;
+            """,
+            nil,
+            nil,
+            nil
+        )
+        guard result == SQLITE_OK else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    private func fileSize(at url: URL) throws -> UInt64 {
+        try #require(try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64)
+    }
+
+    private func verifyDownload(
+        at url: URL,
+        expectedBytes: UInt64,
+        runsIntegrityCheck: Bool
+    ) throws -> DatabaseFileIntegrity.Verdict {
+        try DatabaseFileIntegrity.verifyDownload(
+            at: url,
+            expectedBytes: expectedBytes,
+            runsIntegrityCheck: runsIntegrityCheck,
+            deadline: ConnectionDeadline(configuredSeconds: 60),
+            timeoutEndpoint: .remoteFile("test:22"),
+            isCancelled: { false }
+        )
+    }
+}
+
+private final class IntegrityInterruptionProbe: @unchecked Sendable {
+    enum Behavior {
+        case cancel
+        case expireDeadline
+    }
+
+    private let behavior: Behavior
+    private let lock = NSLock()
+    private var callCount = 0
+    private var isForced = false
+
+    init(behavior: Behavior) {
+        self.behavior = behavior
+    }
+
+    var reachedProgressHandler: Bool {
+        lock.withLock { callCount > 3 }
+    }
+
+    func poll() -> Bool {
+        let state = lock.withLock {
+            callCount += 1
+            return (callCount, isForced)
+        }
+        if state.1 { return true }
+        guard state.0 > 3 else { return false }
+
+        switch behavior {
+        case .cancel:
+            return true
+        case .expireDeadline:
+            if state.0 == 4 {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            return false
+        }
+    }
+
+    func forceCancellation() {
+        lock.withLock { isForced = true }
     }
 }

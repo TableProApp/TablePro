@@ -191,4 +191,201 @@ struct SSHTunnelErrorTests {
             at: startedAt.advanced(by: .seconds(15))
         ) == 45_000)
     }
+
+    @Test("Cancelling SFTP wakes a read blocked on a silent transport")
+    func sftpCancellationInterruptsBlockedTransport() async throws {
+        let sockets = SocketPair()
+        #expect(sockets.a >= 0)
+        defer { sockets.close() }
+
+        let descriptor = sockets.a
+        let interrupt = SFTPTransportInterrupt(socketFD: descriptor)
+        let cancellationFlag = CancellationFlag()
+        let enteredRead = OSAllocatedUnfairLock(initialState: false)
+        let blockedRead = Task {
+            try await withTaskCancellationHandler {
+                guard let readResult = await BoundedCall.resultOnItsOwnThread(
+                    within: .seconds(2),
+                    onDeadline: { Darwin.shutdown(descriptor, SHUT_RDWR) },
+                    of: {
+                        enteredRead.withLock { $0 = true }
+                        var byte: UInt8 = 0
+                        return Darwin.read(descriptor, &byte, 1)
+                    }
+                ) else {
+                    throw SFTPError.cancelled
+                }
+                try Task.checkCancellation()
+                return readResult
+            } onCancel: {
+                cancellationFlag.cancel()
+                interrupt.interrupt()
+            }
+        }
+
+        let entryDeadline = ContinuousClock.now + .seconds(1)
+        while !enteredRead.withLock({ $0 }), ContinuousClock.now < entryDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard enteredRead.withLock({ $0 }) else {
+            blockedRead.cancel()
+            Issue.record("The blackhole read did not start")
+            _ = await blockedRead.result
+            return
+        }
+        let startedAt = ContinuousClock.now
+        blockedRead.cancel()
+        let result = await blockedRead.result
+
+        guard case .failure(let error) = result else {
+            Issue.record("The cancelled SFTP read completed successfully")
+            return
+        }
+        #expect(error is CancellationError)
+        #expect(ContinuousClock.now - startedAt < .seconds(1))
+        #expect(cancellationFlag.isCancelled)
+        #expect(interrupt.isInterrupted)
+    }
+
+    @Test("Closing SFTP interrupts once before the socket can change owners")
+    func sftpCloseInterruptsOnceBeforeSocketRelease() {
+        let interruptCount = OSAllocatedUnfairLock(initialState: 0)
+        let interrupt = SFTPTransportInterrupt {
+            interruptCount.withLock { $0 += 1 }
+        }
+
+        interrupt.interrupt()
+        interrupt.interrupt()
+
+        #expect(interruptCount.withLock { $0 } == 1)
+        #expect(interrupt.isInterrupted)
+    }
+
+    @Test("SFTP close waits for the interrupted operation before cleanup")
+    func sftpCloseUsesSerialCleanupBarrier() async throws {
+        let releaseOperation = DispatchSemaphore(value: 0)
+        let enteredOperation = OSAllocatedUnfairLock(initialState: false)
+        let operationFinished = OSAllocatedUnfairLock(initialState: false)
+        let cleanupObservedFinishedOperation = OSAllocatedUnfairLock(initialState: false)
+        let lateOperationRan = OSAllocatedUnfairLock(initialState: false)
+        let gate = SFTPSerialSessionGate(
+            queue: DispatchQueue(label: "com.TableProTests.sftp-close-barrier"),
+            transportInterrupt: SFTPTransportInterrupt {
+                releaseOperation.signal()
+            }
+        )
+        let operation = Task {
+            await BoundedCall.resultOnItsOwnThread(
+                within: .seconds(3),
+                onDeadline: { releaseOperation.signal() },
+                of: {
+                    do {
+                        try gate.withOpenSession {
+                            enteredOperation.withLock { $0 = true }
+                            releaseOperation.wait()
+                            operationFinished.withLock { $0 = true }
+                        }
+                        return true
+                    } catch {
+                        return false
+                    }
+                }
+            )
+        }
+
+        let entryDeadline = ContinuousClock.now + .seconds(1)
+        while !enteredOperation.withLock({ $0 }), ContinuousClock.now < entryDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard enteredOperation.withLock({ $0 }) else {
+            releaseOperation.signal()
+            Issue.record("The serialized SFTP operation did not start")
+            _ = await operation.value
+            return
+        }
+
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .seconds(2)) {
+            releaseOperation.signal()
+        }
+        let startedAt = ContinuousClock.now
+        let didClose = gate.close {
+            let operationDidFinish = operationFinished.withLock { $0 }
+            cleanupObservedFinishedOperation.withLock { $0 = operationDidFinish }
+        }
+        let operationResult = await operation.value
+
+        #expect(didClose)
+        #expect(operationResult != nil)
+        #expect(ContinuousClock.now - startedAt < .seconds(1))
+        #expect(cleanupObservedFinishedOperation.withLock { $0 })
+        #expect(throws: SFTPError.cancelled) {
+            try gate.withOpenSession {
+                lateOperationRan.withLock { $0 = true }
+            }
+        }
+        #expect(!lateOperationRan.withLock { $0 })
+    }
+
+    @Test("ProxyJump cleanup waits until its relay no longer uses libssh2 handles")
+    func proxyJumpCleanupDrainsRelayBeforeFree() async throws {
+        let releaseRelay = DispatchSemaphore(value: 0)
+        let enteredRelay = OSAllocatedUnfairLock(initialState: false)
+        let relayFinished = OSAllocatedUnfairLock(initialState: false)
+        let cleanupObservedFinishedRelay = OSAllocatedUnfairLock(initialState: false)
+        let fence = SSHJumpRelayFence {
+            releaseRelay.signal()
+        }
+
+        Thread.detachNewThread {
+            enteredRelay.withLock { $0 = true }
+            releaseRelay.wait()
+            relayFinished.withLock { $0 = true }
+            fence.finish()
+        }
+
+        let entryDeadline = ContinuousClock.now + .seconds(1)
+        while !enteredRelay.withLock({ $0 }), ContinuousClock.now < entryDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard enteredRelay.withLock({ $0 }) else {
+            releaseRelay.signal()
+            Issue.record("The ProxyJump relay did not start")
+            return
+        }
+
+        let teardown = await BoundedCall.resultOnItsOwnThread(
+            within: .seconds(2),
+            onDeadline: { releaseRelay.signal() },
+            of: {
+                fence.stop()
+                fence.wait()
+                cleanupObservedFinishedRelay.withLock { value in
+                    value = relayFinished.withLock { $0 }
+                }
+                return true
+            }
+        )
+
+        #expect(teardown == true)
+        #expect(cleanupObservedFinishedRelay.withLock { $0 })
+        #expect(!fence.isActive)
+    }
+
+    @Test("A completed ProxyJump relay disarms late descriptor interruption")
+    func proxyJumpCompletionDisarmsLateStop() {
+        let stopCount = OSAllocatedUnfairLock(initialState: 0)
+        let released = OSAllocatedUnfairLock(initialState: false)
+        let fence = SSHJumpRelayFence {
+            stopCount.withLock { $0 += 1 }
+        }
+
+        fence.finish {
+            released.withLock { $0 = true }
+        }
+        fence.stop()
+
+        #expect(released.withLock { $0 })
+        #expect(stopCount.withLock { $0 } == 0)
+        #expect(!fence.isActive)
+    }
 }

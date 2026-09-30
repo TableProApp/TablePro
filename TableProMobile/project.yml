@@ -70,6 +70,7 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      - ../Plugins/Shared/PluginQueryTimeout.swift
       # The column default reading both apps show, plus the literal spellings it writes and the
       # version floor that says which catalog quotes its defaults. The DDL writers stay on macOS.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift

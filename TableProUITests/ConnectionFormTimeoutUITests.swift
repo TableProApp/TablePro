@@ -33,8 +33,20 @@ final class ConnectionFormTimeoutUITests: UITestCase {
 
         replaceText(in: queryTimeout, with: "-1")
         XCTAssertTrue(
-            waitForValidation("Query timeout must be 0 seconds or longer.", in: form),
+            waitForValidation("Query timeout must be between 0 and 2,147,483 seconds.", in: form),
             "A negative query timeout should block saving"
+        )
+
+        replaceText(in: queryTimeout, with: "2147484")
+        XCTAssertTrue(
+            waitForValidation("Query timeout must be between 0 and 2,147,483 seconds.", in: form),
+            "A query timeout that overflows millisecond APIs should block saving"
+        )
+
+        replaceText(in: queryTimeout, with: "2147483")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { !self.hasValidation(in: form) },
+            "The largest safe query timeout should clear validation"
         )
 
         replaceText(in: queryTimeout, with: "0")

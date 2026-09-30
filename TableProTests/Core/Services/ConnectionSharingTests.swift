@@ -28,6 +28,20 @@ struct ConnectionSharingTests {
             #expect(exported.additionalFields?[DatabaseConnection.queryTimeoutSecondsKey] == nil)
         }
 
+        @Test("Export drops a corrupted query timeout")
+        @MainActor
+        func exportDropsCorruptedQueryTimeout() throws {
+            var connection = DatabaseConnection(name: "Prod", type: .postgresql)
+            connection.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] = String(
+                DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1
+            )
+
+            let exported = try #require(ConnectionExportService.buildEnvelope(for: [connection]).connections.first)
+
+            #expect(exported.queryTimeoutSeconds == nil)
+            #expect(exported.additionalFields?[DatabaseConnection.queryTimeoutSecondsKey] == nil)
+        }
+
         @Test("Import keeps explicit timeouts and unrelated fields")
         @MainActor
         func importKeepsExplicitTimeouts() {
@@ -101,6 +115,33 @@ struct ConnectionSharingTests {
             #expect(connection.connectTimeoutSeconds == nil)
             #expect(connection.queryTimeoutSeconds == nil)
             #expect(connection.additionalFields == ["schema": "public"])
+        }
+
+        @Test("Import accepts the maximum safe query timeout and rejects the next second")
+        @MainActor
+        func importBoundsQueryTimeout() {
+            let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
+            let exportable: (Int) -> ExportableConnection = { queryTimeoutSeconds in
+                ExportableConnection(
+                    name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
+                    type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: nil,
+                    tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+                    queryTimeoutSeconds: queryTimeoutSeconds,
+                    additionalFields: nil, redisDatabase: nil, startupCommands: nil, localOnly: nil
+                )
+            }
+
+            let accepted = ConnectionExportService.buildDatabaseConnection(
+                id: UUID(), from: exportable(maximum), name: "Accepted",
+                tagIdsByName: [:], groupIdsByName: [:]
+            )
+            let rejected = ConnectionExportService.buildDatabaseConnection(
+                id: UUID(), from: exportable(maximum + 1), name: "Rejected",
+                tagIdsByName: [:], groupIdsByName: [:]
+            )
+
+            #expect(accepted.queryTimeoutSeconds == maximum)
+            #expect(rejected.queryTimeoutSeconds == nil)
         }
     }
 

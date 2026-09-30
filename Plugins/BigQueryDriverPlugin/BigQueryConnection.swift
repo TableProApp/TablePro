@@ -325,13 +325,15 @@ internal enum BigQueryJobPolling {
     }
 
     static func deadline(queryTimeoutSeconds: Int, from start: Date) -> Date? {
-        guard queryTimeoutSeconds > 0 else { return nil }
-        return start.addingTimeInterval(TimeInterval(queryTimeoutSeconds + deadlineGraceSeconds))
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(queryTimeoutSeconds)
+        guard boundedSeconds > 0 else { return nil }
+        return start.addingTimeInterval(TimeInterval(boundedSeconds + deadlineGraceSeconds))
     }
 
     static func jobTimeoutMilliseconds(queryTimeoutSeconds: Int) -> String? {
-        guard queryTimeoutSeconds > 0 else { return nil }
-        return String(Int64(queryTimeoutSeconds) * 1_000)
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(queryTimeoutSeconds)
+        guard boundedSeconds > 0 else { return nil }
+        return String(PluginQueryTimeout.milliseconds(boundedSeconds))
     }
 
     static func failure(of job: BQJobResponse) -> BigQueryError? {

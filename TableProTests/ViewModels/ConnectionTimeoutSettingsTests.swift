@@ -29,6 +29,23 @@ struct ConnectionTimeoutSettingsTests {
         #expect(connection.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
     }
 
+    @Test("Database connection rejects query timeouts unsafe for millisecond APIs")
+    func modelRejectsUnsafeQueryTimeouts() {
+        let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
+        var connection = DatabaseConnection(name: "Timeouts")
+
+        connection.queryTimeoutSeconds = maximum
+        #expect(connection.queryTimeoutSeconds == maximum)
+        #expect(connection.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == String(maximum))
+
+        connection.queryTimeoutSeconds = maximum + 1
+        #expect(connection.queryTimeoutSeconds == nil)
+        #expect(connection.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
+
+        connection.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] = String(maximum + 1)
+        #expect(connection.queryTimeoutSeconds == nil)
+    }
+
     @Test("Kafka timeout storage migrates from the retired plugin field")
     func kafkaTimeoutStorageMigrates() {
         var connection = DatabaseConnection(name: "Kafka", type: .kafka)
@@ -95,9 +112,10 @@ struct ConnectionTimeoutSettingsTests {
         #expect(viewModel.validationIssues == ["Connect timeout must be between 1 and 600 seconds."])
     }
 
-    @Test("Query timeout accepts inheritance, no limit, and positive values")
+    @Test("Query timeout accepts only values safe for millisecond APIs")
     func validatesQueryTimeout() {
         let viewModel = CustomizationPaneViewModel()
+        let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
 
         viewModel.queryTimeoutSeconds = nil
         #expect(viewModel.validationIssues.isEmpty)
@@ -108,8 +126,14 @@ struct ConnectionTimeoutSettingsTests {
         viewModel.queryTimeoutSeconds = 120
         #expect(viewModel.validationIssues.isEmpty)
 
+        viewModel.queryTimeoutSeconds = maximum
+        #expect(viewModel.validationIssues.isEmpty)
+
+        viewModel.queryTimeoutSeconds = maximum + 1
+        #expect(viewModel.validationIssues == ["Query timeout must be between 0 and 2,147,483 seconds."])
+
         viewModel.queryTimeoutSeconds = -1
-        #expect(viewModel.validationIssues == ["Query timeout must be 0 seconds or longer."])
+        #expect(viewModel.validationIssues == ["Query timeout must be between 0 and 2,147,483 seconds."])
     }
 
     @Test("Connection form edits include both timeout overrides")

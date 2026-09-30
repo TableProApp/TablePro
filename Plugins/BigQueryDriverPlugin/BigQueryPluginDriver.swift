@@ -483,7 +483,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     func storeQueryTimeout(_ seconds: Int) -> BigQueryConnection? {
         lock.withLock {
-            _queryTimeoutSeconds = seconds
+            _queryTimeoutSeconds = PluginQueryTimeout.boundedSeconds(seconds)
             return _connection
         }
     }

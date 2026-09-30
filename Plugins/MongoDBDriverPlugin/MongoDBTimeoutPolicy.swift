@@ -64,6 +64,10 @@ enum MongoDBServerErrorCode {
 enum MongoDBTimeoutPolicy {
     static let backgroundMaxTimeMS: Int32 = 5_000
 
+    static func queryTimeoutMilliseconds(seconds: Int) -> Int32 {
+        PluginQueryTimeout.int32Milliseconds(seconds)
+    }
+
     static func resolveMaxTimeMS(ambientMS: Int32, background: Bool) -> Int32? {
         guard background else {
             return ambientMS > 0 ? ambientMS : nil

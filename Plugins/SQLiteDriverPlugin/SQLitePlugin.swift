@@ -195,7 +195,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        await backend.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
+        await backend.applyBusyTimeout(SQLiteQueryTimeout.milliseconds(seconds: seconds))
     }
 
     // MARK: - Query Execution

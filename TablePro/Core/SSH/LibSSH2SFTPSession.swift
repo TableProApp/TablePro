@@ -5,6 +5,7 @@
 
 import CLibSSH2
 import CryptoKit
+import Darwin
 import Foundation
 import os
 
@@ -62,6 +63,85 @@ internal struct SFTPConnectionBudget: Sendable {
     }
 }
 
+internal final class SFTPTransportInterrupt: @unchecked Sendable {
+    private struct State {
+        var action: (@Sendable () -> Void)?
+        var isInterrupted = false
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
+
+    internal convenience init(socketFD: Int32) {
+        self.init {
+            Darwin.shutdown(socketFD, SHUT_RDWR)
+        }
+    }
+
+    internal init(action: @escaping @Sendable () -> Void) {
+        state = OSAllocatedUnfairLock(initialState: State(action: action))
+    }
+
+    internal var isInterrupted: Bool {
+        state.withLock { $0.isInterrupted }
+    }
+
+    internal func interrupt() {
+        state.withLock { state in
+            guard let action = state.action else { return }
+            state.action = nil
+            state.isInterrupted = true
+            action()
+        }
+    }
+}
+
+internal final class SFTPSerialSessionGate: @unchecked Sendable {
+    private let queue: DispatchQueue
+    private let transportInterrupt: SFTPTransportInterrupt
+    private let closed = OSAllocatedUnfairLock(initialState: false)
+
+    internal init(
+        queue: DispatchQueue,
+        transportInterrupt: SFTPTransportInterrupt
+    ) {
+        self.queue = queue
+        self.transportInterrupt = transportInterrupt
+    }
+
+    internal var canBeReused: Bool {
+        !closed.withLock { $0 } && !transportInterrupt.isInterrupted
+    }
+
+    internal var isInterrupted: Bool {
+        transportInterrupt.isInterrupted
+    }
+
+    internal func withOpenSession<T>(_ body: () throws -> T) throws -> T {
+        try queue.sync {
+            guard !closed.withLock({ $0 }) else { throw SFTPError.cancelled }
+            return try body()
+        }
+    }
+
+    @discardableResult
+    internal func close(_ cleanup: () -> Void) -> Bool {
+        let wasOpen = closed.withLock { isClosed -> Bool in
+            let wasOpen = !isClosed
+            isClosed = true
+            return wasOpen
+        }
+        guard wasOpen else { return false }
+
+        transportInterrupt.interrupt()
+        queue.sync(execute: cleanup)
+        return true
+    }
+
+    internal func interrupt() {
+        transportInterrupt.interrupt()
+    }
+}
+
 /// An authenticated SSH session carrying the SFTP subsystem and nothing else.
 ///
 /// A sibling of `LibSSH2Tunnel` rather than a mode of it: a tunnel owns a listening socket and an
@@ -80,10 +160,9 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
 
     private let chain: LibSSH2TunnelFactory.AuthenticatedChain
     private let sftp: OpaquePointer
-    private let queue: DispatchQueue
     private let host: String
     private let timeoutEndpoint: ConnectionTimeoutEndpoint
-    private let closed = OSAllocatedUnfairLock(initialState: false)
+    private let lifecycle: SFTPSerialSessionGate
 
     private init(
         chain: LibSSH2TunnelFactory.AuthenticatedChain,
@@ -94,9 +173,12 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
     ) {
         self.chain = chain
         self.sftp = sftp
-        self.queue = queue
         self.host = host
         self.timeoutEndpoint = timeoutEndpoint
+        self.lifecycle = SFTPSerialSessionGate(
+            queue: queue,
+            transportInterrupt: SFTPTransportInterrupt(socketFD: chain.socketFD)
+        )
     }
 
     // MARK: - Lifecycle
@@ -163,19 +245,21 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
     }
 
     func close() {
-        let wasOpen = closed.withLock { isClosed -> Bool in
-            let was = !isClosed
-            isClosed = true
-            return was
-        }
-        guard wasOpen else { return }
-
-        queue.sync {
+        let closed = lifecycle.close {
             libssh2_session_set_timeout(chain.session, 1)
             libssh2_sftp_shutdown(sftp)
+            LibSSH2TunnelFactory.cleanupChain(chain, reason: "SFTP session closed")
         }
-        LibSSH2TunnelFactory.cleanupChain(chain, reason: "SFTP session closed")
+        guard closed else { return }
         Self.logger.info("SFTP session closed for \(self.host, privacy: .public)")
+    }
+
+    func interruptCurrentOperation() {
+        lifecycle.interrupt()
+    }
+
+    var canBeReused: Bool {
+        lifecycle.canBeReused
     }
 
     // MARK: - Metadata
@@ -279,6 +363,8 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
             return try realPath(expanded, deadline: deadline)
         } catch let timeout as ConnectionTimeoutError {
             throw timeout
+        } catch SFTPError.cancelled {
+            throw SFTPError.cancelled
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch {
@@ -455,15 +541,26 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
         _ command: String,
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) throws -> RemoteCommandResult {
-        guard !closed.withLock({ $0 }) else {
-            throw SFTPError.transferFailed(path: host, detail: "the SFTP session is closed")
+        let budget = SFTPConnectionBudget(deadline: deadline, endpoint: timeoutEndpoint)
+        let operationIsCancelled: @Sendable () -> Bool = { [lifecycle] in
+            lifecycle.isInterrupted
         }
-        return try LibSSH2ExecChannel.run(
-            command,
-            session: chain.session,
-            queue: queue,
-            budget: SFTPConnectionBudget(deadline: deadline, endpoint: timeoutEndpoint)
-        )
+        try budget.check(isCancelled: operationIsCancelled)
+        return try lifecycle.withOpenSession {
+            do {
+                let result = try LibSSH2ExecChannel.runSerialized(
+                    command,
+                    session: chain.session,
+                    budget: budget,
+                    isCancelled: operationIsCancelled
+                )
+                try budget.check(isCancelled: operationIsCancelled)
+                return result
+            } catch let operationError {
+                try budget.check(isCancelled: operationIsCancelled)
+                throw operationError
+            }
+        }
     }
 
     // MARK: - Private
@@ -473,19 +570,19 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
         isCancelled: @escaping @Sendable () -> Bool = { false },
         _ body: (OpaquePointer, SFTPConnectionBudget) throws -> T
     ) throws -> T {
-        guard !closed.withLock({ $0 }) else {
-            throw SFTPError.transferFailed(path: host, detail: "the SFTP session is closed")
-        }
         let budget = SFTPConnectionBudget(deadline: deadline, endpoint: timeoutEndpoint)
-        try budget.check(isCancelled: isCancelled)
-        return try queue.sync {
-            try budget.prepare(session: chain.session, isCancelled: isCancelled)
+        let operationIsCancelled: @Sendable () -> Bool = { [lifecycle] in
+            isCancelled() || lifecycle.isInterrupted
+        }
+        try budget.check(isCancelled: operationIsCancelled)
+        return try lifecycle.withOpenSession {
+            try budget.prepare(session: chain.session, isCancelled: operationIsCancelled)
             do {
                 let result = try body(sftp, budget)
-                try budget.check(isCancelled: isCancelled)
+                try budget.check(isCancelled: operationIsCancelled)
                 return result
             } catch let operationError {
-                try budget.check(isCancelled: isCancelled)
+                try budget.check(isCancelled: operationIsCancelled)
                 throw operationError
             }
         }

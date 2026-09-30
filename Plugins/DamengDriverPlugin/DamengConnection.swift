@@ -120,13 +120,13 @@ final class DamengConnection: @unchecked Sendable {
     func applyQueryTimeout(seconds: Int) {
         stateLock.lock()
         defer { stateLock.unlock() }
-        queryTimeoutSeconds = max(0, seconds)
+        queryTimeoutSeconds = PluginQueryTimeout.boundedSeconds(seconds)
     }
 
     private func timeoutMilliseconds() -> UInt64 {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return UInt64(queryTimeoutSeconds) * 1_000
+        return UInt64(PluginQueryTimeout.milliseconds(queryTimeoutSeconds))
     }
 
     static func fetchLimit(_ rowCap: Int?) -> Int {

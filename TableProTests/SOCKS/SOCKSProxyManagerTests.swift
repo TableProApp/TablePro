@@ -16,6 +16,18 @@ struct SOCKSProxyManagerTests {
         SOCKSProxyConfiguration(host: "127.0.0.1", port: port, username: username)
     }
 
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return condition()
+    }
+
     private func expectPortEventuallyFree(_ port: Int, host: String = "127.0.0.1") async {
         for _ in 0..<100 {
             if await !LoopbackPort.isReachable(host: host, port: port) { return }
@@ -150,8 +162,8 @@ struct SOCKSProxyManagerTests {
         let freePort = try #require(LoopbackPort.allocateFree())
         let manager = SOCKSProxyManager(connectTimeout: 1)
         let started = Date()
-        await #expect(throws: SOCKSProxyError.self) {
-            _ = try await manager.createTunnel(
+        let creation = Task {
+            try await manager.createTunnel(
                 connectionId: UUID(),
                 config: config(port: freePort),
                 password: nil,
@@ -159,6 +171,16 @@ struct SOCKSProxyManagerTests {
                 targetPort: 5_432
             )
         }
+        defer { creation.cancel() }
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected an unreachable SOCKS proxy to fail")
+            return
+        }
+        #expect(error is SOCKSProxyError)
         #expect(Date().timeIntervalSince(started) < 10)
     }
 
@@ -169,15 +191,12 @@ struct SOCKSProxyManagerTests {
         defer { server.stop() }
 
         let manager = SOCKSProxyManager(connectTimeout: 30)
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 30,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
-        )
-        await #expect(throws: ConnectionTimeoutError(
-            endpoint: .proxy("127.0.0.1:\(server.port)"),
-            configuredSeconds: 30
-        )) {
-            _ = try await manager.createTunnel(
+        let creation = Task {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            try await manager.createTunnel(
                 connectionId: UUID(),
                 config: config(port: server.port),
                 password: nil,
@@ -186,6 +205,20 @@ struct SOCKSProxyManagerTests {
                 deadline: deadline
             )
         }
+        defer { creation.cancel() }
+        try #require(await waitUntil { server.acceptedConnectionCount > 0 })
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected the silent SOCKS proxy to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .proxy("127.0.0.1:\(server.port)"),
+            configuredSeconds: 30
+        ))
     }
 
     @Test("cancelling tunnel creation returns promptly")
@@ -205,10 +238,18 @@ struct SOCKSProxyManagerTests {
                 targetPort: 5_432
             )
         }
+        defer { creation.cancel() }
         try await Task.sleep(nanoseconds: 200_000_000)
         let started = Date()
         creation.cancel()
-        await #expect(throws: (any Error).self) { _ = try await creation.value }
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected cancellation to stop SOCKS tunnel creation")
+            return
+        }
+        #expect(error is CancellationError)
         #expect(Date().timeIntervalSince(started) < 5)
         #expect(await !manager.hasTunnel(connectionId: connectionId))
     }

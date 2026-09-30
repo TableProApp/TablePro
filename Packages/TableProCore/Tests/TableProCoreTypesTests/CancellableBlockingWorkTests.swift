@@ -14,15 +14,55 @@ private final class FlagBox: @unchecked Sendable {
     }
 }
 
-private func pollUntil(_ condition: @Sendable () -> Bool, timeout: TimeInterval = 2) async {
-    let start = Date()
-    while !condition() {
-        if Date().timeIntervalSince(start) > timeout { return }
-        try? await Task.sleep(nanoseconds: 5_000_000)
+private func waitUntil(
+    timeout: Duration = .seconds(2),
+    _ condition: @Sendable () -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while ContinuousClock.now < deadline {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(5))
     }
+    return condition()
 }
 
 private struct TimeoutError: Error {}
+
+private enum TestWatchdog {
+    private final class FirstArrival<Value: Sendable>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Value?, Never>?
+
+        init(_ continuation: CheckedContinuation<Value?, Never>) {
+            self.continuation = continuation
+        }
+
+        func claim() -> CheckedContinuation<Value?, Never>? {
+            lock.withLock {
+                defer { continuation = nil }
+                return continuation
+            }
+        }
+    }
+
+    static func result<Value: Sendable>(
+        within timeout: Duration = .seconds(2),
+        of work: @escaping @Sendable () async -> Value
+    ) async -> Value? {
+        await withCheckedContinuation { continuation in
+            let arrival = FirstArrival(continuation)
+            let timer = Task {
+                try? await Task.sleep(for: timeout)
+                arrival.claim()?.resume(returning: nil)
+            }
+            Task {
+                let value = await work()
+                arrival.claim()?.resume(returning: value)
+                timer.cancel()
+            }
+        }
+    }
+}
 
 @Suite("Cancellable blocking work")
 struct CancellableBlockingWorkTests {
@@ -34,7 +74,7 @@ struct CancellableBlockingWorkTests {
     }
 
     @Test("Cancel returns promptly and the late result is discarded, not adopted")
-    func cancelDiscardsLateResult() async {
+    func cancelDiscardsLateResult() async throws {
         let queue = DispatchQueue(label: "test.cancel")
         let workStarted = FlagBox()
         let release = DispatchSemaphore(value: 0)
@@ -51,28 +91,36 @@ struct CancellableBlockingWorkTests {
                 discardLateResult: { _ in discarded.mark() }
             )
         }
+        var didRelease = false
+        defer {
+            task.cancel()
+            if !didRelease { release.signal() }
+        }
 
-        await pollUntil { workStarted.value }
+        try #require(await waitUntil { workStarted.value })
         task.cancel()
 
-        let result = await task.result
-        if case .success = result {
-            Issue.record("expected the cancelled caller to throw")
+        let result = try #require(await TestWatchdog.result { await task.result })
+        switch result {
+        case .failure(let error):
+            #expect(error is CancellationError)
+        case .success:
+            Issue.record("Expected the cancelled caller to throw")
         }
         #expect(!discarded.value)
 
+        didRelease = true
         release.signal()
-        await pollUntil { discarded.value }
-        #expect(discarded.value)
+        #expect(await waitUntil { discarded.value })
     }
 
     @Test("A deadline fails the caller and discards the late result")
-    func deadlineFires() async {
+    func deadlineFires() async throws {
         let queue = DispatchQueue(label: "test.deadline")
         let release = DispatchSemaphore(value: 0)
         let discarded = FlagBox()
 
-        let result = await Task {
+        let task = Task {
             try await runCancellableBlocking(
                 on: queue,
                 deadline: .milliseconds(40),
@@ -83,18 +131,25 @@ struct CancellableBlockingWorkTests {
                 },
                 discardLateResult: { _ in discarded.mark() }
             )
-        }.result
+        }
+        var didRelease = false
+        defer {
+            task.cancel()
+            if !didRelease { release.signal() }
+        }
+
+        let result = try #require(await TestWatchdog.result { await task.result })
 
         switch result {
         case .failure(let error):
             #expect(error is TimeoutError)
         case .success:
-            Issue.record("expected the deadline to fire")
+            Issue.record("Expected the deadline to fire")
         }
 
+        didRelease = true
         release.signal()
-        await pollUntil { discarded.value }
-        #expect(discarded.value)
+        #expect(await waitUntil { discarded.value })
     }
 
     @Test("Work that completes before any cancel adopts the result")

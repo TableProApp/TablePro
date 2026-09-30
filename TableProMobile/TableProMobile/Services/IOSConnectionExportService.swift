@@ -169,7 +169,7 @@ enum IOSConnectionExportService {
     }
 
     private static func validQueryTimeout(_ value: Int?) -> Int? {
-        value.flatMap { $0 >= 0 ? $0 : nil }
+        value.flatMap { DatabaseConnection.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
     }
 
     private static func exportableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {

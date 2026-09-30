@@ -4,6 +4,18 @@ import os
 import TableProPluginKit
 import Testing
 
+private func waitUntil(
+    timeout: Duration = .seconds(2),
+    _ condition: @Sendable () -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    while ContinuousClock.now < deadline {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    return condition()
+}
+
 struct ConnectionDeadlineTests {
     @Test("Connect timeout policy defaults and rejects out-of-range values")
     func connectPolicy() {
@@ -19,6 +31,25 @@ struct ConnectionDeadlineTests {
         #expect(ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(configuredSeconds: nil, globalSeconds: 45) == 45)
         #expect(ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(configuredSeconds: 0, globalSeconds: 45) == 0)
         #expect(ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(configuredSeconds: 12, globalSeconds: 45) == 12)
+        #expect(DatabaseConnection.queryTimeoutSecondsRange.upperBound == 2_147_483)
+        #expect(
+            ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                configuredSeconds: 2_147_483,
+                globalSeconds: 45
+            ) == 2_147_483
+        )
+        #expect(
+            ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                configuredSeconds: 2_147_484,
+                globalSeconds: 45
+            ) == 45
+        )
+        #expect(
+            ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                configuredSeconds: nil,
+                globalSeconds: 2_147_484
+            ) == 2_147_483
+        )
         #expect(ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(configuredSeconds: -1, globalSeconds: 45) == 45)
         #expect(ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(configuredSeconds: nil, globalSeconds: -1) == 0)
     }
@@ -183,15 +214,13 @@ struct ConnectionDeadlineTests {
 
     @Test("Credential resolution cannot outlive the shared connection deadline")
     @MainActor
-    func credentialResolutionDeadline() async {
+    func credentialResolutionDeadline() async throws {
         let resolver = DeadlineBlockingCredentialResolver()
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 1,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(80))
-        )
-        let startedAt = ContinuousClock.now
-
-        await #expect(throws: ConnectionTimeoutError.self) {
+        let resolution = Task {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 1,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
             try await DatabaseDriverFactory.resolvePasswordWithinDeadline(
                 deadline: deadline,
                 endpoint: .database("db.example.com")
@@ -199,6 +228,24 @@ struct ConnectionDeadlineTests {
                 await resolver.resolve()
             }
         }
+        defer {
+            resolution.cancel()
+            resolver.finish()
+        }
+        try #require(await waitUntil { resolver.isResolving })
+        let startedAt = ContinuousClock.now
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await resolution.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected credential resolution to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .database("db.example.com"),
+            configuredSeconds: 1
+        ))
 
         #expect(ContinuousClock.now - startedAt < .seconds(1))
         #expect(resolver.isResolving)
@@ -221,15 +268,21 @@ struct PluginDriverAdapterConnectDeadlineTests {
             timeoutEndpoint: .database("Local")
         )
         let connect = Task { try await adapter.connect() }
-        defer { plugin.finishConnect() }
+        defer {
+            connect.cancel()
+            plugin.finishConnect()
+        }
 
-        try await waitUntil { plugin.isConnecting }
+        try #require(await waitUntil { plugin.isConnecting })
         try await Task.sleep(for: .milliseconds(120))
         #expect(plugin.isConnecting)
         #expect(plugin.disconnectCallCount == 0)
 
         plugin.finishConnect()
-        try await connect.value
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await connect.result
+        })
+        try result.get()
         #expect(adapter.status == .connected)
         #expect(plugin.disconnectCallCount == 0)
 
@@ -240,49 +293,65 @@ struct PluginDriverAdapterConnectDeadlineTests {
     @Test("A cancellation-deaf connect returns at its deadline and cleans up only after it returns")
     func cancellationDeafConnect() async throws {
         let plugin = DeadlineBlockingPluginDriver()
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 1,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(80))
-        )
-        let adapter = PluginDriverAdapter(
-            connection: DatabaseConnection(name: "Test", host: "db.example.com", type: .mysql),
-            pluginDriver: plugin,
-            deadline: deadline,
-            timeoutEndpoint: .database("db.example.com")
-        )
+        let adapterBox = OSAllocatedUnfairLock(initialState: Optional<PluginDriverAdapter>.none)
         let stages = OSAllocatedUnfairLock(initialState: [ConnectionStage]())
-        let startedAt = ContinuousClock.now
-
-        await #expect(throws: ConnectionTimeoutError.self) {
+        let connect = Task {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 1,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            let adapter = PluginDriverAdapter(
+                connection: DatabaseConnection(name: "Test", host: "db.example.com", type: .mysql),
+                pluginDriver: plugin,
+                deadline: deadline,
+                timeoutEndpoint: .database("db.example.com")
+            )
+            adapterBox.withLock { $0 = adapter }
             try await adapter.connectReporting { stage in
                 stages.withLock { $0.append(stage) }
             }
         }
+        defer {
+            connect.cancel()
+            plugin.finishConnect()
+        }
+        try #require(await waitUntil { plugin.isConnecting })
+        let adapter = try #require(adapterBox.withLock { $0 })
+        let startedAt = ContinuousClock.now
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await connect.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected the plugin connect to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .database("db.example.com"),
+            configuredSeconds: 1
+        ))
 
         #expect(ContinuousClock.now - startedAt < .seconds(1))
         #expect(plugin.isConnecting)
         #expect(plugin.disconnectCallCount == 0)
         #expect(!plugin.disconnectedWhileConnecting)
 
-        await #expect(throws: DatabaseError.self) {
-            try await adapter.connect()
+        let repeatedConnect = Task { try await adapter.connect() }
+        defer { repeatedConnect.cancel() }
+        let repeatedResult = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await repeatedConnect.result
+        })
+        guard case .failure(let repeatedError) = repeatedResult else {
+            Issue.record("Expected a second connect to fail while late cleanup was pending")
+            return
         }
+        #expect(repeatedError is DatabaseError)
 
         plugin.finishConnect()
-        try await waitUntil { plugin.disconnectCallCount == 1 }
+        try #require(await waitUntil { plugin.disconnectCallCount == 1 })
 
         #expect(!plugin.disconnectedWhileConnecting)
         #expect(stages.withLock { $0 } == [.authenticating])
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !condition() {
-            guard ContinuousClock.now < deadline else {
-                throw DatabaseError.connectionFailed("Timed out waiting for the test driver.")
-            }
-            try await Task.sleep(for: .milliseconds(5))
-        }
     }
 }
 

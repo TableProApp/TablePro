@@ -128,6 +128,8 @@ enum RemoteDatabaseFileTransfer {
             result = try session.runRemoteCommand("sqlite3 --version", deadline: deadline)
         } catch let timeout as ConnectionTimeoutError {
             throw timeout
+        } catch SFTPError.cancelled {
+            throw SFTPError.cancelled
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -159,6 +161,8 @@ enum RemoteDatabaseFileTransfer {
             wal = try session.stat(walPath, deadline: deadline)
         } catch let timeout as ConnectionTimeoutError {
             throw timeout
+        } catch SFTPError.cancelled {
+            throw SFTPError.cancelled
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -231,11 +235,20 @@ enum RemoteDatabaseFileTransfer {
         try deadline.check(endpoint: timeoutEndpoint)
 
         let expectedBytes = plan.method == .remoteSnapshot ? downloaded.bytes : stat.size
-        let verdict = DatabaseFileIntegrity.verifyDownload(
-            at: staging,
-            expectedBytes: expectedBytes,
-            runsIntegrityCheck: layout.acceptsSQLiteIntegrityCheck
-        )
+        let verdict: DatabaseFileIntegrity.Verdict
+        do {
+            verdict = try DatabaseFileIntegrity.verifyDownload(
+                at: staging,
+                expectedBytes: expectedBytes,
+                runsIntegrityCheck: layout.acceptsSQLiteIntegrityCheck,
+                deadline: deadline,
+                timeoutEndpoint: timeoutEndpoint,
+                isCancelled: isCancelled
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: staging)
+            throw error
+        }
         guard verdict.isOK else {
             try? FileManager.default.removeItem(at: staging)
             throw transferError(for: verdict, path: remotePath)

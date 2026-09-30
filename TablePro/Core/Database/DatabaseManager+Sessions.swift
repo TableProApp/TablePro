@@ -147,6 +147,7 @@ extension DatabaseManager {
 
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
+                session.connection = connection
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection

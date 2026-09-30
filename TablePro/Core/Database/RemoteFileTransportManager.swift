@@ -14,6 +14,42 @@ struct MaterializedRemoteFile: Sendable {
     let plan: RemoteFetchPlan
 }
 
+internal enum RemoteFileSessionOwnership {
+    static func takeCurrent<Session: AnyObject>(
+        _ current: inout Session?,
+        ifOwnedBy expected: Session
+    ) -> Session? {
+        guard current === expected else { return nil }
+        defer { current = nil }
+        return current
+    }
+
+    static func takeCurrentGeneration(
+        _ current: inout UUID?,
+        ifCurrent expected: UUID
+    ) -> Bool {
+        guard current == expected else { return false }
+        current = nil
+        return true
+    }
+
+    /// Installs a new whole-materialization generation and atomically takes the old cached session
+    /// when it supersedes work. The caller retires that session before the replacement can
+    /// capture it. Otherwise both attempts can hold the same object and an old attempt's identity-
+    /// guarded cleanup would still be able to close the winner's session.
+    static func replaceCurrentGeneration<Session: AnyObject>(
+        _ current: inout UUID?,
+        with replacement: UUID,
+        retiring currentSession: inout Session?
+    ) -> (superseded: Bool, retiredSession: Session?) {
+        let replacedExisting = current != nil
+        current = replacement
+        guard replacedExisting else { return (false, nil) }
+        defer { currentSession = nil }
+        return (true, currentSession)
+    }
+}
+
 /// Owns the working copies of remote database files, one per connection.
 ///
 /// A sibling of `SSHTunnelManager` and conforming to the same `TunnelManaging`, so disconnect,
@@ -32,7 +68,9 @@ actor RemoteFileTransportManager: TunnelManaging {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RemoteDatabaseFile")
 
     private var materialized: [UUID: MaterializedRemoteFile] = [:]
+    private var materializationRequestIds: [UUID: UUID] = [:]
     private var sessions: [UUID: LibSSH2SFTPSession] = [:]
+    private var sessionRequestIds: [UUID: UUID] = [:]
 
     /// The server a cached session was opened against, so a session is not reused after the
     /// connection is edited to point at a different host, port, user or key. The path and the
@@ -52,6 +90,7 @@ actor RemoteFileTransportManager: TunnelManaging {
     /// would make a disconnect the moment their work disappears, which is why
     /// `RemoteDatabaseFileStore.abandonedCopies()` exists to find it again.
     func closeTunnel(connectionId: UUID) async throws {
+        materializationRequestIds.removeValue(forKey: connectionId)
         discardSession(for: connectionId)
         if let file = materialized.removeValue(forKey: connectionId) {
             Self.logger.info(
@@ -82,6 +121,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> MaterializedRemoteFile {
         let timeoutEndpoint = ConnectionTimeoutEndpoint.remoteFile("\(config.host):\(config.port ?? 22)")
+        try Task.checkCancellation()
         try deadline.check(endpoint: timeoutEndpoint)
         if !forceRefetch, let existing = materialized[connectionId], existing.identity == identity {
             Self.logger.info(
@@ -95,53 +135,93 @@ actor RemoteFileTransportManager: TunnelManaging {
         // The lock and the storage directory both key off the path the SERVER resolves, not the one
         // the user typed. Two connections naming `~/app.db` and `/home/deploy/app.db` are the same
         // file, and locking on the raw text lets them write one directory concurrently.
-        let session = try await self.session(
-            for: connectionId,
-            config: config,
-            credentials: credentials,
-            deadline: deadline
+        let materializationRequestId = UUID()
+        let replacement = RemoteFileSessionOwnership.replaceCurrentGeneration(
+            &materializationRequestIds[connectionId],
+            with: materializationRequestId,
+            retiring: &sessions[connectionId]
         )
+        if replacement.superseded {
+            // A replacement must never share the old attempt's cached session. The old task keeps
+            // its own reference for safe loser cleanup; removing and closing the cache here means
+            // the replacement opens a different object, so the late loser cannot close the winner.
+            sessionRequestIds.removeValue(forKey: connectionId)
+            sessionServerKeys.removeValue(forKey: connectionId)
+            replacement.retiredSession?.close()
+        }
+        let session: LibSSH2SFTPSession
+        do {
+            session = try await self.session(
+                for: connectionId,
+                config: config,
+                credentials: credentials,
+                deadline: deadline
+            )
+        } catch {
+            finishMaterialization(connectionId: connectionId, requestId: materializationRequestId)
+            throw error
+        }
+        do {
+            try ensureMaterializationIsCurrent(
+                connectionId: connectionId,
+                requestId: materializationRequestId
+            )
+        } catch {
+            discardSession(for: connectionId, ifOwnedBy: session)
+            finishMaterialization(connectionId: connectionId, requestId: materializationRequestId)
+            throw error
+        }
+        let cancelFlag = CancellationFlag()
 
         /// Any failure after the session is cached discards it, not only a failed transfer. A stat, a
         /// realpath, or a manifest write that throws leaves a session that is dead (the peer dropped)
         /// or pointed at a file that is gone, and reusing it makes every retry fail the same way
         /// until relaunch. This is the discard the fetch path used to make alone.
-        do {
-            let resolvedIdentity = try Self.resolvingHome(
-                identity,
-                on: session,
-                deadline: deadline
-            )
-            let fileName = Self.workingCopyName(for: resolvedIdentity)
-
-            return try await store.withExclusiveAccess(to: resolvedIdentity) {
-                try deadline.check(endpoint: timeoutEndpoint)
-                if !forceRefetch,
-                   let reused = try await self.reusableCopy(
-                       for: resolvedIdentity,
-                       fileName: fileName,
-                       session: session,
-                       store: store,
-                       deadline: deadline
-                   ) {
-                    try deadline.check(endpoint: timeoutEndpoint)
-                    await self.remember(reused, for: connectionId)
-                    return reused
-                }
-
-                let directory = try await store.prepareDirectory(for: resolvedIdentity)
-                try deadline.check(endpoint: timeoutEndpoint)
-
-                let plan = try RemoteDatabaseFileTransfer.plan(
-                    session: session,
-                    remotePath: resolvedIdentity.path,
-                    layout: layout,
+        return try await withTaskCancellationHandler {
+            do {
+                try Task.checkCancellation()
+                let resolvedIdentity = try Self.resolvingHome(
+                    identity,
+                    on: session,
                     deadline: deadline
                 )
+                try Task.checkCancellation()
+                let fileName = Self.workingCopyName(for: resolvedIdentity)
 
-                let cancelFlag = CancellationFlag()
-                let result = try await withTaskCancellationHandler {
-                    try RemoteDatabaseFileTransfer.fetch(
+                return try await store.withExclusiveAccess(to: resolvedIdentity, deadline: deadline) {
+                    try Task.checkCancellation()
+                    try deadline.check(endpoint: timeoutEndpoint)
+                    if !forceRefetch,
+                       let reused = try await self.reusableCopy(
+                           for: resolvedIdentity,
+                           fileName: fileName,
+                           session: session,
+                           store: store,
+                           deadline: deadline
+                       ) {
+                        try Task.checkCancellation()
+                        try deadline.check(endpoint: timeoutEndpoint)
+                        try await self.remember(
+                            reused,
+                            for: connectionId,
+                            requestId: materializationRequestId
+                        )
+                        return reused
+                    }
+
+                    let directory = try await store.prepareDirectory(for: resolvedIdentity)
+                    try Task.checkCancellation()
+                    try deadline.check(endpoint: timeoutEndpoint)
+
+                    let plan = try RemoteDatabaseFileTransfer.plan(
+                        session: session,
+                        remotePath: resolvedIdentity.path,
+                        layout: layout,
+                        deadline: deadline
+                    )
+                    try Task.checkCancellation()
+
+                    let result = try RemoteDatabaseFileTransfer.fetch(
                         session: session,
                         identity: resolvedIdentity,
                         plan: plan,
@@ -152,32 +232,66 @@ actor RemoteFileTransportManager: TunnelManaging {
                         progress: progress,
                         isCancelled: { cancelFlag.isCancelled }
                     )
-                } onCancel: {
-                    cancelFlag.cancel()
-                }
-                try deadline.check(endpoint: timeoutEndpoint)
-                try await store.writeManifest(result.manifest, for: resolvedIdentity)
-                try deadline.check(endpoint: timeoutEndpoint)
+                    try Task.checkCancellation()
+                    try deadline.check(endpoint: timeoutEndpoint)
+                    try await store.writeManifest(result.manifest, for: resolvedIdentity)
+                    try Task.checkCancellation()
+                    try deadline.check(endpoint: timeoutEndpoint)
 
-                let file = MaterializedRemoteFile(
-                    identity: resolvedIdentity,
-                    workingCopy: result.workingCopy,
-                    manifest: result.manifest,
-                    plan: result.plan
+                    let file = MaterializedRemoteFile(
+                        identity: resolvedIdentity,
+                        workingCopy: result.workingCopy,
+                        manifest: result.manifest,
+                        plan: result.plan
+                    )
+                    try await self.remember(
+                        file,
+                        for: connectionId,
+                        requestId: materializationRequestId
+                    )
+                    return file
+                }
+            } catch {
+                await self.discardSession(for: connectionId, ifOwnedBy: session)
+                await self.finishMaterialization(
+                    connectionId: connectionId,
+                    requestId: materializationRequestId
                 )
-                await self.remember(file, for: connectionId)
-                return file
+                throw error
             }
-        } catch {
-            await self.discardSession(for: connectionId)
-            throw error
+        } onCancel: {
+            cancelFlag.cancel()
+            session.interruptCurrentOperation()
         }
     }
 
     // MARK: - Private
 
-    private func remember(_ file: MaterializedRemoteFile, for connectionId: UUID) {
+    private func remember(
+        _ file: MaterializedRemoteFile,
+        for connectionId: UUID,
+        requestId: UUID
+    ) throws {
+        try ensureMaterializationIsCurrent(connectionId: connectionId, requestId: requestId)
         materialized[connectionId] = file
+        materializationRequestIds.removeValue(forKey: connectionId)
+    }
+
+    private func ensureMaterializationIsCurrent(
+        connectionId: UUID,
+        requestId: UUID
+    ) throws {
+        try Task.checkCancellation()
+        guard materializationRequestIds[connectionId] == requestId else {
+            throw CancellationError()
+        }
+    }
+
+    private func finishMaterialization(connectionId: UUID, requestId: UUID) {
+        _ = RemoteFileSessionOwnership.takeCurrentGeneration(
+            &materializationRequestIds[connectionId],
+            ifCurrent: requestId
+        )
     }
 
     /// A working copy already on disk that still matches the server, so the fetch can be skipped.
@@ -234,8 +348,24 @@ actor RemoteFileTransportManager: TunnelManaging {
     /// next attempt reuses. After a network drop or a host edit that session is pointed at the old
     /// server, or dead, and every retry fails the same way until the app restarts.
     private func discardSession(for connectionId: UUID) {
+        sessionRequestIds.removeValue(forKey: connectionId)
         sessions.removeValue(forKey: connectionId)?.close()
         sessionServerKeys.removeValue(forKey: connectionId)
+    }
+
+    private func discardSession(
+        for connectionId: UUID,
+        ifOwnedBy expected: LibSSH2SFTPSession
+    ) {
+        guard let session = RemoteFileSessionOwnership.takeCurrent(
+            &sessions[connectionId],
+            ifOwnedBy: expected
+        ) else {
+            expected.close()
+            return
+        }
+        sessionServerKeys.removeValue(forKey: connectionId)
+        session.close()
     }
 
     /// The session-identifying half of an SSH configuration: the server and its credentials, with the
@@ -256,19 +386,49 @@ actor RemoteFileTransportManager: TunnelManaging {
     ) async throws -> LibSSH2SFTPSession {
         try deadline.check(endpoint: .remoteFile("\(config.host):\(config.port ?? 22)"))
         let key = Self.serverKey(config)
-        if let existing = sessions[connectionId], sessionServerKeys[connectionId] == key {
+        if let existing = sessions[connectionId],
+           sessionServerKeys[connectionId] == key,
+           existing.canBeReused {
             return existing
         }
         discardSession(for: connectionId)
-        let session = try await LibSSH2SFTPSession.open(
-            config: config,
-            credentials: credentials,
-            label: connectionId.uuidString,
-            deadline: deadline
-        )
-        sessions[connectionId] = session
+        let requestId = UUID()
+        sessionRequestIds[connectionId] = requestId
+        let opened: LibSSH2SFTPSession
+        do {
+            opened = try await LibSSH2SFTPSession.open(
+                config: config,
+                credentials: credentials,
+                label: connectionId.uuidString,
+                deadline: deadline
+            )
+        } catch {
+            _ = RemoteFileSessionOwnership.takeCurrentGeneration(
+                &sessionRequestIds[connectionId],
+                ifCurrent: requestId
+            )
+            throw error
+        }
+
+        guard RemoteFileSessionOwnership.takeCurrentGeneration(
+            &sessionRequestIds[connectionId],
+            ifCurrent: requestId
+        ) else {
+            opened.close()
+            throw CancellationError()
+        }
+        do {
+            try Task.checkCancellation()
+            try deadline.check(endpoint: .remoteFile("\(config.host):\(config.port ?? 22)"))
+        } catch {
+            opened.close()
+            throw error
+        }
+
+        discardSession(for: connectionId)
+        sessions[connectionId] = opened
         sessionServerKeys[connectionId] = key
-        return session
+        return opened
     }
 
     /// Turns whatever the user typed into the path the server sees.

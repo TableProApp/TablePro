@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Foundation
 import Testing
 
 @testable import TablePro
@@ -10,6 +11,8 @@ import Testing
 /// The cached SFTP session is reused only when the server it was opened against still matches, so a
 /// connection edited to point at a different host does not download the old server's file.
 struct RemoteFileSessionKeyTests {
+    private final class SessionMarker {}
+
     private func config(host: String, port: Int? = 22, username: String = "deploy", path: String) -> SSHConfiguration {
         var config = SSHConfiguration()
         config.enabled = true
@@ -50,5 +53,68 @@ struct RemoteFileSessionKeyTests {
         let otherUser = RemoteFileTransportManager.serverKey(config(host: "prod-1", username: "root", path: "/srv/app.db"))
         #expect(base != otherPort)
         #expect(base != otherUser)
+    }
+
+    @Test("A cancelled attempt cannot discard the retry session that replaced it")
+    func lateCancellationOnlyTakesItsOwnSession() {
+        let cancelled = SessionMarker()
+        let retry = SessionMarker()
+        var current: SessionMarker? = retry
+
+        let lateDiscard = RemoteFileSessionOwnership.takeCurrent(
+            &current,
+            ifOwnedBy: cancelled
+        )
+
+        #expect(lateDiscard == nil)
+        #expect(current === retry)
+        #expect(RemoteFileSessionOwnership.takeCurrent(&current, ifOwnedBy: retry) === retry)
+        #expect(current == nil)
+    }
+
+    @Test("An older open cannot install after a retry advances the request generation")
+    func lateOpenOnlyTakesItsOwnGeneration() {
+        let cancelled = UUID()
+        let retry = UUID()
+        var current: UUID? = retry
+
+        #expect(!RemoteFileSessionOwnership.takeCurrentGeneration(
+            &current,
+            ifCurrent: cancelled
+        ))
+        #expect(current == retry)
+        #expect(RemoteFileSessionOwnership.takeCurrentGeneration(
+            &current,
+            ifCurrent: retry
+        ))
+        #expect(current == nil)
+    }
+
+    @Test("A retry retires a shared session before installing its materialization generation")
+    func retryDoesNotShareTheCancelledAttemptsSession() {
+        let cancelled = UUID()
+        let retry = UUID()
+        var current: UUID? = cancelled
+        let sharedSession = SessionMarker()
+        var cachedSession: SessionMarker? = sharedSession
+
+        let replacement = RemoteFileSessionOwnership.replaceCurrentGeneration(
+            &current,
+            with: retry,
+            retiring: &cachedSession
+        )
+        let retrySession = SessionMarker()
+        cachedSession = retrySession
+
+        #expect(replacement.superseded)
+        #expect(replacement.retiredSession === sharedSession)
+        #expect(current == retry)
+        #expect(cachedSession === retrySession)
+        #expect(cachedSession !== sharedSession)
+        #expect(!RemoteFileSessionOwnership.takeCurrentGeneration(
+            &current,
+            ifCurrent: cancelled
+        ))
+        #expect(current == retry)
     }
 }

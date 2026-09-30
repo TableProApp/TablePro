@@ -1,6 +1,8 @@
 import Foundation
 
 public struct HttpQueryTimeout: Sendable, Equatable {
+    private static let maximumSeconds = Int(Int32.max) / 1_000
+
     public static let bootstrapSeconds: Int = 60
     public static let defaultGraceSeconds: Int = 30
     public static let resourceCeilingSeconds: Int = 3_600
@@ -12,8 +14,8 @@ public struct HttpQueryTimeout: Sendable, Equatable {
         serverTimeoutSeconds: Int = Self.bootstrapSeconds,
         graceSeconds: Int = Self.defaultGraceSeconds
     ) {
-        self.serverTimeoutSeconds = serverTimeoutSeconds
-        self.graceSeconds = max(graceSeconds, 0)
+        self.serverTimeoutSeconds = min(serverTimeoutSeconds, Self.maximumSeconds)
+        self.graceSeconds = min(max(graceSeconds, 0), Self.maximumSeconds)
     }
 
     public var requestTimeoutInterval: TimeInterval {

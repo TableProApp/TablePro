@@ -151,6 +151,20 @@ struct ConnectionSyncSchemaTests {
         #expect(decoded?.queryTimeoutSeconds == connection.queryTimeoutSeconds)
     }
 
+    @Test("sync writes the maximum safe query timeout and drops the next second")
+    func syncBoundsQueryTimeout() {
+        let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
+        var connection = makeFullyPopulatedConnection()
+        connection.queryTimeoutSeconds = maximum
+
+        let maximumRecord = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        #expect(maximumRecord[ConnectionSyncField.queryTimeoutSeconds.key] as? Int64 == Int64(maximum))
+
+        connection.queryTimeoutSeconds = maximum + 1
+        let rejectedRecord = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        #expect(rejectedRecord[ConnectionSyncField.queryTimeoutSeconds.key] == nil)
+    }
+
     @Test("a connect timeout survives through the deployed additional fields record")
     func connectTimeoutRoundTrips() throws {
         let connection = makeFullyPopulatedConnection()
@@ -175,8 +189,11 @@ struct ConnectionSyncSchemaTests {
         #expect(record[ConnectionSyncField.additionalFieldsJson.key] == nil)
     }
 
-    @Test("invalid synced timeouts become defaults without dropping unrelated fields")
-    func invalidTimeoutsAreDiscarded() throws {
+    @Test(
+        "invalid synced timeouts become defaults without dropping unrelated fields",
+        arguments: [-1, DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1]
+    )
+    func invalidTimeoutsAreDiscarded(_ invalidQueryTimeout: Int) throws {
         let connection = makeFullyPopulatedConnection()
         let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
@@ -184,7 +201,7 @@ struct ConnectionSyncSchemaTests {
         fields[.connectionId] = connection.id.uuidString
         fields[.name] = connection.name
         fields[.type] = connection.type.rawValue
-        fields[.queryTimeoutSeconds] = Int64(-1)
+        fields[.queryTimeoutSeconds] = Int64(invalidQueryTimeout)
         fields[.additionalFieldsJson] = try JSONEncoder().encode([
             DatabaseConnection.connectTimeoutSecondsKey: "601",
             DatabaseConnection.queryTimeoutSecondsKey: "30",

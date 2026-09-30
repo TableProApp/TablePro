@@ -182,6 +182,14 @@ struct IOSConnectionImportServiceTests {
         #expect(connection.additionalFields == ["schema": "public"])
     }
 
+    @Test("Query timeout import accepts the maximum safe value and rejects the next second")
+    func queryTimeoutImportUsesSafeBounds() throws {
+        let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
+
+        #expect(try importedConnection(queryTimeoutSeconds: maximum).queryTimeoutSeconds == maximum)
+        #expect(try importedConnection(queryTimeoutSeconds: maximum + 1).queryTimeoutSeconds == nil)
+    }
+
     @Test("an imported jump host keeps its port, auth method and key path")
     func importKeepsJumpHostFields() throws {
         let config = try importedSSH(ExportableSSHConfig(

@@ -239,8 +239,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func cancelQuery() throws {
         lock.lock()
         let current = backend
-        if let interruptHandle = _dbHandleForInterrupt {
-            sqlite3_interrupt(interruptHandle)
+        if case .local(let localBackend) = current {
+            localBackend.cancelBusyWait()
+            if let interruptHandle = _dbHandleForInterrupt {
+                sqlite3_interrupt(interruptHandle)
+            }
         }
         lock.unlock()
 
@@ -250,12 +253,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(seconds)
         switch getBackend() {
         case .remote(let client):
-            client.setQueryTimeout(seconds)
+            client.setQueryTimeout(boundedSeconds)
         case .local(let localBackend):
-            guard seconds > 0 else { return }
-            await localBackend.applyBusyTimeout(Int32(seconds * 1_000))
+            await localBackend.applyBusyTimeout(PluginQueryTimeout.int32Milliseconds(boundedSeconds))
         case nil:
             break
         }

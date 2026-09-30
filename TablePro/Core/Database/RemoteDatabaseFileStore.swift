@@ -95,12 +95,24 @@ enum RemoteSnapshotMethod: String, Codable, Sendable {
 /// `AppStorageEnvironment`, and does not block `.cachesDirectory`, so the wrong choice here would
 /// have passed every check.
 actor RemoteDatabaseFileStore {
+    private enum WaiterFailure: Sendable {
+        case cancelled
+        case timedOut(ConnectionTimeoutError)
+    }
+
+    private struct Waiter {
+        let ticket: UUID
+        let continuation: CheckedContinuation<Void, Error>
+        let deadlineTask: Task<Void, Never>?
+    }
+
     static let shared = RemoteDatabaseFileStore()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "RemoteDatabaseFile")
     static let manifestName = "manifest.json"
 
-    private var inFlight: [RemoteFileIdentity: Waiters] = [:]
+    private var owners: [RemoteFileIdentity: UUID] = [:]
+    private var waiters: [RemoteFileIdentity: [Waiter]] = [:]
 
     private var root: URL {
         AppStorageEnvironment.shared.supportDirectory
@@ -146,41 +158,139 @@ actor RemoteDatabaseFileStore {
     /// the file, because the file is what is shared.
     func withExclusiveAccess<T: Sendable>(
         to identity: RemoteFileIdentity,
+        deadline: ConnectionDeadline? = nil,
         operation: @Sendable () async throws -> T
-    ) async rethrows -> T {
-        while let existing = inFlight[identity] {
-            await withCheckedContinuation { continuation in
-                existing.append(continuation)
-            }
-        }
-
-        let waiters = Waiters()
-        inFlight[identity] = waiters
-        defer {
-            inFlight[identity] = nil
-            waiters.releaseAll()
-        }
+    ) async throws -> T {
+        let ticket = try await acquire(identity, deadline: deadline)
+        defer { release(identity, ticket: ticket) }
 
         return try await operation()
     }
 
-    /// Everyone queued behind one operation on one file.
-    ///
-    /// A `Task` cannot stand in for this: a task whose body is empty finishes immediately, so
-    /// awaiting it releases every waiter at once while the operation it was meant to fence is still
-    /// running. The continuations are held until the operation actually returns.
-    final class Waiters {
-        private var continuations: [CheckedContinuation<Void, Never>] = []
+    #if DEBUG
+    internal func waiterCount(for identity: RemoteFileIdentity) -> Int {
+        waiters[identity]?.count ?? 0
+    }
+    #endif
 
-        func append(_ continuation: CheckedContinuation<Void, Never>) {
-            continuations.append(continuation)
+    private func acquire(
+        _ identity: RemoteFileIdentity,
+        deadline: ConnectionDeadline?
+    ) async throws -> UUID {
+        try Task.checkCancellation()
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.remoteFile("\(identity.host):\(identity.port)")
+        if let deadline {
+            try deadline.check(endpoint: timeoutEndpoint)
+        }
+        let ticket = UUID()
+        guard owners[identity] != nil else {
+            owners[identity] = ticket
+            return ticket
         }
 
-        func releaseAll() {
-            let pending = continuations
-            continuations.removeAll()
-            for continuation in pending { continuation.resume() }
+        try await withTaskCancellationHandler(
+            operation: {
+                try await enqueue(
+                    ticket: ticket,
+                    identity: identity,
+                    deadline: deadline,
+                    timeoutEndpoint: timeoutEndpoint
+                )
+            },
+            onCancel: {
+                Task {
+                    await self.failWaiter(
+                        ticket: ticket,
+                        identity: identity,
+                        failure: .cancelled
+                    )
+                }
+            }
+        )
+
+        guard owners[identity] == ticket else {
+            throw CancellationError()
         }
+        do {
+            try Task.checkCancellation()
+            if let deadline {
+                try deadline.check(endpoint: timeoutEndpoint)
+            }
+        } catch {
+            release(identity, ticket: ticket)
+            throw error
+        }
+        return ticket
+    }
+
+    private func enqueue(
+        ticket: UUID,
+        identity: RemoteFileIdentity,
+        deadline: ConnectionDeadline?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            guard !Task.isCancelled else {
+                continuation.resume(throwing: CancellationError())
+                return
+            }
+            let deadlineTask = deadline.map { deadline in
+                Task { [weak self] in
+                    do {
+                        try await ContinuousClock().sleep(until: deadline.instant)
+                    } catch {
+                        return
+                    }
+                    await self?.failWaiter(
+                        ticket: ticket,
+                        identity: identity,
+                        failure: .timedOut(deadline.timeoutError(for: timeoutEndpoint))
+                    )
+                }
+            }
+            waiters[identity, default: []].append(
+                Waiter(
+                    ticket: ticket,
+                    continuation: continuation,
+                    deadlineTask: deadlineTask
+                )
+            )
+        }
+    }
+
+    private func failWaiter(
+        ticket: UUID,
+        identity: RemoteFileIdentity,
+        failure: WaiterFailure
+    ) {
+        guard var pending = waiters[identity],
+              let index = pending.firstIndex(where: { $0.ticket == ticket })
+        else {
+            return
+        }
+        let waiter = pending.remove(at: index)
+        waiters[identity] = pending.isEmpty ? nil : pending
+        waiter.deadlineTask?.cancel()
+        switch failure {
+        case .cancelled:
+            waiter.continuation.resume(throwing: CancellationError())
+        case .timedOut(let error):
+            waiter.continuation.resume(throwing: error)
+        }
+    }
+
+    private func release(_ identity: RemoteFileIdentity, ticket: UUID) {
+        guard owners[identity] == ticket else { return }
+        guard var pending = waiters[identity], !pending.isEmpty else {
+            owners.removeValue(forKey: identity)
+            waiters.removeValue(forKey: identity)
+            return
+        }
+        let next = pending.removeFirst()
+        waiters[identity] = pending.isEmpty ? nil : pending
+        next.deadlineTask?.cancel()
+        owners[identity] = next.ticket
+        next.continuation.resume()
     }
 
     // MARK: - Housekeeping

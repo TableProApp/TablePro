@@ -97,6 +97,7 @@ public struct ExportableCredentialProfile: Codable, Sendable {
 // MARK: - Exportable Connection
 
 public struct ExportableConnection: Codable, Sendable {
+    private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
     public let name: String
     public let host: String
     public let port: Int
@@ -315,7 +316,9 @@ public extension ExportableConnection {
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             connectTimeoutSeconds: importedConnectTimeout.flatMap { (1 ... 600).contains($0) ? $0 : nil },
-            queryTimeoutSeconds: importedQueryTimeout.flatMap { $0 >= 0 ? $0 : nil },
+            queryTimeoutSeconds: importedQueryTimeout.flatMap {
+                Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
+            },
             additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
             tunnelCommand: tunnelCommand

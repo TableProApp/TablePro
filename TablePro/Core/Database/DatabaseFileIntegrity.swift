@@ -7,6 +7,37 @@ import Foundation
 import os
 import SQLite3
 
+private final class SQLiteIntegrityInterruption: @unchecked Sendable {
+    private let deadline: ConnectionDeadline
+    private let timeoutEndpoint: ConnectionTimeoutEndpoint
+    private let isCancelled: @Sendable () -> Bool
+
+    init(
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) {
+        self.deadline = deadline
+        self.timeoutEndpoint = timeoutEndpoint
+        self.isCancelled = isCancelled
+    }
+
+    func check() throws {
+        if isCancelled() { throw CancellationError() }
+        try deadline.check(endpoint: timeoutEndpoint)
+    }
+
+    func shouldInterrupt() -> Bool {
+        isCancelled() || Task.isCancelled || deadline.isExpired
+    }
+}
+
+private let sqliteIntegrityProgressCallback: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { context in
+    guard let context else { return 1 }
+    let interruption = Unmanaged<SQLiteIntegrityInterruption>.fromOpaque(context).takeUnretainedValue()
+    return interruption.shouldInterrupt() ? 1 : 0
+}
+
 /// Checks that a file the app just downloaded is the database it claims to be.
 ///
 /// This exists because of what SQLite does when it is not: `sqlite3_open` on a missing or empty
@@ -26,7 +57,7 @@ enum DatabaseFileIntegrity {
     /// DuckDB writes this at offset 8 of its first page.
     private static let duckdbMagic = Array("DUCK".utf8)
 
-    enum Verdict: Equatable {
+    enum Verdict: Equatable, Sendable {
         case ok
         case wrongSize(expected: UInt64, actual: UInt64)
         case notADatabase
@@ -43,8 +74,17 @@ enum DatabaseFileIntegrity {
     static func verifyDownload(
         at url: URL,
         expectedBytes: UInt64,
-        runsIntegrityCheck: Bool
-    ) -> Verdict {
+        runsIntegrityCheck: Bool,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> Verdict {
+        let interruption = SQLiteIntegrityInterruption(
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            isCancelled: isCancelled
+        )
+        try interruption.check()
         let actual = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? nil
         guard let actual else { return .notADatabase }
         guard actual == expectedBytes else {
@@ -52,9 +92,10 @@ enum DatabaseFileIntegrity {
         }
         guard actual > 0 else { return .notADatabase }
         guard let kind = fileKind(at: url) else { return .notADatabase }
+        try interruption.check()
 
         guard runsIntegrityCheck, kind == .sqlite else { return .ok }
-        return integrityCheck(at: url)
+        return try integrityCheck(at: url, interruption: interruption)
     }
 
     enum FileKind: Equatable {
@@ -85,24 +126,40 @@ enum DatabaseFileIntegrity {
     ///
     /// Opened read-only and with an immutable URI so the check cannot itself create, modify, or
     /// replay a journal against the file it is inspecting.
-    static func integrityCheck(at url: URL) -> Verdict {
+    private static func integrityCheck(
+        at url: URL,
+        interruption: SQLiteIntegrityInterruption
+    ) throws -> Verdict {
         var handle: OpaquePointer?
         let uri = "file:\(url.path)?mode=ro&immutable=1"
         guard sqlite3_open_v2(uri, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
               let handle
         else {
             if let handle { sqlite3_close(handle) }
+            try interruption.check()
             return .notADatabase
         }
         defer { sqlite3_close(handle) }
+        try interruption.check()
+
+        sqlite3_progress_handler(
+            handle,
+            1_000,
+            sqliteIntegrityProgressCallback,
+            Unmanaged.passUnretained(interruption).toOpaque()
+        )
+        defer { sqlite3_progress_handler(handle, 0, nil, nil) }
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, "PRAGMA integrity_check(1)", -1, &statement, nil) == SQLITE_OK else {
+            try interruption.check()
             return .corrupt(String(cString: sqlite3_errmsg(handle)))
         }
         defer { sqlite3_finalize(statement) }
 
-        guard sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else {
+        let stepResult = sqlite3_step(statement)
+        try interruption.check()
+        guard stepResult == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else {
             return .corrupt(String(cString: sqlite3_errmsg(handle)))
         }
         let result = String(cString: text)

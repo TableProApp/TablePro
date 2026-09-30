@@ -230,7 +230,7 @@ struct CloudSQLProxyManagerTests {
     }
 
     @Test("connect deadline stops the proxy before registration")
-    func deadlineStopsUnreadyProcess() async {
+    func deadlineStopsUnreadyProcess() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .neverReady)
         let manager = CloudSQLProxyManager(runnerFactory: { fake })
         let id = UUID()
@@ -238,14 +238,29 @@ struct CloudSQLProxyManagerTests {
             configuredSeconds: 30,
             instant: ContinuousClock.now.advanced(by: .milliseconds(100))
         )
-
-        await #expect(throws: ConnectionTimeoutError(endpoint: .proxy("proj:region:inst"), configuredSeconds: 30)) {
-            _ = try await manager.createTunnel(
+        let creation = Task {
+            try await manager.createTunnel(
                 connectionId: id,
                 config: self.config(),
                 deadline: deadline
             )
         }
+        defer {
+            creation.cancel()
+            fake.stop()
+        }
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected proxy readiness to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .proxy("proj:region:inst"),
+            configuredSeconds: 30
+        ))
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
     }

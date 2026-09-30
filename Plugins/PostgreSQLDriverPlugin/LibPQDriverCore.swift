@@ -248,7 +248,7 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
+        let ms = PluginQueryTimeout.milliseconds(seconds)
         _ = try await execute(query: "SET statement_timeout = \(ms)")
     }
 

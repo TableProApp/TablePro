@@ -1,6 +1,6 @@
 import Foundation
 
-struct RedisConnectTimeout: Equatable, Sendable {
+nonisolated struct RedisConnectTimeout: Equatable, Sendable {
     static let defaultMilliseconds = 10_000
     static let maximumMilliseconds = 3_600_000
 
@@ -39,7 +39,7 @@ struct RedisConnectTimeout: Equatable, Sendable {
     }
 }
 
-struct RedisConnectDeadline: Sendable {
+nonisolated struct RedisConnectDeadline: Sendable {
     private let expiresAt: TimeInterval
 
     init(timeout: RedisConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
@@ -60,7 +60,7 @@ struct RedisConnectDeadline: Sendable {
     }
 }
 
-struct RedisSocketTimeout: Equatable, Sendable {
+nonisolated struct RedisSocketTimeout: Equatable, Sendable {
     let seconds: Int
     let microseconds: Int
 }

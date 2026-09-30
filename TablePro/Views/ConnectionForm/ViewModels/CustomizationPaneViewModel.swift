@@ -24,8 +24,10 @@ final class CustomizationPaneViewModel: ObservableObject {
         {
             issues.append(String(localized: "Connect timeout must be between 1 and 600 seconds."))
         }
-        if let queryTimeoutSeconds, queryTimeoutSeconds < 0 {
-            issues.append(String(localized: "Query timeout must be 0 seconds or longer."))
+        if let queryTimeoutSeconds,
+           !DatabaseConnection.queryTimeoutSecondsRange.contains(queryTimeoutSeconds)
+        {
+            issues.append(String(localized: "Query timeout must be between 0 and 2,147,483 seconds."))
         }
         return issues
     }

@@ -18,6 +18,67 @@ internal struct SSHTunnelCredentials: Sendable {
     let keyboardInteractivePromptProvider: (any KeyboardInteractivePromptProvider)?
 }
 
+/// Owns the lifetime boundary between a ProxyJump relay and the libssh2 handles it uses.
+///
+/// Cancelling a Swift task does not cancel the GCD block that runs `SSHChannelRelay`. Teardown must
+/// therefore wake its descriptors and wait for that block to make its final serialized libssh2 call
+/// before freeing the channel or session. The stop action and the relay's final descriptor close are
+/// mutually exclusive under one lock, so a late stop cannot `shutdown` a reused descriptor number.
+internal final class SSHJumpRelayFence: @unchecked Sendable {
+    private struct State {
+        var stopAction: (@Sendable () -> Void)?
+        var isFinished = false
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
+    private let completion = DispatchGroup()
+
+    internal init(stopAction: @escaping @Sendable () -> Void) {
+        state = OSAllocatedUnfairLock(initialState: State(stopAction: stopAction))
+        completion.enter()
+    }
+
+    internal var isActive: Bool {
+        state.withLock { $0.stopAction != nil && !$0.isFinished }
+    }
+
+    internal func stop() {
+        state.withLock { state in
+            guard let stopAction = state.stopAction, !state.isFinished else { return }
+            state.stopAction = nil
+            stopAction()
+        }
+    }
+
+    /// Disarms late stops and releases the completion fence only after the relay-owned local
+    /// descriptor has been closed. `cleanup` runs under the same lock as `stopAction` so those two
+    /// descriptor operations cannot cross.
+    internal func finish(cleanup: @Sendable () -> Void = {}) {
+        let didFinish = state.withLock { state -> Bool in
+            guard !state.isFinished else { return false }
+            state.stopAction = nil
+            state.isFinished = true
+            cleanup()
+            return true
+        }
+        if didFinish {
+            completion.leave()
+        }
+    }
+
+    internal func wait() {
+        completion.wait()
+    }
+
+    internal func waitForCompletion() async {
+        await withCheckedContinuation { continuation in
+            completion.notify(queue: .global(qos: .utility)) {
+                continuation.resume()
+            }
+        }
+    }
+}
+
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
 internal enum LibSSH2TunnelFactory {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
@@ -94,7 +155,7 @@ internal enum LibSSH2TunnelFactory {
                             session: hop.session,
                             socket: hop.socket,
                             channel: hop.channel,
-                            relayTask: hop.relayTask
+                            relay: hop.relay
                         )
                     }
                 )
@@ -161,7 +222,7 @@ internal enum LibSSH2TunnelFactory {
             let session: OpaquePointer
             let socket: Int32
             let channel: OpaquePointer
-            let relayTask: Task<Void, Never>?
+            let relay: SSHJumpRelayFence
         }
     }
 
@@ -282,7 +343,7 @@ internal enum LibSSH2TunnelFactory {
                             qos: .utility
                         )
 
-                        let relayTask = startChannelRelay(
+                        let relay = startChannelRelay(
                             channel: channel,
                             socketFD: fds[0],
                             sshSocketFD: currentSocketFD,
@@ -294,7 +355,7 @@ internal enum LibSSH2TunnelFactory {
                             session: currentSession,
                             socket: currentSocketFD,
                             channel: channel,
-                            relayTask: relayTask
+                            relay: relay
                         )
                         jumpHops.append(hop)
 
@@ -308,7 +369,7 @@ internal enum LibSSH2TunnelFactory {
                             )
                         } catch {
                             Darwin.close(fds[1])
-                            relayTask.cancel()
+                            relay.stop()
                             throw error
                         }
 
@@ -329,7 +390,7 @@ internal enum LibSSH2TunnelFactory {
                             tablepro_libssh2_session_disconnect(nextSession, "Error")
                             libssh2_session_free(nextSession)
                             Darwin.close(fds[1])
-                            relayTask.cancel()
+                            relay.stop()
                             throw error
                         }
 
@@ -360,17 +421,23 @@ internal enum LibSSH2TunnelFactory {
                     }
                 }
 
-                // Clean up any jump hops that were created (reverse order).
-                // Shutdown sockets first to break relay loops, then free resources.
+                // Wake every relay first, then wait until none can dereference its libssh2 handles.
                 for hop in jumpHops.reversed() {
-                    hop.relayTask?.cancel()
+                    hop.relay.stop()
                     shutdown(hop.socket, SHUT_RDWR)
+                }
+                for hop in jumpHops.reversed() {
+                    hop.relay.wait()
                 }
                 for hop in jumpHops.reversed() {
                     libssh2_channel_free(hop.channel)
                     tablepro_libssh2_session_disconnect(hop.session, "Error")
                     libssh2_session_free(hop.session)
-                    Darwin.close(hop.socket)
+                    // The outer catch owns the first TCP descriptor. Keeping that ownership in
+                    // one place prevents a failed jump chain from closing a reused descriptor.
+                    if hop.socket != socketFD {
+                        Darwin.close(hop.socket)
+                    }
                 }
 
                 throw error
@@ -524,15 +591,17 @@ internal enum LibSSH2TunnelFactory {
         libssh2_session_free(chain.session)
         Darwin.close(chain.socketFD)
 
-        // Clean up jump hops in reverse order:
-        // First pass: cancel relays and shutdown sockets to break relay loops
+        // Wake every relay before waiting. A relay may be blocked in `poll` or a serialized
+        // libssh2 call, and neither a Swift Task cancellation nor freeing the handle is safe.
         for hop in chain.jumpHops.reversed() {
-            hop.relayTask?.cancel()
+            hop.relay.stop()
             shutdown(hop.socket, SHUT_RDWR)
         }
-        // Second pass: free channels, sessions, and close sockets
-        // Note: relay task owns fds[0] via defer, so we only close hop.socket
-        // (which is the SSH socket for that hop, not the relay socketpair fd)
+        for hop in chain.jumpHops.reversed() {
+            hop.relay.wait()
+        }
+        // Only after the fence has drained can cleanup free the handles. The relay owns and closes
+        // its socketpair endpoint; this side owns the hop transport socket.
         for hop in chain.jumpHops.reversed() {
             libssh2_channel_free(hop.channel)
             tablepro_libssh2_session_disconnect(hop.session, reason)
@@ -1046,35 +1115,39 @@ internal enum LibSSH2TunnelFactory {
         sshSocketFD: Int32,
         session: OpaquePointer,
         sessionQueue: DispatchQueue
-    ) -> Task<Void, Never> {
+    ) -> SSHJumpRelayFence {
         let relayQueue = DispatchQueue(
             label: "com.TablePro.ssh.hop-relay",
             qos: .utility
         )
         let handles = RelayHandles(channel: channel, session: session)
-        return Task.detached {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                relayQueue.async {
-                    let relay = SSHChannelRelay(
-                        localFD: socketFD,
-                        transportFD: sshSocketFD,
-                        channelIO: LibSSH2ChannelIO(
-                            channel: handles.channel,
-                            session: handles.session,
-                            sessionQueue: sessionQueue
-                        ),
-                        bufferSize: 32_768,
-                        isActive: { !Task.isCancelled }
-                    )
-
-                    _ = relay.run()
-
+        let fence = SSHJumpRelayFence {
+            shutdown(socketFD, SHUT_RDWR)
+            shutdown(sshSocketFD, SHUT_RDWR)
+        }
+        relayQueue.async {
+            defer {
+                fence.finish {
                     shutdown(socketFD, SHUT_RDWR)
                     Darwin.close(socketFD)
-                    continuation.resume()
                 }
             }
+
+            let relay = SSHChannelRelay(
+                localFD: socketFD,
+                transportFD: sshSocketFD,
+                channelIO: LibSSH2ChannelIO(
+                    channel: handles.channel,
+                    session: handles.session,
+                    sessionQueue: sessionQueue
+                ),
+                bufferSize: 32_768,
+                isActive: { fence.isActive }
+            )
+
+            _ = relay.run()
         }
+        return fence
     }
 
     // MARK: - Local Socket

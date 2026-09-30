@@ -221,6 +221,19 @@ struct MySQLServerFlavorTests {
         #expect(flavor.queryTimeoutStatements(seconds: seconds) == expected)
     }
 
+    @Test("Query timeout conversion clamps values unsafe for server units")
+    func queryTimeoutConversionIsBounded() {
+        let maximum = PluginQueryTimeout.maximumSeconds
+
+        #expect(MySQLServerFlavor.mysql.queryTimeoutStatements(seconds: Int.max) == [
+            "SET SESSION max_execution_time = \(maximum * 1_000)"
+        ])
+        #expect(MySQLServerFlavor.oceanbase(version: nil).queryTimeoutStatements(seconds: Int.max) == [
+            "SET SESSION ob_query_timeout = \(Int64(maximum) * 1_000_000)",
+            "SET SESSION max_execution_time = 0"
+        ])
+    }
+
     @Test("OceanBase moves its own query timeout and clears a global max_execution_time, one statement each")
     func oceanbaseQueryTimeout() {
         let flavor = MySQLServerFlavor.oceanbase(version: MySQLEngineVersion(major: 4, minor: 4, patch: 2))

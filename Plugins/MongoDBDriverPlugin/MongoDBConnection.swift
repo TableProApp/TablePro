@@ -124,7 +124,7 @@ final class MongoDBConnection: @unchecked Sendable {
 
     func setQueryTimeout(_ seconds: Int) {
         stateLock.lock()
-        _queryTimeoutMS = Int32(seconds * 1_000)
+        _queryTimeoutMS = MongoDBTimeoutPolicy.queryTimeoutMilliseconds(seconds: seconds)
         stateLock.unlock()
     }
 

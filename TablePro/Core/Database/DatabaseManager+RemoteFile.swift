@@ -69,10 +69,17 @@ extension DatabaseManager {
         )
         defer { session.close() }
 
-        let path = try session.resolvedPath(sshConfig.remoteFilePath, deadline: deadline)
-        let stat = try session.stat(path, deadline: deadline)
-        guard !stat.isDirectory else { throw SFTPError.notAFile(path: path) }
-        return true
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            let path = try session.resolvedPath(sshConfig.remoteFilePath, deadline: deadline)
+            try Task.checkCancellation()
+            let stat = try session.stat(path, deadline: deadline)
+            try Task.checkCancellation()
+            guard !stat.isDirectory else { throw SFTPError.notAFile(path: path) }
+            return true
+        } onCancel: {
+            session.interruptCurrentOperation()
+        }
     }
 
     internal func materializedRemoteFile(for connectionId: UUID) async -> MaterializedRemoteFile? {

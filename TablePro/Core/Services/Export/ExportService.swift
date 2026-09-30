@@ -96,15 +96,22 @@ final class ExportService: ObservableObject {
                     configuredSeconds: driver.connection.queryTimeoutSeconds,
                     globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
                 )
-        } ?? AppSettingsManager.shared.general.queryTimeoutSeconds
+        } ?? Self.effectiveGlobalQueryTimeoutSeconds
         self.exportPlugin = Self.installedExportPlugin
     }
 
     init(exportPlugin: @escaping @MainActor (String) -> (any ExportFormatPlugin)? = ExportService.installedExportPlugin) {
         self.driver = nil
         self.databaseType = nil
-        self.effectiveQueryTimeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
+        self.effectiveQueryTimeoutSeconds = Self.effectiveGlobalQueryTimeoutSeconds
         self.exportPlugin = exportPlugin
+    }
+
+    private static var effectiveGlobalQueryTimeoutSeconds: Int {
+        ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
     }
 
     static func installedExportPlugin(forFormat formatId: String) -> (any ExportFormatPlugin)? {

@@ -67,7 +67,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         let session: OpaquePointer    // LIBSSH2_SESSION*
         let socket: Int32             // TCP or socketpair fd
         let channel: OpaquePointer    // LIBSSH2_CHANNEL* (direct-tcpip to next hop)
-        let relayTask: Task<Void, Never>?  // socketpair relay task (nil for first hop)
+        let relay: SSHJumpRelayFence  // owns the socketpair relay's handle-lifetime fence
     }
 
     private static let relayBufferSize = 32_768 // 32KB
@@ -240,7 +240,13 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             }
 
             for hop in jumpChain.reversed() {
-                hop.relayTask?.cancel()
+                hop.relay.stop()
+                shutdown(hop.socket, SHUT_RDWR)
+            }
+            for hop in jumpChain.reversed() {
+                await hop.relay.waitForCompletion()
+            }
+            for hop in jumpChain.reversed() {
                 libssh2_channel_free(hop.channel)
                 tablepro_libssh2_session_disconnect(hop.session, "Closing")
                 libssh2_session_free(hop.session)
@@ -263,7 +269,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         shutdown(socketFD, SHUT_RDWR)
 
         for hop in jumpChain.reversed() {
-            hop.relayTask?.cancel()
+            hop.relay.stop()
+            shutdown(hop.socket, SHUT_RDWR)
         }
     }
 

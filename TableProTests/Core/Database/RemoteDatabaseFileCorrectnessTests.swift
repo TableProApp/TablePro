@@ -196,6 +196,162 @@ struct RemoteDatabaseFileCorrectnessTests {
         #expect(FileManager.default.fileExists(atPath: fresh.path))
         #expect(!FileManager.default.fileExists(atPath: stale.path))
     }
+
+    // MARK: - Exclusive access
+
+    @Test("A cancelled queued caller returns while the first caller still owns the file")
+    func cancelledQueuedCallerDoesNotReleaseTheHolder() async throws {
+        let store = RemoteDatabaseFileStore()
+        let identity = RemoteFileIdentity(username: "user", host: "host", port: 22, path: "/database.sqlite")
+        let holderEntered = RemoteFileStoreTestSignal()
+        let releaseHolder = RemoteFileStoreTestSignal()
+        let cancelledBodyEntered = RemoteFileStoreTestSignal()
+
+        let holder = Task {
+            try await store.withExclusiveAccess(to: identity) {
+                await holderEntered.signal()
+                await releaseHolder.wait()
+            }
+        }
+        await holderEntered.wait()
+
+        let cancelled = Task {
+            try await store.withExclusiveAccess(to: identity) {
+                await cancelledBodyEntered.signal()
+            }
+        }
+        let cancelledQueued = await waitForRemoteFileWaiters(1, in: store, for: identity)
+        #expect(cancelledQueued)
+
+        cancelled.cancel()
+        let cancellationReturned = await BoundedCall.result(within: .seconds(2)) {
+            do {
+                try await cancelled.value
+                return false
+            } catch is CancellationError {
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        #expect(cancellationReturned == true)
+        #expect(!(await cancelledBodyEntered.hasSignalled))
+        #expect(await store.waiterCount(for: identity) == 0)
+
+        let nextBodyEntered = RemoteFileStoreTestSignal()
+        let next = Task {
+            try await store.withExclusiveAccess(to: identity) {
+                await nextBodyEntered.signal()
+            }
+        }
+        let nextQueued = await waitForRemoteFileWaiters(1, in: store, for: identity)
+        #expect(nextQueued)
+        #expect(!(await nextBodyEntered.hasSignalled))
+
+        await releaseHolder.signal()
+        try await holder.value
+        try await next.value
+        _ = try? await cancelled.value
+
+        #expect(await nextBodyEntered.hasSignalled)
+        #expect(!(await cancelledBodyEntered.hasSignalled))
+    }
+
+    @Test("A queued caller reaches its deadline while the first caller still owns the file")
+    func queuedCallerDeadlineDoesNotReleaseTheHolder() async throws {
+        let store = RemoteDatabaseFileStore()
+        let identity = RemoteFileIdentity(username: "user", host: "host", port: 22, path: "/database.sqlite")
+        let holderEntered = RemoteFileStoreTestSignal()
+        let releaseHolder = RemoteFileStoreTestSignal()
+        let timedOutBodyEntered = RemoteFileStoreTestSignal()
+
+        let holder = Task {
+            try await store.withExclusiveAccess(to: identity) {
+                await holderEntered.signal()
+                await releaseHolder.wait()
+            }
+        }
+        await holderEntered.wait()
+
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .seconds(1))
+        )
+        let timedOut = Task {
+            try await store.withExclusiveAccess(to: identity, deadline: deadline) {
+                await timedOutBodyEntered.signal()
+            }
+        }
+        let timedOutQueued = await waitForRemoteFileWaiters(1, in: store, for: identity)
+        #expect(timedOutQueued)
+
+        let result = await BoundedCall.result(within: .seconds(3)) {
+            await timedOut.result
+        }
+        if case .some(.failure(let error)) = result {
+            #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+                endpoint: .remoteFile("host:22"),
+                configuredSeconds: 30
+            ))
+        } else {
+            Issue.record("Expected the queued file access to reach its connection deadline")
+        }
+        #expect(!(await timedOutBodyEntered.hasSignalled))
+        #expect(await store.waiterCount(for: identity) == 0)
+
+        let nextBodyEntered = RemoteFileStoreTestSignal()
+        let next = Task {
+            try await store.withExclusiveAccess(to: identity) {
+                await nextBodyEntered.signal()
+            }
+        }
+        let nextQueued = await waitForRemoteFileWaiters(1, in: store, for: identity)
+        #expect(nextQueued)
+        #expect(!(await nextBodyEntered.hasSignalled))
+
+        await releaseHolder.signal()
+        try await holder.value
+        try await next.value
+        _ = try? await timedOut.value
+
+        #expect(await nextBodyEntered.hasSignalled)
+        #expect(!(await timedOutBodyEntered.hasSignalled))
+    }
+}
+
+private actor RemoteFileStoreTestSignal {
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private(set) var hasSignalled = false
+
+    func signal() {
+        guard !hasSignalled else { return }
+        hasSignalled = true
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
+    }
+
+    func wait() async {
+        guard !hasSignalled else { return }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+}
+
+private func waitForRemoteFileWaiters(
+    _ expectedCount: Int,
+    in store: RemoteDatabaseFileStore,
+    for identity: RemoteFileIdentity
+) async -> Bool {
+    for _ in 0..<10_000 {
+        guard await store.waiterCount(for: identity) < expectedCount else { return true }
+        await Task.yield()
+    }
+    return false
 }
 
 private struct StubRemoteFileSource: RemoteFileSource {

@@ -172,7 +172,7 @@ struct CloudflareTunnelManagerTests {
     }
 
     @Test("connect deadline stops cloudflared before registration")
-    func deadlineStopsUnreadyProcess() async {
+    func deadlineStopsUnreadyProcess() async throws {
         let fake = FakeCloudflaredRunner(behavior: .neverReady)
         let manager = CloudflareTunnelManager(runnerFactory: { fake })
         let id = UUID()
@@ -180,14 +180,29 @@ struct CloudflareTunnelManagerTests {
             configuredSeconds: 30,
             instant: ContinuousClock.now.advanced(by: .milliseconds(100))
         )
-
-        await #expect(throws: ConnectionTimeoutError(endpoint: .tunnel("db.example.com"), configuredSeconds: 30)) {
-            _ = try await manager.createTunnel(
+        let creation = Task {
+            try await manager.createTunnel(
                 connectionId: id,
                 config: self.config(),
                 deadline: deadline
             )
         }
+        defer {
+            creation.cancel()
+            fake.stop()
+        }
+
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected cloudflared readiness to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .tunnel("db.example.com"),
+            configuredSeconds: 30
+        ))
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
     }

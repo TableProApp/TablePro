@@ -386,7 +386,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     }
 
     public func applyQueryTimeout(_ seconds: Int) {
-        state.withLock { $0.queryTimeoutSeconds = max(0, seconds) }
+        state.withLock { $0.queryTimeoutSeconds = OracleQueryTimeout.boundedSeconds(seconds) }
     }
 
     public func noteSessionSchema(_ schema: String) {

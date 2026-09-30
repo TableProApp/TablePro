@@ -80,6 +80,7 @@ targetTemplates:
           - Info.plist
           - README.md
       - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginQueryTimeout.swift
       - Plugins/Shared/PluginURLSessionTaskBox.swift
     dependencies:
       - target: TableProPluginKit
@@ -425,6 +426,7 @@ targets:
     sources:
       - TableProTests
       - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginQueryTimeout.swift
       - Plugins/Shared/PluginURLSessionTaskBox.swift
       # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
       # compiles the pure-logic files its suites cover.
@@ -464,6 +466,9 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver+Query.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver+Schema.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver.swift
       - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
       - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
       - Plugins/CassandraDriverPlugin/CassandraCellText.swift
@@ -681,9 +686,11 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteForeignKeyParents.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
       - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteQueryTimeout.swift
       # The rest of TableProSQLiteCore needs `sqlite3_load_extension`, which macOS's SQLite, the one
       # this bundle links, does not export.
       - Packages/TableProCore/Sources/TableProSQLiteCore/SQLiteResultColumns.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLBusyTimeout.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
@@ -863,7 +870,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
+        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProR2SQLCore, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1344,6 +1351,7 @@ targets:
         excludes:
           - Info.plist
           - README.md
+      - Plugins/Shared/PluginQueryTimeout.swift
       - Plugins/DamengDriverPluginTests
     dependencies:
       - target: TableProPluginKit

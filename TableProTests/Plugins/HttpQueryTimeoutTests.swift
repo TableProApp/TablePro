@@ -47,6 +47,16 @@ struct HttpQueryTimeoutTests {
         #expect(timeout.requestTimeoutInterval == TimeInterval(60))
     }
 
+    @Test("Unsafe server and grace timeouts are bounded before addition")
+    func unsafeTimeoutsAreBounded() {
+        let maximum = Int(Int32.max) / 1_000
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: Int.max, graceSeconds: Int.max)
+
+        #expect(timeout.serverTimeoutSeconds == maximum)
+        #expect(timeout.graceSeconds == maximum)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(maximum * 2))
+    }
+
     @Test("Static session timeouts expose the documented ceilings")
     func staticSessionTimeouts() {
         #expect(HttpQueryTimeout.sessionBootstrapRequestTimeout == TimeInterval(60))
