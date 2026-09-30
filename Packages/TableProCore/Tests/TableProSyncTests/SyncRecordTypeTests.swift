@@ -20,6 +20,13 @@ struct SyncRecordTypeTests {
         #expect(SyncRecordType.parse(recordName: "FavoriteTable_abc")?.type == .tableFavorite)
     }
 
+    @Test("A folder and the objects filed in it parse to their own types")
+    func tableFolderPrefixesResolveToTheirOwnTypes() {
+        #expect(SyncRecordType.parse(recordName: "TableFolder_abc")?.type == .tableFolder)
+        #expect(SyncRecordType.parse(recordName: "TableFolderItem_abc")?.type == .tableFolderItem)
+        #expect(SyncRecordType.parse(recordName: "TableFolderItem_abc")?.id == "abc")
+    }
+
     @Test("An ambiguous prefix keeps the whole identifier")
     func ambiguousPrefixesKeepTheIdentifier() {
         #expect(SyncRecordType.parse(recordName: "FavoriteFolder_abc")?.id == "abc")
