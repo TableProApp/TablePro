@@ -247,11 +247,17 @@ Right-click tables in the sidebar and choose **Transfer To…** to copy their ro
   </Step>
 </Steps>
 
-Rows only. The destination table has to exist and its column names have to match, because inventing DDL that crosses from one engine to another would create tables whose types quietly disagree with the data landing in them. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
+Rows only, into a destination table that already exists. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
 
 <Warning>
 **Delete existing rows first** empties each destination table before writing. There is no undo.
 </Warning>
+
+### Column mapping
+
+Each ticked table shows how many of its columns map. Columns match by name, the same spelling first and then the same name in another case. Click the count to point a column at a different destination column, or pick **Skip** to leave it out. **Match by Name** puts every column back.
+
+A destination column takes one source column. Map a second column onto it and **Transfer** stays off until one of the two moves or is skipped.
 
 ## Clipboard paste (CSV/TSV)
 

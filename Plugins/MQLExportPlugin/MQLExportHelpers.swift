@@ -45,10 +45,22 @@ enum MQLExportHelpers {
         case "DECIMAL":
             guard NumberText.isJSONNumberLiteral(value) else { break }
             return "NumberDecimal(\(JavaScriptText.stringLiteral(value)))"
+        case "BIGINT":
+            guard Int64(value) != nil else { break }
+            return "NumberLong(\(JavaScriptText.stringLiteral(value)))"
+        case "FLOAT":
+            guard NumberText.isJSONNumber(value), let number = Double(value), readsBackAsInteger(number) else { break }
+            return "Double(\(value))"
         default:
             break
         }
         return mqlJsonValue(for: value)
+    }
+
+    private static let largestExactInteger: Double = 9_007_199_254_740_991
+
+    private static func readsBackAsInteger(_ number: Double) -> Bool {
+        number.rounded(.towardZero) == number && abs(number) <= largestExactInteger
     }
 
     private static func isIso8601(_ value: String) -> Bool {

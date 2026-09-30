@@ -7,13 +7,15 @@ import Foundation
 
 /// What the object tree is renaming.
 ///
-/// Identity only, no cell and no field: `reloadData()` drops every row and cell view, so a stored
-/// reference is a reference to a view that is no longer the row being edited. The cell is
-/// re-resolved from the node id on every pass instead.
+/// Identity only, no cell and no field. The outline holds its reloads while a rename is open, but a
+/// collapse or a scroll can still take the row's cell away, so the cell is resolved from the node id
+/// when the edit ends rather than kept.
 internal struct DatabaseTreeRenameSession: Equatable {
     internal enum Target: Equatable {
         case table(DatabaseTreeTableRef)
         case container(DatabaseContainerRef)
+        /// A folder's name lives only in TablePro, so committing it never reaches the database.
+        case folder(TableFolder)
     }
 
     internal let target: Target

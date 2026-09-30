@@ -41,7 +41,8 @@ internal enum TableScopedSettingsRegistry {
             HighlightRuleStorage.shared,
             ValueDisplayFormatStorage.shared,
             ForeignKeyLabelColumnStore.shared,
-            ImportColumnMappingStore.shared
+            ImportColumnMappingStore.shared,
+            TableFolderStorage.shared
         ]
     }
 }

@@ -2782,6 +2782,9 @@
         }
       }
     },
+    "%@ cannot be narrowed to some rows or columns, because this database has no SQL." : {
+
+    },
     "%@ cannot be negative" : {
       "localizations" : {
         "ko" : {
@@ -3506,6 +3509,9 @@
 
     },
     "%@ loses its default" : {
+
+    },
+    "%@ mapped more than once" : {
 
     },
     "%@ matches" : {
@@ -5968,6 +5974,9 @@
     "%1$@: %2$@ had no column of that name on the destination." : {
 
     },
+    "%1$@: more than one source column is mapped to %2$@." : {
+
+    },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
 
     },
@@ -8270,6 +8279,9 @@
       }
     },
     "%lld ^[table](inflect: true) to export" : {
+
+    },
+    "%lld items" : {
 
     },
     "%lld large object values were longer than 64 MiB and were cut short." : {
@@ -19883,6 +19895,9 @@
       }
     },
     "Another profile already has this name." : {
+
+    },
+    "Another source column is mapped to the same destination column." : {
 
     },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
@@ -57272,6 +57287,9 @@
     "Each database is written to its own file." : {
 
     },
+    "Each destination column can be mapped from only one source column." : {
+
+    },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
 
     },
@@ -71104,6 +71122,9 @@
       }
     },
     "Folder of Parquet files" : {
+
+    },
+    "Folders" : {
 
     },
     "Follow-up on step %d \"%@\" (%@): %@" : {
@@ -94791,6 +94812,9 @@
         }
       }
     },
+    "Move to Folder" : {
+
+    },
     "Move to Group" : {
       "localizations" : {
         "ko" : {
@@ -96812,6 +96836,9 @@
           }
         }
       }
+    },
+    "New Folder %lld" : {
+
     },
     "New Group" : {
       "localizations" : {
@@ -125615,6 +125642,9 @@
         }
       }
     },
+    "Remove from Folder" : {
+
+    },
     "Remove from Group" : {
       "localizations" : {
         "ko" : {
@@ -126384,6 +126414,9 @@
           }
         }
       }
+    },
+    "Rename Folder" : {
+
     },
     "Rename Group" : {
       "extractionState" : "stale",
@@ -153630,6 +153663,9 @@
         }
       }
     },
+    "Table Folders" : {
+
+    },
     "Table Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -162649,40 +162685,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法將文字剖析為 JSON。請使用文字模式檢視或編輯。"
-          }
-        }
-      }
-    },
-    "The text doesn't look like a connection URL." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "텍스트가 연결 URL 형식이 아닙니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Metin bir bağlantı URL'sine benzemiyor."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Văn bản này không giống một URL kết nối."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "该文本看起来不是连接 URL。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這段文字看起來不像連線 URL。"
           }
         }
       }
@@ -173149,40 +173151,6 @@
         }
       }
     },
-    "Unsupported connection scheme: %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지원되지 않는 연결 스킴: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desteklenmeyen bağlantı şeması: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scheme kết nối không được hỗ trợ: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支持的连接协议：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支援的連線協定：%@"
-          }
-        }
-      }
-    },
     "Unsupported database scheme: %@" : {
       "localizations" : {
         "ko" : {
@@ -174503,7 +174471,6 @@
       }
     },
     "Use ~/.pgpass" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174845,40 +174812,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 IAM 資料庫驗證"
-          }
-        }
-      }
-    },
-    "Use Password File" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호 파일 사용"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parola Dosyası Kullan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng file mật khẩu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密码文件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密碼檔案"
           }
         }
       }
