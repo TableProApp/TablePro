@@ -1,33 +1,11 @@
 import Foundation
 
 public enum DelimitedDialectDetector {
-    public struct EncodingSniff: Equatable, Sendable {
-        public let encoding: TabularTextEncoding
-        public let byteOrderMarkLength: Int
-
-        public var hasByteOrderMark: Bool { byteOrderMarkLength > 0 }
-    }
-
     public static let layoutScanLimit = 65_536
-    public static let encodingScanLimit = 262_144
 
     private static let candidateDelimiters: [UInt8] = [
         DelimitedDialect.comma, DelimitedDialect.tab, DelimitedDialect.semicolon, DelimitedDialect.pipe
     ]
-
-    public static func sniffEncoding(_ prefix: UnsafeBufferPointer<UInt8>) -> EncodingSniff {
-        if hasPrefix(prefix, [0xEF, 0xBB, 0xBF]) {
-            return EncodingSniff(encoding: .utf8, byteOrderMarkLength: 3)
-        }
-        if hasPrefix(prefix, [0xFF, 0xFE]) {
-            return EncodingSniff(encoding: .utf16LittleEndian, byteOrderMarkLength: 2)
-        }
-        if hasPrefix(prefix, [0xFE, 0xFF]) {
-            return EncodingSniff(encoding: .utf16BigEndian, byteOrderMarkLength: 2)
-        }
-        let probe = UnsafeBufferPointer(rebasing: prefix[0..<min(prefix.count, encodingScanLimit)])
-        return EncodingSniff(encoding: isValidUTF8Prefix(probe) ? .utf8 : .windows1252, byteOrderMarkLength: 0)
-    }
 
     public static func detect(
         _ bytes: UnsafeBufferPointer<UInt8>,
@@ -127,38 +105,5 @@ public enum DelimitedDialectDetector {
             index += 1
         }
         return .lf
-    }
-
-    private static func hasPrefix(_ bytes: UnsafeBufferPointer<UInt8>, _ prefix: [UInt8]) -> Bool {
-        guard bytes.count >= prefix.count else { return false }
-        for (offset, byte) in prefix.enumerated() where bytes[offset] != byte {
-            return false
-        }
-        return true
-    }
-
-    private static func isValidUTF8Prefix(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
-        var end = bytes.count
-        var continuation = 0
-        while end > 0, continuation < 3, (bytes[end - 1] & 0xC0) == 0x80 {
-            end -= 1
-            continuation += 1
-        }
-        if end > 0, bytes[end - 1] >= 0xC0 {
-            end -= 1
-        }
-        let trimmed = UnsafeBufferPointer(rebasing: bytes[0..<end])
-        var iterator = trimmed.makeIterator()
-        var decoder = UTF8()
-        while true {
-            switch decoder.decode(&iterator) {
-            case .scalarValue:
-                continue
-            case .emptyInput:
-                return true
-            case .error:
-                return false
-            }
-        }
     }
 }

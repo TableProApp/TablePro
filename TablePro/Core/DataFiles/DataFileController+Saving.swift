@@ -10,7 +10,9 @@ import TableProTabularIO
 enum DataFileSaveError: LocalizedError {
     case notLoaded
     case unsupportedFormat
-    case unencodable(row: Int, column: Int, character: Character, encoding: String)
+    case unencodable(row: Int, column: String, character: String, encoding: String)
+    case unencodableInHiddenRow(column: String, character: String, encoding: String)
+    case unencodableColumnName(column: String, character: String, encoding: String)
     case invalidJSONValue(row: Int, column: String)
     case duplicateJSONKey(String)
     case failed(String)
@@ -23,10 +25,24 @@ enum DataFileSaveError: LocalizedError {
             return String(localized: "This file cannot be saved in that format.")
         case .unencodable(let row, let column, let character, let encoding):
             return String(
-                format: String(localized: "Row %@, column %@ contains “%@”, which %@ cannot store. Choose Save As and pick UTF-8."),
+                format: String(localized: "Row %@, column “%@” contains %@, which %@ cannot store. Choose Save As and pick UTF-8."),
                 row.formatted(),
-                column.formatted(),
-                String(character),
+                column,
+                character,
+                encoding
+            )
+        case .unencodableInHiddenRow(let column, let character, let encoding):
+            return String(
+                format: String(localized: "A row the filter hides holds %@ in column “%@”, which %@ cannot store. Clear the filter to find it, or choose Save As and pick UTF-8."),
+                character,
+                column,
+                encoding
+            )
+        case .unencodableColumnName(let column, let character, let encoding):
+            return String(
+                format: String(localized: "The column name “%@” contains %@, which %@ cannot store. Rename the column, or choose Save As and pick UTF-8."),
+                column,
+                character,
                 encoding
             )
         case .invalidJSONValue(let row, let column):
@@ -45,6 +61,7 @@ enum DataFileSaveError: LocalizedError {
 
 extension DataFileController {
     func write(to url: URL, typeName: String) throws {
+        lastWrittenDialect = nil
         guard let table, loadState == .loaded else { throw DataFileSaveError.notLoaded }
         guard let format = DataFileKind.format(forSaveType: typeName) else {
             throw DataFileSaveError.unsupportedFormat
@@ -131,13 +148,6 @@ extension DataFileController {
         }
     }
 
-    func adoptSaveEncoding() {
-        guard let saveEncoding, var updated = dialect, updated.encoding != saveEncoding else { return }
-        updated.encoding = saveEncoding
-        updated.hasByteOrderMark = !saveEncoding.byteOrderMark.isEmpty && saveEncoding != .utf8
-        setDialect(updated)
-    }
-
     private func writeDelimited(_ table: TabularTable, to url: URL, typeName: String) throws {
         let source = content?.delimitedSource
         let usesSource = source != nil && kind?.format == .delimited
@@ -151,17 +161,48 @@ extension DataFileController {
                 rows: table.outputRows(sourceHeaderNames: headerNames, copiesSourceRows: usesSource),
                 endsWithLineTerminator: source?.index.endsWithLineTerminator ?? true
             )
+            lastWrittenDialect = writer.dialect
         } catch TabularWriteError.unencodable(let row, let column, let character, let encoding) {
-            throw DataFileSaveError.unencodable(
-                row: row + 1,
-                column: column + 1,
-                character: character,
-                encoding: DataFileEncodingNames.name(for: encoding)
-            )
+            throw unencodableError(outputRow: row, column: column, character: character, encoding: encoding, in: table)
         } catch TabularWriteError.couldNotCreate(let path) {
             throw DataFileSaveError.failed(String(format: String(localized: "Could not create %@."), path))
         } catch TabularWriteError.writeFailed(let message) {
             throw DataFileSaveError.failed(message)
         }
+    }
+
+    private func unencodableError(
+        outputRow: Int,
+        column: Int,
+        character: Character,
+        encoding: TabularTextEncoding,
+        in table: TabularTable
+    ) -> DataFileSaveError {
+        let columnName = table.columns.indices.contains(column) ? table.columns[column].name : (column + 1).formatted()
+        let described = Self.describe(character)
+        let writesHeader = table.headerRowKey != nil
+        if writesHeader, outputRow == 0 {
+            return .unencodableColumnName(column: columnName, character: described, encoding: encoding.displayName)
+        }
+        let logicalRow = outputRow - (writesHeader ? 1 : 0)
+        guard logicalRow >= 0, logicalRow < table.rowCount else {
+            return .unencodableInHiddenRow(column: columnName, character: described, encoding: encoding.displayName)
+        }
+        let key = table.key(atRow: logicalRow)
+        guard let position = displayPosition(ofKey: key) else {
+            return .unencodableInHiddenRow(column: columnName, character: described, encoding: encoding.displayName)
+        }
+        reveal(key: key)
+        return .unencodable(row: position + 1, column: columnName, character: described, encoding: encoding.displayName)
+    }
+
+    nonisolated static func describe(_ character: Character) -> String {
+        let isInvisible = character.unicodeScalars.allSatisfy { scalar in
+            scalar.properties.isWhitespace || [.control, .format].contains(scalar.properties.generalCategory)
+        }
+        guard isInvisible else { return "“\(character)”" }
+        return character.unicodeScalars
+            .map { String(format: "U+%04X %@", $0.value, $0.properties.name ?? "") }
+            .joined(separator: ", ")
     }
 }

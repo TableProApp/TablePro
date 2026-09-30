@@ -297,7 +297,7 @@ struct SurrealRowFlattenerTests {
                 (key: "other", value: .string("x")),
             ]),
         ])
-        let flattened = SurrealRowFlattener.flatten(rows)
+        let flattened = SurrealRowFlattener.flatten(rows, length: .display)
         #expect(flattened.columns == ["id", "n", "other"])
         #expect(flattened.rows.count == 2)
     }
@@ -308,7 +308,7 @@ struct SurrealRowFlattenerTests {
             .object([(key: "a", value: .int(1))]),
             .object([(key: "b", value: .int(2))]),
         ])
-        let flattened = SurrealRowFlattener.flatten(rows)
+        let flattened = SurrealRowFlattener.flatten(rows, length: .display)
         #expect(flattened.columns == ["a", "b"])
         #expect(flattened.rows[0][1] == .null)
         #expect(flattened.rows[1][0] == .null)
@@ -319,8 +319,40 @@ struct SurrealRowFlattenerTests {
         let rows = SurrealValue.array([
             .object([(key: "meta", value: .object([(key: "k", value: .int(1))]))]),
         ])
-        let flattened = SurrealRowFlattener.flatten(rows)
+        let flattened = SurrealRowFlattener.flatten(rows, length: .display)
         #expect(flattened.rows[0][0] == .text(#"{"k":1}"#))
+    }
+
+    @Test("An export row keeps arrays and objects longer than the grid's cap whole")
+    func exportRowKeepsLongStructuresWhole() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let vector = SurrealValue.array(embedding.map { .double($0) })
+        let rows = SurrealValue.array([
+            .object([
+                (key: "embedding", value: vector),
+                (key: "meta", value: .object([(key: "vector", value: vector)])),
+            ]),
+        ])
+        let row = try #require(SurrealRowFlattener.flatten(rows, length: .whole).rows.first)
+
+        #expect(try parsedJSON(row[0]) as? [Double] == embedding)
+        #expect(try parsedJSON(row[1]) as? [String: [Double]] == ["vector": embedding])
+    }
+
+    @Test("A grid row still cuts an array longer than the cap")
+    func gridRowCutsLongStructures() throws {
+        let vector = SurrealValue.array((0..<1_536).map { .double(Double($0) / 1_024) })
+        let rows = SurrealValue.array([.object([(key: "embedding", value: vector)])])
+        let row = try #require(SurrealRowFlattener.flatten(rows, length: .display).rows.first)
+        let text = try #require(row[0].asText)
+
+        #expect(text.hasSuffix("..."))
+        #expect((text as NSString).length == SurrealValue.maxSerializedLength + 3)
+    }
+
+    private func parsedJSON(_ cell: PluginCellValue) throws -> Any {
+        let text = try #require(cell.asText)
+        return try JSONSerialization.jsonObject(with: Data(text.utf8))
     }
 }
 
@@ -477,7 +509,7 @@ struct SurrealCellCoderTests {
         #expect(value(#"{"a":1}"#, "object") == .object([(key: "a", value: .int(1))]))
         #expect(value("2024-09-15T12:34:56.789Z", "datetime")
             == .datetime(seconds: 1_726_403_696, nanoseconds: 789_000_000))
-        #expect(value("1h30m", "duration") == .duration(seconds: 5400, nanoseconds: 0))
+        #expect(value("1h30m", "duration") == .duration(seconds: 5_400, nanoseconds: 0))
     }
 
     @Test("With no known kind, numeric and bool text is typed, not left a string")
@@ -527,7 +559,7 @@ struct SurrealDBConnectionConfigTests {
         var fields = ["sdbAuthLevel": level]
         fields.merge(extra) { _, new in new }
         return SurrealDBConnectionConfig(config: DriverConnectionConfig(
-            host: "localhost", port: 8000, username: "root", password: "secret",
+            host: "localhost", port: 8_000, username: "root", password: "secret",
             database: namespace, ssl: SSLConfiguration(), additionalFields: fields
         ))
     }

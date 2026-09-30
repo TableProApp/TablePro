@@ -238,12 +238,23 @@ public enum WeaviateFilterBuilder {
             throw WeaviateFilterError.missingUpperBound(column: column)
         }
         let lower = try comparison(
-            "GreaterThanEqual", path: path, column: column, value: filter.value, kind: kind
+            "GreaterThanEqual",
+            path: path,
+            column: column,
+            value: lowerBound(of: filter.value, upperBound: upperBound),
+            kind: kind
         )
         let upper = try comparison(
             "LessThanEqual", path: path, column: column, value: upperBound, kind: kind
         )
         return "{ operator: And operands: [\(lower) \(upper)] }"
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
     }
 
     private static func negated(_ operand: String) -> String {
