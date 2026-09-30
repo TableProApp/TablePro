@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linked Folder and Team Library connections never asking for a password and failing to sign in.
 - Old Team Catalog entry left beside the new one after a renamed connection is published again.
 - Team Catalog folder panel sending teammates to a Settings > Linked Folders pane that does not exist.
+- Empty Team Library after joining a team or activating a Team license, until the next relaunch.
 
 ### Security
 
