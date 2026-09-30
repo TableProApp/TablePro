@@ -18,6 +18,20 @@ nonisolated extension DatabaseType {
         }
     }
 
+    var isLocalFile: Bool {
+        switch self {
+        case .sqlite, .duckdb: true
+        default: false
+        }
+    }
+
+    var speaksSQL: Bool {
+        switch self {
+        case .redis: false
+        default: true
+        }
+    }
+
     var mobileDisplayName: String {
         switch self {
         case .mysql: "MySQL"
