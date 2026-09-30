@@ -37,10 +37,11 @@ extension RedisPluginDriver {
         keys: [String],
         connection conn: any RedisCommandChannel,
         startTime: Date,
-        isTruncated: Bool = false
+        isTruncated: Bool = false,
+        statusMessage: String? = nil
     ) async throws -> PluginQueryResult {
         guard !keys.isEmpty else {
-            return buildEmptyKeyResult(startTime: startTime)
+            return buildEmptyKeyResult(startTime: startTime, statusMessage: statusMessage)
         }
 
         let rows = try await buildKeySummaryRows(keys: keys, connection: conn)
@@ -50,7 +51,8 @@ extension RedisPluginDriver {
             rows: rows,
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: isTruncated
+            isTruncated: isTruncated,
+            statusMessage: statusMessage
         )
     }
 
@@ -124,13 +126,14 @@ extension RedisPluginDriver {
         }
     }
 
-    func buildEmptyKeyResult(startTime: Date) -> PluginQueryResult {
+    func buildEmptyKeyResult(startTime: Date, statusMessage: String? = nil) -> PluginQueryResult {
         PluginQueryResult(
             columns: Self.keyBrowseColumns,
             columnTypeNames: Self.keyBrowseColumnTypeNames,
             rows: [],
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
+            executionTime: Date().timeIntervalSince(startTime),
+            statusMessage: statusMessage
         )
     }
 

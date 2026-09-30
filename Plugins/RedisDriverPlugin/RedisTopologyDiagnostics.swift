@@ -74,15 +74,16 @@ enum RedisTopologyDiagnostics {
     /// only thing left to check is whether this is the kind of node the mode expects.
     ///
     /// `isTunneled` matters because a tunnel rewrites the connection to Standalone against the
-    /// first address in the list. For Cluster that address is a data node and everything works;
-    /// for Sentinel it is a Sentinel, and telling the user to pick Sentinel mode would be advice
-    /// they have already followed.
+    /// first address in the list, whatever mode the user picked. For Cluster that address is a
+    /// data node that serves its own slots, and no mode choice can do better through one forwarded
+    /// port; for Sentinel it is a Sentinel, and telling the user to pick Sentinel mode would be
+    /// advice they have already followed.
     static func mismatch(
         expected: RedisConnectionMode,
         actual: RedisServerMode,
         isTunneled: Bool = false
     ) -> String? {
-        if isTunneled, actual == .sentinel { return sentinelThroughTunnelMessage }
+        if isTunneled { return tunneledMismatch(actual: actual) }
         switch (expected, actual) {
         case (.standalone, .cluster):
             return String(
@@ -99,6 +100,15 @@ enum RedisTopologyDiagnostics {
         case (.cluster, .standalone):
             return notAClusterMessage
         default:
+            return nil
+        }
+    }
+
+    private static func tunneledMismatch(actual: RedisServerMode) -> String? {
+        switch actual {
+        case .sentinel:
+            return sentinelThroughTunnelMessage
+        case .standalone, .cluster:
             return nil
         }
     }

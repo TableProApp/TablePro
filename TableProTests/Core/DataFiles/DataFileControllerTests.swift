@@ -486,7 +486,158 @@ struct DataFileControllerTests {
         controller.saveEncoding = .utf8
         try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
         #expect(try String(contentsOf: output, encoding: .utf8) == "n\n漢\n")
-        controller.adoptSaveEncoding()
+        controller.adoptWrittenDialect()
         #expect(controller.dialect?.encoding == .utf8)
+    }
+
+    private static let japaneseExport = """
+    商品コード,商品名,在庫管理区分,ｻﾞｲｺｶﾝﾘｸﾌﾞﾝ
+    10001,ソフトウェア保守,在庫管理する,ｻﾞｲｺｶﾝﾘｽﾙ
+    10002,ポイント交換,在庫管理しない,ｻﾞｲｺｶﾝﾘｼﾅｲ
+    10003,髙橋商店の注文,在庫管理する,ｻﾞｲｺｶﾝﾘｽﾙ
+
+    """
+
+    private func shiftJIS(_ text: String) throws -> Data {
+        try #require(text.data(using: .shiftJIS, allowLossyConversion: false))
+    }
+
+    @Test("A Shift JIS export from Excel opens with its Japanese text")
+    func shiftJISOpensReadable() async throws {
+        let (controller, _) = try await loaded(data: try shiftJIS(Self.japaneseExport), fileExtension: "csv")
+        #expect(controller.dialect?.encoding == .shiftJIS)
+        #expect(controller.columnNames.displayNames == ["商品コード", "商品名", "在庫管理区分", "ｻﾞｲｺｶﾝﾘｸﾌﾞﾝ"])
+        #expect(column(controller, 1) == ["ソフトウェア保守", "ポイント交換", "髙橋商店の注文"])
+        #expect(controller.undecodableLineCount == 0)
+    }
+
+    @Test("A byte the encoding cannot read shows as a replacement character and is counted")
+    func undecodableBytesAreCounted() async throws {
+        var bytes = try shiftJIS(Self.japaneseExport)
+        bytes.append(contentsOf: Array("10004,".utf8) + [0x82] + Array(",x,y\n".utf8))
+        let (controller, _) = try await loaded(data: bytes, fileExtension: "csv")
+        #expect(controller.dialect?.encoding == .shiftJIS)
+        #expect(controller.undecodableLineCount == 1)
+        #expect(column(controller, 1).last == "\u{FFFD}")
+    }
+
+    @Test("Saving an edited Shift JIS file keeps the untouched rows' bytes")
+    func shiftJISSaveKeepsUntouchedRows() async throws {
+        let original = try shiftJIS(Self.japaneseExport.replacingOccurrences(of: "\n", with: "\r\n"))
+        let (controller, url) = try await loaded(data: original, fileExtension: "csv")
+        controller.setCell(pageRow: 1, column: 1, text: "ポイント還元")
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.csv")
+        try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
+        let expected = try shiftJIS(
+            Self.japaneseExport.replacingOccurrences(of: "ポイント交換", with: "ポイント還元")
+                .replacingOccurrences(of: "\n", with: "\r\n")
+        )
+        #expect(try Data(contentsOf: output) == expected)
+    }
+
+    @Test("Reopening the file keeps the encoding chosen in File Properties")
+    func reloadKeepsTheChosenEncoding() async throws {
+        let (controller, url) = try await loaded(data: try shiftJIS(Self.japaneseExport), fileExtension: "csv")
+        let kind = try #require(DataFileKind.classify(url))
+        var chosen = try #require(controller.dialect)
+        chosen.encoding = .windows1252
+        controller.load(url: url, kind: kind, dialectOverride: chosen)
+        await controller.waitForPendingWork()
+        #expect(controller.dialect?.encoding == .windows1252)
+        controller.load(url: url, kind: kind)
+        await controller.waitForPendingWork()
+        #expect(controller.loadState == .loaded)
+        #expect(controller.dialect?.encoding == .windows1252)
+    }
+
+    @Test("Save As to a tab-separated file makes a later reload read tabs, even after a File Properties choice")
+    func saveAsAdoptsTheWrittenDialect() async throws {
+        let (controller, url) = try await loaded(data: try shiftJIS(Self.japaneseExport), fileExtension: "csv")
+        let csvKind = try #require(DataFileKind.classify(url))
+        var chosen = try #require(controller.dialect)
+        chosen.encoding = .shiftJIS
+        controller.load(url: url, kind: csvKind, dialectOverride: chosen)
+        await controller.waitForPendingWork()
+
+        let output = url.deletingLastPathComponent().appendingPathComponent("people.tsv")
+        try controller.write(to: output, typeName: DataFileKind.tabSeparatedType)
+        controller.adoptWrittenDialect()
+        let tsvKind = try #require(DataFileKind.classify(output))
+        controller.load(url: output, kind: tsvKind)
+        await controller.waitForPendingWork()
+
+        #expect(controller.dialect?.delimiter == DelimitedDialect.tab)
+        #expect(controller.dialect?.encoding == .shiftJIS)
+        #expect(column(controller, 1) == ["ソフトウェア保守", "ポイント交換", "髙橋商店の注文"])
+    }
+
+    @Test("Switching the header off after a File Properties choice survives a reload")
+    func headerSwitchSurvivesAReload() async throws {
+        let (controller, url) = try await loaded(data: try shiftJIS(Self.japaneseExport), fileExtension: "csv")
+        let kind = try #require(DataFileKind.classify(url))
+        let chosen = try #require(controller.dialect)
+        controller.load(url: url, kind: kind, dialectOverride: chosen)
+        await controller.waitForPendingWork()
+        controller.setUsesFirstRowAsHeader(false)
+        await controller.waitForPendingWork()
+        controller.load(url: url, kind: kind)
+        await controller.waitForPendingWork()
+        #expect(controller.dialect?.hasHeaderRow == false)
+        #expect(controller.totalRowCount == 4)
+    }
+
+    @Test("Saving in another encoding clears the unreadable-line count measured for the old one")
+    func saveAsInAnotherEncodingClearsTheCount() async throws {
+        var bytes = try shiftJIS(Self.japaneseExport)
+        bytes.append(contentsOf: Array("10004,".utf8) + [0x82] + Array(",x,y\n".utf8))
+        let (controller, url) = try await loaded(data: bytes, fileExtension: "csv")
+        #expect(controller.undecodableLineCount == 1)
+        controller.saveEncoding = .utf8
+        try controller.write(to: url.deletingLastPathComponent().appendingPathComponent("out.csv"), typeName: DataFileKind.commaSeparatedType)
+        controller.adoptWrittenDialect()
+        #expect(controller.dialect?.encoding == .utf8)
+        #expect(controller.undecodableLineCount == 0)
+    }
+
+    @Test("The working copy is a copy, so a change to the original does not reach an open file")
+    func workingCopyIsAlwaysACopy() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DataFileWorkingCopyTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("people.csv")
+        try Data("a,b\n1,2\n".utf8).write(to: url)
+        let workingCopy = try DataFileWorkingCopy()
+        let snapshot = try await workingCopy.snapshot(of: url, kind: try #require(DataFileKind.classify(url)))
+        #expect(snapshot != url)
+        try Data("changed\n".utf8).write(to: url)
+        #expect(try Data(contentsOf: snapshot) == Data("a,b\n1,2\n".utf8))
+    }
+
+    @Test("The cannot-store error names the row the grid shows, the column by name, and selects the row")
+    func unencodableErrorNamesTheVisibleRow() async throws {
+        let bytes = Data([0x6E, 0x61, 0x6D, 0x65, 0x2C, 0x6E, 0x0A, 0x7A, 0x6F, 0x65, 0x2C, 0x31, 0x0A]
+            + [0x63, 0x61, 0x66, 0xE9, 0x2C, 0x32, 0x0A, 0x61, 0x70, 0x70, 0x6C, 0x65, 0x2C, 0x33, 0x0A])
+        let (controller, url) = try await loaded(data: bytes, fileExtension: "csv")
+        #expect(controller.dialect?.encoding == .windows1252)
+        controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)]))
+        await controller.waitForPendingWork()
+        #expect(column(controller, 0) == ["apple", "caf\u{E9}", "zoe"])
+        controller.setCell(pageRow: 1, column: 0, text: "漢")
+        controller.selectedRowIndices = []
+        let output = url.deletingLastPathComponent().appendingPathComponent("out.csv")
+        #expect {
+            try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
+        } throws: { error in
+            let message = error.localizedDescription
+            return message.contains("Row 2") && message.contains("“name”") && message.contains("“漢”")
+        }
+        #expect(controller.selectedRowIndices == [1])
+    }
+
+    @Test("An invisible character is named by its code point")
+    func invisibleCharactersAreNamed() {
+        #expect(DataFileController.describe("\u{A0}") == "U+00A0 NO-BREAK SPACE")
+        #expect(DataFileController.describe("漢") == "“漢”")
     }
 }

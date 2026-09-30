@@ -1181,6 +1181,40 @@
         }
       }
     },
+    "“%1$@” exited with status %2$d on the server: %3$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에서 “%1$@”이(가) 상태 %2$d(으)로 종료되었습니다: %3$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” sunucuda %2$d durumuyla sonlandı: %3$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” kết thúc với mã trạng thái %2$d trên máy chủ: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” 在服务器上以状态 %2$d 退出：%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” 在伺服器上以狀態 %2$d 結束：%3$@"
+          }
+        }
+      }
+    },
     "Couldn't Save Files" : {
       "localizations" : {
         "ko" : {
@@ -9883,66 +9917,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "••••••••"
-          }
-        }
-      }
-    },
-    "`%@` in ~/.ssh/config does not accept the token %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "`%1$@` in ~/.ssh/config does not accept the token %2$@."
-          }
-        }
-      }
-    },
-    "`%@` in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign." : {
-
-    },
-    "`%@` in ~/.ssh/config has a ${ with no closing brace." : {
-
-    },
-    "`%@` in ~/.ssh/config uses ${%@}, which is not set in the environment." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "`%1$@` in ~/.ssh/config uses ${%2$@}, which is not set in the environment."
-          }
-        }
-      }
-    },
-    "`%1$@` exited with status %2$d on the server: %3$@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "서버에서 `%1$@`이(가) 상태 %2$d(으)로 종료되었습니다: %3$@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` sunucuda %2$d durumuyla sonlandı: %3$@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` kết thúc với mã trạng thái %2$d trên máy chủ: %3$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` 在服务器上以状态 %2$d 退出：%3$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` 在伺服器上以狀態 %2$d 結束：%3$@"
           }
         }
       }
@@ -27839,7 +27813,7 @@
     "Cassandra columns have no default value." : {
 
     },
-    "Cassandra filters cannot match any one of several conditions. Use Match All." : {
+    "Cassandra filters can only require every condition to match." : {
 
     },
     "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
@@ -34184,70 +34158,70 @@
     "Cloud Storage URI" : {
 
     },
-    "cloud-sql-proxy not found. Install it with `brew install cloud-sql-proxy`, download it above, or choose the binary." : {
+    "cloud-sql-proxy not found. Install it with “brew install cloud-sql-proxy”, download it above, or choose the binary." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy를 찾을 수 없습니다. `brew install cloud-sql-proxy`로 설치하거나 위에서 다운로드하거나 바이너리를 선택하십시오."
+            "value" : "cloud-sql-proxy를 찾을 수 없습니다. “brew install cloud-sql-proxy”로 설치하거나 위에서 다운로드하거나 바이너리를 선택하십시오."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy bulunamadı. `brew install cloud-sql-proxy` ile yükleyin, yukarıdan indirin veya çalıştırılabilir dosyayı seçin."
+            "value" : "cloud-sql-proxy bulunamadı. “brew install cloud-sql-proxy” ile yükleyin, yukarıdan indirin veya çalıştırılabilir dosyayı seçin."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng `brew install cloud-sql-proxy`, tải xuống ở trên, hoặc chọn tệp thực thi."
+            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng “brew install cloud-sql-proxy”, tải xuống ở trên, hoặc chọn tệp thực thi."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未找到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安装、在上方下载，或直接选择可执行文件。"
+            "value" : "未找到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安装、在上方下载，或直接选择可执行文件。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找不到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安裝、在上方下載，或直接選擇執行檔。"
+            "value" : "找不到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安裝、在上方下載，或直接選擇執行檔。"
           }
         }
       }
     },
-    "cloud-sql-proxy was not found. Install it with `brew install cloud-sql-proxy`, or download it in the Cloud SQL Auth Proxy settings." : {
+    "cloud-sql-proxy was not found. Install it with “brew install cloud-sql-proxy”, or download it in the Cloud SQL Auth Proxy settings." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy를 찾을 수 없습니다. `brew install cloud-sql-proxy`로 설치하거나 Cloud SQL Auth Proxy 설정에서 다운로드하십시오."
+            "value" : "cloud-sql-proxy를 찾을 수 없습니다. “brew install cloud-sql-proxy”로 설치하거나 Cloud SQL Auth Proxy 설정에서 다운로드하십시오."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy bulunamadı. `brew install cloud-sql-proxy` ile yükleyin veya Cloud SQL Auth Proxy ayarlarından indirin."
+            "value" : "cloud-sql-proxy bulunamadı. “brew install cloud-sql-proxy” ile yükleyin veya Cloud SQL Auth Proxy ayarlarından indirin."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng `brew install cloud-sql-proxy`, hoặc tải xuống trong cài đặt Cloud SQL Auth Proxy."
+            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng “brew install cloud-sql-proxy”, hoặc tải xuống trong cài đặt Cloud SQL Auth Proxy."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未找到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安装，或在 Cloud SQL Auth Proxy 设置中下载。"
+            "value" : "未找到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安装，或在 Cloud SQL Auth Proxy 设置中下载。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找不到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安裝，或在 Cloud SQL Auth Proxy 設定中下載。"
+            "value" : "找不到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安裝，或在 Cloud SQL Auth Proxy 設定中下載。"
           }
         }
       }
@@ -34422,6 +34396,74 @@
         }
       }
     },
+    "cloudflared not found. Install it with “brew install cloudflared”, or choose the binary above." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared를 찾을 수 없습니다. “brew install cloudflared”로 설치하거나 위에서 바이너리를 선택하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared bulunamadı. “brew install cloudflared” ile yükleyin veya yukarıdan ikili dosyayı seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy cloudflared. Cài đặt bằng “brew install cloudflared”, hoặc chọn tệp thực thi ở trên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到cloudflared。请使用“brew install cloudflared”安装，或在上方选择其二进制文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 cloudflared。請使用 “brew install cloudflared” 安裝，或在上方選擇其二進位檔。"
+          }
+        }
+      }
+    },
+    "cloudflared was not found. Install it with “brew install cloudflared”, or set its path in the connection's Cloudflare Tunnel settings." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared를 찾을 수 없습니다. “brew install cloudflared”로 설치하거나 연결의 Cloudflare Tunnel 설정에서 경로를 지정하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared bulunamadı. “brew install cloudflared” ile yükleyin veya bağlantının Cloudflare Tüneli ayarlarında yolunu belirtin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy cloudflared. Cài đặt bằng “brew install cloudflared”, hoặc đặt đường dẫn trong cài đặt Cloudflare Tunnel của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到cloudflared。请使用“brew install cloudflared”安装，或在该连接的Cloudflare隧道设置中设置其路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 cloudflared。請使用 “brew install cloudflared” 安裝，或在該連線的 Cloudflare 隧道設定中設定其路徑。"
+          }
+        }
+      }
+    },
     "cloudflared failed to start." : {
       "localizations" : {
         "ko" : {
@@ -34452,74 +34494,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "cloudflared 啟動失敗。"
-          }
-        }
-      }
-    },
-    "cloudflared not found. Install it with `brew install cloudflared`, or choose the binary above." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared를 찾을 수 없습니다. `brew install cloudflared`로 설치하거나 위에서 바이너리를 선택하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared bulunamadı. `brew install cloudflared` ile yükleyin veya yukarıdan ikili dosyayı seçin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy cloudflared. Cài đặt bằng `brew install cloudflared`, hoặc chọn tệp thực thi ở trên."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到cloudflared。请使用`brew install cloudflared`安装，或在上方选择其二进制文件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到 cloudflared。請使用 `brew install cloudflared` 安裝，或在上方選擇其二進位檔。"
-          }
-        }
-      }
-    },
-    "cloudflared was not found. Install it with `brew install cloudflared`, or set its path in the connection's Cloudflare Tunnel settings." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared를 찾을 수 없습니다. `brew install cloudflared`로 설치하거나 연결의 Cloudflare Tunnel 설정에서 경로를 지정하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared bulunamadı. `brew install cloudflared` ile yükleyin veya bağlantının Cloudflare Tüneli ayarlarında yolunu belirtin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy cloudflared. Cài đặt bằng `brew install cloudflared`, hoặc đặt đường dẫn trong cài đặt Cloudflare Tunnel của kết nối."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到cloudflared。请使用`brew install cloudflared`安装，或在该连接的Cloudflare隧道设置中设置其路径。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到 cloudflared。請使用 `brew install cloudflared` 安裝，或在該連線的 Cloudflare 隧道設定中設定其路徑。"
           }
         }
       }
@@ -80579,25 +80553,25 @@
         }
       }
     },
-    "Install it with `brew install libpq` and link it." : {
+    "Install it with “brew install libpq” and link it." : {
 
     },
-    "Install it with `brew install libpq`." : {
+    "Install it with “brew install libpq”." : {
 
     },
-    "Install it with `brew install mongodb-database-tools`." : {
+    "Install it with “brew install mongodb-database-tools”." : {
 
     },
-    "Install it with `brew install mysql-client` and link it." : {
+    "Install it with “brew install mysql-client” and link it." : {
 
     },
-    "Install it with `brew install sqlite` and link it." : {
+    "Install it with “brew install sqlite” and link it." : {
 
     },
     "Install one from PostgreSQL %@ or earlier." : {
 
     },
-    "Install one with `brew install postgresql@%@`." : {
+    "Install one with “brew install postgresql@%@”." : {
 
     },
     "Install Plugin" : {
@@ -102789,6 +102763,9 @@
 
     },
     "No SSH agent answered on the socket from %@. Check that agent is running." : {
+
+    },
+    "No SSH password was found for this connection. Enter it in the SSH settings and try again." : {
 
     },
     "No SSH servers yet." : {
@@ -130490,15 +130467,14 @@
         }
       }
     },
-    "Row %@, column %@ contains “%@”, which %@ cannot store. Choose Save As and pick UTF-8." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Row %1$@, column %2$@ contains “%3$@”, which %4$@ cannot store. Choose Save As and pick UTF-8."
-          }
-        }
-      }
+    "Row %@, column “%@” contains %@, which %@ cannot store. Choose Save As and pick UTF-8." : {
+
+    },
+    "A row the filter hides holds %@ in column “%@”, which %@ cannot store. Clear the filter to find it, or choose Save As and pick UTF-8." : {
+
+    },
+    "The column name “%@” contains %@, which %@ cannot store. Rename the column, or choose Save As and pick UTF-8." : {
+
     },
     "Row %@, column %@ is not valid JSON. Fix the value or clear it, then save again." : {
       "localizations" : {
@@ -147693,6 +147669,9 @@
         }
       }
     },
+    "SSH username not set. Add it to the form, or add a User line for %@ in ~/.ssh/config." : {
+
+    },
     "SSH Verification Rejected" : {
       "localizations" : {
         "ko" : {
@@ -154751,7 +154730,16 @@
         }
       }
     },
+    "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
+
+    },
     "TablePro connects to the first host over a tunnel. Replica set failover is not available." : {
+
+    },
+    "TablePro connects to the first host over a tunnel. The other hosts are not used." : {
+
+    },
+    "TablePro connects to the first node over a tunnel, as a single server. Keys on other nodes cannot be reached." : {
 
     },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
@@ -157637,6 +157625,32 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未安裝 %@ 命令列工具。"
+          }
+        }
+      }
+    },
+    "The %@ line in ~/.ssh/config does not accept the token %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ line in ~/.ssh/config does not accept the token %2$@."
+          }
+        }
+      }
+    },
+    "The %@ line in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign." : {
+
+    },
+    "The %@ line in ~/.ssh/config has a ${ with no closing brace." : {
+
+    },
+    "The %@ line in ~/.ssh/config uses ${%@}, which is not set in the environment." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ line in ~/.ssh/config uses ${%2$@}, which is not set in the environment."
           }
         }
       }
@@ -174406,7 +174420,6 @@
       }
     },
     "Use ~/.pgpass" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174748,40 +174761,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 IAM 資料庫驗證"
-          }
-        }
-      }
-    },
-    "Use Password File" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호 파일 사용"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parola Dosyası Kullan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng file mật khẩu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密码文件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密碼檔案"
           }
         }
       }
@@ -182573,6 +182552,9 @@
     "Sentinel %@ sent a reply TablePro could not read (%@)." : {
 
     },
+    "Sentinel mode cannot run through a tunnel. Set Connection Mode to Standalone and enter a data node, or turn the tunnel off." : {
+
+    },
     "Sentinel %@ refused the request: %@" : {
 
     },
@@ -182664,6 +182646,21 @@
 
     },
     "1 row has a different number of fields" : {
+
+    },
+    "1 line has unreadable characters" : {
+
+    },
+    "Line %@ holds binary data that cannot be read back exactly from a %@ file. Export the dump with --hex-blob, then import it again." : {
+
+    },
+    "Line %@ is not valid %@ text. Choose the file's encoding in the import options, then import again." : {
+
+    },
+    "%@ lines have unreadable characters" : {
+
+    },
+    "Bytes on those lines are not valid %@ and show as �. Pick another encoding in File Properties." : {
 
     },
     "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size." : {
@@ -183195,6 +183192,9 @@
           }
         }
       }
+    },
+    "%@ used" : {
+
     },
     "%@ visible rows" : {
 
@@ -184742,6 +184742,9 @@
 
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
+    "Next cursor: %@. The scan has not finished." : {
 
     }
   },

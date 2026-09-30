@@ -117,6 +117,31 @@ struct MCPAuthPolicyTests {
         }
     }
 
+    @Test("A read-only connection refuses stopping a server session and a read-write one allows it")
+    func readOnlyConnectionRefusesStoppingASession() async throws {
+        let principal = makePrincipal()
+
+        let readOnly = try await makePolicy(makeSnapshot(externalAccess: .readOnly)).authorize(
+            principal: principal,
+            tool: StopServerSessionTool.name,
+            connectionId: connectionA
+        )
+        let readWrite = try await makePolicy(makeSnapshot(externalAccess: .readWrite)).authorize(
+            principal: principal,
+            tool: StopServerSessionTool.name,
+            connectionId: connectionA
+        )
+
+        guard case .denied = readOnly else {
+            Issue.record("Expected denied for stopping a session on a read-only connection, got \(readOnly)")
+            return
+        }
+        guard case .allowed = readWrite else {
+            Issue.record("Expected allowed for stopping a session on a read-write connection, got \(readWrite)")
+            return
+        }
+    }
+
     @Test("A token scoped to one connection is denied on another")
     func connectionScopingIsEnforced() async throws {
         let policy = makePolicy(makeSnapshot())
@@ -244,6 +269,22 @@ struct MCPAuthPolicyTests {
             tool: "execute_query",
             connectionId: connectionA,
             sql: "INSERT INTO users (name) VALUES ('x')"
+        )
+
+        guard case .deniedInsufficientScope(let required, _) = decision else {
+            Issue.record("Expected an insufficient scope refusal, got \(decision)")
+            return
+        }
+        #expect(required == [.toolsWrite])
+    }
+
+    @Test("A read-only token may not stop another session through execute_query")
+    func readOnlyTokenIsRefusedASessionStop() async throws {
+        let decision = try await makePolicy(makeSnapshot()).authorize(
+            principal: makePrincipal(scopes: MCPScope.readOnlySet),
+            tool: "execute_query",
+            connectionId: connectionA,
+            sql: "SELECT pg_terminate_backend(123)"
         )
 
         guard case .deniedInsufficientScope(let required, _) = decision else {

@@ -154,4 +154,13 @@ struct FileTextWriterTests {
         #expect(reloaded.encoding == .shiftJIS)
         #expect(reloaded.content == fixture.original)
     }
+
+    @Test("A yen sign in a Shift JIS or EUC-JP file saves as the byte Japanese Windows shows as ¥")
+    func yenSignSavesAsJISRoman() throws {
+        let expected = try #require("SELECT '\\100~';\n".data(using: .shiftJIS))
+        #expect(FileTextEncoding(encoding: .shiftJIS).bytes(of: "SELECT '¥100‾';\n") == expected)
+        let euc = try #require("SELECT '\\100';\n".data(using: .japaneseEUC))
+        #expect(FileTextEncoding(encoding: .japaneseEUC).bytes(of: "SELECT '¥100';\n") == euc)
+        #expect(FileTextEncoding(encoding: .isoLatin1).bytes(of: "¥") == Data([0xA5]))
+    }
 }

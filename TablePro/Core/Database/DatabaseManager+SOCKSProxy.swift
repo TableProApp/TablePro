@@ -15,12 +15,13 @@ extension DatabaseManager {
             ? nil
             : connectionStorage.loadSOCKSProxyPassword(for: connection.id)
 
+        let endpoint = connection.tunnelForwardEndpoint
         let tunnelPort = try await SOCKSProxyManager.shared.createTunnel(
             connectionId: connection.id,
             config: config,
             password: password,
-            targetHost: connection.host,
-            targetPort: connection.port
+            targetHost: endpoint.host,
+            targetPort: endpoint.port
         )
 
         return tunneledConnection(from: connection, localPort: tunnelPort)

@@ -3,8 +3,12 @@
 
 Run: python3 .github/scripts/test_update_registry.py
 """
+import contextlib
 import importlib.util
+import io
 import os
+import sys
+from unittest import mock
 
 _spec = importlib.util.spec_from_file_location(
     "update_registry",
@@ -83,7 +87,7 @@ def test_update_entry_drops_legacy_null_binary():
     assert all(update_registry.kit_version(b) is not None for b in entry["binaries"])
 
 
-def _args(version, pkv, keep=2):
+def _args(version, pkv, keep=2, min_app_version="0.43.0"):
     class Args:
         id = "com.TablePro.DynamoDBDriverPlugin"
         name = "DynamoDB"
@@ -93,7 +97,6 @@ def _args(version, pkv, keep=2):
         arm64_sha = "a"
         x86_64_url = "https://x/x86_64"
         x86_64_sha = "b"
-        min_app_version = "0.43.0"
         icon = "icon"
         homepage = "https://tablepro.app"
         category = "database-driver"
@@ -101,6 +104,7 @@ def _args(version, pkv, keep=2):
     Args.version = version
     Args.plugin_kit_version = pkv
     Args.keep_kit_versions = keep
+    Args.min_app_version = min_app_version
     return Args
 
 
@@ -169,6 +173,133 @@ def test_publishing_below_the_retained_window_refuses():
         raise AssertionError("expected SystemExit when the new binary would be pruned away")
 
 
+def _entry(manifest):
+    return next(p for p in manifest["plugins"] if p["id"] == "com.TablePro.DynamoDBDriverPlugin")
+
+
+def test_min_app_version_admits_the_oldest_retained_binary():
+    manifest = {"schemaVersion": 2, "plugins": []}
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.16", 25, keep=3, min_app_version="0.73.0")
+    )
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.17", 33, keep=3, min_app_version="0.76.1")
+    )
+    entry = _entry(manifest)
+    assert entry["minAppVersion"] == "0.73.0", entry["minAppVersion"]
+    assert {
+        (update_registry.kit_version(b), b["minAppVersion"]) for b in entry["binaries"]
+    } == {(25, "0.73.0"), (33, "0.76.1")}, entry["binaries"]
+
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.18", 33, keep=3, min_app_version="0.76.1")
+    )
+    assert _entry(manifest)["minAppVersion"] == "0.73.0", _entry(manifest)["minAppVersion"]
+
+
+def test_min_app_version_compares_numerically():
+    manifest = {"schemaVersion": 2, "plugins": []}
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.16", 25, keep=3, min_app_version="0.9.0")
+    )
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.17", 33, keep=3, min_app_version="0.10.0")
+    )
+    assert _entry(manifest)["minAppVersion"] == "0.9.0", _entry(manifest)["minAppVersion"]
+
+
+def test_min_app_version_rises_once_the_oldest_binary_is_evicted():
+    manifest = {"schemaVersion": 2, "plugins": []}
+    for pkv, app in ((25, "0.73.0"), (30, "0.74.0"), (32, "0.75.0"), (33, "0.76.1")):
+        manifest = update_registry.update_plugin_entry(
+            manifest, _args("1.0.16", pkv, keep=3, min_app_version=app)
+        )
+    entry = _entry(manifest)
+    assert sorted({update_registry.kit_version(b) for b in entry["binaries"]}) == [30, 32, 33]
+    assert entry["minAppVersion"] == "0.74.0", entry["minAppVersion"]
+
+
+def test_republishing_a_kit_never_raises_its_minimum_app_version():
+    manifest = {"schemaVersion": 2, "plugins": []}
+    for pkv, app in ((33, "0.76.0"), (33, "0.76.1"), (34, "0.77.0"), (35, "0.78.0")):
+        manifest = update_registry.update_plugin_entry(
+            manifest, _args("1.0.16", pkv, keep=3, min_app_version=app)
+        )
+    entry = _entry(manifest)
+    assert entry["minAppVersion"] == "0.76.0", entry["minAppVersion"]
+    assert sorted(
+        b["minAppVersion"] for b in entry["binaries"] if update_registry.kit_version(b) == 33
+    ) == ["0.76.0", "0.76.0"], entry["binaries"]
+
+
+def test_republishing_a_kit_never_raises_it_over_a_binary_without_its_own_value():
+    manifest = _manifest(33)
+    _entry(manifest)["minAppVersion"] = "0.76.0"
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.16", 33, keep=3, min_app_version="0.76.1")
+    )
+    entry = _entry(manifest)
+    assert entry["minAppVersion"] == "0.76.0", entry["minAppVersion"]
+    assert {b["minAppVersion"] for b in entry["binaries"]} == {"0.76.0"}, entry["binaries"]
+
+
+def test_binaries_without_their_own_min_app_version_keep_the_entry_value():
+    manifest = _manifest(30)
+    _entry(manifest)["minAppVersion"] = "0.74.0"
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.16", 33, keep=3, min_app_version="0.76.1")
+    )
+    assert _entry(manifest)["minAppVersion"] == "0.74.0", _entry(manifest)["minAppVersion"]
+
+    manifest = _manifest(30)
+    _entry(manifest)["minAppVersion"] = "0.76.1"
+    manifest = update_registry.update_plugin_entry(
+        manifest, _args("1.0.16", 33, keep=3, min_app_version="0.76.0")
+    )
+    assert _entry(manifest)["minAppVersion"] == "0.76.0", _entry(manifest)["minAppVersion"]
+
+
+_REQUIRED_FLAGS = [
+    "--manifest", "plugins.json",
+    "--id", "com.TablePro.DynamoDBDriverPlugin",
+    "--name", "DynamoDB",
+    "--version", "1.0.16",
+    "--summary", "new",
+    "--db-type-ids", '["dynamodb"]',
+    "--arm64-url", "https://x/arm64",
+    "--arm64-sha", "a",
+    "--x86_64-url", "https://x/x86_64",
+    "--x86_64-sha", "b",
+    "--min-app-version", "0.76.1",
+    "--icon", "icon",
+    "--homepage", "https://tablepro.app",
+    "--plugin-kit-version", "33",
+]
+
+
+def _parse(flags):
+    with mock.patch.object(sys, "argv", ["update-registry.py", *flags]):
+        return update_registry.parse_args()
+
+
+def test_omitting_the_retention_count_refuses_to_run():
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stderr):
+            args = _parse(_REQUIRED_FLAGS)
+    except SystemExit as error:
+        assert error.code != 0, error.code
+        assert "--keep-kit-versions" in stderr.getvalue(), stderr.getvalue()
+    else:
+        raise AssertionError(
+            f"expected SystemExit without --keep-kit-versions, got {args.keep_kit_versions}"
+        )
+
+
+def test_the_retention_count_is_the_one_passed():
+    assert _parse([*_REQUIRED_FLAGS, "--keep-kit-versions", "3"]).keep_kit_versions == 3
+
+
 if __name__ == "__main__":
     test_kit_version_rejects_non_int()
     test_prune_drops_null_kit_binary()
@@ -178,4 +309,12 @@ if __name__ == "__main__":
     test_a_third_kit_version_evicts_the_oldest()
     test_republishing_the_same_kit_version_replaces_its_binaries()
     test_publishing_below_the_retained_window_refuses()
+    test_min_app_version_admits_the_oldest_retained_binary()
+    test_min_app_version_compares_numerically()
+    test_min_app_version_rises_once_the_oldest_binary_is_evicted()
+    test_republishing_a_kit_never_raises_its_minimum_app_version()
+    test_republishing_a_kit_never_raises_it_over_a_binary_without_its_own_value()
+    test_binaries_without_their_own_min_app_version_keep_the_entry_value()
+    test_omitting_the_retention_count_refuses_to_run()
+    test_the_retention_count_is_the_one_passed()
     print("All update-registry tests passed.")

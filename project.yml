@@ -161,6 +161,9 @@ targets:
       # app classifies, quotes and resolves a Redis statement exactly as the driver will.
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
+      # The etcd plugin's own command parser, so the app tiers an etcd statement by the operation
+      # the driver parses it into.
+      - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -440,7 +443,10 @@ targets:
       - Plugins/CSVExportPlugin/CSVExportOptionsView.swift
       - Plugins/CSVExportPlugin/CSVExportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportOptions.swift
+      - Plugins/CSVImportPlugin/CSVImportOptionsView.swift
       - Plugins/CSVImportPlugin/CSVImportParsing.swift
+      - Plugins/CSVImportPlugin/CSVImportPlugin.swift
+      - Plugins/CSVImportPlugin/CSVImportText.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
@@ -512,8 +518,10 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
+      - Plugins/EtcdDriverPlugin/EtcdCommandArgument.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
+      - Plugins/EtcdDriverPlugin/EtcdKeyspace.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
@@ -680,6 +688,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQTypeNameRegistry.swift
+      - Plugins/PostgreSQLDriverPlugin/PGliteConnectFailure.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
@@ -777,6 +786,9 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure+ConnectError.swift
+      - Plugins/RedisDriverPlugin/RedisTLSOptions.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift
       - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
@@ -1150,6 +1162,9 @@ targets:
     templateAttributes:
       folder: CSVImportPlugin
       principalClass: CSVImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTabularIO
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVImportPlugin
