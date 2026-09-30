@@ -247,13 +247,13 @@ struct RowChangeStatementFactory {
         return RestoreStatements(statements: statements, prologue: [session.open], epilogue: [session.close])
     }
 
-    /// The identity columns a restored row carries its old value for. A key the server allocated cannot be left to
-    /// the server, because the row then comes back under a different key. When the source never said which
-    /// generated columns are identity, a generated key cannot be told from a computed one, so it is refused rather
-    /// than guessed.
+    /// The identity columns a restored row carries its old value for. A value the server allocated cannot be left to
+    /// the server, because the row then comes back under a different one. When the source never said which
+    /// generated columns are identity, an allocated value cannot be told from a computed one, key or not, so a row
+    /// with any generated column is refused rather than guessed at.
     private func identityColumnsToRestore() throws -> Set<String> {
         guard let identityColumns else {
-            guard Set(primaryKeyColumns).isDisjoint(with: generatedColumns) else {
+            guard generatedColumns.isEmpty else {
                 throw DataWriteError.identityNotPreservable(databaseType.rawValue)
             }
             return []

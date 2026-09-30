@@ -466,11 +466,19 @@ struct SQLRowToStatementConverterTests {
     }
 
     @Test
-    func keylessWhereLeavesOutAColumnThePolicyExcludes() throws {
+    func keylessUpdateIsNotWrittenWhenAColumnCannotBeCompared() throws {
         let converter = try mssqlConverter(
             columns: ["Shape", "Name"], unwritableColumns: [], rowMatchPolicy: RowMatchPolicy(excludedColumns: ["Shape"])
         )
-        let result = converter.generateUpdates(rows: plain([["x", "A"]]))
-        #expect(result.hasSuffix("WHERE [Name] = N'A';"))
+        #expect(converter.generateUpdates(rows: plain([["x", "A"]])) == "")
+    }
+
+    @Test
+    func keyedUpdateIsWrittenWhateverThePolicyExcludes() throws {
+        let converter = try mssqlConverter(
+            columns: ["code", "Shape"], primaryKeyColumns: ["code"], unwritableColumns: [],
+            rowMatchPolicy: RowMatchPolicy(excludedColumns: ["Shape"])
+        )
+        #expect(converter.generateUpdates(rows: plain([["a", "x"]])) == "UPDATE [Enterprise_App_Approved] SET [Shape] = N'x' WHERE [code] = N'a';")
     }
 }

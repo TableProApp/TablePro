@@ -104,8 +104,9 @@ internal struct SQLRowToStatementConverter {
         rows.prefix(Self.maxRows).compactMap(updateStatement).joined(separator: "\n")
     }
 
-    /// Nothing for a row the table does not hold yet, for a key that is NULL (which identifies no row), and for a row
-    /// with nothing left to assign.
+    /// Nothing for a row the table does not hold yet, for a key that is NULL (which identifies no row), for a row with
+    /// nothing left to assign, and for a table without a key that has a column no match can compare: leaving that
+    /// column out would let the statement change rows that differ only in it.
     private func updateStatement(row: SourceRow) -> String? {
         guard !row.isPendingInsert, let whereClause = rowMatch(storedValues: row.storedValues) else { return nil }
         let assignments = assignments(for: row)
@@ -143,8 +144,8 @@ internal struct SQLRowToStatementConverter {
             return conditions.count == primaryKeyColumns.count ? conditions.joined(separator: " AND ") : nil
         }
 
-        let conditions = columns.enumerated().compactMap { index, column -> String? in
-            guard !rowMatchPolicy.excludedColumns.contains(column) else { return nil }
+        guard columns.allSatisfy({ !rowMatchPolicy.excludedColumns.contains($0) }) else { return nil }
+        let conditions = columns.enumerated().map { index, column -> String in
             let value = storedValues.indices.contains(index) ? storedValues[index] : .null
             let compared = rowMatchPolicy.matchExpression(
                 for: column, quoted: quoteIdentifierFn(column), value: value, databaseType: databaseType

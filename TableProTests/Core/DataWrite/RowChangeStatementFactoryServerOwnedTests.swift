@@ -158,6 +158,19 @@ struct RowChangeStatementFactoryServerOwnedTests {
     }
 
     @Test
+    func aRecordThatNeverSaidWhichColumnsAreIdentityRefusesAGeneratedColumnBesideANaturalKey() {
+        #expect(throws: DataWriteError.self) {
+            _ = try factory(primaryKeyColumns: ["Name"], identityColumns: nil).restoreStatements(rows: [["5", "a", "10"]])
+        }
+    }
+
+    @Test
+    func aRecordThatNeverSaidWhichColumnsAreIdentityRestoresATableWithNoGeneratedColumn() throws {
+        let restored = try factory(generatedColumns: [], identityColumns: nil).restoreStatements(rows: [["5", "a", "10"]])
+        #expect(restored.statements.count == 1)
+    }
+
+    @Test
     func aRestoreWithNoIdentityLeavesComputedColumnsOutAndNeedsNoSession() throws {
         let restored = try factory(generatedColumns: ["Doubled"], identityColumns: []).restoreStatements(
             rows: [["5", "a", "10"]]

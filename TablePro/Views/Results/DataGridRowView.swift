@@ -488,12 +488,17 @@ class DataGridRowView: NSTableRowView {
             insertItem.target = self
             copyAsMenu.addItem(insertItem)
 
-            let updateItem = NSMenuItem(
-                title: String(localized: "UPDATE Statement(s)"),
-                action: #selector(copyAsUpdate),
-                keyEquivalent: "")
-            updateItem.target = self
-            copyAsMenu.addItem(updateItem)
+            /// A table without a key is matched on every column, so one no match can compare leaves nothing to find
+            /// the row by.
+            let matchPolicy = coordinator.tableRowsProvider().rowMatchPolicy
+            if !coordinator.primaryKeyColumns.isEmpty || matchPolicy.excludedColumns.isEmpty {
+                let updateItem = NSMenuItem(
+                    title: String(localized: "UPDATE Statement(s)"),
+                    action: #selector(copyAsUpdate),
+                    keyEquivalent: "")
+                updateItem.target = self
+                copyAsMenu.addItem(updateItem)
+            }
         }
 
         let copyAsItem = NSMenuItem(title: String(localized: "Copy as"), action: nil, keyEquivalent: "")

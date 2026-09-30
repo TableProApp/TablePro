@@ -7,9 +7,13 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 206 for `sql_variant`, 403
-    /// for the spatial types), so a keyless match compares them through a cast. `hierarchyid` compares as it is.
-    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "SQL_VARIANT", "IMAGE", "GEOGRAPHY", "GEOMETRY"]
+    /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 403 for the spatial types), so
+    /// a keyless match compares them through a cast, which is exact for each. `hierarchyid` compares as it is.
+    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY"]
+
+    /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
+    /// cast to the same text, so a keyless match on it could pick either row.
+    static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
 
     // swiftlint:disable function_body_length
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
@@ -285,6 +289,7 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
+                    rowMatchExcludedTypePrefixes: Self.mssqlRowMatchExcludedTypePrefixes,
                     rowMatchTextTypePrefixes: Self.mssqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(

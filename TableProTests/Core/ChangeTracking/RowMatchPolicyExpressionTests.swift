@@ -43,5 +43,7 @@ struct RowMatchPolicyExpressionTests {
         #expect(prefixes.contains("XML"))
         #expect(prefixes.contains("IMAGE"))
         #expect(!prefixes.contains("HIERARCHYID"))
+        #expect(!prefixes.contains("SQL_VARIANT"))
+        #expect(PluginMetadataRegistry.mssqlRowMatchExcludedTypePrefixes == ["SQL_VARIANT"])
     }
 }
