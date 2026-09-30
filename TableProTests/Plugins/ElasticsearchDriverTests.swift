@@ -1202,7 +1202,7 @@ struct ElasticsearchStatementGeneratorTests {
     }
 
     private func displayed(_ value: Any) -> String {
-        ElasticsearchMappingFlattener.cell(value).asText ?? ""
+        ElasticsearchMappingFlattener.cell(value, length: .display).asText ?? ""
     }
 
     private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {

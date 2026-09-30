@@ -12,6 +12,8 @@ struct SyncPendingDeletions: Equatable {
     var tableFavorites: Set<String> = []
     var sqlFavorites: Set<UUID> = []
     var sqlFolders: Set<UUID> = []
+    var tableFolders: Set<UUID> = []
+    var tableFolderItems: Set<String> = []
 
     static func parse(_ recordIDs: [CKRecord.ID], settings: SyncSettings) -> SyncPendingDeletions {
         var pending = SyncPendingDeletions()
@@ -44,6 +46,10 @@ struct SyncPendingDeletions: Equatable {
             if let uuid { sqlFavorites.insert(uuid) }
         case .favoriteFolder:
             if let uuid { sqlFolders.insert(uuid) }
+        case .tableFolder:
+            if let uuid { tableFolders.insert(uuid) }
+        case .tableFolderItem:
+            tableFolderItems.insert(id)
         }
     }
 }
@@ -72,6 +78,7 @@ extension SyncCoordinator {
         for id in pending.tableFavorites {
             services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
         }
+        applyRemoteTableFolderDeletions(folderIds: pending.tableFolders, itemSyncIds: pending.tableFolderItems)
         return effects
     }
 

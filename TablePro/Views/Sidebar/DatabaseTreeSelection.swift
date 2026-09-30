@@ -15,10 +15,11 @@ import Foundation
 internal enum DatabaseTreeSelection {
     internal static func isSelectable(_ kind: DatabaseTreeNode.Kind) -> Bool {
         switch kind {
-        case .status, .recentSection, .objectKindSection, .hierarchicalSchemaSection, .redisKeysSection:
+        case .status, .recentSection, .foldersSection, .objectKindSection, .hierarchicalSchemaSection,
+             .redisKeysSection:
             return false
         case .database, .schema, .table, .partition, .routine, .trigger, .userType, .recentTable,
-             .containerObjectKindSection, .redisNode:
+             .containerObjectKindSection, .tableFolder, .redisNode:
             return true
         }
     }
