@@ -358,8 +358,8 @@ final class ConnectionCoordinator {
     }
 
     func addHistoryItem(_ item: QueryHistoryItem) {
-        historyStorage.save(item)
-        queryHistory.append(item)
+        guard historyStorage.save(item) else { return }
+        loadHistory()
     }
 
     func deleteHistoryItem(_ id: UUID) {

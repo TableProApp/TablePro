@@ -48,19 +48,20 @@ nonisolated struct QueryHistoryStorage {
         directory.appendingPathComponent("query-history.json")
     }
 
-    func save(_ item: QueryHistoryItem) {
+    @discardableResult
+    func save(_ item: QueryHistoryItem) -> Bool {
         var items = loadAll()
         if let last = items.last,
            last.query == item.query,
            last.connectionId == item.connectionId,
            last.wasSuccessful == item.wasSuccessful {
-            return
+            return false
         }
         items.append(item)
         if items.count > Self.maxEntries {
             items.removeFirst(items.count - Self.maxEntries)
         }
-        writeAll(items)
+        return writeAll(items)
     }
 
     func loadAll() -> [QueryHistoryItem] {
@@ -88,9 +89,10 @@ nonisolated struct QueryHistoryStorage {
         writeAll(kept)
     }
 
-    private func writeAll(_ items: [QueryHistoryItem]) {
-        guard let data = try? JSONEncoder().encode(items) else { return }
+    @discardableResult
+    private func writeAll(_ items: [QueryHistoryItem]) -> Bool {
+        guard let data = try? JSONEncoder().encode(items) else { return false }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+        return (try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])) != nil
     }
 }
