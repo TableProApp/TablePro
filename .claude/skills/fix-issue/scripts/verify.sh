@@ -36,7 +36,7 @@ OFFLINE=0
 MAX_WAIT_SECONDS=1800
 
 # Suites that fail on this machine for environment reasons and are not in the CI quarantine file.
-# Source: .claude/skills/fix-issue/references/verification.md ("Test", rule 3).
+# Source: .claude/skills/fix-issue/references/verification.md, "Unit tests".
 KNOWN_ENV_FAILURES="StatusBarSnapshotTests RowOperationsManagerBinaryCopyTests AWSSSOFetchTests SSEEventStreamTests CopilotIdleStopControllerTests"
 
 # Asking for help is not a usage error, so -h exits 0. Anything else exits 3, which a caller
@@ -175,12 +175,24 @@ setup_toolchain() {
     done
 }
 
+# Only a build of THIS checkout contends: every worktree builds into its own DerivedData, so a
+# machine-wide wait stalled a worktree run for as long as a peer session built somewhere else.
+# A build belongs here when it names this checkout's project or runs from its root.
+checkout_busy() {
+    local pid
+    for pid in $(pgrep -f 'Developer/usr/bin/xcodebuild' 2> /dev/null); do
+        ps -o args= -p "$pid" 2> /dev/null | grep -qF "$REPO_ROOT/TablePro.xcodeproj" && return 0
+        [ "$(lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | sed -n 's/^n//p')" = "$REPO_ROOT" ] && return 0
+    done
+    return 1
+}
+
 wait_for_free_toolchain() {
     [ "$WAIT_FOR_XCODEBUILD" -eq 1 ] || return 0
-    pgrep -f 'Developer/usr/bin/xcodebuild' > /dev/null 2>&1 || return 0
+    checkout_busy || return 0
     echo "waiting: another xcodebuild is running in this checkout" >&2
     local waited=0
-    while pgrep -f 'Developer/usr/bin/xcodebuild' > /dev/null 2>&1; do
+    while checkout_busy; do
         sleep 10
         waited=$((waited + 10))
         if [ "$waited" -ge "$MAX_WAIT_SECONDS" ]; then
@@ -221,6 +233,14 @@ report_tests() {
         return
     fi
     if [ "$failed" -eq 0 ]; then
+        # A crash, a timeout or an unrecognised line format fails the run without a case line the
+        # patterns above can count. This printed PASS over a log that said TEST FAILED.
+        if grep -qE '^\*\* TEST FAILED \*\*|^Failing tests:' "$log" 2> /dev/null; then
+            STATUS=FAIL
+            note "cause: xcodebuild reported a failure that no counted case line names. Read the block below."
+            note "$(grep -A 8 '^Failing tests:' "$log" 2> /dev/null | sed 's/^/  /' | head -10)"
+            return
+        fi
         STATUS=PASS
         return
     fi
