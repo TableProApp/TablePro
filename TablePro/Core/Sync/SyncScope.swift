@@ -15,7 +15,8 @@ extension SyncRecordType {
     var syncScope: SyncScope {
         switch self {
         case .connection, .group, .tag, .settings, .favorite, .favoriteFolder,
-             .tableFavorite, .favoriteDatabase, .sshProfile, .credentialProfile:
+             .tableFavorite, .favoriteDatabase, .sshProfile, .credentialProfile,
+             .tableFolder, .tableFolderItem:
             return .synced
         }
     }
