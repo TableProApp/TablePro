@@ -707,6 +707,113 @@ struct SurrealStatementGeneratorTests {
         #expect(error?.rowIndex == 2)
         #expect(error?.reason.contains("'\(column)'") == true)
     }
+
+    private let documentColumns = ["id", "tags", "meta"]
+    private let documentKinds: [String: SurrealFieldKind] = ["tags": SurrealFieldKind.parse("array<string>")]
+
+    private func tagArray(count: Int) -> String {
+        SurrealValue.array((0..<count).map { .string("tag-\($0)") }).displayText
+    }
+
+    private func shortenedTags() -> String {
+        tagArray(count: 1_500)
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func documentEdit(
+        _ column: String,
+        from old: String,
+        to new: PluginCellValue,
+        beside original: [PluginCellValue] = [.text("post:one"), .null, .null]
+    ) -> PluginRowChange {
+        let columnIndex = documentColumns.firstIndex(of: column) ?? 0
+        var originalRow = original
+        originalRow[columnIndex] = .text(old)
+        return PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: columnIndex, columnName: column, oldValue: .text(old), newValue: new)],
+            originalRow: originalRow
+        )
+    }
+
+    private func documentWrite(_ change: PluginRowChange) throws -> PluginRowWrite {
+        let writes = try SurrealStatementGenerator.rowWrites(
+            table: "post", scope: scope, columns: documentColumns, kinds: documentKinds,
+            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        return try #require(writes.first)
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"tag-0\"", with: "\"tag-Z\"")
+        #expect(throws: shortenedRefusal("tags")) {
+            try documentWrite(documentEdit("tags", from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to a schemaless array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("meta")) {
+            try documentWrite(documentEdit("meta", from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a schemaless value shortened right after an object is refused")
+    func insertRefusesAValueShortenedAfterAnObject() throws {
+        let shortened = SurrealValue.array(
+            Array(repeating: .object([(key: "k", value: .string("v"))]), count: 1_500)
+        ).displayText
+        try #require(shortened.hasSuffix("}..."))
+        #expect(throws: shortenedRefusal("meta")) {
+            try SurrealStatementGenerator.rowWrites(
+                table: "post", scope: scope, columns: documentColumns, kinds: documentKinds,
+                changes: [PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)],
+                insertedRowData: [0: [.text(""), .null, .text(shortened)]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = tagArray(count: 800)
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("tags")) {
+            try documentWrite(documentEdit("tags", from: shortenedTags(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let write = try documentWrite(documentEdit("tags", from: shortenedTags(), to: .null))
+        #expect(write.statement.contains("UPDATE $p0 SET tags = $p1;"))
+        #expect(decoded(write.parameters[1]) == .null)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = documentEdit(
+            "meta", from: "0", to: .text("1"), beside: [.text("post:one"), .text(shortenedTags()), .null]
+        )
+        let write = try documentWrite(change)
+        #expect(write.statement.contains("UPDATE $p0 SET meta = $p1;"))
+        #expect(decoded(write.parameters[1]) == .int(1))
+    }
 }
 
 struct SurrealCellCoderTests {

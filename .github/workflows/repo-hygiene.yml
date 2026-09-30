@@ -139,6 +139,15 @@ jobs:
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
+      # Only the kit version a release tags ever ships, and the registry keeps binaries for three,
+      # so a second bump in one release cycle drops an older release out of that window for nothing.
+      # The checkout is shallow and carries no tags, so the check lists them on origin itself.
+      - name: Check currentPluginKitVersion moved at most once since the last release
+        run: python3 scripts/ci/check-pluginkit-bump-cadence.py --remote origin
+
+      - name: Validate the PluginKit bump cadence check
+        run: python3 scripts/ci/test_check_pluginkit_bump_cadence.py
+
       # The macOS suite cannot catch this one: the script runs before any test does, and when it
       # gets this wrong no test runs at all. An empty quarantine list made it print a blank line,
       # which the caller turned into an empty xcodebuild argument, and main went red for three
@@ -148,6 +157,9 @@ jobs:
 
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
+
+      - name: Validate the DMG script's arguments
+        run: bash scripts/ci/test_create_dmg_args.sh
 
       - name: Validate changelog contributor credits
         run: python3 scripts/ci/test_changelog_credits.py

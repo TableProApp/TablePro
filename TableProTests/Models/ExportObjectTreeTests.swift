@@ -273,3 +273,32 @@ struct ExportPreselectionKindTests {
             object: "users", kind: .table, inContainer: .database("other"), isCurrentContainer: false))
     }
 }
+
+struct ExportRowScopeAvailabilityTests {
+    private let narrowing = PluginExportRowScope(filter: "status = 'active'", rowLimit: 10, columns: ["id"])
+
+    @Test("An engine with no SQL dialect offers no row scope, because the scope is a SQL WHERE")
+    func engineWithoutSQLDialectOffersNoScope() {
+        let collection = ExportObjectItem(name: "users", kind: .table)
+        #expect(!collection.offersRowScope(on: .mongodb))
+        #expect(!collection.offersRowScope(on: .redis))
+    }
+
+    @Test("A SQL engine offers a row scope on a table and none on a view")
+    func sqlEngineOffersScopeOnRowCarryingObjectsOnly() {
+        #expect(ExportObjectItem(name: "users", kind: .table).offersRowScope(on: .postgresql))
+        #expect(ExportObjectItem(name: "users", kind: .table).offersRowScope(on: .mysql))
+        #expect(!ExportObjectItem(name: "active_users", kind: .view).offersRowScope(on: .postgresql))
+    }
+
+    @Test("A saved selection brings back no row scope on an engine that offers none")
+    func savedScopeIsClearedWhereNoneIsOffered() {
+        let databases = [
+            ExportDatabaseItem(name: "app", objects: [
+                ExportObjectItem(name: "users", kind: .table, isSelected: true, rowScope: narrowing)
+            ])
+        ]
+        #expect(databases.clearingRowScopes(unavailableOn: .mongodb).first?.objects.first?.rowScope == .unrestricted)
+        #expect(databases.clearingRowScopes(unavailableOn: .postgresql).first?.objects.first?.rowScope == narrowing)
+    }
+}

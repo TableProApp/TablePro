@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 public enum SurrealStatementGenerator {
@@ -35,7 +36,9 @@ public enum SurrealStatementGenerator {
 
         for index in insertedRowIndices.sorted() {
             guard let values = insertedRowData[index] else { continue }
-            writes.append(insert(table: table, scope: scope, columns: columns, kinds: kinds, values: values, rowIndex: index))
+            writes.append(try insert(
+                table: table, scope: scope, columns: columns, kinds: kinds, values: values, rowIndex: index
+            ))
         }
 
         for change in changes where change.type == .delete || deletedRowIndices.contains(change.rowIndex) {
@@ -67,6 +70,10 @@ public enum SurrealStatementGenerator {
         var assignments: [String] = []
 
         for cell in editable {
+            try refuseShortened(cell.newValue, in: cell.columnName, rowIndex: change.rowIndex)
+            if !cell.newValue.isNull {
+                try refuseShortened(cell.oldValue, in: cell.columnName, rowIndex: change.rowIndex)
+            }
             let value = SurrealCellCoder.value(from: cell.newValue, kind: kinds[cell.columnName])
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(cell.columnName) + " = $p\(parameters.count - 1)")
@@ -87,7 +94,7 @@ public enum SurrealStatementGenerator {
         kinds: [String: SurrealFieldKind],
         values: [PluginCellValue],
         rowIndex: Int
-    ) -> PluginRowWrite {
+    ) throws(PluginRowWriteRefusal) -> PluginRowWrite {
         var parameters: [PluginCellValue] = []
         var assignments: [String] = []
         var target = SurrealQL.quoteIdentifier(table)
@@ -108,6 +115,7 @@ public enum SurrealStatementGenerator {
 
             if case .null = cell { continue }
             if Self.isAutoDefault(cell) { continue }
+            try refuseShortened(cell, in: column, rowIndex: rowIndex)
             let value = SurrealCellCoder.value(from: cell, kind: kinds[column])
             parameters.append(SurrealCellCoder.parameter(value))
             assignments.append(SurrealQL.quoteIdentifier(column) + " = $p\(parameters.count - 1)")
@@ -134,6 +142,21 @@ public enum SurrealStatementGenerator {
             statement: SurrealQueryBuilder.compose(scope: scope, statement: "DELETE $p0;"),
             parameters: [SurrealCellCoder.parameter(.recordId(record))],
             rowIndices: [change.rowIndex]
+        )
+    }
+
+    // MARK: - Refusals
+
+    private static func refuseShortened(_ cell: PluginCellValue, in column: String, rowIndex: Int) throws(PluginRowWriteRefusal) {
+        guard case let .text(text) = cell, JSONTruncation.isIncompleteStructure(text) else { return }
+        throw PluginRowWriteRefusal(
+            rowIndex: rowIndex,
+            reason: String(
+                format: String(
+                    localized: "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query."
+                ),
+                column
+            )
         )
     }
 

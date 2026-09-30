@@ -2779,6 +2779,9 @@
         }
       }
     },
+    "%@ cannot be narrowed to some rows or columns, because this database has no SQL." : {
+
+    },
     "%@ cannot be negative" : {
       "localizations" : {
         "ko" : {
@@ -162638,40 +162641,6 @@
         }
       }
     },
-    "The text doesn't look like a connection URL." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "텍스트가 연결 URL 형식이 아닙니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Metin bir bağlantı URL'sine benzemiyor."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Văn bản này không giống một URL kết nối."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "该文本看起来不是连接 URL。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這段文字看起來不像連線 URL。"
-          }
-        }
-      }
-    },
     "The text is not valid JSON. Save anyway?" : {
       "localizations" : {
         "ko" : {
@@ -173134,40 +173103,6 @@
         }
       }
     },
-    "Unsupported connection scheme: %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지원되지 않는 연결 스킴: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desteklenmeyen bağlantı şeması: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scheme kết nối không được hỗ trợ: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支持的连接协议：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支援的連線協定：%@"
-          }
-        }
-      }
-    },
     "Unsupported database scheme: %@" : {
       "localizations" : {
         "ko" : {
@@ -174488,7 +174423,6 @@
       }
     },
     "Use ~/.pgpass" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174830,40 +174764,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 IAM 資料庫驗證"
-          }
-        }
-      }
-    },
-    "Use Password File" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호 파일 사용"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parola Dosyası Kullan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng file mật khẩu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密码文件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密碼檔案"
           }
         }
       }
