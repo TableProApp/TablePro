@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SAP HANA database driver plugin. (#1966)
 - Column mappings remembered per table for CSV, JSON and Excel imports, plus Match by Name and Match by Position. (#3172)
+- Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Fixed
 
@@ -26,8 +27,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case.
 - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
 - Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Filter-bar BETWEEN refused on Typesense and Weaviate, and given the wrong lower bound on BigQuery.
+- Cassandra filter error telling MCP clients to use a Match All control they do not have.
+- Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
+- Every row of a UTF-16 data file rewritten on save.
+- Latin-1 and Windows-1252 SQL dumps importing double-encoded text through their own `SET NAMES`.
+- Data file window stuck on an error after reloading it with the wrong encoding.
+- Encoding chosen in File Properties lost when another app changes the file.
+- No columns found for a JSON Lines file over 256 KB with non-ASCII text.
+- VoiceOver reading the data file status bar's delimiter and encoding as only "File format".
+- CSV import writing bytes it could not read into the table as Latin-1 text.
+- Data file window picking up another app's in-place writes on HFS+ and exFAT volumes.
+- Wrong row number and blank-looking characters in the data file save error for text the encoding cannot store.
+- Yen sign failing to save in Shift JIS and EUC-JP data files and SQL files.
+- CSV import with single quotes merging rows at a double quote inside a field.
+- Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
+- Shortcuts rejecting CSV and JSON files that are not UTF-8.
+- Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
+- Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
+- etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
+- Mac Alert (Full), Safe Mode and Safe Mode (Full) levels dropped to Alert by any edit to the connection on iOS.
+- `pg_terminate_backend`, `nextval` and other state-changing calls treated as reads by Safe Mode and external clients.
+- `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
+- Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Table Transfer emptying a destination table, then failing, when two source columns map to one column.
+- Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
+- Server dashboard Slow Queries panel failing on every refresh on SQL Server.
+- Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
+- Missing Terminate button on ClickHouse server dashboard sessions that MCP could terminate.
+- SQLite server dashboard showing Cache Size as "-2000 pages".
+- Untranslatable "% used" on the Typesense server dashboard.
+- SQL Server and ClickHouse server dashboards listing their own monitoring session.
+- Client certificate and key dropped by SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels.
+- SOCKS proxy dialing the hidden Host instead of the first host-list entry.
+- "SSH password rejected" shown for a Password-auth SSH tunnel with no saved password.
+- Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
+- Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
+- SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 
 ## [0.76.1] - 2026-09-29
 

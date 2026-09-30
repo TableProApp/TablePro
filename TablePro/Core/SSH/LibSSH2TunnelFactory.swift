@@ -188,9 +188,7 @@ internal enum LibSSH2TunnelFactory {
         }
 
         if resolvedPrimary.username.isEmpty {
-            throw SSHTunnelError.tunnelCreationFailed(
-                "SSH username not set. Add it to the form or set `User` for `\(config.host)` in ~/.ssh/config."
-            )
+            throw SSHTunnelError.usernameMissing(host: config.host)
         }
 
         let firstHop = resolvedJumps.first ?? resolvedPrimary
@@ -527,7 +525,7 @@ internal enum LibSSH2TunnelFactory {
             // Sequel Ace's behavior.
             guard let sshPassword = credentials.sshPassword else {
                 logger.error("SSH password is nil (Keychain lookup may have failed) for \(resolved.host)")
-                throw SSHTunnelError.authenticationFailed(reason: .password)
+                throw SSHTunnelError.authenticationFailed(reason: .passwordMissing)
             }
             return CompositeAuthenticator(authenticators: [
                 PasswordAuthenticator(password: sshPassword),

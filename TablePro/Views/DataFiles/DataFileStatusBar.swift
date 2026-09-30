@@ -21,6 +21,14 @@ struct DataFileStatusBar: View {
                     Text(DataFileCountPhrase.raggedRows(controller.raggedRowCount))
                         .help(String(localized: "Those rows have more or fewer fields than the first row. Missing fields read as empty."))
                 }
+                if controller.undecodableLineCount > 0, let dialect = controller.dialect {
+                    Text(DataFileCountPhrase.undecodableLines(controller.undecodableLineCount))
+                        .help(String(
+                            format: String(localized: "Bytes on those lines are not valid %@ and show as \u{FFFD}. Pick another encoding in File Properties."),
+                            dialect.encoding.displayName
+                        ))
+                        .accessibilityIdentifier("data-file-undecodable-lines")
+                }
             }
             if let message = controller.statusMessage {
                 Text(message)
@@ -33,6 +41,8 @@ struct DataFileStatusBar: View {
             if let dialect = controller.dialect, controller.kind?.format == .delimited {
                 Text(DataFileDialectDescription.summary(dialect))
                     .accessibilityLabel(String(localized: "File format"))
+                    .accessibilityValue(DataFileDialectDescription.summary(dialect))
+                    .accessibilityIdentifier("data-file-format")
             }
             if controller.pageCount > 1 {
                 pageControls
@@ -100,7 +110,7 @@ struct DataFileStatusBar: View {
 
 enum DataFileDialectDescription {
     static func summary(_ dialect: DelimitedDialect) -> String {
-        [delimiterName(dialect.delimiter), DataFileEncodingNames.name(for: dialect.encoding), lineEndingName(dialect.lineEnding)]
+        [delimiterName(dialect.delimiter), dialect.encoding.displayName, lineEndingName(dialect.lineEnding)]
             .joined(separator: ", ")
     }
 

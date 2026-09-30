@@ -34,6 +34,7 @@ struct ImportDialog: View {
     @State private var statementCount: Int = 0
     @State private var isCountingStatements = false
     @State private var selectedEncoding: ImportEncoding
+    @State private var detectedEncoding: ImportEncoding?
     @State private var selectedFormatId: String = "sql"
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
@@ -345,7 +346,9 @@ struct ImportDialog: View {
 
     private func recordSuccessfulImport() {
         importSucceeded = true
-        TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        if selectedEncoding != detectedEncoding {
+            TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
+        }
         settingsSnapshot = nil
     }
 
@@ -434,6 +437,17 @@ struct ImportDialog: View {
             if let preview = decoder.decode(previewData) {
                 filePreview = preview
                 hasPreviewError = false
+            } else if let detected = SQLDumpEncodingChoice.encoding(
+                replacing: selectedEncoding,
+                forPreview: previewData,
+                isWholeFile: previewData.count < maxPreviewSize,
+                family: TransactionEngineFamily.of(connection.type),
+                grammar: connection.type.lexicalGrammar
+            ) {
+                Self.logger.info("Preview did not decode as \(selectedEncoding.rawValue, privacy: .public); switching to the detected \(detected.rawValue, privacy: .public)")
+                detectedEncoding = detected
+                selectedEncoding = detected
+                return
             } else {
                 filePreview = String(format: String(localized: "Failed to load preview using encoding: %@. Try selecting a different text encoding."), selectedEncoding.label)
                 hasPreviewError = true
