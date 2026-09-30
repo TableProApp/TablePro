@@ -105,6 +105,15 @@ struct ImportDataSinkAdapterMappingTests {
         #expect(values == [.text("x")])
     }
 
+    @Test("An unknown spelling beside a skipped field of the same name reaches no column")
+    func unknownSpellingBesideASkippedTwinDoesNotFold() {
+        let sink = adapter(mapping: ["Name": "name"], sourceFields: ["Name", "NAME"])
+
+        let (columns, _) = sink.mappedColumnsAndValues(["NAME": .text("skipped"), "name": .text("unknown")])
+
+        #expect(columns.isEmpty)
+    }
+
     @Test("A third spelling of two mapped fields that differ only by case reaches neither column")
     func ambiguousMappingKeysDoNotFold() {
         let sink = adapter(mapping: ["Email": "work_email", "email": "home_email"])

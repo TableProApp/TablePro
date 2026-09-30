@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- Table Transfer emptying a destination table, then failing, when two source columns map to one column.
 - Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
