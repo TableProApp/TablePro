@@ -100,7 +100,7 @@ The Explain button offers **Explain** and **Explain Full**, which rerun the curr
 ## Limitations
 
 - The structure editor is read-only. Create and change fields and indexes with `DEFINE FIELD` and `DEFINE INDEX` in the editor.
-- Editing `in` or `out` on a `RELATION` table does nothing: those fields are dropped from the generated `UPDATE`. Rewire a relation with `RELATE` or an explicit `UPDATE`.
+- An edit to `in` or `out` cannot be saved from the grid, on any table: the save stops, names the field, and keeps every edit pending. An `UPDATE` does not move a relation either, so delete it and `RELATE` the new pair. On any other record, change the field with an `UPDATE` in the editor.
 - Multi-request transactions are not available over HTTP. Send `BEGIN TRANSACTION; … COMMIT TRANSACTION;` as one editor query instead.
 - Live queries (`LIVE SELECT`) are not supported. Rerun the query to see new records.
 - A CA certificate file set in the **SSL/TLS** pane is ignored; verification goes through the system trust store, so install a private CA there.

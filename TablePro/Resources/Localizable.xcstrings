@@ -184855,6 +184855,12 @@
     },
     "SurrealDB cannot filter rows with %@." : {
 
+    },
+    "A record's id cannot be edited." : {
+
+    },
+    "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor." : {
+
     }
   },
   "version" : "1.1"

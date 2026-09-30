@@ -546,6 +546,21 @@ struct SurrealStatementGeneratorTests {
         SurrealCellCoder.value(from: cell)
     }
 
+    private func writes(
+        table: String = "person",
+        columns: [String]? = nil,
+        changes: [PluginRowChange] = [],
+        insertedRowData: [Int: [PluginCellValue]] = [:],
+        deletedRowIndices: Set<Int> = [],
+        insertedRowIndices: Set<Int> = []
+    ) throws -> [PluginRowWrite] {
+        try SurrealStatementGenerator.rowWrites(
+            table: table, scope: scope, columns: columns ?? self.columns, kinds: kinds,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
+
     @Test("An update sets only the changed cells and never replaces the record")
     func update() throws {
         let change = PluginRowChange(
@@ -554,20 +569,17 @@ struct SurrealStatementGeneratorTests {
             cellChanges: [(columnIndex: 2, columnName: "age", oldValue: .text("30"), newValue: .text("31"))],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        )
-        let statement = try #require(statements.first)
+        let write = try #require(try writes(changes: [change]).first)
 
-        #expect(statement.statement.contains("UPDATE $p0 SET age = $p1;"))
-        #expect(!statement.statement.contains("CONTENT"))
-        #expect(!statement.statement.contains("MERGE"))
-        #expect(statement.statement.contains("USE NS ns DB db;"))
+        #expect(write.statement.contains("UPDATE $p0 SET age = $p1;"))
+        #expect(!write.statement.contains("CONTENT"))
+        #expect(!write.statement.contains("MERGE"))
+        #expect(write.statement.contains("USE NS ns DB db;"))
+        #expect(write.rowIndices == [0])
 
-        #expect(decoded(statement.parameters[0])
+        #expect(decoded(write.parameters[0])
             == .recordId(SurrealRecordID(table: "person", id: .string("alice"))))
-        #expect(decoded(statement.parameters[1]) == .int(31), "an int column must bind as an int, not a string")
+        #expect(decoded(write.parameters[1]) == .int(31), "an int column must bind as an int, not a string")
     }
 
     @Test("The record id is bound, never interpolated")
@@ -578,37 +590,28 @@ struct SurrealStatementGeneratorTests {
             cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("a"), newValue: .text("'; REMOVE TABLE person; --"))],
             originalRow: [.text("person:alice"), .text("a"), .null]
         )
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        )
-        let statement = try #require(statements.first)
-        #expect(!statement.statement.contains("REMOVE TABLE"))
-        #expect(decoded(statement.parameters[1]) == .string("'; REMOVE TABLE person; --"))
+        let write = try #require(try writes(changes: [change]).first)
+        #expect(!write.statement.contains("REMOVE TABLE"))
+        #expect(decoded(write.parameters[1]) == .string("'; REMOVE TABLE person; --"))
     }
 
     @Test("An insert omits a blank id so the server mints one")
     func insert() throws {
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [], insertedRowData: [0: [.text(""), .text("Carol"), .text("22")]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        let statement = try #require(statements.first)
-        #expect(statement.statement.contains("CREATE person SET name = $p0, age = $p1;"))
-        #expect(decoded(statement.parameters[1]) == .int(22))
+        let write = try #require(try writes(
+            insertedRowData: [0: [.text(""), .text("Carol"), .text("22")]], insertedRowIndices: [0]
+        ).first)
+        #expect(write.statement.contains("CREATE person SET name = $p0, age = $p1;"))
+        #expect(decoded(write.parameters[1]) == .int(22))
+        #expect(write.rowIndices == [0])
     }
 
     @Test("An insert with an explicit id binds it as a record id")
     func insertWithId() throws {
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [], insertedRowData: [0: [.text("person:carol"), .text("Carol"), .null]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        let statement = try #require(statements.first)
-        #expect(statement.statement.contains("CREATE $p0 SET name = $p1;"))
-        #expect(decoded(statement.parameters[0])
+        let write = try #require(try writes(
+            insertedRowData: [0: [.text("person:carol"), .text("Carol"), .null]], insertedRowIndices: [0]
+        ).first)
+        #expect(write.statement.contains("CREATE $p0 SET name = $p1;"))
+        #expect(decoded(write.parameters[0])
             == .recordId(SurrealRecordID(table: "person", id: .string("carol"))))
     }
 
@@ -618,56 +621,91 @@ struct SurrealStatementGeneratorTests {
             rowIndex: 0, type: .delete, cellChanges: [],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        let write = try #require(try writes(changes: [change], deletedRowIndices: [0]).first)
+        #expect(write.statement.contains("DELETE $p0;"))
+        #expect(write.parameters.count == 1)
+        #expect(write.rowIndices == [0])
+    }
+
+    @Test("Each write names the row it carries out")
+    func eachWriteNamesItsRow() throws {
+        let update = PluginRowChange(
+            rowIndex: 3,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("A"), newValue: .text("B"))],
+            originalRow: [.text("person:a"), .text("A"), .null]
         )
-        let statement = try #require(statements.first)
-        #expect(statement.statement.contains("DELETE $p0;"))
-        #expect(statement.parameters.count == 1)
+        let delete = PluginRowChange(
+            rowIndex: 5, type: .delete, cellChanges: [],
+            originalRow: [.text("person:b"), .text("B"), .null]
+        )
+        let all = try writes(
+            changes: [update, delete],
+            insertedRowData: [7: [.text(""), .text("C"), .null]],
+            deletedRowIndices: [5],
+            insertedRowIndices: [7]
+        )
+        #expect(all.map(\.rowIndices) == [[3], [7], [5]])
     }
 
     @Test("The auto-id marker on insert lets the server mint the id")
     func autoDefaultInsertId() throws {
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [], insertedRowData: [0: [.text("__DEFAULT__"), .text("Carol"), .text("22")]],
-            deletedRowIndices: [], insertedRowIndices: [0]
-        )
-        let statement = try #require(statements.first)
-        #expect(statement.statement.contains("CREATE person SET"))
-        #expect(!statement.statement.contains("__DEFAULT__"))
-        #expect(!statement.statement.contains("person:__DEFAULT__"))
+        let write = try #require(try writes(
+            insertedRowData: [0: [.text("__DEFAULT__"), .text("Carol"), .text("22")]], insertedRowIndices: [0]
+        ).first)
+        #expect(write.statement.contains("CREATE person SET"))
+        #expect(!write.statement.contains("__DEFAULT__"))
+        #expect(!write.statement.contains("person:__DEFAULT__"))
     }
 
     @Test("The auto-id marker on an updated field is skipped, never written literally")
-    func autoDefaultUpdateField() {
+    func autoDefaultUpdateField() throws {
         let change = PluginRowChange(
             rowIndex: 0,
             type: .update,
             cellChanges: [(columnIndex: 1, columnName: "name", oldValue: .text("Alice"), newValue: .text("__DEFAULT__"))],
             originalRow: [.text("person:alice"), .text("Alice"), .text("30")]
         )
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        )
-        #expect(statements.isEmpty, "an all-default update produces no statement, not a literal write")
+        #expect(try writes(changes: [change]).isEmpty, "an all-default update produces no statement, not a literal write")
     }
 
-    @Test("The id column is never written")
+    @Test("An update with no cell changes has nothing to write and is not refused")
+    func emptyUpdate() throws {
+        let probe = PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)
+        #expect(try writes(changes: [probe]).isEmpty)
+    }
+
+    @Test("An edit to the id column is refused, never dropped")
     func immutableId() {
         let change = PluginRowChange(
-            rowIndex: 0,
+            rowIndex: 4,
             type: .update,
             cellChanges: [(columnIndex: 0, columnName: "id", oldValue: .text("person:a"), newValue: .text("person:b"))],
             originalRow: [.text("person:a"), .text("Alice"), .null]
         )
-        let statements = SurrealStatementGenerator.statements(
-            table: "person", scope: scope, columns: columns, kinds: kinds,
-            changes: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        #expect(throws: PluginRowWriteRefusal(rowIndex: 4, reason: "A record's id cannot be edited.")) {
+            try writes(changes: [change])
+        }
+    }
+
+    @Test("An edit to in or out beside another field is refused, never saved without it", arguments: ["in", "out"])
+    func edgeEndpointEditIsRefused(column: String) throws {
+        let edgeColumns = ["id", "in", "out", "weight"]
+        let columnIndex = try #require(edgeColumns.firstIndex(of: column))
+        let change = PluginRowChange(
+            rowIndex: 2,
+            type: .update,
+            cellChanges: [
+                (columnIndex: columnIndex, columnName: column, oldValue: .text("person:a"), newValue: .text("person:c")),
+                (columnIndex: 3, columnName: "weight", oldValue: .text("1"), newValue: .text("2"))
+            ],
+            originalRow: [.text("likes:x"), .text("person:a"), .text("person:b"), .text("1")]
         )
-        #expect(statements.isEmpty)
+        let error = #expect(throws: PluginRowWriteRefusal.self) {
+            try writes(table: "likes", columns: edgeColumns, changes: [change])
+        }
+        #expect(error?.rowIndex == 2)
+        #expect(error?.reason.contains("'\(column)'") == true)
     }
 }
 

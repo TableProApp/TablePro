@@ -6,8 +6,6 @@
 import Foundation
 import TableProPluginKit
 
-public typealias SurrealStatement = (statement: String, parameters: [PluginCellValue])
-
 public enum SurrealStatementGenerator {
     static let autoIdMarker = "__DEFAULT__"
 
@@ -16,7 +14,7 @@ public enum SurrealStatementGenerator {
         return text.trimmingCharacters(in: .whitespaces) == autoIdMarker
     }
 
-    public static func statements(
+    public static func rowWrites(
         table: String,
         scope: SurrealScope,
         columns: [String],
@@ -25,31 +23,28 @@ public enum SurrealStatementGenerator {
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [SurrealStatement] {
-        var statements: [SurrealStatement] = []
+    ) throws(PluginRowWriteRefusal) -> [PluginRowWrite] {
+        var writes: [PluginRowWrite] = []
 
         for change in changes where change.type == .update && !insertedRowIndices.contains(change.rowIndex) {
-            guard let statement = update(table: table, scope: scope, columns: columns, kinds: kinds, change: change) else {
+            guard let write = try update(table: table, scope: scope, columns: columns, kinds: kinds, change: change) else {
                 continue
             }
-            statements.append(statement)
+            writes.append(write)
         }
 
         for index in insertedRowIndices.sorted() {
             guard let values = insertedRowData[index] else { continue }
-            guard let statement = insert(table: table, scope: scope, columns: columns, kinds: kinds, values: values) else {
-                continue
-            }
-            statements.append(statement)
+            writes.append(insert(table: table, scope: scope, columns: columns, kinds: kinds, values: values, rowIndex: index))
         }
 
         for change in changes where change.type == .delete || deletedRowIndices.contains(change.rowIndex) {
             guard !insertedRowIndices.contains(change.rowIndex) else { continue }
-            guard let statement = delete(table: table, scope: scope, columns: columns, change: change) else { continue }
-            statements.append(statement)
+            guard let write = delete(table: table, scope: scope, columns: columns, change: change) else { continue }
+            writes.append(write)
         }
 
-        return statements
+        return writes
     }
 
     // MARK: - Statements
@@ -60,11 +55,12 @@ public enum SurrealStatementGenerator {
         columns: [String],
         kinds: [String: SurrealFieldKind],
         change: PluginRowChange
-    ) -> SurrealStatement? {
-        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
-        let editable = change.cellChanges.filter {
-            !SurrealInfoParser.isReservedColumn($0.columnName) && !Self.isAutoDefault($0.newValue)
+    ) throws(PluginRowWriteRefusal) -> PluginRowWrite? {
+        if let reserved = change.cellChanges.first(where: { SurrealInfoParser.isReservedColumn($0.columnName) }) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: reservedColumnReason(reserved.columnName))
         }
+        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
+        let editable = change.cellChanges.filter { !Self.isAutoDefault($0.newValue) }
         guard !editable.isEmpty else { return nil }
 
         var parameters: [PluginCellValue] = [SurrealCellCoder.parameter(.recordId(record))]
@@ -77,7 +73,11 @@ public enum SurrealStatementGenerator {
         }
 
         let statement = "UPDATE $p0 SET " + assignments.joined(separator: ", ") + ";"
-        return (SurrealQueryBuilder.compose(scope: scope, statement: statement), parameters)
+        return PluginRowWrite(
+            statement: SurrealQueryBuilder.compose(scope: scope, statement: statement),
+            parameters: parameters,
+            rowIndices: [change.rowIndex]
+        )
     }
 
     private static func insert(
@@ -85,8 +85,9 @@ public enum SurrealStatementGenerator {
         scope: SurrealScope,
         columns: [String],
         kinds: [String: SurrealFieldKind],
-        values: [PluginCellValue]
-    ) -> SurrealStatement? {
+        values: [PluginCellValue],
+        rowIndex: Int
+    ) -> PluginRowWrite {
         var parameters: [PluginCellValue] = []
         var assignments: [String] = []
         var target = SurrealQL.quoteIdentifier(table)
@@ -115,7 +116,11 @@ public enum SurrealStatementGenerator {
         let statement = assignments.isEmpty
             ? "CREATE \(target);"
             : "CREATE \(target) SET " + assignments.joined(separator: ", ") + ";"
-        return (SurrealQueryBuilder.compose(scope: scope, statement: statement), parameters)
+        return PluginRowWrite(
+            statement: SurrealQueryBuilder.compose(scope: scope, statement: statement),
+            parameters: parameters,
+            rowIndices: [rowIndex]
+        )
     }
 
     private static func delete(
@@ -123,13 +128,26 @@ public enum SurrealStatementGenerator {
         scope: SurrealScope,
         columns: [String],
         change: PluginRowChange
-    ) -> SurrealStatement? {
+    ) -> PluginRowWrite? {
         guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
-        let parameters = [SurrealCellCoder.parameter(.recordId(record))]
-        return (SurrealQueryBuilder.compose(scope: scope, statement: "DELETE $p0;"), parameters)
+        return PluginRowWrite(
+            statement: SurrealQueryBuilder.compose(scope: scope, statement: "DELETE $p0;"),
+            parameters: [SurrealCellCoder.parameter(.recordId(record))],
+            rowIndices: [change.rowIndex]
+        )
     }
 
     // MARK: - Helpers
+
+    private static func reservedColumnReason(_ column: String) -> String {
+        guard column != SurrealInfoParser.recordIdColumn else {
+            return String(localized: "A record's id cannot be edited.")
+        }
+        let format = String(
+            localized: "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor."
+        )
+        return String(format: format, column)
+    }
 
     private static func recordId(
         table: String,
