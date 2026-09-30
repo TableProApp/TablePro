@@ -98,9 +98,11 @@ public enum JSONTruncation {
     /// A structure whose text was cut short no longer closes, so it is no longer the value it
     /// came from. Callers that write or export must refuse it rather than store the fragment.
     public static func isIncompleteStructure(_ text: String) -> Bool {
-        guard let first = text.first, first == "{" || first == "[" else { return false }
-        guard text.hasSuffix(marker) else { return false }
-        return !(text.hasSuffix("}" + marker) || text.hasSuffix("]" + marker))
+        let scalars = text.unicodeScalars
+        let markerLength = marker.unicodeScalars.count
+        guard let first = scalars.first, first == "{" || first == "[" else { return false }
+        guard scalars.suffix(markerLength).elementsEqual(marker.unicodeScalars) else { return false }
+        return UnclosedJSONContainer.isOpenedBy(scalars.dropLast(markerLength))
     }
 }
 

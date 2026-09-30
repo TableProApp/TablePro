@@ -100,6 +100,7 @@ internal struct ExportTreeContainerRow: View {
 /// rather than shifting the ones after it.
 internal struct ExportTreeObjectRow: View {
     internal let object: ExportObjectItem
+    internal let offersRowScope: Bool
     internal let optionColumns: [PluginExportOptionColumn]
     internal let supportsOption: (String, PluginExportObjectKind) -> Bool
     internal let setSelected: (Bool) -> Void
@@ -149,7 +150,7 @@ internal struct ExportTreeObjectRow: View {
 
             Spacer(minLength: 4)
 
-            if object.kind.carriesRows {
+            if offersRowScope {
                 rowScopeButton
             }
 
