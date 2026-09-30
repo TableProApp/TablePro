@@ -261,16 +261,16 @@ internal enum ObjectCopySelectQuery {
         let source = SchemaQualifiedName.render(
             name: table, schema: schema, databaseType: databaseType, quote: driver.quoteIdentifier
         )
-        var query = "SELECT \(list) FROM \(source)"
         /// `sanitizedFilter` rather than `filter`. The text is the user's own SQL against their own
         /// connection, but it is spliced into this statement, and the sanitizer is what keeps it to
         /// the single expression the field is for.
-        if let filter = scope?.sanitizedFilter, !filter.isEmpty {
-            query += " WHERE \(filter)"
-        }
-        guard let rowLimit = scope?.rowLimit else { return query }
-        /// Through the driver's own injection, because `LIMIT` is not the spelling on SQL Server or
-        /// on Oracle before 12c.
-        return driver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
+        return SQLRowLimitClause.select(
+            columns: list,
+            from: source,
+            where: scope?.sanitizedFilter.nilIfEmpty,
+            limit: scope?.rowLimit,
+            driver: driver,
+            databaseType: databaseType
+        )
     }
 }

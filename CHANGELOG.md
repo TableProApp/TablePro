@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+- Row limit on Copy To and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata.
 
 ## [0.76.1] - 2026-09-29
 
