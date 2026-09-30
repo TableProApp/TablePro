@@ -184770,6 +184770,33 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "etcd cannot filter with a raw SQL condition." : {
+
+    },
+    "Lease can only be compared with a lease ID, such as 0x7b." : {
+
+    },
+    "etcd has no %@ column." : {
+
+    },
+    "etcd cannot filter with %@." : {
+
+    },
+    "%@ can only be compared with a whole number." : {
+
+    },
+    "Enter at least one value to filter with %@." : {
+
+    },
+    "'%@' is not a valid regular expression." : {
+
+    },
+    "This database cannot filter rows with these conditions." : {
+
+    },
+    "This engine cannot filter that table with those conditions." : {
+
     }
   },
   "version" : "1.1"
