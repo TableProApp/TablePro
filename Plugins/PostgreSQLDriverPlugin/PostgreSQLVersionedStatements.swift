@@ -47,12 +47,21 @@ internal enum PostgreSQLVersionedStatements {
         return "DO \(tag) \(body) \(tag)"
     }
 
-    static func reindexDatabase(currentDatabase: String?, capabilities: PostgreSQLCapabilities) -> String? {
-        guard !capabilities.hasUnnamedReindexDatabase else { return "REINDEX DATABASE CONCURRENTLY" }
+    static func reindex(verbose: Bool, capabilities: PostgreSQLCapabilities) -> String {
+        verbose && capabilities.hasReindexOptions ? "REINDEX (VERBOSE)" : "REINDEX"
+    }
+
+    static func reindexDatabase(
+        currentDatabase: String?,
+        verbose: Bool,
+        capabilities: PostgreSQLCapabilities
+    ) -> String? {
+        let keyword = reindex(verbose: verbose, capabilities: capabilities)
+        guard !capabilities.hasUnnamedReindexDatabase else { return "\(keyword) DATABASE CONCURRENTLY" }
         guard let currentDatabase, !currentDatabase.isEmpty else { return nil }
         let identifier = PostgreSQLObjectQueries.quoteIdentifier(currentDatabase)
-        guard capabilities.hasReindexConcurrently else { return "REINDEX DATABASE \(identifier)" }
-        return "REINDEX DATABASE CONCURRENTLY \(identifier)"
+        guard capabilities.hasReindexConcurrently else { return "\(keyword) DATABASE \(identifier)" }
+        return "\(keyword) DATABASE CONCURRENTLY \(identifier)"
     }
 
     static func triggerTemplate(

@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ClipboardConnectionBanner: View {
-    let parsed: ParsedConnection
+    let candidate: ClipboardConnectionCandidate
     let onUse: () -> Void
     let onDismiss: () -> Void
 
@@ -20,7 +20,7 @@ struct ClipboardConnectionBanner: View {
                 .font(.callout)
                 .foregroundStyle(.primary)
 
-            Text(Self.summary(for: parsed))
+            Text(Self.summary(for: candidate))
                 .font(.callout.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -56,21 +56,22 @@ struct ClipboardConnectionBanner: View {
         }
     }
 
-    static func summary(for parsed: ParsedConnection) -> String {
-        var rendered = parsed.rawScheme + "://"
-        if let user = parsed.username, !user.isEmpty {
-            rendered += user
-            if parsed.password != nil {
+    static func summary(for candidate: ClipboardConnectionCandidate) -> String {
+        let parsed = candidate.parsed
+        var rendered = candidate.scheme + "://"
+        if !parsed.username.isEmpty {
+            rendered += parsed.username
+            if !parsed.password.isEmpty {
                 rendered += ":***"
             }
             rendered += "@"
         }
         rendered += parsed.host
-        if parsed.port > 0 {
-            rendered += ":\(parsed.port)"
+        if !parsed.useSrv, parsed.resolvedPort > 0 {
+            rendered += ":\(parsed.resolvedPort)"
         }
-        if let database = parsed.database {
-            rendered += "/\(database)"
+        if !parsed.database.isEmpty {
+            rendered += "/\(parsed.database)"
         }
         if rendered.count > 60 {
             let prefix = rendered.prefix(48)
