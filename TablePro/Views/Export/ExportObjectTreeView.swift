@@ -17,6 +17,7 @@ import TableProPluginKit
 internal struct ExportObjectTreeView: NSViewRepresentable {
     @Binding internal var databaseItems: [ExportDatabaseItem]
     internal let formatId: String
+    internal let databaseType: DatabaseType
 
     /// Reads one object's column names for the row-scope popover. Supplied by the dialog, which is
     /// what owns the export driver lease.
@@ -311,6 +312,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             return AnyView(
                 ExportTreeObjectRow(
                     object: object,
+                    offersRowScope: object.offersRowScope(on: owner.databaseType),
                     optionColumns: optionColumns,
                     supportsOption: supportsOption,
                     setSelected: { [weak self] isSelected in

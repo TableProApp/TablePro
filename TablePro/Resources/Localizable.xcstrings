@@ -2782,6 +2782,9 @@
         }
       }
     },
+    "%@ cannot be narrowed to some rows or columns, because this database has no SQL." : {
+
+    },
     "%@ cannot be negative" : {
       "localizations" : {
         "ko" : {

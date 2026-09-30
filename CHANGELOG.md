@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unknown Safe Mode levels synced to iOS allowing writes without confirmation.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
@@ -31,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case.
 - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
 - Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
+- CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
+- MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
+- XLSX export writing duplicate sheet names that Excel only opens after a repair.
+- Oracle, Snowflake and Dameng `NUMBER` rounded or left empty, and `DECIMAL` losing digits, in Parquet exports.
+- Oracle `BINARY_FLOAT` and `BINARY_DOUBLE` columns written as text in Parquet exports.
+- PostgreSQL `money` values written as null in Parquet exports.
+- Files left behind when a multi-table Parquet export is stopped between tables.
 - Filter-bar BETWEEN refused on Typesense and Weaviate, and given the wrong lower bound on BigQuery.
 - Cassandra filter error telling MCP clients to use a Match All control they do not have.
 - Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
