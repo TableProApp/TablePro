@@ -15,6 +15,22 @@ internal enum SafeModeLevel: String, Codable, CaseIterable, Identifiable {
 }
 
 internal extension SafeModeLevel {
+    init(wireValue: String?, isReadOnly: Bool) {
+        guard let wireValue else {
+            self = isReadOnly ? .readOnly : .silent
+            return
+        }
+        if let level = SafeModeLevel(rawValue: wireValue) {
+            self = level
+            return
+        }
+        switch wireValue {
+        case "off": self = .silent
+        case "confirmWrites": self = .alert
+        default: self = isReadOnly ? .readOnly : .alert
+        }
+    }
+
     var id: String { rawValue }
 
     var displayName: String {
