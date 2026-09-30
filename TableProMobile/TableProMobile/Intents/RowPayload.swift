@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProTabularIO
 import UniformTypeIdentifiers
 
 nonisolated enum RowPayload {
@@ -27,16 +28,31 @@ nonisolated enum RowPayload {
 
     private static func rawContent(data: String?, file: IntentFile?) async throws -> String {
         if let file {
-            let fileData = try await file.data(contentType: .data)
-            guard let text = String(data: fileData, encoding: .utf8) else {
-                throw IntentDataError.fileIsNotUTF8
-            }
-            return text
+            return try text(of: try await file.data(contentType: .data))
         }
         if let data, !data.isEmpty {
             return data
         }
         throw IntentDataError.emptyPayload
+    }
+
+    static func text(of fileData: Data) throws -> String {
+        let sniff = TabularEncodingDetector.sniff(fileData)
+        guard sniff.encoding != .utf8 else {
+            if let line = TabularTextTranscoder.firstInvalidUTF8Line(in: fileData, skippingPrefix: sniff.byteOrderMarkLength) {
+                throw IntentDataError.unreadableText(line: line, encoding: sniff.encoding.displayName)
+            }
+            return TabularTextCodec.utf8String(fileData.dropFirst(sniff.byteOrderMarkLength))
+        }
+        let decoded = try TabularTextTranscoder.utf8Data(
+            from: fileData,
+            encoding: sniff.encoding,
+            skippingPrefix: sniff.byteOrderMarkLength
+        )
+        if let line = decoded.firstUndecodableLine {
+            throw IntentDataError.unreadableText(line: line, encoding: sniff.encoding.displayName)
+        }
+        return TabularTextCodec.utf8String(decoded.data)
     }
 
     static func parseJSON(_ text: String) throws -> [PayloadRow] {

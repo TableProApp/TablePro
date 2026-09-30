@@ -27,7 +27,7 @@ struct PasswordHidingTests {
 
     private let pgpassToggle = ConnectionField(
         id: "usePgpass",
-        label: "Use Password File",
+        label: "Use ~/.pgpass",
         defaultValue: "false",
         fieldType: .toggle,
         section: .authentication,

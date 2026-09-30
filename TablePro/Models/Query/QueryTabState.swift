@@ -40,6 +40,7 @@ struct PersistedTab: Codable {
     var databaseName: String = ""
     var schemaName: String?
     var sourceFileURL: URL?
+    var sourceFileEncoding: FileTextEncoding?
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var versionHistorySubject: VersionHistorySubject?
@@ -72,6 +73,7 @@ struct PersistedTab: Codable {
         databaseName: String = "",
         schemaName: String? = nil,
         sourceFileURL: URL? = nil,
+        sourceFileEncoding: FileTextEncoding? = nil,
         erDiagramSchemaKey: String? = nil,
         objectRef: DatabaseObjectRef? = nil,
         versionHistorySubject: VersionHistorySubject? = nil,
@@ -97,6 +99,7 @@ struct PersistedTab: Codable {
         self.databaseName = databaseName
         self.schemaName = schemaName
         self.sourceFileURL = sourceFileURL
+        self.sourceFileEncoding = sourceFileEncoding
         self.erDiagramSchemaKey = erDiagramSchemaKey
         self.objectRef = objectRef
         self.versionHistorySubject = versionHistorySubject
@@ -115,7 +118,7 @@ struct PersistedTab: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
-        case sourceFileURL, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
+        case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
@@ -134,6 +137,7 @@ struct PersistedTab: Codable {
         databaseName = try container.decodeIfPresent(String.self, forKey: .databaseName) ?? ""
         schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
+        sourceFileEncoding = try container.decodeIfPresent(FileTextEncoding.self, forKey: .sourceFileEncoding)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         versionHistorySubject = try container.decodeIfPresent(VersionHistorySubject.self, forKey: .versionHistorySubject)

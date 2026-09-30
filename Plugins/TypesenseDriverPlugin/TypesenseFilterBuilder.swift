@@ -157,9 +157,18 @@ enum TypesenseFilterBuilder {
         guard let upperBound = spec.secondValue, !upperBound.isEmpty else {
             throw TypesenseFilterError.missingUpperBound(column: column)
         }
-        let lower = try numeric(spec.value, column: column, op: "BETWEEN", field: field)
+        let lower = try numeric(
+            lowerBound(of: spec.value, upperBound: upperBound), column: column, op: "BETWEEN", field: field
+        )
         let upper = try numeric(upperBound, column: column, op: "BETWEEN", field: field)
         return "\(column):[\(lower)..\(upper)]"
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
     }
 
     private static func list(_ value: String, column: String, field: TypesenseField?) throws -> String {

@@ -8,6 +8,7 @@ public struct DelimitedSource: TabularSource {
     public let fieldCountOfFirstRow: Int
     public let maximumFieldCount: Int
     public let raggedRowCount: Int
+    public let origin: TabularTranscodingMap?
 
     public init(
         bytes: Data,
@@ -16,7 +17,8 @@ public struct DelimitedSource: TabularSource {
         byteEncoding: TabularTextEncoding,
         fieldCountOfFirstRow: Int,
         maximumFieldCount: Int,
-        raggedRowCount: Int
+        raggedRowCount: Int,
+        origin: TabularTranscodingMap? = nil
     ) {
         self.bytes = bytes
         self.index = index
@@ -25,6 +27,7 @@ public struct DelimitedSource: TabularSource {
         self.fieldCountOfFirstRow = fieldCountOfFirstRow
         self.maximumFieldCount = maximumFieldCount
         self.raggedRowCount = raggedRowCount
+        self.origin = origin
     }
 
     public var rowCount: Int { index.rowCount }
@@ -47,7 +50,8 @@ public struct DelimitedSource: TabularSource {
             byteEncoding: byteEncoding,
             fieldCountOfFirstRow: fieldCountOfFirstRow,
             maximumFieldCount: maximumFieldCount,
-            raggedRowCount: raggedRowCount
+            raggedRowCount: raggedRowCount,
+            origin: origin
         )
     }
 
@@ -141,6 +145,7 @@ public enum DelimitedSourceBuilder {
         dialect: DelimitedDialect,
         byteEncoding: TabularTextEncoding,
         contentStart: Int,
+        origin: TabularTranscodingMap? = nil,
         progress: (@Sendable (Double) -> Void)? = nil,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) async throws -> DelimitedSource {
@@ -168,7 +173,8 @@ public enum DelimitedSourceBuilder {
             byteEncoding: byteEncoding,
             fieldCountOfFirstRow: counts.first,
             maximumFieldCount: counts.maximum,
-            raggedRowCount: counts.ragged
+            raggedRowCount: counts.ragged,
+            origin: origin
         )
     }
 

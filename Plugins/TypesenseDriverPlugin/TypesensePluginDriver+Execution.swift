@@ -11,6 +11,10 @@ import TableProPluginKit
 
 extension TypesensePluginDriver {
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, length: .display)
+    }
+
+    private func execute(query: String, length: TypesenseSchema.CellLength) async throws -> PluginQueryResult {
         let startTime = Date()
         let connection = try requireConnection()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -27,14 +31,14 @@ extension TypesensePluginDriver {
         }
 
         if TypesenseQueryBuilder.isTaggedQuery(trimmed) {
-            return try await executeSearch(trimmed, connection: connection, startTime: startTime)
+            return try await executeSearch(trimmed, connection: connection, length: length, startTime: startTime)
         }
 
         if TypesenseStatementGenerator.isTaggedStatement(trimmed) {
             return try await executeWrite(trimmed, connection: connection, startTime: startTime)
         }
 
-        return try await executeConsole(trimmed, connection: connection, startTime: startTime)
+        return try await executeConsole(trimmed, connection: connection, length: length, startTime: startTime)
     }
 
     // MARK: - Search
@@ -42,6 +46,7 @@ extension TypesensePluginDriver {
     private func executeSearch(
         _ query: String,
         connection: TypesenseConnection,
+        length: TypesenseSchema.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         let (base, appendedSorts) = TypesenseQueryBuilder.extractOrderBy(query)
@@ -66,7 +71,9 @@ extension TypesensePluginDriver {
         let documents = try await fetchDocuments(
             parsed: parsed, filterBy: filterBy, sortBy: sortBy, connection: connection
         )
-        return render(documents: documents, columns: collection.columns, fields: fields, startTime: startTime)
+        return render(
+            documents: documents, columns: collection.columns, fields: fields, length: length, startTime: startTime
+        )
     }
 
     /// A page larger than 250 rows becomes several searches, and one `multi_search` carries up to
@@ -123,7 +130,7 @@ extension TypesensePluginDriver {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let collection = TypesenseOperations.decodeExport(query) else {
-            let result = try await execute(query: query)
+            let result = try await execute(query: query, length: .whole)
             continuation.yield(.header(PluginStreamHeader(
                 columns: result.columns,
                 columnTypeNames: result.columnTypeNames,
@@ -147,12 +154,12 @@ extension TypesensePluginDriver {
         try await connection.streamExport(collection: collection) { document in
             batch.append(document)
             guard batch.count >= Self.exportBatchSize else { return true }
-            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns)))
+            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)))
             batch.removeAll(keepingCapacity: true)
             return true
         }
         if !batch.isEmpty {
-            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns)))
+            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns, length: .whole)))
         }
         continuation.finish()
     }
@@ -177,7 +184,7 @@ extension TypesensePluginDriver {
         return PluginQueryResult(
             columns: [TypesenseSchema.idColumn],
             columnTypeNames: ["string"],
-            rows: [[TypesenseSchema.cell(id)]],
+            rows: [[TypesenseSchema.cell(id, length: .display)]],
             rowsAffected: 1,
             executionTime: Date().timeIntervalSince(startTime)
         )
@@ -188,6 +195,7 @@ extension TypesensePluginDriver {
     private func executeConsole(
         _ input: String,
         connection: TypesenseConnection,
+        length: TypesenseSchema.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let request = TypesenseConsoleParser.parse(input) else {
@@ -204,13 +212,14 @@ extension TypesensePluginDriver {
         if let result = searchResult(in: response.json) {
             let documents = hits(in: result)
             let columns = TypesenseSchema.unionColumns(fromDocuments: documents)
-            return render(documents: documents, columns: columns, fields: [:], startTime: startTime)
+            return render(documents: documents, columns: columns, fields: [:], length: length, startTime: startTime)
         }
         if let objects = response.json as? [[String: Any]] {
             return render(
                 documents: objects,
                 columns: TypesenseSchema.unionColumns(fromDocuments: objects),
                 fields: [:],
+                length: length,
                 startTime: startTime
             )
         }
@@ -219,6 +228,7 @@ extension TypesensePluginDriver {
                 documents: lines,
                 columns: TypesenseSchema.unionColumns(fromDocuments: lines),
                 fields: [:],
+                length: length,
                 startTime: startTime
             )
         }
@@ -231,6 +241,7 @@ extension TypesensePluginDriver {
         documents: [[String: Any]],
         columns: [String],
         fields: [String: TypesenseField],
+        length: TypesenseSchema.CellLength,
         startTime: Date
     ) -> PluginQueryResult {
         guard !columns.isEmpty else {
@@ -245,7 +256,7 @@ extension TypesensePluginDriver {
         return PluginQueryResult(
             columns: columns,
             columnTypeNames: TypesenseSchema.typeNames(for: columns, fields: fields),
-            rows: TypesenseSchema.rows(for: documents, columns: columns),
+            rows: TypesenseSchema.rows(for: documents, columns: columns, length: length),
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )

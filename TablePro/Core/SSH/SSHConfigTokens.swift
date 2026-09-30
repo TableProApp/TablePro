@@ -69,24 +69,24 @@ enum SSHTokenExpansionError: Error, Hashable, Sendable {
         switch self {
         case .unsupportedToken(let keyword, let token):
             return String(
-                format: String(localized: "`%@` in ~/.ssh/config does not accept the token %@."),
+                format: String(localized: "The %@ line in ~/.ssh/config does not accept the token %@."),
                 keyword,
                 token
             )
         case .danglingPercent(let keyword):
             return String(
-                format: String(localized: "`%@` in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign."),
+                format: String(localized: "The %@ line in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign."),
                 keyword
             )
         case .undefinedEnvironmentVariable(let keyword, let name):
             return String(
-                format: String(localized: "`%@` in ~/.ssh/config uses ${%@}, which is not set in the environment."),
+                format: String(localized: "The %@ line in ~/.ssh/config uses ${%@}, which is not set in the environment."),
                 keyword,
                 name
             )
         case .malformedEnvironmentReference(let keyword):
             return String(
-                format: String(localized: "`%@` in ~/.ssh/config has a ${ with no closing brace."),
+                format: String(localized: "The %@ line in ~/.ssh/config has a ${ with no closing brace."),
                 keyword
             )
         }

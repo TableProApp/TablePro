@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProTabularIO
 
 struct CSVImportOptions: Equatable, Codable {
     enum Delimiter: String, Codable, CaseIterable, Identifiable {
@@ -44,17 +45,31 @@ struct CSVImportOptions: Equatable, Codable {
     enum TextEncoding: String, Codable, CaseIterable, Identifiable {
         case auto
         case utf8
+        case utf16LittleEndian
+        case utf16BigEndian
         case isoLatin1
         case windowsCP1252
+        case shiftJIS
+        case eucJP
+        case gb18030
+        case big5
+        case eucKR
 
         var id: String { rawValue }
 
-        var stringEncoding: String.Encoding? {
+        var tabularEncoding: TabularTextEncoding? {
             switch self {
             case .auto: return nil
             case .utf8: return .utf8
+            case .utf16LittleEndian: return .utf16LittleEndian
+            case .utf16BigEndian: return .utf16BigEndian
             case .isoLatin1: return .isoLatin1
-            case .windowsCP1252: return .windowsCP1252
+            case .windowsCP1252: return .windows1252
+            case .shiftJIS: return .shiftJIS
+            case .eucJP: return .eucJP
+            case .gb18030: return .gb18030
+            case .big5: return .big5
+            case .eucKR: return .eucKR
             }
         }
     }

@@ -73,6 +73,25 @@ struct ConnectionURLParserTLSPortTests {
         #expect(try parse("postgresql+ssh://deploy@bastion.example.com/app@db.example.com/app?ssl=true").sslMode == .required)
     }
 
+    @Test("ssl=1 and ssl=require turn TLS on as ssl=true does")
+    func sslOnSpellings() throws {
+        for url in [
+            "postgresql://db.example.com/app?ssl=1",
+            "postgresql://db.example.com/app?ssl=require",
+            "mysql://db.example.com/app?SSL=Required",
+            "mongodb://db.example.com/app?tls=1"
+        ] {
+            #expect(try parse(url).sslMode == .required, "\(url)")
+        }
+    }
+
+    @Test("ssl=0 turns TLS off as ssl=false does, even on a port that implies it")
+    func sslOffSpelling() throws {
+        let parsed = try parse("trino://trino.example.com:443/hive?ssl=0")
+        #expect(parsed.disablesTLS)
+        #expect(parsed.sslModeResolution == SSLModeResolution(mode: .disabled, origin: .chosen))
+    }
+
     @Test("Trino's SSLVerification picks the check while TLS is on, in either parameter order")
     func sslVerificationPicksTheCheck() throws {
         for (url, expected) in [
