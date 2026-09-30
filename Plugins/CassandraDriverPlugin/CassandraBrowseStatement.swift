@@ -64,7 +64,7 @@ struct CassandraBrowseRefusal: Error, Equatable, PluginDriverError {
     ))
 
     static let matchAny = CassandraBrowseRefusal(pluginErrorMessage: String(
-        localized: "Cassandra filters cannot match any one of several conditions. Use Match All."
+        localized: "Cassandra filters can only require every condition to match."
     ))
 
     static let emptyList = CassandraBrowseRefusal(pluginErrorMessage: String(

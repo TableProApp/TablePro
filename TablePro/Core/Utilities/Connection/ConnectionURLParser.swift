@@ -687,10 +687,10 @@ struct ConnectionURLParser {
             }
         case "tls", "ssl":
             switch value.lowercased() {
-            case "true":
+            case "true", "1", "require", "required":
                 ext.requestsTLS = true
                 ext.disablesTLS = false
-            case "false":
+            case "false", "0":
                 ext.disablesTLS = true
                 ext.requestsTLS = false
             default:

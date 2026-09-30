@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProSyncTransport
 
 /// User preferences for iCloud sync behavior
 struct SyncSettings: Codable, Equatable {
@@ -75,4 +76,20 @@ struct SyncSettings: Codable, Equatable {
         syncSQLFavorites: true,
         syncTableFolders: true
     )
+}
+
+internal extension SyncSettings {
+    func syncs(_ type: SyncRecordType) -> Bool {
+        switch type {
+        case .connection: syncConnections
+        case .group, .tag: syncGroupsAndTags
+        case .settings: syncSettings
+        case .sshProfile: syncSSHProfiles
+        case .credentialProfile: syncCredentialProfiles
+        case .tableFavorite: syncTableFavorites
+        case .favoriteDatabase: syncDatabaseFavorites
+        case .favorite, .favoriteFolder: syncSQLFavorites
+        case .tableFolder, .tableFolderItem: syncTableFolders
+        }
+    }
 }

@@ -25,6 +25,7 @@ struct SyncPendingDeletions: Equatable {
     }
 
     private mutating func insert(_ id: String, of type: SyncRecordType, settings: SyncSettings) {
+        guard settings.syncs(type) else { return }
         let uuid = UUID(uuidString: id)
         switch type {
         case .connection:
@@ -36,19 +37,19 @@ struct SyncPendingDeletions: Equatable {
         case .sshProfile:
             if let uuid { sshProfiles.insert(uuid) }
         case .credentialProfile:
-            if settings.syncCredentialProfiles, let uuid { credentialProfiles.insert(uuid) }
+            if let uuid { credentialProfiles.insert(uuid) }
         case .tableFavorite:
             tableFavorites.insert(id)
         case .favoriteDatabase, .settings:
             return
         case .favorite:
-            if settings.syncSQLFavorites, let uuid { sqlFavorites.insert(uuid) }
+            if let uuid { sqlFavorites.insert(uuid) }
         case .favoriteFolder:
-            if settings.syncSQLFavorites, let uuid { sqlFolders.insert(uuid) }
+            if let uuid { sqlFolders.insert(uuid) }
         case .tableFolder:
-            if settings.syncTableFolders, let uuid { tableFolders.insert(uuid) }
+            if let uuid { tableFolders.insert(uuid) }
         case .tableFolderItem:
-            if settings.syncTableFolders { tableFolderItems.insert(id) }
+            tableFolderItems.insert(id)
         }
     }
 }

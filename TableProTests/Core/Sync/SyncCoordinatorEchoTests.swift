@@ -229,6 +229,51 @@ struct SyncCoordinatorEchoTests {
         #expect(metadata.tombstones(for: .group).isEmpty)
     }
 
+    @Test("A tag and a group deleted elsewhere stay here while Groups and Tags is off")
+    func remoteDeletionsWithheldWhileCategoryOff() async throws {
+        AppSettingsStorage(userDefaults: defaults).saveSync(
+            SyncSettings(enabled: true, syncConnections: true, syncGroupsAndTags: false, syncSettings: true)
+        )
+        let tag = ConnectionTag(name: "staging")
+        try tags.addTag(tag)
+        let group = ConnectionGroup(name: "Clients")
+        try groups.addGroup(group)
+        let deletions = [
+            SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: Self.zoneID),
+            SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: Self.zoneID)
+        ]
+
+        let acknowledged = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .applyPullResult(PullResult(changedRecords: [], deletedRecordIDs: deletions, newToken: nil))
+
+        #expect(acknowledged)
+        #expect(tags.tag(for: tag.id) != nil)
+        #expect(groups.group(for: group.id) != nil)
+    }
+
+    @Test("A tag changed elsewhere keeps its local name while Groups and Tags is off")
+    func remoteChangeWithheldWhileCategoryOff() async throws {
+        AppSettingsStorage(userDefaults: defaults).saveSync(
+            SyncSettings(enabled: true, syncConnections: true, syncGroupsAndTags: false, syncSettings: true)
+        )
+        let tag = ConnectionTag(name: "staging")
+        try tags.addTag(tag)
+        var remote = tag
+        remote.name = "stage"
+
+        let acknowledged = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .applyPullResult(
+                PullResult(
+                    changedRecords: [SyncRecordMapper.toCKRecord(remote, in: Self.zoneID)],
+                    deletedRecordIDs: [],
+                    newToken: nil
+                )
+            )
+
+        #expect(acknowledged)
+        #expect(tags.tag(for: tag.id)?.name == "staging")
+    }
+
     @Test("A connection edited during its push merges its echo and keeps both edits")
     func connectionEchoMergesBothEdits() async throws {
         var connection = TestFixtures.makeConnection(name: "Primary")

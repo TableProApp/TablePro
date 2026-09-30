@@ -40,7 +40,10 @@ final class DataFileController: ObservableObject {
     @Published private(set) var selectedSheetIndex = 0
     @Published private(set) var dialect: DelimitedDialect?
     var saveEncoding: TabularTextEncoding?
+    var lastWrittenDialect: DelimitedDialect?
     @Published private(set) var raggedRowCount = 0
+    @Published private(set) var undecodableLineCount = 0
+    private(set) var chosenDialect: DelimitedDialect?
 
     @Published var filterState = TabFilterState()
     @Published var searchText = ""
@@ -119,9 +122,12 @@ final class DataFileController: ObservableObject {
         queryTask?.cancel()
         mutationTask?.cancel()
         self.kind = kind
+        if let dialectOverride {
+            chosenDialect = dialectOverride
+        }
         loadState = .loading
         loadProgress = 0
-        let request = DataFileLoadRequest(url: url, kind: kind, dialectOverride: dialectOverride)
+        let request = DataFileLoadRequest(url: url, kind: kind, dialectOverride: chosenDialect)
         loadTask = Task { [weak self] in
             await self?.performLoad(request)
         }
@@ -163,6 +169,7 @@ final class DataFileController: ObservableObject {
         sheets = content.sheets
         dialect = content.dialect
         raggedRowCount = content.raggedRowCount
+        undecodableLineCount = content.undecodableLineCount
         selectedSheetIndex = content.initialSheetIndex
         undoManager?.removeAllActions()
         installSheet(at: content.initialSheetIndex)
@@ -481,5 +488,15 @@ final class DataFileController: ObservableObject {
 
     func setDialect(_ newDialect: DelimitedDialect) {
         dialect = newDialect
+        guard chosenDialect != nil else { return }
+        chosenDialect = newDialect
+    }
+
+    func adoptWrittenDialect() {
+        guard let written = lastWrittenDialect else { return }
+        if written.encoding != dialect?.encoding {
+            undecodableLineCount = 0
+        }
+        setDialect(written)
     }
 }

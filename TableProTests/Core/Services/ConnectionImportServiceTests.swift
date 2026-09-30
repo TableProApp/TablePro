@@ -1,7 +1,7 @@
 import Foundation
 import TableProImport
-import Testing
 import TableProSyncTransport
+import Testing
 
 @testable import TablePro
 
@@ -490,6 +490,57 @@ struct ConnectionImportServiceTests {
 
         #expect(fields?["preConnectScript"] == nil)
         #expect(fields?["mongoAuthSource"] == "admin")
+    }
+
+    @Test("An iOS Confirm Writes connection imports as Alert")
+    func iOSConfirmWritesImportsAsAlert() {
+        #expect(importedSafeModeLevel("confirmWrites") == .alert)
+    }
+
+    @Test("An iOS Off connection and a file with no level import as Silent")
+    func iOSOffImportsAsSilent() {
+        #expect(importedSafeModeLevel("off") == .silent)
+        #expect(importedSafeModeLevel(nil) == .silent)
+    }
+
+    @Test("A Mac level imports unchanged", arguments: SafeModeLevel.allCases)
+    func macLevelImportsUnchanged(_ level: SafeModeLevel) {
+        #expect(importedSafeModeLevel(level.rawValue) == level)
+    }
+
+    @Test("An unrecognized level imports as Alert instead of Silent")
+    func unrecognizedLevelImportsAsAlert() {
+        #expect(importedSafeModeLevel("someFutureLevel") == .alert)
+    }
+
+    private func importedSafeModeLevel(_ wireValue: String?) -> SafeModeLevel {
+        let imported = ExportableConnection(
+            name: "Production",
+            host: "db.example.com",
+            port: 5_432,
+            database: "app",
+            username: "admin",
+            type: "PostgreSQL",
+            sshConfig: nil,
+            sslConfig: nil,
+            color: nil,
+            tagName: nil,
+            groupName: nil,
+            sshProfileId: nil,
+            safeModeLevel: wireValue,
+            aiPolicy: nil,
+            additionalFields: nil,
+            redisDatabase: nil,
+            startupCommands: nil,
+            localOnly: nil
+        )
+        return ConnectionExportService.buildDatabaseConnection(
+            id: UUID(),
+            from: imported,
+            name: imported.name,
+            tagIdsByName: [:],
+            groupIdsByName: [:]
+        ).preferredSafeModeLevel
     }
 
     private func makeStorage() -> ConnectionStorage {

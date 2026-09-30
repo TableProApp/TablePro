@@ -45,8 +45,13 @@ internal struct SQLTokenCursor {
     private var conditionalDepth = 0
 
     internal private(set) var parenDepth = 0
+    internal private(set) var tokenStart = 0
 
     internal var location: Int { index }
+
+    internal var tokenRange: NSRange {
+        NSRange(location: tokenStart, length: index - tokenStart)
+    }
 
     internal init(_ text: NSString, grammar: SQLLexicalGrammar) {
         self.text = text
@@ -68,6 +73,7 @@ internal struct SQLTokenCursor {
             }
             if skipsNonCode(character) { continue }
             if character == SqlLexer.semicolon, parenDepth == 0 { return nil }
+            tokenStart = index
             return token(startingWith: character)
         }
         return nil

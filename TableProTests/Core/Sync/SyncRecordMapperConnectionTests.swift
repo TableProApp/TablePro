@@ -229,30 +229,6 @@ struct SyncRecordMapperConnectionTests {
         #expect(record["isReadOnly"] as? Int64 == 0)
     }
 
-    @Test(
-        "iOS safe mode wire values map to the nearest macOS level",
-        arguments: [
-            ("off", SafeModeLevel.silent),
-            ("confirmWrites", SafeModeLevel.alert),
-            ("readOnly", SafeModeLevel.readOnly)
-        ]
-    )
-    func decodesIOSWireValues(raw: String, expected: SafeModeLevel) {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: raw, isReadOnly: false) == expected)
-    }
-
-    @Test("An unrecognised safe mode value requires confirmation instead of failing open")
-    func unknownSafeModeFailsClosed() {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: "someFutureLevel", isReadOnly: false) == .alert)
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: "someFutureLevel", isReadOnly: true) == .readOnly)
-    }
-
-    @Test("A record without a safe mode level honours the read-only flag")
-    func missingSafeModeHonoursReadOnly() {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: nil, isReadOnly: true) == .readOnly)
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: nil, isReadOnly: false) == .silent)
-    }
-
     @Test("An iOS read-only connection stays read-only on macOS")
     func readOnlyConnectionFromIOSKeepsProtection() throws {
         let recordID = SyncRecordMapper.recordID(type: .connection, id: UUID().uuidString, in: zoneID)
@@ -265,5 +241,27 @@ struct SyncRecordMapperConnectionTests {
         let decoded = try SyncRecordMapper.toConnection(record)
 
         #expect(decoded.safeModeLevel == .readOnly)
+    }
+
+    @Test("An iOS safe mode level syncs to the nearest macOS level")
+    func iOSLevelSyncsToNearestMacLevel() throws {
+        #expect(try syncedLevel(fromIOSWireValue: "off") == .silent)
+        #expect(try syncedLevel(fromIOSWireValue: "confirmWrites") == .alert)
+        #expect(try syncedLevel(fromIOSWireValue: "readOnly") == .readOnly)
+    }
+
+    @Test("An unrecognized safe mode level syncs as Alert instead of Silent")
+    func unrecognizedLevelSyncsAsAlert() throws {
+        #expect(try syncedLevel(fromIOSWireValue: "someFutureLevel") == .alert)
+    }
+
+    private func syncedLevel(fromIOSWireValue wireValue: String) throws -> SafeModeLevel {
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: UUID().uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        record["connectionId"] = UUID().uuidString as CKRecordValue
+        record["name"] = "From iPhone" as CKRecordValue
+        record["type"] = "PostgreSQL" as CKRecordValue
+        record["safeModeLevel"] = wireValue as CKRecordValue
+        return try SyncRecordMapper.toConnection(record).preferredSafeModeLevel
     }
 }
