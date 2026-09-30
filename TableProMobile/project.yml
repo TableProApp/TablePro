@@ -131,6 +131,7 @@ targets:
           - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport
+          - TableProTabularIO
       - package: TableProOracle
         product: TableProOracleCore
       - framework: ../Libs/ios/DuckDB.xcframework

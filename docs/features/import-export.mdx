@@ -287,7 +287,7 @@ The extension picks the format, so one command covers all of them. A file no for
 | Option | What it does | Default |
 |--------|-------------|---------|
 | On error | Stop and Rollback, Stop and Commit, or Skip and Continue | Stop and Rollback |
-| Encoding | UTF-8, UTF-16, UTF-16 LE, UTF-16 BE, Latin-1, Windows-1252, or ASCII | UTF-8 |
+| Encoding | UTF-8, UTF-16, UTF-16 LE, UTF-16 BE, Latin-1, Windows-1252, ASCII, Shift JIS, EUC-JP, GB 18030, Big5, or EUC-KR | UTF-8 |
 | Wrap in transaction | Runs every statement inside one transaction. Dimmed in Skip and Continue | Yes |
 | Disable foreign key checks | Suspends constraint checks for the import | Yes |
 
@@ -298,6 +298,8 @@ The extension picks the format, so one command covers all of them. A file no for
 | **Skip and Continue** | Logs it and carries on, including a line the parser cannot read. No transaction |
 
 **UTF-16** reads the byte order from the mark at the start of the file and falls back to big-endian, which is what a file with no mark means. Pick **UTF-16 LE** or **UTF-16 BE** for a file that has no mark and is not big-endian. Latin-1 and Windows-1252 differ over the bytes `0x80` to `0x9F`: a dump written by MySQL keeps its curly quotes, en dashes and euro sign there, so Windows-1252 is the one to pick for it.
+
+When the preview cannot read the file in the chosen encoding, the dialog switches to the encoding the dump declares in its `SET NAMES` or `SET client_encoding`, or else to the encoding the text matches. It picks Shift JIS, GB 18030 or Big5 only when the dump declares it, because a byte in those encodings can hide a quote's escaping backslash; choose one by hand for a script that declares nothing. A switch the dialog made is not remembered for the next import. A dump read in any encoding but UTF-8 or ASCII reaches the server as UTF-8, so its `SET NAMES cp932` or `SET client_encoding = 'SJIS'` does not run as written: MySQL and MariaDB keep the connection's own character set, and PostgreSQL gets `SET client_encoding = 'UTF8'`. On MySQL and MariaDB, a `_binary` value in a Latin-1 or Windows-1252 dump is sent as the bytes it held. Any other non-UTF-8 dump stops at a `_binary` value holding non-ASCII bytes, since those cannot be read back exactly; export it with `--hex-blob` instead.
 
 On SQL Server a file that holds a `GO` line runs a batch at a time, cut at its `GO` lines the way `sqlcmd` cuts it, so every count and failure here is a batch rather than a statement. A file with no `GO` line runs a statement at a time. See [Scripts and batches](/databases/mssql#scripts-and-batches).
 
@@ -354,13 +356,13 @@ CSV and TSV open the same sheet as JSON, with parsing options in front of the ma
 |--------|-------------|---------|
 | Delimiter | Comma, semicolon, tab, or pipe | Auto-detect |
 | Quote character | Double or single quote | Double quote (`"`) |
-| Encoding | UTF-8, ISO Latin 1, or Windows-1252 | Auto-detect |
+| Encoding | UTF-8, UTF-16 LE, UTF-16 BE, ISO Latin 1, Windows-1252, Shift JIS, EUC-JP, GB 18030, Big5, or EUC-KR | Auto-detect |
 | First row is a header | Row 1 becomes the column names; off imports it as data | Yes |
 | Trim leading and trailing spaces | Trims each field before import | No |
 | Treat empty values as NULL | Inserts NULL instead of empty text | Yes |
 | NULL text | One more value to import as NULL, `\N` for instance | None |
 
-Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one.
+Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one. A line the encoding cannot read stops the import before any row is deleted or inserted, and the error names the line.
 
 ### Map fields to columns
 

@@ -16,7 +16,7 @@ struct CloudSQLProxyModelTests {
             authMode: .serviceAccountKey,
             useIAMAuth: true,
             usePrivateIP: true,
-            localPort: 6543,
+            localPort: 6_543,
             binaryPath: "/opt/homebrew/bin/cloud-sql-proxy"
         )
 
@@ -50,7 +50,7 @@ struct CloudSQLProxyModelTests {
         let connection = DatabaseConnection(
             name: "Cloud SQL",
             host: "ignored",
-            port: 5432,
+            port: 5_432,
             type: .postgresql,
             cloudSQLProxyMode: .inline(
                 CloudSQLProxyConfiguration(instanceConnectionName: "proj:region:inst", authMode: .applicationDefault)
@@ -93,7 +93,7 @@ struct CloudSQLProxyModelTests {
 
     @Test("CloudSQLProxyPidRecord round-trips for the stale-PID sweep")
     func pidRecordRoundTrip() throws {
-        let records = [CloudSQLProxyPidRecord(pid: 4242, binaryPath: "/opt/homebrew/bin/cloud-sql-proxy")]
+        let records = [CloudSQLProxyPidRecord(pid: 4_242, binaryPath: "/opt/homebrew/bin/cloud-sql-proxy")]
         let data = try JSONEncoder().encode(records)
         let decoded = try JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data)
         #expect(decoded == records)
@@ -110,5 +110,13 @@ struct CloudSQLProxyModelTests {
         #expect(!DatabaseType.oceanbase.supportsCloudSQLProxy)
         #expect(!DatabaseType.sqlite.supportsCloudSQLProxy)
         #expect(!DatabaseType.mongodb.supportsCloudSQLProxy)
+    }
+
+    @Test("The cloud-sql-proxy not-found error is plain text that names the install command")
+    func binaryNotFoundIsPlainText() {
+        let description = CloudSQLProxyError.binaryNotFound.errorDescription ?? ""
+
+        #expect(!description.contains("`"))
+        #expect(description.contains("brew install cloud-sql-proxy"))
     }
 }

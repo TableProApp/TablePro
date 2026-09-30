@@ -15,15 +15,14 @@ import TableProPluginKit
 enum CSVImportParsing {
     static let detectionSampleLimit = 200
 
-    static func resolveDialect(in data: Data, options: CSVImportOptions) -> CSVDialect {
-        var dialect = CSVDialect.detect(from: data)
+    static func resolveDialect(in text: Data, options: CSVImportOptions) -> CSVDialect {
+        var dialect = CSVDialect.detect(from: text)
         if let byte = options.delimiter.byte {
             dialect.delimiter = byte
         }
         dialect.quoteChar = options.quoteCharacter.byte
-        if let forced = options.encoding.stringEncoding {
-            dialect.encoding = forced
-        }
+        dialect.escapeChar = options.quoteCharacter.byte
+        dialect.encoding = .utf8
         return dialect
     }
 

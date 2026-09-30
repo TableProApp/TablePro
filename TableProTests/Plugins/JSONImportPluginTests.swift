@@ -216,4 +216,28 @@ struct JSONImportPluginTests {
         #expect(fields.first { $0.name == "name" }?.inferredType == .text)
         #expect(fields.first { $0.name == "id" }?.sampleValue == "1")
     }
+
+    // MARK: - JSON Lines detection
+
+    @Test("A JSON Lines file whose 256 KB mark falls inside a Japanese character still lists its fields")
+    func testDetectionAcrossACutMultiByteCharacter() throws {
+        let line = Data("{\"名前\":\"山田太郎\",\"住所\":\"東京都港区\"}\n".utf8)
+        let mark = 256 * 1_024
+        var body = Data()
+        while body.count <= mark {
+            body.append(line)
+        }
+        var file = body
+        while String(data: file.prefix(mark), encoding: .utf8) != nil {
+            file.insert(0x0A, at: 0)
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("JSONImportPluginTests-\(UUID().uuidString).jsonl")
+        try file.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let fields = try JSONImportParsing.detectFields(at: url, targetTable: nil)
+        #expect(Set(fields.map(\.name)) == ["名前", "住所"])
+        #expect(fields.first { $0.name == "名前" }?.sampleValue == "山田太郎")
+    }
 }
