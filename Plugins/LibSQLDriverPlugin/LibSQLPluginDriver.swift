@@ -8,16 +8,6 @@ import Foundation
 import os
 import TableProPluginKit
 
-// MARK: - Error
-
-struct LibSQLError: Error, PluginDriverError {
-    let message: String
-
-    var pluginErrorMessage: String { message }
-
-    static let notConnected = LibSQLError(message: String(localized: "Not connected to database"))
-}
-
 // MARK: - Plugin Driver
 
 final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -27,6 +17,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private let config: DriverConnectionConfig
+    private let localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
     private var backend: Backend?
     private var _serverVersion: String?
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
@@ -61,8 +52,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return base
     }
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
+    ) {
         self.config = config
+        self.localDatabaseRuntime = localDatabaseRuntime
     }
 
     private var isLocalMode: Bool {
@@ -91,7 +86,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
-        let localBackend = SQLiteLocalBackend()
+        let localBackend = SQLiteLocalBackend(runtime: localDatabaseRuntime)
         try await localBackend.open(path: path, loading: extensions)
         let rawHandle = await localBackend.dbHandleForInterrupt
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
@@ -250,6 +245,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if case .remote(let client) = current {
             client.cancelAll()
         }
+    }
+
+    var hasRetriedLocalBusyWait: Bool {
+        guard case .local(let localBackend) = getBackend() else { return false }
+        return localBackend.hasRetriedBusyWait
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {

@@ -12,6 +12,40 @@ import os
 @testable import TablePro
 import TableProPluginKit
 
+actor FakeMSSQLConnectHold {
+    private var reachedConnect = false
+    private var released = false
+    private var reachedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilReached() async {
+        guard !reachedConnect else { return }
+        await withCheckedContinuation { reachedWaiters.append($0) }
+    }
+
+    func waitForRelease() async {
+        reachedConnect = true
+        let waitingForReach = reachedWaiters
+        reachedWaiters = []
+        for waiter in waitingForReach {
+            waiter.resume()
+        }
+
+        guard !released else { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+    }
+
+    func release() {
+        guard !released else { return }
+        released = true
+        let waitingForRelease = releaseWaiters
+        releaseWaiters = []
+        for waiter in waitingForRelease {
+            waiter.resume()
+        }
+    }
+}
+
 final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     struct CreatedDriverConfiguration: Equatable, Sendable {
         let host: String
@@ -52,6 +86,7 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 
     private static let connectFailures = OSAllocatedUnfairLock<[String: ConnectFailure]>(initialState: [:])
+    private static let connectHolds = OSAllocatedUnfairLock<[String: FakeMSSQLConnectHold]>(initialState: [:])
     private static let createdDriverConfigurations = OSAllocatedUnfairLock<[String: [CreatedDriverConfiguration]]>(
         initialState: [:]
     )
@@ -62,6 +97,16 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static func clearConnectFailure(for connectionId: UUID) {
         _ = connectFailures.withLock { $0.removeValue(forKey: connectionId.uuidString) }
+    }
+
+    static func holdConnect(for connectionId: UUID) -> FakeMSSQLConnectHold {
+        let hold = FakeMSSQLConnectHold()
+        connectHolds.withLock { $0[connectionId.uuidString] = hold }
+        return hold
+    }
+
+    static func clearConnectHold(for connectionId: UUID) {
+        _ = connectHolds.withLock { $0.removeValue(forKey: connectionId.uuidString) }
     }
 
     static func configurations(for connectionId: UUID) -> [CreatedDriverConfiguration] {
@@ -78,6 +123,7 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         let connectionId = config.additionalFields["connectionId"] ?? ""
+        let connectHold = Self.connectHolds.withLock { $0[connectionId] }
         let createdConfiguration = CreatedDriverConfiguration(
             host: config.host,
             username: config.username,
@@ -88,9 +134,13 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             $0[connectionId]?.append(createdConfiguration)
         }
         guard let failure = Self.connectFailures.withLock({ $0[connectionId] }) else {
-            return FakeMSSQLPluginDriver()
+            return FakeMSSQLPluginDriver(connectHold: connectHold)
         }
-        return FakeMSSQLPluginDriver(connectFailure: failure.error, connectDelay: failure.delay)
+        return FakeMSSQLPluginDriver(
+            connectFailure: failure.error,
+            connectDelay: failure.delay,
+            connectHold: connectHold
+        )
     }
 
     override required init() {
@@ -109,14 +159,23 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var disconnectCallCount = 0
     private let connectFailure: (any Error & Sendable)?
     private let connectDelay: Duration
+    private let connectHold: FakeMSSQLConnectHold?
     private let queryTimeoutValues = OSAllocatedUnfairLock<[Int]>(initialState: [])
 
-    init(connectFailure: (any Error & Sendable)? = nil, connectDelay: Duration = .zero) {
+    init(
+        connectFailure: (any Error & Sendable)? = nil,
+        connectDelay: Duration = .zero,
+        connectHold: FakeMSSQLConnectHold? = nil
+    ) {
         self.connectFailure = connectFailure
         self.connectDelay = connectDelay
+        self.connectHold = connectHold
     }
 
     func connect() async throws {
+        if let connectHold {
+            await connectHold.waitForRelease()
+        }
         if connectDelay > .zero {
             try? await Task.sleep(for: connectDelay)
         }

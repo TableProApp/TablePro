@@ -67,7 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query timeout overrides dropped by Mac sync and connection exports. (#2525)
 - Connection checks interrupting a query, import or export still in progress after five minutes. (#2525)
 - Connection timeout errors naming the database when an SSH bastion stalled. (#2525)
-- A successful retry after editing an unavailable connection reverting to its previous server and timeout. (#2525)
+- In-flight connection attempts restoring an edited connection's previous server, name, tags or Safe Mode. (#2525)
+- Local libSQL writes reporting success after a lock wait reached its query timeout. (#2525)
+- Failed remote SQLite refreshes mixing a new WAL or journal with the previous cached database. (#2525)
+- Remote SQLite snapshots left on the server after a connection timeout. (#2525)
 - Release highlights in the update dialog run together into one paragraph.
 - Removed and Deprecated listed after Fixed in GitHub release notes.
 - PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.

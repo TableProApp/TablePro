@@ -26,6 +26,24 @@ private final class BigQueryRecordingHTTPClient: GoogleHTTPClient, @unchecked Se
     }
 }
 
+private enum BigQueryTokenRequestStop: Error {
+    case recorded
+}
+
+private final class BigQueryStoppingHTTPClient: GoogleHTTPClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedRequest: URLRequest?
+
+    var request: URLRequest? {
+        lock.withLock { recordedRequest }
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.withLock { recordedRequest = request }
+        throw BigQueryTokenRequestStop.recorded
+    }
+}
+
 struct BigQueryCredentialFactoryTests {
     private static let serviceAccountJSON = """
         {"type":"service_account","client_email":"reader@key-project.iam.gserviceaccount.com",\
@@ -194,6 +212,39 @@ struct BigQueryCredentialFactoryTests {
         let timeout = try #require(http.request?.timeoutInterval)
         #expect(timeout > 0)
         #expect(timeout <= TimeInterval(budgetMilliseconds) / 1_000)
+    }
+
+    @Test("Driver connect forwards its config deadline to OAuth token exchange", .timeLimit(.minutes(1)))
+    func driverConnectForwardsDeadlineToOAuth() async throws {
+        let budgetMilliseconds = 2_500
+        let http = BigQueryStoppingHTTPClient()
+        let driver = BigQueryPluginDriver(
+            config: DriverConnectionConfig(
+                host: "",
+                port: 0,
+                username: "",
+                password: "",
+                database: "",
+                additionalFields: [
+                    BigQueryConnectionFields.authMethod: BigQueryAuthMethod.oauth.rawValue,
+                    BigQueryConnectionFields.oauthClientId: "client",
+                    BigQueryConnectionFields.oauthClientSecret: "secret",
+                    BigQueryConnectionFields.projectId: "project",
+                    "connectTimeoutMilliseconds": String(budgetMilliseconds)
+                ]
+            ),
+            credentialHTTPClient: http,
+            refreshTokenStore: GoogleInMemoryRefreshTokenStore(["client": "refresh"])
+        )
+
+        await #expect(throws: BigQueryTokenRequestStop.self) {
+            try await driver.connect()
+        }
+
+        let request = try #require(http.request)
+        #expect(request.url == GoogleOAuthClient.tokenEndpoint)
+        #expect(request.timeoutInterval > 0)
+        #expect(request.timeoutInterval <= TimeInterval(budgetMilliseconds) / 1_000)
     }
 }
 

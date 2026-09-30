@@ -21,7 +21,8 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
     }
 
     let behavior: Behavior
-    private(set) var stopCallCount = 0
+    private var startCalls = 0
+    private var stopCalls = 0
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -41,7 +42,17 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
 
     var processIdentifier: Int32? { 4_242 }
 
+    var startCallCount: Int {
+        lock.withLock { startCalls }
+    }
+
+    var stopCallCount: Int {
+        lock.withLock { stopCalls }
+    }
+
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
+        lock.withLock { startCalls += 1 }
+
         switch behavior {
         case .ready:
             if let port = Self.parsePort(arguments) {
@@ -62,7 +73,7 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
     func stop() {
         lock.lock()
         requested = true
-        stopCallCount += 1
+        stopCalls += 1
         lock.unlock()
         if let fd = listenerFd {
             close(fd)
@@ -134,6 +145,18 @@ struct CloudflareTunnelManagerTests {
         CloudflareConfiguration(accessHostname: hostname, localPort: localPort, binaryPath: "/bin/echo")
     }
 
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return condition()
+    }
+
     @Test("createTunnel returns the allocated port once cloudflared is listening")
     func readinessSucceeds() async throws {
         let fake = FakeCloudflaredRunner(behavior: .ready)
@@ -176,12 +199,12 @@ struct CloudflareTunnelManagerTests {
         let fake = FakeCloudflaredRunner(behavior: .neverReady)
         let manager = CloudflareTunnelManager(runnerFactory: { fake })
         let id = UUID()
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 30,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
-        )
         let creation = Task {
-            try await manager.createTunnel(
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            return try await manager.createTunnel(
                 connectionId: id,
                 config: self.config(),
                 deadline: deadline
@@ -192,6 +215,7 @@ struct CloudflareTunnelManagerTests {
             fake.stop()
         }
 
+        try #require(await waitUntil { fake.startCallCount > 0 })
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
         })

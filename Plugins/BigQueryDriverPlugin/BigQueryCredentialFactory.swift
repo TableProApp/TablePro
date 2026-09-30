@@ -40,6 +40,8 @@ internal enum BigQueryCredentialFactory {
 
     static func credentials(
         config: DriverConnectionConfig,
+        http: any GoogleHTTPClient,
+        refreshTokenStore: any GoogleRefreshTokenStore,
         connectTimeoutPhase: PluginConnectTimeoutPhase? = nil
     ) throws -> BigQueryCredentials {
         try credentials(
@@ -47,8 +49,8 @@ internal enum BigQueryCredentialFactory {
             password: config.password,
             readFile: { FileManager.default.contents(atPath: $0) },
             environment: ProcessInfo.processInfo.environment,
-            http: URLSessionGoogleHTTPClient(),
-            refreshTokenStore: GoogleKeychainRefreshTokenStore(),
+            http: http,
+            refreshTokenStore: refreshTokenStore,
             connectTimeoutPhase: connectTimeoutPhase
         )
     }

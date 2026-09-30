@@ -147,7 +147,10 @@ extension DatabaseManager {
 
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
-                session.connection = connection
+                session.connection = successfulConnectionRecord(
+                    from: connection,
+                    preservingSessionFieldsFrom: session.connection
+                )
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
@@ -698,15 +701,32 @@ extension DatabaseManager {
         into session: ConnectionSession,
         for connectionId: UUID
     ) {
-        var reconciled = session.connection
-        reconciled.name = stored.name
-        reconciled.color = stored.color
-        reconciled.tagIds = stored.tagIds
+        let reconciled = connection(session.connection, adoptingDisplayFieldsFrom: stored)
         guard reconciled != session.connection else { return }
 
         var updated = session
         updated.connection = reconciled
         setSession(updated, for: connectionId)
+    }
+
+    private func successfulConnectionRecord(
+        from attempted: DatabaseConnection,
+        preservingSessionFieldsFrom current: DatabaseConnection
+    ) -> DatabaseConnection {
+        var adopted = connection(attempted, adoptingDisplayFieldsFrom: current)
+        adopted.preferredSafeModeLevel = current.preferredSafeModeLevel
+        return adopted
+    }
+
+    private func connection(
+        _ base: DatabaseConnection,
+        adoptingDisplayFieldsFrom source: DatabaseConnection
+    ) -> DatabaseConnection {
+        var adopted = base
+        adopted.name = source.name
+        adopted.color = source.color
+        adopted.tagIds = source.tagIds
+        return adopted
     }
 
     /// The user picking a level from the toolbar or the Database menu.

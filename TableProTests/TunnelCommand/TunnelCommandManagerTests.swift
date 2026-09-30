@@ -19,8 +19,8 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
     }
 
     let behavior: Behavior
-    private(set) var startCallCount = 0
-    private(set) var stopCallCount = 0
+    private var startCalls = 0
+    private var stopCalls = 0
     private(set) var startedBinaryPath: String?
     private(set) var startedArguments: [String] = []
     private(set) var startedEnvironment: [String: String] = [:]
@@ -43,9 +43,17 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
 
     var processIdentifier: Int32? { 4_243 }
 
+    var startCallCount: Int {
+        lock.withLock { startCalls }
+    }
+
+    var stopCallCount: Int {
+        lock.withLock { stopCalls }
+    }
+
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
         lock.lock()
-        startCallCount += 1
+        startCalls += 1
         startedBinaryPath = binaryPath
         startedArguments = arguments
         startedEnvironment = environment
@@ -67,7 +75,7 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
     func stop() {
         lock.lock()
         requested = true
-        stopCallCount += 1
+        stopCalls += 1
         lock.unlock()
         if let fd = listenerFd {
             close(fd)
@@ -283,12 +291,12 @@ struct TunnelCommandManagerTests {
         let fake = FakeTunnelCommandRunner(behavior: .neverReady)
         let manager = TunnelCommandManager(runnerFactory: { fake })
         let id = UUID()
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 30,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
-        )
         let creation = Task {
-            try await manager.createTunnel(
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            return try await manager.createTunnel(
                 connectionId: id,
                 config: self.customConfig(),
                 remoteHost: "db.internal",
@@ -301,6 +309,7 @@ struct TunnelCommandManagerTests {
             fake.stop()
         }
 
+        try #require(await waitUntil { fake.startCallCount > 0 })
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
         })

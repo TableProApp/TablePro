@@ -31,6 +31,10 @@ final class LibSQLBusyTimeoutState: @unchecked Sendable {
         lock.withLock { retried }
     }
 
+    var cancellationRequested: Bool {
+        lock.withLock { isCancelled }
+    }
+
     func shouldRetry(afterRetryCount retryCount: Int32) -> Bool {
         lock.withLock {
             retried = true

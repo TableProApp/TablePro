@@ -14,6 +14,36 @@ struct MaterializedRemoteFile: Sendable {
     let plan: RemoteFetchPlan
 }
 
+internal enum RemoteFileMaterializationCommit {
+    static func publish(
+        _ result: RemoteFetchResult,
+        identity: RemoteFileIdentity,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        isCancelled: () -> Bool,
+        isCurrent: () -> Bool,
+        didPublish: () -> Void = {}
+    ) throws -> MaterializedRemoteFile {
+        try Task.checkCancellation()
+        if isCancelled() { throw SFTPError.cancelled }
+        try deadline.check(endpoint: timeoutEndpoint)
+        guard isCurrent() else { throw CancellationError() }
+
+        let file = MaterializedRemoteFile(
+            identity: identity,
+            workingCopy: result.workingCopy,
+            manifest: result.manifest,
+            plan: result.plan
+        )
+        try RemoteDatabaseFileStore.publish(
+            result.generation,
+            requiredSidecars: result.fetchedSidecars,
+            didPublish: didPublish
+        )
+        return file
+    }
+}
+
 internal enum RemoteFileSessionOwnership {
     static func takeCurrent<Session: AnyObject>(
         _ current: inout Session?,
@@ -232,24 +262,20 @@ actor RemoteFileTransportManager: TunnelManaging {
                         progress: progress,
                         isCancelled: { cancelFlag.isCancelled }
                     )
-                    try Task.checkCancellation()
-                    try deadline.check(endpoint: timeoutEndpoint)
-                    try await store.writeManifest(result.manifest, for: resolvedIdentity)
-                    try Task.checkCancellation()
-                    try deadline.check(endpoint: timeoutEndpoint)
-
-                    let file = MaterializedRemoteFile(
-                        identity: resolvedIdentity,
-                        workingCopy: result.workingCopy,
-                        manifest: result.manifest,
-                        plan: result.plan
-                    )
-                    try await self.remember(
-                        file,
-                        for: connectionId,
-                        requestId: materializationRequestId
-                    )
-                    return file
+                    do {
+                        return try await self.publishFetchedGeneration(
+                            result,
+                            identity: resolvedIdentity,
+                            connectionId: connectionId,
+                            requestId: materializationRequestId,
+                            deadline: deadline,
+                            timeoutEndpoint: timeoutEndpoint,
+                            cancelFlag: cancelFlag
+                        )
+                    } catch {
+                        RemoteDatabaseFileStore.discardUnpublishedGeneration(result.generation)
+                        throw error
+                    }
                 }
             } catch {
                 await self.discardSession(for: connectionId, ifOwnedBy: session)
@@ -273,6 +299,37 @@ actor RemoteFileTransportManager: TunnelManaging {
         requestId: UUID
     ) throws {
         try ensureMaterializationIsCurrent(connectionId: connectionId, requestId: requestId)
+        materialized[connectionId] = file
+        materializationRequestIds.removeValue(forKey: connectionId)
+    }
+
+    private func publishFetchedGeneration(
+        _ result: RemoteFetchResult,
+        identity: RemoteFileIdentity,
+        connectionId: UUID,
+        requestId: UUID,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        cancelFlag: CancellationFlag
+    ) throws -> MaterializedRemoteFile {
+        let file = try RemoteFileMaterializationCommit.publish(
+            result,
+            identity: identity,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            isCancelled: { cancelFlag.isCancelled },
+            isCurrent: { materializationRequestIds[connectionId] == requestId }
+        )
+        rememberCommittedIfCurrent(file, for: connectionId, requestId: requestId)
+        return file
+    }
+
+    private func rememberCommittedIfCurrent(
+        _ file: MaterializedRemoteFile,
+        for connectionId: UUID,
+        requestId: UUID
+    ) {
+        guard materializationRequestIds[connectionId] == requestId else { return }
         materialized[connectionId] = file
         materializationRequestIds.removeValue(forKey: connectionId)
     }
@@ -308,9 +365,9 @@ actor RemoteFileTransportManager: TunnelManaging {
         store: RemoteDatabaseFileStore,
         deadline: ConnectionDeadline
     ) async throws -> MaterializedRemoteFile? {
-        guard let manifest = await store.manifest(for: identity) else { return nil }
-        let workingCopy = await store.workingCopyURL(for: identity, fileName: fileName)
-        guard FileManager.default.fileExists(atPath: workingCopy.path) else { return nil }
+        guard let published = await store.publishedGeneration(for: identity, fileName: fileName) else { return nil }
+        let manifest = published.manifest
+        let workingCopy = published.workingCopy
 
         let current = try RemoteDatabaseFileTransfer.fingerprint(
             session: session,

@@ -7,7 +7,19 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
-import TableProSQLiteCore
+
+struct LibSQLLocalFirstStep: Sendable {
+    let result: Int32
+    let names: [String]
+    let typeNames: [String]
+
+    var count: Int32 { Int32(names.count) }
+}
+
+protocol LibSQLLocalDatabaseRuntime: Sendable {
+    func prepareDatabase(_ db: OpaquePointer, loading extensions: [LoadableExtension]) throws
+    func stepFirst(_ statement: OpaquePointer?) -> LibSQLLocalFirstStep
+}
 
 struct LibSQLLocalRawResult: Sendable {
     let columns: [String]
@@ -21,8 +33,13 @@ struct LibSQLLocalRawResult: Sendable {
 actor SQLiteLocalBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
 
+    private let runtime: any LibSQLLocalDatabaseRuntime
     private var db: OpaquePointer?
     nonisolated private let busyTimeout = LibSQLBusyTimeoutState()
+
+    init(runtime: any LibSQLLocalDatabaseRuntime) {
+        self.runtime = runtime
+    }
 
     var isConnected: Bool { db != nil }
 
@@ -36,28 +53,19 @@ actor SQLiteLocalBackend {
         }
         guard let db else { throw LibSQLError.notConnected }
         do {
-            try loadExtensions(extensions, into: db)
+            try runtime.prepareDatabase(db, loading: extensions)
         } catch {
             close()
             throw error
         }
-        SQLiteAuthorizer.install(on: db)
+        if !extensions.isEmpty {
+            Self.logger.info("Loaded \(extensions.count, privacy: .public) SQLite extension(s)")
+        }
         sqlite3_busy_handler(
             db,
             libSQLBusyTimeoutHandler,
             Unmanaged.passUnretained(busyTimeout).toOpaque()
         )
-    }
-
-    private func loadExtensions(_ extensions: [LoadableExtension], into db: OpaquePointer) throws {
-        guard !extensions.isEmpty else { return }
-        let loading = SQLiteExtensionLoading(db: db)
-        try LoadableExtensionLoader.load(
-            extensions,
-            setLoadingEnabled: loading.setEnabled,
-            loadExtension: loading.load(file:entryPoint:)
-        )
-        Self.logger.info("Loaded \(extensions.count, privacy: .public) SQLite extension(s)")
     }
 
     func close() {
@@ -74,6 +82,8 @@ actor SQLiteLocalBackend {
     nonisolated func cancelBusyWait() {
         busyTimeout.cancel()
     }
+
+    nonisolated var hasRetriedBusyWait: Bool { busyTimeout.hasRetried }
 
     var dbHandleForInterrupt: Int { db.map { Int(bitPattern: $0) } ?? 0 }
 
@@ -106,7 +116,7 @@ actor SQLiteLocalBackend {
 
         try bind(parameters, to: statement, db: db)
 
-        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        let firstStep = runtime.stepFirst(statement)
         let columnCount = firstStep.count
         let columns = firstStep.names
         let columnTypeNames = firstStep.typeNames
@@ -123,6 +133,10 @@ actor SQLiteLocalBackend {
             }
             rows.append(rowValues(of: statement, count: columnCount))
             stepResult = sqlite3_step(statement)
+        }
+
+        if !truncated {
+            try validateCompletion(stepResult, on: db)
         }
 
         if columns.isEmpty {
@@ -156,7 +170,11 @@ actor SQLiteLocalBackend {
             throw LibSQLError(message: errorMessage)
         }
 
-        let firstStep = SQLiteResultColumns.stepFirst(statement)
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        let firstStep = runtime.stepFirst(statement)
         let columnCount = firstStep.count
         continuation.yield(.header(PluginStreamHeader(
             columns: firstStep.names,
@@ -174,7 +192,6 @@ actor SQLiteLocalBackend {
                 if !batch.isEmpty {
                     continuation.yield(.rows(batch))
                 }
-                sqlite3_finalize(statement)
                 continuation.finish(throwing: CancellationError())
                 return
             }
@@ -191,8 +208,22 @@ actor SQLiteLocalBackend {
             continuation.yield(.rows(batch))
         }
 
-        sqlite3_finalize(statement)
+        do {
+            try validateCompletion(stepResult, on: db)
+        } catch {
+            continuation.finish(throwing: error)
+            return
+        }
         continuation.finish()
+    }
+
+    private func validateCompletion(_ stepResult: Int32, on db: OpaquePointer) throws {
+        guard stepResult == SQLITE_DONE else {
+            if Task.isCancelled || busyTimeout.cancellationRequested {
+                throw CancellationError()
+            }
+            throw LibSQLError(message: String(cString: sqlite3_errmsg(db)))
+        }
     }
 
     private func bind(

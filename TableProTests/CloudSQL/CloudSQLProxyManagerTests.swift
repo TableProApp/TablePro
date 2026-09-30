@@ -18,7 +18,8 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
     }
 
     let behavior: Behavior
-    private(set) var stopCallCount = 0
+    private var startCalls = 0
+    private var stopCalls = 0
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -38,7 +39,17 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
 
     var processIdentifier: Int32? { 4_242 }
 
+    var startCallCount: Int {
+        lock.withLock { startCalls }
+    }
+
+    var stopCallCount: Int {
+        lock.withLock { stopCalls }
+    }
+
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
+        lock.withLock { startCalls += 1 }
+
         switch behavior {
         case .ready:
             if let port = Self.parsePort(arguments) {
@@ -55,7 +66,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
     func stop() {
         lock.lock()
         requested = true
-        stopCallCount += 1
+        stopCalls += 1
         lock.unlock()
         if let fd = listenerFd {
             close(fd)
@@ -125,6 +136,18 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
 struct CloudSQLProxyManagerTests {
     private func config(instance: String = "proj:region:inst", localPort: Int? = nil) -> CloudSQLProxyConfiguration {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return condition()
     }
 
     /// The managed binary is ad-hoc signed and sits in a user-writable directory, so the launch
@@ -234,12 +257,12 @@ struct CloudSQLProxyManagerTests {
         let fake = FakeCloudSQLProxyRunner(behavior: .neverReady)
         let manager = CloudSQLProxyManager(runnerFactory: { fake })
         let id = UUID()
-        let deadline = ConnectionDeadline(
-            configuredSeconds: 30,
-            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
-        )
         let creation = Task {
-            try await manager.createTunnel(
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            return try await manager.createTunnel(
                 connectionId: id,
                 config: self.config(),
                 deadline: deadline
@@ -250,6 +273,7 @@ struct CloudSQLProxyManagerTests {
             fake.stop()
         }
 
+        try #require(await waitUntil { fake.startCallCount > 0 })
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
         })

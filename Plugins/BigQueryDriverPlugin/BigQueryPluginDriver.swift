@@ -25,6 +25,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     let parameterTypes = BigQueryParameterTypeCache()
     let runningStatements = BigQueryRunningStatements()
 
+    private let credentialHTTPClient: any GoogleHTTPClient
+    private let refreshTokenStore: any GoogleRefreshTokenStore
     private let lock = NSLock()
     private var _connection: BigQueryConnection?
     private var _projectId: String?
@@ -34,8 +36,14 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _queryTimeoutSeconds: Int?
     private var _lastJobElapsed: TimeInterval?
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        credentialHTTPClient: any GoogleHTTPClient = URLSessionGoogleHTTPClient(),
+        refreshTokenStore: any GoogleRefreshTokenStore = GoogleKeychainRefreshTokenStore()
+    ) {
         self.config = config
+        self.credentialHTTPClient = credentialHTTPClient
+        self.refreshTokenStore = refreshTokenStore
     }
 
     var connection: BigQueryConnection? {
@@ -181,6 +189,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             conn = BigQueryConnection(
                 credentials: try BigQueryCredentialFactory.credentials(
                     config: config,
+                    http: credentialHTTPClient,
+                    refreshTokenStore: refreshTokenStore,
                     connectTimeoutPhase: connectTimeoutPhase
                 ),
                 location: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.location]),

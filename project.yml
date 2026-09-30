@@ -442,6 +442,11 @@ targets:
       - Plugins/BigQueryDriverPlugin/BigQueryConnection.swift
       - Plugins/BigQueryDriverPlugin/BigQueryCredentialFactory.swift
       - Plugins/BigQueryDriverPlugin/BigQueryError.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Execution.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+QueryBuilding.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Rename.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Routines.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver.swift
       - Plugins/BigQueryDriverPlugin/BigQueryQueryBuilder.swift
       - Plugins/BigQueryDriverPlugin/BigQueryQueryParameters.swift
       - Plugins/BigQueryDriverPlugin/BigQueryStatementGenerator.swift
@@ -691,6 +696,11 @@ targets:
       # this bundle links, does not export.
       - Packages/TableProCore/Sources/TableProSQLiteCore/SQLiteResultColumns.swift
       - Plugins/LibSQLDriverPlugin/LibSQLBusyTimeout.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLError.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver+Rename.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver+Triggers.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver.swift
+      - Plugins/LibSQLDriverPlugin/SQLiteLocalBackend.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift

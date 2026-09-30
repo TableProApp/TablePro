@@ -87,6 +87,31 @@ enum RemoteSnapshotMethod: String, Codable, Sendable {
     var isConsistentUnderConcurrentWriters: Bool { self == .remoteSnapshot }
 }
 
+struct RemoteFileGeneration: Sendable, Equatable {
+    let identifier: UUID
+    let identityDirectory: URL
+    let directory: URL
+    let workingCopy: URL
+
+    var manifestURL: URL {
+        directory.appendingPathComponent(RemoteDatabaseFileStore.manifestName)
+    }
+}
+
+struct PublishedRemoteFileGeneration: Sendable {
+    let generation: RemoteFileGeneration?
+    let workingCopy: URL
+    let manifest: RemoteFileManifest
+}
+
+private struct RemoteFileGenerationSelector: Codable {
+    let formatVersion: Int
+    let generationIdentifier: UUID
+    let fileName: String
+    let requiredSidecars: [String]
+    let manifest: RemoteFileManifest
+}
+
 /// Owns the local copies of remote database files.
 ///
 /// They live under Application Support rather than Caches, so a copy survives the system deciding
@@ -110,21 +135,29 @@ actor RemoteDatabaseFileStore {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "RemoteDatabaseFile")
     static let manifestName = "manifest.json"
+    private static let generationPrefix = ".tablepro-generation-"
+    private static let allowedSidecars = Set(
+        DatabaseFileLayout.sqliteFamily.dataCarryingSidecarSuffixes
+            + DatabaseFileLayout.duckdb.dataCarryingSidecarSuffixes
+    )
 
     private var owners: [RemoteFileIdentity: UUID] = [:]
     private var waiters: [RemoteFileIdentity: [Waiter]] = [:]
+    private var cleanedGenerationIdentities: Set<RemoteFileIdentity> = []
+    private let rootOverride: URL?
+
+    init(root: URL? = nil) {
+        rootOverride = root
+    }
 
     private var root: URL {
-        AppStorageEnvironment.shared.supportDirectory
+        if let rootOverride { return rootOverride }
+        return AppStorageEnvironment.shared.supportDirectory
             .appendingPathComponent("RemoteDatabaseFiles", isDirectory: true)
     }
 
     func directory(for identity: RemoteFileIdentity) -> URL {
         root.appendingPathComponent(identity.storageKey, isDirectory: true)
-    }
-
-    func workingCopyURL(for identity: RemoteFileIdentity, fileName: String) -> URL {
-        directory(for: identity).appendingPathComponent(fileName)
     }
 
     func prepareDirectory(for identity: RemoteFileIdentity) throws -> URL {
@@ -135,16 +168,179 @@ actor RemoteDatabaseFileStore {
 
     // MARK: - Manifest
 
-    func manifest(for identity: RemoteFileIdentity) -> RemoteFileManifest? {
-        let url = directory(for: identity).appendingPathComponent(Self.manifestName)
+    func publishedGeneration(
+        for identity: RemoteFileIdentity,
+        fileName: String
+    ) -> PublishedRemoteFileGeneration? {
+        Self.publishedGeneration(in: directory(for: identity), fileName: fileName)
+    }
+
+    static func prepareGeneration(in identityDirectory: URL, fileName: String) throws -> RemoteFileGeneration {
+        try FileManager.default.createDirectory(at: identityDirectory, withIntermediateDirectories: true)
+        while true {
+            let identifier = UUID()
+            let generationDirectory = identityDirectory.appendingPathComponent(
+                generationPrefix + identifier.uuidString,
+                isDirectory: true
+            )
+            guard !FileManager.default.fileExists(atPath: generationDirectory.path) else { continue }
+            do {
+                try FileManager.default.createDirectory(
+                    at: generationDirectory,
+                    withIntermediateDirectories: false
+                )
+                return RemoteFileGeneration(
+                    identifier: identifier,
+                    identityDirectory: identityDirectory,
+                    directory: generationDirectory,
+                    workingCopy: generationDirectory.appendingPathComponent(fileName)
+                )
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                continue
+            }
+        }
+    }
+
+    static func writeManifest(_ manifest: RemoteFileManifest, to directory: URL) throws {
+        let data = try JSONEncoder.remoteFileEncoder.encode(manifest)
+        try data.write(to: directory.appendingPathComponent(Self.manifestName), options: .atomic)
+    }
+
+    /// `replaceReference` substitutes only the final atomic rename so tests can prove a failed
+    /// publication leaves the prior selector intact.
+    static func publish(
+        _ generation: RemoteFileGeneration,
+        requiredSidecars: Set<String>,
+        replaceReference: ((URL, URL) throws -> Void)? = nil,
+        didPublish: () -> Void = {}
+    ) throws {
+        let expectedDirectory = generation.identityDirectory
+            .appendingPathComponent(generationPrefix + generation.identifier.uuidString, isDirectory: true)
+        let fileName = generation.workingCopy.lastPathComponent
+        guard generation.directory.standardizedFileURL == expectedDirectory.standardizedFileURL,
+              generation.workingCopy.deletingLastPathComponent().standardizedFileURL
+                  == generation.directory.standardizedFileURL,
+              isSafeFileName(fileName),
+              requiredSidecars.isSubset(of: allowedSidecars) else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+
+        let requiredFiles = [generation.workingCopy]
+            + requiredSidecars.map { URL(fileURLWithPath: generation.workingCopy.path + $0) }
+        guard requiredFiles.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let manifestData = try Data(contentsOf: generation.manifestURL)
+        let manifest = try JSONDecoder.remoteFileDecoder.decode(RemoteFileManifest.self, from: manifestData)
+        let selector = RemoteFileGenerationSelector(
+            formatVersion: 1,
+            generationIdentifier: generation.identifier,
+            fileName: fileName,
+            requiredSidecars: requiredSidecars.sorted(),
+            manifest: manifest
+        )
+        let selectorData = try JSONEncoder.remoteFileEncoder.encode(selector)
+
+        let activeReference = generation.identityDirectory.appendingPathComponent(manifestName)
+        let stagedReference = generation.identityDirectory.appendingPathComponent(
+            ".\(manifestName)-\(UUID().uuidString).incoming"
+        )
+        defer { try? FileManager.default.removeItem(at: stagedReference) }
+        try selectorData.write(to: stagedReference, options: .withoutOverwriting)
+        if let replaceReference {
+            try replaceReference(stagedReference, activeReference)
+        } else {
+            try replace(stagedReference, with: activeReference)
+        }
+        didPublish()
+    }
+
+    static func discardUnpublishedGeneration(_ generation: RemoteFileGeneration) {
+        let selected = readSelector(
+            at: generation.identityDirectory.appendingPathComponent(manifestName)
+        )?.generationIdentifier
+        guard selected != generation.identifier else { return }
+        try? FileManager.default.removeItem(at: generation.directory)
+    }
+
+    static func publishedGeneration(
+        in identityDirectory: URL,
+        fileName: String
+    ) -> PublishedRemoteFileGeneration? {
+        let manifestURL = identityDirectory.appendingPathComponent(manifestName)
+        guard let manifestData = try? Data(contentsOf: manifestURL) else { return nil }
+        if let selector = try? JSONDecoder.remoteFileDecoder.decode(
+            RemoteFileGenerationSelector.self,
+            from: manifestData
+        ) {
+            guard selector.formatVersion == 1,
+                  selector.fileName == fileName,
+                  isSafeFileName(selector.fileName) else { return nil }
+            let requiredSidecars = Set(selector.requiredSidecars)
+            guard requiredSidecars.count == selector.requiredSidecars.count,
+                  requiredSidecars.isSubset(of: allowedSidecars) else { return nil }
+            let directory = identityDirectory.appendingPathComponent(
+                generationPrefix + selector.generationIdentifier.uuidString,
+                isDirectory: true
+            )
+            let generation = RemoteFileGeneration(
+                identifier: selector.generationIdentifier,
+                identityDirectory: identityDirectory,
+                directory: directory,
+                workingCopy: directory.appendingPathComponent(selector.fileName)
+            )
+            let requiredFiles = [generation.workingCopy, generation.manifestURL]
+                + requiredSidecars.map { URL(fileURLWithPath: generation.workingCopy.path + $0) }
+            guard requiredFiles.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }),
+                  readManifest(at: generation.manifestURL) == selector.manifest else { return nil }
+            return PublishedRemoteFileGeneration(
+                generation: generation,
+                workingCopy: generation.workingCopy,
+                manifest: selector.manifest
+            )
+        }
+
+        guard let manifest = try? JSONDecoder.remoteFileDecoder.decode(
+            RemoteFileManifest.self,
+            from: manifestData
+        ) else { return nil }
+        let legacyWorkingCopy = identityDirectory.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: legacyWorkingCopy.path) else { return nil }
+        return PublishedRemoteFileGeneration(
+            generation: nil,
+            workingCopy: legacyWorkingCopy,
+            manifest: manifest
+        )
+    }
+
+    private static func readManifest(at url: URL) -> RemoteFileManifest? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder.remoteFileDecoder.decode(RemoteFileManifest.self, from: data)
     }
 
-    func writeManifest(_ manifest: RemoteFileManifest, for identity: RemoteFileIdentity) throws {
-        let directory = try prepareDirectory(for: identity)
-        let data = try JSONEncoder.remoteFileEncoder.encode(manifest)
-        try data.write(to: directory.appendingPathComponent(Self.manifestName), options: .atomic)
+    private static func readSelector(at url: URL) -> RemoteFileGenerationSelector? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder.remoteFileDecoder.decode(RemoteFileGenerationSelector.self, from: data)
+    }
+
+    private static func isSafeFileName(_ fileName: String) -> Bool {
+        !fileName.isEmpty
+            && fileName != "."
+            && fileName != ".."
+            && !fileName.contains("/")
+    }
+
+    private static func replace(_ source: URL, with destination: URL) throws {
+        let failure = source.withUnsafeFileSystemRepresentation { sourcePath -> POSIXErrorCode? in
+            destination.withUnsafeFileSystemRepresentation { destinationPath -> POSIXErrorCode? in
+                guard let sourcePath, let destinationPath else { return .ENOENT }
+                guard rename(sourcePath, destinationPath) != 0 else { return nil }
+                return POSIXErrorCode(rawValue: errno) ?? .EIO
+            }
+        }
+        if let failure {
+            throw POSIXError(failure)
+        }
     }
 
     // MARK: - Exclusion
@@ -163,6 +359,9 @@ actor RemoteDatabaseFileStore {
     ) async throws -> T {
         let ticket = try await acquire(identity, deadline: deadline)
         defer { release(identity, ticket: ticket) }
+        if cleanedGenerationIdentities.insert(identity).inserted {
+            Self.pruneInactiveGenerations(in: directory(for: identity))
+        }
 
         return try await operation()
     }
@@ -314,18 +513,28 @@ actor RemoteDatabaseFileStore {
     /// `discard` has no routine caller, because a copy keyed by the resolved server path cannot be
     /// found from a connection's unresolved one at delete time.
     ///
-    /// Sweeping a copy is safe. A remote file connection is read-only and re-fetches on next open,
-    /// so a removed copy costs one download and never loses data. This runs at launch, before any
-    /// connection materializes a copy, so removing one that is about to be reopened only means it is
-    /// fetched again. The directory's modification time is the last-used mark, moved forward by a
-    /// fresh fetch and by `touch` on every reuse.
+    /// Sweeping a copy is safe when no materialization owns it. A remote file connection is read-only
+    /// and re-fetches on next open, so a removed copy costs one download and never loses data. The
+    /// directory's modification time is the last-used mark, moved forward by a fresh fetch and by
+    /// `touch` on every reuse.
     func pruneAbandoned(olderThan maxAge: TimeInterval = 30 * 24 * 60 * 60, now: Date = Date()) {
-        Self.pruneAbandoned(in: root, olderThan: maxAge, now: now)
+        let excludedStorageKeys = Set(owners.keys.map(\.storageKey))
+        Self.pruneAbandoned(
+            in: root,
+            olderThan: maxAge,
+            now: now,
+            excludingStorageKeys: excludedStorageKeys
+        )
     }
 
     /// The filesystem half of `pruneAbandoned`, taking its root explicitly so a test can point it at
     /// a temporary directory rather than the app's real store.
-    static func pruneAbandoned(in root: URL, olderThan maxAge: TimeInterval, now: Date) {
+    static func pruneAbandoned(
+        in root: URL,
+        olderThan maxAge: TimeInterval,
+        now: Date,
+        excludingStorageKeys: Set<String> = []
+    ) {
         let fileManager = FileManager.default
         guard let entries = try? fileManager.contentsOfDirectory(
             at: root,
@@ -334,12 +543,38 @@ actor RemoteDatabaseFileStore {
         ) else { return }
 
         for url in entries {
+            guard !excludingStorageKeys.contains(url.lastPathComponent) else { continue }
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
             guard values?.isDirectory == true else { continue }
             let modified = values?.contentModificationDate ?? .distantPast
             guard now.timeIntervalSince(modified) > maxAge else { continue }
             try? fileManager.removeItem(at: url)
             logger.info("Pruned a remote database working copy unused for over \(Int(maxAge / 86_400)) days")
+        }
+    }
+
+    static func pruneInactiveGenerations(in identityDirectory: URL) {
+        let activeIdentifier = readSelector(
+            at: identityDirectory.appendingPathComponent(manifestName)
+        )?.generationIdentifier
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: identityDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsSubdirectoryDescendants]
+        ) else { return }
+
+        for entry in entries {
+            let name = entry.lastPathComponent
+            guard name.hasPrefix(generationPrefix),
+                  let identifier = UUID(uuidString: String(name.dropFirst(generationPrefix.count))),
+                  identifier != activeIdentifier else { continue }
+            let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
+            do {
+                try FileManager.default.removeItem(at: entry)
+            } catch {
+                logger.error("Could not remove an inactive remote-file generation")
+            }
         }
     }
 }
