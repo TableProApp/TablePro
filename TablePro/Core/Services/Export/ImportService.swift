@@ -80,6 +80,7 @@ final class ImportService: ObservableObject {
                 url: url,
                 encoding: encoding,
                 grammar: connection.type.lexicalGrammar,
+                family: TransactionEngineFamily.of(connection.type),
                 decompressedURL: decompressedURL,
                 ownsDecompressedFile: ownsDecompressedFile
             )

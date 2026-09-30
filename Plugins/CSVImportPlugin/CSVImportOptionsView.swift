@@ -5,6 +5,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProTabularIO
 
 struct CSVImportOptionsView: View {
     @ObservedObject var plugin: CSVImportPlugin
@@ -42,9 +43,9 @@ struct CSVImportOptionsView: View {
                     Text("Encoding:")
                     Picker(String(localized: "Encoding", bundle: .main), selection: $plugin.settings.encoding) {
                         Text("Auto-detect").tag(CSVImportOptions.TextEncoding.auto)
-                        Text("UTF-8").tag(CSVImportOptions.TextEncoding.utf8)
-                        Text("ISO Latin 1").tag(CSVImportOptions.TextEncoding.isoLatin1)
-                        Text("Windows-1252").tag(CSVImportOptions.TextEncoding.windowsCP1252)
+                        ForEach(CSVImportOptions.TextEncoding.allCases.filter { $0 != .auto }) { option in
+                            Text(verbatim: option.tabularEncoding?.displayName ?? option.rawValue).tag(option)
+                        }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()

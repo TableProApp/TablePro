@@ -29,11 +29,8 @@ struct SSHTransportSections: View {
                 text: $coordinator.network.sshForwardUnixSocketPath,
                 prompt: Text(verbatim: coordinator.network.socketPathPrompt)
             )
-            if coordinator.network.hasHostListField, replicaSetHostsAreListed {
-                Label(
-                    String(localized: "TablePro connects to the first host over a tunnel. Replica set failover is not available."),
-                    systemImage: "exclamationmark.triangle"
-                )
+            if let caption = coordinator.network.tunnelHostListCaption {
+                Label(caption, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -84,10 +81,6 @@ struct SSHTransportSections: View {
         Label(message, systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(tint)
-    }
-
-    private var replicaSetHostsAreListed: Bool {
-        coordinator.network.firstHostListValue.contains(",")
     }
 }
 

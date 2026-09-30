@@ -7,16 +7,17 @@ import Foundation
 import TableProPluginKit
 
 struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
+    private static let firstReleaseWithQueryIDFunction = [21, 9]
+
     let supportedPanels: Set<DashboardPanel> = [.activeSessions, .serverMetrics, .slowQueries]
+    private let canNameItsOwnQuery: Bool
+
+    init(serverVersion: String?) {
+        canNameItsOwnQuery = Self.hasQueryIDFunction(serverVersion: serverVersion)
+    }
 
     func fetchSessions(execute: (String) async throws -> QueryResult) async throws -> [DashboardSession] {
-        let sql = """
-            SELECT query_id, user, current_database, elapsed, read_rows,
-                   memory_usage, left(query, 1000) AS query
-            FROM system.processes
-            ORDER BY elapsed DESC
-            """
-        let result = try await execute(sql)
+        let result = try await execute(sessionsQuery)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
             let elapsed = Double(value(row, at: col["elapsed"])) ?? 0
@@ -109,6 +110,22 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
 // MARK: - Helpers
 
 private extension ClickHouseDashboardProvider {
+    static func hasQueryIDFunction(serverVersion: String?) -> Bool {
+        let release = (serverVersion ?? "").split(separator: ".").prefix(2).compactMap { Int($0) }
+        guard release.count == firstReleaseWithQueryIDFunction.count else { return false }
+        return !release.lexicographicallyPrecedes(firstReleaseWithQueryIDFunction)
+    }
+
+    var sessionsQuery: String {
+        let ownQueryExclusion = canNameItsOwnQuery ? "\nWHERE query_id != queryID()" : ""
+        return """
+            SELECT query_id, user, current_database, elapsed, read_rows,
+                   memory_usage, left(query, 1000) AS query
+            FROM system.processes\(ownQueryExclusion)
+            ORDER BY elapsed DESC
+            """
+    }
+
     func columnIndex(from columns: [String]) -> [String: Int] {
         var map: [String: Int] = [:]
         for (index, name) in columns.enumerated() {
