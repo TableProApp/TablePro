@@ -119,10 +119,6 @@ internal struct EtcdRowFilter: Codable, Equatable, Sendable {
         let value: String
         let secondValue: String?
         let isCaseSensitive: Bool
-
-        var searchesValueToo: Bool {
-            column == .key && (comparison == .contains || comparison == .startsWith)
-        }
     }
 
     static let rawConditionColumn = "__RAW__"
@@ -132,10 +128,6 @@ internal struct EtcdRowFilter: Codable, Equatable, Sendable {
     let matchesAll: Bool
 
     var isUnfiltered: Bool { conditions.isEmpty }
-
-    var readsValues: Bool {
-        conditions.contains { $0.column == .value || $0.searchesValueToo }
-    }
 
     init(conditions: [Condition], matchesAll: Bool) {
         self.conditions = conditions
@@ -242,9 +234,7 @@ private struct EtcdConditionTest {
             return !(cell?.isEmpty ?? true)
         default:
             guard let cell else { return false }
-            if matches(cell, in: row) { return true }
-            guard condition.searchesValueToo, let value = row.value else { return false }
-            return matches(value, in: row)
+            return matches(cell, in: row)
         }
     }
 

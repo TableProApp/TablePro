@@ -49,6 +49,15 @@ struct EtcdRowFilterTests {
         #expect(kept == ["/app/y1"])
     }
 
+    @Test("A Key filter tests the key alone, never the value", arguments: ["CONTAINS", "STARTS WITH"])
+    func keyFilterIgnoresValue(op: String) throws {
+        let kept = try keep(
+            [row("/a", value: "/zzz"), row("/zzz", value: "a")],
+            [PluginQueryFilter(column: "Key", op: op, value: "/z")]
+        )
+        #expect(kept == ["/zzz"])
+    }
+
     @Test("Two Key filters in OR mode keep a key matching either")
     func keyFiltersInOrMode() throws {
         let kept = try keep(
