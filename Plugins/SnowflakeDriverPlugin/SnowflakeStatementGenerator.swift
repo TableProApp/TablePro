@@ -47,6 +47,9 @@ struct SnowflakeStatementGenerator {
         return statements
     }
 
+    /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
+    static let defaultMarker = PluginCellValue.text("__DEFAULT__")
+
     static func isSemiStructured(_ typeName: String) -> Bool {
         let base = typeName.uppercased().components(separatedBy: "(")[0].trimmingCharacters(in: .whitespaces)
         return ["VARIANT", "OBJECT", "ARRAY"].contains(base)
@@ -67,6 +70,11 @@ struct SnowflakeStatementGenerator {
             }
         }
         guard !values.isEmpty else { return nil }
+        values.removeAll { $0.value == Self.defaultMarker }
+        guard !values.isEmpty else {
+            guard let firstColumn = columns.first else { return nil }
+            return ("INSERT INTO \(qualifiedTable) (\(quoteIdentifier(firstColumn))) VALUES (DEFAULT)", [])
+        }
 
         let names = values.map { quoteIdentifier($0.column) }
         let placeholders = values.map { placeholder(for: $0.column) }

@@ -49,6 +49,34 @@ struct SnowflakeStatementGeneratorTests {
         #expect(result[0].parameters == [.text("1"), .text("Alice")])
     }
 
+    @Test
+    func insertLeavesDefaultMarkedColumnsOut() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = generator(columns: ["id", "status"], types: ["NUMBER", "VARCHAR"], primaryKeys: ["id"])
+            .generateStatements(
+                from: [change],
+                insertedRowData: [0: [.text("1"), .text("__DEFAULT__")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        #expect(result.map(\.statement) == ["INSERT INTO \"DB\".\"PUBLIC\".\"T\" (\"id\") VALUES (?)"])
+        #expect(result.first?.parameters == [.text("1")])
+    }
+
+    @Test
+    func insertOfOnlyDefaultsWritesTheDefaultKeyword() {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let result = generator(columns: ["id", "status"], types: ["NUMBER", "VARCHAR"], primaryKeys: ["id"])
+            .generateStatements(
+                from: [change],
+                insertedRowData: [0: [.text("__DEFAULT__"), .text("__DEFAULT__")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        #expect(result.map(\.statement) == ["INSERT INTO \"DB\".\"PUBLIC\".\"T\" (\"id\") VALUES (DEFAULT)"])
+        #expect(result.first?.parameters.isEmpty == true)
+    }
+
     @Test("Inserts touching VARIANT columns use INSERT SELECT with PARSE_JSON")
     func testVariantInsertUsesSelect() {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
