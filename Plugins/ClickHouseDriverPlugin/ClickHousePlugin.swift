@@ -129,7 +129,6 @@ struct ClickHouseError: Error, PluginDriverError {
     var pluginErrorMessage: String { message }
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
-    static let connectionFailed = ClickHouseError(message: String(localized: "Failed to establish connection"))
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
         Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
         the server's certificate, or set SSL Mode to Verify Identity.
@@ -139,6 +138,15 @@ struct ClickHouseError: Error, PluginDriverError {
         ClickHouseError(message: String(
             format: String(localized: "The CA certificate at %@ could not be read as a PEM or DER certificate."),
             path
+        ))
+    }
+
+    static func httpFailure(statusCode: Int, body: String) -> ClickHouseError {
+        let serverText = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard serverText.isEmpty else { return ClickHouseError(message: serverText) }
+        return ClickHouseError(message: String(
+            format: String(localized: "ClickHouse returned HTTP %lld."),
+            Int64(statusCode)
         ))
     }
 }
@@ -254,13 +262,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 session = nil
             }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
-            if let refusal = tlsDelegate?.recordedRefusal {
-                throw refusal
-            }
-            if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
-                throw sslError
-            }
-            throw ClickHouseError.connectionFailed
+            throw ClickHouseConnectFailure.error(for: error, tlsRefusal: tlsDelegate?.recordedRefusal)
         }
 
         report(.preparingSession)

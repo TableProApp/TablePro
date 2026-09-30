@@ -63,7 +63,7 @@ extension ClickHousePluginDriver {
             let body = String(decoding: data, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
             let exceptionCode = httpResponse.value(forHTTPHeaderField: "X-ClickHouse-Exception-Code") ?? "none"
             Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode) exception \(exceptionCode): \(body)")
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw ClickHouseError.httpFailure(statusCode: httpResponse.statusCode, body: body)
         }
 
         let headers = Self.headerFields(httpResponse)
