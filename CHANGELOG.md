@@ -18,9 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
 - iOS row editor saving the placeholder of a long text or binary value over the full value.
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
+- Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
 - Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
 - Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
+- etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
+- Mac Alert (Full), Safe Mode and Safe Mode (Full) levels dropped to Alert by any edit to the connection on iOS.
+- `pg_terminate_backend`, `nextval` and other state-changing calls treated as reads by Safe Mode and external clients.
+- `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
+- Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
+- Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 
 ## [0.76.1] - 2026-09-29
 
