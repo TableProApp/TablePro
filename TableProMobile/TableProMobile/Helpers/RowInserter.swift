@@ -29,7 +29,7 @@ nonisolated enum RowInsertPlanner {
             var insertColumns: [String] = []
             var insertValues: [String?] = []
             for column in columns {
-                guard !column.isGenerated else { continue }
+                guard !column.isServerOwned else { continue }
                 guard let value = row.value(for: column.name) else { continue }
                 if dropsEmptyPrimaryKey, primaryKeys.contains(column.name), value.isEmptyOrNull { continue }
                 insertColumns.append(column.name)

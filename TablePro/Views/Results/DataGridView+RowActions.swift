@@ -103,8 +103,13 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-            writeCopiedStatements(converter.generateInserts(rows: typedRows))
+            let rows = indices.sorted().compactMap(displayRow(at:)).map { row in
+                SQLRowToStatementConverter.SourceRow(
+                    values: projection.values(Array(row.values)),
+                    defaultedColumns: projection.positions(of: stagedDefaults(of: row))
+                )
+            }
+            writeCopiedStatements(converter.generateInserts(rows: rows))
         } catch {
             rowActionsLogger.error("copyRowsAsInsert failed: \(error.publicLogShape, privacy: .public)")
         }
@@ -150,8 +155,20 @@ extension TableViewCoordinator {
         return SQLRowToStatementConverter.SourceRow(
             values: Array(row.values),
             storedValues: stored,
-            isPendingInsert: changeManager.insertedRowIDs.contains(row.id)
+            isPendingInsert: changeManager.insertedRowIDs.contains(row.id),
+            defaultedColumns: stagedDefaults(of: row)
         )
+    }
+
+    /// The cells the grid itself set to the server's default: every marker in a row not saved yet, and in a saved row
+    /// the cells a pending edit set to Default. Anything else that reads `__DEFAULT__` is what the table holds.
+    private func stagedDefaults(of row: Row) -> Set<Int> {
+        let marker = PluginCellValue.text("__DEFAULT__")
+        if changeManager.insertedRowIDs.contains(row.id) {
+            return Set(row.values.indices.filter { row.values[$0] == marker })
+        }
+        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
     }
 
     /// A copy that produced no statement leaves the clipboard as it was, rather than replacing it with nothing.

@@ -197,14 +197,18 @@ struct RowChangeStatementFactory {
         rows: [[PluginCellValue]],
         absentCells: [Int: Set<Int>] = [:]
     ) throws -> RestoreStatements {
+        let restoredIdentity = try identityColumnsToRestore()
         if let pluginDriver {
+            let restorable = restorableColumnIndices(keeping: restoredIdentity)
             if let restored = pluginDriver.generateIdentityPreservingInsert(
                 table: tableName,
                 schema: schemaName,
-                columns: columns,
+                columns: restorable.map { columns[$0] },
                 primaryKeyColumns: primaryKeyColumns,
-                rows: rows,
-                absentCells: absentCells
+                rows: rows.map { row in restorable.map { row.indices.contains($0) ? row[$0] : .null } },
+                absentCells: absentCells.mapValues { absent in
+                    Set(restorable.indices.filter { absent.contains(restorable[$0]) })
+                }
             ) {
                 return RestoreStatements(statements: restored.map {
                     ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
@@ -215,7 +219,6 @@ struct RowChangeStatementFactory {
             }
         }
 
-        let restoredIdentity = try identityColumnsToRestore()
         let style = restoredIdentity.isEmpty ? nil : ExplicitIdentityInsert.style(for: databaseType)
         if !restoredIdentity.isEmpty, style == nil {
             throw DataWriteError.identityNotPreservable(databaseType.rawValue)
@@ -245,6 +248,12 @@ struct RowChangeStatementFactory {
         guard style == .identityInsertSession else { return RestoreStatements(statements: statements) }
         let session = ExplicitIdentityInsert.sessionStatements(for: generator.qualifiedTableName)
         return RestoreStatements(statements: statements, prologue: [session.open], epilogue: [session.close])
+    }
+
+    /// The columns a restored row is written with: every one but those the server computes, which refuse a value and
+    /// come back on their own. An identity column stays, because leaving it to the server re-keys the row.
+    private func restorableColumnIndices(keeping identity: Set<String>) -> [Int] {
+        columns.indices.filter { !generatedColumns.contains(columns[$0]) || identity.contains(columns[$0]) }
     }
 
     /// The identity columns a restored row carries its old value for. A value the server allocated cannot be left to

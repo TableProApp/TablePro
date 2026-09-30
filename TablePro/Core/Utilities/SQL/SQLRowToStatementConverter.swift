@@ -12,15 +12,25 @@ import TableProPluginKit
 /// and the WHERE clause names the row as it is stored, not as it has been edited.
 internal struct SQLRowToStatementConverter {
     /// One row of the grid, as it is shown and as the server has it.
+    ///
+    /// `defaultedColumns` names the cells the grid staged as left to the server's default. The grid spells that as the
+    /// text `__DEFAULT__`, which a stored value can also be, so only a cell named here is read as the marker.
     internal struct SourceRow {
         internal let values: [PluginCellValue]
         internal let storedValues: [PluginCellValue]
         internal let isPendingInsert: Bool
+        internal let defaultedColumns: Set<Int>
 
-        internal init(values: [PluginCellValue], storedValues: [PluginCellValue]? = nil, isPendingInsert: Bool = false) {
+        internal init(
+            values: [PluginCellValue],
+            storedValues: [PluginCellValue]? = nil,
+            isPendingInsert: Bool = false,
+            defaultedColumns: Set<Int> = []
+        ) {
             self.values = values
             self.storedValues = storedValues ?? values
             self.isPendingInsert = isPendingInsert
+            self.defaultedColumns = defaultedColumns
         }
     }
 
@@ -36,7 +46,6 @@ internal struct SQLRowToStatementConverter {
     private let escapeStringFn: (String) -> String
 
     private static let maxRows = 50_000
-    private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
 
     init(
         tableName: String,
@@ -77,16 +86,16 @@ internal struct SQLRowToStatementConverter {
 
     // MARK: - INSERT
 
-    internal func generateInserts(rows: [[PluginCellValue]]) -> String {
+    internal func generateInserts(rows: [SourceRow]) -> String {
         rows.prefix(Self.maxRows).compactMap(insertStatement).joined(separator: "\n")
     }
 
     /// A column the server owns, or one the row leaves to its default, stays out of the list, so the copied statement
     /// inserts what a save of the same row would.
-    private func insertStatement(row: [PluginCellValue]) -> String? {
-        let written = zip(columns, row).filter { column, value in
-            !unwritableColumns.contains(column) && value != Self.defaultMarker
-        }
+    private func insertStatement(row: SourceRow) -> String? {
+        let written = zip(columns.indices, zip(columns, row.values)).filter { index, cell in
+            !unwritableColumns.contains(cell.0) && !row.defaultedColumns.contains(index)
+        }.map(\.1)
         guard !written.isEmpty else {
             let firstWritable = columns.first { !unwritableColumns.contains($0) }.map(quoteIdentifierFn)
             return AllDefaultsInsert.sql(
@@ -129,12 +138,13 @@ internal struct SQLRowToStatementConverter {
                 let stored = row.storedValues.indices.contains(index) ? row.storedValues[index] : .null
                 guard value != stored else { return nil }
             }
-            guard value != Self.defaultMarker else { return "\(quoteIdentifierFn(column)) = DEFAULT" }
+            guard !row.defaultedColumns.contains(index) else { return "\(quoteIdentifierFn(column)) = DEFAULT" }
             return "\(quoteIdentifierFn(column)) = \(formatValue(value))"
         }
     }
 
     private func rowMatch(storedValues: [PluginCellValue]) -> String? {
+        guard primaryKeyColumns.isEmpty || keyColumnsPresent else { return nil }
         if keyColumnsPresent {
             let conditions = primaryKeyColumns.compactMap { key -> String? in
                 guard let index = columns.firstIndex(of: key), storedValues.indices.contains(index),

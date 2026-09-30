@@ -77,7 +77,7 @@ struct SQLRowToStatementConverterTests {
     @Test("Single row produces one INSERT statement")
     func insertSingleRow() throws {
         let converter = try makeConverter()
-        let result = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'Alice', 'alice@example.com');")
     }
 
@@ -88,7 +88,7 @@ struct SQLRowToStatementConverterTests {
             ["1", "Alice", "alice@example.com"],
             ["2", "Bob", "bob@example.com"]
         ]
-        let result = converter.generateInserts(rows: rows)
+        let result = converter.generateInserts(rows: plain(rows))
         let lines = result.components(separatedBy: "\n")
         #expect(lines.count == 2)
         #expect(lines[0] == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'Alice', 'alice@example.com');")
@@ -98,21 +98,21 @@ struct SQLRowToStatementConverterTests {
     @Test("NULL values render as unquoted NULL")
     func insertNullValues() throws {
         let converter = try makeConverter()
-        let result = converter.generateInserts(rows: [["1", nil, nil]])
+        let result = converter.generateInserts(rows: plain([["1", nil, nil]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', NULL, NULL);")
     }
 
     @Test("Empty strings render as empty quoted string")
     func insertEmptyStrings() throws {
         let converter = try makeConverter()
-        let result = converter.generateInserts(rows: [["1", "", ""]])
+        let result = converter.generateInserts(rows: plain([["1", "", ""]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', '', '');")
     }
 
     @Test("Single quotes in data are escaped as double single-quotes")
     func insertSpecialCharactersSingleQuotes() throws {
         let converter = try makeConverter()
-        let result = converter.generateInserts(rows: [["1", "O'Brien", "o'brien@example.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "O'Brien", "o'brien@example.com"]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'O''Brien', 'o''brien@example.com');")
     }
 
@@ -161,14 +161,14 @@ struct SQLRowToStatementConverterTests {
     @Test("MSSQL uses bracket quoting and N-prefixed literals")
     func mssqlUsesBracketQuoting() throws {
         let converter = try makeConverter(databaseType: .mssql, dialect: Self.mssqlDialect)
-        let result = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(result == "INSERT INTO [users] ([id], [name], [email]) VALUES (N'1', N'Alice', N'alice@example.com');")
     }
 
     @Test("MSSQL: non-Latin text survives a copied INSERT and UPDATE")
     func mssqlKeepsNonLatinText() throws {
         let converter = try makeConverter(databaseType: .mssql, dialect: Self.mssqlDialect)
-        let inserts = converter.generateInserts(rows: [["1", "日本語", "a@b.c"]])
+        let inserts = converter.generateInserts(rows: plain([["1", "日本語", "a@b.c"]]))
         #expect(inserts.contains("N'日本語'"))
         let updates = converter.generateUpdates(rows: plain([["1", "日本語", "a@b.c"]]))
         #expect(updates.contains("[name] = N'日本語'"))
@@ -178,21 +178,21 @@ struct SQLRowToStatementConverterTests {
     @Test("PostgreSQL uses double-quote quoting")
     func postgresqlUsesDoubleQuoteQuoting() throws {
         let converter = try makeConverter(databaseType: .postgresql, dialect: Self.postgresDialect)
-        let result = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(result == "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES ('1', 'Alice', 'alice@example.com');")
     }
 
     @Test("MySQL uses backtick quoting")
     func mysqlUsesBacktickQuoting() throws {
         let converter = try makeConverter(databaseType: .mysql)
-        let result = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'Alice', 'alice@example.com');")
     }
 
     @Test("DuckDB uses double-quote quoting and standard UPDATE syntax")
     func duckdbUsesDoubleQuoteAndStandardUpdate() throws {
         let converter = try makeConverter(databaseType: .duckdb, dialect: Self.duckdbDialect)
-        let insert = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
+        let insert = converter.generateInserts(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(insert == "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES ('1', 'Alice', 'alice@example.com');")
         let update = converter.generateUpdates(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(update == "UPDATE \"users\" SET \"name\" = 'Alice', \"email\" = 'alice@example.com' WHERE \"id\" = '1';")
@@ -201,26 +201,26 @@ struct SQLRowToStatementConverterTests {
     @Test("MySQL escapes backslashes in values")
     func mysqlBackslashEscaping() throws {
         let converter = try makeConverter(databaseType: .mysql)
-        let result = converter.generateInserts(rows: [["1", "C:\\Users\\test", "a@b.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "C:\\Users\\test", "a@b.com"]]))
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'C:\\\\Users\\\\test', 'a@b.com');")
     }
 
     @Test("PostgreSQL does not escape backslashes")
     func postgresqlNoBackslashEscaping() throws {
         let converter = try makeConverter(databaseType: .postgresql, dialect: Self.postgresDialect)
-        let result = converter.generateInserts(rows: [["1", "C:\\Users\\test", "a@b.com"]])
+        let result = converter.generateInserts(rows: plain([["1", "C:\\Users\\test", "a@b.com"]]))
         #expect(result == "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES ('1', 'C:\\Users\\test', 'a@b.com');")
     }
 
-    @Test("UPDATE falls back to all-column WHERE when PK not in columns")
-    func updatePkNotInColumnsFallsBack() throws {
+    @Test("UPDATE writes nothing when a declared key column is missing, as the save does")
+    func updatePkNotInColumnsWritesNothing() throws {
         let converter = try makeConverter(
             columns: ["name", "email"],
             primaryKeyColumn: "id",
             databaseType: .mysql
         )
         let result = converter.generateUpdates(rows: plain([["Alice", "alice@example.com"]]))
-        #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@example.com' WHERE `name` = 'Alice' AND `email` = 'alice@example.com';")
+        #expect(result == "")
     }
 
     @Test("UPDATE restricts SET to settable columns and keys WHERE on the primary key")
@@ -270,7 +270,7 @@ struct SQLRowToStatementConverterTests {
     @Test("Empty rows input returns empty string")
     func emptyRowsReturnsEmptyString() throws {
         let converter = try makeConverter()
-        #expect(converter.generateInserts(rows: []) == "")
+        #expect(converter.generateInserts(rows: plain([])) == "")
         #expect(converter.generateUpdates(rows: plain([])) == "")
     }
 
@@ -281,7 +281,7 @@ struct SQLRowToStatementConverterTests {
             primaryKeyColumn: "id"
         )
         let rows: [[PluginCellValue]] = (1...50_001).map { i in [.text("\(i)"), .text("name\(i)")] }
-        let result = converter.generateInserts(rows: rows)
+        let result = converter.generateInserts(rows: plain(rows))
         let lines = result.components(separatedBy: "\n")
         #expect(lines.count == 50_000)
     }
@@ -297,7 +297,7 @@ struct SQLRowToStatementConverterTests {
             escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
         )
         let bytes = Data([0xD3, 0x8C, 0xE5, 0x66])
-        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        let result = converter.generateInserts(rows: plain([[.text("1"), .bytes(bytes)]]))
         #expect(result.contains("'\\xD38CE566'::bytea"))
         #expect(!result.contains("NULL"))
     }
@@ -310,7 +310,7 @@ struct SQLRowToStatementConverterTests {
             primaryKeyColumn: "id"
         )
         let bytes = Data([0xDE, 0xAD, 0xBE, 0xEF])
-        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        let result = converter.generateInserts(rows: plain([[.text("1"), .bytes(bytes)]]))
         #expect(result.contains("X'DEADBEEF'"))
         #expect(!result.contains("NULL"))
     }
@@ -326,7 +326,7 @@ struct SQLRowToStatementConverterTests {
             escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
         )
         let bytes = Data([0xCA, 0xFE, 0xBA, 0xBE])
-        let result = converter.generateInserts(rows: [[.text("1"), .bytes(bytes)]])
+        let result = converter.generateInserts(rows: plain([[.text("1"), .bytes(bytes)]]))
         #expect(result.contains("0xCAFEBABE"))
         #expect(!result.contains("'CAFEBABE'"))
     }
@@ -389,22 +389,32 @@ struct SQLRowToStatementConverterTests {
     @Test
     func insertLeavesServerOwnedAndDefaultMarkedColumnsOut() throws {
         let converter = try mssqlConverter(columns: ["ID", "Name", "Status"], unwritableColumns: ["ID"])
-        let result = converter.generateInserts(rows: [["1761", "Alice", "__DEFAULT__"]])
-        #expect(result == "INSERT INTO [Enterprise_App_Approved] ([Name]) VALUES (N'Alice');")
+        let staged = SQLRowToStatementConverter.SourceRow(
+            values: ["1761", "Alice", "__DEFAULT__"], isPendingInsert: true, defaultedColumns: [2]
+        )
+        #expect(converter.generateInserts(rows: [staged]) == "INSERT INTO [Enterprise_App_Approved] ([Name]) VALUES (N'Alice');")
     }
 
     @Test
     func insertOfOnlyServerFilledColumnsUsesDefaultValues() throws {
         let converter = try mssqlConverter(columns: ["ID", "Status"], unwritableColumns: ["ID"])
-        let result = converter.generateInserts(rows: [["1761", "__DEFAULT__"]])
-        #expect(result == "INSERT INTO [Enterprise_App_Approved] DEFAULT VALUES;")
+        let staged = SQLRowToStatementConverter.SourceRow(values: ["1761", "__DEFAULT__"], defaultedColumns: [1])
+        #expect(converter.generateInserts(rows: [staged]) == "INSERT INTO [Enterprise_App_Approved] DEFAULT VALUES;")
     }
 
     @Test
     func updateAssignsDefaultForADefaultMarkedCell() throws {
         let converter = try mssqlConverter(columns: ["code", "Status"], primaryKeyColumns: ["code"], unwritableColumns: [])
-        let result = converter.generateUpdates(rows: plain([["a", "__DEFAULT__"]]))
-        #expect(result == "UPDATE [Enterprise_App_Approved] SET [Status] = DEFAULT WHERE [code] = N'a';")
+        let staged = SQLRowToStatementConverter.SourceRow(values: ["a", "__DEFAULT__"], defaultedColumns: [1])
+        #expect(converter.generateUpdates(rows: [staged]) == "UPDATE [Enterprise_App_Approved] SET [Status] = DEFAULT WHERE [code] = N'a';")
+    }
+
+    @Test
+    func aStoredValueThatReadsLikeTheDefaultMarkerIsCopiedAsData() throws {
+        let converter = try mssqlConverter(columns: ["code", "Status"], primaryKeyColumns: ["code"], unwritableColumns: [])
+        let stored = plain([["a", "__DEFAULT__"]])
+        #expect(converter.generateUpdates(rows: stored) == "UPDATE [Enterprise_App_Approved] SET [Status] = N'__DEFAULT__' WHERE [code] = N'a';")
+        #expect(converter.generateInserts(rows: stored) == "INSERT INTO [Enterprise_App_Approved] ([code], [Status]) VALUES (N'a', N'__DEFAULT__');")
     }
 
     @Test
@@ -419,7 +429,7 @@ struct SQLRowToStatementConverterTests {
     @Test
     func tableIsQualifiedWithItsSchema() throws {
         let converter = try mssqlConverter(schemaName: "sales")
-        let result = converter.generateInserts(rows: [["Test", "1", "A"]])
+        let result = converter.generateInserts(rows: plain([["Test", "1", "A"]]))
         #expect(result.hasPrefix("INSERT INTO [sales].[Enterprise_App_Approved] "))
     }
 

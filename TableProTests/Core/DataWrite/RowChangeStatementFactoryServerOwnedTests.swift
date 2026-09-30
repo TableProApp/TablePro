@@ -11,6 +11,23 @@ import Testing
 private final class ContextRecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var context: PluginRowWriteContext?
     private(set) var insertedRowData: [Int: [PluginCellValue]] = [:]
+    private(set) var restoredColumns: [String] = []
+    private(set) var restoredRows: [[PluginCellValue]] = []
+    var preservesIdentity = false
+
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        guard preservesIdentity else { return nil }
+        restoredColumns = columns
+        restoredRows = rows
+        return [(statement: "RESTORE", parameters: [])]
+    }
 
     func generateRowWrites(
         table: String,
@@ -168,6 +185,17 @@ struct RowChangeStatementFactoryServerOwnedTests {
     func aRecordThatNeverSaidWhichColumnsAreIdentityRestoresATableWithNoGeneratedColumn() throws {
         let restored = try factory(generatedColumns: [], identityColumns: nil).restoreStatements(rows: [["5", "a", "10"]])
         #expect(restored.statements.count == 1)
+    }
+
+    @Test
+    func aDriverThatRestoresItsOwnRowsIsHandedTheIdentityButNotTheComputedColumns() throws {
+        let driver = ContextRecordingDriver()
+        driver.preservesIdentity = true
+        let restored = try factory(databaseType: DatabaseType(rawValue: "Spanner"), driver: driver)
+            .restoreStatements(rows: [["5", "a", "10"]])
+        #expect(restored.statements.map(\.sql) == ["RESTORE"])
+        #expect(driver.restoredColumns == ["ID", "Name"])
+        #expect(driver.restoredRows == [["5", "a"]])
     }
 
     @Test

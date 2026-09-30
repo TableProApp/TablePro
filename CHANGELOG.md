@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Snowflake, Teradata and Trino rows storing `__DEFAULT__` in columns left to their default.
 - Oracle identity and virtual columns offered for editing, and Add Row failing on a table that has one.
 - Restore Previous Values bringing a deleted SQL Server or PostgreSQL row back under a new identity key.
-- iOS row editor offering SQL Server identity and computed columns for editing.
+- iOS row editor and Add Row writing SQL Server identity and computed columns.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.

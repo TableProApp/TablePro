@@ -154,7 +154,8 @@ struct RewindExecutor {
                 )
             },
             prologue: plan.prologue,
-            epilogue: plan.epilogue
+            epilogue: plan.epilogue,
+            prologueIsRequired: true
         )
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
