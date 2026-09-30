@@ -174,14 +174,15 @@ struct RestoreDatabaseFlow: View {
     /// A restore replays a dump into a database that already has contents, and the tools it drives
     /// do not ask. Picking a database in the list used to be the last step before the first write.
     private func startRestore(database: String) async {
+        guard let message = RestoreConfirmationText.message(for: connection.type, formatId: formatId) else {
+            phase = .failed(
+                message: NativeDumpError.unsupportedDatabase.localizedDescription, targetMayBeModified: false)
+            return
+        }
         guard await AlertHelper.confirmDestructive(
             title: String(
                 format: String(localized: "Restore into \u{201C}%@\u{201D}?"), database),
-            message: String(
-                localized: """
-                    The dump is replayed into this database. Objects it names are overwritten and \
-                    the change cannot be undone.
-                    """),
+            message: message,
             confirmButton: String(localized: "Restore"),
             window: hostWindow
         ) else {

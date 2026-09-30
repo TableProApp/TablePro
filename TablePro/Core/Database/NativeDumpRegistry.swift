@@ -121,7 +121,8 @@ enum NativeDumpRegistry {
                         A dump of chosen tables may not restore on its own. Sequences, types, schemas \
                         and tables it references are left out.
                         """)
-            )
+            ),
+            restoreSemantics: .addsToExistingObjects
         )
     }
 
@@ -223,7 +224,8 @@ enum NativeDumpRegistry {
                         Views and tables the chosen tables reference are left out. The dump turns \
                         foreign key checks off, so it restores with those references dangling.
                         """)
-            )
+            ),
+            restoreSemantics: .replacesObjects
         )
     }
 
@@ -283,7 +285,8 @@ enum NativeDumpRegistry {
                 fileExtension: "archive",
                 contentDescription: String(localized: "MongoDB gzipped archive")
             ),
-            objectScope: .collections
+            objectScope: .collections,
+            restoreSemantics: .addsToExistingObjects
         )
     }
 
@@ -353,7 +356,8 @@ enum NativeDumpRegistry {
                         The .bacpac always carries the whole schema. Only the chosen tables' data is \
                         narrowed, and tables they reference by foreign key have to be chosen too.
                         """)
-            )
+            ),
+            restoreSemantics: .requiresEmptyDatabase
         )
     }
 
@@ -417,6 +421,7 @@ enum NativeDumpRegistry {
                 contentDescription: String(localized: "SQL statements")
             ),
             objectScope: .tables(caveat: nil),
+            restoreSemantics: .addsToExistingObjects,
             requiresLocalFile: true
         )
     }
@@ -474,7 +479,8 @@ enum NativeDumpRegistry {
             archiveFormat: duckDBFileFormat,
             objectScope: .unsupported(
                 reason: String(localized: "DuckDB copies the whole database. There is no table filter.")
-            )
+            ),
+            restoreSemantics: .stopsAtExistingObjects
         )
     }
 
@@ -497,7 +503,8 @@ enum NativeDumpRegistry {
             archiveFormat: duckDBParquetFormat,
             objectScope: .unsupported(
                 reason: String(localized: "EXPORT DATABASE writes the whole database. There is no table filter.")
-            )
+            ),
+            restoreSemantics: .stopsAtExistingObjects
         )
     }
 

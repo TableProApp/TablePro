@@ -232,9 +232,17 @@ struct NativeDumpDescriptor: Sendable {
         case engineStatements(EngineStatements)
     }
 
+    internal enum RestoreSemantics: Sendable, Equatable {
+        case replacesObjects
+        case addsToExistingObjects
+        case stopsAtExistingObjects
+        case requiresEmptyDatabase
+    }
+
     let mechanism: Mechanism
     let archiveFormat: ArchiveFormat
     let objectScope: NativeDumpObjectScope
+    let restoreSemantics: RestoreSemantics
 
     /// True when the tool opens the database file itself and so cannot reach a connection that has
     /// no local file. libSQL claims the SQLite descriptor and reaches either a file or a Turso URL,
@@ -245,11 +253,13 @@ struct NativeDumpDescriptor: Sendable {
         mechanism: Mechanism,
         archiveFormat: ArchiveFormat,
         objectScope: NativeDumpObjectScope,
+        restoreSemantics: RestoreSemantics,
         requiresLocalFile: Bool = false
     ) {
         self.mechanism = mechanism
         self.archiveFormat = archiveFormat
         self.objectScope = objectScope
+        self.restoreSemantics = restoreSemantics
         self.requiresLocalFile = requiresLocalFile
     }
 

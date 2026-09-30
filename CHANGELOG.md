@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - MongoDB restore into a database with a different name restoring nothing and reporting success.
 - MongoDB Backup Dump and Restore ignoring the connection's Auth Database, Hosts list, SRV and TLS options.
+- Restore confirmation claiming existing objects are overwritten on PostgreSQL, MongoDB, SQLite, SQL Server and DuckDB.
 
 ### Security
 

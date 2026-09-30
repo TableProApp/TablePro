@@ -159076,7 +159076,16 @@
         }
       }
     },
+    "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
+
+    },
+    "The dump is imported into this database, and the change cannot be undone. The import needs an empty database and stops if this one already holds objects." : {
+
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+
+    },
+    "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
 
     },
     "The encrypted file is corrupt or incomplete" : {
