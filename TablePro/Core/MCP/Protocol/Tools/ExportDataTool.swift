@@ -172,7 +172,7 @@ public struct ExportDataTool: MCPToolImplementation {
                 services: services
             )
 
-            let result = try await ToolQueryExecutor.executeAndLog(
+            let result = try await ToolQueryExecutor.executeResultAndLog(
                 services: services,
                 query: statement.sql,
                 scope: scope,
@@ -182,32 +182,24 @@ public struct ExportDataTool: MCPToolImplementation {
                 secrets: meta.redactionSecrets
             )
 
-            guard let rawColumns = result["columns"]?.arrayValue,
-                  let rawRows = result["rows"]?.arrayValue
-            else {
-                throw MCPToolExecutionError.queryFailed(
-                    String(localized: "The engine returned no result set to export.")
-                )
-            }
-
-            let columns = rawColumns.compactMap(\.stringValue)
-            let rows = Array(rawRows.prefix(maxRows))
-            let isTruncated = rawRows.count > maxRows || (result["is_truncated"]?.boolValue ?? false)
-            let document = Self.render(
+            let rowCount = min(result.rows.count, maxRows)
+            let isTruncated = result.rows.count > maxRows || result.isTruncated
+            let document = Self.document(
+                for: result,
                 format: format,
                 label: statement.label,
-                columns: columns,
-                rows: rows,
+                rowLimit: maxRows,
+                databaseType: meta.databaseType,
                 dialect: sqlDialect
             )
 
-            totalRows += rows.count
+            totalRows += rowCount
             anyTruncated = anyTruncated || isTruncated
             documents.append(document)
 
             var entry: [String: JsonValue] = [
                 "label": .string(statement.label),
-                "row_count": .int(rows.count),
+                "row_count": .int(rowCount),
                 "is_truncated": .bool(isTruncated)
             ]
             if destination == nil {
@@ -304,11 +296,28 @@ public struct ExportDataTool: MCPToolImplementation {
         }
     }
 
+    static func document(
+        for result: QueryResult,
+        format: MCPExportFormat,
+        label: String,
+        rowLimit: Int,
+        databaseType: DatabaseType,
+        dialect: MCPSqlExportDialect?
+    ) -> String {
+        render(
+            format: format,
+            label: label,
+            columns: result.columns,
+            rows: MCPExportValue.rows(of: result, limit: rowLimit, family: SQLTypeFamily.of(databaseType)),
+            dialect: dialect
+        )
+    }
+
     static func render(
         format: MCPExportFormat,
         label: String,
         columns: [String],
-        rows: [JsonValue],
+        rows: [[MCPExportValue]],
         dialect: MCPSqlExportDialect?
     ) -> String {
         switch format {

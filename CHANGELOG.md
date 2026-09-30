@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 - MCP `describe_table` results rejected by clients that check them against the tool's output schema.
+- MCP `export_data` writing numbers and booleans as strings in JSON and SQL output, and binary values as base64 text.
 
 ### Security
 
