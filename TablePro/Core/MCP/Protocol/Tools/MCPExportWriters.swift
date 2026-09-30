@@ -149,6 +149,8 @@ struct MCPSqlExportDialect: Sendable {
             return "0x\(hex)"
         case .hexToRaw:
             return data.isEmpty ? "EMPTY_BLOB()" : "HEXTORAW('\(hex)')"
+        case .unhexFunction:
+            return "unhex('\(hex)')"
         case .bitString, .unknown:
             return "X'\(hex)'"
         }

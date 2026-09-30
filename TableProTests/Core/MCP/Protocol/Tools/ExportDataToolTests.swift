@@ -411,7 +411,8 @@ struct ExportDataToolTypedCellTests {
             (.mysql, "X'0001'"),
             (.sqlite, "X'0001'"),
             (.mssql, "0x0001"),
-            (.oracle, "HEXTORAW('0001')")
+            (.oracle, "HEXTORAW('0001')"),
+            (.duckdb, "unhex('0001')")
         ]
         for (databaseType, literal) in expectations {
             let dialect = try #require(MCPSqlExportDialect.resolve(for: databaseType))
