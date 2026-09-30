@@ -28741,6 +28741,9 @@
         }
       }
     },
+    "CHECK expression as the engine reports it" : {
+
+    },
     "Changed since the save" : {
       "localizations" : {
         "ko" : {
@@ -36117,6 +36120,9 @@
           }
         }
       }
+    },
+    "Columns the constraint reads, when the engine reports them" : {
+
     },
     "Columns to select. Omit for all." : {
       "localizations" : {
@@ -67695,6 +67701,9 @@
           }
         }
       }
+    },
+    "False for a constraint the engine has not checked against existing rows" : {
+
     },
     "false" : {
       "localizations" : {
@@ -154594,6 +154603,9 @@
           }
         }
       }
+    },
+    "Table-level CHECK constraints" : {
+
     },
     "Table Type" : {
 

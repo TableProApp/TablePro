@@ -61,23 +61,49 @@ extension MCPConnectionBridge {
                 driver: driver, table: table, schema: schema
             )
 
-            var result: [String: JsonValue] = [
-                "table": .string(table),
-                "database": .string(scope.database),
-                "schema": schema.map { .string($0) } ?? .null,
-                "columns": .array(columns.map(MCPConnectionBridge.encode(column:))),
-                "indexes": .array(indexes.map(MCPConnectionBridge.encode(index:))),
-                "foreign_keys": .array(foreignKeys.map(MCPConnectionBridge.encode(foreignKey:))),
-                "check_constraints": .array(checkConstraints.map(MCPConnectionBridge.encode(checkConstraint:)))
-            ]
-            if let ddl {
-                result["ddl"] = .string(ddl)
-            }
-            if let approximateRowCount {
-                result["approximate_row_count"] = .int(approximateRowCount)
-            }
-            return .object(result)
+            return MCPConnectionBridge.encode(description: TableDescription(
+                table: table,
+                database: scope.database,
+                schema: schema,
+                columns: columns,
+                indexes: indexes,
+                foreignKeys: foreignKeys,
+                checkConstraints: checkConstraints,
+                ddl: ddl,
+                approximateRowCount: approximateRowCount
+            ))
         }
+    }
+
+    struct TableDescription {
+        let table: String
+        let database: String
+        let schema: String?
+        let columns: [ColumnInfo]
+        let indexes: [IndexInfo]
+        let foreignKeys: [ForeignKeyInfo]
+        let checkConstraints: [CheckConstraintInfo]
+        let ddl: String?
+        let approximateRowCount: Int?
+    }
+
+    static func encode(description: TableDescription) -> JsonValue {
+        var result: [String: JsonValue] = [
+            "table": .string(description.table),
+            "database": .string(description.database),
+            "schema": description.schema.map { .string($0) } ?? .null,
+            "columns": .array(description.columns.map(encode(column:))),
+            "indexes": .array(description.indexes.map(encode(index:))),
+            "foreign_keys": .array(description.foreignKeys.map(encode(foreignKey:))),
+            "check_constraints": .array(description.checkConstraints.map(encode(checkConstraint:)))
+        ]
+        if let ddl = description.ddl {
+            result["ddl"] = .string(ddl)
+        }
+        if let approximateRowCount = description.approximateRowCount {
+            result["approximate_row_count"] = .int(approximateRowCount)
+        }
+        return .object(result)
     }
 
     func listDatabases(connectionId: UUID) async throws -> JsonValue {
