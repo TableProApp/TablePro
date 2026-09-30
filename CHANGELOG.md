@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SAP HANA database driver plugin. (#1966)
 - Column mappings remembered per table for CSV, JSON and Excel imports, plus Match by Name and Match by Position. (#3172)
+- Folders for tables and views in the sidebar. (#3167)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Changed
