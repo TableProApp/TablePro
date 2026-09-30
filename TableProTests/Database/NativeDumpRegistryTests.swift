@@ -69,6 +69,18 @@ struct NativeDumpRegistryTests {
         )
     }
 
+    private func configuration(of built: NativeDumpCommand) throws -> String {
+        let url = try #require(built.temporaryCredentialsFileURL)
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func configurationValue(_ key: String, in contents: String) throws -> String {
+        let prefix = "\(key): \""
+        let line = try #require(contents.split(separator: "\n").first { $0.hasPrefix(prefix) })
+        return String(line.dropFirst(prefix.count).dropLast())
+    }
+
     @Test("The engines with client-side tools are the ones the menu offers")
     func supportedEngines() {
         for type in [DatabaseType.postgresql, .redshift, .mysql, .mariadb, .mongodb, .sqlite] {
@@ -171,12 +183,63 @@ struct NativeDumpRegistryTests {
         #expect(built.environment["MONGO_PASSWORD"] == nil)
     }
 
-    @Test("MongoDB writes no credentials file without a username")
+    @Test("MongoDB writes no password and no auth database without a username")
     func mongoSkipsCredentialsWithoutUser() throws {
         let anonymous = connection(type: .mongodb, username: "")
-        let built = try command(.mongodb, connection: anonymous)
-        #expect(built.temporaryCredentialsFileURL == nil)
-        #expect(!built.arguments.contains { $0.hasPrefix("--config=") })
+        let contents = try configuration(of: command(.mongodb, connection: anonymous))
+        #expect(!contents.contains("password:"))
+        let uri = try configurationValue("uri", in: contents)
+        #expect(uri == "mongodb://db.example.com:5432/")
+    }
+
+    @Test("MongoDB authenticates against the Auth Database field before the connection's database")
+    func mongoAuthenticatesAgainstTheAuthDatabase() throws {
+        var shop = connection(type: .mongodb, database: "shop")
+        shop.mongoAuthSource = "admin"
+        let explicit = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: shop)))
+        #expect(explicit.contains("authSource=admin"))
+        #expect(!explicit.contains("authSource=shop"))
+
+        shop.mongoAuthSource = nil
+        let fallback = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: shop)))
+        #expect(fallback.contains("authSource=shop"))
+    }
+
+    @Test("An SRV connection reaches the tool as a mongodb+srv connection string with TLS on", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mongoSrvUsesAConnectionString(kind: NativeDumpKind) throws {
+        var atlas = connection(type: .mongodb, host: "cluster0.example.mongodb.net", port: 27_017)
+        atlas.mongoUseSrv = true
+        let built = try command(.mongodb, kind: kind, connection: atlas)
+        let uri = try configurationValue("uri", in: configuration(of: built))
+        #expect(uri.hasPrefix("mongodb+srv://alice@cluster0.example.mongodb.net/?"))
+        #expect(uri.contains("authSource=admin"))
+        #expect(uri.contains("tls=true"))
+        #expect(!built.arguments.contains { $0.hasPrefix("--host") || $0.hasPrefix("--port") })
+    }
+
+    @Test("A host list and its replica set reach the tool whole, not as the first host")
+    func mongoHostListUsesAConnectionString() throws {
+        var replicaSet = connection(type: .mongodb, host: "a.example.com", port: 27_017)
+        replicaSet.additionalFields["mongoHosts"] = "a.example.com:27017,b.example.com:27018"
+        replicaSet.mongoReplicaSet = "rs0"
+        let built = try command(.mongodb, connection: replicaSet)
+        let uri = try configurationValue("uri", in: configuration(of: built))
+        #expect(uri.hasPrefix("mongodb://alice@a.example.com:27017,b.example.com:27018/?"))
+        #expect(uri.contains("replicaSet=rs0"))
+        #expect(!built.arguments.contains { $0.hasPrefix("--host") })
+    }
+
+    @Test("A Required MongoDB connection reaches the tool without verifying, as it does in the app")
+    func mongoRequiredSkipsVerification() throws {
+        var secured = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        secured.sslConfig.clientCertificatePath = "/certs/client.pem"
+        let built = try command(.mongodb, connection: secured)
+        let uri = try configurationValue("uri", in: configuration(of: built))
+        #expect(uri.contains("tls=true&tlsInsecure=true"))
+        #expect(uri.contains("tlsCertificateKeyFile=/certs/client.pem"))
+        #expect(!built.arguments.contains("--ssl"))
     }
 
     @Test("MongoDB names the database on backup and renames the archive into the target on restore")
@@ -240,7 +303,7 @@ struct NativeDumpRegistryTests {
         #expect(mysql.arguments.contains("127.0.0.1"))
 
         let mongo = try command(.mongodb, connection: connection(type: .mongodb, host: ""))
-        #expect(mongo.arguments.contains("--host=127.0.0.1"))
+        #expect(try configurationValue("uri", in: configuration(of: mongo)).hasPrefix("mongodb://alice@127.0.0.1:5432/?"))
     }
 
     /// Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and

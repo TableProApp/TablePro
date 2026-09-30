@@ -269,18 +269,14 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install mongodb-database-tools”."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
-                    needsCredentialsFile: true,
                     backupArguments: { request, _ in
-                        mongoConnectionFlags(request) + mongoNamespaceFlags(request) + [
-                            "--gzip",
-                            "--archive=\(request.fileURL.path)"
-                        ]
+                        mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
                     restoreArguments: { request, _ in
-                        mongoConnectionFlags(request)
-                            + NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
+                        NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
                             + ["--gzip", "--archive=\(request.fileURL.path)"]
-                    }
+                    },
+                    configurationFileEntries: { request in mongoConfigurationEntries(request) }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
@@ -300,16 +296,19 @@ enum NativeDumpRegistry {
         }
     }
 
-    private static func mongoConnectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        var flags = ["--host=\(request.host)", "--port=\(request.connection.port)"]
-        if !request.connection.username.isEmpty {
-            flags.append("--username=\(request.connection.username)")
-            flags.append("--authenticationDatabase=\(request.connection.database.isEmpty ? "admin" : request.connection.database)")
+    private static func mongoConfigurationEntries(
+        _ request: NativeDumpDescriptor.Request
+    ) -> [NativeDumpDescriptor.ConfigurationEntry] {
+        var entries = [
+            NativeDumpDescriptor.ConfigurationEntry(
+                key: "uri",
+                value: MongoToolsConnectionString.make(for: request.connection, host: request.host)
+            )
+        ]
+        if let password = request.password, !password.isEmpty, !request.connection.username.isEmpty {
+            entries.append(NativeDumpDescriptor.ConfigurationEntry(key: "password", value: password))
         }
-        if request.connection.sslConfig.isEnabled {
-            flags.append("--ssl")
-        }
-        return flags
+        return entries
     }
 
     // MARK: - SQL Server
