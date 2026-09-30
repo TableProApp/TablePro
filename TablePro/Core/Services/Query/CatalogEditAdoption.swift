@@ -66,12 +66,18 @@ struct CatalogEditAdoption {
     /// Where the object lives. A reference without a database means the one being browsed, and the
     /// schema resolves the way a tab stores it.
     func objectScope(for ref: DatabaseTreeTableRef, connectionId: UUID) -> DatabaseScope? {
+        containerScope(database: ref.database, schema: ref.qualifyingSchema, connectionId: connectionId)
+    }
+
+    /// The same resolution for a database or schema the sidebar names, so a folder made on a
+    /// section and a table filed into it land in one scope.
+    func containerScope(database: String?, schema: String?, connectionId: UUID) -> DatabaseScope? {
         guard let session = databaseManager.session(for: connectionId) else { return nil }
-        let database = ref.database ?? databaseManager.browseDatabaseName(for: session.connection)
+        let database = database ?? databaseManager.browseDatabaseName(for: session.connection)
         return DatabaseScope(
             connectionId: connectionId,
             database: database,
-            schema: databaseManager.resolvedSchemaName(ref.qualifyingSchema, inDatabase: database, for: connectionId)
+            schema: databaseManager.resolvedSchemaName(schema, inDatabase: database, for: connectionId)
         )
     }
 

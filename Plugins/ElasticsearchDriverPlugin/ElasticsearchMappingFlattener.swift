@@ -31,6 +31,11 @@ struct ElasticsearchColumn: Equatable {
 }
 
 enum ElasticsearchMappingFlattener {
+    enum CellLength {
+        case display
+        case whole
+    }
+
     private static let maxNestedJsonLength = 10_000
     /// A `geo_shape` polygon passes 10,000 characters without being unusual, and half a geometry is
     /// not a geometry: the truncated text parses as nothing, so the map drew nothing for a shape the
@@ -147,7 +152,7 @@ enum ElasticsearchMappingFlattener {
         var seen = Set<String>()
         var ordered: [String] = []
         for source in sources {
-            for key in flattenSource(source).keys where !seen.contains(key) {
+            for key in flattenSource(source, length: .display).keys where !seen.contains(key) {
                 seen.insert(key)
                 ordered.append(key)
             }
@@ -167,22 +172,23 @@ enum ElasticsearchMappingFlattener {
     static func rows(
         forHits hits: [[String: Any]],
         columns: [String],
-        nestedParents: Set<String> = []
+        nestedParents: Set<String> = [],
+        length: CellLength
     ) -> [[PluginCellValue]] {
         hits.map { hit in
             let source = hit["_source"] as? [String: Any] ?? [:]
-            let flat = flattenSource(source, nestedParents: nestedParents)
+            let flat = flattenSource(source, nestedParents: nestedParents, length: length)
             return columns.map { column in
                 switch column {
                 case idColumn:
-                    return cell(hit["_id"])
+                    return cell(hit["_id"], length: length)
                 case indexColumn:
-                    return cell(hit["_index"])
+                    return cell(hit["_index"], length: length)
                 case scoreColumn:
-                    return cell(hit["_score"])
+                    return cell(hit["_score"], length: length)
                 default:
                     if let value = flat[column] { return value }
-                    return cell(DocumentPath.value(in: source, atPath: column))
+                    return cell(DocumentPath.value(in: source, atPath: column), length: length)
                 }
             }
         }
@@ -190,10 +196,11 @@ enum ElasticsearchMappingFlattener {
 
     static func flattenSource(
         _ source: [String: Any],
-        nestedParents: Set<String> = []
+        nestedParents: Set<String> = [],
+        length: CellLength
     ) -> [String: PluginCellValue] {
         var result: [String: PluginCellValue] = [:]
-        flatten(value: source, prefix: "", nestedParents: nestedParents, into: &result)
+        flatten(value: source, prefix: "", nestedParents: nestedParents, length: length, into: &result)
         return result
     }
 
@@ -201,20 +208,21 @@ enum ElasticsearchMappingFlattener {
         value: Any,
         prefix: String,
         nestedParents: Set<String>,
+        length: CellLength,
         into result: inout [String: PluginCellValue]
     ) {
         if let elements = elementObjects(value, at: prefix, nestedParents: nestedParents) {
-            result[prefix] = cell(elements)
-            flattenElements(elements, prefix: prefix, into: &result)
+            result[prefix] = cell(elements, length: length)
+            flattenElements(elements, prefix: prefix, length: length, into: &result)
             return
         }
         guard let dictionary = value as? [String: Any] else {
-            result[prefix] = cell(value)
+            result[prefix] = cell(value, length: length)
             return
         }
         for (key, nested) in dictionary {
             let path = prefix.isEmpty ? key : "\(prefix).\(key)"
-            flatten(value: nested, prefix: path, nestedParents: nestedParents, into: &result)
+            flatten(value: nested, prefix: path, nestedParents: nestedParents, length: length, into: &result)
         }
     }
 
@@ -230,6 +238,7 @@ enum ElasticsearchMappingFlattener {
     private static func flattenElements(
         _ elements: [Any],
         prefix: String,
+        length: CellLength,
         into result: inout [String: PluginCellValue]
     ) {
         let maps = elements.map { element -> [String: Any] in
@@ -249,7 +258,7 @@ enum ElasticsearchMappingFlattener {
         }
 
         for key in order {
-            result[key] = cell(maps.map { $0[key] ?? NSNull() })
+            result[key] = cell(maps.map { $0[key] ?? NSNull() }, length: length)
         }
     }
 
@@ -265,7 +274,7 @@ enum ElasticsearchMappingFlattener {
 
     // MARK: - Cell Conversion
 
-    static func cell(_ value: Any?) -> PluginCellValue {
+    static func cell(_ value: Any?, length: CellLength) -> PluginCellValue {
         guard let value, !(value is NSNull) else { return .null }
 
         switch value {
@@ -277,20 +286,29 @@ enum ElasticsearchMappingFlattener {
             }
             return .text(NumberText.text(for: number))
         case let array as [Any]:
-            return .text(serializeJson(array))
+            return .text(serializeJson(array, length: length))
         case let dict as [String: Any]:
-            return .text(serializeJson(dict))
+            return .text(serializeJson(dict, length: length))
         default:
             return .text(String(describing: value))
         }
     }
 
-    private static func serializeJson(_ value: Any) -> String {
+    private static func serializeJson(_ value: Any, length: CellLength) -> String {
         guard let json = NumberText.json(from: value) else {
             return String(describing: value)
         }
-        let limit = isGeometry(value) ? maxGeometryJsonLength : maxNestedJsonLength
+        guard let limit = maxJsonLength(of: value, length: length) else { return json }
         return JSONTruncation.truncate(json, maxLength: limit)
+    }
+
+    private static func maxJsonLength(of value: Any, length: CellLength) -> Int? {
+        switch length {
+        case .display:
+            return isGeometry(value) ? maxGeometryJsonLength : maxNestedJsonLength
+        case .whole:
+            return nil
+        }
     }
 
     private static func isGeometry(_ value: Any) -> Bool {

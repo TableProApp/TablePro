@@ -79,4 +79,11 @@ struct SyncRecordMapperTests {
         let decoded = try #require(SyncRecordMapper.toConnection(makeRawRecord(safeModeLevelRaw: raw)))
         #expect(decoded.safeModeLevel == expected)
     }
+
+    @Test("An unrecognized wire value syncs as confirmWrites instead of off")
+    func unknownWireValueFailsClosed() throws {
+        let record = makeRawRecord(safeModeLevelRaw: "someFutureLevel")
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+        #expect(decoded.safeModeLevel == .confirmWrites)
+    }
 }

@@ -53,7 +53,8 @@ struct SyncBoundary: Equatable, Sendable {
         case .settings:
             return FileColumnLayoutPersister.connectionId(ofSyncCategory: id)
         case .connection, .group, .tag, .sshProfile, .credentialProfile,
-             .tableFavorite, .favoriteDatabase, .favorite, .favoriteFolder:
+             .tableFavorite, .favoriteDatabase, .favorite, .favoriteFolder,
+             .tableFolder, .tableFolderItem:
             return nil
         }
     }

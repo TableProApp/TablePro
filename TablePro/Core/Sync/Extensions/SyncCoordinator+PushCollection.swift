@@ -114,6 +114,14 @@ extension SyncCoordinator {
 
         await collectSQLFavorites(snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID)
 
+        if boundary.includes(.tableFolder) {
+            collectTableFolders(snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID)
+        }
+
+        if boundary.includes(.tableFolderItem) {
+            collectTableFolderItems(snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID)
+        }
+
         return batch
     }
 
@@ -287,6 +295,46 @@ extension SyncCoordinator {
             return .push(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
         }
         append(.favoriteDatabase, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
+    }
+
+    private func collectTableFolders(
+        snapshot: SyncEditSnapshot,
+        boundary: SyncBoundary,
+        into batch: inout SyncPushBatch,
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = snapshot.dirtyIds(for: .tableFolder)
+        let storage = services.tableFolderStorage
+        let loaded = dirtyIds.isEmpty ? [] : storage.allFolders()
+        let collected = dirtyIds.isEmpty || storage.hasUnreadableDocuments ? nil : Self.collect(
+            loaded,
+            dirtyIds: dirtyIds,
+            id: { $0.id.uuidString }
+        ) { folder in
+            guard boundary.includes(.tableFolder, owner: folder.scope.connectionId) else { return .hold }
+            return .push(SyncRecordMapper.toCKRecord(tableFolder: folder, in: zoneID))
+        }
+        append(.tableFolder, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
+    }
+
+    private func collectTableFolderItems(
+        snapshot: SyncEditSnapshot,
+        boundary: SyncBoundary,
+        into batch: inout SyncPushBatch,
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = snapshot.dirtyIds(for: .tableFolderItem)
+        let storage = services.tableFolderStorage
+        let loaded = dirtyIds.isEmpty ? [] : storage.allItems()
+        let collected = dirtyIds.isEmpty || storage.hasUnreadableDocuments ? nil : Self.collect(
+            loaded,
+            dirtyIds: dirtyIds,
+            id: \.syncId
+        ) { item in
+            guard boundary.includes(.tableFolderItem, owner: item.scope.connectionId) else { return .hold }
+            return .push(SyncRecordMapper.toCKRecord(tableFolderItem: item, in: zoneID))
+        }
+        append(.tableFolderItem, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
 
     private func collectSQLFavorites(

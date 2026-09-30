@@ -195,7 +195,7 @@ struct SyncRecordMapper {
             ?? fields[.colorTag] as? String
             ?? ConnectionColor.none.rawValue
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = Self.safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = SafeModeLevel(wireValue: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let tagIds: [UUID]
         if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
             tagIds = rawIds.compactMap { UUID(uuidString: $0) }
@@ -268,16 +268,6 @@ struct SyncRecordMapper {
             isFavorite: isFavorite,
             additionalFields: additionalFields
         )
-    }
-
-    static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .silent }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "off": return .silent
-        case "confirmWrites": return .alert
-        default: return isReadOnly ? .readOnly : .alert
-        }
     }
 
     // MARK: - Connection Group
@@ -564,6 +554,93 @@ struct SyncRecordMapper {
             createdAt: fields[.createdAt] as? Date,
             updatedAt: fields[.updatedAt] as? Date
         )
+    }
+
+    // MARK: - Table Folder
+
+    /// Writes `schema` whether or not it holds anything, for the reason `toCKRecord(sqlFavorite:in:)`
+    /// gives: a folder moved to a database with no schema must clear the one it had.
+    static func toCKRecord(tableFolder folder: TableFolder, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .tableFolder, id: folder.id.uuidString, in: zone, base: nil)
+
+        let fields = record.fields(TableFolderSyncField.self, absentValues: .clear)
+        fields[.folderId] = folder.id.uuidString
+        fields[.connectionId] = folder.scope.connectionId.uuidString
+        fields[.database] = folder.scope.database
+        fields[.schema] = folder.scope.schema
+        fields[.name] = folder.name
+        fields[.createdAt] = folder.createdAt
+        fields[.updatedAt] = folder.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    static func tableFolder(from record: CKRecord) throws -> TableFolder {
+        let fields = record.fields(TableFolderSyncField.self)
+        guard let idString = fields[.folderId] as? String, let id = UUID(uuidString: idString) else {
+            throw SyncDecodeError.missingRequiredField("folderId")
+        }
+        guard let name = fields[.name] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        let scope = try tableFolderScope(
+            connectionId: fields[.connectionId] as? String,
+            database: fields[.database] as? String,
+            schema: fields[.schema] as? String
+        )
+        let createdAt = fields[.createdAt] as? Date ?? Date()
+        return TableFolder(
+            id: id,
+            scope: scope,
+            name: name,
+            createdAt: createdAt,
+            updatedAt: fields[.updatedAt] as? Date ?? createdAt
+        )
+    }
+
+    static func toCKRecord(tableFolderItem item: TableFolderItem, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .tableFolderItem, id: item.syncId, in: zone, base: nil)
+
+        let fields = record.fields(TableFolderItemSyncField.self, absentValues: .clear)
+        fields[.connectionId] = item.scope.connectionId.uuidString
+        fields[.database] = item.scope.database
+        fields[.schema] = item.scope.schema
+        fields[.name] = item.name
+        fields[.folderId] = item.folderId.uuidString
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    static func tableFolderItem(from record: CKRecord) throws -> TableFolderItem {
+        let fields = record.fields(TableFolderItemSyncField.self)
+        guard let name = fields[.name] as? String, !name.isEmpty else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let folderIdString = fields[.folderId] as? String,
+              let folderId = UUID(uuidString: folderIdString) else {
+            throw SyncDecodeError.missingRequiredField("folderId")
+        }
+        let scope = try tableFolderScope(
+            connectionId: fields[.connectionId] as? String,
+            database: fields[.database] as? String,
+            schema: fields[.schema] as? String
+        )
+        return TableFolderItem(scope: scope, name: name, folderId: folderId)
+    }
+
+    private static func tableFolderScope(
+        connectionId: String?,
+        database: String?,
+        schema: String?
+    ) throws -> DatabaseScope {
+        guard let connectionId = connectionId.flatMap(UUID.init(uuidString:)) else {
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        return DatabaseScope(connectionId: connectionId, database: database ?? "", schema: schema)
     }
 
     // MARK: - SSH Profile

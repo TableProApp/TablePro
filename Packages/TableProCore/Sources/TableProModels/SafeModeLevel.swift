@@ -11,6 +11,22 @@ public enum SafeModeLevel: String, Codable, Sendable, CaseIterable, Identifiable
     case confirmWrites = "confirmWrites"
     case readOnly = "readOnly"
 
+    public init(wireValue: String?, isReadOnly: Bool) {
+        guard let wireValue else {
+            self = isReadOnly ? .readOnly : .off
+            return
+        }
+        if let level = SafeModeLevel(rawValue: wireValue) {
+            self = level
+            return
+        }
+        switch wireValue {
+        case "silent": self = .off
+        case "alert", "alertFull", "safeMode", "safeModeFull": self = .confirmWrites
+        default: self = isReadOnly ? .readOnly : .confirmWrites
+        }
+    }
+
     public var id: String { rawValue }
 
     public var blocksWrites: Bool { self == .readOnly }

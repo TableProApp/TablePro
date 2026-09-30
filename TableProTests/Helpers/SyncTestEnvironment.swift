@@ -23,6 +23,7 @@ final class SyncTestEnvironment {
     let favoriteTables: FavoriteTablesStorage
     let favoriteDatabases: FavoriteDatabasesStorage
     let columnLayouts: FileColumnLayoutPersister
+    let tableFolders: TableFolderStorage
     let favorites: SQLFavoriteManager
 
     init(label: String) throws {
@@ -62,6 +63,7 @@ final class SyncTestEnvironment {
             defaults: defaults,
             syncTracker: tracker
         )
+        tableFolders = TableFolderStorage(defaults: defaults, syncTracker: tracker, notificationCenter: NotificationCenter())
         favorites = SQLFavoriteManager(
             storage: SQLFavoriteStorage(
                 databaseURL: directory.appendingPathComponent("sql_favorites.db"),
@@ -90,6 +92,7 @@ final class SyncTestEnvironment {
             sqlFavoriteManager: favorites ?? self.favorites,
             favoriteTablesStorage: favoriteTables,
             favoriteDatabasesStorage: favoriteDatabases,
+            tableFolderStorage: tableFolders,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             aiAccessApprovals: live.aiAccessApprovals,

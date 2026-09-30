@@ -35,6 +35,24 @@ struct SyncMetadataStorageTests {
         #expect(storage.dirtyIds(for: .connection).isEmpty)
     }
 
+    @Test("A build that reads a record type the last one did not reports the set as grown")
+    func readableRecordTypesReportGrowth() {
+        let storage = makeStorage()
+        #expect(storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(!storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
+        #expect(!storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
+    }
+
+    @Test("Removing tombstones in a batch keeps the others")
+    func removeTombstonesKeepsOthers() {
+        let storage = makeStorage()
+        storage.addTombstones(["a", "b", "c"], type: .tableFolder)
+        storage.removeTombstones(["a", "c", "missing"], type: .tableFolder)
+        #expect(storage.tombstones(for: .tableFolder).map(\.id) == ["b"])
+    }
+
     @Test("Clearing dirty removes every identifier for the type")
     func clearDirtyRemovesEverything() {
         let storage = makeStorage()

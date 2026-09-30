@@ -17,6 +17,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
     private let favoriteTablesStorage: FavoriteTablesStorage
     internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
+    internal let tableFolderStorage: TableFolderStorage
 
     internal var connectionId = UUID()
     internal var databaseType: DatabaseType = .mysql
@@ -42,6 +43,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
     /// the label is decided where the section is built and looked up here when the row draws.
     internal var routineDisplayLabels: [String: String] = [:]
+    /// Built once per refresh for each container, because the container, its folders and its kind
+    /// sections all read the same plan and AppKit asks for each of them separately.
+    internal var flatFolderPlan: TableFolderPlan?
+    internal var containerFolderPlans: [DatabaseTreeContainerKey: TableFolderPlan] = [:]
+    /// The folder whose name is being typed, which a search must not hide out from under the field.
+    internal var revealedFolderId: UUID?
+    /// A reload ends a drag in flight and drops the field a name is being typed into, so one asked
+    /// for during either waits for it to finish. The Welcome list holds its reloads the same way.
+    internal var isDragging = false
+    internal var isReloadDeferred = false
+    /// The tables and views a drag carries, resolved once when it starts rather than on every move
+    /// of the pointer. Nil for a drag that started in another window.
+    internal var draggedFolderItems: [TableFolderDragItem]?
 
     /// A rename in progress, held as identity only. See `DatabaseTreeOutlineCoordinator+Rename`.
     internal var renameSession: DatabaseTreeRenameSession?
@@ -74,10 +88,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     init(
         favoriteTablesStorage: FavoriteTablesStorage = .shared,
-        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared
+        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared,
+        tableFolderStorage: TableFolderStorage = .shared
     ) {
         self.favoriteTablesStorage = favoriteTablesStorage
         self.favoriteDatabasesStorage = favoriteDatabasesStorage
+        self.tableFolderStorage = tableFolderStorage
         super.init()
     }
 
@@ -114,6 +130,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
+
+        let folderObserver = NotificationCenter.default.addObserver(
+            forName: .tableFoldersDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            let changed = notification.userInfo?[TableFolderStorage.connectionIdUserInfoKey] as? UUID
+            MainActor.assumeIsolated {
+                guard let self, changed == self.connectionId else { return }
+                self.scheduleReconcile()
+            }
+        }
+        favoritesObservers.withLockUnchecked { $0.append(folderObserver) }
         observeObjectListAppearance()
     }
 
@@ -281,28 +308,41 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                     schema: source.schema,
                     table: source.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
-                 .objectKindSection, .containerObjectKindSection,
+            case .recentSection, .recentTable, .foldersSection, .tableFolder, .table, .routine, .trigger,
+                 .userType, .status, .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
             }
         }
     }
 
-    private func refresh() {
+    internal func refresh() {
         guard let outlineView else { return }
+        guard !isDragging, renameSession == nil else {
+            isReloadDeferred = true
+            return
+        }
         isReloading = true
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
         listingMatchesCache.removeAll()
         routineDisplayLabels.removeAll()
+        flatFolderPlan = nil
+        containerFolderPlans.removeAll()
         invalidateRowConfiguration()
         outlineView.reloadData()
         applyDesiredExpansion()
         syncSelectionToModel()
-        restoreRenameAfterReload()
         isReloading = false
         beginObserving()
+    }
+
+    /// Coalesced with any reload already scheduled, because the edit that ended the hold usually
+    /// posts a change of its own that asks for one too.
+    internal func applyDeferredReloadIfNeeded() {
+        guard isReloadDeferred, !isDragging, renameSession == nil else { return }
+        isReloadDeferred = false
+        scheduleReconcile()
     }
 
     /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in

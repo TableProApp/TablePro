@@ -173,4 +173,118 @@ struct QueryClassifierLexicalTests {
     func executableCommentIsRevealed() {
         #expect(QueryClassifier.classifyTier("SELECT 1 /*!40101 DROP TABLE users */", databaseType: .mysql) == .destructive)
     }
+
+    static let serverSignalSpellings: [Bypass] = [
+        Bypass(engine: .postgresql, sql: "SELECT pg_cancel_backend(1)", measured: "a plain cancel"),
+        Bypass(engine: .postgresql, sql: "SELECT pg_terminate_backend(1)", measured: "a plain terminate"),
+        Bypass(engine: .postgresql, sql: "SELECT PG_CANCEL_BACKEND(1)", measured: "an unquoted name folds case"),
+        Bypass(engine: .postgresql, sql: "SELECT \"pg_cancel_backend\"(1)", measured: "a quoted name"),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT pg_catalog.pg_cancel_backend (1)",
+            measured: "a qualified name with a blank before the parenthesis"
+        ),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT pg_cancel_backend/* c */(1)",
+            measured: "a comment between the name and the parenthesis"
+        ),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT \"pg_cancel_backend\" /* \"x\" */ (1)",
+            measured: "a quoted name, then a comment holding a quote"
+        ),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT U&\"pg\\005Fcancel_backend\"(1)",
+            measured: "a Unicode escape inside a quoted name"
+        ),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT U&\"pg!005Fcancel_backend\" UESCAPE '!' (1)",
+            measured: "a Unicode escape with its own escape character"
+        ),
+    ]
+
+    @Test("A call that stops a server session is a write however it is spelled, measured on PostgreSQL 17.11",
+          arguments: serverSignalSpellings)
+    func serverSignalCallIsAWrite(_ spelling: Bypass) {
+        #expect(QueryClassifier.classifyTier(spelling.sql, databaseType: spelling.engine) == .write)
+    }
+
+    @Test("A call that changes server, sequence or lock state is a write wherever the statement makes it", arguments: [
+        (DatabaseType.postgresql, "SELECT nextval('orders_id_seq')"),
+        (DatabaseType.postgresql, "SELECT setval('orders_id_seq', 10)"),
+        (DatabaseType.postgresql, "SELECT pg_advisory_lock(42)"),
+        (DatabaseType.postgresql, "SELECT pg_try_advisory_xact_lock(42)"),
+        (DatabaseType.postgresql, "SELECT pg_reload_conf()"),
+        (DatabaseType.postgresql, "SELECT pg_rotate_logfile()"),
+        (DatabaseType.postgresql, "SELECT pg_promote()"),
+        (DatabaseType.postgresql, "SELECT set_config('search_path', 'app', false)"),
+        (DatabaseType.postgresql, "SELECT pg_stat_reset()"),
+        (DatabaseType.postgresql, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'app'"),
+        (DatabaseType.postgresql, "VALUES (nextval('orders_id_seq'))"),
+        (DatabaseType.postgresql, "WITH n AS (SELECT nextval('orders_id_seq')) SELECT * FROM n"),
+        (DatabaseType.postgresql, "EXPLAIN ANALYZE SELECT nextval('orders_id_seq')"),
+        (DatabaseType.postgresql, "SELECT pg_start_backup('nightly')"),
+        (DatabaseType.postgresql, "SELECT pg_clear_relation_stats('public', 'orders')"),
+        (DatabaseType.postgresql, "SELECT pg_stat_statements_reset()"),
+        (DatabaseType.redshift, "SELECT pg_cancel_backend(1)"),
+        (DatabaseType.cockroachdb, "SELECT pg_terminate_backend(1)"),
+        (DatabaseType.mariadb, "SELECT NEXTVAL(orders_seq)"),
+        (DatabaseType.mariadb, "SELECT RELEASE_ALL_LOCKS()"),
+        (DatabaseType.mysql, "SELECT GET_LOCK('x', 10)"),
+        (DatabaseType.duckdb, "SELECT nextval('orders_seq')"),
+        (DatabaseType.snowflake, "SELECT SYSTEM$ABORT_SESSION(1)"),
+        (DatabaseType.teradata, "SELECT SYSLIB.AbortSessions(1, 'u', 0, 'Y', 'Y')"),
+    ])
+    func stateChangingCallIsAWrite(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .write)
+    }
+
+    @Test("A call that runs SQL text passed as a literal is a write, measured on PostgreSQL 17.11", arguments: [
+        "SELECT query_to_xml('SELECT pg_terminate_backend(123)', true, false, '')",
+        "SELECT query_to_xml_and_xmlschema('SELECT nextval(''s'')', true, false, '')",
+        "SELECT * FROM ts_stat('SELECT to_tsvector(nextval(''s'')::text)')",
+        "SELECT ts_rewrite('a'::tsquery, 'SELECT ''a''::tsquery, ''b''::tsquery')",
+        "SELECT * FROM dblink('dbname=app', 'SELECT pg_terminate_backend(123)') AS t(ok boolean)",
+        "SELECT dblink_exec('dbname=app', 'SELECT pg_cancel_backend(123)')",
+        "SELECT dblink_send_query('app', 'SELECT nextval(''s'')')",
+        "SELECT dblink_open('app', 'c', 'SELECT nextval(''s'')')",
+    ])
+    func sqlTextRunnerIsAWrite(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
+
+    @Test("A read that only names such a function, or calls a lookalike, stays safe", arguments: [
+        "SELECT 'pg_terminate_backend(1)'",
+        "SELECT 1 -- pg_terminate_backend(1)",
+        "SELECT nextval FROM sequences",
+        "SELECT \"nextval\" FROM sequences",
+        "SELECT my_nextval(1)",
+        "SELECT currval('orders_id_seq')",
+        "SELECT current_setting('search_path')",
+        "EXPLAIN SELECT pg_terminate_backend(1)",
+        "SELECT * FROM orders WHERE status IN -- the open states\n ('new', 'paid')",
+    ])
+    func namingAFunctionIsNotCallingIt(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .safe)
+    }
+
+    @Test("EXPLAIN spelled ANALYSE runs its statement, measured on PostgreSQL 17.11", arguments: [
+        "EXPLAIN ANALYSE DELETE FROM users",
+        "EXPLAIN ANALYSE VERBOSE DELETE FROM users",
+        "EXPLAIN (ANALYSE) DELETE FROM users",
+        "EXPLAIN (ANALYSE, BUFFERS) DELETE FROM users",
+        "EXPLAIN ANALYSE SELECT pg_terminate_backend(123)",
+    ])
+    func explainAnalyseRunsItsStatement(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
+
+    @Test("A long run of calls behind unopened quotes is read in one pass", .timeLimit(.minutes(1)))
+    func unopenedQuotedCalleesAreReadInOnePass() {
+        let sql = "SELECT " + String(repeating: "a](", count: 100_000)
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
 }

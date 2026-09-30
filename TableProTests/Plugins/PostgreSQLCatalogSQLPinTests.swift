@@ -42,6 +42,43 @@ struct PostgreSQLCatalogSQLPinTests {
         #expect(RedshiftTableCatalog.keysQuery(schema: "public", table: "orders") == Self.redshiftKeys)
     }
 
+    @Test("The table DDL writes a virtual generated column with its expression")
+    func tableDDLWritesVirtualGeneratedColumns() {
+        let query = PostgreSQLSchemaQueries.tableDDLColumnsQuery(
+            schema: "public",
+            table: "orders",
+            capabilities: PostgreSQLCapabilities(serverVersion: 180_000)
+        )
+        #expect(query.contains(Self.storedGenerationArm))
+        #expect(query.contains(Self.virtualGenerationArm))
+    }
+
+    @Test(
+        "The table DDL and the column reorder rebuild write one column definition",
+        arguments: [Int32(90_600), 100_000, 120_000, 180_000]
+    )
+    func tableDDLAndRebuildShareTheColumnDefinition(serverVersion: Int32) {
+        let capabilities = PostgreSQLCapabilities(serverVersion: serverVersion)
+        let definition = PostgreSQLSchemaQueries.columnDefinition(capabilities: capabilities)
+        let ddl = PostgreSQLSchemaQueries.tableDDLColumnsQuery(
+            schema: "public", table: "orders", capabilities: capabilities
+        )
+        let rebuild = PostgreSQLSchemaQueries.rebuildColumnsQuery(
+            schema: "public", table: "orders", capabilities: capabilities
+        )
+        #expect(ddl.contains(definition))
+        #expect(rebuild.contains(definition))
+        #expect(definition.contains(Self.virtualGenerationArm) == capabilities.hasGeneratedColumns)
+        #expect(ddl.contains("attgenerated") == capabilities.hasGeneratedColumns)
+        #expect(ddl.contains("attidentity") == capabilities.hasIdentityColumns)
+    }
+
+    private static let storedGenerationArm =
+        "WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED'"
+
+    private static let virtualGenerationArm =
+        "WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'"
+
     private static let iOSListing = """
         SELECT t.table_name, t.table_type AS table_type,
                NULL::text AS table_comment,

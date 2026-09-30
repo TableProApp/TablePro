@@ -119,10 +119,32 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         saveTombstones(tombstones(for: type) + added, for: type)
     }
 
+    /// Records the record types the running build reads and reports whether that set grew. A set
+    /// never recorded counts as grown, because the build that wrote nothing cannot say what it
+    /// read.
+    public func adoptReadableRecordTypes(_ types: Set<String>) -> Bool {
+        let known = userDefaults.stringArray(forKey: key("readableRecordTypes")).map(Set.init)
+        guard known != types else { return false }
+        userDefaults.set(types.sorted(), forKey: key("readableRecordTypes"))
+        guard let known else { return true }
+        return !types.isSubset(of: known)
+    }
+
     public func removeTombstone(_ id: String, type: SyncRecordType) {
         var current = tombstones(for: type)
         current.removeAll { $0.id == id }
         saveTombstones(current, for: type)
+    }
+
+    /// Writes only when one of the ids was actually tombstoned, because a record marked dirty is
+    /// checked here on every edit and nearly always has no deletion waiting.
+    public func removeTombstones(_ ids: [String], type: SyncRecordType) {
+        guard !ids.isEmpty, userDefaults.object(forKey: tombstoneKey(type)) != nil else { return }
+        let removing = Set(ids)
+        let current = tombstones(for: type)
+        let kept = current.filter { !removing.contains($0.id) }
+        guard kept.count != current.count else { return }
+        saveTombstones(kept, for: type)
     }
 
     public func clearTombstones(type: SyncRecordType) {

@@ -64,7 +64,7 @@ internal struct LinkedFileVersionHistoryProvider: VersionHistoryProvider {
         case .gitRevision(let commit, let path):
             let client = try makeClient()
             let data = try await gitCall { try await client.blob(revision: commit, path: path, in: directory) }
-            let workingCopyEncoding = TextEncodingAttribute.read(from: fileURL)?.encoding
+            let workingCopyEncoding = FileTextLoader.resolvedEncoding(of: fileURL)
             guard let content = FileTextLoader.decode(data, declaredEncoding: workingCopyEncoding) else {
                 throw VersionHistoryError.undecodableContent
             }
