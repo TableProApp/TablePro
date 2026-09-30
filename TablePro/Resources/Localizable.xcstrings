@@ -184825,6 +184825,9 @@
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
 
+    },
+    "Next cursor: %@. The scan has not finished." : {
+
     }
   },
   "version" : "1.1"
