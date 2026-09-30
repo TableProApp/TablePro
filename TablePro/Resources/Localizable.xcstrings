@@ -184814,6 +184814,12 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
+
     }
   },
   "version" : "1.1"

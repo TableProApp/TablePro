@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - Row limit on Copy To and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata.
 - Copy To on a foreign table, sequence, system table or external table preselecting every object in the schema.
+- Copy To between two schemas of one DuckDB or PGlite connection refused with a message about comparing databases.
 
 ## [0.76.1] - 2026-09-29
 
