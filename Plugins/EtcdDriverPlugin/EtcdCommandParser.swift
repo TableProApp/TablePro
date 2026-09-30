@@ -514,6 +514,13 @@ struct EtcdCommandParser {
 // MARK: - Flag Parsing
 
 private struct ParsedFlags {
+    private static let flagsTakingValue: Set<String> = [
+        "cacert", "cert", "command-timeout", "consistency", "dial-timeout", "discovery-srv",
+        "discovery-srv-name", "endpoints", "keepalive-time", "keepalive-timeout", "key", "lease",
+        "limit", "max-create-rev", "max-mod-rev", "min-create-rev", "min-mod-rev", "order",
+        "password", "rev", "sort-by", "timeout", "user", "write-out"
+    ]
+
     private var booleanFlags: Set<String> = []
     private var valueFlags: [String: String] = [:]
 
@@ -529,7 +536,8 @@ private struct ParsedFlags {
                     let key = String(flagContent[flagContent.startIndex..<equalsIndex])
                     let value = String(flagContent[flagContent.index(after: equalsIndex)...])
                     valueFlags[key] = value
-                } else if index + 1 < tokens.count, !tokens[index + 1].hasPrefix("--") {
+                } else if Self.flagsTakingValue.contains(flagContent), index + 1 < tokens.count,
+                          !tokens[index + 1].hasPrefix("--") {
                     valueFlags[flagContent] = tokens[index + 1]
                     index += 1
                 } else {

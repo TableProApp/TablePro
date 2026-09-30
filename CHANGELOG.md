@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - etcd Value edits and key renames detaching the key's lease.
 - etcd filters failing with "Unknown command: select" on columns other than Key, and Key filters ignored for most operators or OR.
 - etcd Key contains and starts with filters also matching keys whose value holds the text.
+- etcd commands with a flag before the key, such as `del --prefix /app`, failing with "requires a key".
 - Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
