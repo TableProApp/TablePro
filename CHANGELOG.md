@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV import with single quotes merging rows at a double quote inside a field.
 - Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
 - Shortcuts rejecting CSV and JSON files that are not UTF-8.
+- Shortcuts Add Row and Add Rows rejecting CSV with CRLF or CR line endings as having no data.
 - Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
 - Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
 - etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
