@@ -2,6 +2,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 struct BigQueryQueryBuilderBrowseTests {
     @Test("Browse query returns tagged string")
     func browseReturnsTag() {
@@ -275,15 +277,51 @@ struct BigQueryQueryBuilderSQLTests {
         #expect(sql.contains("WHERE (`a` = 1 OR `b` = 2) AND (CAST(`c` AS STRING) LIKE '%z%')"))
     }
 
-    @Test("BETWEEN uses the separate upper bound")
-    func betweenUsesSecondValue() {
+    @Test("A filter-bar BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func betweenFromAppEncoding() {
+        let filter = TableFilter(
+            columnName: "n", filterOperator: .between, value: "1", secondValue: "9"
+        ).asPluginQueryFilter
+        #expect(filter.value == "1,9")
+
         let sql = BigQueryQueryBuilder.buildSQL(
-            from: params(filters: [
-                BigQueryFilterSpec(column: "n", op: "BETWEEN", value: "1", kind: "integer", secondValue: "9")
-            ]),
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .integer)]),
             projectId: "proj"
         )
-        #expect(sql.contains("`n` BETWEEN 1 AND 9"))
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 9)"))
+    }
+
+    @Test("A filter-bar BETWEEN keeps a comma inside a bound")
+    func betweenFromAppEncodingWithComma() {
+        let filter = TableFilter(
+            columnName: "name", filterOperator: .between, value: "Smith, John", secondValue: "Zed, Ann"
+        ).asPluginQueryFilter
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .text)]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`name` BETWEEN 'Smith, John' AND 'Zed, Ann')"))
+    }
+
+    @Test("A filter-bar BETWEEN keeps a lower bound whose last scalar joins the comma into one character")
+    func betweenFromAppEncodingWithPrependScalar() {
+        let filter = TableFilter(
+            columnName: "name", filterOperator: .between, value: "x\u{0600}", secondValue: "y"
+        ).asPluginQueryFilter
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(filter, kind: .text)]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`name` BETWEEN 'x\u{0600}' AND 'y')"))
+    }
+
+    @Test("A BETWEEN with no separate upper bound splits the joined value")
+    func betweenFromJoinedValueAlone() {
+        let sql = BigQueryQueryBuilder.buildSQL(
+            from: params(filters: [BigQueryFilterSpec(column: "n", op: "BETWEEN", value: "1, 9", kind: "integer")]),
+            projectId: "proj"
+        )
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 9)"))
     }
 
     @Test("A raw SQL filter is wrapped in parentheses")
@@ -321,15 +359,20 @@ struct BigQueryQueryBuilderTagColumnTests {
     }
 
     @Test("Filter tags carry the column names and the upper bound")
-    func filterCarriesColumns() {
+    func filterCarriesColumns() throws {
+        let filter = TableFilter(
+            columnName: "n", filterOperator: .between, value: "1", secondValue: "5"
+        ).asPluginQueryFilter
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "t", dataset: "d",
-            filters: [PluginQueryFilter(column: "n", op: "BETWEEN", value: "1", secondValue: "5", elementScope: nil)],
+            filters: [filter],
             logicMode: "AND", sortColumns: [], limit: 10, offset: 0, columns: ["n"]
         )
-        let params = BigQueryQueryBuilder.decode(query)
-        #expect(params?.columns == ["n"])
-        #expect(params?.filters?.first?.secondValue == "5")
+        let params = try #require(BigQueryQueryBuilder.decode(query))
+        #expect(params.columns == ["n"])
+        #expect(params.filters?.first?.secondValue == "5")
+        let sql = BigQueryQueryBuilder.buildSQL(from: params, projectId: "p")
+        #expect(sql.contains("WHERE (`n` BETWEEN 1 AND 5)"))
     }
 
     @Test("A tag written before column names existed still decodes")

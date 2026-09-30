@@ -31,7 +31,6 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     }()
 
     private var context: UnsafeMutablePointer<redisContext>?
-    private var sslContext: OpaquePointer?
     #endif
 
     private let queue = DispatchQueue(label: "com.TablePro.redis.plugin", qos: .userInitiated)
@@ -120,18 +119,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #if canImport(CRedis)
         stateLock.lock()
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
         stateLock.unlock()
 
         // Dispatch cleanup to the serial queue to ensure in-flight commands complete first
-        if handle != nil || ssl != nil {
-            let cleanupQueue = queue
-            cleanupQueue.async {
-                if let handle { redisFree(handle) }
-                if let ssl { redisFreeSSLContext(ssl) }
-            }
+        if let handle {
+            queue.async { redisFree(handle) }
         }
         #endif
     }
@@ -167,9 +160,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.lock()
         #if canImport(CRedis)
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
         #endif
         _isConnected = false
         _cachedServerVersion = nil
@@ -178,16 +169,8 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CRedis)
-        let cleanupQueue = queue
-        if handle != nil || ssl != nil {
-            cleanupQueue.async {
-                if let handle = handle {
-                    redisFree(handle)
-                }
-                if let ssl = ssl {
-                    redisFreeSSLContext(ssl)
-                }
-            }
+        if let handle {
+            queue.async { redisFree(handle) }
         }
         #endif
     }
@@ -397,52 +380,12 @@ extension RedisPluginConnection: RedisClusterNodeConnection {}
 
 #if canImport(CRedis)
 private extension RedisPluginConnection {
-    func connectSSL(_ ctx: UnsafeMutablePointer<redisContext>) throws {
-        var sslError = redisSSLContextError(0)
-
-        let useCaCert = sslConfig.verifiesCertificate && !sslConfig.caCertificatePath.isEmpty
-        let caCert: UnsafePointer<CChar>? = useCaCert
-            ? (sslConfig.caCertificatePath as NSString).utf8String
-            : nil
-        let clientCert: UnsafePointer<CChar>? = sslConfig.clientCertificatePath.isEmpty
-            ? nil
-            : (sslConfig.clientCertificatePath as NSString).utf8String
-        let clientKey: UnsafePointer<CChar>? = sslConfig.clientKeyPath.isEmpty
-            ? nil
-            : (sslConfig.clientKeyPath as NSString).utf8String
-        let sniHostname: UnsafePointer<CChar>? = sslConfig.isEnabled
-            ? (host as NSString).utf8String
-            : nil
-
-        var options = redisSSLOptions()
-        options.cacert_filename = caCert
-        options.capath = nil
-        options.cert_filename = clientCert
-        options.private_key_filename = clientKey
-        options.server_name = sniHostname
-        options.verify_mode = sslConfig.verifiesCertificate
-            ? REDIS_SSL_VERIFY_PEER
-            : REDIS_SSL_VERIFY_NONE
-
-        guard let ssl = redisCreateSSLContextWithOptions(&options, &sslError) else {
-            let errCode = Int(sslError.rawValue)
-            throw RedisPluginError(
-                code: errCode,
-                message: "Failed to create SSL context (error \(errCode))"
-            )
+    func connectSSL(_ ctx: UnsafeMutablePointer<redisContext>, options: RedisTLSOptions) throws {
+        do throws(RedisTLSFailure) {
+            try RedisTLSSession.initiate(on: ctx, options: options)
+        } catch {
+            throw error.connectError
         }
-
-        let result = redisInitiateSSLWithContext(ctx, ssl)
-        if result != REDIS_OK {
-            redisFreeSSLContext(ssl)
-            let errMsg = Self.contextErrorMessage(ctx)
-            if let sslError = RedisSSLClassifier.classifySSLError(errMsg) {
-                throw sslError
-            }
-            throw RedisPluginError(code: Int(result), message: "SSL handshake failed: \(errMsg)")
-        }
-
-        self.sslContext = ssl
         logger.debug("SSL connection established")
     }
 
@@ -482,9 +425,9 @@ private extension RedisPluginConnection {
         stateLock.unlock()
 
         do {
-            if sslConfig.isEnabled {
+            if let tlsOptions = RedisTLSOptions.make(sslConfig: sslConfig, host: host) {
                 report(.negotiatingEncryption)
-                try connectSSL(ctx)
+                try connectSSL(ctx, options: tlsOptions)
             }
             if !(try authenticateSync(reportingStage: report)) {
                 report(.preparingSession)
@@ -547,14 +490,11 @@ private extension RedisPluginConnection {
     func freeContextSync() {
         stateLock.lock()
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
         _isConnected = false
         _footprint.sessionEnded()
         stateLock.unlock()
         if let handle { redisFree(handle) }
-        if let ssl { redisFreeSSLContext(ssl) }
     }
 
     func reconnectSync() throws {

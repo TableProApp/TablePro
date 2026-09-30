@@ -62,7 +62,7 @@ enum PostgreSQLDumpToolCompatibility {
     }
 
     private static func installHint(newestUsableTool: PostgreSQLServerVersion?) -> String {
-        guard let newestUsableTool else { return String(localized: "Install it with `brew install libpq`.") }
+        guard let newestUsableTool else { return String(localized: "Install it with “brew install libpq”.") }
         guard newestUsableTool >= PostgreSQLServerVersion(number: 100_000) else {
             return String(
                 format: String(localized: "Install one from PostgreSQL %@ or earlier."),
@@ -70,7 +70,7 @@ enum PostgreSQLDumpToolCompatibility {
             )
         }
         return String(
-            format: String(localized: "Install one with `brew install postgresql@%@`."),
+            format: String(localized: "Install one with “brew install postgresql@%@”."),
             newestUsableTool.majorReleaseName
         )
     }

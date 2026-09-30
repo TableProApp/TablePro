@@ -7,6 +7,9 @@ For a given plugin ID and PluginKit version, this script:
   - Preserves binaries for other PluginKit versions (up to --keep-kit-versions)
   - Drops binaries for PluginKit versions older than (newest - keep + 1)
   - Updates plugin-level metadata (name, summary, etc.) from the newest binary set
+  - Records minAppVersion on each new binary and sets the entry's minAppVersion to the lowest
+    across the retained binaries. Binaries on one PluginKit version share one ABI, so republishing
+    a kit keeps the lowest minAppVersion that kit already carried rather than raising it
   - Sets schemaVersion to 2
   - Writes atomically via a temp file + rename
 """
@@ -14,6 +17,7 @@ For a given plugin ID and PluginKit version, this script:
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -37,7 +41,7 @@ def parse_args():
     parser.add_argument("--plugin-kit-version", required=True, type=int)
     parser.add_argument(
         "--keep-kit-versions",
-        default=2,
+        required=True,
         type=int,
         help="Number of distinct PluginKit versions to retain per plugin. Oldest dropped first.",
     )
@@ -88,10 +92,37 @@ def prune_old_kit_versions(binaries, keep_count):
     return [b for b in typed if kit_version(b) in versions_to_keep]
 
 
+def app_version_key(version):
+    return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def kit_min_app_version(existing_entry, pkv, requested):
+    if existing_entry is None:
+        return requested
+    previous_entry_value = existing_entry.get("minAppVersion")
+    carried = [
+        b.get("minAppVersion") or previous_entry_value
+        for b in existing_entry.get("binaries", [])
+        if kit_version(b) == pkv
+    ]
+    return min([requested, *filter(None, carried)], key=app_version_key)
+
+
+def entry_min_app_version(binaries, previous_entry_value):
+    candidates = [b["minAppVersion"] for b in binaries if b.get("minAppVersion")]
+    if previous_entry_value and any(not b.get("minAppVersion") for b in binaries):
+        candidates.append(previous_entry_value)
+    return min(candidates, key=app_version_key)
+
+
 def update_plugin_entry(manifest, args):
     bundle_id = args.id
     db_type_ids = json.loads(args.db_type_ids)
     pkv = args.plugin_kit_version
+
+    existing_plugins = manifest.get("plugins", [])
+    existing_entry = next((p for p in existing_plugins if p["id"] == bundle_id), None)
+    min_app_version = kit_min_app_version(existing_entry, pkv, args.min_app_version)
 
     new_binaries = [
         {
@@ -99,17 +130,16 @@ def update_plugin_entry(manifest, args):
             "pluginKitVersion": pkv,
             "downloadURL": args.arm64_url,
             "sha256": args.arm64_sha,
+            "minAppVersion": min_app_version,
         },
         {
             "architecture": "x86_64",
             "pluginKitVersion": pkv,
             "downloadURL": args.x86_64_url,
             "sha256": args.x86_64_sha,
+            "minAppVersion": min_app_version,
         },
     ]
-
-    existing_plugins = manifest.get("plugins", [])
-    existing_entry = next((p for p in existing_plugins if p["id"] == bundle_id), None)
 
     if existing_entry is not None:
         surviving = [
@@ -131,6 +161,8 @@ def update_plugin_entry(manifest, args):
             f"publishing would advertise {args.version} with no binary for it"
         )
 
+    previous_min_app_version = existing_entry.get("minAppVersion") if existing_entry else None
+
     updated_entry = {
         "id": bundle_id,
         "name": args.name,
@@ -142,7 +174,7 @@ def update_plugin_entry(manifest, args):
         "databaseTypeIds": db_type_ids,
         "iconName": args.icon,
         "isVerified": True,
-        "minAppVersion": args.min_app_version,
+        "minAppVersion": entry_min_app_version(merged_binaries, previous_min_app_version),
         "binaries": merged_binaries,
     }
 

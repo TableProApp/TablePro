@@ -224,7 +224,8 @@ struct QueryTab: Identifiable, Equatable {
         self.content = TabQueryContent(
             query: persisted.query,
             queryParameters: persisted.queryParameters ?? [],
-            sourceFileURL: persisted.sourceFileURL
+            sourceFileURL: persisted.sourceFileURL,
+            sourceFileEncoding: persisted.sourceFileEncoding
         )
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(
@@ -412,6 +413,7 @@ struct QueryTab: Identifiable, Equatable {
             databaseName: tableContext.databaseName,
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
+            sourceFileEncoding: content.sourceFileEncoding,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
             versionHistorySubject: display.versionHistorySubject,
