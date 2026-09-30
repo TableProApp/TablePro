@@ -204,15 +204,41 @@ extension MCPConnectionBridge {
                 String(localized: "TablePro has no server dashboard for this engine.")
             )
         }
-        let sql = cancelOnly
+        return try Self.sessionControlStatement(provider: provider, processId: processId, cancelOnly: cancelOnly)
+    }
+
+    static func sessionControlStatement(
+        provider: any ServerDashboardQueryProvider,
+        processId: String,
+        cancelOnly: Bool
+    ) throws -> String {
+        let requested = cancelOnly
             ? provider.cancelQuerySQL(processId: processId)
             : provider.killSessionSQL(processId: processId)
-        guard let sql else {
-            throw DatabaseAccessError.dataSourceError(
-                String(localized: "This engine cannot stop a session from TablePro.")
+        if let requested {
+            return requested
+        }
+        guard provider.acceptsProcessId(processId) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(
+                    format: String(localized: "'%@' is not a process id on this engine. Take one from get_server_dashboard."),
+                    processId
+                )
             )
         }
-        return sql
+        let alternative = cancelOnly
+            ? provider.killSessionSQL(processId: processId)
+            : provider.cancelQuerySQL(processId: processId)
+        guard alternative == nil else {
+            throw DatabaseAccessError.invalidArgument(
+                cancelOnly
+                    ? String(localized: "This engine offers only mode 'kill' for stopping a session.")
+                    : String(localized: "This engine offers only mode 'cancel' for stopping a session.")
+            )
+        }
+        throw DatabaseAccessError.dataSourceError(
+            String(localized: "This engine cannot stop a session from TablePro.")
+        )
     }
 
     /// Each operation carries the object kinds it applies to, its scope and its options, because a

@@ -124,6 +124,10 @@ struct TypesenseDashboardProvider: ServerDashboardQueryProvider {
         return result
     }
 
+    func acceptsProcessId(_ processId: String) -> Bool {
+        true
+    }
+
     // MARK: - Reading the response
 
     /// The console renders a JSON object that is not a search result as one `response` cell of

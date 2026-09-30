@@ -164870,6 +164870,12 @@
     "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost." : {
 
     },
+    "This engine offers only mode 'cancel' for stopping a session." : {
+
+    },
+    "This engine offers only mode 'kill' for stopping a session." : {
+
+    },
     "This file cannot be saved in that format." : {
 
     },
@@ -184513,6 +184519,9 @@
 
     },
     "'%@' is document metadata and cannot be edited." : {
+
+    },
+    "'%@' is not a process id on this engine. Take one from get_server_dashboard." : {
 
     },
     "The document's _id is unknown, so it cannot be addressed." : {

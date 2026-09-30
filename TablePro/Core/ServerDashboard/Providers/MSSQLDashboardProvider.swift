@@ -110,8 +110,12 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
     }
 
     func killSessionSQL(processId: String) -> String? {
-        guard let spid = Int(processId) else { return nil }
+        guard acceptsProcessId(processId), let spid = Int(processId) else { return nil }
         return "KILL \(spid)"
+    }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        Int(processId) != nil
     }
 }
 

@@ -13,6 +13,7 @@ protocol ServerDashboardQueryProvider {
     func fetchSlowQueries(execute: (String) async throws -> QueryResult) async throws -> [DashboardSlowQuery]
     func killSessionSQL(processId: String) -> String?
     func cancelQuerySQL(processId: String) -> String?
+    func acceptsProcessId(_ processId: String) -> Bool
 }
 
 extension ServerDashboardQueryProvider {

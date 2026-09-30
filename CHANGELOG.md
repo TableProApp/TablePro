@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP `export_data` writing numbers and booleans as strings in JSON and SQL output, and binary values as base64 text.
 - MCP `focus_query_tab` reporting a tab focused while its window stayed on another tab or connection.
 - MCP `browse_table` ignoring a sort on a column the table does not have and returning unsorted rows.
+- MCP `stop_server_session` blaming the engine for a mistyped process id, or for cancel on SQL Server and ClickHouse.
 
 ### Security
 
