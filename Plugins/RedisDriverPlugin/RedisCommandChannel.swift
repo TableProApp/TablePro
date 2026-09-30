@@ -20,6 +20,23 @@ struct RedisKeyspacePage: Sendable {
     let isIncomplete: Bool
 
     var isFinished: Bool { cursor == RedisClusterCursor.start }
+
+    var nextCursorNotice: String? {
+        guard !isFinished else { return nil }
+        return String(format: String(localized: "Next cursor: %@. The scan has not finished."), cursor)
+    }
+}
+
+struct RedisScanPageOutcome: Equatable, Sendable {
+    let keys: [String]
+    let isTruncated: Bool
+    let statusMessage: String?
+
+    init(page: RedisKeyspacePage, rowLimit: Int) {
+        keys = Array(page.keys.prefix(rowLimit))
+        isTruncated = page.isIncomplete || page.keys.count > rowLimit
+        statusMessage = page.nextCursorNotice
+    }
 }
 
 protocol RedisCommandChannel: AnyObject, Sendable {

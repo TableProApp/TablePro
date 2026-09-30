@@ -109,18 +109,7 @@ extension MCPConnectionBridge {
             if panels.contains("sessions") {
                 do {
                     let sessions = try await provider.fetchSessions(execute: execute)
-                    result["sessions"] = .array(sessions.map { session in
-                        .object([
-                            "id": .string(session.id),
-                            "user": .string(session.user),
-                            "database": .string(session.database),
-                            "state": .string(session.state),
-                            "duration_seconds": .int(session.durationSeconds),
-                            "query": .string(session.query),
-                            "can_kill": .bool(session.canKill),
-                            "can_cancel": .bool(session.canCancel)
-                        ])
-                    })
+                    result["sessions"] = .array(sessions.map { Self.sessionPayload($0, provider: provider) })
                 } catch {
                     failures["sessions"] = Self.dashboardPanelFailure(panel: "sessions", error: error)
                 }
@@ -157,6 +146,19 @@ extension MCPConnectionBridge {
             }
             return try Self.dashboardPayload(panels: result, failures: failures)
         }
+    }
+
+    static func sessionPayload(_ session: DashboardSession, provider: ServerDashboardQueryProvider) -> JsonValue {
+        .object([
+            "id": .string(session.id),
+            "user": .string(session.user),
+            "database": .string(session.database),
+            "state": .string(session.state),
+            "duration_seconds": .int(session.durationSeconds),
+            "query": .string(session.query),
+            "can_kill": .bool(provider.canKill(session)),
+            "can_cancel": .bool(provider.canCancel(session))
+        ])
     }
 
     /// The paired client is told which panel the server refused, never what the server said. The

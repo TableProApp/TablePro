@@ -88,6 +88,15 @@ extension ConnectionFormCoordinator {
         services.pluginManager.supportsSSL(for: network.type)
     }
 
+    internal var tunnelCommandPreview: String? {
+        let endpoint = buildEdits().applied(to: DatabaseConnection(name: "")).tunnelForwardEndpoint
+        return TunnelCommandBuilder.previewCommand(
+            for: tunnelCommand.state.buildConfig(),
+            remoteHost: endpoint.host,
+            remotePort: endpoint.port
+        )
+    }
+
     /// Collapses whatever the stored connection carries onto a single transport.
     ///
     /// Assigning through the setter is what does the work: a connection saved by an older build

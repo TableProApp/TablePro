@@ -9,6 +9,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 private func field(
     _ name: String,
     _ type: String,
@@ -285,7 +287,34 @@ struct TypesenseFilterBuilderTests {
         #expect(try clause("year", ">", "1900") == "year:>1900")
         #expect(try clause("year", ">=", "1900") == "year:>=1900")
         #expect(try clause("rating", "<", "4.5") == "rating:<4.5")
-        #expect(try clause("year", "BETWEEN", "1937", second: "1965") == "year:[1937..1965]")
+        #expect(try clause("year", "BETWEEN", "1937,1965", second: "1965") == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func buildsRangeFromAppEncoding() throws {
+        let filter = TableFilter(
+            columnName: "year", filterOperator: .between, value: "1937", secondValue: "1965"
+        ).asPluginQueryFilter
+        #expect(filter.value == "1937,1965")
+
+        let clause = try TypesenseFilterBuilder.clause(for: TypesenseFilterSpec(filter), fields: booksFields)
+        #expect(clause == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN survives the search tag round-trip")
+    func buildsRangeAfterSearchTagRoundTrip() throws {
+        let filter = TableFilter(
+            columnName: "rating", filterOperator: .between, value: "3.5", secondValue: "4.5"
+        ).asPluginQueryFilter
+        let tag = TypesenseQueryBuilder.encodeSearch(
+            collection: "books", offset: 0, limit: 10, sorts: [],
+            filters: TypesenseFilterBuilder.specs(from: [filter]), logicMode: "AND"
+        )
+        let parsed = try #require(TypesenseQueryBuilder.parseSearch(tag))
+        let expression = try TypesenseFilterBuilder.expression(
+            filters: parsed.filters, logicMode: parsed.logicMode, fields: booksFields
+        )
+        #expect(expression == "rating:[3.5..4.5]")
     }
 
     @Test("A comparison on a string field is refused rather than silently matching nothing")

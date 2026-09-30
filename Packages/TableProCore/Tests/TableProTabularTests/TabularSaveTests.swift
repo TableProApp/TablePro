@@ -16,25 +16,13 @@ final class TabularSaveTests: XCTestCase {
     }
 
     private func open(_ bytes: [UInt8], fileExtension: String = "csv") async throws -> (DelimitedSource, TabularTable) {
-        let data = Data(bytes)
-        let dialect = data.withUnsafeBytes { raw -> DelimitedDialect in
-            let buffer = raw.bindMemory(to: UInt8.self)
-            let sniff = DelimitedDialectDetector.sniffEncoding(buffer)
-            return DelimitedDialectDetector.detect(
-                buffer,
-                contentStart: sniff.byteOrderMarkLength,
-                encoding: sniff.encoding,
-                hasByteOrderMark: sniff.hasByteOrderMark,
-                fileExtension: fileExtension
-            )
-        }
-        let source = try await DelimitedSourceBuilder.build(
-            bytes: data,
-            dialect: dialect,
-            byteEncoding: dialect.encoding,
-            contentStart: dialect.hasByteOrderMark ? dialect.encoding.byteOrderMark.count : 0
+        let contents = try await DelimitedFileReader.read(
+            Data(bytes),
+            fileExtension: fileExtension,
+            transcodedFileURL: directory.appendingPathComponent("utf8-\(UUID().uuidString)")
         )
-        return (source, TabularTable(source: source, usesFirstRowAsHeader: dialect.hasHeaderRow))
+        let source = contents.source
+        return (source, TabularTable(source: source, usesFirstRowAsHeader: source.dialect.hasHeaderRow))
     }
 
     private func save(_ table: TabularTable, source: DelimitedSource, dialect: DelimitedDialect? = nil) throws -> [UInt8] {
@@ -137,5 +125,128 @@ final class TabularSaveTests: XCTestCase {
         XCTAssertEqual(semicolonSource.dialect.delimiter, DelimitedDialect.semicolon)
         let (tieSource, _) = try await open(Array("a,b;c\n".utf8))
         XCTAssertEqual(tieSource.dialect.delimiter, DelimitedDialect.comma)
+    }
+
+    private func shiftJIS(_ text: String) throws -> [UInt8] {
+        [UInt8](try XCTUnwrap(text.data(using: .shiftJIS, allowLossyConversion: false)))
+    }
+
+    private func quotedShiftJISExport() throws -> (bytes: [UInt8], rows: [[UInt8]]) {
+        let taka: [UInt8] = [0xFB, 0xFC]
+        let saki: [UInt8] = [0xFA, 0xB1]
+        let smallRomanOne: [UInt8] = [0xFA, 0x40]
+        let rows: [[UInt8]] = [
+            try shiftJIS("\"顧客ID\",\"氏名\",\"よみがな\",\"備考\"\r\n"),
+            try shiftJIS("\"001\",\"") + taka + (try shiftJIS("橋\",\"たかはし\",\"ｿﾌﾄｳｪｱの保守\"\r\n")),
+            try shiftJIS("\"002\",\"山") + saki + (try shiftJIS("\",\"やまさき\",\"")) + smallRomanOne + (try shiftJIS("の注文\"\r\n")),
+            try shiftJIS("\"003\",\"田中\",\"たなか\",\"ポイント交換\"\r\n"),
+            try shiftJIS("\"004\",\"佐藤\",\"さとう\",\"東京都港区芝公園\"\r\n")
+        ]
+        return (rows.flatMap { $0 }, rows)
+    }
+
+    func testShiftJISFileOpensAsShiftJIS() async throws {
+        let (source, table) = try await open(try quotedShiftJISExport().bytes)
+        XCTAssertEqual(source.dialect.encoding, .shiftJIS)
+        XCTAssertNotNil(source.origin)
+        XCTAssertEqual(table.cells(row: 0).map(\.text), ["001", "\u{9AD9}橋", "たかはし", "ｿﾌﾄｳｪｱの保守"])
+        XCTAssertEqual(table.cells(row: 1).map(\.text), ["002", "山\u{FA11}", "やまさき", "\u{2170}の注文"])
+    }
+
+    func testUntouchedShiftJISRowsKeepTheirQuotesAndIBMExtensionCodes() async throws {
+        let export = try quotedShiftJISExport()
+        let (source, original) = try await open(export.bytes)
+        XCTAssertEqual(try save(original, source: source), export.bytes)
+        var table = original
+        table.setCell(.text("鈴木"), row: 2, column: 1)
+        let expected = export.rows[0] + export.rows[1] + export.rows[2]
+            + (try shiftJIS("003,鈴木,たなか,ポイント交換\r\n")) + export.rows[4]
+        XCTAssertEqual(try save(table, source: source), expected)
+    }
+
+    func testDeletingAndReorderingShiftJISRowsCopiesTheRestExactly() async throws {
+        let export = try quotedShiftJISExport()
+        let (source, original) = try await open(export.bytes)
+        var table = original
+        table.deleteRows(IndexSet(integer: 1))
+        XCTAssertEqual(try save(table, source: source), export.rows[0] + export.rows[1] + export.rows[3] + export.rows[4])
+        var reordered = original
+        reordered.replaceRowOrder(.explicit([4, 2, 3, 1]))
+        XCTAssertEqual(
+            try save(reordered, source: source),
+            export.rows[0] + export.rows[4] + export.rows[2] + export.rows[3] + export.rows[1]
+        )
+    }
+
+    func testAnEditNearTheEndOfALargeShiftJISFileLeavesEveryOtherByte() async throws {
+        let header = try shiftJIS("コード,名称,住所\r\n")
+        let line = try shiftJIS(",東京都港区芝公園４－２－８,ｻﾞｲｺｶﾝﾘｽﾙ ポイント\r\n")
+        var bytes = header
+        let rowCount = 40_000
+        for row in 0..<rowCount {
+            bytes += Array(String(row).utf8) + line
+        }
+        XCTAssertGreaterThan(bytes.count, TabularTextTranscoder.chunkLength * 2)
+        let (source, original) = try await open(bytes)
+        XCTAssertEqual(source.dialect.encoding, .shiftJIS)
+        var table = original
+        table.setCell(.text("999"), row: rowCount - 1, column: 0)
+        let saved = try save(table, source: source)
+        let lastRowStart = bytes.count - (Array(String(rowCount - 1).utf8) + line).count
+        XCTAssertEqual(Array(saved.prefix(lastRowStart)), Array(bytes.prefix(lastRowStart)))
+        XCTAssertEqual(Array(saved.suffix(from: lastRowStart)), Array("999".utf8) + line)
+    }
+
+    func testReversingALargeShiftJISFileCopiesEveryRow() async throws {
+        let header = try shiftJIS("コード,名称\r\n")
+        let rows = try (0..<60_000).map { try shiftJIS("\($0),東京都港区芝公園４－２－８ ｻﾞｲｺｶﾝﾘｽﾙ\r\n") }
+        let bytes = header + rows.flatMap { $0 }
+        XCTAssertGreaterThan(bytes.count, TabularTextTranscoder.chunkLength * 2)
+        let (source, original) = try await open(bytes)
+        XCTAssertNotNil(source.origin)
+        var reversed = original
+        reversed.replaceRowOrder(.explicit(Array((1...rows.count).reversed())))
+        XCTAssertEqual(try save(reversed, source: source), header + rows.reversed().flatMap { $0 })
+    }
+
+    func testUntouchedUTF16FileIsWrittenBackByteForByte() async throws {
+        let text = "\"名前\"\t\"住所\"\r\n\"吉田\"\t\"三上\"\r\n\"本田\"\t\"日本\"\r\n"
+        let bytes = [0xFF, 0xFE] + [UInt8](try XCTUnwrap(text.data(using: .utf16LittleEndian)))
+        let (source, table) = try await open(bytes, fileExtension: "tsv")
+        XCTAssertEqual(source.dialect.encoding, .utf16LittleEndian)
+        XCTAssertEqual(table.cells(row: 1).map(\.text), ["本田", "日本"])
+        XCTAssertEqual(try save(table, source: source), bytes)
+    }
+
+    func testAStrayTrailingUTF16ByteDoesNotMisalignRowsWrittenAfterIt() async throws {
+        let text = "名前,住所\r\n吉田,東京\r\n本田,大阪"
+        let bytes = [0xFF, 0xFE] + [UInt8](try XCTUnwrap(text.data(using: .utf16LittleEndian))) + [0x0A]
+        let (source, original) = try await open(bytes)
+        XCTAssertEqual(source.dialect.encoding, .utf16LittleEndian)
+        var table = original
+        table.insertRows([[.text("新規"), .text("行")]], at: table.rowCount)
+        let saved = try save(table, source: source)
+        XCTAssertTrue(saved.count.isMultiple(of: 2))
+        let (_, reopened) = try await open(saved)
+        XCTAssertEqual(reopened.rowCount, 3)
+        XCTAssertEqual(reopened.cells(row: 2).map(\.text), ["新規", "行"])
+    }
+
+    func testAYenSignTypedIntoAShiftJISFileSavesAsItsJISRomanByte() async throws {
+        let (source, original) = try await open(try quotedShiftJISExport().bytes)
+        var table = original
+        table.setCell(.text("¥1,000‾"), row: 0, column: 3)
+        let saved = try save(table, source: source)
+        XCTAssertTrue(saved.suffix(from: 0).starts(with: try quotedShiftJISExport().rows[0]))
+        let editedRow = try shiftJIS("001,\u{9AD9}橋,たかはし,\"\\1,000~\"\r\n")
+        XCTAssertNotNil(saved.firstRange(of: editedRow))
+    }
+
+    func testSavingAShiftJISFileAsUTF8KeepsItsQuoting() async throws {
+        let (source, table) = try await open(try quotedShiftJISExport().bytes)
+        var utf8 = source.dialect
+        utf8.encoding = .utf8
+        let saved = TabularTextCodec.utf8String(try save(table, source: source, dialect: utf8))
+        XCTAssertTrue(saved.hasPrefix("\"顧客ID\",\"氏名\",\"よみがな\",\"備考\"\r\n\"001\",\"\u{9AD9}橋\""))
     }
 }

@@ -214,15 +214,25 @@ struct BuildAuthenticatorTests {
         #expect(authenticator is NoneAuthenticator)
     }
 
-    @Test("Password auth method with no password throws before any libssh2 call")
+    @Test("Password auth method with no password reports it missing before any libssh2 call")
     func passwordWithoutCredentialThrows() {
-        #expect(throws: SSHTunnelError.authenticationFailed(reason: .password)) {
+        #expect(throws: SSHTunnelError.authenticationFailed(reason: .passwordMissing)) {
             try LibSSH2TunnelFactory.buildAuthenticator(
                 config: config(authMethod: .password, totpMode: .none),
                 resolved: resolved(),
                 credentials: credentials()
             )
         }
+    }
+
+    @Test("A missing password and a refused password read differently")
+    func missingPasswordIsNotReportedAsRejected() {
+        let missing = SSHTunnelError.authenticationFailed(reason: .passwordMissing).errorDescription ?? ""
+        let rejected = SSHTunnelError.authenticationFailed(reason: .password).errorDescription ?? ""
+
+        #expect(!missing.isEmpty)
+        #expect(missing != rejected)
+        #expect(!missing.localizedCaseInsensitiveContains("rejected"))
     }
 
     @Test("Keyboard-Interactive auth method passes the password through directly")
