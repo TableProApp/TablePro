@@ -30,6 +30,7 @@ struct DataFileContent: Sendable {
     let workbook: XLSXWorkbook?
     let dialect: DelimitedDialect?
     let raggedRowCount: Int
+    let undecodableLineCount: Int
 }
 
 struct DataFileLoadedSheet: Sendable {
@@ -45,7 +46,6 @@ extension Error {
 
 enum DataFileLoadError: LocalizedError, Equatable {
     case unreadable(String)
-    case undecodable(String)
     case unsupported(String)
     case invalidJSON(JSONTableError)
 
@@ -53,8 +53,6 @@ enum DataFileLoadError: LocalizedError, Equatable {
         switch self {
         case .unreadable(let message):
             return String(format: String(localized: "The file could not be read: %@"), message)
-        case .undecodable(let encoding):
-            return String(format: String(localized: "The file is not valid %@ text."), encoding)
         case .unsupported(let message):
             return message
         case .invalidJSON(let error):
@@ -146,7 +144,8 @@ enum DataFileLoader {
             jsonSource: source,
             workbook: nil,
             dialect: nil,
-            raggedRowCount: 0
+            raggedRowCount: 0,
+            undecodableLineCount: 0
         )
     }
 
@@ -196,7 +195,8 @@ enum DataFileLoader {
             jsonSource: nil,
             workbook: workbook,
             dialect: nil,
-            raggedRowCount: 0
+            raggedRowCount: 0,
+            undecodableLineCount: 0
         )
     }
 
@@ -215,50 +215,25 @@ enum DataFileLoader {
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> DataFileContent {
         let original = try mappedData(at: snapshotURL)
-        let sniff = original.withUnsafeBytes { raw in
-            DelimitedDialectDetector.sniffEncoding(raw.bindMemory(to: UInt8.self))
-        }
-        let fileEncoding = request.dialectOverride?.encoding ?? sniff.encoding
-        let prefixLength = fileEncoding == sniff.encoding ? sniff.byteOrderMarkLength : 0
-        let bytes: Data
-        let byteEncoding: TabularTextEncoding
-        let contentStart: Int
-        if fileEncoding.readsInPlace {
-            bytes = original
-            byteEncoding = fileEncoding
-            contentStart = prefixLength
-        } else {
-            do {
-                let converted = try TabularTextTranscoder.utf8Data(from: original, encoding: fileEncoding, skippingPrefix: prefixLength)
-                let convertedURL = workingCopy.file(named: "utf8-\(UUID().uuidString).txt")
-                try converted.write(to: convertedURL)
-                bytes = try mappedData(at: convertedURL)
-            } catch is TabularTranscodingError {
-                throw DataFileLoadError.undecodable(DataFileEncodingNames.name(for: fileEncoding))
-            }
-            byteEncoding = .utf8
-            contentStart = 0
-        }
-        try Task.checkCancellation()
-        let detected = bytes.withUnsafeBytes { raw in
-            DelimitedDialectDetector.detect(
-                raw.bindMemory(to: UInt8.self),
-                contentStart: contentStart,
-                encoding: fileEncoding,
-                hasByteOrderMark: sniff.hasByteOrderMark && fileEncoding == sniff.encoding,
-                fileExtension: request.kind.contentExtension
+        let contents: DelimitedFileContents
+        do {
+            contents = try await DelimitedFileReader.read(
+                original,
+                fileExtension: request.kind.contentExtension,
+                dialectOverride: request.dialectOverride,
+                transcodedFileURL: workingCopy.file(named: "utf8-\(UUID().uuidString).txt"),
+                progress: progress,
+                isCancelled: { Task.isCancelled }
             )
+        } catch TabularWriteError.couldNotCreate(let path) {
+            throw DataFileLoadError.unreadable(String(format: String(localized: "Could not create %@."), path))
+        } catch TabularWriteError.writeFailed(let message) {
+            throw DataFileLoadError.unreadable(message)
+        } catch let error as CocoaError {
+            throw DataFileLoadError.unreadable(error.localizedDescription)
         }
-        let dialect = request.dialectOverride ?? detected
-        let source = try await DelimitedSourceBuilder.build(
-            bytes: bytes,
-            dialect: dialect,
-            byteEncoding: byteEncoding,
-            contentStart: contentStart,
-            progress: { progress($0 * 0.95) },
-            isCancelled: { Task.isCancelled }
-        )
-        let table = TabularTable(source: source, usesFirstRowAsHeader: dialect.hasHeaderRow)
+        let source = contents.source
+        let table = TabularTable(source: source, usesFirstRowAsHeader: source.dialect.hasHeaderRow)
         let kinds = TabularTypeInference.inferKinds(of: table)
         progress(1)
         let sheet = DataFileSheet(
@@ -275,24 +250,9 @@ enum DataFileLoader {
             delimitedSource: source,
             jsonSource: nil,
             workbook: nil,
-            dialect: dialect,
-            raggedRowCount: source.raggedRowCount
+            dialect: source.dialect,
+            raggedRowCount: source.raggedRowCount,
+            undecodableLineCount: contents.undecodableLineCount
         )
-    }
-}
-
-enum DataFileEncodingNames {
-    static func name(for encoding: TabularTextEncoding) -> String {
-        switch encoding {
-        case .utf8: return "UTF-8"
-        case .utf16LittleEndian: return "UTF-16 LE"
-        case .utf16BigEndian: return "UTF-16 BE"
-        case .windows1252: return "Windows-1252"
-        case .isoLatin1: return "ISO Latin 1"
-        case .shiftJIS: return "Shift JIS"
-        case .gb18030: return "GB 18030"
-        case .big5: return "Big5"
-        case .eucKR: return "EUC-KR"
-        }
     }
 }

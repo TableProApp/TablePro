@@ -11,11 +11,10 @@ enum DataFilesBenchmark {
         }
         let url = URL(fileURLWithPath: CommandLine.arguments[1])
         let bytes = try Data(contentsOf: url, options: .alwaysMapped)
+        let sniff = TabularEncodingDetector.sniff(bytes)
         let dialect = bytes.withUnsafeBytes { raw -> DelimitedDialect in
-            let buffer = raw.bindMemory(to: UInt8.self)
-            let sniff = DelimitedDialectDetector.sniffEncoding(buffer)
-            return DelimitedDialectDetector.detect(
-                buffer,
+            DelimitedDialectDetector.detect(
+                raw.bindMemory(to: UInt8.self),
                 contentStart: sniff.byteOrderMarkLength,
                 encoding: sniff.encoding,
                 hasByteOrderMark: sniff.hasByteOrderMark,

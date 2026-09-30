@@ -426,7 +426,7 @@ struct EtcdCommandParser {
 
     // MARK: - Tokenizer
 
-    private static func tokenize(_ input: String) -> [String] {
+    static func tokenize(_ input: String) -> [String] {
         var tokens: [String] = []
         var current = String.UnicodeScalarView()
         var inQuote = false
