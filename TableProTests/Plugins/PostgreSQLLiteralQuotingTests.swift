@@ -43,6 +43,8 @@ struct PostgreSQLLiteralQuotingTests {
             PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table),
             PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table),
             PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: schema, table: table, capabilities: caps),
+            PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: schema, table: table, capabilities: caps),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: schema, table: table, capabilities: caps),
             PostgreSQLSequenceQueries.sequenceList(
                 schema: schema, dependentOnTable: table, source: .sequencesView

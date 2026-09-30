@@ -159,7 +159,8 @@ struct SyncPendingDeletionsTests {
             (\.syncCredentialProfiles, [.credentialProfile]),
             (\.syncTableFavorites, [.tableFavorite]),
             (\.syncDatabaseFavorites, [.favoriteDatabase]),
-            (\.syncSQLFavorites, [.favorite, .favoriteFolder])
+            (\.syncSQLFavorites, [.favorite, .favoriteFolder]),
+            (\.syncTableFolders, [.tableFolder, .tableFolderItem])
         ]
 
         #expect(SyncRecordType.allCases.allSatisfy { Self.everyCategoryOn.syncs($0) })
