@@ -49,8 +49,8 @@ struct ImportDataSinkAdapterMappingTests {
         try await sink.insertRow(["name": .text("Ada")])
     }
 
-    /// A field the mapping was not made from, like a JSON key first seen past the sampled
-    /// documents, is matched ignoring case, so it reaches its column rather than being refused.
+    /// A spelling the mapping was not made from, such as a JSON key cased differently in a row past
+    /// the sample, still reaches the one mapped field it matches ignoring case.
     @Test("Field matching ignores case")
     func fieldMatchingIgnoresCase() async throws {
         let sink = adapter(mapping: ["Name": "name"])
