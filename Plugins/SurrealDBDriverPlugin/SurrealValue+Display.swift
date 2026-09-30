@@ -53,8 +53,14 @@ public extension SurrealValue {
         }
     }
 
-    var jsonText: String {
-        JSONTruncation.truncate(Self.jsonFragment(self), maxLength: Self.maxSerializedLength)
+    private func jsonText(_ length: SurrealTextLength) -> String {
+        let json = Self.jsonFragment(self)
+        switch length {
+        case .display:
+            return JSONTruncation.truncate(json, maxLength: Self.maxSerializedLength)
+        case .whole:
+            return json
+        }
     }
 
     var typeName: String {
