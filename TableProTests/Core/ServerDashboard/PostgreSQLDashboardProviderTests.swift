@@ -48,10 +48,52 @@ struct PostgreSQLDashboardProviderTests {
         #expect(try catalog(for: .postgresql, serverVersion: "unparsable") == .current)
     }
 
-    @Test("Redshift and CockroachDB keep the current catalog whatever version they report")
-    func forksKeepCurrent() throws {
-        #expect(try catalog(for: .redshift, serverVersion: "8.0.2") == .current)
+    @Test("Redshift reads the procpid catalog its pg_stat_activity still has, whatever version it reports")
+    func redshiftReadsProcpidCatalog() throws {
+        #expect(try catalog(for: .redshift, serverVersion: "8.0.2") == .procpid)
+        #expect(try catalog(for: .redshift, serverVersion: nil) == .procpid)
+        #expect(try catalog(for: .redshift, serverVersion: "17.11") == .procpid)
+    }
+
+    @Test("CockroachDB keeps the current catalog whatever version it reports")
+    func cockroachKeepsCurrent() throws {
         #expect(try catalog(for: .cockroachdb, serverVersion: "13.0.0") == .current)
+    }
+
+    @Test("Redshift never names a pg_stat_activity column that arrived after PostgreSQL 8.0")
+    func redshiftAsksOnlyForItsColumns() async throws {
+        let provider = try #require(
+            ServerDashboardQueryProviderFactory.provider(for: .redshift, serverVersion: "8.0.2")
+        )
+        var asked: [String] = []
+        _ = try await provider.fetchSessions { sql in
+            asked.append(sql)
+            return .empty
+        }
+        _ = try await provider.fetchMetrics { sql in
+            asked.append(sql)
+            return .empty
+        }
+        _ = try await provider.fetchSlowQueries { sql in
+            asked.append(sql)
+            return .empty
+        }
+        let activityQueries = asked.filter { $0.contains("pg_stat_activity") }
+        #expect(activityQueries.count == 4)
+        for sql in activityQueries {
+            #expect(!sql.contains("backend_type"), "\(sql)")
+            #expect(!sql.contains("left(query"), "\(sql)")
+            #expect(!sql.contains("state ="), "\(sql)")
+            #expect(!sql.contains("SELECT pid"), "\(sql)")
+        }
+    }
+
+    @Test("A session whose command text Redshift could not find is neither active nor slow")
+    func commandStringNotFoundIsHidden() {
+        let catalog = PostgreSQLActivityCatalog.procpid
+        #expect(catalog.activeQueryCountQuery.contains("'<command string not found>'"))
+        #expect(catalog.slowQueriesQuery.contains("'<command string not found>'"))
+        #expect(catalog.sessionsQuery.contains("WHEN '<command string not found>' THEN NULL"))
     }
 
     @Test("Servers before 10 never ask for backend_type")

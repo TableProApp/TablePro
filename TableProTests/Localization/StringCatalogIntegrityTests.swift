@@ -319,6 +319,10 @@ struct StringCatalog {
     private let strings: [String: Entry]
     private let sourceLanguage: String
 
+    func containsKey(_ key: String) -> Bool {
+        strings[key] != nil
+    }
+
     var translatedUnits: [Unit] {
         strings.sorted { $0.key < $1.key }.flatMap { key, entry -> [Unit] in
             let sourceLocalization = entry.localizations?[sourceLanguage]

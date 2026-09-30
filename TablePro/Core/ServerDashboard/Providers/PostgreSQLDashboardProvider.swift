@@ -15,7 +15,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     let metricSet: PostgreSQLDashboardMetricSet
 
     init(
-        activityCatalog: PostgreSQLActivityCatalog = .current,
+        activityCatalog: PostgreSQLActivityCatalog,
         metricSet: PostgreSQLDashboardMetricSet = .full
     ) {
         self.activityCatalog = activityCatalog

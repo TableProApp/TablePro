@@ -451,6 +451,78 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.reachesFilesystemOrExecutesCode("snapshot save backup.db", databaseType: .etcd))
     }
 
+    @Test("etcd subcommands that delete keys, users or roles, or turn authentication off, are destructive")
+    func etcdDestructiveSubcommands() {
+        let destructive = [
+            "lease revoke 7b",
+            "LEASE REVOKE 0x7b",
+            "\"lease\" 'revoke' 7b",
+            "user delete alice",
+            "role delete readers",
+            "auth disable",
+            "\"del\" /keys --prefix",
+            "delete /keys",
+            "compaction 5 --physical"
+        ]
+        for statement in destructive {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .destructive,
+                "\(statement) must be destructive"
+            )
+        }
+    }
+
+    @Test("etcd list, status and lookup subcommands are reads")
+    func etcdReadSubcommands() {
+        let reads = [
+            "member list",
+            "lease list",
+            "lease timetolive 7b --keys",
+            "endpoint status",
+            "endpoint health",
+            "user list",
+            "role list",
+            "'get' /keys --prefix"
+        ]
+        for statement in reads {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .safe,
+                "\(statement) must be safe"
+            )
+        }
+    }
+
+    @Test("etcd grants, keep-alives and account additions are plain writes")
+    func etcdWriteSubcommands() {
+        let writes = [
+            "lease grant 60",
+            "lease keep-alive 7b",
+            "auth enable",
+            "user add alice secret",
+            "role add readers",
+            "user grant-role alice readers",
+            "user revoke-role alice readers",
+            "put /keys value --lease 7b"
+        ]
+        for statement in writes {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .write,
+                "\(statement) must be a write"
+            )
+        }
+    }
+
+    @Test("etcd text the parser rejects is tiered by the worst its command can do")
+    func etcdUnparsedFailsClosed() {
+        #expect(QueryClassifier.classifyTier("del --from-key /a", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("lease revoke", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("member remove 8e9e05c52164694d", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("put /keys", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.classifyTier("get", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.classifyTier("move-leader 8e9e05c52164694d", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("defrag", databaseType: .etcd))
+    }
+
     @Test("Elasticsearch separates read verbs from writes and deletes")
     func elasticsearchTiers() {
         #expect(!QueryClassifier.isWriteQuery("GET /index/_search", databaseType: .elasticsearch))

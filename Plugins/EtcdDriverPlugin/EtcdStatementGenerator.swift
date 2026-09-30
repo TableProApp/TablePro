@@ -44,7 +44,7 @@ struct EtcdStatementGenerator {
                 guard let key = extractKey(from: change) else {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
                 }
-                commands = ["del \(escapeArgument(key))"]
+                commands = ["del \(EtcdCommandArgument.quoted(key))"]
             }
             writes += commands.map { PluginRowWrite(statement: $0, rowIndices: [change.rowIndex]) }
         }
@@ -91,7 +91,7 @@ struct EtcdStatementGenerator {
             fullKey = k
         }
         let v = value ?? ""
-        var cmd = "put \(escapeArgument(fullKey)) \(escapeArgument(v))"
+        var cmd = "put \(EtcdCommandArgument.quoted(fullKey)) \(EtcdCommandArgument.quoted(v))"
         if let lease = leaseId, !lease.isEmpty, lease != "0" {
             cmd += " --lease=\(lease)"
         }
@@ -124,17 +124,17 @@ struct EtcdStatementGenerator {
 
         if valueChange != nil || newKey != originalKey {
             let newValue = valueChange.map { $0.newValue.asText ?? "" } ?? extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(newValue))"
+            var cmd = "put \(EtcdCommandArgument.quoted(newKey)) \(EtcdCommandArgument.quoted(newValue))"
             if let lease, !lease.isEmpty, lease != "0" {
                 cmd += " --lease=\(lease)"
             }
             commands.append(cmd)
             if shouldDeleteOriginalKey {
-                commands.append("del \(escapeArgument(originalKey))")
+                commands.append("del \(EtcdCommandArgument.quoted(originalKey))")
             }
         } else if let lease {
             let currentValue = extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(currentValue))"
+            var cmd = "put \(EtcdCommandArgument.quoted(newKey)) \(EtcdCommandArgument.quoted(currentValue))"
             if !lease.isEmpty && lease != "0" {
                 cmd += " --lease=\(lease)"
             }
@@ -178,18 +178,5 @@ struct EtcdStatementGenerator {
               let originalRow = change.originalRow,
               valueIndex < originalRow.count else { return nil }
         return originalRow[valueIndex].asText
-    }
-
-    private func escapeArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
-        if needsQuoting {
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-            return "\"\(escaped)\""
-        }
-        return value
     }
 }

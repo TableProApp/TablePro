@@ -164,7 +164,8 @@ struct ElasticsearchStatementGenerator {
             [String(key): inner]
         }
         guard let source = placed as? [String: Any] else { return .null }
-        return ElasticsearchMappingFlattener.flattenSource(source, nestedParents: [parent])[leaf] ?? .null
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, nestedParents: [parent], length: .display)
+        return flat[leaf] ?? .null
     }
 
     /// Two cells that hold the same JSON value compare equal however it is spaced.

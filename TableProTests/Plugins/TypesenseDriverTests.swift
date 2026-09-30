@@ -9,6 +9,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 private func field(
     _ name: String,
     _ type: String,
@@ -135,14 +137,14 @@ struct TypesenseSchemaTests {
         let documents: [[String: Any]] = [
             ["id": "a1", "title": "Dune", "meta": ["pages": 412]],
         ]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "title", "meta.pages"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "title", "meta.pages"], length: .display)
         #expect(rows == [[.text("a1"), .text("Dune"), .text("412")]])
     }
 
     @Test("A missing value is null, and arrays and objects render as JSON")
     func rendersMissingAndCompositeValues() {
         let documents: [[String: Any]] = [["id": "a1", "authors": ["Tolkien", "Lewis"]]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "authors", "title"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "authors", "title"], length: .display)
         #expect(rows[0][0] == .text("a1"))
         #expect(rows[0][1] == .text("[\"Tolkien\",\"Lewis\"]"))
         #expect(rows[0][2] == .null)
@@ -156,7 +158,9 @@ struct TypesenseSchemaTests {
             "id": "1",
             "variants": [["sku": "A1", "qty": 3], ["sku": "B2", "qty": 5]],
         ]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "variants.sku", "variants.qty"])
+        let rows = TypesenseSchema.rows(
+            for: documents, columns: ["id", "variants.sku", "variants.qty"], length: .display
+        )
         #expect(rows[0][0] == .text("1"))
         #expect(rows[0][1] == .text("[\"A1\",\"B2\"]"))
         #expect(rows[0][2] == .text("[3,5]"))
@@ -169,7 +173,7 @@ struct TypesenseSchemaTests {
             ["variants": [["qty": 9]]],
             ["variants": []],
         ]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku"], length: .display)
         #expect(rows[0][0] == .text("[\"A1\",null]"))
         #expect(rows[1][0] == .null)
         #expect(rows[2][0] == .null)
@@ -180,7 +184,7 @@ struct TypesenseSchemaTests {
     @Test("Sibling leaves of one object array stay the same length")
     func objectArrayLeavesStayAligned() {
         let documents: [[String: Any]] = [["variants": [["qty": 3], ["sku": "B2", "qty": 5]]]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku", "variants.qty"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku", "variants.qty"], length: .display)
         #expect(rows[0][0] == .text("[null,\"B2\"]"))
         #expect(rows[0][1] == .text("[3,5]"))
     }
@@ -190,7 +194,7 @@ struct TypesenseSchemaTests {
         let documents: [[String: Any]] = [[
             "variants": [["price": ["eur": 10]], ["price": ["eur": 20]]],
         ]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.price.eur"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.price.eur"], length: .display)
         #expect(rows[0][0] == .text("[10,20]"))
     }
 
@@ -203,9 +207,42 @@ struct TypesenseSchemaTests {
         #expect(TypesenseSchema.presentedFields(fields).map(\.name) == ["variants.sku"])
     }
 
+    @Test("An export row keeps arrays and objects longer than the grid's cap whole")
+    func exportRowKeepsLongStructuresWhole() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let variants = (0..<4).map { _ in ["vector": embedding] }
+        let documents: [[String: Any]] = [["id": "1", "embedding": embedding, "variants": variants]]
+        let row = try #require(TypesenseSchema.rows(
+            for: documents,
+            columns: ["embedding", "variants", "variants.vector"],
+            length: .whole
+        ).first)
+
+        #expect(try parsedJSON(row[0]) as? [Double] == embedding)
+        #expect(try parsedJSON(row[1]) as? [[String: [Double]]] == variants)
+        #expect(try parsedJSON(row[2]) as? [[Double]] == variants.map { _ in embedding })
+    }
+
+    @Test("A grid row still cuts an array longer than the cap")
+    func gridRowCutsLongStructures() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let row = try #require(TypesenseSchema.rows(
+            for: [["embedding": embedding]], columns: ["embedding"], length: .display
+        ).first)
+        let text = try #require(row[0].asText)
+
+        #expect(text.hasSuffix("..."))
+        #expect((text as NSString).length == 10_003)
+    }
+
+    private func parsedJSON(_ cell: PluginCellValue) throws -> Any {
+        let text = try #require(cell.asText)
+        return try JSONSerialization.jsonObject(with: Data(text.utf8))
+    }
+
     @Test("Booleans render as true and false, not 1 and 0")
     func rendersBooleans() {
-        let rows = TypesenseSchema.rows(for: [["inprint": true]], columns: ["inprint"])
+        let rows = TypesenseSchema.rows(for: [["inprint": true]], columns: ["inprint"], length: .display)
         #expect(rows == [[.text("true")]])
     }
 
@@ -250,7 +287,34 @@ struct TypesenseFilterBuilderTests {
         #expect(try clause("year", ">", "1900") == "year:>1900")
         #expect(try clause("year", ">=", "1900") == "year:>=1900")
         #expect(try clause("rating", "<", "4.5") == "rating:<4.5")
-        #expect(try clause("year", "BETWEEN", "1937", second: "1965") == "year:[1937..1965]")
+        #expect(try clause("year", "BETWEEN", "1937,1965", second: "1965") == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func buildsRangeFromAppEncoding() throws {
+        let filter = TableFilter(
+            columnName: "year", filterOperator: .between, value: "1937", secondValue: "1965"
+        ).asPluginQueryFilter
+        #expect(filter.value == "1937,1965")
+
+        let clause = try TypesenseFilterBuilder.clause(for: TypesenseFilterSpec(filter), fields: booksFields)
+        #expect(clause == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN survives the search tag round-trip")
+    func buildsRangeAfterSearchTagRoundTrip() throws {
+        let filter = TableFilter(
+            columnName: "rating", filterOperator: .between, value: "3.5", secondValue: "4.5"
+        ).asPluginQueryFilter
+        let tag = TypesenseQueryBuilder.encodeSearch(
+            collection: "books", offset: 0, limit: 10, sorts: [],
+            filters: TypesenseFilterBuilder.specs(from: [filter]), logicMode: "AND"
+        )
+        let parsed = try #require(TypesenseQueryBuilder.parseSearch(tag))
+        let expression = try TypesenseFilterBuilder.expression(
+            filters: parsed.filters, logicMode: parsed.logicMode, fields: booksFields
+        )
+        #expect(expression == "rating:[3.5..4.5]")
     }
 
     @Test("A comparison on a string field is refused rather than silently matching nothing")

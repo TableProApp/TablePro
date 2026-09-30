@@ -6,10 +6,19 @@
 import Foundation
 import TableProNumberFormatting
 
+public enum SurrealTextLength: Sendable {
+    case display
+    case whole
+}
+
 public extension SurrealValue {
     static let maxSerializedLength = 10_000
 
     var displayText: String {
+        text(.display)
+    }
+
+    func text(_ length: SurrealTextLength) -> String {
         switch self {
         case .null, .none:
             return ""
@@ -24,7 +33,7 @@ public extension SurrealValue {
         case let .bytes(data):
             return data.base64EncodedString()
         case .array, .object:
-            return jsonText
+            return jsonText(length)
         case let .recordId(record):
             return record.literal
         case let .table(name):
@@ -38,7 +47,7 @@ public extension SurrealValue {
         case let .duration(seconds, nanoseconds):
             return Self.formatDuration(seconds: seconds, nanoseconds: nanoseconds)
         case .tagged:
-            return jsonText
+            return jsonText(length)
         case let .range(from, to):
             return Self.formatRange(from: from, to: to)
         }
