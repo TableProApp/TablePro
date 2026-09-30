@@ -1,6 +1,6 @@
 import Foundation
 #if os(macOS)
-import Darwin
+@_implementationOnly import Darwin
 #endif
 
 public enum AWSProfileKind: String, Sendable, Equatable {
