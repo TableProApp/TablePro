@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 - Linked Folder and Team Library connections never asking for a password and failing to sign in.
+- Old Team Catalog entry left beside the new one after a renamed connection is published again.
 
 ### Security
 
