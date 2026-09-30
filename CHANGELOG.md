@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unknown Safe Mode levels synced to iOS allowing writes without confirmation.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
