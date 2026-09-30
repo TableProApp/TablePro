@@ -984,6 +984,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProTLSClientIdentity
 
   RedisDriver:
     templates: [DriverPlugin]

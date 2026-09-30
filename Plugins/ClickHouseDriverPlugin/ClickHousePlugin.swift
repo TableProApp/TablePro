@@ -7,6 +7,7 @@ import Foundation
 import os
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProTLSClientIdentity
 
 final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "ClickHouse Driver"
@@ -132,6 +133,10 @@ struct ClickHouseError: Error, PluginDriverError {
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
         Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
         the server's certificate, or set SSL Mode to Verify Identity.
+        """))
+    static let clientCertificateNeedsKey = ClickHouseError(message: String(localized: """
+        A client certificate needs its client key. On the connection's Network tab, choose the client key, or \
+        clear the client certificate.
         """))
 
     static func unreadableCACertificate(at path: String) -> ClickHouseError {
@@ -871,11 +876,13 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private enum Strategy {
+        case systemTrust
         case skipVerify
         case verifyChain(anchor: SecCertificate, checksHostname: Bool)
     }
 
     private let strategy: Strategy
+    private let clientCredential: URLCredential?
     private let lock = NSLock()
     private var refusal: SSLHandshakeError?
 
@@ -883,19 +890,30 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         lock.withLock { refusal }
     }
 
-    private init(strategy: Strategy) {
+    private init(strategy: Strategy, clientCredential: URLCredential?) {
         self.strategy = strategy
+        self.clientCredential = clientCredential
     }
 
     static func make(for ssl: SSLConfiguration) throws -> ClickHouseTLSDelegate? {
+        guard ssl.isEnabled else { return nil }
+        let strategy = try serverTrustStrategy(for: ssl)
+        let clientCredential = try clientCredential(for: ssl)
+        if case .systemTrust = strategy, clientCredential == nil {
+            return nil
+        }
+        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential)
+    }
+
+    private static func serverTrustStrategy(for ssl: SSLConfiguration) throws -> Strategy {
         let caPath = ssl.caCertificatePath.trimmingCharacters(in: .whitespaces)
         switch ssl.mode {
         case .disabled:
-            return nil
+            return .systemTrust
         case .preferred, .required:
-            return ClickHouseTLSDelegate(strategy: .skipVerify)
+            return .skipVerify
         case .verifyIdentity:
-            guard !caPath.isEmpty else { return nil }
+            guard !caPath.isEmpty else { return .systemTrust }
             return try anchored(at: caPath, checksHostname: true)
         case .verifyCa:
             guard !caPath.isEmpty else { throw ClickHouseError.verifyCaNeedsCertificate }
@@ -903,11 +921,11 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         }
     }
 
-    private static func anchored(at path: String, checksHostname: Bool) throws -> ClickHouseTLSDelegate {
+    private static func anchored(at path: String, checksHostname: Bool) throws -> Strategy {
         guard let anchor = loadAnchor(at: path) else {
             throw ClickHouseError.unreadableCACertificate(at: path)
         }
-        return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor, checksHostname: checksHostname))
+        return .verifyChain(anchor: anchor, checksHostname: checksHostname)
     }
 
     private static func loadAnchor(at path: String) -> SecCertificate? {
@@ -918,18 +936,48 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         return SecCertificateCreateWithData(nil, der as CFData)
     }
 
+    private static func clientCredential(for ssl: SSLConfiguration) throws -> URLCredential? {
+        let certificatePath = ssl.clientCertificatePath.trimmingCharacters(in: .whitespaces)
+        let keyPath = ssl.clientKeyPath.trimmingCharacters(in: .whitespaces)
+        guard !certificatePath.isEmpty else { return nil }
+        guard !keyPath.isEmpty else { throw ClickHouseError.clientCertificateNeedsKey }
+        do {
+            return try TLSClientIdentity.credential(
+                certificateFile: URL(fileURLWithPath: certificatePath),
+                privateKeyFile: URL(fileURLWithPath: keyPath)
+            )
+        } catch let failure as TLSClientIdentityError {
+            throw ClickHouseError(message: failure.message(certificatePath: certificatePath, keyPath: keyPath))
+        }
+    }
+
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
+        switch challenge.protectionSpace.authenticationMethod {
+        case NSURLAuthenticationMethodServerTrust:
+            answerServerTrust(challenge, completionHandler: completionHandler)
+        case NSURLAuthenticationMethodClientCertificate:
+            answerClientCertificate(completionHandler: completionHandler)
+        default:
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
+    private func answerServerTrust(
+        _ challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
 
         switch strategy {
+        case .systemTrust:
+            completionHandler(.performDefaultHandling, nil)
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         case .verifyChain(let anchor, let checksHostname):
@@ -944,6 +992,16 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
             }
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         }
+    }
+
+    private func answerClientCertificate(
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let clientCredential else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, clientCredential)
     }
 
     static func refusal(for error: CFError?) -> SSLHandshakeError {
