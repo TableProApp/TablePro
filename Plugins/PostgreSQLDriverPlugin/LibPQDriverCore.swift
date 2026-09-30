@@ -290,6 +290,24 @@ extension LibPQBackedDriver {
         )
     }
 
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
+            schema: schema ?? core.currentSchema,
+            table: table
+        )
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { return nil }
+            return PluginCheckConstraintInfo(
+                name: name,
+                expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),
+                columns: PostgreSQLTextArray.values(row[safe: 3]?.asText),
+                isValidated: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
+            )
+        }
+    }
+
     func connect() async throws {
         try await core.connect()
     }

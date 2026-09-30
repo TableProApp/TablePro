@@ -48,8 +48,9 @@ struct PostgreSQLVersionedStatementsTests {
         #expect(!unknown.hasVirtualGeneratedColumns)
         #expect(!unknown.hasDatabaseICULocale)
         #expect(!unknown.hasModernICUSyntax)
+        #expect(!unknown.hasReindexOptions)
         #expect(PostgreSQLVersionedStatements.createSchema("s", capabilities: unknown).hasPrefix("DO "))
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: unknown)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: unknown)
             == "REINDEX DATABASE \"app\"")
         let template = PostgreSQLVersionedStatements.triggerTemplate(
             qualifiedTable: "t", qualifiedFunction: "f", capabilities: unknown
@@ -111,23 +112,23 @@ struct PostgreSQLVersionedStatementsTests {
 
     @Test("REINDEX DATABASE names the current database where the server requires it")
     func reindexDatabase() {
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: Self.v91)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v91)
             == "REINDEX DATABASE \"app\"")
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: Self.v11)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v11)
             == "REINDEX DATABASE \"app\"")
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: Self.v12)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v12)
             == "REINDEX DATABASE CONCURRENTLY \"app\"")
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: Self.v15)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v15)
             == "REINDEX DATABASE CONCURRENTLY \"app\"")
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", capabilities: Self.v16)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "app", verbose: false, capabilities: Self.v16)
             == "REINDEX DATABASE CONCURRENTLY")
     }
 
     @Test("Without a known database a pre-16 server gets no REINDEX DATABASE at all")
     func reindexDatabaseWithoutName() {
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: nil, capabilities: Self.v12) == nil)
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "", capabilities: Self.v91) == nil)
-        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: nil, capabilities: Self.v17)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: nil, verbose: false, capabilities: Self.v12) == nil)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: "", verbose: false, capabilities: Self.v91) == nil)
+        #expect(PostgreSQLVersionedStatements.reindexDatabase(currentDatabase: nil, verbose: false, capabilities: Self.v17)
             == "REINDEX DATABASE CONCURRENTLY")
     }
 

@@ -197,7 +197,7 @@ extension PluginMetadataRegistry {
 
         let pgpassField = ConnectionField(
             id: "usePgpass",
-            label: String(localized: "Use Password File"),
+            label: String(localized: "Use ~/.pgpass"),
             defaultValue: "false",
             fieldType: .toggle,
             section: .authentication,
@@ -549,7 +549,7 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsCheckConstraints: true,
-                    supportsCheckConstraintEditing: true,
+                    supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred
                 ),
@@ -590,7 +590,9 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F4B942",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter, structureEdits: .postgreSQL),
+                structureEditing: SchemaEditingSupport(
+                    columnReorder: .rebuild, foreignKeyEdit: .alter, structureEdits: .postgreSQL
+                ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,

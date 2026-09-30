@@ -20,6 +20,16 @@ enum DatabaseTreeRowLabel {
         guard isFavorite else { return name }
         return name + ", " + String(localized: "favorite")
     }
+
+    /// Read in the "Kind: Name" shape a table row uses. The count takes two keys rather than
+    /// inflection markup, which `String(localized:)` leaves unprocessed.
+    static func folder(name: String, memberCount: Int) -> String {
+        let row = String(format: String(localized: "%@: %@"), String(localized: "Folder"), name)
+        let count = memberCount == 1
+            ? String(localized: "1 item")
+            : String(format: String(localized: "%lld items"), memberCount)
+        return row + ", " + count
+    }
 }
 
 struct DatabaseTreeRowContext {
@@ -77,6 +87,10 @@ struct DatabaseTreeRowView: View {
             sectionHeader(String(localized: "Recent"))
         case .recentTable(let ref):
             tableRow(ref)
+        case .foldersSection:
+            sectionHeader(String(localized: "Folders"))
+        case .tableFolder(let ref):
+            folderRow(ref)
         case .database(let metadata):
             databaseRow(metadata)
         case .schema(let database, let schema):
@@ -125,6 +139,23 @@ struct DatabaseTreeRowView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .lineLimit(1)
+    }
+
+    private func folderRow(_ ref: DatabaseTreeFolderRef) -> some View {
+        Label {
+            HStack(spacing: 6) {
+                Text(ref.folder.name)
+                    .lineLimit(1)
+                Text(verbatim: "\(ref.memberCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: "folder")
+        }
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(DatabaseTreeRowLabel.folder(name: ref.folder.name, memberCount: ref.memberCount))
     }
 
     private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {

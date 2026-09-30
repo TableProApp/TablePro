@@ -106,7 +106,29 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             canBackUp: backupIsAvailable(),
             canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil,
             canCreateTable: CreateTableEligibility.canCreateTable(with: DatabaseManager.shared.driver(for: connectionId)),
-            objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId))
+            objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
+            tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
+            offersBrowsedFolders: rootShape == .flat && viewModel != nil
+        )
+    }
+
+    /// Only a table or view row in its own section or folder files anything. A Recent row stands
+    /// for a table somewhere else, and the targets are narrowed to the clicked row's database and
+    /// schema, because a folder belongs to one of them.
+    private func tableFolderMenuOptions(
+        clicked: DatabaseTreeNode?,
+        selected: [DatabaseTreeTableRef]
+    ) -> TableFolderMenuOptions? {
+        guard case .table(let ref) = clicked?.kind, let scope = folderScope(of: ref) else { return nil }
+        let targets = SidebarMenuTarget.resolve(clicked: ref, selection: selected)
+            .filter { folderScope(of: $0) == scope }
+        let layout = tableFolderStorage.layout(in: scope)
+        let placements = Set(targets.map { layout.placements[$0.table.name] })
+        return TableFolderMenuOptions(
+            targets: targets,
+            folders: layout.folders,
+            folderHoldingEveryTarget: placements.count == 1 ? placements.first ?? nil : nil,
+            hasFiledTargets: placements.contains { $0 != nil }
         )
     }
 
