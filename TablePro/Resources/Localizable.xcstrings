@@ -36332,6 +36332,9 @@
         }
       }
     },
+    "Comma-separated tables whose columns the prompt includes, up to %1$d. The first %1$d by name when omitted" : {
+
+    },
     "Comma-separated values. Compatible with Excel and most tools." : {
       "localizations" : {
         "ko" : {

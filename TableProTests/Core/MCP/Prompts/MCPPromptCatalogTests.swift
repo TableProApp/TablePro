@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct MCPPromptCatalogTests {
@@ -189,6 +189,45 @@ struct MCPPromptCatalogTests {
         let context = PromptCatalogTestSupport.renderContext(arguments: ["tables": " orders , ,line_items,, users "])
         #expect(context.list("tables") == ["orders", "line_items", "users"])
         #expect(context.list("missing").isEmpty)
+    }
+}
+
+struct QuestionToSqlTableCapTests {
+    private let inventory = (1...10).map { index in
+        MCPPromptTableEntry(name: "table_\(index)", type: "BASE TABLE", rowCount: nil)
+    }
+
+    @Test("With no tables named, the first tables of the inventory up to the cap are described")
+    func omittedTablesTakeTheFirstOnesUpToTheCap() {
+        let names = MCPPromptCatalog.referencedTables(requested: [], inventory: inventory)
+        #expect(names == inventory.prefix(MCPPromptCatalog.referencedTableLimit).map(\.name))
+    }
+
+    @Test("A longer list of named tables is cut to the cap")
+    func namedTablesAreCutToTheCap() {
+        let requested = inventory.map(\.name).reversed().map { $0 }
+        let names = MCPPromptCatalog.referencedTables(requested: requested, inventory: inventory)
+        #expect(names == Array(requested.prefix(MCPPromptCatalog.referencedTableLimit)))
+    }
+
+    @Test("The tables argument says how many tables the prompt describes")
+    func tablesArgumentNamesTheCap() throws {
+        let prompt = try #require(MCPPromptCatalog.prompt(named: "question_to_sql"))
+        let description = try #require(prompt.argument(named: "tables")?.description)
+        #expect(description.contains(String(MCPPromptCatalog.referencedTableLimit)))
+        #expect(!description.localizedCaseInsensitiveContains("all loaded tables"))
+    }
+
+    @Test("A prompt that describes fewer tables than are in scope points at describe_table for the rest")
+    func uncoveredTablesPointAtDescribeTable() {
+        let note = MCPPromptCatalog.structureCoverageNote(described: 6, available: 10)
+        #expect(note.contains("6 of 10"))
+        #expect(note.contains("describe_table"))
+    }
+
+    @Test("A prompt that describes every table in scope adds no note")
+    func fullyCoveredTablesAddNoNote() {
+        #expect(MCPPromptCatalog.structureCoverageNote(described: 3, available: 3).isEmpty)
     }
 }
 
