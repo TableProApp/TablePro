@@ -131,7 +131,7 @@ public enum SyncRecordMapper {
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = storedSafeModeLevel(in: fields)
         let queryTimeout = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
         var sshConfig: SSHConfiguration?
         if let sshData = fields[.sshConfigJson] as? Data {
@@ -186,6 +186,13 @@ public enum SyncRecordMapper {
         )
     }
 
+    private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
+        safeModeLevel(
+            fromWire: fields[.safeModeLevel] as? String,
+            isReadOnly: (fields[.isReadOnly] as? Int64 ?? 0) != 0
+        )
+    }
+
     private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
         guard let raw else { return isReadOnly ? .readOnly : .off }
         if let level = SafeModeLevel(rawValue: raw) { return level }
@@ -200,6 +207,7 @@ public enum SyncRecordMapper {
 
     public static func updateRecord(_ record: CKRecord, with connection: DatabaseConnection) {
         let fields = record.fields(ConnectionSyncField.self)
+        let serverSafeModeLevel = storedSafeModeLevel(in: fields)
         fields[.connectionId] = connection.id.uuidString as CKRecordValue
         fields[.name] = connection.name as CKRecordValue
         fields[.host] = connection.host as CKRecordValue
@@ -209,7 +217,9 @@ public enum SyncRecordMapper {
         fields[.type] = connection.type.rawValue as CKRecordValue
         fields[.sortOrder] = Int64(connection.sortOrder) as CKRecordValue
         fields[.isReadOnly] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
-        fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
+        if connection.safeModeLevel != serverSafeModeLevel {
+            fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
+        }
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue

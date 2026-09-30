@@ -29,15 +29,15 @@ The window works on a private copy of the file taken when it opens, so another a
 
 | Setting | How it is chosen |
 |---|---|
-| Encoding | A byte order mark picks UTF-8, UTF-16 LE or UTF-16 BE. Without one, the first 256 KB decide: valid UTF-8 reads as UTF-8, anything else as Windows-1252 |
+| Encoding | A byte order mark picks UTF-8, UTF-16 LE or UTF-16 BE. Without one, 64 KB starting at the first line with a non-ASCII byte decide: valid UTF-8 reads as UTF-8, and anything else is matched against Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and Windows-1252. UTF-16 without a mark is recognized by its zero bytes |
 | Delimiter | Comma, tab, semicolon or pipe, whichever appears most often outside quotes in the first 64 KB. `.tsv` always uses tab and `.psv` always uses pipe |
 | Line ending | CRLF, LF or CR, whichever comes first outside quotes |
 | Header row | Row one is the header when at least half of its cells are text rather than numbers |
 | Column types | Integer, decimal, boolean, date or text, from the first 200 non-blank values in each column |
 
-Two columns with the same header, or an empty one, get unique names such as `amount (2)` and `Column 3`. A row with more fields than the first row widens the table, and the status bar counts how many rows differ.
+Two columns with the same header, or an empty one, get unique names such as `amount (2)` and `Column 3`. A row with more fields than the first row widens the table, and the status bar counts how many rows differ. A byte the encoding cannot read shows as `�`. In a Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR or UTF-16 file, the status bar also counts the lines that hold one.
 
-When a guess is wrong, choose **Edit > Data > File Properties…** to set the delimiter, quote, escape character, encoding, line ending and header row by hand, then click **Reload**. To flip only the header, choose **Edit > Data > Switch First Row Between Header and Data** (`Cmd+Shift+H`). **Change Type** on a column header overrides an inferred type, which changes how the column sorts, filters and appears in statistics, never what is written to disk.
+When a guess is wrong, choose **Edit > Data > File Properties…** to set the delimiter, quote, escape character, encoding, line ending and header row by hand, then click **Reload**. The window keeps those settings when it reloads the file after another app changes it. To flip only the header, choose **Edit > Data > Switch First Row Between Header and Data** (`Cmd+Shift+H`). **Change Type** on a column header overrides an inferred type, which changes how the column sorts, filters and appears in statistics, never what is written to disk.
 
 ## Filter, search and sort
 
@@ -127,7 +127,7 @@ A workbook is read-only. To keep a sheet, choose **File > Save As** and pick CSV
 
 ## Save and export
 
-`Cmd+S` writes the file back in its own format. Rows you did not touch are copied byte for byte, so a large file with a handful of edits saves quickly and differs from the original only where you changed it. If a value holds a character the file's encoding cannot store, the save stops and names the row and column. Choose **File > Save As** and set **Text Encoding** to UTF-8 to keep it; later saves keep the new encoding.
+`Cmd+S` writes the file back in its own format. Rows you did not touch are copied byte for byte, so a large file with a handful of edits saves quickly and differs from the original only where you changed it. If a value holds a character the file's encoding cannot store, the save stops, names the row as the grid numbers it and the column by name, and selects that row. In a Shift JIS or EUC-JP file, `¥` saves as the byte Japanese Windows shows as `¥`, which reads back as `\`. Choose **File > Save As** and set **Text Encoding** to UTF-8 to keep it; later saves keep the new encoding.
 
 **File > Save As** (`Cmd+Shift+S`) writes a delimited file as CSV, TSV or pipe-separated text, and a JSON file as JSON, JSON Lines, CSV or TSV.
 
