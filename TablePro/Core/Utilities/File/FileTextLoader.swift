@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProTabularIO
 
 internal enum FileTextLoader {
     struct LoadedText: Sendable {
@@ -31,16 +32,50 @@ internal enum FileTextLoader {
             return try readByteOrderMarked(url, stamp: stamp)
         }
         let attribute = TextEncodingAttribute.read(from: url)
-        var detected: String.Encoding = .utf8
-        if let content = try? String(contentsOf: url, usedEncoding: &detected) {
-            let textEncoding = FileTextEncoding(encoding: detected, attributeOnDisk: attribute)
-            return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+        if attribute != nil {
+            var recorded: String.Encoding = .utf8
+            if let content = try? String(contentsOf: url, usedEncoding: &recorded) {
+                let textEncoding = FileTextEncoding(encoding: recorded, attributeOnDisk: attribute)
+                return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+            }
         }
-        if let content = try? String(contentsOf: url, encoding: .utf8) {
+        let data = try Data(contentsOf: url)
+        let detected = multiByteEncoding(of: data, isWholeFile: true)
+        if let detected, detected.codeUnitLength > 1, let content = String(data: data, encoding: detected) {
+            return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: detected), stamp: stamp)
+        }
+        if let content = String(data: data, encoding: .utf8) {
             return LoadedText(content: content, textEncoding: .utf8, stamp: stamp)
         }
-        let content = try String(contentsOf: url, encoding: .isoLatin1)
+        if let detected, let content = String(data: data, encoding: detected) {
+            return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: detected), stamp: stamp)
+        }
+        guard let content = String(data: data, encoding: .isoLatin1) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
         return LoadedText(content: content, textEncoding: FileTextEncoding(encoding: .isoLatin1), stamp: stamp)
+    }
+
+    static func resolvedEncoding(of url: URL) -> String.Encoding? {
+        load(url)?.encoding
+    }
+
+    static func load(_ url: URL, as textEncoding: FileTextEncoding) -> LoadedText? {
+        let stamp = FileStamp.read(url)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard textEncoding.byteOrderMark.map({ data.starts(with: $0.bytes) }) ?? (ByteOrderMark.leading(data) == nil) else {
+            return nil
+        }
+        let body = textEncoding.byteOrderMark.map { data.dropFirst($0.bytes.count) } ?? data[...]
+        let encoding = textEncoding.byteOrderMark?.byteOrderedEncoding ?? textEncoding.encoding
+        guard let content = String(data: Data(body), encoding: encoding) else { return nil }
+        return LoadedText(content: content, textEncoding: textEncoding, stamp: stamp)
+    }
+
+    private static func multiByteEncoding(of data: Data, isWholeFile: Bool) -> String.Encoding? {
+        let detected = TabularEncodingDetector.sniff(data, isWholeFile: isWholeFile).encoding
+        guard !detected.readsInPlace else { return nil }
+        return detected.foundationEncoding
     }
 
     static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
@@ -56,12 +91,14 @@ internal enum FileTextLoader {
         let attribute = TextEncodingAttribute.read(from: url)
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let bytes = try? handle.read(upToCount: maxBytes + TextPrefixDecoder.lookaheadLength),
-              let decoded = TextPrefixDecoder.decode(
-                  bytes,
-                  prefixLength: maxBytes,
-                  declaredEncoding: attribute?.encoding
-              ) else { return nil }
+        guard let bytes = try? handle.read(upToCount: maxBytes + TextPrefixDecoder.lookaheadLength) else { return nil }
+        let isWholeFile = bytes.count < maxBytes + TextPrefixDecoder.lookaheadLength
+        let declaredEncoding = attribute?.encoding ?? multiByteEncoding(of: bytes, isWholeFile: isWholeFile)
+        guard let decoded = TextPrefixDecoder.decode(
+            bytes,
+            prefixLength: maxBytes,
+            declaredEncoding: declaredEncoding
+        ) else { return nil }
         return LoadedText(
             content: decoded.content,
             textEncoding: textEncoding(of: decoded, attribute: attribute),

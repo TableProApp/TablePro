@@ -52,4 +52,12 @@ struct CloudflareTunnelPaneViewModelTests {
         viewModel.state.authMethod = .browserSSO
         #expect(viewModel.validationIssues.isEmpty)
     }
+
+    @Test("The not-found caption is plain text that names the install command")
+    func binaryNotFoundMessageIsPlainText() {
+        let message = CloudflareTunnelPaneViewModel().binaryNotFoundMessage
+
+        #expect(!message.contains("`"))
+        #expect(message.contains("brew install cloudflared"))
+    }
 }

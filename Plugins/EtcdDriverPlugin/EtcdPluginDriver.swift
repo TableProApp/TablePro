@@ -24,7 +24,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _httpClient: EtcdHttpClient?
     private let lock = NSLock()
     private var _serverVersion: String?
-    private var _rootPrefix: String
+    private let keyspace: EtcdKeyspace
 
     private var httpClient: EtcdHttpClient? {
         lock.withLock { _httpClient }
@@ -57,29 +57,20 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func escapeStringLiteral(_ value: String) -> String { value }
 
     func defaultExportQuery(table: String) -> String? {
-        let prefix = resolvedPrefix(for: table)
-        return "get \(escapeArgument(prefix)) --prefix"
+        keyspace.exportQuery(forTable: table)
     }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        let prefix = resolvedPrefix(for: table)
-        if prefix.isEmpty {
-            return ["del \"\" --prefix"]
-        }
-        return ["del \(escapeArgument(prefix)) --prefix"]
+        keyspace.truncateStatements(forTable: table)
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        let prefix = resolvedPrefix(for: name)
-        if prefix.isEmpty {
-            return "del \"\" --prefix"
-        }
-        return "del \(escapeArgument(prefix)) --prefix"
+        keyspace.dropStatement(forTable: name)
     }
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self._rootPrefix = config.additionalFields["etcdKeyPrefix"] ?? config.database
+        self.keyspace = EtcdKeyspace(keyPrefixRoot: config.additionalFields["etcdKeyPrefix"] ?? config.database)
     }
 
     // MARK: - Connection Management
@@ -277,8 +268,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let prefix = _rootPrefix
-        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
+        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: keyspace.root)
 
         let response = try await client.rangeRequest(EtcdRangeRequest(
             key: b64Key,
@@ -287,49 +277,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             keysOnly: true
         ))
 
-        guard let kvs = response.kvs, !kvs.isEmpty else {
-            return [PluginTableInfo(name: "(root)", type: "PREFIX", rowCount: 0)]
+        let keys = (response.kvs ?? []).map { EtcdHttpClient.base64Decode($0.key) }
+        return keyspace.tables(forKeys: keys).map {
+            PluginTableInfo(name: $0.name, type: "PREFIX", rowCount: $0.keyCount)
         }
-
-        var prefixCounts: [String: Int] = [:]
-        var bareKeyCount = 0
-
-        for kv in kvs {
-            let key = EtcdHttpClient.base64Decode(kv.key)
-            let relative = stripRootPrefix(key)
-
-            // Skip leading "/" when finding the first segment
-            let searchStart: String.Index
-            if relative.hasPrefix("/"), relative.index(after: relative.startIndex) < relative.endIndex {
-                searchStart = relative.index(after: relative.startIndex)
-            } else {
-                searchStart = relative.startIndex
-            }
-
-            if let slashIndex = relative[searchStart...].firstIndex(of: "/") {
-                // Include everything up to and including the slash (and leading / if present)
-                let segment = String(relative[relative.startIndex...slashIndex])
-                prefixCounts[segment, default: 0] += 1
-            } else {
-                bareKeyCount += 1
-            }
-        }
-
-        var tables: [PluginTableInfo] = []
-
-        if bareKeyCount > 0 {
-            tables.append(PluginTableInfo(name: "(root)", type: "PREFIX", rowCount: bareKeyCount))
-        }
-
-        for (prefixName, count) in prefixCounts.sorted(by: { $0.key < $1.key }) {
-            tables.append(PluginTableInfo(name: prefixName, type: "PREFIX", rowCount: count))
-        }
-
-        if tables.isEmpty {
-            tables.append(PluginTableInfo(name: "(root)", type: "PREFIX", rowCount: 0))
-        }
-
-        return tables
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
@@ -365,7 +316,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let client = httpClient else {
             throw EtcdError.notConnected
         }
-        let prefix = resolvedPrefix(for: table)
+        let prefix = keyspace.prefix(forTable: table)
         return try await countKeys(prefix: prefix, filterType: .none, filterValue: "", client: client)
     }
 
@@ -374,7 +325,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let prefix = resolvedPrefix(for: table)
+        let prefix = keyspace.prefix(forTable: table)
         let count = try await countKeys(prefix: prefix, filterType: .none, filterValue: "", client: client)
 
         return """
@@ -421,7 +372,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let prefix = resolvedPrefix(for: table)
+        let prefix = keyspace.prefix(forTable: table)
         return EtcdQueryBuilder().buildBrowseQuery(
             prefix: prefix, sortColumns: sortColumns, limit: limit, offset: offset
         )
@@ -438,7 +389,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let prefix = resolvedPrefix(for: table)
+        let prefix = keyspace.prefix(forTable: table)
         return EtcdQueryBuilder().buildFilteredQuery(
             prefix: prefix, filters: filters, logicMode: logicMode,
             sortColumns: sortColumns, limit: limit, offset: offset
@@ -458,7 +409,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite]? {
         let generator = EtcdStatementGenerator(
-            prefix: resolvedPrefix(for: table),
+            prefix: keyspace.prefix(forTable: table),
             columns: columns
         )
         return try generator.generateRowWrites(
@@ -470,8 +421,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        let prefix = _rootPrefix
-        return "get \(escapeArgument(prefix)) --prefix --keys-only"
+        keyspace.keysOnlyListing
     }
 
     // MARK: - Command Dispatch
@@ -992,27 +942,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return (b64Key, b64RangeEnd)
     }
 
-    private func resolvedPrefix(for table: String) -> String {
-        if table == "(root)" {
-            return _rootPrefix
-        }
-        if _rootPrefix.isEmpty {
-            return table
-        }
-        let root = _rootPrefix.hasSuffix("/") ? _rootPrefix : _rootPrefix + "/"
-        let cleanTable = table.hasPrefix("/") ? String(table.dropFirst()) : table
-        return root + cleanTable
-    }
-
-    private func stripRootPrefix(_ key: String) -> String {
-        guard !_rootPrefix.isEmpty else { return key }
-        let root = _rootPrefix.hasSuffix("/") ? _rootPrefix : _rootPrefix + "/"
-        if key.hasPrefix(root) {
-            return String(key.dropFirst(root.count))
-        }
-        return key
-    }
-
     private func matchesFilter(
         key: String,
         value: String? = nil,
@@ -1084,16 +1013,5 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return String(leaseNum, radix: 16)
         }
         return leaseStr
-    }
-
-    private func escapeArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
-        if needsQuoting {
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-            return "\"\(escaped)\""
-        }
-        return value
     }
 }

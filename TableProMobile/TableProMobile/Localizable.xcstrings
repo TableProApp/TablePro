@@ -16680,30 +16680,30 @@
         }
       }
     },
-    "The file is not UTF-8 text." : {
+    "Line %lld of the file is not valid %@ text." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "파일이 UTF-8 텍스트가 아닙니다."
+            "value" : "파일의 %1$lld번째 줄이 올바른 %2$@ 텍스트가 아닙니다."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tệp không phải văn bản UTF-8."
+            "value" : "Dòng %1$lld của tệp không phải văn bản %2$@ hợp lệ."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该文件不是 UTF-8 文本。"
+            "value" : "文件第 %1$lld 行不是有效的 %2$@ 文本。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "該檔案不是 UTF-8 文字。"
+            "value" : "檔案第 %1$lld 行不是有效的 %2$@ 文字。"
           }
         }
       }

@@ -100,7 +100,7 @@ struct DataFilePropertiesSheet: View {
                 }
                 Picker("Encoding", selection: $encoding) {
                     ForEach(DataFilePropertyOptions.encodings, id: \.self) { option in
-                        Text(DataFileEncodingNames.name(for: option)).tag(option)
+                        Text(option.displayName).tag(option)
                     }
                 }
                 Picker("Line ending", selection: $lineEnding) {
