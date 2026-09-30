@@ -57,7 +57,7 @@ struct SessionsTableView: View {
 
                 TableColumn("") { session in
                     HStack(spacing: 4) {
-                        if session.canCancel, viewModel.canCancelQueries {
+                        if viewModel.canCancel(session) {
                             Button { viewModel.confirmCancelQuery(processId: session.id) } label: {
                                 Image(systemName: "stop.circle")
                             }
@@ -65,7 +65,7 @@ struct SessionsTableView: View {
                             .help(String(localized: "Cancel Query"))
                             .accessibilityLabel(String(format: String(localized: "Cancel query for session %@"), session.id))
                         }
-                        if session.canKill, viewModel.canKillSessions {
+                        if viewModel.canKill(session) {
                             Button { viewModel.confirmKillSession(processId: session.id) } label: {
                                 Image(systemName: "xmark.circle")
                                     .foregroundStyle(.red)

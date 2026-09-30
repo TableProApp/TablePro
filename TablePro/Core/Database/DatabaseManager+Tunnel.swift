@@ -12,7 +12,7 @@ import TableProPluginKit
 extension DatabaseManager {
     /// Rewrite a connection to point at the local tunnel endpoint. A 127.0.0.1
     /// certificate can't satisfy hostname verification, so verify modes drop to
-    /// `.required` while keeping encryption; cert paths are cleared and the pre-tunnel
+    /// `.required` while keeping encryption and the CA path is cleared. The pre-tunnel
     /// endpoint is recorded for the callers that must name the real server rather than
     /// the local forward. A tunnel forwards a single local port, so MongoDB's
     /// seed list is collapsed to that endpoint and a direct connection is forced,
@@ -42,8 +42,6 @@ extension DatabaseManager {
                 tunnelSSL.mode = .required
             }
             tunnelSSL.caCertificatePath = ""
-            tunnelSSL.clientCertificatePath = ""
-            tunnelSSL.clientKeyPath = ""
         }
 
         var effectiveFields = connection.additionalFields

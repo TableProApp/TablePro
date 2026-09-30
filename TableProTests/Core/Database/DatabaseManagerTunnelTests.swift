@@ -143,6 +143,75 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.sslConfig.mode == .required)
     }
 
+    @Test("A TCP forward keeps the client certificate and key")
+    func tcpForwardKeepsClientIdentity() {
+        let connection = DatabaseConnection(
+            name: "pg",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(
+                mode: .required,
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.clientCertificatePath == "/certs/client.pem")
+        #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
+    }
+
+    @Test("A TCP forward relaxes Verify Identity and still keeps the client certificate and key")
+    func tcpForwardRelaxesVerificationAndKeepsClientIdentity() {
+        let connection = DatabaseConnection(
+            name: "mysql",
+            host: "db.internal",
+            port: 3_306,
+            type: .mysql,
+            sslConfig: SSLConfiguration(
+                mode: .verifyIdentity,
+                caCertificatePath: "/certs/ca.pem",
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.clientCertificatePath == "/certs/client.pem")
+        #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
+    }
+
+    @Test("A socket forward clears the client certificate and key along with TLS")
+    func socketForwardClearsClientIdentity() {
+        var connection = DatabaseConnection(
+            name: "socket",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(
+                mode: .required,
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+        connection.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(
+            from: connection,
+            localPort: 62_000,
+            forwardsToUnixSocket: true
+        )
+
+        #expect(tunneled.sslConfig.mode == .disabled)
+        #expect(tunneled.sslConfig.clientCertificatePath.isEmpty)
+        #expect(tunneled.sslConfig.clientKeyPath.isEmpty)
+    }
+
     @Test("The pre-tunnel endpoint is recorded for every tunneled connection")
     func tunnelRecordsPreTunnelEndpoint() {
         let connection = DatabaseConnection(

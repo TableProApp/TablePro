@@ -45,15 +45,18 @@ internal struct SQLTokenCursor {
     private var conditionalDepth = 0
 
     internal private(set) var parenDepth = 0
-
-    /// Where the token `next()` returned last sits in the text, for a rule that needs a word as it
-    /// was written rather than uppercased.
-    internal private(set) var lastTokenRange = NSRange(location: 0, length: 0)
+    internal private(set) var tokenStart = 0
 
     internal var location: Int { index }
 
+    internal var tokenRange: NSRange {
+        NSRange(location: tokenStart, length: index - tokenStart)
+    }
+
+    /// The token `next()` returned last as written, for a rule that needs a word's spelling rather
+    /// than its uppercased form.
     internal var lastTokenText: String {
-        text.substring(with: lastTokenRange)
+        text.substring(with: tokenRange)
     }
 
     internal init(_ text: NSString, grammar: SQLLexicalGrammar) {
@@ -76,10 +79,8 @@ internal struct SQLTokenCursor {
             }
             if skipsNonCode(character) { continue }
             if character == SqlLexer.semicolon, parenDepth == 0 { return nil }
-            let start = index
-            let token = token(startingWith: character)
-            lastTokenRange = NSRange(location: start, length: index - start)
-            return token
+            tokenStart = index
+            return token(startingWith: character)
         }
         return nil
     }

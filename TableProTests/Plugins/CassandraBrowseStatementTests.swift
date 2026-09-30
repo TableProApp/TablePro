@@ -153,6 +153,14 @@ struct CassandraBrowseStatementTests {
         #expect(statement.window.refusal == CassandraBrowseRefusal.matchAny.pluginErrorMessage)
     }
 
+    @Test("The Match Any refusal states the limit without naming a control, since only an MCP client can reach it")
+    func matchAnyRefusalNamesNoControl() {
+        let message = CassandraBrowseRefusal.matchAny.pluginErrorMessage
+
+        #expect(!message.localizedCaseInsensitiveContains("Match All"))
+        #expect(!message.localizedCaseInsensitiveContains("Match Any"))
+    }
+
     @Test("Match Any over a single condition is just that condition")
     func matchAnyOfOneRuns() {
         let statement = browse(filters: [filter("a", "=", "1")], matchAll: false)

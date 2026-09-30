@@ -63,6 +63,10 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
         storage.saveCloudflareTokenSecret(state.serviceTokenSecret, for: connectionId)
     }
 
+    internal var binaryNotFoundMessage: String {
+        String(localized: "cloudflared not found. Install it with “brew install cloudflared”, or choose the binary above.")
+    }
+
     func resolveBinary() {
         Task {
             let path = await Task.detached { CLIExecutableFinder.findExecutable("cloudflared") }.value

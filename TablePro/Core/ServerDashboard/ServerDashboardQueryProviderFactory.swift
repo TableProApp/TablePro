@@ -24,8 +24,14 @@ enum ServerDashboardQueryProviderFactory {
                 activityCatalog: PostgreSQLActivityCatalog(serverVersion: PostgreSQLServerVersion(serverVersion)),
                 metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
             )
-        case .postgresqlCompatible:
+        case .redshift:
             return PostgreSQLDashboardProvider(
+                activityCatalog: .procpid,
+                metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
+            )
+        case .cockroachdb:
+            return PostgreSQLDashboardProvider(
+                activityCatalog: .current,
                 metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
             )
         case .mysql:
@@ -33,7 +39,7 @@ enum ServerDashboardQueryProviderFactory {
         case .mssql:
             return MSSQLDashboardProvider()
         case .clickhouse:
-            return ClickHouseDashboardProvider()
+            return ClickHouseDashboardProvider(serverVersion: serverVersion)
         case .duckdb:
             return DuckDBDashboardProvider()
         case .sqlite:
@@ -47,7 +53,8 @@ enum ServerDashboardQueryProviderFactory {
 /// The engines that have a dashboard, and which provider each one takes.
 private enum DashboardEngine {
     case postgresql
-    case postgresqlCompatible
+    case redshift
+    case cockroachdb
     case mysql
     case mssql
     case clickhouse
@@ -59,8 +66,10 @@ private enum DashboardEngine {
         switch databaseType {
         case .postgresql:
             self = .postgresql
-        case .redshift, .cockroachdb:
-            self = .postgresqlCompatible
+        case .redshift:
+            self = .redshift
+        case .cockroachdb:
+            self = .cockroachdb
         case .mysql, .mariadb:
             self = .mysql
         case .mssql:
