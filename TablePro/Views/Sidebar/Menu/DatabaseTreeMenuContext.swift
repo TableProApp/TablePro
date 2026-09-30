@@ -64,4 +64,21 @@ internal struct DatabaseTreeMenuContext {
     internal var canCreateTable: Bool = false
     /// Which materialized-view and comment commands the driver has statements for.
     internal var objectToolSupport: DatabaseObjectToolEligibility.Support = .none
+    /// The folders a clicked table or view can be filed into, and what filing it would move. Nil on
+    /// every other row.
+    internal var tableFolderOptions: TableFolderMenuOptions?
+    /// Whether the flat list is on screen, the one shape whose folders belong to the browsed
+    /// database and schema rather than to a container row the user right-clicked.
+    internal var offersBrowsedFolders: Bool = false
+}
+
+/// Resolved by the coordinator rather than the spec, because which objects share a folder scope is
+/// a question for the session, and the spec stays a pure function of its inputs.
+internal struct TableFolderMenuOptions: Equatable {
+    internal let targets: [DatabaseTreeTableRef]
+    internal let folders: [TableFolder]
+    /// The folder every target already sits in, which is the one destination a move cannot use.
+    /// Nil when the targets are spread over several folders or some are in none.
+    internal let folderHoldingEveryTarget: UUID?
+    internal let hasFiledTargets: Bool
 }

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Folders for tables and views in the sidebar. (#3167)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Changed
@@ -18,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Unknown Safe Mode levels synced to iOS allowing writes without confirmation.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - MongoDB exports dropping fields first seen after the 200th document, and exporting a field null in the first 200 as text.
+- iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 
 ### Security
 
