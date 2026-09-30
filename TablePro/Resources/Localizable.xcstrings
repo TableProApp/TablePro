@@ -183094,6 +183094,12 @@
     "Weaviate does not support views." : {
 
     },
+    "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
+
+    },
+    "Weaviate returned the same page of %@ twice. Reading a whole collection needs Weaviate 1.18 or later." : {
+
+    },
     "The first sheet has no header row to map columns from." : {
 
     },
