@@ -187,20 +187,10 @@ public enum SyncRecordMapper {
     }
 
     private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
-        safeModeLevel(
-            fromWire: fields[.safeModeLevel] as? String,
+        SafeModeLevel(
+            wireValue: fields[.safeModeLevel] as? String,
             isReadOnly: (fields[.isReadOnly] as? Int64 ?? 0) != 0
         )
-    }
-
-    private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .off }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "silent": return .off
-        case "alert", "alertFull", "safeMode", "safeModeFull": return .confirmWrites
-        default: return isReadOnly ? .readOnly : .off
-        }
     }
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
