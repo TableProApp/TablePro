@@ -11,5 +11,6 @@
 
 #include "include/hiredis/hiredis.h"
 #include "include/hiredis/hiredis_ssl.h"
+#include "include/openssl_tls_client.h"
 
 #endif /* CRedis_h */

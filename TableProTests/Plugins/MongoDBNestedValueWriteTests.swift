@@ -206,6 +206,27 @@ struct MongoDBNestedValueWriteTests {
         }
     }
 
+    @Test("An edit to a value shortened right after an inner document, in a field that also held strings, is refused")
+    func truncatedAfterAnInnerDocumentInAMixedFieldIsRefused() throws {
+        let stored = "[" + Array(repeating: #"{"k":"v"}"#, count: 1_500).joined(separator: ",") + "]"
+        let shown = JSONTruncation.truncate(stored, maxLength: BsonDocumentFlattener.maxNestedJsonLength)
+        try #require(shown.hasSuffix("}..."))
+        let edited = shown.replacingOccurrences(of: #"[{"k":"v"}"#, with: #"[{"k":"w"}"#)
+
+        #expect(throws: MongoDBWriteRefusal.truncatedValue(field: "f").refusal(ofRow: 0)) {
+            try update("f", from: .text(shown), to: edited, held: [.array, .string], majority: .array)
+        }
+    }
+
+    @Test("Text that opens with a bracket and trails off is written as a string")
+    func bracketedProseIsWrittenAsAString() throws {
+        let statement = try update(
+            "f", from: .text("plain"), to: "[DRAFT] Chapter one...", held: [.string], majority: .string
+        )
+
+        #expect(statement == #"db.people.updateOne({"_id": 1}, {"$set": {"f": "[DRAFT] Chapter one..."}})"#)
+    }
+
     // MARK: - A field that held documents and strings
 
     /// Measured on 7.0.43: in a field where most rows hold documents, `{"$set": {"f.a": 2}}` on the

@@ -32,9 +32,13 @@ final class SyncChangeTracker: Sendable {
 
     // MARK: - Mark Dirty
 
+    /// A record marked dirty exists again, so a deletion still waiting to go up for the same id is
+    /// dropped. Left in place, the next push sent a save and a deletion for one record, and a folder
+    /// deleted and then restored by Undo stayed deleted in iCloud.
     @MainActor
     func markDirty(_ type: SyncRecordType, id: String) {
         guard !isSuppressed, type.syncScope == .synced else { return }
+        metadataStorage.removeTombstones([id], type: type)
         metadataStorage.markDirty(id, type: type)
         recordEdits(type, ids: [id])
         Self.logger.info("Marked dirty: \(type.rawValue)/\(id)")
@@ -50,6 +54,7 @@ final class SyncChangeTracker: Sendable {
     @MainActor
     func markDirty(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty, type.syncScope == .synced else { return }
+        metadataStorage.removeTombstones(ids, type: type)
         metadataStorage.markDirty(ids, type: type)
         recordEdits(type, ids: ids)
         Self.logger.trace("Marked dirty: \(type.rawValue) x\(ids.count)")
