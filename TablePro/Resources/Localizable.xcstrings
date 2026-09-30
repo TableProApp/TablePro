@@ -184797,6 +184797,9 @@
     },
     "This engine cannot filter that table with those conditions." : {
 
+    },
+    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+
     }
   },
   "version" : "1.1"

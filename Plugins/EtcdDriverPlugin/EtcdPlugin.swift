@@ -18,7 +18,7 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "etcd"
     static let databaseDisplayName = "etcd"
     static let iconName = "etcd-icon"
-    static let defaultPort = 2379
+    static let defaultPort = 2_379
     static let isDownloadable = true
 
     static let navigationModel: NavigationModel = .standard
@@ -53,8 +53,9 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "etcdTlsMode",
             label: String(localized: "TLS Mode"),
+            defaultValue: "Disabled",
             fieldType: .dropdown(options: [
-                .init(value: "Disabled", label: "Disabled"),
+                .init(value: "Disabled", label: String(localized: "Disabled")),
                 .init(value: "Required", label: String(localized: "Required (skip verify)")),
                 .init(value: "VerifyCA", label: String(localized: "Verify CA")),
                 .init(value: "VerifyIdentity", label: String(localized: "Verify Identity")),

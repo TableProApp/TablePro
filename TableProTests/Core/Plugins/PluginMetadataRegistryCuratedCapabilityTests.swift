@@ -191,6 +191,13 @@ private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 @Suite("PluginMetadataRegistry curated capabilities", .serialized)
 struct PluginMetadataRegistryCuratedCapabilityTests {
+    @Test("etcd TLS Mode starts on Disabled, the mode the driver uses when none is chosen")
+    func etcdTlsModeDefaultsToDisabled() throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd"))
+        let field = try #require(snapshot.connection.additionalConnectionFields.first { $0.id == "etcdTlsMode" })
+        #expect(field.defaultValue == "Disabled")
+    }
+
     @Test("DuckDB stays unpoolable when its plugin registers")
     func duckDBKeepsItsPoolingOptOut() {
         let registry = PluginMetadataRegistry.shared
