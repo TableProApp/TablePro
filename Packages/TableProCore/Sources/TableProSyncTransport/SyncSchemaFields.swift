@@ -103,6 +103,38 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     ]
 }
 
+/// Empty until `TableFolder` is deployed to Production, for the reason `FavoriteDatabaseSyncField`
+/// once gave: the gated subscript drops every write, so the type stays inert rather than rejected.
+/// Flip this set and `SyncRecordType.verifiedInProduction` in the commit that carries the refreshed
+/// `production-schema.ckdb`.
+public enum TableFolderSyncField: String, SyncSchemaField {
+    case folderId
+    case connectionId
+    case database
+    case schema
+    case name
+    case createdAt
+    case updatedAt
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = []
+}
+
+/// One object filed in a folder. The record is named after the object, not the folder, so moving a
+/// table between folders rewrites one record and an object can never be in two folders at once.
+public enum TableFolderItemSyncField: String, SyncSchemaField {
+    case connectionId
+    case database
+    case schema
+    case name
+    case folderId
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = []
+}
+
 /// Everything except the password, which stays in the Keychain, and except the payload of a
 /// `.source` password mode, which can name a shell command this Mac would then run. `passwordMode`
 /// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives

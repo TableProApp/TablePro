@@ -1192,4 +1192,112 @@ struct ElasticsearchStatementGeneratorTests {
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
         #expect(decoded?.body?.contains("\"name\":\"{\\\"a\\\":1}\"") == true)
     }
+
+    private func documentGenerator() -> ElasticsearchStatementGenerator {
+        ElasticsearchStatementGenerator(
+            index: "users",
+            columns: ["_id", "tags", "labels", "name"],
+            columnTypeNames: ["keyword", "keyword", "object", "text"]
+        )
+    }
+
+    private func displayed(_ value: Any) -> String {
+        ElasticsearchMappingFlattener.cell(value, length: .display).asText ?? ""
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func shortenedTags() -> String {
+        displayed((0..<1_500).map { "tag-\($0)" })
+    }
+
+    private func tagEdit(from old: String, to new: PluginCellValue) -> PluginRowChange {
+        PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "tags", oldValue: .text(old), newValue: new)],
+            originalRow: [.text("doc1"), .text(old), .null, .text("Bob")]
+        )
+    }
+
+    private func updateBody(_ change: PluginRowChange) throws -> String? {
+        let writes = try documentGenerator().generateRowWrites(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        let write = try #require(writes.first)
+        return ElasticsearchStatementGenerator.decode(write.statement)?.body
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"tag-0\"", with: "\"tag-Z\"")
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to an array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a value shortened right after an object is refused")
+    func insertRefusesAValueShortenedAfterAnObject() throws {
+        let shortened = displayed(Array(repeating: ["k": "v"], count: 1_500))
+        try #require(shortened.hasSuffix("}..."))
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: shortenedRefusal("labels")) {
+            try documentGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text(shortened), .text("Eve")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = displayed((0..<800).map { "tag-\($0)" })
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortenedTags(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let body = try updateBody(tagEdit(from: shortenedTags(), to: .null))
+        #expect(body == #"{"doc":{"tags":null}}"#)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Rob"))],
+            originalRow: [.text("doc1"), .text(shortenedTags()), .null, .text("Bob")]
+        )
+        #expect(try updateBody(change) == #"{"doc":{"name":"Rob"}}"#)
+    }
+
+    @Test("Text that opens with a bracket and trails off is written as typed")
+    func updateWritesBracketedProse() throws {
+        let body = try updateBody(tagEdit(from: "draft", to: .text("[DRAFT] Chapter one...")))
+        #expect(body == #"{"doc":{"tags":"[DRAFT] Chapter one..."}}"#)
+    }
 }

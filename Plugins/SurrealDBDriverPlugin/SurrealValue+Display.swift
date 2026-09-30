@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 
 public enum SurrealTextLength: Sendable {
     case display
@@ -53,9 +54,13 @@ public extension SurrealValue {
     }
 
     private func jsonText(_ length: SurrealTextLength) -> String {
-        let text = Self.jsonFragment(self)
-        guard length == .display, (text as NSString).length > Self.maxSerializedLength else { return text }
-        return String(text.prefix(Self.maxSerializedLength)) + "..."
+        let json = Self.jsonFragment(self)
+        switch length {
+        case .display:
+            return JSONTruncation.truncate(json, maxLength: Self.maxSerializedLength)
+        case .whole:
+            return json
+        }
     }
 
     var typeName: String {

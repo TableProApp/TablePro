@@ -25,6 +25,10 @@ internal enum DatabaseTreeMenuSpec {
             ]
         case .table(let ref):
             return tableSections(ref, context: context)
+        case .foldersSection:
+            return [DatabaseTreeMenuSection([.command(String(localized: "New Folder"), .tableFolder(.create(.browsed)))])]
+        case .tableFolder(let ref):
+            return folderSections(ref.folder)
         case .partition(let ref):
             return partitionSections(ref, context: context)
         case .database(let metadata):
@@ -43,12 +47,17 @@ internal enum DatabaseTreeMenuSpec {
         case .objectKindSection(let kind):
             return objectKindSections(kind, context: context)
         case .containerObjectKindSection(let group):
+            let database = group.database.nilIfEmpty
             return [
                 DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]),
+                DatabaseTreeMenuSection(newFolderItems(
+                    kind: group.kind,
+                    container: .container(database: database, schema: group.schema)
+                )),
                 DatabaseTreeMenuSection(
                     createTypeItems(
                         kind: group.kind,
-                        database: group.database.isEmpty ? nil : group.database,
+                        database: database,
                         schema: group.schema,
                         context: context
                     )
@@ -81,7 +90,10 @@ internal enum DatabaseTreeMenuSpec {
             .filter { $0.database == ref.database }
         return [
             DatabaseTreeMenuSection(openItems(ref, context: context)),
-            DatabaseTreeMenuSection(noteItems(ref, targets: targets, context: context)),
+            DatabaseTreeMenuSection(
+                noteItems(ref, targets: targets, context: context)
+                    + (isRecentRow ? [] : folderItems(context.tableFolderOptions))
+            ),
             DatabaseTreeMenuSection(dataItems(ref, targets: targets, context: context)),
             DatabaseTreeMenuSection(writeItems(ref, targets: targets, context: context, isRecentRow: isRecentRow))
         ]
@@ -332,6 +344,7 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
         return [
             DatabaseTreeMenuSection(items),
+            DatabaseTreeMenuSection(context.offersBrowsedFolders ? newFolderItems(kind: kind, container: .browsed) : []),
             DatabaseTreeMenuSection(createTypeItems(
                 kind: kind, database: context.activeDatabase, schema: context.activeSchema, context: context
             ))
@@ -588,6 +601,52 @@ internal enum DatabaseTreeMenuSpec {
             : String(format: String(localized: "Copy %lld Names"), count)
     }
 
+    // MARK: - Folders
+
+    private static func newFolderItems(
+        kind: SidebarObjectKind,
+        container: TableFolderContainer
+    ) -> [DatabaseTreeMenuItem] {
+        guard kind.category == .table else { return [] }
+        return [.command(String(localized: "New Folder"), .tableFolder(.create(container)))]
+    }
+
+    /// Filing sits with Add to Favorites, the other command that only organises the list. Move to
+    /// leaves out a folder only when everything selected is already in it, and always offers New
+    /// Folder so the first folder is one step from any row.
+    private static func folderItems(_ options: TableFolderMenuOptions?) -> [DatabaseTreeMenuItem] {
+        guard let options, !options.targets.isEmpty else { return [] }
+        let destinations: [DatabaseTreeMenuItem] = options.folders
+            .filter { $0.id != options.folderHoldingEveryTarget }
+            .map { .command($0.name, .tableFolder(.move(options.targets, into: $0))) }
+        var items: [DatabaseTreeMenuItem] = [
+            .submenu(
+                title: String(localized: "Move to"),
+                sections: [
+                    DatabaseTreeMenuSection(destinations),
+                    DatabaseTreeMenuSection([
+                        .command(String(localized: "New Folder"), .tableFolder(.createHolding(options.targets)))
+                    ])
+                ]
+            )
+        ]
+        if options.hasFiledTargets {
+            items.append(.command(String(localized: "Remove from Folder"), .tableFolder(.remove(options.targets))))
+        }
+        return items
+    }
+
+    /// Deleting a folder takes nothing out of the database, so it asks nothing and can be undone.
+    private static func folderSections(_ folder: TableFolder) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([
+                .command(String(localized: "Rename"), .tableFolder(.rename(folder))),
+                .command(String(localized: "New Folder"), .tableFolder(.create(.scope(folder.scope))))
+            ]),
+            DatabaseTreeMenuSection([.command(String(localized: "Delete Folder"), .tableFolder(.delete(folder)))])
+        ]
+    }
+
     // MARK: - Background
 
     /// The menu for the empty area below the last row, and for the rows that stand for nothing.
@@ -605,6 +664,9 @@ internal enum DatabaseTreeMenuSpec {
             creation.append(.command(String(localized: "New View…"), .createView))
         }
         creation += newSchemaItems(database: context.activeDatabase, context: context)
+        if context.offersBrowsedFolders {
+            creation.append(.command(String(localized: "New Folder"), .tableFolder(.create(.browsed))))
+        }
         var filters: [DatabaseTreeMenuItem] = []
         if context.canFilterDatabases {
             filters.append(.command(String(localized: "Filter Databases…"), .filterDatabases))

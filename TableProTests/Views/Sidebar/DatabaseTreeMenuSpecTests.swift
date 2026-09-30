@@ -1169,3 +1169,151 @@ struct DatabaseTreeMenuSpecTests {
         #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
     }
 }
+
+// MARK: - Folders
+
+extension DatabaseTreeMenuSpecTests {
+    private var folderScope: DatabaseScope {
+        DatabaseScope(connectionId: UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID(), database: "app", schema: "public")
+    }
+
+    private func folder(_ name: String) -> TableFolder {
+        TableFolder(scope: folderScope, name: name)
+    }
+
+    private func contextWithFolders(
+        clicked: DatabaseTreeNode.Kind?,
+        options: TableFolderMenuOptions? = nil,
+        offersBrowsedFolders: Bool = true,
+        isReadOnly: Bool = false
+    ) -> DatabaseTreeMenuContext {
+        var base = context(clicked: clicked, isReadOnly: isReadOnly)
+        base.tableFolderOptions = options
+        base.offersBrowsedFolders = offersBrowsedFolders
+        return base
+    }
+
+    private func moveToItems(_ sections: [DatabaseTreeMenuSection]) -> [DatabaseTreeMenuItem] {
+        sections.flatMap(\.items).flatMap { item -> [DatabaseTreeMenuItem] in
+            guard case .submenu(let title, let nested) = item, title == String(localized: "Move to") else { return [] }
+            return nested.flatMap(\.items)
+        }
+    }
+
+    @Test("The Folders section makes a folder in the browsed schema")
+    func foldersSectionOffersNewFolder() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .foldersSection)))
+
+        #expect(issued == [.tableFolder(.create(.browsed))])
+    }
+
+    @Test("A folder row renames, makes a sibling and deletes, and never drops anything")
+    func folderRowItems() {
+        let billing = folder("Billing")
+        let ref = DatabaseTreeFolderRef(folder: billing, members: [tableRef("invoices")])
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .tableFolder(ref)))
+        let issued = commands(sections)
+
+        #expect(issued == [.tableFolder(.rename(billing)), .tableFolder(.create(.scope(billing.scope))), .tableFolder(.delete(billing))])
+        #expect(sections.last.map { commands($0.items) } == [.tableFolder(.delete(billing))])
+    }
+
+    @Test("Move to lists the other folders and always offers a new one")
+    func moveToListsOtherFolders() {
+        let ref = tableRef("orders")
+        let billing = folder("Billing")
+        let archive = folder("Archive")
+        let options = TableFolderMenuOptions(
+            targets: [ref], folders: [archive, billing], folderHoldingEveryTarget: billing.id, hasFiledTargets: true
+        )
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(ref), options: options))
+
+        #expect(commands(moveToItems(sections)) == [
+            .tableFolder(.move([ref], into: archive)),
+            .tableFolder(.createHolding([ref]))
+        ])
+        #expect(commands(sections).contains(.tableFolder(.remove([ref]))))
+    }
+
+    @Test("A selection spread over several folders can be gathered into any of them")
+    func moveToOffersEveryFolderForAMixedSelection() {
+        let orders = tableRef("orders")
+        let invoices = tableRef("invoices")
+        let billing = folder("Billing")
+        let archive = folder("Archive")
+        let options = TableFolderMenuOptions(
+            targets: [orders, invoices], folders: [archive, billing], folderHoldingEveryTarget: nil, hasFiledTargets: true
+        )
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(orders), options: options))
+
+        #expect(commands(moveToItems(sections)).contains(.tableFolder(.move([orders, invoices], into: billing))))
+        #expect(commands(moveToItems(sections)).contains(.tableFolder(.move([orders, invoices], into: archive))))
+    }
+
+    @Test("Remove from Folder only appears when something selected is in a folder")
+    func removeFromFolderNeedsAFiledTarget() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(
+            targets: [ref], folders: [folder("Billing")], folderHoldingEveryTarget: nil, hasFiledTargets: false
+        )
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .table(ref), options: options)))
+
+        #expect(!issued.contains(.tableFolder(.remove([ref]))))
+        #expect(issued.contains(.tableFolder(.createHolding([ref]))))
+    }
+
+    @Test("Filing is offered on a read-only connection, because it never reaches the database")
+    func filingSurvivesReadOnly() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(targets: [ref], folders: [], folderHoldingEveryTarget: nil, hasFiledTargets: false)
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: contextWithFolders(clicked: .table(ref), options: options, isReadOnly: true)
+        ))
+
+        #expect(issued.contains(.tableFolder(.createHolding([ref]))))
+    }
+
+    @Test("A Recent row files nothing, because it stands for a table listed elsewhere")
+    func recentRowOffersNoFolders() {
+        let ref = tableRef("orders")
+        let options = TableFolderMenuOptions(targets: [ref], folders: [folder("Billing")], folderHoldingEveryTarget: nil, hasFiledTargets: false)
+        let sections = DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .recentTable(ref), options: options))
+
+        #expect(moveToItems(sections).isEmpty)
+    }
+
+    @Test("A flat Tables or Views section makes a folder; a Procedures section does not")
+    func flatSectionsOfferNewFolderForTableKinds() {
+        for kind in [SidebarObjectKind.table, .view] {
+            let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .objectKindSection(kind))))
+            #expect(issued.contains(.tableFolder(.create(.browsed))))
+        }
+        let procedures = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .objectKindSection(.procedure))))
+        #expect(!procedures.contains(.tableFolder(.create(.browsed))))
+    }
+
+    @Test("A tree Tables group makes a folder in its own database and schema")
+    func treeGroupOffersNewFolderInItsContainer() {
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: "sales", kind: .table)
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: .containerObjectKindSection(group))))
+
+        #expect(issued.contains(.tableFolder(.create(.container(database: "shop", schema: "sales")))))
+    }
+
+    @Test("The empty area makes a folder only where the flat list is on screen")
+    func emptyAreaOffersNewFolderInTheFlatList() {
+        let flat = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: nil, isReadOnly: true)))
+        let tree = commands(DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: nil, offersBrowsedFolders: false)))
+
+        #expect(flat.contains(.tableFolder(.create(.browsed))))
+        #expect(!tree.contains(.tableFolder(.create(.browsed))))
+    }
+
+    @Test("Folder rows and the Folders section always have a menu")
+    func folderMenusHaveContent() {
+        let ref = DatabaseTreeFolderRef(folder: folder("Billing"), members: [])
+        for kind in [DatabaseTreeNode.Kind.foldersSection, .tableFolder(ref)] {
+            #expect(!DatabaseTreeMenuSpec.sections(for: contextWithFolders(clicked: kind, isReadOnly: true)).isEmpty)
+        }
+    }
+}

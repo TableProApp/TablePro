@@ -24,6 +24,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     let lexicalFeatures: SQLLexicalFeatures
     private let implicitSchemaName: String?
     private let pagination: PaginationCapability
+    private let appliesRowScope: Bool
     private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
@@ -32,9 +33,14 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
+        self.appliesRowScope = Self.canApplyRowScope(on: databaseType)
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
+    }
+
+    static func canApplyRowScope(on databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect != nil
     }
 
     private var pluginDriver: (any PluginDatabaseDriver)? {
@@ -130,6 +136,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         let scope = object.rowScope
         guard !scope.isUnrestricted else {
             return streamRows(table: object.name, databaseName: object.databaseName)
+        }
+        guard appliesRowScope else {
+            let reason = String(
+                format: String(localized: "%@ cannot be narrowed to some rows or columns, because this database has no SQL."),
+                object.name
+            )
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed(reason)) }
         }
         guard let pluginDriver else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }

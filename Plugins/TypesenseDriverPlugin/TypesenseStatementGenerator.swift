@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct TypesenseWriteRequest: Equatable {
@@ -23,34 +24,32 @@ struct TypesenseStatementGenerator {
     let columns: [String]
     let fields: [String: TypesenseField]
 
-    func generateStatements(
+    func generateRowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+    ) throws -> [PluginRowWrite] {
+        var writes: [PluginRowWrite] = []
 
         for change in changes {
+            let request: TypesenseWriteRequest?
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let statement = generateInsert(for: change, insertedRowData: insertedRowData) {
-                    statements.append(statement)
-                }
+                request = try generateInsert(for: change, insertedRowData: insertedRowData)
             case .update:
-                if let statement = generateUpdate(for: change) {
-                    statements.append(statement)
-                }
+                request = try generateUpdate(for: change)
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let statement = generateDelete(for: change) {
-                    statements.append(statement)
-                }
+                request = generateDelete(for: change)
+            }
+            if let request {
+                writes.append(PluginRowWrite(statement: Self.encode(request), rowIndices: [change.rowIndex]))
             }
         }
 
-        return statements
+        return writes
     }
 
     // MARK: - INSERT
@@ -58,7 +57,7 @@ struct TypesenseStatementGenerator {
     private func generateInsert(
         for change: PluginRowChange,
         insertedRowData: [Int: [PluginCellValue]]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
+    ) throws -> TypesenseWriteRequest? {
         var values: [String: PluginCellValue] = [:]
         if let rowData = insertedRowData[change.rowIndex] {
             for (columnIndex, column) in columns.enumerated() where columnIndex < rowData.count {
@@ -74,18 +73,19 @@ struct TypesenseStatementGenerator {
         for column in columns {
             guard let text = values[column]?.asText else { continue }
             guard column != TypesenseSchema.idColumn || !text.isEmpty else { continue }
+            try refuseShortened(text, in: column, of: change)
             document[column] = jsonValue(text, for: column)
         }
 
         guard let body = serialize(document) else { return nil }
-        return encode(.init(method: "POST", path: documentsPath, body: body))
+        return TypesenseWriteRequest(method: "POST", path: documentsPath, body: body)
     }
 
     // MARK: - UPDATE
 
     /// A partial update is a `PATCH` carrying only the changed fields. `id` is the document's
     /// identity and Typesense refuses to rewrite it, so it never joins the payload.
-    private func generateUpdate(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
+    private func generateUpdate(for change: PluginRowChange) throws -> TypesenseWriteRequest? {
         guard let id = documentId(from: change) else {
             Self.logger.warning("Skipping UPDATE - missing id")
             return nil
@@ -94,6 +94,8 @@ struct TypesenseStatementGenerator {
         var document: [String: Any] = [:]
         for cellChange in change.cellChanges where cellChange.columnName != TypesenseSchema.idColumn {
             if let text = cellChange.newValue.asText {
+                try refuseShortened(text, in: cellChange.columnName, of: change)
+                try refuseShortened(cellChange.oldValue.asText, in: cellChange.columnName, of: change)
                 document[cellChange.columnName] = jsonValue(text, for: cellChange.columnName)
             } else {
                 document[cellChange.columnName] = NSNull()
@@ -101,17 +103,32 @@ struct TypesenseStatementGenerator {
         }
 
         guard !document.isEmpty, let body = serialize(document) else { return nil }
-        return encode(.init(method: "PATCH", path: documentPath(id: id), body: body))
+        return TypesenseWriteRequest(method: "PATCH", path: documentPath(id: id), body: body)
     }
 
     // MARK: - DELETE
 
-    private func generateDelete(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
+    private func generateDelete(for change: PluginRowChange) -> TypesenseWriteRequest? {
         guard let id = documentId(from: change) else {
             Self.logger.warning("Skipping DELETE - missing id")
             return nil
         }
-        return encode(.init(method: "DELETE", path: documentPath(id: id), body: nil))
+        return TypesenseWriteRequest(method: "DELETE", path: documentPath(id: id), body: nil)
+    }
+
+    // MARK: - Refusals
+
+    private func refuseShortened(_ text: String?, in column: String, of change: PluginRowChange) throws {
+        guard let text, JSONTruncation.isIncompleteStructure(text) else { return }
+        throw PluginRowWriteRefusal(
+            rowIndex: change.rowIndex,
+            reason: String(
+                format: String(
+                    localized: "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query."
+                ),
+                column
+            )
+        )
     }
 
     // MARK: - Helpers
@@ -160,10 +177,6 @@ struct TypesenseStatementGenerator {
               let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         else { return nil }
         return String(data: data, encoding: .utf8)
-    }
-
-    private func encode(_ request: TypesenseWriteRequest) -> (statement: String, parameters: [PluginCellValue]) {
-        (statement: Self.encode(request), parameters: [])
     }
 
     static func encode(_ request: TypesenseWriteRequest) -> String {
