@@ -147,7 +147,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted addConnection: persistence failed for \(connection.id, privacy: .public)")
             return
         }
-        if !connection.localOnly && !connection.isSample {
+        if connection.participatesInSync {
             syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
@@ -165,7 +165,7 @@ final class ConnectionStorage {
                 Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
                 return
             }
-            if !connection.localOnly && !connection.isSample {
+            if connection.participatesInSync {
                 syncTracker.markDirty(.connection, id: connection.id.uuidString)
             }
 
@@ -196,7 +196,7 @@ final class ConnectionStorage {
             return false
         }
         let dirtyIds = updatesById.values
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
         return true
@@ -239,7 +239,7 @@ final class ConnectionStorage {
             return false
         }
         let dirtyIds = changed
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
         appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
@@ -321,7 +321,7 @@ final class ConnectionStorage {
         }
 
         let updatedConnection = connections[index]
-        if !updatedConnection.localOnly && !updatedConnection.isSample {
+        if updatedConnection.participatesInSync {
             syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
         }
 
@@ -337,7 +337,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnection: persistence failed for \(connection.id, privacy: .public)")
             return false
         }
-        if !connection.localOnly && !connection.isSample {
+        if connection.participatesInSync {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
         deletePassword(for: connection.id)
@@ -355,8 +355,9 @@ final class ConnectionStorage {
 
         ConnectionLocalState.purge(
             connectionIds: [connection.id],
-            origin: .local,
-            appSettings: appSettingsProvider()
+            origin: connection.participatesInSync ? .local : .localOnly,
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
         )
         return true
     }
@@ -371,7 +372,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
             return false
         }
-        for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
+        for conn in connectionsToDelete where conn.participatesInSync {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
         for conn in connectionsToDelete {
@@ -387,10 +388,18 @@ final class ConnectionStorage {
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
         }
+        let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
         ConnectionLocalState.purge(
-            connectionIds: idsToDelete,
+            connectionIds: syncedIds,
             origin: .local,
-            appSettings: appSettingsProvider()
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
+        )
+        ConnectionLocalState.purge(
+            connectionIds: idsToDelete.subtracting(syncedIds),
+            origin: .localOnly,
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
         )
         return true
     }
@@ -456,7 +465,7 @@ final class ConnectionStorage {
             return nil
         }
         let dirtyIds = ([placedDuplicate] + renumbered)
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
 

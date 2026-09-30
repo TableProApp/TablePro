@@ -89,7 +89,7 @@ struct SQLFavoriteStorageTests {
         let fav = makeFavorite()
         _ = await storage.addFavorite(fav)
 
-        let deleted = await storage.deleteFavorite(id: fav.id)
+        let deleted = await storage.deleteFavorites(ids: [fav.id]) != nil
         #expect(deleted)
 
         let fetched = await storage.fetchFavorites()

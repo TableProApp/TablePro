@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iCloud sync mixing up two favorite tables whose names contain a vertical bar.
 - iCloud sync sending both a save and a deletion for an item unstarred and starred again, or renamed back, before it ran.
 - Favorite table starred again while its removal was syncing to iCloud disappearing when the sync finished.
+- Table favorites, saved queries and column layouts of **Local only** connections syncing to iCloud.
+- Database favorites and column layouts removed on another Mac staying on this one.
 
 ## [0.76.1] - 2026-09-29
 

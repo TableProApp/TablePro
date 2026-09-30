@@ -131,6 +131,22 @@ struct SyncPendingDeletionsTests {
         #expect(on.sqlFolders == [Self.uuid])
     }
 
+    @Test("A database favorite or column layout deleted on another device is withheld while its category is off")
+    func databaseFavoriteAndLayoutDeletionsFollowTheirSwitches() {
+        let layoutCategory = "columnLayout.\(Self.uuid.uuidString).shop.public.orders"
+        let deletions = Self.deletion(of: .favoriteDatabase, id: Self.tableFavoriteId)
+            + Self.deletion(of: .settings, id: layoutCategory)
+        let off = SyncPendingDeletions.parse(deletions, settings: Self.settings {
+            $0.syncDatabaseFavorites = false
+            $0.syncSettings = false
+        })
+        let on = SyncPendingDeletions.parse(deletions, settings: Self.everyCategoryOn)
+
+        #expect(off == SyncPendingDeletions())
+        #expect(on.databaseFavorites == [Self.tableFavoriteId])
+        #expect(on.settingsRecordNames == [SyncRecordType.settings.recordName(for: layoutCategory)])
+    }
+
     @Test("A category switched off withholds its own deletions and no other")
     func switchedOffCategoryLeavesOthersApplied() {
         let pending = SyncPendingDeletions.parse(
