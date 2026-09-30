@@ -20,6 +20,7 @@ struct SyncSettings: Codable, Equatable {
     var syncTableFavorites: Bool
     var syncDatabaseFavorites: Bool
     var syncSQLFavorites: Bool
+    var syncTableFolders: Bool
 
     init(
         enabled: Bool,
@@ -31,7 +32,8 @@ struct SyncSettings: Codable, Equatable {
         syncCredentialProfiles: Bool = true,
         syncTableFavorites: Bool = true,
         syncDatabaseFavorites: Bool = true,
-        syncSQLFavorites: Bool = true
+        syncSQLFavorites: Bool = true,
+        syncTableFolders: Bool = true
     ) {
         self.enabled = enabled
         self.syncConnections = syncConnections
@@ -43,6 +45,7 @@ struct SyncSettings: Codable, Equatable {
         self.syncTableFavorites = syncTableFavorites
         self.syncDatabaseFavorites = syncDatabaseFavorites
         self.syncSQLFavorites = syncSQLFavorites
+        self.syncTableFolders = syncTableFolders
     }
 
     init(from decoder: Decoder) throws {
@@ -57,6 +60,7 @@ struct SyncSettings: Codable, Equatable {
         syncTableFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncTableFavorites) ?? true
         syncDatabaseFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncDatabaseFavorites) ?? true
         syncSQLFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncSQLFavorites) ?? true
+        syncTableFolders = try container.decodeIfPresent(Bool.self, forKey: .syncTableFolders) ?? true
     }
 
     static let `default` = SyncSettings(
@@ -69,7 +73,8 @@ struct SyncSettings: Codable, Equatable {
         syncCredentialProfiles: true,
         syncTableFavorites: true,
         syncDatabaseFavorites: true,
-        syncSQLFavorites: true
+        syncSQLFavorites: true,
+        syncTableFolders: true
     )
 }
 
@@ -84,6 +89,7 @@ internal extension SyncSettings {
         case .tableFavorite: syncTableFavorites
         case .favoriteDatabase: syncDatabaseFavorites
         case .favorite, .favoriteFolder: syncSQLFavorites
+        case .tableFolder, .tableFolderItem: syncTableFolders
         }
     }
 }

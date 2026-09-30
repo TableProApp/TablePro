@@ -135,6 +135,14 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
+    @Published var isFoldersExpanded: Bool {
+        didSet {
+            AppStorageEnvironment.shared.defaults.set(
+                isFoldersExpanded,
+                forKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId)
+            )
+        }
+    }
     @Published var showOperationDialog = false
     @Published var pendingOperationType: TableOperationType?
     @Published var pendingOperationTables: [DatabaseTreeTableRef] = []
@@ -207,6 +215,10 @@ final class SidebarViewModel: ObservableObject {
         )
         self.isRecentsExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
+            defaultValue: true
+        )
+        self.isFoldersExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId),
             defaultValue: true
         )
         /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
