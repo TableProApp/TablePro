@@ -183094,6 +183094,9 @@
     "Weaviate does not support views." : {
 
     },
+    "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor." : {
+
+    },
     "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
 
     },
