@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP `describe_table` results rejected by clients that check them against the tool's output schema.
 - MCP `export_data` writing numbers and booleans as strings in JSON and SQL output, and binary values as base64 text.
 - MCP `focus_query_tab` reporting a tab focused while its window stayed on another tab or connection.
+- MCP `browse_table` ignoring a sort on a column the table does not have and returning unsorted rows.
 
 ### Security
 
