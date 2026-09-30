@@ -10,28 +10,23 @@ import XCTest
 /// query is rooted at a window or its sheet because the sample database's grid publishes thousands of
 /// elements.
 final class RowImportNewTableEditsUITests: UITestCase {
+    private let fileName = "genres.csv"
     private let genres = Data("GenreId,Title\n 9001 ,Imported genre\n".utf8)
 
     func testAColumnEditSurvivesAParsingOptionChange() throws {
-        let app = try launchWithSampleAndFile()
-        let dataWindow = app.windows.matching(identifier: "main-data-file").firstMatch
-        XCTAssertTrue(dataWindow.waitToExist(timeout: 30), "The CSV produced no data file window")
-        let connectionWindow = app.windows
-            .matching(NSPredicate(format: "identifier != %@", "main-data-file"))
-            .firstMatch
-        XCTAssertTrue(
-            waitForPredicate(timeout: 30) {
-                objectBrowser(in: connectionWindow).descendants(matching: .staticText).firstMatch.exists
-            },
-            "The sample database never finished opening"
+        let app = try launchWithSampleDatabase(andDataFile: fileName, contents: genres)
+        let windows = rowImportWindows(in: app, dataFileTitle: fileName)
+        let sheet = openRowImportSheet(
+            from: windows.dataFile,
+            titled: fileName,
+            into: windows.connection,
+            in: app
         )
-
-        let sheet = try openImportSheet(from: dataWindow, into: connectionWindow, in: app)
         let newTable = sheet.radioButtons["New table"].firstMatch
         XCTAssertTrue(waitUntilHittable(newTable, timeout: 10), "The sheet must offer a new table")
         newTable.click()
 
-        let titleKey = sheet.checkBoxes["Title is a primary key"].firstMatch
+        let titleKey = element(sheet.checkBoxes, labelEndingWith: "Title is a primary key")
         XCTAssertTrue(waitUntilHittable(titleKey, timeout: 20), "The new table must list the Title column")
         titleKey.click()
         XCTAssertTrue(
@@ -39,11 +34,11 @@ final class RowImportNewTableEditsUITests: UITestCase {
             "Title must become the primary key"
         )
 
-        let idType = sheet.popUpButtons["Type of GenreId"].firstMatch
+        let idType = element(sheet.popUpButtons, labelEndingWith: "Type of GenreId")
         XCTAssertTrue(idType.waitToExist(timeout: 10), "The new table must list the GenreId column")
         XCTAssertEqual(typeName(of: idType), "TEXT", "Untrimmed, ' 9001 ' reads as text")
 
-        let trim = sheet.checkBoxes["Trim leading and trailing spaces"].firstMatch
+        let trim = element(sheet.checkBoxes, labelEndingWith: "Trim leading and trailing spaces")
         XCTAssertTrue(waitUntilHittable(trim, timeout: 10), "The CSV options must be in the sheet")
         trim.click()
 
@@ -58,45 +53,5 @@ final class RowImportNewTableEditsUITests: UITestCase {
 
     private func typeName(of popUp: XCUIElement) -> String? {
         (popUp.value as? String)?.uppercased()
-    }
-
-    private func launchWithSampleAndFile() throws -> XCUIApplication {
-        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
-        let fileURL = root.appendingPathComponent("genres.csv")
-        try genres.write(to: fileURL)
-        return try launchApp(environment: [
-            "TABLEPRO_UI_TEST_OPEN_SAMPLE": "1",
-            "TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path
-        ])
-    }
-
-    private func openImportSheet(
-        from dataWindow: XCUIElement,
-        into connectionWindow: XCUIElement,
-        in app: XCUIApplication
-    ) throws -> XCUIElement {
-        let grid = dataWindow.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(grid.waitToExist(timeout: 30), "The data file window has no grid")
-        XCTAssertTrue(waitForClickableRows(in: grid), "The data file must load rows")
-        grid.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 80, dy: grid.tableRows.firstMatch.frame.midY - grid.frame.minY))
-            .click()
-
-        let edit = app.menuBars.menuBarItems["Edit"]
-        edit.click()
-        let data = edit.menus.menuItems["Data"].firstMatch
-        XCTAssertTrue(data.waitToExist(timeout: 5), "Edit must carry the Data submenu")
-        data.hover()
-        let importItem = data.menus.menuItems["Import into Table…"].firstMatch
-        XCTAssertTrue(importItem.waitToExist(timeout: 5), "Data must offer Import into Table")
-        importItem.click()
-
-        let proceed = dataWindow.sheets.buttons["Continue"].firstMatch
-        XCTAssertTrue(proceed.waitToExist(timeout: 15), "Import into Table must ask for a connection")
-        proceed.click()
-
-        let sheet = connectionWindow.sheets.firstMatch
-        XCTAssertTrue(sheet.waitToExist(timeout: 30), "The import sheet must open in the connection window")
-        return sheet
     }
 }
