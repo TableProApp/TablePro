@@ -540,6 +540,7 @@ targets:
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
+      - Plugins/ParquetExportPlugin/ParquetTableFiles.swift
       - Plugins/ParquetExportPlugin/ParquetTypeMapper.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
@@ -553,6 +554,9 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
       - Plugins/MQLExportPlugin/MQLCollectionDefinition.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MQLExportPlugin/MQLExportModels.swift
+      - Plugins/MQLExportPlugin/MQLExportOptionsView.swift
+      - Plugins/MQLExportPlugin/MQLExportPlugin.swift
       - Plugins/MQLExportPlugin/MQLScriptLexer.swift
       - Plugins/MQLExportPlugin/MQLScriptValue.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
@@ -786,6 +790,9 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure+ConnectError.swift
+      - Plugins/RedisDriverPlugin/RedisTLSOptions.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift
       - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
@@ -806,6 +813,10 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXExportModels.swift
+      - Plugins/XLSXExportPlugin/XLSXExportOptionsView.swift
+      - Plugins/XLSXExportPlugin/XLSXExportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXWriter.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
       - Plugins/XMLExportPlugin/XMLExportModels.swift
@@ -1503,6 +1514,9 @@ targets:
     templateAttributes:
       folder: SurrealDBDriverPlugin
       principalClass: SurrealDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   TeradataDriver:
     templates: [DriverPlugin]

@@ -27,6 +27,9 @@ final class XLSXWriter {
     /// Per-sheet metadata and accumulated XML data
     private var sheets: [(name: String, data: Data)] = []
 
+    private static let maximumSheetNameLength = 31
+    private var takenSheetNames: Set<String> = []
+
     /// Pre-cached column letter lookups
     private var columnLetterCache: [String] = []
 
@@ -46,7 +49,7 @@ final class XLSXWriter {
 
     /// Begin a new worksheet. Must be followed by `addRows` calls and then `finishSheet`.
     func beginSheet(name: String, columns: [String], includeHeader: Bool, convertNullToEmpty: Bool) {
-        let sanitized = sanitizeSheetName(name)
+        let sheetName = unusedSheetName(for: name)
         currentRowNumber = 0
         currentSheetHasHeader = includeHeader
 
@@ -66,7 +69,7 @@ final class XLSXWriter {
             appendRow(headerCells, isHeader: true, to: &d)
         }
 
-        sheets.append((name: sanitized, data: d))
+        sheets.append((name: sheetName, data: d))
     }
 
     /// Add a batch of raw rows to the current (last) sheet.
@@ -119,12 +122,8 @@ final class XLSXWriter {
         convertNullToEmpty: Bool
     ) {
         finishSheet()
-        let continuationIndex = sheets.filter {
-            $0.name == sanitizeSheetName(baseName) || $0.name.hasPrefix(sanitizeSheetName(baseName) + " (")
-        }.count + 1
-        let newName = "\(baseName) (\(continuationIndex))"
         beginSheet(
-            name: newName,
+            name: baseName,
             columns: columns,
             includeHeader: includeHeader,
             convertNullToEmpty: convertNullToEmpty
@@ -295,12 +294,25 @@ final class XLSXWriter {
         return result
     }
 
+    private func unusedSheetName(for requestedName: String) -> String {
+        let base = sanitizeSheetName(requestedName)
+        var candidate = base
+        var number = 1
+        while takenSheetNames.contains(candidate.lowercased()) {
+            number += 1
+            let suffix = " (\(number))"
+            candidate = String(base.prefix(Self.maximumSheetNameLength - suffix.count)) + suffix
+        }
+        takenSheetNames.insert(candidate.lowercased())
+        return candidate
+    }
+
     private func sanitizeSheetName(_ name: String) -> String {
         var sanitized = name
         let invalid: [Character] = ["\\", "/", "?", "*", "[", "]", ":"]
         sanitized = String(sanitized.filter { !invalid.contains($0) })
-        if sanitized.count > 31 {
-            sanitized = String(sanitized.prefix(31))
+        if sanitized.count > Self.maximumSheetNameLength {
+            sanitized = String(sanitized.prefix(Self.maximumSheetNameLength))
         }
         if sanitized.isEmpty {
             sanitized = "Sheet"
