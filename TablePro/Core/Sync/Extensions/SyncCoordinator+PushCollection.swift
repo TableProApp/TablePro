@@ -78,6 +78,10 @@ extension SyncCoordinator {
             await collectSQLFavorites(snapshot: snapshot, into: &batch, zoneID: zoneID)
         }
 
+        if settings.syncTableFolders {
+            collectTableFolders(snapshot: snapshot, into: &batch, zoneID: zoneID)
+        }
+
         return batch
     }
 
@@ -112,7 +116,7 @@ extension SyncCoordinator {
         changeTracker.discardDirty(type, ids: Array(unpushable))
     }
 
-    private func appendTombstones(of type: SyncRecordType, to batch: inout SyncPushBatch, zoneID: CKRecordZone.ID) {
+    func appendTombstones(of type: SyncRecordType, to batch: inout SyncPushBatch, zoneID: CKRecordZone.ID) {
         for tombstone in metadataStorage.tombstones(for: type) {
             batch.deletions.append(SyncRecordMapper.recordID(type: type, id: tombstone.id, in: zoneID))
         }

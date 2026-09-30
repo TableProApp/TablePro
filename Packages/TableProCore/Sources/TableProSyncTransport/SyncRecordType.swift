@@ -12,6 +12,8 @@ public enum SyncRecordType: String, CaseIterable, Sendable {
     case favoriteDatabase = "FavoriteDatabase"
     case sshProfile = "SSHProfile"
     case credentialProfile = "CredentialProfile"
+    case tableFolder = "TableFolder"
+    case tableFolderItem = "TableFolderItem"
 
     public var recordNamePrefix: String {
         switch self {
@@ -25,6 +27,8 @@ public enum SyncRecordType: String, CaseIterable, Sendable {
         case .favoriteDatabase: return "FavoriteDatabase_"
         case .sshProfile: return "SSHProfile_"
         case .credentialProfile: return "CredentialProfile_"
+        case .tableFolder: return "TableFolder_"
+        case .tableFolderItem: return "TableFolderItem_"
         }
     }
 
