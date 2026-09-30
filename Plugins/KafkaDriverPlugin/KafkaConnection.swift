@@ -174,6 +174,15 @@ actor KafkaConnection {
     ) async throws {
         guard channel == nil else { return }
 
+        let timeoutNanoseconds = UInt64(max(1, timeout.nanoseconds))
+        let expiresAt = ProcessInfo.processInfo.systemUptime + TimeInterval(timeoutNanoseconds) / 1_000_000_000
+        let timeoutTask = Task { [weak self] in
+            try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.close()
+        }
+        defer { timeoutTask.cancel() }
+
         let sslContext = try Self.makeSSLContext(ssl)
         let serverHostname = ssl.verifiesHostname ? endpoint.host : nil
         let responseHandler = KafkaResponseHandler()
@@ -210,9 +219,15 @@ actor KafkaConnection {
         handler = responseHandler
 
         do {
+            guard ProcessInfo.processInfo.systemUptime < expiresAt else {
+                throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka broker"))
+            }
             try Task.checkCancellation()
             apiVersions = try await negotiateApiVersions()
             try await authenticate(credentials)
+            guard ProcessInfo.processInfo.systemUptime < expiresAt else {
+                throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka broker"))
+            }
         } catch {
             await close()
             throw error

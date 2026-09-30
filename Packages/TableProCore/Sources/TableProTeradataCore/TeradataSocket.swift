@@ -26,6 +26,7 @@ public enum TeradataWireError: Error, CustomStringConvertible, LocalizedError {
 protocol TeradataTransport: AnyObject {
     func send(_ bytes: [UInt8]) throws
     func receive(_ count: Int) throws -> [UInt8]
+    func finishConnecting()
     func cancel()
     func close()
 }
@@ -34,8 +35,11 @@ final class TeradataSocket: TeradataTransport {
     private let lock = NSLock()
     private var descriptor: Int32 = -1
     private var closed = false
+    private var cancelled = false
+    private var connectDeadline: TeradataConnectDeadline?
 
-    init(host: String, port: UInt16, timeoutSeconds: Int) throws {
+    init(host: String, port: UInt16, deadline: TeradataConnectDeadline) throws {
+        connectDeadline = deadline
         var hints = addrinfo(
             ai_flags: 0, ai_family: AF_UNSPEC, ai_socktype: SOCK_STREAM,
             ai_protocol: IPPROTO_TCP, ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
@@ -48,11 +52,21 @@ final class TeradataSocket: TeradataTransport {
         var lastErrno: Int32 = 0
         var candidate: UnsafeMutablePointer<addrinfo>? = head
         while let node = candidate {
+            let remainingMilliseconds = try deadline.remainingMilliseconds()
             let handle = socket(node.pointee.ai_family, node.pointee.ai_socktype, node.pointee.ai_protocol)
             if handle >= 0 {
-                if connect(handle, node.pointee.ai_addr, node.pointee.ai_addrlen) == 0 {
-                    descriptor = handle
-                    break
+                let flags = fcntl(handle, F_GETFL, 0)
+                if flags >= 0, fcntl(handle, F_SETFL, flags | O_NONBLOCK) == 0 {
+                    let result = Darwin.connect(handle, node.pointee.ai_addr, node.pointee.ai_addrlen)
+                    let connected = result == 0 || Self.waitUntilConnected(
+                        handle,
+                        timeoutMilliseconds: remainingMilliseconds
+                    )
+                    _ = fcntl(handle, F_SETFL, flags)
+                    if connected {
+                        descriptor = handle
+                        break
+                    }
                 }
                 lastErrno = errno
                 Darwin.close(handle)
@@ -64,18 +78,21 @@ final class TeradataSocket: TeradataTransport {
         guard descriptor >= 0 else {
             throw TeradataWireError.connectionFailed("connect \(host):\(port) errno \(lastErrno)")
         }
-        var timeout = timeval(tv_sec: timeoutSeconds, tv_usec: 0)
-        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        try applyCurrentTimeout()
         var one: Int32 = 1
         setsockopt(descriptor, IPPROTO_TCP, TCP_NODELAY, &one, socklen_t(MemoryLayout<Int32>.size))
+    }
+
+    func finishConnecting() {
+        connectDeadline = nil
+        applyTimeout(milliseconds: 20_000)
     }
 
     func cancel() {
         lock.lock()
         defer { lock.unlock() }
         guard !closed else { return }
-        closed = true
+        cancelled = true
         if descriptor >= 0 { Darwin.shutdown(descriptor, SHUT_RDWR) }
     }
 
@@ -91,7 +108,7 @@ final class TeradataSocket: TeradataTransport {
     private var isClosed: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return closed
+        return closed || cancelled
     }
 
     func send(_ bytes: [UInt8]) throws {
@@ -103,6 +120,7 @@ final class TeradataSocket: TeradataTransport {
                 throw TeradataWireError.truncated("send buffer unavailable")
             }
             while offset < bytes.count {
+                try applyCurrentTimeout()
                 let written = Darwin.send(descriptor, base.advanced(by: offset), bytes.count - offset, 0)
                 if written <= 0 {
                     if isClosed { throw TeradataWireError.cancelled }
@@ -122,6 +140,7 @@ final class TeradataSocket: TeradataTransport {
                 throw TeradataWireError.truncated("receive buffer unavailable")
             }
             while offset < count {
+                try applyCurrentTimeout()
                 let read = Darwin.recv(descriptor, base.advanced(by: offset), count - offset, 0)
                 if read == 0 {
                     if isClosed { throw TeradataWireError.cancelled }
@@ -135,5 +154,30 @@ final class TeradataSocket: TeradataTransport {
             }
         }
         return buffer
+    }
+
+    static func socketTimeout(milliseconds: Int) -> timeval {
+        timeval(tv_sec: milliseconds / 1_000, tv_usec: Int32(milliseconds % 1_000) * 1_000)
+    }
+
+    private func applyCurrentTimeout() throws {
+        let milliseconds = try connectDeadline?.remainingMilliseconds() ?? 20_000
+        applyTimeout(milliseconds: milliseconds)
+    }
+
+    private func applyTimeout(milliseconds: Int) {
+        var timeout = Self.socketTimeout(milliseconds: milliseconds)
+        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    }
+
+    private static func waitUntilConnected(_ descriptor: Int32, timeoutMilliseconds: Int) -> Bool {
+        guard errno == EINPROGRESS else { return false }
+        var descriptorState = pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0)
+        guard poll(&descriptorState, 1, Int32(timeoutMilliseconds)) > 0 else { return false }
+        var socketError: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        guard getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &socketError, &length) == 0 else { return false }
+        return socketError == 0
     }
 }

@@ -26,7 +26,9 @@ MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no au
 | **Password** | empty | Stored in the macOS Keychain |
 | **Database** | empty | Optional. Leave it empty and open one with `Cmd+K` |
 
-Every connection sets its session character set to `utf8mb4` once it logs in, over any `init_connect` the server runs, so emoji and non-Latin text round-trip untouched. A connect attempt gives up after 10 seconds.
+Every connection sets its session character set to `utf8mb4` once it logs in, over any `init_connect`
+the server runs, so emoji and non-Latin text round-trip untouched. The **Connect timeout** under
+**Options** bounds the whole attempt; an empty field uses 30 seconds.
 
 ## Connection URL
 

@@ -35,8 +35,9 @@ public final class SingleResumeGate<Value: Sendable>: @unchecked Sendable {
         settle(.success(value))
     }
 
-    public func fail(_ error: Error) {
-        _ = settle(.failure(error))
+    @discardableResult
+    public func fail(_ error: Error) -> Bool {
+        settle(.failure(error))
     }
 
     @discardableResult

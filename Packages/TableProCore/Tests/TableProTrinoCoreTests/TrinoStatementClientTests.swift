@@ -28,6 +28,25 @@ final class TrinoStatementClientTests: XCTestCase {
         XCTAssertEqual(transport.requests.dropFirst().map(\.method), [.get, .get, .get])
     }
 
+    func testRequestsUseTheLatestConnectDeadlineBudget() async throws {
+        let transport = StubTransport([
+            canned(#"{"id":"q1","nextUri":"http://h:8080/v1/statement/q1/1"}"#),
+            canned(#"{"id":"q1"}"#)
+        ])
+        let timeouts = TrinoTimeoutSequence([2.5, 1.25])
+        let config = TrinoClientConfig(host: "h", port: 8_080, user: "u")
+        let client = TrinoStatementClient(
+            transport: transport,
+            config: config,
+            session: TrinoSessionState(),
+            requestTimeout: { timeouts.next() }
+        )
+
+        _ = try await client.execute("SELECT 1")
+
+        XCTAssertEqual(transport.requests.map(\.timeoutInterval), [2.5, 1.25])
+    }
+
     func testInitialPostCarriesSessionHeaders() async throws {
         let transport = StubTransport([canned(#"{"id":"q1"}"#)])
         let client = makeClient(transport)
@@ -206,5 +225,18 @@ final class TrinoStatementClientTests: XCTestCase {
 
         XCTAssertEqual(transport.requests.map(\.method), [.post, .get])
         XCTAssertEqual(transport.requests.map { $0.headers["Authorization"] }, ["Basic dTpzZWNyZXQ=", "Basic dTpzZWNyZXQ="])
+    }
+}
+
+private final class TrinoTimeoutSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [TimeInterval]
+
+    init(_ values: [TimeInterval]) {
+        self.values = values
+    }
+
+    func next() -> TimeInterval {
+        lock.withLock { values.removeFirst() }
     }
 }

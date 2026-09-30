@@ -24,14 +24,26 @@ enum RedisSentinelError: Error, Equatable {
 }
 
 protocol RedisSentinelTransport: Sendable {
-    func primaryAddress(group: String, at sentinel: RedisNodeAddress) async throws -> RedisSentinelReply
-    func peerSentinels(group: String, at sentinel: RedisNodeAddress) async throws -> [RedisNodeAddress]
-    func monitoredGroups(at sentinel: RedisNodeAddress) async throws -> [String]
+    func primaryAddress(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> RedisSentinelReply
+    func peerSentinels(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> [RedisNodeAddress]
+    func monitoredGroups(at sentinel: RedisNodeAddress, deadline: RedisConnectDeadline) async throws -> [String]
 }
 
 extension RedisSentinelTransport {
-    func peerSentinels(group: String, at sentinel: RedisNodeAddress) async throws -> [RedisNodeAddress] { [] }
-    func monitoredGroups(at sentinel: RedisNodeAddress) async throws -> [String] { [] }
+    func peerSentinels(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> [RedisNodeAddress] { [] }
+    func monitoredGroups(at sentinel: RedisNodeAddress, deadline: RedisConnectDeadline) async throws -> [String] { [] }
 }
 
 struct RedisSentinelResolution: Equatable, Sendable {
@@ -46,7 +58,7 @@ final class RedisSentinelResolver: @unchecked Sendable {
     private let configuredSentinels: [RedisNodeAddress]
     private let group: String
     private let transport: RedisSentinelTransport
-    private let deadline: TimeInterval
+    private let connectTimeout: RedisConnectTimeout
 
     private let lock = NSLock()
     private var discovered: [RedisNodeAddress] = []
@@ -55,12 +67,12 @@ final class RedisSentinelResolver: @unchecked Sendable {
         sentinels: [RedisNodeAddress],
         group: String,
         transport: RedisSentinelTransport,
-        deadline: TimeInterval = 15
+        connectTimeoutMilliseconds: Int = 15_000
     ) {
         self.configuredSentinels = sentinels
         self.group = group.trimmingCharacters(in: .whitespaces)
         self.transport = transport
-        self.deadline = deadline
+        self.connectTimeout = RedisConnectTimeout(milliseconds: connectTimeoutMilliseconds)
     }
 
     /// The configured sentinels first, then any the quorum told us about on an earlier resolve.
@@ -71,11 +83,11 @@ final class RedisSentinelResolver: @unchecked Sendable {
         return configuredSentinels + discovered.filter { seen.insert($0).inserted }
     }
 
-    func resolvePrimary() async throws -> RedisSentinelResolution {
+    func resolvePrimary(deadline: RedisConnectDeadline? = nil) async throws -> RedisSentinelResolution {
         guard !configuredSentinels.isEmpty else { throw RedisSentinelError.noSentinelsConfigured }
         guard !group.isEmpty else { throw RedisSentinelError.emptyPrimaryGroupName }
 
-        let started = Date()
+        let deadline = deadline ?? RedisConnectDeadline(timeout: connectTimeout)
         var unreachable: [RedisNodeAddress] = []
         var refusals: [(RedisNodeAddress, String)] = []
         var unaware: [RedisNodeAddress] = []
@@ -83,14 +95,18 @@ final class RedisSentinelResolver: @unchecked Sendable {
         var attempted: [RedisNodeAddress] = []
 
         for sentinel in candidates {
-            guard Date().timeIntervalSince(started) < deadline else {
+            guard deadline.remainingMilliseconds() != nil else {
                 throw RedisSentinelError.deadlineExceeded(tried: attempted)
             }
             attempted.append(sentinel)
             do {
-                switch try await transport.primaryAddress(group: group, at: sentinel) {
+                switch try await transport.primaryAddress(group: group, at: sentinel, deadline: deadline) {
                 case .address(let address):
-                    let peers = (try? await transport.peerSentinels(group: group, at: sentinel)) ?? []
+                    let peers = (try? await transport.peerSentinels(
+                        group: group,
+                        at: sentinel,
+                        deadline: deadline
+                    )) ?? []
                     remember(peers)
                     return RedisSentinelResolution(
                         primary: address,
@@ -100,7 +116,7 @@ final class RedisSentinelResolver: @unchecked Sendable {
                 case .primaryUnknown:
                     unaware.append(sentinel)
                     if monitored.isEmpty {
-                        monitored = (try? await transport.monitoredGroups(at: sentinel)) ?? []
+                        monitored = (try? await transport.monitoredGroups(at: sentinel, deadline: deadline)) ?? []
                     }
                 }
             } catch let error as RedisSentinelError {

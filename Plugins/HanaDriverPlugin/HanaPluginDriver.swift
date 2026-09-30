@@ -39,7 +39,11 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             result = try await session.connect(configuration)
         } catch let failure as HanaBridgeFailure {
-            throw HanaFailureMapping.connectError(for: failure, cancellationRequested: Task.isCancelled)
+            throw HanaFailureMapping.connectError(
+                for: failure,
+                cancellationRequested: Task.isCancelled,
+                timeoutSeconds: configuration.connectTimeoutSeconds
+            )
         }
         let configuredSchema = HanaConnectionSettings.configuredSchema(in: config)
         stateLock.withLock {

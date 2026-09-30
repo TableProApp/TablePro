@@ -41,12 +41,16 @@ struct SSHProfileAppliedTests {
         let profile = makeProfile(host: "new.example.com")
         var stale = profile.toSSHConfiguration()
         stale.host = "old.example.com"
-        let connection = makeLinkedConnection(to: profile, snapshot: stale)
+        var connection = makeLinkedConnection(to: profile, snapshot: stale)
+        connection.connectTimeoutSeconds = 12
+        connection.queryTimeoutSeconds = 0
 
         let refreshed = profile.applied(to: connection)
 
         #expect(refreshed.resolvedSSHConfig.host == "new.example.com")
         #expect(refreshed.sshConfig.host == "new.example.com")
+        #expect(refreshed.connectTimeoutSeconds == 12)
+        #expect(refreshed.queryTimeoutSeconds == 0)
     }
 
     @Test("An edited profile replaces the stale username too")

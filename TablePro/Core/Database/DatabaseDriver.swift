@@ -858,7 +858,47 @@ enum DriverPurpose: String, Sendable {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
+    struct PreparedDriverConfiguration: Sendable {
+        fileprivate let connectionId: UUID
+        fileprivate let databaseTypeId: String
+        fileprivate let purpose: DriverPurpose
+        fileprivate let username: String
+        fileprivate let sourceAdditionalFields: [String: String]
+        fileprivate let additionalFields: [String: String]
+    }
+
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+
+    static func prepareConfiguration(
+        for connection: DatabaseConnection,
+        purpose: DriverPurpose = .session
+    ) async throws -> PreparedDriverConfiguration {
+        try await PluginManager.shared.prepareForConnecting(to: connection.type)
+        guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
+            throw PluginManager.shared.driverUnavailableError(for: connection.type)
+        }
+
+        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
+        if connection.usesAWSIAM {
+            additionalFields["enableCleartextPlugin"] = "true"
+        }
+        additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields["connectionPurpose"] = purpose.rawValue
+        additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
+
+        return PreparedDriverConfiguration(
+            connectionId: connection.id,
+            databaseTypeId: connection.type.pluginTypeId,
+            purpose: purpose,
+            username: ConnectionCredentialResolver.resolveUsername(for: connection),
+            sourceAdditionalFields: connection.additionalFields,
+            additionalFields: additionalFields
+        )
+    }
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.
@@ -866,58 +906,196 @@ enum DatabaseDriverFactory {
         for connection: DatabaseConnection,
         passwordOverride: String? = nil,
         awaitPlugins: Bool,
-        purpose: DriverPurpose = .session
+        purpose: DriverPurpose = .session,
+        deadline: ConnectionDeadline? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
+        effectiveQueryTimeoutSeconds: Int? = nil,
+        preparedConfiguration: PreparedDriverConfiguration? = nil
     ) async throws -> DatabaseDriver {
-        try await PluginManager.shared.prepareForConnecting(to: connection.type)
-        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride, purpose: purpose)
+        let prepared: PreparedDriverConfiguration
+        if let preparedConfiguration {
+            prepared = preparedConfiguration
+        } else {
+            prepared = try await prepareConfiguration(
+                for: connection,
+                purpose: purpose
+            )
+        }
+        guard prepared.connectionId == connection.id,
+              prepared.databaseTypeId == connection.type.pluginTypeId,
+              prepared.purpose == purpose
+        else {
+            throw DatabaseError.connectionFailed(String(localized: "The prepared connection no longer matches this driver."))
+        }
+        let connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
+        let endpoint = timeoutEndpoint ?? .database(connection.host.nilIfEmpty ?? connection.name)
+        let requiresHostDeadline = ConnectionTimeoutPolicy.requiresHostDeadline(for: connection)
+        if requiresHostDeadline {
+            try connectionDeadline.check(endpoint: endpoint)
+        }
+        return try await createDriverFromPlugin(
+            for: connection,
+            preparedConfiguration: prepared,
+            passwordOverride: passwordOverride,
+            deadline: connectionDeadline,
+            timeoutEndpoint: endpoint,
+            effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
+            requiresHostDeadline: requiresHostDeadline
+        )
     }
 
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
+        preparedConfiguration: PreparedDriverConfiguration,
         passwordOverride: String?,
-        purpose: DriverPurpose
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        effectiveQueryTimeoutSeconds providedQueryTimeoutSeconds: Int?,
+        requiresHostDeadline: Bool
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
         }
-        var ssl = connection.sslConfig
-        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
-        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
-           !sslClientKeyPassphrase.isEmpty {
-            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
-        }
-        if connection.usesAWSIAM {
-            if ssl.mode == .disabled || ssl.mode == .preferred {
-                ssl.mode = .required
+        var additionalFields = mergeEffectiveAdditionalFields(
+            prepared: preparedConfiguration.additionalFields,
+            source: preparedConfiguration.sourceAdditionalFields,
+            effective: connection.additionalFields
+        )
+        let credentialFields = additionalFields
+        let password: String
+        if requiresHostDeadline {
+            password = try await resolvePasswordWithinDeadline(
+                deadline: deadline,
+                endpoint: timeoutEndpoint
+            ) {
+                try await ConnectionCredentialResolver.resolvePassword(
+                    for: connection,
+                    fields: credentialFields,
+                    override: passwordOverride,
+                    deadline: deadline
+                )
             }
-            additionalFields["enableCleartextPlugin"] = "true"
+        } else {
+            password = try await ConnectionCredentialResolver.resolvePassword(
+                for: connection,
+                fields: credentialFields,
+                override: passwordOverride,
+                deadline: nil
+            )
         }
-        additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
-        additionalFields["connectionId"] = connection.id.uuidString
-        additionalFields["connectionPurpose"] = purpose.rawValue
-        additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
+        let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: providedQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+        let configurationSample = ContinuousClock.now
+        if requiresHostDeadline {
+            try deadline.check(endpoint: timeoutEndpoint, at: configurationSample)
+        }
+        for (key, value) in timeoutAdditionalFields(
+            deadline: deadline,
+            effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
+            databaseType: connection.type,
+            usesRemainingBudget: requiresHostDeadline,
+            at: configurationSample
+        ) {
+            additionalFields[key] = value
+        }
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: ConnectionCredentialResolver.resolveUsername(for: connection),
-            password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
+            username: preparedConfiguration.username,
+            password: password,
             database: connection.database,
-            ssl: ssl,
+            ssl: effectiveSSLConfiguration(for: connection),
             additionalFields: additionalFields
         )
         let pluginDriver = plugin.createDriver(config: config)
-        return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        return PluginDriverAdapter(
+            connection: connection,
+            pluginDriver: pluginDriver,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
+            requiresHostDeadline: requiresHostDeadline
+        )
     }
 
-    private static func resolvePassword(
-        for connection: DatabaseConnection,
-        fields: [String: String],
-        override: String? = nil
+    static func mergeEffectiveAdditionalFields(
+        prepared: [String: String],
+        source: [String: String],
+        effective: [String: String]
+    ) -> [String: String] {
+        var merged = prepared
+        for key in Set(source.keys).union(effective.keys) where source[key] != effective[key] {
+            merged[key] = effective[key]
+        }
+        return merged
+    }
+
+    private static func effectiveSSLConfiguration(for connection: DatabaseConnection) -> SSLConfiguration {
+        var ssl = connection.sslConfig
+        if connection.usesAWSIAM, ssl.mode == .disabled || ssl.mode == .preferred {
+            ssl.mode = .required
+        }
+        return ssl
+    }
+
+    static func timeoutAdditionalFields(
+        deadline: ConnectionDeadline,
+        effectiveQueryTimeoutSeconds: Int,
+        databaseType: DatabaseType? = nil,
+        usesRemainingBudget: Bool = true,
+        at now: ContinuousClock.Instant = .now
+    ) -> [String: String] {
+        let connectTimeoutSeconds = usesRemainingBudget
+            ? max(1, deadline.remainingSeconds(at: now))
+            : deadline.configuredSeconds
+        let connectTimeoutMilliseconds = usesRemainingBudget
+            ? max(1, deadline.remainingMilliseconds(at: now))
+            : deadline.configuredSeconds * 1_000
+        var fields = [
+            "connectTimeoutSeconds": String(connectTimeoutSeconds),
+            "connectTimeoutMilliseconds": String(connectTimeoutMilliseconds),
+            "queryTimeoutSeconds": String(effectiveQueryTimeoutSeconds)
+        ]
+        if databaseType == .kafka {
+            fields["kafkaConnectTimeout"] = fields["connectTimeoutSeconds"]
+        }
+        return fields
+    }
+
+    static func resolvePasswordWithinDeadline(
+        deadline: ConnectionDeadline,
+        endpoint: ConnectionTimeoutEndpoint,
+        resolver: @escaping @MainActor @Sendable () async throws -> String
     ) async throws -> String {
-        try await ConnectionCredentialResolver.resolvePassword(
-            for: connection,
-            fields: fields,
-            override: override
+        try deadline.check(endpoint: endpoint)
+        let gate = ConnectionSingleResumeGate<String>()
+        let operation = Task { @MainActor in
+            do {
+                gate.resume(with: .success(try await resolver()))
+            } catch {
+                gate.resume(with: .failure(error))
+            }
+        }
+        let timeout = Task.detached {
+            do {
+                try await ContinuousClock().sleep(until: deadline.instant)
+            } catch {
+                return
+            }
+            if gate.resume(with: .failure(deadline.timeoutError(for: endpoint))) {
+                operation.cancel()
+            }
+        }
+        defer { timeout.cancel() }
+        return try await withTaskCancellationHandler(
+            operation: { try await gate.wait() },
+            onCancel: {
+                if gate.resume(with: .failure(CancellationError())) {
+                    operation.cancel()
+                }
+            }
         )
     }
 

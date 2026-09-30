@@ -42,6 +42,49 @@ final class HanaHelperBridgeTests: XCTestCase {
         XCTAssertTrue(HanaProcessProbe.isRunning(processIdentifier))
     }
 
+    func testConfiguredConnectTimeoutReachesTheHandshakeAndOpenPhases() throws {
+        let now: ContinuousClock.Instant = .now
+        let oneSecond = HanaHelperConnectDeadline(
+            configuration: try configuration(port: 30_015, connectTimeoutSeconds: 1),
+            now: now
+        )
+        let sixtySeconds = HanaHelperConnectDeadline(
+            configuration: try configuration(port: 30_015, connectTimeoutSeconds: 60),
+            now: now
+        )
+
+        XCTAssertEqual(oneSecond.handshakeTimeout(at: now), 1, accuracy: 1e-6)
+        XCTAssertEqual(oneSecond.openTimeout(at: now), 1, accuracy: 1e-6)
+        XCTAssertEqual(sixtySeconds.handshakeTimeout(at: now), 60, accuracy: 1e-6)
+        XCTAssertEqual(sixtySeconds.openTimeout(at: now), 60, accuracy: 1e-6)
+    }
+
+    func testHandshakeAndOpenConsumeOneConnectDeadlineWithoutResettingIt() throws {
+        let started: ContinuousClock.Instant = .now
+        let deadline = HanaHelperConnectDeadline(
+            configuration: try configuration(port: 30_015, connectTimeoutSeconds: 60),
+            now: started
+        )
+
+        let handshakeTimeout = deadline.handshakeTimeout(at: started.advanced(by: .seconds(7)))
+        let openPhase = deadline.openPhase(
+            configuration: try configuration(port: 30_015, connectTimeoutSeconds: 60),
+            at: started.advanced(by: .seconds(19))
+        )
+        let openConfiguration = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: openPhase.configuration) as? [String: Any]
+        )
+
+        XCTAssertEqual(handshakeTimeout, 53, accuracy: 1e-6)
+        XCTAssertEqual(openPhase.timeout, 41, accuracy: 1e-6)
+        XCTAssertEqual(
+            try XCTUnwrap(openConfiguration["connectTimeoutSeconds"] as? Double),
+            41,
+            accuracy: 1e-6
+        )
+        XCTAssertLessThan(openPhase.timeout, handshakeTimeout)
+    }
+
     func testTheBundledHelperAnnouncesTheBridgesForcedSeverGrace() throws {
         let launched = try HanaHelperProcess.launch(executable: XCTUnwrap(bundledHelper), handshakeDeadline: Self.callDeadline)
         defer { launched.process.shutdown() }
@@ -353,7 +396,11 @@ final class HanaHelperBridgeTests: XCTestCase {
         XCTAssertTrue(HanaProcessProbe.waitForExit(of: processIdentifier, within: Self.callDeadline))
     }
 
-    private static func connectConfiguration(host: String = "127.0.0.1", port: Int = 30_015) -> HanaConnectConfiguration {
+    private static func connectConfiguration(
+        host: String = "127.0.0.1",
+        port: Int = 30_015,
+        connectTimeoutSeconds: TimeInterval = 120
+    ) -> HanaConnectConfiguration {
         HanaConnectConfiguration(
             host: host,
             port: port,
@@ -365,14 +412,14 @@ final class HanaHelperBridgeTests: XCTestCase {
             caCertificatePath: "",
             clientCertificatePath: "",
             clientKeyPath: "",
-            connectTimeoutSeconds: 120
+            connectTimeoutSeconds: connectTimeoutSeconds
         )
     }
 
     private func makeBridge(
         trust: HanaHelperTrust = .host,
         cancelDeadline: TimeInterval? = nil,
-        openDeadline: TimeInterval = HanaHelperBridge.defaultOpenDeadline,
+        openDeadline: TimeInterval? = nil,
         locateExecutable: (@Sendable () throws -> URL)? = nil
     ) -> HanaHelperBridge {
         let bridge = HanaHelperBridge(
@@ -438,7 +485,15 @@ final class HanaHelperBridgeTests: XCTestCase {
         return try XCTUnwrap(error as? HanaBridgeFailure, "got \(error)")
     }
 
-    private func configuration(host: String = "127.0.0.1", port: Int) throws -> Data {
-        try JSONEncoder().encode(Self.connectConfiguration(host: host, port: port))
+    private func configuration(
+        host: String = "127.0.0.1",
+        port: Int,
+        connectTimeoutSeconds: TimeInterval = 120
+    ) throws -> Data {
+        try JSONEncoder().encode(Self.connectConfiguration(
+            host: host,
+            port: port,
+            connectTimeoutSeconds: connectTimeoutSeconds
+        ))
     }
 }

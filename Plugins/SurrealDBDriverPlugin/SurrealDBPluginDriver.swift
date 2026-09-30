@@ -10,6 +10,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let settings: SurrealDBConnectionConfig
     let client: SurrealRPCClient
     private let lock = NSLock()
+    private let connectTimeoutMilliseconds: Int
     private var namespace: String
     private var database: String?
     private var kindCache: [String: [String: SurrealFieldKind]] = [:]
@@ -18,6 +19,10 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let settings = SurrealDBConnectionConfig(config: config)
         self.settings = settings
         self.client = SurrealRPCClient(config: settings)
+        self.connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: 60_000
+        )
         self.namespace = settings.namespace
         self.database = settings.database.isEmpty ? nil : settings.database
     }
@@ -46,7 +51,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         try settings.validate()
-        client.start()
+        client.start(connectTimeoutMilliseconds: connectTimeoutMilliseconds)
+        defer { client.finishConnecting() }
         do {
             try await client.probeVersion()
             try await client.authenticate()

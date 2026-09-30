@@ -11,8 +11,9 @@ import Foundation
 /// then read a reason that permits a redial.
 ///
 /// `isFinished` is deliberately one-way. The plugin drops its `OracleCoreConnection` when the app
-/// disconnects and builds a new one to reconnect, so a connection closed that way is never reached
-/// again by anything the app owns, and anything still holding it has to find it finished.
+/// disconnects or abandons a connect attempt and builds a new one to reconnect, so a connection
+/// closed that way is never reached again by anything the app owns, and anything still holding it
+/// has to find it finished.
 internal struct OracleCloseRecord: Sendable, Equatable {
     private(set) var reason: OracleDisconnectReason?
     private(set) var isFinished = false

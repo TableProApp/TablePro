@@ -81,33 +81,52 @@ final class LibPQDriverCore: @unchecked Sendable {
             applicationName: LibPQConnectionString.applicationName(
                 forPurpose: config.additionalFields["connectionPurpose"]
             ),
-            suppressServerSideCancel: singleConnectionMode
+            suppressServerSideCancel: singleConnectionMode,
+            connectTimeout: LibPQConnectTimeout(additionalFields: config.additionalFields)
         )
 
-        try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
-        connectionLock.withLock {
-            _libpqConnection = pqConn
-            _lostConnection = false
-        }
+        do {
+            try await withTaskCancellationHandler {
+                try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
+                // Provisional only: bootstrap callers can reach the handle, but the connection does
+                // not become usable until finishConnecting clears the absolute connect deadline.
+                connectionLock.withLock {
+                    _libpqConnection = pqConn
+                    _lostConnection = false
+                }
 
-        switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
-        case .schema(let schema):
-            currentSchema = schema
-        case .empty:
-            if let fallback = await firstFallbackSchema(pqConn) {
-                currentSchema = fallback
-                _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+                case .schema(let schema):
+                    currentSchema = schema
+                case .empty:
+                    if let fallback = await firstFallbackSchema(pqConn) {
+                        currentSchema = fallback
+                        _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                    }
+                case .failed:
+                    break
+                }
+
+                if let selectedSchema,
+                   (try? await pqConn.executeQuery(
+                       PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
+                   )) != nil {
+                    currentSchema = selectedSchema
+                }
+
+                await onPostConnect?()
+                try await pqConn.finishConnecting()
+                try Task.checkCancellation()
+            } onCancel: {
+                pqConn.cancelConnect()
             }
-        case .failed:
-            break
+        } catch {
+            connectionLock.withLock {
+                if _libpqConnection === pqConn { _libpqConnection = nil }
+            }
+            pqConn.disconnect()
+            throw error
         }
-
-        if let selectedSchema,
-           (try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema))) != nil {
-            currentSchema = selectedSchema
-        }
-
-        await onPostConnect?()
     }
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {

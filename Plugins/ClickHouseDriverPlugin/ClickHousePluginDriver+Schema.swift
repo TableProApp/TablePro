@@ -375,7 +375,7 @@ extension ClickHousePluginDriver {
     /// Both sides are qualified with the same database, so this renames in place. Qualifying them
     /// differently is how ClickHouse moves a table, which is a different verb to the user.
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
-        let database = schema ?? lock.withLock { _currentDatabase }
+        let database = schema ?? lock.withLock { currentDatabaseName }
         let old = qualified(database: database, name: name)
         let new = qualified(database: database, name: newName)
         _ = try await execute(query: "RENAME TABLE \(old) TO \(new)")

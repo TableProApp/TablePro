@@ -14,7 +14,7 @@ The editor's sidebar lists the same four sections whatever the driver. Only Netw
 |------|----------|
 | **General** | Name, database type, host, port, database, credentials |
 | **Network** | How the connection reaches the server, and how it is encrypted |
-| **Options** | Driver options, startup SQL, Safe Mode, external and AI access, iCloud |
+| **Options** | Timeouts, driver options, startup SQL, Safe Mode, external and AI access, iCloud |
 | **Appearance** | Color, tags, group |
 
 The bar along the bottom carries **Test Connection**, **Cancel** and **Save**. When **Save** is dimmed, the reason sits to its left, prefixed with the tab that holds the empty field.
@@ -59,6 +59,8 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 
 | Field | Description |
 |-------|-------------|
+| **Connect timeout** | Maximum seconds for the network transport and remote database to finish connecting. Empty uses 30 seconds; valid values are 1 to 600 |
+| **Query timeout** | Override of **Settings > General** for this connection. Empty inherits the global value; `0` means no limit. Only drivers that support query timeouts enforce it |
 | **Startup Commands** | SQL to run after every connect. See [Startup commands](#startup-commands) |
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
 | **Extensions** | SQLite, and libSQL in Local File mode. Libraries loaded into the database file on every connect. See [Extensions](/databases/sqlite#extensions) |
@@ -68,6 +70,17 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 | **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
 | **Local only** | Keeps this connection off iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
 | Plugin fields | Driver-specific options, such as MongoDB's `replicaSet` |
+
+The connect timeout is one deadline for the whole network attempt, not a new timeout for each step.
+It includes the selected SSH tunnel or proxy, TCP, TLS and database authentication. Local SQLite and
+local libSQL file opens have no network deadline. If an SSH bastion stalls, the timeout error names
+that server rather than the database behind it. Reconnect after changing either timeout so the open
+session picks it up.
+
+<Frame caption="Per-connection timeout overrides under Options">
+  <img className="block dark:hidden" src="/images/connection-timeouts.png" alt="PostgreSQL connection Options pane with Connect timeout and Query timeout fields using their inherited defaults" />
+  <img className="hidden dark:block" src="/images/connection-timeouts-dark.png" alt="PostgreSQL connection Options pane in dark appearance with Connect timeout and Query timeout fields using their inherited defaults" />
+</Frame>
 
 A pre-connect script never runs unprompted. A **Pre-Connect Script** alert shows the script itself and waits for **Run Script**, every time. At launch it is not prompted for at all: a restored window whose connection carries a script waits with a **Connect** button.
 
@@ -94,7 +107,17 @@ A statement that fails is logged and skipped, and the connection still opens.
 
 ## Connection health
 
-Every active connection is checked on the interval set by **Check connections** in Settings > General, every 30 seconds by default, and the check is skipped while one of your own queries is running. A failed check starts a reconnect at 2s, then 4s, 8s, doubling to a 120-second ceiling, and keeps going until the connection comes back or you close it. An authentication failure stops the retries and leaves the session in error. So does a TLS failure that needs an edit to the connection: TLS off where the server requires it, TLS on where the server refuses it, a client certificate the server requires, or a client key that cannot be read or decrypted. A server certificate that fails verification or does not match the host keeps the retries going, and the window shows that certificate error in place of a generic one. A reconnect rebuilds the tunnel, restores the selected database and schema, and re-runs the startup commands; the session reads as connecting throughout.
+Every active connection is checked on the interval set by **Check connections** in Settings >
+General, every 30 seconds by default, and the check is skipped while any query, export, import, or
+other tracked operation is running. A failed check starts a reconnect at 2s, then 4s, 8s, doubling
+to a 120-second ceiling, and keeps going until the connection comes back or you close it. An
+authentication failure stops the retries and leaves the session in error. So does a TLS failure
+that needs an edit to the connection: TLS off where the server requires it, TLS on where the server
+refuses it, a client certificate the server requires, or a client key that cannot be read or
+decrypted. A server certificate that fails verification or does not match the host keeps the
+retries going, and the window shows that certificate error in place of a generic one. A reconnect
+rebuilds the tunnel, restores the selected database and schema, and re-runs the startup commands;
+the session reads as connecting throughout.
 
 The check is a query, so on a database that sleeps when idle or bills per query it is not free. **Only when I use the connection** stops it: TablePro sends nothing on its own, and instead checks the connection the first time you use it after five quiet minutes. Waking the Mac from sleep counts as a quiet period, so the first thing you do after opening the lid checks too.
 

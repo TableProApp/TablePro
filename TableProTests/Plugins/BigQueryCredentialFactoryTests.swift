@@ -3,6 +3,28 @@ import TableProGoogleCloud
 import TableProPluginKit
 import Testing
 
+private final class BigQueryRecordingHTTPClient: GoogleHTTPClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedRequest: URLRequest?
+
+    var request: URLRequest? {
+        lock.withLock { recordedRequest }
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.withLock { recordedRequest = request }
+        guard let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://oauth2.googleapis.com/token")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        ) else {
+            throw URLError(.badServerResponse)
+        }
+        return (Data(), response)
+    }
+}
+
 struct BigQueryCredentialFactoryTests {
     private static let serviceAccountJSON = """
         {"type":"service_account","client_email":"reader@key-project.iam.gserviceaccount.com",\
@@ -116,6 +138,32 @@ struct BigQueryCredentialFactoryTests {
         #expect(throws: BigQueryConfigurationError.unknownAuthMethod) {
             _ = try credentials(["bqAuthMethod": "kerberos"])
         }
+    }
+
+    @Test("Google authentication requests share the remaining connect deadline")
+    func googleAuthenticationUsesConnectDeadline() async throws {
+        let base = BigQueryRecordingHTTPClient()
+        let phase = PluginConnectTimeoutPhase(
+            deadline: PluginConnectDeadline(milliseconds: 45_000)
+        )
+        let client = BigQueryConnectHTTPClient(
+            base: base,
+            phase: phase
+        )
+        let request = URLRequest(
+            url: URL(string: "https://oauth2.googleapis.com/token")!,
+            timeoutInterval: 30
+        )
+
+        _ = try await client.send(request)
+
+        let timeout = try #require(base.request?.timeoutInterval)
+        #expect(timeout > 44)
+        #expect(timeout <= 45)
+
+        phase.finish()
+        _ = try await client.send(request)
+        #expect(base.request?.timeoutInterval == 30)
     }
 }
 

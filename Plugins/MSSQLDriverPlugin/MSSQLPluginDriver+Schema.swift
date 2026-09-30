@@ -555,7 +555,7 @@ extension MSSQLPluginDriver {
     }
 
     func switchSchema(to schema: String) async throws {
-        _currentSchema = schema
+        currentSchemaName = schema
     }
 
     func switchDatabase(to database: String) async throws {

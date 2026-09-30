@@ -171,15 +171,25 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     func connect() async throws {
         let conn: BigQueryConnection
         do {
+            let connectTimeout = PluginConnectTimeout.milliseconds(
+                in: config.additionalFields,
+                default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+            )
+            let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
+            let connectTimeoutPhase = PluginConnectTimeoutPhase(deadline: deadline)
+            defer { connectTimeoutPhase.finish() }
             conn = BigQueryConnection(
-                credentials: try BigQueryCredentialFactory.credentials(config: config),
+                credentials: try BigQueryCredentialFactory.credentials(
+                    config: config,
+                    connectTimeoutPhase: connectTimeoutPhase
+                ),
                 location: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.location]),
                 maximumBytesBilled: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.maximumBytesBilled])
             )
             if let timeout = lock.withLock({ _queryTimeoutSeconds }) {
                 conn.setQueryTimeout(timeout)
             }
-            try await conn.connect()
+            try await conn.connect(deadline: deadline)
         } catch {
             throw BigQueryError.wrap(error)
         }

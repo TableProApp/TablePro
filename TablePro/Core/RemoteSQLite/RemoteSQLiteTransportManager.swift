@@ -31,7 +31,8 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     func createTunnel(
         connectionId: UUID,
         config: SSHConfiguration,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> RemoteSQLiteEndpoint {
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
@@ -44,27 +45,61 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
         /// The tunnel is built inside the detached task and only it, not the authenticated chain of
         /// raw libssh2 handles it holds, crosses back to the actor. That is what `LibSSH2Tunnel`'s
         /// factory does too, and it is what keeps the non-Sendable session out of an actor hop.
-        let tunnel = try await Task.detached {
-            let chain = try await LibSSH2TunnelFactory.buildAuthenticatedChain(
-                config: config,
-                credentials: credentials,
-                queueLabel: "com.TablePro.rsqlite.hop.\(connectionId.uuidString)"
-            )
-            for port in candidatePorts {
-                if let listenFD = Self.bindLoopbackListener(port: port) {
-                    return RemoteSQLiteTunnel(
-                        connectionId: connectionId,
-                        localPort: port,
-                        chain: chain,
-                        listenFD: listenFD,
-                        command: command,
-                        token: token
-                    )
-                }
+        let creationTask = Task.detached {
+            let endpoint = ConnectionTimeoutEndpoint.tunnel("\(config.host):\(config.port ?? 22)")
+            let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
+            let watchdog = attempt.startWatchdog()
+            defer {
+                watchdog.cancel()
+                attempt.finish()
             }
-            LibSSH2TunnelFactory.cleanupChain(chain, reason: "no local port")
-            throw SSHTunnelError.noAvailablePort
-        }.value
+
+            return try await withTaskCancellationHandler {
+                let chain = try await LibSSH2TunnelFactory.buildAuthenticatedChain(
+                    config: config,
+                    credentials: credentials,
+                    queueLabel: "com.TablePro.rsqlite.hop.\(connectionId.uuidString)",
+                    deadline: deadline,
+                    attempt: attempt
+                )
+                do {
+                    for port in candidatePorts {
+                        try attempt.check(for: endpoint)
+                        if let listenFD = Self.bindLoopbackListener(port: port) {
+                            attempt.finish()
+                            return RemoteSQLiteTunnel(
+                                connectionId: connectionId,
+                                localPort: port,
+                                chain: chain,
+                                listenFD: listenFD,
+                                command: command,
+                                token: token,
+                                connectionDeadline: deadline
+                            )
+                        }
+                    }
+                    throw SSHTunnelError.noAvailablePort
+                } catch {
+                    attempt.finish()
+                    LibSSH2TunnelFactory.cleanupChain(chain, reason: "remote SQLite setup failed")
+                    throw error
+                }
+            } onCancel: {
+                attempt.cancel()
+            }
+        }
+        let tunnel = try await withTaskCancellationHandler {
+            try await creationTask.value
+        } onCancel: {
+            creationTask.cancel()
+        }
+
+        do {
+            try deadline.check(endpoint: .tunnel("\(config.host):\(config.port ?? 22)"))
+        } catch {
+            tunnel.close()
+            throw error
+        }
 
         tunnel.onDeath = { [weak self] id in
             Task { [weak self] in await self?.handleTunnelDeath(connectionId: id) }
@@ -95,6 +130,10 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     func getLocalPort(connectionId: UUID) -> Int? {
         guard let tunnel = tunnels[connectionId], tunnel.isRunning else { return nil }
         return tunnel.localPort
+    }
+
+    func consumeLastConnectionFailure(connectionId: UUID) -> ConnectionTimeoutError? {
+        tunnels[connectionId]?.consumeLastConnectionFailure()
     }
 
     nonisolated func terminateAllProcessesSync() {

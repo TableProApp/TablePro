@@ -110,7 +110,9 @@ Click the Explain dropdown in the query editor to choose:
 - No primary keys, indexes, or foreign keys are reported. The Structure tab's Indexes view is always empty.
 - Import is not available. Export works; see [Import and Export](/features/import-export).
 - Kerberos and OAuth 2.0 authentication are not supported.
-- The **Query timeout** in [settings](/customization/general-settings#query-timeout) does not reach Trino. A long query runs until you cancel it or the cluster ends it.
+- Neither a connection's **Query timeout** override nor the inherited [global
+  setting](/customization/general-settings#query-timeout) reaches Trino. A long query runs until you
+  cancel it or the cluster ends it.
 - Presto is not supported. It speaks the same protocol under an `X-Presto-` header prefix, and this driver always sends `X-Trino-`.
 
 ## Troubleshooting

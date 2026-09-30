@@ -75,9 +75,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let mode = RedisConnectionMode.resolve(additionalFields: config.additionalFields)
         let channel = try makeChannel(for: mode)
-        try await channel.connect(reportingStage: report)
         do {
+            try await channel.connect(reportingStage: report)
             try await verifyServerMode(mode, on: channel)
+            try await channel.finishConnecting()
+            try Task.checkCancellation()
         } catch {
             channel.disconnect()
             throw error
@@ -86,6 +88,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func makeChannel(for mode: RedisConnectionMode) throws -> any RedisCommandChannel {
+        let connectTimeout = RedisConnectTimeout(additionalFields: config.additionalFields)
         let username = config.username.isEmpty ? nil : config.username
         let password = config.password.isEmpty ? nil : config.password
         let database = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
@@ -98,7 +101,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 username: username,
                 password: password,
                 database: database,
-                sslConfig: config.ssl
+                sslConfig: config.ssl,
+                connectTimeoutMilliseconds: connectTimeout.milliseconds
             )
         case .sentinel:
             let sentinels = RedisHostListParser.parse(
@@ -113,12 +117,18 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sslConfig: config.ssl
             )
             return RedisSentinelChannel(
-                resolver: RedisSentinelResolver(sentinels: sentinels, group: group, transport: transport),
+                resolver: RedisSentinelResolver(
+                    sentinels: sentinels,
+                    group: group,
+                    transport: transport,
+                    connectTimeoutMilliseconds: connectTimeout.milliseconds
+                ),
                 group: group,
                 username: username,
                 password: password,
                 database: database,
-                sslConfig: config.ssl
+                sslConfig: config.ssl,
+                connectTimeout: connectTimeout
             )
         case .cluster:
             let seeds = RedisHostListParser.parse(
@@ -126,7 +136,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 defaultPort: RedisClusterFieldKey.defaultPort
             )
             let sslConfig = config.ssl
-            return RedisClusterChannel(seeds: seeds) { address in
+            return RedisClusterChannel(seeds: seeds, connectTimeout: connectTimeout) { address, remainingMilliseconds in
                 RedisPluginConnection(
                     host: address.host,
                     port: address.port,
@@ -134,7 +144,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     password: password,
                     database: 0,
                     sslConfig: sslConfig,
-                    connectTimeout: 5
+                    connectTimeoutMilliseconds: remainingMilliseconds
                 )
             }
         }
@@ -144,7 +154,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// cleanly and then fails on every real command. INFO says which kind of server answered, so
     /// the mismatch is reported once, at connect, naming the field to change.
     private func verifyServerMode(_ expected: RedisConnectionMode, on channel: any RedisCommandChannel) async throws {
-        guard let info = try? await channel.executeCommand(["INFO", "server"], scope: .outsideBlock).stringValue,
+        let reply = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock)
+        guard let info = reply.stringValue,
               let actual = RedisServerInfo.mode(from: info) else { return }
         let isTunneled = config.additionalFields["preTunnelHost"]?.isEmpty == false
         guard let message = RedisTopologyDiagnostics.mismatch(

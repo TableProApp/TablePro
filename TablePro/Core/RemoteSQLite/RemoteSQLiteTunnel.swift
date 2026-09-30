@@ -29,6 +29,8 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private let listenFD: Int32
     private let command: String
     private let token: String
+    private let relayDeadlines: ConnectionRelayDeadlineProvider
+    private let connectionTimeoutFailure = OSAllocatedUnfairLock<ConnectionTimeoutError?>(initialState: nil)
 
     private var session: OpaquePointer { chain.session }
     private var socketFD: Int32 { chain.socketFD }
@@ -54,8 +56,6 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private let byteCounter = TransportByteCounter()
 
     private static let relayBufferSize = 32_768
-    private static let channelOpenDeadlineSeconds: TimeInterval = 6
-    private static let channelOpenPollTimeoutMs: Int32 = 5_000
     private static let acceptPollTimeoutMs: Int32 = 200
     private static let admissionTimeoutSeconds = 5
 
@@ -65,7 +65,8 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         chain: LibSSH2TunnelFactory.AuthenticatedChain,
         listenFD: Int32,
         command: String,
-        token: String
+        token: String,
+        connectionDeadline: ConnectionDeadline
     ) {
         self.connectionId = connectionId
         self.localPort = localPort
@@ -73,6 +74,7 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         self.listenFD = listenFD
         self.command = command
         self.token = token
+        self.relayDeadlines = ConnectionRelayDeadlineProvider(initialDeadline: connectionDeadline)
         self.createdAt = Date()
         self.sessionQueue = DispatchQueue(label: "com.TablePro.rsqlite.session.\(connectionId.uuidString)", qos: .utility)
         self.relayQueue = DispatchQueue(
@@ -83,6 +85,13 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     }
 
     var isRunning: Bool { aliveLatch.isLive }
+
+    func consumeLastConnectionFailure() -> ConnectionTimeoutError? {
+        connectionTimeoutFailure.withLock { failure in
+            defer { failure = nil }
+            return failure
+        }
+    }
 
     // MARK: - Forwarding
 
@@ -101,7 +110,10 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
                             if self.isRunning { continue }
                             break
                         }
-                        self.spawnClient(clientFD: clientFD)
+                        self.spawnClient(
+                            clientFD: clientFD,
+                            budget: self.relayDeadlines.next()
+                        )
                     }
                 }
             }
@@ -203,7 +215,10 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         return clientFD >= 0 ? clientFD : nil
     }
 
-    private func spawnClient(clientFD: Int32) {
+    private func spawnClient(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget
+    ) {
         let clientRelays = self.clientRelays
         clientRelays.enter()
         relayQueue.async { [weak self] in
@@ -212,13 +227,20 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
                 Darwin.close(clientFD)
                 return
             }
-            self.admitAndRelay(clientFD: clientFD)
+            self.admitAndRelay(clientFD: clientFD, budget: budget)
         }
     }
 
-    private func admitAndRelay(clientFD: Int32) {
-        guard let line = Self.readAdmissionLine(clientFD),
+    private func admitAndRelay(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget
+    ) {
+        let connectionDeadline = budget.deadline
+        guard let line = Self.readAdmissionLine(clientFD, deadline: connectionDeadline),
               RemoteSQLiteAdmission.isAuthorized(line: line, token: token) else {
+            if budget.isInitial, connectionDeadline.isExpired {
+                recordConnectionTimeout(connectionDeadline)
+            }
             Self.logger.warning("Remote SQLite client rejected: bad or missing token")
             Darwin.close(clientFD)
             return
@@ -227,15 +249,44 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         let opener = RemoteSQLiteExecChannelOpener(session: session, command: command, sessionQueue: sessionQueue)
         let pump = SSHForwardChannelOpenPump(
             opener: opener,
-            isActive: { [weak self] in self?.isRunning ?? false },
-            deadline: Date().addingTimeInterval(Self.channelOpenDeadlineSeconds),
+            isActive: { [weak self] in
+                guard self?.isRunning == true else { return false }
+                return !connectionDeadline.isExpired
+            },
+            deadline: .distantFuture,
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                return pollReady(fd: self.socketFD, directions: directions, timeoutMs: Self.channelOpenPollTimeoutMs)
+                return pollReady(
+                    fd: self.socketFD,
+                    directions: directions,
+                    timeoutMs: Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                )
             }
         )
 
-        switch pump.run() {
+        let outcome = pump.run()
+        let initialDeadlineTimedOut: Bool
+        switch outcome {
+        case .timedOut:
+            initialDeadlineTimedOut = true
+        case .opened, .cancelled, .failed:
+            initialDeadlineTimedOut = connectionDeadline.isExpired
+        }
+        if initialDeadlineTimedOut {
+            if budget.isInitial {
+                recordConnectionTimeout(connectionDeadline)
+            }
+            if case .opened(let channel) = outcome {
+                sessionQueue.sync {
+                    libssh2_channel_close(channel)
+                    libssh2_channel_free(channel)
+                }
+                Darwin.close(clientFD)
+                return
+            }
+        }
+
+        switch outcome {
         case .opened(let channel):
             runRelay(clientFD: clientFD, channel: channel)
         case .failed(let code, let message):
@@ -249,12 +300,20 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         }
     }
 
+    private func recordConnectionTimeout(_ deadline: ConnectionDeadline) {
+        connectionTimeoutFailure.withLock {
+            $0 = deadline.timeoutError(for: chain.timeoutEndpoint)
+        }
+    }
+
     /// Reads the token line the client sends before any protocol frame. One byte at a time up to the
     /// newline, so the first protocol bytes that follow it stay in the socket for the relay, with a
     /// receive timeout and a length cap so a silent or hostile client cannot hold the slot open.
-    private static func readAdmissionLine(_ clientFD: Int32) -> Data? {
-        var timeout = timeval(tv_sec: admissionTimeoutSeconds, tv_usec: 0)
-        setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    private static func readAdmissionLine(
+        _ clientFD: Int32,
+        deadline: ConnectionDeadline
+    ) -> Data? {
+        guard !deadline.isExpired else { return nil }
         defer {
             var clear = timeval(tv_sec: 0, tv_usec: 0)
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &clear, socklen_t(MemoryLayout<timeval>.size))
@@ -263,6 +322,22 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         var line = Data()
         var byte: UInt8 = 0
         while line.count <= RemoteSQLiteAdmission.maxLineLength {
+            guard !deadline.isExpired else { return nil }
+            let timeoutMilliseconds = min(
+                admissionTimeoutSeconds * 1_000,
+                max(1, deadline.remainingMilliseconds)
+            )
+            var timeout = timeval(
+                tv_sec: timeoutMilliseconds / 1_000,
+                tv_usec: Int32(timeoutMilliseconds % 1_000) * 1_000
+            )
+            setsockopt(
+                clientFD,
+                SOL_SOCKET,
+                SO_RCVTIMEO,
+                &timeout,
+                socklen_t(MemoryLayout<timeval>.size)
+            )
             let read = recv(clientFD, &byte, 1, 0)
             if read <= 0 { return nil }
             if byte == 0x0A { return line }

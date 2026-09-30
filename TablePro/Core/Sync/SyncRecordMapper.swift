@@ -108,6 +108,7 @@ struct SyncRecordMapper {
         fields[.schemaVersion] = schemaVersion
         fields[.sortOrder] = Int64(connection.sortOrder)
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0)
+        fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) }
 
         if !connection.tagIds.isEmpty {
             let tagIdStrings = connection.tagIds.map { $0.uuidString }
@@ -159,13 +160,16 @@ struct SyncRecordMapper {
         } catch {
             logger.warning("Failed to encode SSL config for sync: \(error.localizedDescription)")
         }
-        if !connection.additionalFields.isEmpty {
+        let syncedAdditionalFields = syncedAdditionalFields(for: connection)
+        if !syncedAdditionalFields.isEmpty {
             do {
-                let fieldsData = try encoder.encode(connection.additionalFields)
+                let fieldsData = try encoder.encode(syncedAdditionalFields)
                 fields[.additionalFieldsJson] = fieldsData
             } catch {
                 logger.warning("Failed to encode additional fields for sync: \(error.localizedDescription)")
             }
+        } else {
+            fields[.additionalFieldsJson] = nil
         }
 
         return record
@@ -213,6 +217,7 @@ struct SyncRecordMapper {
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        let queryTimeoutSeconds = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
 
         var sshConfig = SSHConfiguration()
         if let sshData = fields[.sshConfigJson] as? Data {
@@ -243,8 +248,15 @@ struct SyncRecordMapper {
                 throw SyncDecodeError.decodeFailure(field: "additionalFieldsJson", underlying: error)
             }
         }
+        var normalizedAdditionalFields = additionalFields ?? [:]
+        let legacyConnectTimeout = normalizedAdditionalFields
+            .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+            .flatMap(Int.init)
+        let legacyQueryTimeout = normalizedAdditionalFields
+            .removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+            .flatMap(Int.init)
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             id: connectionId,
             name: name,
             host: host,
@@ -266,8 +278,33 @@ struct SyncRecordMapper {
             startupCommands: startupCommands,
             sortOrder: sortOrder,
             isFavorite: isFavorite,
-            additionalFields: additionalFields
+            additionalFields: normalizedAdditionalFields
         )
+        if let connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout) {
+            connection.connectTimeoutSeconds = connectTimeoutSeconds
+        }
+        if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
+            connection.queryTimeoutSeconds = queryTimeoutSeconds
+        }
+        return connection
+    }
+
+    private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
+        var fields = connection.additionalFields
+        fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+        fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+        if let connectTimeoutSeconds = validConnectTimeout(connection.connectTimeoutSeconds) {
+            fields[DatabaseConnection.connectTimeoutSecondsKey] = String(connectTimeoutSeconds)
+        }
+        return fields
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { (1 ... 600).contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { $0 >= 0 ? $0 : nil }
     }
 
     // MARK: - Connection Group

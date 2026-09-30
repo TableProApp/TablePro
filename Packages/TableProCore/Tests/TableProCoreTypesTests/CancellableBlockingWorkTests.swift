@@ -134,9 +134,10 @@ struct CancellableBlockingWorkTests {
         #expect(!won.isSettled)
         #expect(won.win(1))
         #expect(won.isSettled)
+        #expect(!won.fail(CancellationError()))
 
         let failed = SingleResumeGate<Int>()
-        failed.fail(CancellationError())
+        #expect(failed.fail(CancellationError()))
         #expect(failed.isSettled)
         #expect(!failed.win(1))
     }

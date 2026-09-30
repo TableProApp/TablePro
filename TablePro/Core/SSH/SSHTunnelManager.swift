@@ -85,7 +85,6 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case noAvailablePort
     case usernameMissing(host: String)
     case authenticationFailed(reason: AuthFailureReason)
-    case connectionTimeout
     case hostKeyVerificationFailed
     case channelOpenFailed
     case socketForwardingRefused(path: String, detail: String)
@@ -168,8 +167,6 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
             case .generic:
                 return String(localized: "SSH authentication failed. Check your credentials or private key.")
             }
-        case .connectionTimeout:
-            return String(localized: "SSH connection timed out")
         case .hostKeyVerificationFailed:
             return String(localized: "SSH host key verification failed")
         case .channelOpenFailed:
@@ -254,8 +251,11 @@ actor SSHTunnelManager: TunnelManaging {
         totpSecret: String? = nil,
         totpAlgorithm: TOTPAlgorithm = .sha1,
         totpDigits: Int = 6,
-        totpPeriod: Int = 30
+        totpPeriod: Int = 30,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel("\(sshHost):\(sshPort ?? 22)")
+        try deadline.check(endpoint: timeoutEndpoint)
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
         }
@@ -284,16 +284,30 @@ actor SSHTunnelManager: TunnelManaging {
 
         // Try ports until one works
         for localPort in localPortCandidates() {
+            try deadline.check(endpoint: timeoutEndpoint)
             do {
-                let tunnel = try await Task.detached {
+                let creationTask = Task.detached {
                     try await LibSSH2TunnelFactory.createTunnel(
                         connectionId: connectionId,
                         config: config,
                         credentials: credentials,
                         destination: destination,
-                        localPort: localPort
+                        localPort: localPort,
+                        deadline: deadline
                     )
-                }.value
+                }
+                let tunnel = try await withTaskCancellationHandler {
+                    try await creationTask.value
+                } onCancel: {
+                    creationTask.cancel()
+                }
+
+                do {
+                    try deadline.check(endpoint: timeoutEndpoint)
+                } catch {
+                    tunnel.close()
+                    throw error
+                }
 
                 tunnel.onDeath = { [weak self] id in
                     Task { [weak self] in
@@ -359,14 +373,21 @@ actor SSHTunnelManager: TunnelManaging {
     /// Test SSH connectivity without creating a tunnel.
     func testSSHProfile(
         config: SSHConfiguration,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws {
-        try await Task.detached {
+        let testTask = Task.detached {
             try await LibSSH2TunnelFactory.testConnection(
                 config: config,
-                credentials: credentials
+                credentials: credentials,
+                deadline: deadline
             )
-        }.value
+        }
+        try await withTaskCancellationHandler {
+            try await testTask.value
+        } onCancel: {
+            testTask.cancel()
+        }
     }
 
     /// Check if a tunnel exists for a connection
@@ -386,7 +407,7 @@ actor SSHTunnelManager: TunnelManaging {
     /// The reason this tunnel last failed to open a forwarding channel, cleared as it is read.
     /// The connect path reports it in place of the database driver's error, which can only ever
     /// name a timeout because the driver sees an accepted socket that stayed silent.
-    func consumeLastForwardFailure(connectionId: UUID) -> SSHTunnelError? {
+    func consumeLastForwardFailure(connectionId: UUID) -> (any Error)? {
         tunnels[connectionId]?.consumeLastForwardFailure()
     }
 

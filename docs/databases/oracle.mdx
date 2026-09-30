@@ -167,7 +167,11 @@ The SSL mode offers no certificate rows there, so **Verify Identity** checks the
 
 **Server Version Not Supported**: the server is 10g or earlier. Nothing on this side helps; the database has to be 11.1 or later.
 
-**Login Handshake Timed Out**: TCP connected but the login never finished, so the attempt stops after 30 seconds. The dialog names the step the server stopped answering at. If that step is network encryption, set **Network Encryption** to Rejected and connect again. Otherwise confirm the host and port reach the listener, and look for a firewall, VPN, or proxy that stalls traffic once the TCP handshake is done.
+**Login Handshake Timed Out**: TCP connected but the login never finished, so the attempt stops when
+the connection's **Connect timeout** expires. An empty field under **Options** uses 30 seconds. The
+dialog names the step the server stopped answering at. If that step is network encryption, set
+**Network Encryption** to Rejected and connect again. Otherwise confirm the host and port reach the
+listener, and look for a firewall, VPN, or proxy that stalls traffic once the TCP handshake is done.
 
 **Connection Dropped During Handshake**: the server closed the connection mid-login, and the dialog names the phase it stopped at (`advancedNegotiation`, `dataTypeNegotiation`, `authentication`). Look for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener itself.
 

@@ -79,9 +79,32 @@ final class HanaPluginDriverTests: XCTestCase {
         XCTAssertEqual(sent.tlsMode, .verifyIdentity)
         XCTAssertEqual(sent.tlsServerName, "real.example.com")
         XCTAssertEqual(sent.caCertificatePath, "/tmp/ca.pem")
-        XCTAssertEqual(sent.connectTimeoutSeconds, HanaConnectConfiguration.connectTimeoutSeconds)
+        XCTAssertEqual(sent.connectTimeoutSeconds, HanaConnectConfiguration.defaultConnectTimeoutSeconds)
         XCTAssertEqual(driver.currentSchema, "APP")
         XCTAssertEqual(driver.serverVersion, "4.00.000.00.1234567890")
+    }
+
+    func testConnectSendsTheRemainingMillisecondBudget() async throws {
+        let session = HanaFakeSession()
+        let driver = HanaPluginDriver(
+            config: config(additionalFields: [
+                "connectTimeoutMilliseconds": "1250",
+                "connectTimeoutSeconds": "30"
+            ]),
+            session: session
+        )
+
+        try await driver.connect()
+
+        XCTAssertEqual(try XCTUnwrap(session.connects.first).connectTimeoutSeconds, 1.25)
+    }
+
+    func testConnectFallsBackToConfiguredSecondsForAnOlderHost() throws {
+        let configuration = try HanaConnectionSettings.configuration(from: config(
+            additionalFields: ["connectTimeoutSeconds": "2.5"]
+        ))
+
+        XCTAssertEqual(configuration.connectTimeoutSeconds, 2.5)
     }
 
     func testConnectAdoptsTheServerSchemaWhenNoneIsConfigured() async throws {

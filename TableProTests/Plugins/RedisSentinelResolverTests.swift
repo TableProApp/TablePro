@@ -29,14 +29,24 @@ private actor FakeSentinelTransport: RedisSentinelTransport {
         self.groups = groups
     }
 
-    func primaryAddress(group: String, at sentinel: RedisNodeAddress) async throws -> RedisSentinelReply {
+    func primaryAddress(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> RedisSentinelReply {
         asked.append(sentinel)
         return try answer(sentinel)
     }
 
-    func peerSentinels(group: String, at sentinel: RedisNodeAddress) async throws -> [RedisNodeAddress] { peers }
+    func peerSentinels(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> [RedisNodeAddress] { peers }
 
-    func monitoredGroups(at sentinel: RedisNodeAddress) async throws -> [String] { groups }
+    func monitoredGroups(at sentinel: RedisNodeAddress, deadline: RedisConnectDeadline) async throws -> [String] {
+        groups
+    }
 
     func recordedAsks() -> [RedisNodeAddress] { asked }
 }

@@ -148,7 +148,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         // The wrapper below stays a grace period behind it as a backstop for a driver
         // that never returns at all.
         configuration.options.loginTimeout = .milliseconds(
-            Int64((options.loginTimeoutSeconds * 1_000).rounded())
+            max(1, Int64((options.loginTimeoutSeconds * 1_000).rounded(.up)))
         )
         let connectConfig = configuration
         let connectLogger = nioLogger
@@ -225,6 +225,65 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 throw OracleCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
             }
             throw OracleCoreError.connectionFailed(detail)
+        }
+    }
+
+    /// Runs one post-login setup step inside the same absolute deadline that began before login.
+    /// Closing the channel is required because OracleNIO statements do not necessarily unwind when
+    /// their Swift task is cancelled.
+    public func withConnectDeadline<T: Sendable>(
+        _ deadline: OracleConnectDeadline,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withConnectDeadline(deadline, now: .now, operation: operation)
+    }
+
+    func withConnectDeadline<T: Sendable>(
+        _ deadline: OracleConnectDeadline,
+        now: ContinuousClock.Instant,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let remaining = deadline.remainingSeconds(at: now)
+        guard remaining > 0 else {
+            disconnect(reason: .connectTimedOut)
+            throw OracleCoreError.connectTimedOut
+        }
+
+        let didTimeOut = OSAllocatedUnfairLock(initialState: false)
+        return try await withTaskCancellationHandler {
+            do {
+                return try await withOracleTimeout(
+                    seconds: remaining,
+                    onTimeout: { [self] in
+                        didTimeOut.withLock { $0 = true }
+                        disconnect(reason: .connectTimedOut)
+                    },
+                    operation: operation
+                )
+            } catch {
+                if didTimeOut.withLock({ $0 }) {
+                    throw OracleCoreError.connectTimedOut
+                }
+                if Task.isCancelled {
+                    throw CancellationError()
+                }
+                throw error
+            }
+        } onCancel: { [self] in
+            disconnect(reason: .connectCancelled)
+        }
+    }
+
+    /// The last boundary before the plugin publishes this connection. A deadline that expires
+    /// between the final probe reply and adoption still closes the native session.
+    public func finishConnecting(before deadline: OracleConnectDeadline) throws {
+        if Task.isCancelled {
+            disconnect(reason: .connectCancelled)
+            throw CancellationError()
+        }
+        guard deadline.remainingSeconds() > 0 else {
+            disconnect(reason: .connectTimedOut)
+            throw OracleCoreError.connectTimedOut
         }
     }
 

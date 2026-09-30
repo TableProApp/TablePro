@@ -216,6 +216,8 @@ struct ConnectionImportServiceTests {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 0,
             additionalFields: nil,
             redisDatabase: nil,
             startupCommands: nil,
@@ -246,6 +248,8 @@ struct ConnectionImportServiceTests {
         #expect(saved[0].port == 5_433)
         #expect(saved[0].database == "app")
         #expect(saved[0].username == "admin")
+        #expect(saved[0].connectTimeoutSeconds == 12)
+        #expect(saved[0].queryTimeoutSeconds == 0)
     }
 
     @Test("replace is excluded from newConnectionIdMap so its credentials are not restored")
@@ -320,6 +324,55 @@ struct ConnectionImportServiceTests {
         #expect(prepared.newConnectionIdMap[0] == prepared.connectionIdMap[0])
     }
 
+    @Test("prepared import persists inherited disabled and finite timeout states")
+    func preparedImportPersistsTimeoutOverrides() throws {
+        let exported = [
+            makeImportedConnection(name: "Inherited", host: "inherit.example.com"),
+            makeImportedConnection(
+                name: "Disabled",
+                host: "disabled.example.com",
+                connectTimeoutSeconds: 12,
+                queryTimeoutSeconds: 0
+            ),
+            makeImportedConnection(
+                name: "Finite",
+                host: "finite.example.com",
+                connectTimeoutSeconds: 600,
+                queryTimeoutSeconds: 45
+            )
+        ]
+        let data = try ConnectionExportService.encode(makeEnvelope(with: exported))
+        let decoded = try ConnectionImportDecoder.decodeData(data)
+        let items = decoded.connections.map { ImportItem(connection: $0, status: .ready) }
+        let preview = ConnectionImportPreview(envelope: decoded, items: items)
+        let resolutions: [UUID: ImportResolution] = Dictionary(
+            uniqueKeysWithValues: items.map { ($0.id, .importNew) }
+        )
+        let prepared = ConnectionExportService.prepareImport(
+            preview,
+            resolutions: resolutions,
+            tagIdsByName: [:],
+            groupIdsByName: [:]
+        )
+        let storage = makeStorage()
+
+        let result = ConnectionExportService.performPreparedImport(
+            prepared,
+            connectionStorage: storage,
+            notifyConnectionsChanged: {}
+        )
+        storage.invalidateCache()
+        let saved = storage.loadConnections()
+
+        #expect(result.importedCount == 3)
+        #expect(saved.first { $0.name == "Inherited" }?.connectTimeoutSeconds == nil)
+        #expect(saved.first { $0.name == "Inherited" }?.queryTimeoutSeconds == nil)
+        #expect(saved.first { $0.name == "Disabled" }?.connectTimeoutSeconds == 12)
+        #expect(saved.first { $0.name == "Disabled" }?.queryTimeoutSeconds == 0)
+        #expect(saved.first { $0.name == "Finite" }?.connectTimeoutSeconds == 600)
+        #expect(saved.first { $0.name == "Finite" }?.queryTimeoutSeconds == 45)
+    }
+
     @Test("as copy imports a renamed duplicate")
     func asCopyImportsARenamedDuplicate() {
         let storage = makeStorage()
@@ -341,6 +394,8 @@ struct ConnectionImportServiceTests {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
+            connectTimeoutSeconds: 600,
+            queryTimeoutSeconds: 45,
             additionalFields: nil,
             redisDatabase: nil,
             startupCommands: nil,
@@ -369,6 +424,9 @@ struct ConnectionImportServiceTests {
         #expect(saved.contains { $0.id == existing.id && $0.name == "Existing" })
         if let importedId {
             #expect(saved.contains { $0.id == importedId && $0.name == "Imported (Imported)" })
+            let copy = saved.first { $0.id == importedId }
+            #expect(copy?.connectTimeoutSeconds == 600)
+            #expect(copy?.queryTimeoutSeconds == 45)
         } else {
             Issue.record("Expected imported connection id")
         }
@@ -573,6 +631,36 @@ struct ConnectionImportServiceTests {
             items: [item]
         )
         return (preview, item)
+    }
+
+    private func makeImportedConnection(
+        name: String,
+        host: String,
+        connectTimeoutSeconds: Int? = nil,
+        queryTimeoutSeconds: Int? = nil
+    ) -> ExportableConnection {
+        ExportableConnection(
+            name: name,
+            host: host,
+            port: 5_432,
+            database: "app",
+            username: "admin",
+            type: "PostgreSQL",
+            sshConfig: nil,
+            sslConfig: nil,
+            color: nil,
+            tagName: nil,
+            groupName: nil,
+            sshProfileId: nil,
+            safeModeLevel: nil,
+            aiPolicy: nil,
+            connectTimeoutSeconds: connectTimeoutSeconds,
+            queryTimeoutSeconds: queryTimeoutSeconds,
+            additionalFields: nil,
+            redisDatabase: nil,
+            startupCommands: nil,
+            localOnly: nil
+        )
     }
 
     private func makeEnvelope(with connections: [ExportableConnection]) -> ConnectionExportEnvelope {

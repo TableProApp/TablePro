@@ -43,6 +43,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     private let connectionIdentifier: String
 
     private let session: URLSession
+    private let connectSession: URLSession
     private let lock = NSLock()
     private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
@@ -73,6 +74,8 @@ final class SnowflakeConnection: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeConnection")
     private static let appName = "TablePro"
     private static let appVersion = "1.0.0"
+    static let defaultConnectTimeoutMilliseconds = 120_000
+    private static let requestTimeout: TimeInterval = 120
 
     var currentDatabase: String? { lock.withLock { _currentDatabase } }
     var currentSchema: String? { lock.withLock { _currentSchema } }
@@ -85,9 +88,13 @@ final class SnowflakeConnection: @unchecked Sendable {
         self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 120
+        configuration.timeoutIntervalForRequest = Self.requestTimeout
         configuration.timeoutIntervalForResource = 600
         self.session = URLSession(configuration: configuration)
+        let connectConfiguration = URLSessionConfiguration.ephemeral
+        connectConfiguration.timeoutIntervalForRequest = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
+        connectConfiguration.timeoutIntervalForResource = TimeInterval(PluginConnectTimeout.maximumMilliseconds) / 1_000
+        self.connectSession = URLSession(configuration: connectConfiguration)
 
         self._currentDatabase = params.database.isEmpty ? nil : params.database
         self._currentSchema = params.schema.isEmpty ? nil : params.schema
@@ -129,7 +136,7 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Connection Lifecycle
 
-    func connectIfNeeded() async throws {
+    func connectIfNeeded(timeoutMilliseconds: Int = SnowflakeConnection.defaultConnectTimeoutMilliseconds) async throws {
         enum Pending {
             case alreadyConnected
             case task(Task<Void, Error>)
@@ -139,7 +146,7 @@ final class SnowflakeConnection: @unchecked Sendable {
             if let connectTask { return .task(connectTask) }
             let task = Task {
                 defer { self.lock.withLock { self.connectTask = nil } }
-                try await self.connect()
+                try await self.connect(timeoutMilliseconds: timeoutMilliseconds)
             }
             connectTask = task
             return .task(task)
@@ -149,16 +156,17 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    func connect() async throws {
+    func connect(timeoutMilliseconds: Int) async throws {
+        let deadline = PluginConnectDeadline(milliseconds: timeoutMilliseconds)
         switch params.authMethod {
         case "keyPair":
-            try await loginWithKeyPair()
+            try await loginWithKeyPair(deadline: deadline)
         case "oauth":
-            try await login(authenticator: "OAUTH", extra: ["TOKEN": params.oauthToken])
+            try await login(authenticator: "OAUTH", extra: ["TOKEN": params.oauthToken], deadline: deadline)
         case "externalBrowser":
-            try await loginWithExternalBrowser()
+            try await loginWithExternalBrowser(deadline: deadline)
         default:
-            try await loginWithPassword()
+            try await loginWithPassword(deadline: deadline)
         }
     }
 
@@ -182,12 +190,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Authentication
 
-    private func loginWithPassword() async throws {
+    private func loginWithPassword(deadline: PluginConnectDeadline) async throws {
         if let cachedToken = SnowflakeMFATokenStore.token(account: params.account, user: params.user) {
             do {
                 try await login(
                     authenticator: "USERNAME_PASSWORD_MFA",
-                    extra: ["PASSWORD": params.password, "TOKEN": cachedToken]
+                    extra: ["PASSWORD": params.password, "TOKEN": cachedToken],
+                    deadline: deadline
                 )
                 return
             } catch {
@@ -204,7 +213,7 @@ final class SnowflakeConnection: @unchecked Sendable {
             extra["EXT_AUTHN_DUO_METHOD"] = "passcode"
         }
         do {
-            try await login(authenticator: "SNOWFLAKE", extra: extra)
+            try await login(authenticator: "SNOWFLAKE", extra: extra, deadline: deadline)
         } catch let error as SnowflakeError {
             if usesPasscode, case .loginFailed(let code, _) = error,
                ["394507", "394633"].contains(code) {
@@ -216,7 +225,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    private func loginWithKeyPair() async throws {
+    private func loginWithKeyPair(deadline: PluginConnectDeadline) async throws {
         let path = NSString(string: params.privateKeyPath).expandingTildeInPath
         guard let pem = try? String(contentsOfFile: path, encoding: .utf8) else {
             throw SnowflakeError.configuration("Could not read private key file at \(params.privateKeyPath)")
@@ -228,13 +237,13 @@ final class SnowflakeConnection: @unchecked Sendable {
             passphrase: params.privateKeyPassphrase.isEmpty ? nil : params.privateKeyPassphrase
         )
         let jwt = try auth.makeJWT()
-        try await login(authenticator: "SNOWFLAKE_JWT", extra: ["TOKEN": jwt])
+        try await login(authenticator: "SNOWFLAKE_JWT", extra: ["TOKEN": jwt], deadline: deadline)
     }
 
-    private func loginWithExternalBrowser() async throws {
+    private func loginWithExternalBrowser(deadline: PluginConnectDeadline) async throws {
         if let idToken = SnowflakeIdTokenStore.token(account: params.account, user: params.user) {
             do {
-                try await login(authenticator: "ID_TOKEN", extra: ["TOKEN": idToken])
+                try await login(authenticator: "ID_TOKEN", extra: ["TOKEN": idToken], deadline: deadline)
                 return
             } catch {
                 SnowflakeIdTokenStore.clear(account: params.account, user: params.user)
@@ -243,7 +252,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
 
         let server = SnowflakeBrowserAuthServer()
-        let port = try await server.start()
+        let port = try await server.start(timeout: deadline.remainingSeconds())
 
         let authRequest: [String: Any] = [
             "data": [
@@ -260,7 +269,8 @@ final class SnowflakeConnection: @unchecked Sendable {
                 path: "/session/authenticator-request",
                 queryItems: Self.trackingQueryItems(),
                 body: authRequest,
-                token: nil
+                token: nil,
+                connectDeadline: deadline
             )
         } catch {
             server.stop()
@@ -281,16 +291,24 @@ final class SnowflakeConnection: @unchecked Sendable {
 
         let token: String
         do {
-            token = try await server.waitForToken()
+            token = try await server.waitForToken(timeout: deadline.remainingSeconds())
         } catch {
             server.stop()
             throw error
         }
 
-        try await login(authenticator: "EXTERNALBROWSER", extra: ["TOKEN": token, "PROOF_KEY": proofKey])
+        try await login(
+            authenticator: "EXTERNALBROWSER",
+            extra: ["TOKEN": token, "PROOF_KEY": proofKey],
+            deadline: deadline
+        )
     }
 
-    private func login(authenticator: String, extra: [String: Any]) async throws {
+    private func login(
+        authenticator: String,
+        extra: [String: Any],
+        deadline: PluginConnectDeadline
+    ) async throws {
         var data: [String: Any] = [
             "ACCOUNT_NAME": SnowflakeAccount.issuerAccountName(forAccount: params.account),
             "LOGIN_NAME": params.user,
@@ -320,7 +338,8 @@ final class SnowflakeConnection: @unchecked Sendable {
             path: "/session/v1/login-request",
             queryItems: queryItems,
             body: ["data": data],
-            token: nil
+            token: nil,
+            connectDeadline: deadline
         )
 
         guard (response["success"] as? Bool) == true,
@@ -352,11 +371,11 @@ final class SnowflakeConnection: @unchecked Sendable {
             Self.logger.info("SSO id token cached; subsequent connects skip the browser")
         }
         applySessionInfo(responseData["sessionInfo"] as? [String: Any])
-        startHeartbeat(masterValiditySeconds: responseData["masterValidityInSeconds"] as? Double ?? 14_400)
+        startHeartbeat(tokenValiditySeconds: responseData["masterValidityInSeconds"] as? Double ?? 14_400)
     }
 
-    private func startHeartbeat(masterValiditySeconds: Double) {
-        let interval = SnowflakeHeartbeat.interval(masterValiditySeconds: masterValiditySeconds)
+    private func startHeartbeat(tokenValiditySeconds: Double) {
+        let interval = SnowflakeHeartbeat.interval(masterValiditySeconds: tokenValiditySeconds)
         Task { [weak self] in
             await self?.heartbeat.start(interval: interval) { [weak self] in
                 await self?.sendHeartbeat()
@@ -754,6 +773,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         columns: [SnowflakeColumnMeta]
     ) async throws -> [[PluginCellValueBox]] {
         var request = URLRequest(url: url)
+        request.timeoutInterval = Self.requestTimeout
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
@@ -787,7 +807,8 @@ final class SnowflakeConnection: @unchecked Sendable {
         queryItems: [URLQueryItem],
         body: [String: Any],
         token: String?,
-        accept: String = "application/json"
+        accept: String = "application/json",
+        connectDeadline: PluginConnectDeadline? = nil
     ) async throws -> [String: Any] {
         guard var components = URLComponents(string: "https://\(host)\(path)") else {
             throw SnowflakeError.configuration("Invalid Snowflake host: \(host)")
@@ -800,9 +821,10 @@ final class SnowflakeConnection: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = connectDeadline?.remainingSeconds() ?? Self.requestTimeout
         applyCommonHeaders(&request, token: token, accept: accept)
 
-        return try await send(request)
+        return try await send(request, connectDeadline: connectDeadline)
     }
 
     private func getJSON(path: String, token: String?) async throws -> [String: Any] {
@@ -812,6 +834,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = Self.requestTimeout
         applyCommonHeaders(&request, token: token)
         return try await send(request)
     }
@@ -825,8 +848,16 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    private func send(_ request: URLRequest) async throws -> [String: Any] {
-        let (data, http) = try await SnowflakeHTTPClient.send(request, session: session)
+    private func send(
+        _ request: URLRequest,
+        connectDeadline: PluginConnectDeadline? = nil
+    ) async throws -> [String: Any] {
+        let requestSession = connectDeadline == nil ? session : connectSession
+        let (data, http) = try await SnowflakeHTTPClient.send(
+            request,
+            session: requestSession,
+            connectDeadline: connectDeadline
+        )
         guard (200..<300).contains(http.statusCode) else {
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             Self.logger.error(

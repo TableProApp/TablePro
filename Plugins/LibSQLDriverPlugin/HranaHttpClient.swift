@@ -184,8 +184,11 @@ final class HranaHttpClient: @unchecked Sendable {
         queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
-    func createSession(configuration: URLSessionConfiguration = .default) {
-        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+    func createSession(
+        configuration: URLSessionConfiguration = .default,
+        connectTimeout: TimeInterval = HttpQueryTimeout.sessionBootstrapRequestTimeout
+    ) {
+        configuration.timeoutIntervalForRequest = connectTimeout
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
@@ -219,18 +222,28 @@ final class HranaHttpClient: @unchecked Sendable {
 
     // MARK: - API Methods
 
-    func execute(sql: String, args: [PluginCellValue] = []) async throws -> HranaExecuteResult {
-        let results = try await executeBatch(statements: [HranaStatement(sql: sql, parameters: args)])
+    func execute(
+        sql: String,
+        args: [PluginCellValue] = [],
+        requestTimeout: TimeInterval? = nil
+    ) async throws -> HranaExecuteResult {
+        let results = try await executeBatch(
+            statements: [HranaStatement(sql: sql, parameters: args)],
+            requestTimeout: requestTimeout
+        )
         guard let first = results.first else {
             throw HranaHttpError(message: String(localized: "Empty response from server"))
         }
         return first
     }
 
-    func executeBatch(statements: [HranaStatement]) async throws -> [HranaExecuteResult] {
+    func executeBatch(
+        statements: [HranaStatement],
+        requestTimeout: TimeInterval? = nil
+    ) async throws -> [HranaExecuteResult] {
         let body = try Self.pipelineRequestBody(statements: statements)
         let url = baseUrl.appendingPathComponent("v2/pipeline")
-        let data = try await performRequest(url: url, body: body)
+        let data = try await performRequest(url: url, body: body, requestTimeout: requestTimeout)
 
         let envelope = try JSONDecoder().decode(HranaPipelineEnvelope.self, from: data)
 
@@ -256,7 +269,7 @@ final class HranaHttpClient: @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    private func performRequest(url: URL, body: Data) async throws -> Data {
+    private func performRequest(url: URL, body: Data, requestTimeout: TimeInterval?) async throws -> Data {
         let session = lock.withLock { self.session }
         guard let session else {
             throw HranaHttpError(message: String(localized: "Not connected to database"))
@@ -264,7 +277,7 @@ final class HranaHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = queryTimeout.requestTimeoutInterval
+        request.timeoutInterval = requestTimeout ?? queryTimeout.requestTimeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

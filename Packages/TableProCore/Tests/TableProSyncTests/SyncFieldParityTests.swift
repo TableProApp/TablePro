@@ -54,7 +54,7 @@ struct SyncFieldParityTests {
     ]
 
     private static let connectionIosOnly: Set<String> = [
-        "queryTimeoutSeconds", "sshEnabled", "sslEnabled",
+        "sshEnabled", "sslEnabled",
     ]
 
     /// Written by whichever mapper owns the value and never read back by it.

@@ -345,6 +345,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
+            connectTimeoutSeconds: customization.connectTimeoutSeconds,
+            queryTimeoutSeconds: customization.queryTimeoutSeconds,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0
             },

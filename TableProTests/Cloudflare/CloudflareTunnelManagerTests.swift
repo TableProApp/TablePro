@@ -17,6 +17,7 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
         case ready
         case browserAuth
         case startupFailure
+        case neverReady
     }
 
     let behavior: Behavior
@@ -53,6 +54,8 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
         case .startupFailure:
             stderrContinuation.yield("ERR failed to dial origin: connection refused")
             finish(exitCode: 1)
+        case .neverReady:
+            break
         }
     }
 
@@ -168,6 +171,27 @@ struct CloudflareTunnelManagerTests {
         }
     }
 
+    @Test("connect deadline stops cloudflared before registration")
+    func deadlineStopsUnreadyProcess() async {
+        let fake = FakeCloudflaredRunner(behavior: .neverReady)
+        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let id = UUID()
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
+        )
+
+        await #expect(throws: ConnectionTimeoutError(endpoint: .tunnel("db.example.com"), configuredSeconds: 30)) {
+            _ = try await manager.createTunnel(
+                connectionId: id,
+                config: self.config(),
+                deadline: deadline
+            )
+        }
+        #expect(fake.stopCallCount >= 1)
+        #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
     @Test("missing binary throws binaryNotFound")
     func missingBinary() async {
         let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
@@ -188,17 +212,20 @@ struct CloudflareTunnelManagerTests {
         #expect(fake.stopCallCount >= 1)
 
         await manager.closeAllTunnels()
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")
     func sweepClearsRecords() async {
         let records = [CloudflaredPidRecord(pid: -1, binaryPath: "/nonexistent")]
-        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudflaredStalePids")
+        AppStorageEnvironment.shared.defaults.set(
+            try? JSONEncoder().encode(records),
+            forKey: "cloudflaredStalePids"
+        )
 
         let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
         await manager.sweepStalePidsIfNeeded()
 
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 }

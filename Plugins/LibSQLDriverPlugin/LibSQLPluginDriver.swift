@@ -119,12 +119,23 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let token = config.password
         let authToken: String? = token.isEmpty ? nil : token
 
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         let client = HranaHttpClient(baseUrl: baseUrl, authToken: authToken)
-        client.createSession()
+        client.createSession(connectTimeout: TimeInterval(connectTimeoutMilliseconds) / 1_000)
 
         do {
-            let libsqlVersion = try? await client.execute(sql: "SELECT libsql_version()")
-            let sqliteVersion = try await client.execute(sql: "SELECT sqlite_version()")
+            let libsqlVersion = try? await client.execute(
+                sql: "SELECT libsql_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
+            let sqliteVersion = try await client.execute(
+                sql: "SELECT sqlite_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
             let version = libsqlVersion?.rows.first?.first?.stringValue
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"

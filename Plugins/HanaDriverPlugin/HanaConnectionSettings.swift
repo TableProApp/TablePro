@@ -36,8 +36,26 @@ enum HanaConnectionSettings {
             caCertificatePath: usesTLS ? nonEmpty(config.ssl.caCertificatePath) ?? "" : "",
             clientCertificatePath: certificatePath,
             clientKeyPath: keyPath,
-            connectTimeoutSeconds: HanaConnectConfiguration.connectTimeoutSeconds
+            connectTimeoutSeconds: connectTimeoutSeconds(in: config.additionalFields)
         )
+    }
+
+    private static func connectTimeoutSeconds(in fields: [String: String]) -> Double {
+        if let milliseconds = positiveNumber(fields["connectTimeoutMilliseconds"]) {
+            return max(0.001, milliseconds / 1_000)
+        }
+        if let seconds = positiveNumber(fields["connectTimeoutSeconds"]) {
+            return seconds
+        }
+        return HanaConnectConfiguration.defaultConnectTimeoutSeconds
+    }
+
+    private static func positiveNumber(_ value: String?) -> Double? {
+        guard let value,
+              let number = Double(value),
+              number > 0,
+              number.isFinite else { return nil }
+        return min(number, Double(Int32.max))
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

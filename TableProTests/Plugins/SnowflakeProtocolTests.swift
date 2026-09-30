@@ -11,6 +11,30 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private final class SnowflakeTimeoutProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var timeout: TimeInterval?
+
+    static var recordedTimeout: TimeInterval? {
+        lock.withLock { timeout }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.lock.withLock { Self.timeout = request.timeoutInterval }
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+        else { return }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 struct SnowflakeBindingEncoderTests {
     @Test("Keys are 1-based string indices")
     func testKeysAreOneBased() {
@@ -85,6 +109,23 @@ struct SnowflakeRetryPolicyTests {
             #expect(delay >= SnowflakeRetryPolicy.baseDelay)
             #expect(delay <= SnowflakeRetryPolicy.maxDelay)
         }
+    }
+
+    @Test("A connect request uses the remaining deadline instead of the session default")
+    func testConnectDeadlineReachesURLRequest() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SnowflakeTimeoutProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let url = try #require(URL(string: "https://account.snowflakecomputing.test/session/v1/login-request"))
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 120
+        let deadline = PluginConnectDeadline(milliseconds: 2_500)
+
+        _ = try await SnowflakeHTTPClient.send(request, session: session, connectDeadline: deadline)
+
+        let timeout = try #require(SnowflakeTimeoutProtocol.recordedTimeout)
+        #expect(timeout > 0)
+        #expect(timeout <= 2.5)
     }
 }
 

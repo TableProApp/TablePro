@@ -126,6 +126,7 @@ struct RemoteDatabaseFileCorrectnessTests {
             sidecars: ["-wal", "-journal"],
             destinationDirectory: directory,
             fileName: fileName,
+            deadline: ConnectionDeadline(configuredSeconds: 60),
             isCancelled: { false }
         )
         RemoteDatabaseFileTransfer.clearStaleSidecars(
@@ -140,6 +141,27 @@ struct RemoteDatabaseFileCorrectnessTests {
         #expect(log == freshLog)
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-journal").path))
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-shm").path))
+    }
+
+    @Test("Sidecar checks and downloads receive the original absolute deadline")
+    func sidecarsKeepOriginalDeadline() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = DeadlineRecordingRemoteFileSource(files: ["/srv/app.db-wal": Data("wal".utf8)])
+        let deadline = ConnectionDeadline(configuredSeconds: 60)
+
+        let fetched = try RemoteDatabaseFileTransfer.fetchSidecars(
+            from: source,
+            remotePath: "/srv/app.db",
+            sidecars: ["-wal"],
+            destinationDirectory: directory,
+            fileName: "app.db",
+            deadline: deadline,
+            isCancelled: { false }
+        )
+
+        #expect(fetched == ["-wal"])
+        #expect(source.recordedDeadlines == [deadline, deadline])
     }
 
     // MARK: - Killed remote command
@@ -179,16 +201,53 @@ struct RemoteDatabaseFileCorrectnessTests {
 private struct StubRemoteFileSource: RemoteFileSource {
     let files: [String: Data]
 
-    func exists(_ path: String) -> Bool {
-        files[path] != nil
+    func exists(_ path: String, deadline: ConnectionDeadline) throws -> Bool {
+        try deadline.check(endpoint: .remoteFile("stub:22"))
+        return files[path] != nil
     }
 
     func download(
         remotePath: String,
         to localURL: URL,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)?,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> (bytes: UInt64, sha256: String) {
+        try deadline.check(endpoint: .remoteFile("stub:22"))
+        guard let data = files[remotePath] else {
+            throw SFTPError.noSuchFile(path: remotePath)
+        }
+        try data.write(to: localURL)
+        return (bytes: UInt64(data.count), sha256: "")
+    }
+}
+
+private final class DeadlineRecordingRemoteFileSource: RemoteFileSource, @unchecked Sendable {
+    private let files: [String: Data]
+    private let lock = NSLock()
+    private var deadlines: [ConnectionDeadline] = []
+
+    init(files: [String: Data]) {
+        self.files = files
+    }
+
+    var recordedDeadlines: [ConnectionDeadline] {
+        lock.withLock { deadlines }
+    }
+
+    func exists(_ path: String, deadline: ConnectionDeadline) throws -> Bool {
+        lock.withLock { deadlines.append(deadline) }
+        return files[path] != nil
+    }
+
+    func download(
+        remotePath: String,
+        to localURL: URL,
+        deadline: ConnectionDeadline,
+        progress: (@Sendable (UInt64, UInt64) -> Void)?,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> (bytes: UInt64, sha256: String) {
+        lock.withLock { deadlines.append(deadline) }
         guard let data = files[remotePath] else {
             throw SFTPError.noSuchFile(path: remotePath)
         }

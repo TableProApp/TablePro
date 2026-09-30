@@ -49,7 +49,11 @@ struct HanaError: PluginDriverError, Equatable {
 }
 
 enum HanaFailureMapping {
-    static func connectError(for failure: HanaBridgeFailure, cancellationRequested: Bool) -> any Error {
+    static func connectError(
+        for failure: HanaBridgeFailure,
+        cancellationRequested: Bool,
+        timeoutSeconds: Double = HanaConnectConfiguration.defaultConnectTimeoutSeconds
+    ) -> any Error {
         guard failure.kind == .timeout else {
             return error(for: failure, cancellationRequested: cancellationRequested)
         }
@@ -57,7 +61,7 @@ enum HanaFailureMapping {
             kind: .connect,
             message: String(
                 format: String(localized: "TablePro could not reach the SAP HANA server within %lld seconds."),
-                Int64(HanaConnectConfiguration.connectTimeoutSeconds)
+                Int64(timeoutSeconds.rounded(.up))
             )
         )
     }

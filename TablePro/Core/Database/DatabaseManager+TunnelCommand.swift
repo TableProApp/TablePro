@@ -7,7 +7,8 @@ import Foundation
 
 extension DatabaseManager {
     func buildTunnelCommandEffectiveConnection(
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         guard let config = connection.resolvedTunnelCommandConfig else { return connection }
 
@@ -24,7 +25,8 @@ extension DatabaseManager {
             connectionId: connection.id,
             config: config,
             remoteHost: endpoint.host,
-            remotePort: endpoint.port
+            remotePort: endpoint.port,
+            deadline: deadline
         )
 
         return tunneledConnection(from: connection, localPort: tunnelPort)

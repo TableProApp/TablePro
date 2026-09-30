@@ -54,7 +54,7 @@ struct StubRedisCluster {
             firstAddress.identifier: first,
             secondAddress.identifier: second,
         ]
-        let channel = RedisClusterChannel(seeds: [firstAddress]) { address in
+        let channel = RedisClusterChannel(seeds: [firstAddress]) { address, _ in
             nodes[address.identifier] ?? StubRedisChannel([])
         }
         try await channel.connect()

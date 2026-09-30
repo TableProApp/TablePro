@@ -256,6 +256,29 @@ struct TunnelCommandManagerTests {
         #expect(fake.stopCallCount >= 1)
     }
 
+    @Test("connect deadline stops the command before registration")
+    func deadlineStopsTheCommand() async {
+        let fake = FakeTunnelCommandRunner(behavior: .neverReady)
+        let manager = TunnelCommandManager(runnerFactory: { fake })
+        let id = UUID()
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
+        )
+
+        await #expect(throws: ConnectionTimeoutError(endpoint: .tunnel("db.internal:5432"), configuredSeconds: 30)) {
+            _ = try await manager.createTunnel(
+                connectionId: id,
+                config: self.customConfig(),
+                remoteHost: "db.internal",
+                remotePort: 5_432,
+                deadline: deadline
+            )
+        }
+        #expect(fake.stopCallCount >= 1)
+        #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
     @Test("terminateAllProcessesSync stops the running command")
     func terminateAllStops() async throws {
         let fake = FakeTunnelCommandRunner(behavior: .ready)

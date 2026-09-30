@@ -204,7 +204,7 @@ func (s *session) establish(connectContext context.Context) (*sql.Conn, connectR
 	if err != nil {
 		return nil, connectResult{}, err
 	}
-	identity, err := readIdentity(conn)
+	identity, err := readIdentity(connectContext, conn)
 	if err != nil {
 		_ = conn.Close()
 		return nil, connectResult{}, err
@@ -213,8 +213,8 @@ func (s *session) establish(connectContext context.Context) (*sql.Conn, connectR
 	return conn, identity, nil
 }
 
-func readIdentity(conn *sql.Conn) (identity connectResult, err error) {
-	rows, err := conn.QueryContext(context.Background(), identityQuery)
+func readIdentity(connectContext context.Context, conn *sql.Conn) (identity connectResult, err error) {
+	rows, err := conn.QueryContext(connectContext, identityQuery)
 	if err != nil {
 		return connectResult{}, err
 	}

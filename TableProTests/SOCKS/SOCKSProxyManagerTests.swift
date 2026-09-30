@@ -168,14 +168,22 @@ struct SOCKSProxyManagerTests {
         try await server.start()
         defer { server.stop() }
 
-        let manager = SOCKSProxyManager(connectTimeout: 1)
-        await #expect(throws: SOCKSProxyError.connectTimedOut(proxyHost: "127.0.0.1", proxyPort: server.port)) {
+        let manager = SOCKSProxyManager(connectTimeout: 30)
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
+        )
+        await #expect(throws: ConnectionTimeoutError(
+            endpoint: .proxy("127.0.0.1:\(server.port)"),
+            configuredSeconds: 30
+        )) {
             _ = try await manager.createTunnel(
                 connectionId: UUID(),
                 config: config(port: server.port),
                 password: nil,
                 targetHost: "db.internal.example",
-                targetPort: 5_432
+                targetPort: 5_432,
+                deadline: deadline
             )
         }
     }
@@ -203,6 +211,45 @@ struct SOCKSProxyManagerTests {
         await #expect(throws: (any Error).self) { _ = try await creation.value }
         #expect(Date().timeIntervalSince(started) < 5)
         #expect(await !manager.hasTunnel(connectionId: connectionId))
+    }
+
+    @Test("the first relay keeps the tunnel creation deadline")
+    func firstRelayUsesCreationDeadline() async throws {
+        let server = FakeSOCKS5Server(behavior: .echo)
+        try await server.start()
+        defer { server.stop() }
+
+        let manager = SOCKSProxyManager(connectTimeout: 30)
+        let connectionId = UUID()
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .seconds(1))
+        )
+        let localPort = try await manager.createTunnel(
+            connectionId: connectionId,
+            config: config(port: server.port),
+            password: nil,
+            targetHost: "db.internal.example",
+            targetPort: 5_432,
+            deadline: deadline
+        )
+        defer { Task { try await manager.closeTunnel(connectionId: connectionId) } }
+
+        try await Task.sleep(for: .milliseconds(1_050))
+        let client = try await TestTCPClient.connect(port: localPort)
+        defer { client.cancel() }
+
+        for _ in 0..<100 {
+            if let failure = await manager.consumeLastConnectionFailure(connectionId: connectionId) {
+                #expect(failure == ConnectionTimeoutError(
+                    endpoint: .proxy("127.0.0.1:\(server.port)"),
+                    configuredSeconds: 30
+                ))
+                return
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("The first relay did not report the original connection deadline")
     }
 
     @Test("two concurrent clients relay independently through one tunnel")

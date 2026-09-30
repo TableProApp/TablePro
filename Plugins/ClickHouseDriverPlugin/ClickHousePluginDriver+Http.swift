@@ -10,33 +10,37 @@ import TableProPluginKit
 extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
-    func executeRaw(_ query: String, queryId: String? = nil) async throws -> CHQueryResult {
+    func executeRaw(
+        _ query: String,
+        queryId: String? = nil,
+        requestTimeout: TimeInterval? = nil
+    ) async throws -> CHQueryResult {
         let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
             guard let session = self.session else { throw ClickHouseError.notConnected }
-            let database = _currentDatabase
+            let database = currentDatabaseName
             if let queryId {
-                _lastQueryId = queryId
+                lastQueryId = queryId
             }
             return (session, database)
         }
 
         var request = try buildRequest(query: query, database: database, queryId: queryId)
-        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
+        request.timeoutInterval = requestTimeout ?? queryTimeout.requestTimeoutInterval
         return try await perform(request: request, session: session)
     }
 
     func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
         let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
             guard let session = self.session else { throw ClickHouseError.notConnected }
-            let database = _currentDatabase
+            let database = currentDatabaseName
             if let queryId {
-                _lastQueryId = queryId
+                lastQueryId = queryId
             }
             return (session, database)
         }
 
         var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
-        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
         return try await perform(request: request, session: session)
     }
 

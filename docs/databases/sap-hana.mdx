@@ -139,7 +139,10 @@ The port answered in plain TCP. An on-premises or HANA Express server speaks TLS
 
 ### TablePro could not reach the SAP HANA server.
 
-Nothing answered at the host and port. Check both against the instance's SQL endpoint. A HANA Cloud instance accepts connections only from the IP addresses allowed in **SAP HANA Cloud Central**, under the instance's **Connections** settings, so add your Mac's public address there. The same message with "within 30 seconds" means the server took longer than that to answer.
+Nothing answered at the host and port. Check both against the instance's SQL endpoint. A HANA Cloud
+instance accepts connections only from the IP addresses allowed in **SAP HANA Cloud Central**, under
+the instance's **Connections** settings, so add your Mac's public address there. A message that says
+"within _n_ seconds" uses the **Connect timeout** under **Options**; an empty field uses 30 seconds.
 
 ### Lost connection to the SAP HANA server.
 

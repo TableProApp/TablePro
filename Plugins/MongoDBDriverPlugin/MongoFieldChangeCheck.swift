@@ -260,7 +260,10 @@ struct MongoFieldChangeCheck {
             throw MongoDBError(
                 code: 0,
                 message: String(
-                    format: String(localized: "Checking the documents of %1$@ took over %2$d seconds, so nothing was changed. Raise the query timeout in Settings and save again."),
+                    format: String(localized: """
+                        Checking the documents of %1$@ took over %2$d seconds, so nothing was changed. \
+                        Raise this connection's query timeout in Options and save again.
+                        """),
                     collection, max(1, Int(maxTimeMS / 1_000))
                 )
             )

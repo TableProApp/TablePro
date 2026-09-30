@@ -147,6 +147,9 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
 /// Model representing a database connection
 struct DatabaseConnection: Identifiable, Hashable {
+    static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+
     let id: UUID
     var name: String
     var host: String
@@ -246,6 +249,37 @@ struct DatabaseConnection: Identifiable, Hashable {
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
+    }
+
+    var connectTimeoutSeconds: Int? {
+        get {
+            if let common = additionalFields[Self.connectTimeoutSecondsKey] {
+                return Int(common)
+            }
+            guard type == .kafka else { return nil }
+            return additionalFields["kafkaConnectTimeout"].flatMap(Int.init)
+        }
+        set {
+            if let newValue {
+                additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
+            }
+            if type == .kafka {
+                additionalFields.removeValue(forKey: "kafkaConnectTimeout")
+            }
+        }
+    }
+
+    var queryTimeoutSeconds: Int? {
+        get { additionalFields[Self.queryTimeoutSecondsKey].flatMap(Int.init) }
+        set {
+            if let newValue {
+                additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
+            }
+        }
     }
 
     var sshForwardUnixSocketPath: String? {

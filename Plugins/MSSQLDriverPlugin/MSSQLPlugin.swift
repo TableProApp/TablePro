@@ -139,7 +139,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRenameTable = true
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
-    static let defaultPort = 1433
+    static let defaultPort = 1_433
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
@@ -273,7 +273,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     var freeTDSConn: FreeTDSConnection?
-    var _currentSchema: String
+    var currentSchemaName: String
     private var _serverVersion: String?
 
     /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
@@ -298,7 +298,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private struct KerberosRealmResolutionTimeout: Error {}
 
-    var currentSchema: String? { _currentSchema }
+    var currentSchema: String? { currentSchemaName }
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -346,32 +346,43 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
+        self.currentSchemaName = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         let authMethod = MSSQLConnectionOptions.authMethod(from: config.additionalFields)
+        let deadline = MSSQLConnectDeadline(
+            timeoutMilliseconds: MSSQLConnectionOptions.connectTimeoutMilliseconds(from: config.additionalFields)
+        )
         let conn: FreeTDSConnection
         do {
-            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
+            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(
+                authMethod: authMethod,
+                deadline: deadline
+            )
             var connectionOwnsKerberosCache = false
             defer {
                 if !connectionOwnsKerberosCache, let kerberosCachePath {
                     try? FileManager.default.removeItem(atPath: kerberosCachePath)
                 }
             }
-            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
+            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(
+                authMethod: authMethod,
+                deadline: deadline
+            )
             let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
+            let remainingMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
             var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
                 password: config.password,
                 database: config.database,
-                schema: _currentSchema,
+                schema: currentSchemaName,
                 encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: config.ssl.mode),
+                loginTimeoutSeconds: max(1, (remainingMilliseconds + 999) / 1_000),
                 authMethod: authMethod,
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
@@ -379,7 +390,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
             options.caCertificatePath = config.ssl.caCertificatePath
             options.fedAuthToken = fedAuthToken
-            conn = FreeTDSConnection(options: options)
+            conn = FreeTDSConnection(options: options, connectTimeoutMilliseconds: remainingMilliseconds)
             connectionOwnsKerberosCache = true
             try await conn.connect()
         } catch let error as MSSQLCoreError {
@@ -399,14 +410,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let result = try? await executeInternal("SELECT SCHEMA_NAME()"),
            let serverSchema = result.rows.first?.first?.asText,
            !serverSchema.isEmpty {
-            _currentSchema = serverSchema
+            currentSchemaName = serverSchema
         } else {
-            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self._currentSchema, privacy: .public)")
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .public)")
         }
 
         let formSchema = config.additionalFields["mssqlSchema"]
-        if let formSchema, !formSchema.isEmpty, formSchema != _currentSchema {
-            _currentSchema = formSchema
+        if let formSchema, !formSchema.isEmpty, formSchema != currentSchemaName {
+            currentSchemaName = formSchema
         }
 
         if let result = try? await executeInternal("SELECT @@VERSION"),
@@ -415,14 +426,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func resolveKerberosServicePrincipal(authMethod: MSSQLAuthMethod) async throws -> String? {
+    private func resolveKerberosServicePrincipal(
+        authMethod: MSSQLAuthMethod,
+        deadline: MSSQLConnectDeadline
+    ) async throws -> String? {
         guard authMethod == .windows else { return nil }
         let host = config.host
         let port = config.port
+        let timeoutMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
         do {
             return try await runCancellableBlocking(
                 on: Self.kerberosResolveQueue,
-                deadline: .seconds(Self.kerberosResolveTimeoutSeconds),
+                deadline: .milliseconds(min(Self.kerberosResolveTimeoutSeconds * 1_000, timeoutMilliseconds)),
                 timeoutError: { KerberosRealmResolutionTimeout() },
                 work: {
                     MSSQLKerberosRealmResolver.canonicalService(forHost: host)
@@ -430,6 +445,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             )
         } catch is KerberosRealmResolutionTimeout {
+            if deadline.remainingMilliseconds == 0 {
+                throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
+            }
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
@@ -439,10 +457,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
     private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
         guard authMethod == .entra else { return nil }
-        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
+        return try await EntraCredentialResolver.shared.accessToken(
+            fields: config.additionalFields,
+            session: MSSQLEntraConnectSession.shared
+        )
     }
 
-    private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+    private func acquireKerberosTicketIfNeeded(
+        authMethod: MSSQLAuthMethod,
+        deadline: MSSQLConnectDeadline
+    ) async throws -> String? {
         guard authMethod == .windows else { return nil }
         let principal = (config.additionalFields[MSSQLKerberosField.principal] ?? "")
             .trimmingCharacters(in: .whitespaces)
@@ -451,8 +475,19 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await MSSQLKerberosCredentials.acquireTicket(
             principal: principal,
             password: password,
-            timeoutSeconds: MSSQLConnectionOptions.defaultLoginTimeoutSeconds
+            timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod)
         )
+    }
+
+    private func remainingConnectTimeout(
+        _ deadline: MSSQLConnectDeadline,
+        authMethod: MSSQLAuthMethod
+    ) throws -> Int {
+        let milliseconds = deadline.remainingMilliseconds
+        guard milliseconds > 0 else {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: authMethod == .windows)
+        }
+        return milliseconds
     }
 
     private func executeInternal(_ query: String) async throws -> PluginQueryResult {
@@ -957,14 +992,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Escape single quotes for N'...' string literals in SQL Server.
 
     func effectiveSchema(_ schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return _currentSchema }
+        guard let schema, !schema.isEmpty else { return currentSchemaName }
         return schema
     }
 
     func effectiveSchemaQuoted(_ schema: String?) -> String {
         MSSQLStringLiteral.quoted(effectiveSchema(schema))
     }
-
 }
 
 // MARK: - Kerberos

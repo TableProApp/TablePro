@@ -79,6 +79,8 @@ targetTemplates:
         excludes:
           - Info.plist
           - README.md
+      - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginURLSessionTaskBox.swift
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -422,12 +424,16 @@ targets:
     platform: macOS
     sources:
       - TableProTests
+      - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginURLSessionTaskBox.swift
       # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
       # compiles the pure-logic files its suites cover.
       - Plugins/BeancountDriverPlugin/BeancountIncludeResolver.swift
       - Plugins/BeancountDriverPlugin/BeancountDirectiveDetails.swift
       - Plugins/BeancountDriverPlugin/BeancountDirectiveProjection.swift
       - Plugins/BeancountDriverPlugin/BeancountSourceScanner.swift
+      - Plugins/BeancountDriverPlugin/BeancountConnectRuntime.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Backend.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift
@@ -461,11 +467,13 @@ targets:
       - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
       - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
       - Plugins/CassandraDriverPlugin/CassandraCellText.swift
+      - Plugins/CassandraDriverPlugin/CassandraConnectTimeout.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/CassandraDriverPlugin/CassandraObjectQueries.swift
       - Plugins/CassandraDriverPlugin/CassandraResumePoints.swift
       - Plugins/CassandraDriverPlugin/CassandraRowWriter.swift
       - Plugins/CassandraDriverPlugin/CassandraVarint.swift
+      - Plugins/DamengDriverPlugin/DamengConnectTimeout.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
@@ -474,6 +482,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBConnectAttempt.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
@@ -549,6 +558,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLEntraConnectSession.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
@@ -761,6 +771,7 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaScram.swift
       - Plugins/KafkaDriverPlugin/SnappyDecoder.swift
       - Plugins/TeradataDriverPlugin/TeradataSSLMapping.swift
+      - Plugins/TeradataDriverPlugin/TeradataVersionProbe.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
@@ -981,6 +992,9 @@ targets:
         product: TableProSQLiteCore
     settings:
       base:
+        # Above plugin-sqlite-v1.0.1, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.2"
         OTHER_LDFLAGS:
           - $(inherited)
           - -force_load
@@ -994,6 +1008,11 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+    settings:
+      base:
+        # Above plugin-clickhouse-v1.0.19, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.20"
 
   RedisDriver:
     templates: [DriverPlugin]
@@ -1002,6 +1021,9 @@ targets:
       principalClass: RedisPlugin
     settings:
       base:
+        # Above plugin-redis-v1.0.19, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.20"
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Plugins/RedisDriverPlugin/CRedis/include

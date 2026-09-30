@@ -228,7 +228,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
-        let connection = OracleCoreConnection(options: OracleConnectionOptions(
+        let options = OracleConnectionOptions(
             host: config.host,
             port: config.port,
             user: config.username,
@@ -239,32 +239,78 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sid: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
             role: OracleConnectionOptions.role(from: config.additionalFields),
             tls: config.ssl.oracleTLSDescription,
-            networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields)
-        ))
+            networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields),
+            loginTimeoutSeconds: OracleConnectionOptions.loginTimeoutSeconds(from: config.additionalFields)
+        )
+        let deadline = OracleConnectDeadline(seconds: options.loginTimeoutSeconds)
+        let connection = OracleCoreConnection(options: options)
         do {
             try await connection.connect()
+            self.core = connection
+
+            do {
+                try await connection.withConnectDeadline(deadline) {
+                    try await connection.captureServerOutput()
+                }
+            } catch {
+                try continueConnecting(afterOptionalProbeFailure: error, on: connection)
+                Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(String(describing: error), privacy: .private)")
+            }
+
+            if let result = try await optionalConnectQuery(
+                OracleSchemaQueries.currentSchema,
+                on: connection,
+                deadline: deadline
+            ), let schema = result.rows.first?.first?.stringValue {
+                _currentSchema = schema
+            } else {
+                _currentSchema = config.username.uppercased()
+            }
+
+            if let result = try await optionalConnectQuery(
+                OracleSchemaQueries.serverVersion,
+                on: connection,
+                deadline: deadline
+            ), let versionStr = result.rows.first?.first?.stringValue {
+                _serverVersion = String(versionStr.prefix(60))
+            }
+            try connection.finishConnecting(before: deadline)
         } catch let error as OracleCoreError {
+            if !connection.isConnected {
+                self.core = nil
+            }
             throw error.asPluginError
+        } catch is CancellationError {
+            connection.disconnect(reason: .connectCancelled)
+            self.core = nil
+            throw CancellationError()
         }
-        self.core = connection
+    }
 
+    private func optionalConnectQuery(
+        _ query: String,
+        on connection: OracleCoreConnection,
+        deadline: OracleConnectDeadline
+    ) async throws -> OracleRawResult? {
         do {
-            try await connection.captureServerOutput()
+            return try await connection.withConnectDeadline(deadline) {
+                try await connection.executeQuery(query)
+            }
         } catch {
-            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(String(describing: error), privacy: .private)")
+            try continueConnecting(afterOptionalProbeFailure: error, on: connection)
+            return nil
         }
+    }
 
-        if let result = try? await connection.executeQuery(OracleSchemaQueries.currentSchema),
-           let schema = result.rows.first?.first?.stringValue {
-            _currentSchema = schema
-        } else {
-            _currentSchema = config.username.uppercased()
+    private func continueConnecting(
+        afterOptionalProbeFailure error: Error,
+        on connection: OracleCoreConnection
+    ) throws {
+        if let coreError = error as? OracleCoreError, coreError == .connectTimedOut {
+            throw coreError
         }
-        try ensureAlive(connection)
-
-        if let result = try? await connection.executeQuery(OracleSchemaQueries.serverVersion),
-           let versionStr = result.rows.first?.first?.stringValue {
-            _serverVersion = String(versionStr.prefix(60))
+        if error is CancellationError {
+            throw error
         }
         try ensureAlive(connection)
     }
@@ -272,7 +318,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// A probe that only failed to answer is survivable, and both have a fallback. One that killed the
     /// connection is not: the core is left disconnected, so the next call silently redials with the full
     /// login budget while the caller's own, shorter deadline blames whatever step it happened to be on.
-    /// Checked after each probe, because a redial inside the second one would mask the first's failure.
+    /// Checked after each optional probe, because a redial inside the next one would mask the
+    /// previous probe's failure.
     private func ensureAlive(_ connection: OracleCoreConnection) throws {
         guard connection.isConnected else {
             core = nil

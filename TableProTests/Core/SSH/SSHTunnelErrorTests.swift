@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProPluginKit
 import Testing
@@ -53,10 +54,15 @@ struct SSHTunnelErrorTests {
         #expect(error.errorDescription?.contains(id.uuidString) == true)
     }
 
-    @Test("SSHTunnelError.connectionTimeout has a localized description")
+    @Test("A connection timeout names the SSH endpoint and configured budget")
     func connectionTimeoutDescription() {
-        let error = SSHTunnelError.connectionTimeout
-        #expect(error.errorDescription != nil)
+        let error = ConnectionTimeoutError(
+            endpoint: .tunnel("bastion.example:2222"),
+            configuredSeconds: 17
+        )
+
+        #expect(error.errorDescription?.contains("bastion.example:2222") == true)
+        #expect(error.errorDescription?.contains("17") == true)
     }
 
     @Test("SSHTunnelError.socketForwardingRefused names the socket and the sshd setting")
@@ -119,5 +125,70 @@ struct SSHTunnelErrorTests {
         #expect(!description.contains("`"))
         #expect(description.contains("VACUUM INTO"))
         #expect(description.contains("disk I/O error"))
+    }
+
+    @Test("An expired SSH attempt interrupts its transport and keeps the bastion in the error")
+    func expiredAttemptInterruptsTransport() {
+        let deadline = ConnectionDeadline(configuredSeconds: 30, instant: .now)
+        let endpoint = ConnectionTimeoutEndpoint.tunnel("jump.example:2200")
+        let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
+        let interrupted = OSAllocatedUnfairLock(initialState: false)
+        _ = attempt.registerTransportInterrupt { interrupted.withLock { $0 = true } }
+
+        #expect(throws: ConnectionTimeoutError(endpoint: endpoint, configuredSeconds: 30)) {
+            try attempt.prepare(for: endpoint)
+        }
+        #expect(interrupted.withLock { $0 })
+    }
+
+    @Test("Cancelling SSH authentication dismisses its active prompt")
+    func cancellationDismissesPrompt() async throws {
+        let deadline = ConnectionDeadline(configuredSeconds: 30)
+        let endpoint = ConnectionTimeoutEndpoint.tunnel("jump.example:22")
+        let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
+        let dismissed = OSAllocatedUnfairLock(initialState: false)
+        let promptId = try attempt.registerPrompt(for: endpoint) {
+            dismissed.withLock { $0 = true }
+        }
+
+        attempt.cancel()
+        for _ in 0..<20 where !dismissed.withLock({ $0 }) {
+            await Task.yield()
+        }
+
+        #expect(dismissed.withLock { $0 })
+        #expect(throws: CancellationError.self) {
+            try attempt.check(for: endpoint)
+        }
+        attempt.unregisterPrompt(promptId)
+    }
+
+    @Test("SFTP reports exact deadline expiry against the remote-file endpoint")
+    func sftpBudgetPreservesEndpointAtExactExpiry() {
+        let startedAt = ContinuousClock.now
+        let deadline = ConnectionDeadline(configuredSeconds: 60, startedAt: startedAt)
+        let endpoint = ConnectionTimeoutEndpoint.remoteFile("files.example:2222")
+        let budget = SFTPConnectionBudget(deadline: deadline, endpoint: endpoint)
+
+        #expect(throws: ConnectionTimeoutError(endpoint: endpoint, configuredSeconds: 60)) {
+            try budget.check(at: deadline.instant)
+        }
+    }
+
+    @Test("SFTP chunk cancellation wins while deadline budget remains")
+    func sftpBudgetHonorsCancellation() throws {
+        let startedAt = ContinuousClock.now
+        let deadline = ConnectionDeadline(configuredSeconds: 60, startedAt: startedAt)
+        let budget = SFTPConnectionBudget(
+            deadline: deadline,
+            endpoint: .remoteFile("files.example:22")
+        )
+
+        #expect(throws: SFTPError.cancelled) {
+            try budget.check(at: startedAt, isCancelled: { true })
+        }
+        #expect(try budget.remainingMilliseconds(
+            at: startedAt.advanced(by: .seconds(15))
+        ) == 45_000)
     }
 }

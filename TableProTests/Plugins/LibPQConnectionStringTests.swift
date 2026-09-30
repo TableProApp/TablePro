@@ -8,12 +8,26 @@ import TableProPluginKit
 import Testing
 
 struct LibPQConnectionStringTests {
+    private func pluginSource(_ name: String) throws -> String {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repository
+                .appendingPathComponent("Plugins/PostgreSQLDriverPlugin")
+                .appendingPathComponent(name),
+            encoding: .utf8
+        )
+    }
+
     private func build(
         user: String = "postgres",
         password: String? = "hunter2",
         sslConfig: SSLConfiguration = SSLConfiguration(),
         options: String? = nil,
-        applicationName: String? = nil
+        applicationName: String? = nil,
+        connectTimeoutSeconds: Int? = nil
     ) -> String {
         LibPQConnectionString.build(
             host: "db.example.com",
@@ -23,7 +37,8 @@ struct LibPQConnectionStringTests {
             database: "app",
             sslConfig: sslConfig,
             options: options,
-            applicationName: applicationName
+            applicationName: applicationName,
+            connectTimeoutSeconds: connectTimeoutSeconds
         )
     }
 
@@ -37,6 +52,58 @@ struct LibPQConnectionStringTests {
         #expect(conninfo.contains("user='postgres'"))
         #expect(conninfo.contains("password='hunter2'"))
         #expect(conninfo.contains("sslmode='disable'"))
+    }
+
+    @Test("The remaining budget reaches libpq's native connection setting")
+    func connectTimeoutReachesConnectionString() {
+        let timeout = LibPQConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "4201"])
+
+        #expect(timeout.nativeSeconds == 5)
+        #expect(build(connectTimeoutSeconds: timeout.nativeSeconds).contains("connect_timeout='5'"))
+    }
+
+    @Test("The compatibility timeout is clamped before reaching libpq")
+    func connectTimeoutFallbackClamps() {
+        #expect(LibPQConnectTimeout(additionalFields: ["connectTimeoutSeconds": "0"]).milliseconds == 1)
+        #expect(
+            LibPQConnectTimeout(additionalFields: ["connectTimeoutSeconds": String(Int64.min)]).milliseconds == 1
+        )
+        #expect(
+            LibPQConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "999999999"]).milliseconds
+                == LibPQConnectTimeout.maximumMilliseconds
+        )
+    }
+
+    @Test("TCP and bootstrap probes consume one absolute libpq deadline")
+    func connectDeadlineShrinksAcrossPhases() {
+        let deadline = LibPQConnectDeadline(
+            timeout: LibPQConnectTimeout(milliseconds: 4_200),
+            nowMicroseconds: 1_000_000
+        )
+
+        #expect(deadline.remainingMicroseconds(nowMicroseconds: 2_250_000) == 2_950_000)
+        #expect(
+            deadline.nextPollDeadline(nowMicroseconds: 2_250_000, maximumSliceMicroseconds: 100_000)
+                == 2_350_000
+        )
+        #expect(deadline.remainingMicroseconds(nowMicroseconds: 5_200_000) == nil)
+        #expect(
+            deadline.nextPollDeadline(nowMicroseconds: 5_200_000, maximumSliceMicroseconds: 100_000) == nil
+        )
+    }
+
+    @Test("Bootstrap queries use pollable libpq I/O and adoption follows every post-connect probe")
+    func bootstrapQueriesStayInsideDeadline() throws {
+        let connection = try pluginSource("LibPQPluginConnection.swift")
+        let core = try pluginSource("LibPQDriverCore.swift")
+
+        #expect(connection.contains("if let deadline = activeConnectDeadline"))
+        #expect(connection.contains("PQsendQuery(connection"))
+        #expect(connection.contains("PQsocketPoll("))
+        #expect(connection.contains("requestServerCancel(on: connection, evenWhenSuppressed: true)"))
+        let probes = try #require(core.range(of: "await onPostConnect?()"))
+        let adoption = try #require(core.range(of: "try await pqConn.finishConnecting()"))
+        #expect(probes.lowerBound < adoption.lowerBound)
     }
 
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")

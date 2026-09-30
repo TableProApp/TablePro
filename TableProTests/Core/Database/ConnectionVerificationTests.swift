@@ -387,6 +387,35 @@ struct HealthMonitorSchedulingTests {
         await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
     }
 
+    @Test("health checks never ping while a tracked operation is running")
+    func trackedOperationSuppressesPingRegardlessOfAge() async {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+
+        await withHealthCheck(.every15Minutes) {
+            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+        }
+        let monitor = DatabaseManager.shared.healthMonitors[connection.id]
+        DatabaseManager.shared.queriesInFlight[connection.id] = 1
+        DatabaseManager.shared.queryStartTimes[connection.id] = .distantPast
+
+        await monitor?.performHealthCheck()
+        #expect(driver.pingCallCount == 0)
+
+        DatabaseManager.shared.queriesInFlight.removeValue(forKey: connection.id)
+        DatabaseManager.shared.queryStartTimes.removeValue(forKey: connection.id)
+        await monitor?.performHealthCheck()
+        #expect(driver.pingCallCount == 1)
+
+        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
     /// The monitor is built once, when the connection opens, so switching the setting has to reach
     /// what is already open or it only applies to the next connection someone makes.
     @Test("turning the check off stops the monitor an open connection already has")

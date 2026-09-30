@@ -42,13 +42,21 @@ extension MySQLPluginDriver {
         }
     }
 
-    func resolveFlavor(on connection: MariaDBPluginConnection, variant: String?) async throws -> MySQLServerFlavor {
+    func resolveFlavor(
+        on connection: MariaDBPluginConnection,
+        variant: String?,
+        deadline: MySQLConnectDeadline
+    ) async throws -> MySQLServerFlavor {
         let banner = connection.serverVersion()
         let bannerFlavor = MySQLServerFlavor.fromBanner(banner)
 
         if variant == MySQLServerFlavor.databendVariant {
             if MySQLFlavorResolution.needsDatabendProbe(banner: banner, variant: variant) {
-                guard await probeSucceeds(MySQLFlavorResolution.databendProbe, on: connection) else {
+                guard try await probeSucceeds(
+                    MySQLFlavorResolution.databendProbe,
+                    on: connection,
+                    deadline: deadline
+                ) else {
                     throw MySQLFlavorMismatchError(kind: .notDatabend)
                 }
             }
@@ -60,7 +68,10 @@ extension MySQLPluginDriver {
         }
 
         if variant == MySQLServerFlavor.oceanbaseVariant {
-            let identity = try await connection.executeQuery(MySQLFlavorResolution.oceanbaseProbe).rows.first
+            let identity = try await connection.executeConnectQuery(
+                MySQLFlavorResolution.oceanbaseProbe,
+                deadline: deadline
+            ).rows.first
             guard let flavor = MySQLFlavorResolution.oceanbaseFlavor(
                 versionComment: identity?[safe: 0]?.asText,
                 serverVersion: identity?[safe: 1]?.asText
@@ -73,16 +84,28 @@ extension MySQLPluginDriver {
         guard MySQLFlavorResolution.needsTiDBVersionProbe(banner: banner, variant: variant) else {
             return bannerFlavor
         }
-        guard let info = await firstValue(of: MySQLFlavorResolution.tidbVersionProbe, on: connection),
+        guard let info = try await firstValue(
+            of: MySQLFlavorResolution.tidbVersionProbe,
+            on: connection,
+            deadline: deadline
+        ),
               let version = MySQLServerFlavor.tidbVersion(fromReleaseInfo: info) else {
             return bannerFlavor
         }
         return .tidb(version: version)
     }
 
-    func killTarget(for flavor: MySQLServerFlavor, on connection: MariaDBPluginConnection) async -> MySQLKillTarget {
+    func killTarget(
+        for flavor: MySQLServerFlavor,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> MySQLKillTarget {
         guard flavor.isTiDB || flavor.isDatabend else { return .threadId }
-        let identifier = await firstValue(of: MySQLFlavorResolution.connectionIdentifierProbe, on: connection)
+        let identifier = try await firstValue(
+            of: MySQLFlavorResolution.connectionIdentifierProbe,
+            on: connection,
+            deadline: deadline
+        )
         return flavor.killTarget(connectionIdentifier: identifier)
     }
 
@@ -94,19 +117,31 @@ extension MySQLPluginDriver {
         return MySQLCheckConstraints.parse(createTable: createTable)
     }
 
-    private func probeSucceeds(_ statement: String, on connection: MariaDBPluginConnection) async -> Bool {
+    private func probeSucceeds(
+        _ statement: String,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> Bool {
         do {
-            _ = try await connection.executeQuery(statement)
+            _ = try await connection.executeConnectQuery(statement, deadline: deadline)
             return true
+        } catch let error as MariaDBPluginError where error.isConnectionTimeout {
+            throw error
         } catch {
             return false
         }
     }
 
-    private func firstValue(of statement: String, on connection: MariaDBPluginConnection) async -> String? {
+    private func firstValue(
+        of statement: String,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> String? {
         do {
-            let result = try await connection.executeQuery(statement)
+            let result = try await connection.executeConnectQuery(statement, deadline: deadline)
             return result.rows.first?.first?.asText
+        } catch let error as MariaDBPluginError where error.isConnectionTimeout {
+            throw error
         } catch {
             Self.logger.debug("Flavor probe failed: \(error.localizedDescription, privacy: .private)")
             return nil

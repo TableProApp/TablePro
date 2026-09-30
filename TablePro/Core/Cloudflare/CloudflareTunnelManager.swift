@@ -13,7 +13,6 @@ actor CloudflareTunnelManager: TunnelManaging {
     static let shared = CloudflareTunnelManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelManager")
 
-    private static let readinessTimeout: TimeInterval = 30
     private static let readinessPollInterval: UInt64 = 250_000_000
     private static let portRetryCount = 5
     private static let stalePidsDefaultsKey = "cloudflaredStalePids"
@@ -49,11 +48,15 @@ actor CloudflareTunnelManager: TunnelManaging {
         connectionId: UUID,
         config: CloudflareConfiguration,
         tokenId: String? = nil,
-        tokenSecret: String? = nil
+        tokenSecret: String? = nil,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel(config.accessHostname)
+        try deadline.check(endpoint: timeoutEndpoint)
         /// A `cloudflared` a crashed session left behind still owns the port this is about to ask
         /// for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
         await sweepStalePidsIfNeeded()
+        try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
@@ -66,6 +69,7 @@ actor CloudflareTunnelManager: TunnelManaging {
 
         var lastError: Error = CloudflareTunnelError.noAvailablePort
         for _ in 0..<attempts {
+            try deadline.check(endpoint: timeoutEndpoint)
             let port = try config.localPort ?? allocateFreePort()
             let runner = runnerFactory()
             let arguments = [
@@ -81,10 +85,19 @@ actor CloudflareTunnelManager: TunnelManaging {
             }
 
             do {
-                try await awaitReadiness(runner: runner, port: port)
-            } catch let error as CloudflareTunnelError {
+                try await awaitReadiness(
+                    runner: runner,
+                    port: port,
+                    deadline: deadline,
+                    timeoutEndpoint: timeoutEndpoint
+                )
+                try deadline.check(endpoint: timeoutEndpoint)
+            } catch {
                 runner.stop()
-                if case .startupFailed(let tail) = error, config.localPort == nil, Self.isPortInUse(tail) {
+                if let tunnelError = error as? CloudflareTunnelError,
+                   case .startupFailed(let tail) = tunnelError,
+                   config.localPort == nil,
+                   Self.isPortInUse(tail) {
                     Self.logger.notice("cloudflared port \(port) in use, retrying with another")
                     lastError = CloudflareTunnelError.noAvailablePort
                     continue
@@ -216,7 +229,12 @@ actor CloudflareTunnelManager: TunnelManaging {
 
     // MARK: - Private: readiness
 
-    private func awaitReadiness(runner: any SupervisedProcessRunner, port: Int) async throws {
+    private func awaitReadiness(
+        runner: any SupervisedProcessRunner,
+        port: Int,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws {
         let monitor = CloudflaredStartupMonitor()
         let stderrTask = Task {
             for await line in runner.stderrLines {
@@ -229,8 +247,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         // The stderr scan is load-bearing: cloudflared may accept the local port
         // before it has authenticated, so a passing TCP probe alone can't tell a
         // ready tunnel from one waiting on browser sign-in. Keep checking both.
-        let deadline = Date().addingTimeInterval(Self.readinessTimeout)
-        while Date() < deadline {
+        while !deadline.isExpired {
             if let url = await monitor.browserAuthURL {
                 throw CloudflareTunnelError.browserAuthRequired(url: url)
             }
@@ -243,9 +260,10 @@ actor CloudflareTunnelManager: TunnelManaging {
                 }
                 return
             }
-            try await Task.sleep(nanoseconds: Self.readinessPollInterval)
+            let remainingNanoseconds = UInt64(max(1, deadline.remainingMilliseconds)) * 1_000_000
+            try await Task.sleep(nanoseconds: min(Self.readinessPollInterval, remainingNanoseconds))
         }
-        throw CloudflareTunnelError.readinessTimeout(stderrTail: await monitor.tail)
+        throw deadline.timeoutError(for: timeoutEndpoint)
     }
 
     // MARK: - Private: binary, environment, port

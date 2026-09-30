@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SAP HANA database driver plugin. (#1966)
 - Folders for tables and views in the sidebar. (#3167)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
+- Per-connection connect and query timeout controls in connection Options. (#2525)
 
 ### Changed
 
@@ -63,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
 - Import from URL ignoring `ssl=1`, `ssl=require` and `ssl=0`.
 - Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for.
+- Query timeout overrides dropped by Mac sync and connection exports. (#2525)
+- Connection checks interrupting a query, import or export still in progress after five minutes. (#2525)
+- Connection timeout errors naming the database when an SSH bastion stalled. (#2525)
 - Release highlights in the update dialog run together into one paragraph.
 - Removed and Deprecated listed after Fixed in GitHub release notes.
 - PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.

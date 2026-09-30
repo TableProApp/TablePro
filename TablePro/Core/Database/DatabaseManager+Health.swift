@@ -50,27 +50,9 @@ extension DatabaseManager {
             pingInterval: { await AppSettingsManager.shared.general.connectionHealthCheck.interval },
             pingHandler: { [weak self] in
                 guard let self else { return false }
-                // Skip ping while a user query is in-flight to avoid racing
-                // on the same non-thread-safe driver connection.
-                // Allow ping if the query appears stuck (exceeds timeout + grace period).
                 if await self.queriesInFlight[connectionId] != nil {
-                    let queryTimeout = await TimeInterval(AppSettingsManager.shared.general.queryTimeoutSeconds)
-                    let maxStale = max(queryTimeout, 300) // At least 5 minutes
-                    if let startTime = await self.queryStartTimes[connectionId],
-                       Date().timeIntervalSince(startTime) < maxStale {
-                        Self.logger.debug("Ping skipped — query in-flight for \(connectionId)")
-                        return true // Query still within expected time
-                    }
-                    /// The stale override exists for a read that hung, where pinging past it costs
-                    /// nothing. A protected write is the opposite case: an import or a dump runs
-                    /// for as long as it runs, legitimately past any query timeout, and a ping that
-                    /// fails there reconnects and disconnects the handle out from under a batch
-                    /// halfway through applying it.
-                    if await self.holdsProtectedWrite(connectionId) {
-                        Self.logger.debug("Ping skipped, protected write in flight for \(connectionId)")
-                        return true
-                    }
-                    Self.logger.warning("Ping proceeding despite in-flight query (stale after \(maxStale)s) for \(connectionId)")
+                    Self.logger.debug("Ping skipped, operation in flight for \(connectionId)")
+                    return true
                 }
                 guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
                     Self.logger.debug("Ping skipped — no active driver for \(connectionId)")
@@ -267,11 +249,16 @@ extension DatabaseManager {
         allowsCredentialPrompt: Bool
     ) async throws -> ReconnectResult? {
         session.driver?.disconnect()
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: session.connection)
+        let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
 
         // Rebuild the tunnel if needed; otherwise reuse effective connection
         let connectionForDriver: DatabaseConnection
         if session.connection.activeTunnelKind != nil {
-            connectionForDriver = try await buildEffectiveConnection(for: session.connection)
+            connectionForDriver = try await buildEffectiveConnection(
+                for: session.connection,
+                deadline: deadline
+            )
         } else {
             connectionForDriver = session.effectiveConnection ?? session.connection
         }
@@ -280,7 +267,9 @@ extension DatabaseManager {
             for: session,
             effectiveConnection: connectionForDriver,
             passwordOverride: session.cachedPassword,
-            allowsCredentialPrompt: allowsCredentialPrompt
+            allowsCredentialPrompt: allowsCredentialPrompt,
+            deadline: deadline,
+            preparedConfiguration: preparedConfiguration
         ) else {
             return nil
         }
@@ -288,6 +277,7 @@ extension DatabaseManager {
 
         await applyTimeoutAndStartupCommands(
             on: driver,
+            queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
             startupCommands: session.connection.startupCommands,
             connectionName: session.connection.name
         )
@@ -306,12 +296,12 @@ extension DatabaseManager {
 
     func applyTimeoutAndStartupCommands(
         on driver: DatabaseDriver,
+        queryTimeoutSeconds: Int,
         startupCommands: String?,
         connectionName: String
     ) async {
-        let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
         do {
-            try await driver.applyQueryTimeout(timeoutSeconds)
+            try await driver.applyQueryTimeout(queryTimeoutSeconds)
         } catch {
             Self.logger.warning(
                 "Query timeout not supported for \(connectionName): \(error.localizedDescription)"
@@ -400,9 +390,6 @@ extension DatabaseManager {
             // Disconnect existing driver (re-fetch to avoid stale local reference)
             activeSessions[sessionId]?.driver?.disconnect()
 
-            // Recreate SSH tunnel if needed and build effective connection
-            let effectiveConnection = try await buildEffectiveConnection(for: session.connection)
-
             // Resolve password for prompt-for-password connections
             var passwordOverride = activeSessions[sessionId]?.cachedPassword
             if ConnectionCredentialResolver.promptsForPassword(session.connection),
@@ -422,13 +409,22 @@ extension DatabaseManager {
                 passwordOverride = prompted
             }
 
+            let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: session.connection)
+            let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
+            let effectiveConnection = try await buildEffectiveConnection(
+                for: session.connection,
+                deadline: deadline
+            )
+
             /// A nil result means the user declined the re-prompt after an auth failure, so this
             /// is the same cancellation as dismissing the first prompt, not a server refusing.
             guard let connectResult = try await connectReconnectDriver(
                 for: session,
                 effectiveConnection: effectiveConnection,
                 passwordOverride: passwordOverride,
-                allowsCredentialPrompt: true
+                allowsCredentialPrompt: true,
+                deadline: deadline,
+                preparedConfiguration: preparedConfiguration
             ) else {
                 updateSession(sessionId) { $0.status = .disconnected }
                 markSessionUnreachable(sessionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
@@ -438,6 +434,7 @@ extension DatabaseManager {
 
             await applyTimeoutAndStartupCommands(
                 on: driver,
+                queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name
             )
@@ -497,37 +494,53 @@ extension DatabaseManager {
         for session: ConnectionSession,
         effectiveConnection: DatabaseConnection,
         passwordOverride initialPasswordOverride: String?,
-        allowsCredentialPrompt: Bool
+        allowsCredentialPrompt: Bool,
+        deadline initialDeadline: ConnectionDeadline,
+        preparedConfiguration initialPreparedConfiguration: DatabaseDriverFactory.PreparedDriverConfiguration
     ) async throws -> (driver: DatabaseDriver, cachedPassword: String?)? {
         var passwordOverride = initialPasswordOverride
+        var deadline = initialDeadline
+        let preparedConfiguration = initialPreparedConfiguration
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
+            session.connection.host.nilIfEmpty ?? session.connection.name
+        )
 
         while true {
-            let driver = try await DatabaseDriverFactory.createDriver(
-                for: effectiveConnection,
-                passwordOverride: passwordOverride,
-                awaitPlugins: true
-            )
-
+            var driver: DatabaseDriver?
             do {
-                try await driver.connect()
-                return (driver, passwordOverride)
+                let candidate = try await DatabaseDriverFactory.createDriver(
+                    for: effectiveConnection,
+                    passwordOverride: passwordOverride,
+                    awaitPlugins: true,
+                    deadline: deadline,
+                    timeoutEndpoint: timeoutEndpoint,
+                    effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
+                    preparedConfiguration: preparedConfiguration
+                )
+                driver = candidate
+                try await candidate.connect()
+                return (candidate, passwordOverride)
             } catch {
-                driver.disconnect()
+                driver?.disconnect()
+                let reportedError = await Self.preferredTunnelFailure(replacing: error) {
+                    await self.attributedTunnelFailure(for: session.connection)
+                }
 
                 switch await reconnectCredentialResolution(
                     for: session,
-                    error: error,
+                    error: reportedError,
                     currentPassword: passwordOverride,
                     allowsCredentialPrompt: allowsCredentialPrompt
                 ) {
                 case .retry(let newPassword):
                     passwordOverride = newPassword
+                    deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
                 case .abort:
                     await closeReconnectTunnels(for: session.connection)
                     return nil
                 case .fail:
                     await closeReconnectTunnels(for: session.connection)
-                    throw error
+                    throw reportedError
                 }
             }
         }

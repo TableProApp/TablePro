@@ -4,6 +4,55 @@ import TableProTeradataCore
 import Testing
 
 struct TeradataSSLMappingTests {
+    private func source(_ path: String) throws -> String {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(contentsOf: repository.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    @Test("The remaining millisecond budget wins and keeps its precision")
+    func connectTimeoutMillisecondsWin() {
+        let timeout = TeradataConnectTimeout(additionalFields: [
+            "connectTimeoutMilliseconds": "4321",
+            "connectTimeoutSeconds": "9"
+        ])
+
+        #expect(timeout.milliseconds == 4_321)
+    }
+
+    @Test("Legacy seconds are accepted and invalid input keeps the driver default")
+    func connectTimeoutFallback() {
+        #expect(TeradataConnectTimeout(additionalFields: ["connectTimeoutSeconds": "12"]).milliseconds == 12_000)
+        #expect(TeradataConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "bad"]).milliseconds == 20_000)
+        #expect(TeradataConnectTimeout(additionalFields: ["connectTimeoutSeconds": "0"]).milliseconds == 1)
+        #expect(
+            TeradataConnectTimeout(additionalFields: ["connectTimeoutSeconds": String(Int64.min)]).milliseconds == 1
+        )
+    }
+
+    @Test("Only a server refusal may make the optional VERSION probe non-fatal")
+    func versionProbeFailurePolicy() {
+        #expect(TeradataVersionProbe.mayIgnore(TeradataWireError.server(code: 3_523, message: "denied")))
+        #expect(!TeradataVersionProbe.mayIgnore(TeradataWireError.connectionFailed("timed out")))
+        #expect(!TeradataVersionProbe.mayIgnore(TeradataWireError.truncated("silent socket")))
+        #expect(!TeradataVersionProbe.mayIgnore(TeradataWireError.cancelled))
+        #expect(!TeradataVersionProbe.mayIgnore(CancellationError()))
+    }
+
+    @Test("Cancellation closes Teradata I/O and VERSION completes before driver adoption")
+    func versionProbeUsesProvisionalConnection() throws {
+        let asyncConnection = try source("Plugins/TeradataDriverPlugin/TeradataAsyncConnection.swift")
+        let driver = try source("Plugins/TeradataDriverPlugin/TeradataPlugin.swift")
+
+        #expect(asyncConnection.contains("withTaskCancellationHandler"))
+        #expect(asyncConnection.contains("connection.cancel()"))
+        let finish = try #require(driver.range(of: "try await connection.finishConnecting()"))
+        let adoption = try #require(driver.range(of: "self.connection = connection"))
+        #expect(finish.lowerBound < adoption.lowerBound)
+    }
+
     @Test("Verify CA with an empty or blank CA path is refused before any options are built")
     func verifyCaWithoutCertificateIsRefused() {
         for path in ["", "   "] {

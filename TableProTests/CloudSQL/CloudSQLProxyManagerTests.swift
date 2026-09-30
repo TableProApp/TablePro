@@ -14,6 +14,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
     enum Behavior {
         case ready
         case startupFailure
+        case neverReady
     }
 
     let behavior: Behavior
@@ -46,6 +47,8 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         case .startupFailure:
             stderrContinuation.yield("failed to connect to instance: permission denied")
             finish(exitCode: 1)
+        case .neverReady:
+            break
         }
     }
 
@@ -226,6 +229,27 @@ struct CloudSQLProxyManagerTests {
         }
     }
 
+    @Test("connect deadline stops the proxy before registration")
+    func deadlineStopsUnreadyProcess() async {
+        let fake = FakeCloudSQLProxyRunner(behavior: .neverReady)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let id = UUID()
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .milliseconds(100))
+        )
+
+        await #expect(throws: ConnectionTimeoutError(endpoint: .proxy("proj:region:inst"), configuredSeconds: 30)) {
+            _ = try await manager.createTunnel(
+                connectionId: id,
+                config: self.config(),
+                deadline: deadline
+            )
+        }
+        #expect(fake.stopCallCount >= 1)
+        #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
     @Test("an invalid instance connection name is rejected before launching")
     func invalidInstance() async {
         let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
@@ -282,18 +306,21 @@ struct CloudSQLProxyManagerTests {
         #expect(fake.stopCallCount >= 1)
 
         await manager.closeAllTunnels()
-        #expect(UserDefaults.standard.data(forKey: "cloudSQLProxyStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudSQLProxyStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")
     func sweepClearsRecords() async {
         let records = [CloudSQLProxyPidRecord(pid: -1, binaryPath: "/nonexistent")]
-        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudSQLProxyStalePids")
+        AppStorageEnvironment.shared.defaults.set(
+            try? JSONEncoder().encode(records),
+            forKey: "cloudSQLProxyStalePids"
+        )
 
         let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
         await manager.sweepStalePidsIfNeeded()
 
-        #expect(UserDefaults.standard.data(forKey: "cloudSQLProxyStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudSQLProxyStalePids") == nil)
     }
 }
 

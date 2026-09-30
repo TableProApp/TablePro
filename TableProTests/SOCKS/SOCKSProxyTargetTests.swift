@@ -18,7 +18,10 @@ struct SOCKSProxyTargetTests {
         var proxied = connection
         proxied.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "127.0.0.1", port: server.port))
 
-        _ = try await DatabaseManager.shared.buildSOCKSProxyEffectiveConnection(for: proxied)
+        _ = try await DatabaseManager.shared.buildSOCKSProxyEffectiveConnection(
+            for: proxied,
+            deadline: ConnectionDeadline(configuredSeconds: nil)
+        )
         try await SOCKSProxyManager.shared.closeTunnel(connectionId: proxied.id)
 
         return try #require(server.capturedConnectRequest)

@@ -140,14 +140,6 @@ private func kafkaConnectionFields() -> [ConnectionField] {
                 .init(value: "bootstrapOnly", label: String(localized: "Only use the bootstrap address"))
             ]),
             section: .advanced
-        ),
-        ConnectionField(
-            id: "kafkaConnectTimeout",
-            label: String(localized: "Connect Timeout (seconds)"),
-            required: false,
-            defaultValue: "10",
-            fieldType: .stepper(range: ConnectionField.IntRange(1 ... 120)),
-            section: .advanced
         )
     ]
 }

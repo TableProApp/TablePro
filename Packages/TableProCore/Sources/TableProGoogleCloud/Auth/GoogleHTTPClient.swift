@@ -5,11 +5,17 @@ public protocol GoogleHTTPClient: Sendable {
 }
 
 public struct URLSessionGoogleHTTPClient: GoogleHTTPClient {
-    private static let session = URLSession(
-        configuration: .ephemeral,
-        delegate: GoogleRedirectRefusingDelegate(),
-        delegateQueue: nil
-    )
+    private static let transportTimeout: TimeInterval = 3_600
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = transportTimeout
+        configuration.timeoutIntervalForResource = transportTimeout
+        return URLSession(
+            configuration: configuration,
+            delegate: GoogleRedirectRefusingDelegate(),
+            delegateQueue: nil
+        )
+    }()
 
     public init() {}
 

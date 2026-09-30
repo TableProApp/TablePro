@@ -20,20 +20,12 @@ internal struct SSHTunnelCredentials: Sendable {
 
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
 internal enum LibSSH2TunnelFactory {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
-
-    private static let connectionTimeout: Int32 = 10 // seconds
+    internal static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
 
     /// A single session opens more than one connection through the tunnel: the query
     /// connection plus the metadata pool. A backlog that cannot hold them resets the
     /// overflow before the accept loop reaches it.
     private static let listenBacklogSize: Int32 = 16
-
-    /// Bounds the connect-time forward probe. Independent of the per-client open deadline in
-    /// `LibSSH2Tunnel`: this one runs before any database driver has started its own clock, so
-    /// it is free to wait as long as the SSH connect itself does.
-    private static let forwardProbeDeadlineSeconds: TimeInterval = 10
-    private static let probePollTimeoutMs: Int32 = 5_000
 
     // MARK: - Global Init
 
@@ -51,49 +43,75 @@ internal enum LibSSH2TunnelFactory {
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
         destination: SSHForwardDestination,
-        localPort: Int
+        localPort: Int,
+        deadline: ConnectionDeadline
     ) async throws -> LibSSH2Tunnel {
         _ = initialized
+        let endpoint = timeoutEndpoint(host: config.host, port: config.port ?? 22)
+        let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
+        let watchdog = attempt.startWatchdog()
+        defer {
+            watchdog.cancel()
+            attempt.finish()
+        }
 
-        let chain = try await buildAuthenticatedChain(
-            config: config,
-            credentials: credentials,
-            queueLabel: "com.TablePro.ssh.hop.\(connectionId.uuidString)"
-        )
-
-        do {
-            try probeForwardDestination(
-                session: chain.session,
-                socketFD: chain.socketFD,
-                destination: destination
+        return try await withTaskCancellationHandler {
+            let chain = try await buildAuthenticatedChain(
+                config: config,
+                credentials: credentials,
+                queueLabel: "com.TablePro.ssh.hop.\(connectionId.uuidString)",
+                deadline: deadline,
+                attempt: attempt
             )
 
-            let listenFD = try bindListenSocket(port: localPort)
+            do {
+                try probeForwardDestination(
+                    session: chain.session,
+                    socketFD: chain.socketFD,
+                    destination: destination,
+                    deadline: deadline,
+                    attempt: attempt
+                )
 
-            let tunnel = LibSSH2Tunnel(
-                connectionId: connectionId,
-                localPort: localPort,
-                session: chain.session,
-                socketFD: chain.socketFD,
-                listenFD: listenFD,
-                jumpChain: chain.jumpHops.map { hop in
-                    LibSSH2Tunnel.JumpHop(
-                        session: hop.session,
-                        socket: hop.socket,
-                        channel: hop.channel,
-                        relayTask: hop.relayTask
-                    )
+                let listenFD = try bindListenSocket(port: localPort)
+                do {
+                    try attempt.check(for: endpoint)
+                } catch {
+                    Darwin.close(listenFD)
+                    throw error
                 }
-            )
 
-            logger.info(
-                "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(destination.logDescription)"
-            )
+                let tunnel = LibSSH2Tunnel(
+                    connectionId: connectionId,
+                    localPort: localPort,
+                    session: chain.session,
+                    socketFD: chain.socketFD,
+                    listenFD: listenFD,
+                    connectionDeadline: deadline,
+                    timeoutEndpoint: chain.timeoutEndpoint,
+                    jumpChain: chain.jumpHops.map { hop in
+                        LibSSH2Tunnel.JumpHop(
+                            session: hop.session,
+                            socket: hop.socket,
+                            channel: hop.channel,
+                            relayTask: hop.relayTask
+                        )
+                    }
+                )
 
-            return tunnel
-        } catch {
-            cleanupChain(chain, reason: "Error")
-            throw error
+                logger.info(
+                    "Tunnel created: \(config.host) -> 127.0.0.1:\(localPort) -> \(destination.logDescription)"
+                )
+
+                attempt.finish()
+                return tunnel
+            } catch {
+                attempt.finish()
+                cleanupChain(chain, reason: "Error")
+                throw error
+            }
+        } onCancel: {
+            attempt.cancel()
         }
     }
 
@@ -101,18 +119,33 @@ internal enum LibSSH2TunnelFactory {
     /// Connects, performs handshake, verifies host key, authenticates, then cleans up.
     static func testConnection(
         config: SSHConfiguration,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        deadline: ConnectionDeadline
     ) async throws {
         _ = initialized
+        let endpoint = timeoutEndpoint(host: config.host, port: config.port ?? 22)
+        let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
+        let watchdog = attempt.startWatchdog()
+        defer {
+            watchdog.cancel()
+            attempt.finish()
+        }
 
-        let chain = try await buildAuthenticatedChain(
-            config: config,
-            credentials: credentials,
-            queueLabel: "com.TablePro.ssh.test-hop"
-        )
-
-        logger.info("SSH test connection successful to \(config.host)")
-        cleanupChain(chain, reason: "Test complete")
+        try await withTaskCancellationHandler {
+            let chain = try await buildAuthenticatedChain(
+                config: config,
+                credentials: credentials,
+                queueLabel: "com.TablePro.ssh.test-hop",
+                deadline: deadline,
+                attempt: attempt
+            )
+            try attempt.check(for: endpoint)
+            attempt.finish()
+            logger.info("SSH test connection successful to \(config.host)")
+            cleanupChain(chain, reason: "Test complete")
+        } onCancel: {
+            attempt.cancel()
+        }
     }
 
     // MARK: - Shared Chain Builder
@@ -121,6 +154,7 @@ internal enum LibSSH2TunnelFactory {
     internal struct AuthenticatedChain {
         let session: OpaquePointer
         let socketFD: Int32
+        let timeoutEndpoint: ConnectionTimeoutEndpoint
         let jumpHops: [HopInfo]
 
         struct HopInfo {
@@ -166,69 +200,75 @@ internal enum LibSSH2TunnelFactory {
     internal static func buildAuthenticatedChain(
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
-        queueLabel: String
+        queueLabel: String,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
     ) async throws -> AuthenticatedChain {
         _ = initialized
 
+        let configuredEndpoint = timeoutEndpoint(host: config.host, port: config.port ?? 22)
+        try attempt.prepare(for: configuredEndpoint)
+
         let document = await SSHConfigCache.shared.current()
-        let resolvedPrimary = SSHConfigResolver.resolve(config, document: document)
-
-        let formJumps = config.jumpHosts
-        let resolvedJumps = resolveJumpChain(
-            formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps,
-            document: document
-        )
-
-        // A value whose tokens could not be expanded is reported by name. Dialling it anyway is how
-        // `Hostname %h` reached getaddrinfo and came back as a DNS failure for a two-character host.
-        for target in [resolvedPrimary] + resolvedJumps {
-            if let failure = target.expansionFailure {
-                throw SSHTunnelError.configExpansionFailed(failure.explanation)
-            }
-        }
-
-        if resolvedPrimary.username.isEmpty {
-            throw SSHTunnelError.usernameMissing(host: config.host)
-        }
+        try attempt.check(for: configuredEndpoint)
+        let resolved = try resolveChainConfiguration(config: config, document: document)
+        let resolvedPrimary = resolved.primary
+        let resolvedJumps = resolved.jumps
 
         let firstHop = resolvedJumps.first ?? resolvedPrimary
-        let socketFD = try connectTCP(host: firstHop.host, port: firstHop.port)
+        let firstEndpoint = timeoutEndpoint(host: firstHop.host, port: firstHop.port)
+        let socketFD = try await connectTCP(
+            host: firstHop.host,
+            port: firstHop.port,
+            deadline: deadline,
+            attempt: attempt
+        )
 
         do {
-            let session = try createSession(socketFD: socketFD)
+            let session = try createSession(
+                socketFD: socketFD,
+                endpoint: firstEndpoint,
+                deadline: deadline,
+                attempt: attempt
+            )
             var jumpHops: [AuthenticatedChain.HopInfo] = []
             var currentSession = session
             var currentSocketFD = socketFD
 
             do {
-                try await verifyHostKey(session: session, hostname: firstHop.host, port: firstHop.port)
+                try await verifyHostKey(
+                    session: session,
+                    hostname: firstHop.host,
+                    port: firstHop.port,
+                    attempt: attempt
+                )
 
-                if !resolvedJumps.isEmpty {
-                    let jumpAuthenticator = try buildJumpAuthenticator(
-                        jumpHost: formJumps.first ?? SSHJumpHost(),
-                        resolved: resolvedJumps[0]
-                    )
-                    try jumpAuthenticator.authenticate(session: session, username: resolvedJumps[0].username)
-                } else {
-                    let authenticator = try buildAuthenticator(
-                        config: config,
-                        resolved: resolvedPrimary,
-                        credentials: credentials
-                    )
-                    try authenticator.authenticate(session: session, username: resolvedPrimary.username)
-                }
+                try authenticateFirstHop(
+                    config: config,
+                    credentials: credentials,
+                    resolved: resolved,
+                    session: session,
+                    socketFD: socketFD,
+                    endpoint: firstEndpoint,
+                    deadline: deadline,
+                    attempt: attempt
+                )
 
                 if !resolvedJumps.isEmpty {
                     for jumpIndex in 0..<resolvedJumps.count {
                         let nextResolved: ResolvedSSHTarget = jumpIndex + 1 < resolvedJumps.count
                             ? resolvedJumps[jumpIndex + 1]
                             : resolvedPrimary
+                        let nextEndpoint = timeoutEndpoint(host: nextResolved.host, port: nextResolved.port)
 
                         let channel = try openChannel(
                             session: currentSession,
                             socketFD: currentSocketFD,
                             remoteHost: nextResolved.host,
-                            remotePort: nextResolved.port
+                            remotePort: nextResolved.port,
+                            endpoint: nextEndpoint,
+                            deadline: deadline,
+                            attempt: attempt
                         )
 
                         var fds: [Int32] = [0, 0]
@@ -260,7 +300,12 @@ internal enum LibSSH2TunnelFactory {
 
                         let nextSession: OpaquePointer
                         do {
-                            nextSession = try createSession(socketFD: fds[1])
+                            nextSession = try createSession(
+                                socketFD: fds[1],
+                                endpoint: nextEndpoint,
+                                deadline: deadline,
+                                attempt: attempt
+                            )
                         } catch {
                             Darwin.close(fds[1])
                             relayTask.cancel()
@@ -268,35 +313,17 @@ internal enum LibSSH2TunnelFactory {
                         }
 
                         do {
-                            try await verifyHostKey(
+                            try await authenticateNextHop(
+                                jumpIndex: jumpIndex,
+                                config: config,
+                                credentials: credentials,
+                                resolved: resolved,
                                 session: nextSession,
-                                hostname: nextResolved.host,
-                                port: nextResolved.port
+                                socketFD: fds[1],
+                                endpoint: nextEndpoint,
+                                deadline: deadline,
+                                attempt: attempt
                             )
-
-                            if jumpIndex + 1 < resolvedJumps.count {
-                                let nextFormJump = formJumps.indices.contains(jumpIndex + 1)
-                                    ? formJumps[jumpIndex + 1]
-                                    : SSHJumpHost()
-                                let jumpAuth = try buildJumpAuthenticator(
-                                    jumpHost: nextFormJump,
-                                    resolved: nextResolved
-                                )
-                                try jumpAuth.authenticate(
-                                    session: nextSession,
-                                    username: nextResolved.username
-                                )
-                            } else {
-                                let authenticator = try buildAuthenticator(
-                                    config: config,
-                                    resolved: resolvedPrimary,
-                                    credentials: credentials
-                                )
-                                try authenticator.authenticate(
-                                    session: nextSession,
-                                    username: resolvedPrimary.username
-                                )
-                            }
                         } catch {
                             // Clean up nextSession and fds[1]; relay task owns fds[0]
                             tablepro_libssh2_session_disconnect(nextSession, "Error")
@@ -314,9 +341,14 @@ internal enum LibSSH2TunnelFactory {
                 return AuthenticatedChain(
                     session: currentSession,
                     socketFD: currentSocketFD,
+                    timeoutEndpoint: timeoutEndpoint(
+                        host: resolvedPrimary.host,
+                        port: resolvedPrimary.port
+                    ),
                     jumpHops: jumpHops
                 )
             } catch {
+                attempt.clearTransportInterrupt()
                 // Clean up currentSession if it differs from all hop sessions
                 // (happens when a nextSession was created but failed auth/verify)
                 let sessionInHops = jumpHops.contains { $0.session == currentSession }
@@ -344,9 +376,146 @@ internal enum LibSSH2TunnelFactory {
                 throw error
             }
         } catch {
+            attempt.clearTransportInterrupt()
             Darwin.close(socketFD)
             throw error
         }
+    }
+
+    private struct ResolvedChainConfiguration {
+        let primary: ResolvedSSHTarget
+        let jumps: [ResolvedSSHTarget]
+        let formJumps: [SSHJumpHost]
+    }
+
+    private static func resolveChainConfiguration(
+        config: SSHConfiguration,
+        document: SSHConfigDocument
+    ) throws -> ResolvedChainConfiguration {
+        let primary = SSHConfigResolver.resolve(config, document: document)
+        let formJumps = config.jumpHosts
+        let jumps = resolveJumpChain(
+            formJumps.isEmpty ? primary.proxyJump : formJumps,
+            document: document
+        )
+
+        for target in [primary] + jumps {
+            if let failure = target.expansionFailure {
+                throw SSHTunnelError.configExpansionFailed(failure.explanation)
+            }
+        }
+        guard !primary.username.isEmpty else {
+            throw SSHTunnelError.usernameMissing(host: config.host)
+        }
+        return ResolvedChainConfiguration(primary: primary, jumps: jumps, formJumps: formJumps)
+    }
+
+    private static func authenticateFirstHop(
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials,
+        resolved: ResolvedChainConfiguration,
+        session: OpaquePointer,
+        socketFD: Int32,
+        endpoint: ConnectionTimeoutEndpoint,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
+    ) throws {
+        if let firstJump = resolved.jumps.first {
+            let authenticator = try buildJumpAuthenticator(
+                jumpHost: resolved.formJumps.first ?? SSHJumpHost(),
+                resolved: firstJump,
+                attempt: attempt,
+                timeoutEndpoint: endpoint
+            )
+            try authenticate(
+                authenticator,
+                session: session,
+                socketFD: socketFD,
+                username: firstJump.username,
+                endpoint: endpoint,
+                deadline: deadline,
+                attempt: attempt
+            )
+            return
+        }
+
+        let authenticator = try buildAuthenticator(
+            config: config,
+            resolved: resolved.primary,
+            credentials: credentials,
+            attempt: attempt,
+            timeoutEndpoint: endpoint
+        )
+        try authenticate(
+            authenticator,
+            session: session,
+            socketFD: socketFD,
+            username: resolved.primary.username,
+            endpoint: endpoint,
+            deadline: deadline,
+            attempt: attempt
+        )
+    }
+
+    private static func authenticateNextHop(
+        jumpIndex: Int,
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials,
+        resolved: ResolvedChainConfiguration,
+        session: OpaquePointer,
+        socketFD: Int32,
+        endpoint: ConnectionTimeoutEndpoint,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
+    ) async throws {
+        let nextTarget = jumpIndex + 1 < resolved.jumps.count
+            ? resolved.jumps[jumpIndex + 1]
+            : resolved.primary
+        try await verifyHostKey(
+            session: session,
+            hostname: nextTarget.host,
+            port: nextTarget.port,
+            attempt: attempt
+        )
+
+        if jumpIndex + 1 < resolved.jumps.count {
+            let nextFormJump = resolved.formJumps.indices.contains(jumpIndex + 1)
+                ? resolved.formJumps[jumpIndex + 1]
+                : SSHJumpHost()
+            let authenticator = try buildJumpAuthenticator(
+                jumpHost: nextFormJump,
+                resolved: nextTarget,
+                attempt: attempt,
+                timeoutEndpoint: endpoint
+            )
+            try authenticate(
+                authenticator,
+                session: session,
+                socketFD: socketFD,
+                username: nextTarget.username,
+                endpoint: endpoint,
+                deadline: deadline,
+                attempt: attempt
+            )
+            return
+        }
+
+        let authenticator = try buildAuthenticator(
+            config: config,
+            resolved: resolved.primary,
+            credentials: credentials,
+            attempt: attempt,
+            timeoutEndpoint: endpoint
+        )
+        try authenticate(
+            authenticator,
+            session: session,
+            socketFD: socketFD,
+            username: resolved.primary.username,
+            endpoint: endpoint,
+            deadline: deadline,
+            attempt: attempt
+        )
     }
 
     /// Clean up all resources in an authenticated chain.
@@ -372,103 +541,24 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    // MARK: - TCP Connection
-
-    private static func connectTCP(host: String, port: Int) throws -> Int32 {
-        var hints = addrinfo()
-        hints.ai_family = AF_UNSPEC
-        hints.ai_socktype = SOCK_STREAM
-        hints.ai_protocol = IPPROTO_TCP
-
-        var result: UnsafeMutablePointer<addrinfo>?
-        let portString = String(port)
-        let rc = getaddrinfo(host, portString, &hints, &result)
-
-        guard rc == 0, let firstAddr = result else {
-            let errorMsg = rc != 0 ? String(cString: gai_strerror(rc)) : "No address found"
-            throw SSHTunnelError.tunnelCreationFailed("DNS resolution failed for \(host): \(errorMsg)")
-        }
-        defer { freeaddrinfo(result) }
-
-        var currentAddr: UnsafeMutablePointer<addrinfo>? = firstAddr
-        var lastError: String = "No address found"
-
-        while let addrInfo = currentAddr {
-            let fd = socket(addrInfo.pointee.ai_family, addrInfo.pointee.ai_socktype, addrInfo.pointee.ai_protocol)
-            guard fd >= 0 else {
-                currentAddr = addrInfo.pointee.ai_next
-                continue
-            }
-
-            // Set non-blocking for connection timeout
-            let flags = fcntl(fd, F_GETFL, 0)
-            fcntl(fd, F_SETFL, flags | O_NONBLOCK)
-
-            let connectResult = connect(fd, addrInfo.pointee.ai_addr, addrInfo.pointee.ai_addrlen)
-
-            if connectResult != 0 && errno != EINPROGRESS {
-                Darwin.close(fd)
-                lastError = "Connection to \(host):\(port) failed"
-                currentAddr = addrInfo.pointee.ai_next
-                continue
-            }
-
-            if connectResult != 0 {
-                // Wait for connection with timeout using poll()
-                var writePollFD = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-                let pollResult = poll(&writePollFD, 1, connectionTimeout * 1_000)
-
-                if pollResult <= 0 {
-                    Darwin.close(fd)
-                    lastError = "Connection timed out"
-                    currentAddr = addrInfo.pointee.ai_next
-                    continue
-                }
-
-                // Check for connection error
-                var socketError: Int32 = 0
-                var errorLen = socklen_t(MemoryLayout<Int32>.size)
-                getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &errorLen)
-
-                if socketError != 0 {
-                    Darwin.close(fd)
-                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(socketError)))"
-                    currentAddr = addrInfo.pointee.ai_next
-                    continue
-                }
-            }
-
-            // Restore blocking mode for handshake/auth
-            fcntl(fd, F_SETFL, flags)
-
-            // Enable OS-level TCP keepalive so the kernel detects dead connections
-            // (e.g., silent NAT gateway timeout on AWS) independently of libssh2's
-            // application-level keepalive. macOS uses TCP_KEEPALIVE for the idle
-            // interval (seconds before the first keepalive probe).
-            var yes: Int32 = 1
-            if setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, socklen_t(MemoryLayout<Int32>.size)) != 0 {
-                logger.warning("Failed to set SO_KEEPALIVE: \(String(cString: strerror(errno)))")
-            }
-            var keepIdle: Int32 = 60
-            if setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &keepIdle, socklen_t(MemoryLayout<Int32>.size)) != 0 {
-                logger.warning("Failed to set TCP_KEEPALIVE: \(String(cString: strerror(errno)))")
-            }
-
-            logger.debug("TCP connected to \(host):\(port)")
-            return fd
-        }
-
-        throw SSHTunnelError.tunnelCreationFailed(lastError)
-    }
-
     // MARK: - Session
 
-    private static func createSession(socketFD: Int32) throws -> OpaquePointer {
+    private static func createSession(
+        socketFD: Int32,
+        endpoint: ConnectionTimeoutEndpoint,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
+    ) throws -> OpaquePointer {
+        try attempt.prepare(for: endpoint)
         guard let session = tablepro_libssh2_session_init() else {
             throw SSHTunnelError.tunnelCreationFailed("Failed to initialize libssh2 session")
         }
 
+        _ = attempt.registerTransportInterrupt {
+            shutdown(socketFD, SHUT_RDWR)
+        }
         libssh2_session_set_blocking(session, 1)
+        libssh2_session_set_timeout(session, max(1, deadline.remainingMilliseconds))
 
         let rc = libssh2_session_handshake(session, socketFD)
         if rc != 0 {
@@ -477,9 +567,23 @@ internal enum LibSSH2TunnelFactory {
             libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
             let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             libssh2_session_free(session)
+            do {
+                try attempt.check(for: endpoint)
+            } catch {
+                throw error
+            }
+            if rc == LIBSSH2_ERROR_TIMEOUT {
+                throw deadline.timeoutError(for: endpoint)
+            }
             throw SSHTunnelError.tunnelCreationFailed("SSH handshake failed: \(detail)")
         }
 
+        do {
+            try attempt.check(for: endpoint)
+        } catch {
+            libssh2_session_free(session)
+            throw error
+        }
         return session
     }
 
@@ -488,7 +592,8 @@ internal enum LibSSH2TunnelFactory {
     private static func verifyHostKey(
         session: OpaquePointer,
         hostname: String,
-        port: Int
+        port: Int,
+        attempt: SSHConnectionAttempt
     ) async throws {
         var keyLength = 0
         var keyType: Int32 = 0
@@ -503,18 +608,55 @@ internal enum LibSSH2TunnelFactory {
             keyData: keyData,
             keyType: keyTypeName,
             hostname: hostname,
-            port: port
+            port: port,
+            attempt: attempt
         )
     }
 
     // MARK: - Authentication
 
+    private static func authenticate(
+        _ authenticator: any SSHAuthenticator,
+        session: OpaquePointer,
+        socketFD: Int32,
+        username: String,
+        endpoint: ConnectionTimeoutEndpoint,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
+    ) throws {
+        try attempt.prepare(for: endpoint)
+        _ = attempt.registerTransportInterrupt {
+            shutdown(socketFD, SHUT_RDWR)
+        }
+        libssh2_session_set_timeout(session, max(1, deadline.remainingMilliseconds))
+
+        do {
+            try authenticator.authenticate(session: session, username: username)
+        } catch {
+            do {
+                try attempt.check(for: endpoint)
+            } catch {
+                throw error
+            }
+            if libssh2_session_last_errno(session) == LIBSSH2_ERROR_TIMEOUT {
+                throw deadline.timeoutError(for: endpoint)
+            }
+            throw error
+        }
+        try attempt.check(for: endpoint)
+    }
+
     internal static func buildAuthenticator(
         config: SSHConfiguration,
         resolved: ResolvedSSHTarget,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        attempt: SSHConnectionAttempt? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil
     ) throws -> any SSHAuthenticator {
-        let promptProvider = credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider()
+        let promptProvider = credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider(
+            attempt: attempt,
+            timeoutEndpoint: timeoutEndpoint
+        )
 
         switch config.authMethod {
         case .password:
@@ -545,7 +687,9 @@ internal enum LibSSH2TunnelFactory {
                 buildKeyFileAuthenticator(
                     keyPath: keyPath,
                     providedPassphrase: credentials.keyPassphrase,
-                    resolved: resolved
+                    resolved: resolved,
+                    attempt: attempt,
+                    timeoutEndpoint: timeoutEndpoint
                 )
             }
             authenticators.append(KeyboardInteractiveAuthenticator(
@@ -617,13 +761,17 @@ internal enum LibSSH2TunnelFactory {
     private static func buildKeyFileAuthenticator(
         keyPath: String,
         providedPassphrase: String?,
-        resolved: ResolvedSSHTarget
+        resolved: ResolvedSSHTarget,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint?
     ) -> any SSHAuthenticator {
         KeyFileAuthenticator(
             keyPath: keyPath,
             providedPassphrase: providedPassphrase,
             useKeychain: resolved.useKeychain,
-            addKeysToAgent: resolved.addKeysToAgent
+            addKeysToAgent: resolved.addKeysToAgent,
+            attempt: attempt,
+            timeoutEndpoint: timeoutEndpoint
         )
     }
 
@@ -635,6 +783,8 @@ internal enum LibSSH2TunnelFactory {
         let providedPassphrase: String?
         let useKeychain: Bool
         let addKeysToAgent: Bool
+        let attempt: SSHConnectionAttempt?
+        let timeoutEndpoint: ConnectionTimeoutEndpoint?
 
         func authenticate(session: OpaquePointer, username: String) throws {
             let expandedPath = SSHPathUtilities.expandTilde(keyPath)
@@ -664,8 +814,12 @@ internal enum LibSSH2TunnelFactory {
             }
 
             // 2. Prompt the user (key is encrypted, no stored passphrase)
-            let provider = PromptPassphraseProvider(keyPath: expandedPath)
-            guard let promptResult = provider.providePassphrase() else {
+            let provider = PromptPassphraseProvider(
+                keyPath: expandedPath,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
+            )
+            guard let promptResult = try provider.providePassphrase() else {
                 throw SSHTunnelError.authenticationFailed(reason: .privateKey)
             }
 
@@ -700,7 +854,9 @@ internal enum LibSSH2TunnelFactory {
 
     private static func buildJumpAuthenticator(
         jumpHost: SSHJumpHost,
-        resolved: ResolvedSSHTarget
+        resolved: ResolvedSSHTarget,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint?
     ) throws -> any SSHAuthenticator {
         switch jumpHost.authMethod {
         case .privateKey:
@@ -713,7 +869,9 @@ internal enum LibSSH2TunnelFactory {
                     keyPath: path,
                     providedPassphrase: nil,
                     useKeychain: resolved.useKeychain,
-                    addKeysToAgent: resolved.addKeysToAgent
+                    addKeysToAgent: resolved.addKeysToAgent,
+                    attempt: attempt,
+                    timeoutEndpoint: timeoutEndpoint
                 )
             }
             return authenticators.count == 1
@@ -732,7 +890,9 @@ internal enum LibSSH2TunnelFactory {
                     keyPath: jumpHost.privateKeyPath,
                     providedPassphrase: nil,
                     useKeychain: resolved.useKeychain,
-                    addKeysToAgent: resolved.addKeysToAgent
+                    addKeysToAgent: resolved.addKeysToAgent,
+                    attempt: attempt,
+                    timeoutEndpoint: timeoutEndpoint
                 )
                 return CompositeAuthenticator(authenticators: [agent, keyAuth])
             }
@@ -771,8 +931,15 @@ internal enum LibSSH2TunnelFactory {
     private static func probeForwardDestination(
         session: OpaquePointer,
         socketFD: Int32,
-        destination: SSHForwardDestination
+        destination: SSHForwardDestination,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
     ) throws {
+        let endpoint = ConnectionTimeoutEndpoint.tunnel(destination.logDescription)
+        try attempt.prepare(for: endpoint)
+        _ = attempt.registerTransportInterrupt {
+            shutdown(socketFD, SHUT_RDWR)
+        }
         let probeQueue = DispatchQueue(label: "com.TablePro.ssh.probe")
         probeQueue.sync { libssh2_session_set_blocking(session, 0) }
         defer { probeQueue.sync { libssh2_session_set_blocking(session, 1) } }
@@ -784,10 +951,14 @@ internal enum LibSSH2TunnelFactory {
                 originPort: 0,
                 sessionQueue: probeQueue
             ),
-            isActive: { true },
-            deadline: Date().addingTimeInterval(Self.forwardProbeDeadlineSeconds),
+            isActive: { !deadline.isExpired && !Task.isCancelled },
+            deadline: .distantFuture,
             pollForReadiness: { directions in
-                pollReady(fd: socketFD, directions: directions, timeoutMs: Self.probePollTimeoutMs)
+                pollReady(
+                    fd: socketFD,
+                    directions: directions,
+                    timeoutMs: Int32(clamping: max(1, deadline.remainingMilliseconds))
+                )
             }
         )
 
@@ -797,12 +968,15 @@ internal enum LibSSH2TunnelFactory {
                 libssh2_channel_close(channel)
                 libssh2_channel_free(channel)
             }
+            try attempt.check(for: endpoint)
             return
         }
 
+        try attempt.check(for: endpoint)
+
         let error = outcome.forwardFailure(
             destination: destination,
-            deadlineSeconds: Int(Self.forwardProbeDeadlineSeconds)
+            deadlineSeconds: deadline.configuredSeconds
         )?.tunnelError ?? SSHTunnelError.channelOpenFailed
         logger.error("Forward probe to \(destination.logDescription) failed: \(error.localizedDescription)")
         throw error
@@ -812,23 +986,49 @@ internal enum LibSSH2TunnelFactory {
         session: OpaquePointer,
         socketFD: Int32,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        endpoint: ConnectionTimeoutEndpoint,
+        deadline: ConnectionDeadline,
+        attempt: SSHConnectionAttempt
     ) throws -> OpaquePointer {
-        // Use blocking mode for channel open during setup
+        try attempt.prepare(for: endpoint)
+        _ = attempt.registerTransportInterrupt {
+            shutdown(socketFD, SHUT_RDWR)
+        }
         libssh2_session_set_blocking(session, 1)
+        libssh2_session_set_timeout(session, max(1, deadline.remainingMilliseconds))
         defer { libssh2_session_set_blocking(session, 0) }
 
-        guard let channel = libssh2_channel_direct_tcpip_ex(
+        let channel = libssh2_channel_direct_tcpip_ex(
             session,
             remoteHost,
             Int32(remotePort),
             "127.0.0.1",
             0
-        ) else {
+        )
+        guard let channel else {
+            do {
+                try attempt.check(for: endpoint)
+            } catch {
+                throw error
+            }
+            if libssh2_session_last_errno(session) == LIBSSH2_ERROR_TIMEOUT {
+                throw deadline.timeoutError(for: endpoint)
+            }
             throw SSHTunnelError.channelOpenFailed
         }
 
+        do {
+            try attempt.check(for: endpoint)
+        } catch {
+            libssh2_channel_free(channel)
+            throw error
+        }
         return channel
+    }
+
+    internal static func timeoutEndpoint(host: String, port: Int) -> ConnectionTimeoutEndpoint {
+        .tunnel("\(host):\(port)")
     }
 
     /// The libssh2 handles the relay task takes ownership of. The relay is the only thing that

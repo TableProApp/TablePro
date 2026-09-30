@@ -154,6 +154,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let sslConfig = config.ssl
+        let connectTimeout = MySQLConnectTimeout(additionalFields: config.additionalFields)
+        let connectDeadline = MySQLConnectDeadline(timeout: connectTimeout)
 
         let conn = MariaDBPluginConnection(
             host: config.host,
@@ -164,18 +166,29 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
-            connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields)
+            connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
+            connectTimeoutMilliseconds: connectTimeout.milliseconds
         )
 
-        try await conn.connect()
+        try await conn.connect(deadline: connectDeadline)
         let resolvedFlavor: MySQLServerFlavor
         do {
-            resolvedFlavor = try await resolveFlavor(on: conn, variant: config.additionalFields["driverVariant"])
+            resolvedFlavor = try await resolveFlavor(
+                on: conn,
+                variant: config.additionalFields["driverVariant"],
+                deadline: connectDeadline
+            )
+            let killTarget = try await killTarget(
+                for: resolvedFlavor,
+                on: conn,
+                deadline: connectDeadline
+            )
+            conn.adopt(flavor: resolvedFlavor, killTarget: killTarget)
+            try await conn.completeConnect(deadline: connectDeadline)
         } catch {
             conn.disconnect()
             throw error
         }
-        conn.adopt(flavor: resolvedFlavor, killTarget: await killTarget(for: resolvedFlavor, on: conn))
         mariadbConnection = conn
         let banner = conn.serverVersion()
         sessionLock.withLock {

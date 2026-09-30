@@ -11,7 +11,7 @@ struct ConnectionSyncSchemaTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
     private func makeFullyPopulatedConnection() -> DatabaseConnection {
-        DatabaseConnection(
+        var connection = DatabaseConnection(
             id: UUID(),
             name: "Production",
             type: DatabaseType(rawValue: "PostgreSQL"),
@@ -32,6 +32,8 @@ struct ConnectionSyncSchemaTests {
             tagIds: [UUID(), UUID()],
             sortOrder: 3
         )
+        connection.connectTimeoutSeconds = 12
+        return connection
     }
 
     @Test("an unverified field is never written to a record")
@@ -147,6 +149,53 @@ struct ConnectionSyncSchemaTests {
 
         #expect(connection.queryTimeoutSeconds != nil)
         #expect(decoded?.queryTimeoutSeconds == connection.queryTimeoutSeconds)
+    }
+
+    @Test("a connect timeout survives through the deployed additional fields record")
+    func connectTimeoutRoundTrips() throws {
+        let connection = makeFullyPopulatedConnection()
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let fields = record.fields(ConnectionSyncField.self)
+        let data = try #require(fields[.additionalFieldsJson] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == "12")
+        #expect(additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
+        #expect(SyncRecordMapper.toConnection(record)?.connectTimeoutSeconds == 12)
+    }
+
+    @Test("clearing additional fields removes their previous record value")
+    func clearingAdditionalFieldsRemovesRecordValue() {
+        var connection = makeFullyPopulatedConnection()
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        connection.additionalFields = [:]
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        #expect(record[ConnectionSyncField.additionalFieldsJson.key] == nil)
+    }
+
+    @Test("invalid synced timeouts become defaults without dropping unrelated fields")
+    func invalidTimeoutsAreDiscarded() throws {
+        let connection = makeFullyPopulatedConnection()
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = connection.name
+        fields[.type] = connection.type.rawValue
+        fields[.queryTimeoutSeconds] = Int64(-1)
+        fields[.additionalFieldsJson] = try JSONEncoder().encode([
+            DatabaseConnection.connectTimeoutSecondsKey: "601",
+            DatabaseConnection.queryTimeoutSecondsKey: "30",
+            "schema": "public"
+        ])
+
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+
+        #expect(decoded.connectTimeoutSeconds == nil)
+        #expect(decoded.queryTimeoutSeconds == nil)
+        #expect(decoded.additionalFields == ["schema": "public"])
     }
 
     @Test("every tag survives the round trip instead of collapsing to the first")

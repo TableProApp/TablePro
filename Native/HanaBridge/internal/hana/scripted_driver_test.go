@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 )
 
 var errScriptedCallUnsupported = errors.New("the scripted driver does not script this call")
@@ -30,9 +31,10 @@ func (c scriptedConnector) Driver() driver.Driver {
 }
 
 type scriptedConn struct {
-	exec  func(query string) (driver.Result, error)
-	query func(query string) (driver.Rows, error)
-	ping  func() error
+	exec         func(query string) (driver.Result, error)
+	query        func(query string) (driver.Rows, error)
+	queryContext func(context.Context, string) (driver.Rows, error)
+	ping         func() error
 }
 
 func (c *scriptedConn) Prepare(string) (driver.Stmt, error) {
@@ -54,7 +56,10 @@ func (c *scriptedConn) ExecContext(_ context.Context, query string, _ []driver.N
 	return c.exec(query)
 }
 
-func (c *scriptedConn) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+func (c *scriptedConn) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+	if c.queryContext != nil {
+		return c.queryContext(ctx, query)
+	}
 	if c.query == nil {
 		return nil, errScriptedCallUnsupported
 	}
@@ -107,4 +112,21 @@ func scriptedSession(t *testing.T, conn *scriptedConn) *session {
 	entry.conn = pinned
 	entry.mu.Unlock()
 	return entry
+}
+
+func TestIdentityQueryUsesTheConnectDeadline(t *testing.T) {
+	conn := &scriptedConn{queryContext: func(ctx context.Context, _ string) (driver.Rows, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	db := sql.OpenDB(scriptedConnector{conn: conn})
+	t.Cleanup(func() { _ = db.Close() })
+	entry := &session{db: db}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, _, err := entry.establish(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("establish returned %v; want the connect deadline", err)
+	}
 }

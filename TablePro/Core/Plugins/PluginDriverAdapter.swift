@@ -10,13 +10,28 @@ import TableProNumberFormatting
 import TableProPluginKit
 
 final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
+    private struct ConnectAttempt {
+        let generation: UInt64
+        let gate: ConnectionSingleResumeGate<Void>
+        var task: Task<Void, Never>?
+        var isAbandoned = false
+    }
+
     private struct State {
         var status: ConnectionStatus = .disconnected
         var columnTypeCache: [String: ColumnType] = [:]
+        var nextConnectGeneration: UInt64 = 0
+        var connectAttempt: ConnectAttempt?
+        var connectionMayBeOpen = false
+        var disconnectInProgress = false
     }
 
     let connection: DatabaseConnection
+    let effectiveQueryTimeoutSeconds: Int
     private let pluginDriver: any PluginDatabaseDriver
+    private let connectionDeadline: ConnectionDeadline
+    private let timeoutEndpoint: ConnectionTimeoutEndpoint
+    private let requiresHostDeadline: Bool
     private let classifier = ColumnTypeClassifier()
     private let state = OSAllocatedUnfairLock(initialState: State())
 
@@ -102,9 +117,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         }
     }
 
-    init(connection: DatabaseConnection, pluginDriver: any PluginDatabaseDriver) {
+    init(
+        connection: DatabaseConnection,
+        pluginDriver: any PluginDatabaseDriver,
+        deadline: ConnectionDeadline? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
+        effectiveQueryTimeoutSeconds: Int? = nil,
+        requiresHostDeadline: Bool? = nil
+    ) {
         self.connection = connection
         self.pluginDriver = pluginDriver
+        self.connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
+        self.timeoutEndpoint = timeoutEndpoint ?? .database(connection.host.nilIfEmpty ?? connection.name)
+        self.requiresHostDeadline = requiresHostDeadline
+            ?? ConnectionTimeoutPolicy.requiresHostDeadline(for: connection)
+        self.effectiveQueryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: effectiveQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
+            globalSeconds: 0
+        )
     }
 
     // MARK: - Connection Management
@@ -114,19 +144,190 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
-        state.withLock { $0.status = .connecting }
+        guard state.withLock({
+            $0.connectAttempt == nil && !$0.connectionMayBeOpen && !$0.disconnectInProgress
+        }) else {
+            throw DatabaseError.connectionFailed(String(localized: "This driver is already connecting or connected."))
+        }
+        if requiresHostDeadline {
+            try connectionDeadline.check(endpoint: timeoutEndpoint)
+        }
+        let gate = ConnectionSingleResumeGate<Void>()
+        let generation = state.withLock { state -> UInt64? in
+            guard state.connectAttempt == nil, !state.connectionMayBeOpen, !state.disconnectInProgress else {
+                return nil
+            }
+            state.nextConnectGeneration &+= 1
+            let generation = state.nextConnectGeneration
+            state.status = .connecting
+            state.connectAttempt = ConnectAttempt(generation: generation, gate: gate)
+            return generation
+        }
+        guard let generation else {
+            throw DatabaseError.connectionFailed(String(localized: "This driver is already connecting or connected."))
+        }
+
+        let guardedReport: ConnectionStageReporter = { [weak self] stage in
+            guard let self, self.isCurrentConnect(generation) else { return }
+            report(stage)
+        }
+
+        let operation = Task { [self] in
+            do {
+                try await pluginDriver.connect(reportingStage: guardedReport)
+                let adopted = gate.resume(with: .success(()))
+                finishConnect(generation: generation, succeeded: true, adopted: adopted, error: nil)
+            } catch {
+                let adopted = gate.resume(with: .failure(error))
+                finishConnect(generation: generation, succeeded: false, adopted: adopted, error: error)
+            }
+        }
+        attach(operation, to: generation)
+
+        let timeout: Task<Void, Never>?
+        if requiresHostDeadline {
+            timeout = Task { [self] in
+                do {
+                    try await ContinuousClock().sleep(until: connectionDeadline.instant)
+                } catch {
+                    return
+                }
+                abandonConnect(
+                    generation: generation,
+                    gate: gate,
+                    error: connectionDeadline.timeoutError(for: timeoutEndpoint)
+                )
+            }
+        } else {
+            timeout = nil
+        }
+
         do {
-            try await pluginDriver.connect(reportingStage: report)
-            state.withLock { $0.status = .connected }
+            try await withTaskCancellationHandler(
+                operation: { try await gate.wait() },
+                onCancel: { [self] in
+                    abandonConnect(generation: generation, gate: gate, error: CancellationError())
+                }
+            )
+            timeout?.cancel()
+            await operation.value
+            guard state.withLock({ $0.status == .connected && $0.connectionMayBeOpen }) else {
+                throw CancellationError()
+            }
+            try Task.checkCancellation()
         } catch {
-            state.withLock { $0.status = .error(error.localizedDescription) }
+            timeout?.cancel()
+            if error is CancellationError {
+                disconnect()
+            }
+            state.withLock { state in
+                guard let attempt = state.connectAttempt, attempt.generation == generation else { return }
+                state.status = attempt.isAbandoned
+                    ? .disconnected
+                    : .error(error.localizedDescription)
+            }
             throw error
         }
     }
 
     func disconnect() {
+        let action = state.withLock { state -> (ConnectAttempt?, Bool) in
+            state.status = .disconnected
+            if var attempt = state.connectAttempt {
+                attempt.isAbandoned = true
+                state.connectAttempt = attempt
+                return (attempt, false)
+            }
+            guard state.connectionMayBeOpen, !state.disconnectInProgress else {
+                return (nil, false)
+            }
+            state.connectionMayBeOpen = false
+            state.disconnectInProgress = true
+            return (nil, true)
+        }
+        if let attempt = action.0 {
+            if attempt.gate.resume(with: .failure(CancellationError())) {
+                attempt.task?.cancel()
+            }
+            return
+        }
+        guard action.1 else { return }
         pluginDriver.disconnect()
-        state.withLock { $0.status = .disconnected }
+        state.withLock { $0.disconnectInProgress = false }
+    }
+
+    private func attach(_ task: Task<Void, Never>, to generation: UInt64) {
+        let shouldCancel = state.withLock { state in
+            guard var attempt = state.connectAttempt, attempt.generation == generation else {
+                return true
+            }
+            attempt.task = task
+            state.connectAttempt = attempt
+            return attempt.isAbandoned
+        }
+        if shouldCancel {
+            task.cancel()
+        }
+    }
+
+    private func isCurrentConnect(_ generation: UInt64) -> Bool {
+        state.withLock { state in
+            guard let attempt = state.connectAttempt else { return false }
+            return attempt.generation == generation && !attempt.isAbandoned
+        }
+    }
+
+    private func abandonConnect(
+        generation: UInt64,
+        gate: ConnectionSingleResumeGate<Void>,
+        error: Error
+    ) {
+        let won = gate.resume(with: .failure(error)) { [self] in
+            state.withLock { state in
+                guard var attempt = state.connectAttempt, attempt.generation == generation else { return }
+                attempt.isAbandoned = true
+                state.connectAttempt = attempt
+            }
+        }
+        if won {
+            let task: Task<Void, Never>? = state.withLock { state in
+                guard let attempt = state.connectAttempt, attempt.generation == generation else { return nil }
+                return attempt.task
+            }
+            task?.cancel()
+        }
+    }
+
+    private func finishConnect(
+        generation: UInt64,
+        succeeded: Bool,
+        adopted: Bool,
+        error: Error?
+    ) {
+        let shouldDisconnect = state.withLock { state in
+            guard let attempt = state.connectAttempt, attempt.generation == generation else {
+                return false
+            }
+            state.connectAttempt = nil
+            let keepsConnection = succeeded && adopted && !attempt.isAbandoned
+            if keepsConnection {
+                state.connectionMayBeOpen = true
+                state.status = .connected
+                return false
+            }
+            if let error, adopted {
+                state.status = .error(error.localizedDescription)
+            } else {
+                state.status = .disconnected
+            }
+            guard !state.disconnectInProgress else { return false }
+            state.connectionMayBeOpen = false
+            state.disconnectInProgress = true
+            return true
+        }
+        guard shouldDisconnect else { return }
+        pluginDriver.disconnect()
+        state.withLock { $0.disconnectInProgress = false }
     }
 
     func ping() async throws {

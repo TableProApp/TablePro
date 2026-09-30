@@ -50,6 +50,7 @@ public struct TrinoHTTPRequest: Sendable {
     public let headers: [String: String]
     public let body: Data?
     public let timeoutSeconds: Int
+    public let timeoutInterval: TimeInterval
 
     public init(method: Method, url: URL, headers: [String: String], body: Data? = nil, timeoutSeconds: Int = 60) {
         self.method = method
@@ -57,6 +58,32 @@ public struct TrinoHTTPRequest: Sendable {
         self.headers = headers
         self.body = body
         self.timeoutSeconds = timeoutSeconds
+        self.timeoutInterval = TimeInterval(timeoutSeconds)
+    }
+
+    public init(
+        method: Method,
+        url: URL,
+        headers: [String: String],
+        body: Data? = nil,
+        timeoutInterval: TimeInterval
+    ) {
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+        self.timeoutSeconds = Int(timeoutInterval.rounded(.up))
+        self.timeoutInterval = timeoutInterval
+    }
+
+    func withTimeoutInterval(_ timeoutInterval: TimeInterval) -> TrinoHTTPRequest {
+        TrinoHTTPRequest(
+            method: method,
+            url: url,
+            headers: headers,
+            body: body,
+            timeoutInterval: timeoutInterval
+        )
     }
 }
 
@@ -127,7 +154,7 @@ public final class URLSessionTrinoTransport: NSObject, TrinoTransport, @unchecke
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.httpBody = request.body
-        urlRequest.timeoutInterval = TimeInterval(request.timeoutSeconds)
+        urlRequest.timeoutInterval = request.timeoutInterval
         for (name, value) in request.headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }

@@ -75,6 +75,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let replicaSet: String?
     private let extraUriParams: [String: String]
     let uuidRepresentation: MongoDBUuidRepresentation
+    private let connectTimeout: MongoDBConnectTimeout
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -148,7 +149,10 @@ final class MongoDBConnection: @unchecked Sendable {
         authMechanism: String? = nil,
         replicaSet: String? = nil,
         extraUriParams: [String: String] = [:],
-        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified,
+        connectTimeout: MongoDBConnectTimeout = MongoDBConnectTimeout(
+            milliseconds: MongoDBConnectTimeout.defaultMilliseconds
+        )
     ) {
         self.host = host
         self.port = port
@@ -168,6 +172,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
         self.uuidRepresentation = uuidRepresentation
+        self.connectTimeout = connectTimeout
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
@@ -271,11 +276,8 @@ final class MongoDBConnection: @unchecked Sendable {
 
         let encodedAuthSource = resolvedAuthSource
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
-        var params: [String] = [
-            "connectTimeoutMS=10000",
-            "serverSelectionTimeoutMS=10000",
-            "authSource=\(encodedAuthSource)"
-        ]
+        var params = connectTimeout.uriParameters
+        params.append("authSource=\(encodedAuthSource)")
 
         params.append(contentsOf: MongoDBSSLMapping.uriParameters(for: ssl))
 

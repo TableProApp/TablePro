@@ -156,15 +156,30 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: config.database.isEmpty ? nil : config.database,
             logMech: logMech,
             transactionMode: transactionMode,
-            tls: try TeradataSSLMapping.tlsOptions(for: config.ssl))
+            tls: try TeradataSSLMapping.tlsOptions(for: config.ssl),
+            connectTimeoutMilliseconds: TeradataConnectTimeout(
+                additionalFields: config.additionalFields
+            ).milliseconds)
         let connection = TeradataAsyncConnection(config: coreConfig)
-        try await connection.connect()
-        self.connection = connection
-
-        if let result = try? await connection.execute("SELECT InfoData FROM DBC.DBCInfoV WHERE InfoKey = 'VERSION'"),
-           case .text(let version)? = result.rows.first?.first {
-            _serverVersion = version
+        do {
+            try await connection.connect()
+            do {
+                let result = try await connection.execute(
+                    "SELECT InfoData FROM DBC.DBCInfoV WHERE InfoKey = 'VERSION'"
+                )
+                if case .text(let version)? = result.rows.first?.first {
+                    _serverVersion = version
+                }
+            } catch where TeradataVersionProbe.mayIgnore(error) {
+                Self.logger.debug("DBCInfoV VERSION is unavailable to this account")
+            }
+            try await connection.finishConnecting()
+            try Task.checkCancellation()
+        } catch {
+            connection.disconnect()
+            throw error
         }
+        self.connection = connection
     }
 
     func disconnect() {

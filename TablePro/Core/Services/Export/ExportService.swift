@@ -68,11 +68,17 @@ final class ExportService: ObservableObject {
 
     private let driver: DatabaseDriver?
     private let databaseType: DatabaseType?
+    private let effectiveQueryTimeoutSeconds: Int
     private let exportPlugin: @MainActor (String) -> (any ExportFormatPlugin)?
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         self.driver = driver
         self.databaseType = databaseType
+        self.effectiveQueryTimeoutSeconds = (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+            ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                configuredSeconds: driver.connection.queryTimeoutSeconds,
+                globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+            )
         self.exportPlugin = Self.installedExportPlugin
     }
 
@@ -84,12 +90,20 @@ final class ExportService: ObservableObject {
     init(queryResultsDriver driver: DatabaseDriver?, databaseType: DatabaseType) {
         self.driver = driver
         self.databaseType = databaseType
+        self.effectiveQueryTimeoutSeconds = driver.map { driver in
+            (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+                ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                    configuredSeconds: driver.connection.queryTimeoutSeconds,
+                    globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+                )
+        } ?? AppSettingsManager.shared.general.queryTimeoutSeconds
         self.exportPlugin = Self.installedExportPlugin
     }
 
     init(exportPlugin: @escaping @MainActor (String) -> (any ExportFormatPlugin)? = ExportService.installedExportPlugin) {
         self.driver = nil
         self.databaseType = nil
+        self.effectiveQueryTimeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
         self.exportPlugin = exportPlugin
     }
 
@@ -248,9 +262,8 @@ final class ExportService: ObservableObject {
     }
 
     func restoreStatementTimeout(on driver: DatabaseDriver) async {
-        let timeout = AppSettingsManager.shared.general.queryTimeoutSeconds
         do {
-            try await driver.applyQueryTimeout(timeout)
+            try await driver.applyQueryTimeout(effectiveQueryTimeoutSeconds)
         } catch {
             Self.logger.warning("Failed to restore statement timeout after export: \(error.localizedDescription)")
         }

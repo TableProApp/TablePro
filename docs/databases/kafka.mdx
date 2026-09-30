@@ -29,9 +29,9 @@ record format every message has used since.
 | **SASL Mechanism** | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, for the two SASL protocols |
 | **Username** / **Password** | The SASL credentials |
 | **Broker Addresses** | Whether to dial the addresses the cluster advertises, or stay on the bootstrap. Leave this on **Use the addresses the cluster advertises** unless those addresses are unreachable from this Mac |
-| **Connect Timeout** | Seconds to wait for a broker. Default `10` |
 
 There is no Database field. A connection is one cluster, and the sidebar shows its topics directly.
+Set the whole attempt's **Connect timeout** under **Options**; an empty field uses 30 seconds.
 
 ## Connection URL
 

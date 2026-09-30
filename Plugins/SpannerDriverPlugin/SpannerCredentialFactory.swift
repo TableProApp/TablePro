@@ -3,15 +3,33 @@ import TableProGoogleCloud
 import TableProPluginKit
 import TableProSpannerCore
 
+internal struct SpannerConnectHTTPClient: GoogleHTTPClient {
+    let base: any GoogleHTTPClient
+    let phase: PluginConnectTimeoutPhase
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        request.timeoutInterval = phase.remainingSeconds(or: request.timeoutInterval)
+        return try await base.send(request)
+    }
+}
+
 internal enum SpannerCredentialFactory {
     static let scopes = [GoogleOAuthClient.cloudPlatformScope]
 
     static func tokenProvider(
         settings: SpannerConnectionSettings,
-        config: DriverConnectionConfig
+        config: DriverConnectionConfig,
+        connectTimeoutPhase: PluginConnectTimeoutPhase? = nil
     ) throws -> (any GoogleAccessTokenProviding)? {
         let fields = config.additionalFields
-        let http = URLSessionGoogleHTTPClient()
+        let baseHTTP = URLSessionGoogleHTTPClient()
+        let http: any GoogleHTTPClient
+        if let connectTimeoutPhase {
+            http = SpannerConnectHTTPClient(base: baseHTTP, phase: connectTimeoutPhase)
+        } else {
+            http = baseHTTP
+        }
         switch settings.authMethod {
         case .emulator:
             return nil

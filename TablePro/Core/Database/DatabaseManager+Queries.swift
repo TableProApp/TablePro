@@ -39,41 +39,60 @@ extension DatabaseManager {
         sshPassword: String? = nil,
         passwordOverride: String? = nil
     ) async throws -> Bool {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(connection.host.nilIfEmpty ?? connection.name)
+        let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: connection.queryTimeoutSeconds,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+
         // A remote file answers the only question this button asks without moving the file.
         if connection.activeTunnelKind == .remoteFile {
-            return try await testRemoteDatabaseFile(connection, sshPassword: sshPassword)
+            return try await testRemoteDatabaseFile(
+                connection,
+                sshPassword: sshPassword,
+                deadline: ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
+            )
         }
+
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
+        let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
 
         // Build effective connection (creates SSH tunnel if needed)
         let testConnection = try await buildEffectiveConnection(
             for: connection,
-            sshPasswordOverride: sshPassword
+            sshPasswordOverride: sshPassword,
+            deadline: deadline
         )
 
-        // Detect whether buildEffectiveConnection created a tunnel by checking
-        // if the returned connection was redirected to localhost (tunnel endpoint)
-        let tunnelWasCreated = testConnection.host == "127.0.0.1" && testConnection.port != connection.port
+        let tunnelManager = activeTunnelManager(for: connection)
 
         let result: Bool
         do {
             let driver = try await DatabaseDriverFactory.createDriver(
                 for: testConnection,
                 passwordOverride: passwordOverride,
-                awaitPlugins: true
+                awaitPlugins: true,
+                deadline: deadline,
+                timeoutEndpoint: timeoutEndpoint,
+                effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
+                preparedConfiguration: preparedConfiguration
             )
             result = try await driver.testConnection()
         } catch {
-            if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
+            let reportedError = await Self.preferredTunnelFailure(replacing: error) {
+                await self.attributedTunnelFailure(for: connection)
+            }
+            if let tunnelManager {
                 do {
                     try await tunnelManager.closeTunnel(connectionId: connection.id)
                 } catch {
                     Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
                 }
             }
-            throw error
+            throw reportedError
         }
 
-        if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
+        if let tunnelManager {
             do {
                 try await tunnelManager.closeTunnel(connectionId: connection.id)
             } catch {

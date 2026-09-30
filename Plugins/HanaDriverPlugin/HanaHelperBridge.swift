@@ -1,9 +1,70 @@
 import Foundation
 import os
 
+struct HanaHelperConnectDeadline: Sendable {
+    struct OpenPhase: Sendable {
+        let configuration: Data
+        let timeout: TimeInterval
+    }
+
+    private struct Configuration: Decodable {
+        let connectTimeoutSeconds: TimeInterval
+    }
+
+    private static let minimumTimeout: TimeInterval = 0.001
+
+    private let expiration: ContinuousClock.Instant
+
+    init(
+        configuration: Data,
+        timeoutOverride: TimeInterval? = nil,
+        now: ContinuousClock.Instant = .now
+    ) {
+        let configured = try? JSONDecoder().decode(Configuration.self, from: configuration).connectTimeoutSeconds
+        let timeout = Self.valid(timeoutOverride)
+            ?? Self.valid(configured)
+            ?? HanaConnectConfiguration.defaultConnectTimeoutSeconds
+        let milliseconds = Int64((timeout * 1_000).rounded(.up))
+        expiration = now.advanced(by: .milliseconds(max(1, milliseconds)))
+    }
+
+    func handshakeTimeout(at now: ContinuousClock.Instant = .now) -> TimeInterval {
+        remainingTimeout(at: now)
+    }
+
+    func openTimeout(at now: ContinuousClock.Instant = .now) -> TimeInterval {
+        remainingTimeout(at: now)
+    }
+
+    func openPhase(
+        configuration: Data,
+        at now: ContinuousClock.Instant = .now
+    ) -> OpenPhase {
+        let timeout = openTimeout(at: now)
+        guard let decoded = try? JSONSerialization.jsonObject(with: configuration),
+              var object = decoded as? [String: Any] else {
+            return OpenPhase(configuration: configuration, timeout: timeout)
+        }
+        object["connectTimeoutSeconds"] = timeout
+        let remainingConfiguration = (try? JSONSerialization.data(withJSONObject: object)) ?? configuration
+        return OpenPhase(configuration: remainingConfiguration, timeout: timeout)
+    }
+
+    private func remainingTimeout(at now: ContinuousClock.Instant) -> TimeInterval {
+        guard now < expiration else { return Self.minimumTimeout }
+        let components = now.duration(to: expiration).components
+        let seconds = TimeInterval(components.seconds)
+            + TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000
+        return max(Self.minimumTimeout, seconds)
+    }
+
+    private static func valid(_ timeout: TimeInterval?) -> TimeInterval? {
+        guard let timeout, timeout.isFinite, timeout > 0 else { return nil }
+        return min(timeout, TimeInterval(Int32.max))
+    }
+}
+
 final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
-    static let handshakeDeadline: TimeInterval = 15
-    static let defaultOpenDeadline: TimeInterval = 15
     static let cancelDeadlineMargin: TimeInterval = 10
 
     private struct Helper {
@@ -21,7 +82,7 @@ final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
     private let trust: HanaHelperTrust
     private let locateExecutable: @Sendable () throws -> URL
     private let cancelDeadlineOverride: TimeInterval?
-    private let openDeadline: TimeInterval
+    private let openDeadlineOverride: TimeInterval?
     private let lock = NSLock()
     private var routes: [UInt64: Route] = [:]
     private var lastSession: UInt64 = 0
@@ -29,12 +90,12 @@ final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
     init(
         trust: HanaHelperTrust = .host,
         cancelDeadline: TimeInterval? = nil,
-        openDeadline: TimeInterval = HanaHelperBridge.defaultOpenDeadline,
+        openDeadline: TimeInterval? = nil,
         locateExecutable: (@Sendable () throws -> URL)? = nil
     ) {
         self.trust = trust
         self.cancelDeadlineOverride = cancelDeadline
-        self.openDeadline = openDeadline
+        self.openDeadlineOverride = openDeadline
         self.locateExecutable = locateExecutable ?? {
             try trust.verifiedExecutable(in: Bundle(for: HanaPluginDriver.self))
         }
@@ -54,10 +115,19 @@ final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
 
     func open(configuration: Data, interruption: HanaOpenInterruption) throws -> UInt64 {
         guard !interruption.isInterrupted else { throw HanaHelperProcess.interruptedFailure }
-        let helper = try launchHelper(interruption: interruption)
+        let deadline = HanaHelperConnectDeadline(
+            configuration: configuration,
+            timeoutOverride: openDeadlineOverride
+        )
+        let helper = try launchHelper(deadline: deadline, interruption: interruption)
         let remoteSession: UInt64
         do {
-            remoteSession = try openSession(on: helper, configuration: configuration, interruption: interruption)
+            remoteSession = try openSession(
+                on: helper,
+                configuration: configuration,
+                deadline: deadline,
+                interruption: interruption
+            )
         } catch {
             helper.process.shutdown()
             throw error
@@ -128,23 +198,28 @@ final class HanaHelperBridge: HanaNativeBridge, @unchecked Sendable {
     private func openSession(
         on helper: Helper,
         configuration: Data,
+        deadline: HanaHelperConnectDeadline,
         interruption: HanaOpenInterruption
     ) throws -> UInt64 {
-        let seconds = HanaHelperDuration.secondsText(openDeadline)
+        let phase = deadline.openPhase(configuration: configuration)
+        let seconds = HanaHelperDuration.secondsText(phase.timeout.rounded(.up))
         let reply = try helper.process.call(
             .open,
-            body: configuration,
-            within: openDeadline,
+            body: phase.configuration,
+            within: phase.timeout,
             interruption: interruption,
             lateness: "The SAP HANA helper did not answer the connection request within \(seconds) seconds."
         )
         return try HanaHelperMessage.openedSession(from: reply)
     }
 
-    private func launchHelper(interruption: HanaOpenInterruption) throws -> Helper {
+    private func launchHelper(
+        deadline: HanaHelperConnectDeadline,
+        interruption: HanaOpenInterruption
+    ) throws -> Helper {
         let (process, greeting) = try HanaHelperProcess.launch(
             executable: locateExecutable(),
-            handshakeDeadline: Self.handshakeDeadline,
+            handshakeDeadline: deadline.handshakeTimeout(),
             interruption: interruption
         )
         do {

@@ -51,29 +51,49 @@ enum LibSSH2ExecChannel {
     static func run(
         _ command: String,
         session: OpaquePointer,
-        queue: DispatchQueue
+        queue: DispatchQueue,
+        budget: SFTPConnectionBudget
     ) throws -> RemoteCommandResult {
-        try queue.sync {
+        try budget.check()
+        return try queue.sync {
+            try budget.prepare(session: session)
             guard let channel = libssh2_channel_open_ex(
                 session, "session", 7, 2 * 1_024 * 1_024, 32_768, nil, 0
             ) else {
+                if libssh2_session_last_errno(session) == LIBSSH2_ERROR_TIMEOUT {
+                    throw budget.timeoutError
+                }
                 throw SFTPError.remoteCommandFailed(
                     command: command, status: -1, output: "the server refused a session channel"
                 )
             }
-            defer { libssh2_channel_free(channel) }
+            defer {
+                budget.prepareForCleanup(session: session)
+                libssh2_channel_free(channel)
+            }
 
-            guard libssh2_channel_process_startup(
+            try budget.prepare(session: session)
+            let startResult = libssh2_channel_process_startup(
                 channel, "exec", 4, command, UInt32(command.utf8.count)
-            ) == 0 else {
+            )
+            if startResult == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
+            guard startResult == 0 else {
                 throw SFTPError.remoteCommandFailed(
                     command: command, status: -1, output: "the server refused to run commands"
                 )
             }
 
-            let out = drain(channel: channel, streamId: 0)
-            let err = drain(channel: channel, streamId: sshExtendedDataStderr)
-            libssh2_channel_close(channel)
+            let out = try drain(channel: channel, streamId: 0, session: session, budget: budget)
+            let err = try drain(
+                channel: channel,
+                streamId: sshExtendedDataStderr,
+                session: session,
+                budget: budget
+            )
+            try budget.prepare(session: session)
+            let closeResult = libssh2_channel_close(channel)
+            if closeResult == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
+            try budget.check()
             let status = libssh2_channel_get_exit_status(channel)
             let signal = exitSignal(channel: channel, session: session)
 
@@ -98,13 +118,21 @@ enum LibSSH2ExecChannel {
         return name.isEmpty ? nil : name
     }
 
-    private static func drain(channel: OpaquePointer, streamId: Int32) -> String {
+    private static func drain(
+        channel: OpaquePointer,
+        streamId: Int32,
+        session: OpaquePointer,
+        budget: SFTPConnectionBudget
+    ) throws -> String {
         var collected = Data()
         var buffer = [CChar](repeating: 0, count: readChunk)
         while true {
+            try budget.prepare(session: session)
             let read = libssh2_channel_read_ex(channel, streamId, &buffer, buffer.count)
+            if read == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
             if read <= 0 { break }
             collected.append(contentsOf: buffer.prefix(read).map { UInt8(bitPattern: $0) })
+            try budget.check()
         }
         return String(data: collected, encoding: .utf8) ?? ""
     }

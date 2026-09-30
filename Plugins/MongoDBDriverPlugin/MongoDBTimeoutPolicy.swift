@@ -5,6 +5,45 @@
 
 import Foundation
 
+struct MongoDBConnectTimeout: Equatable, Sendable {
+    static let defaultMilliseconds = 10_000
+    static let maximumMilliseconds = 3_600_000
+
+    let milliseconds: Int32
+
+    init(additionalFields: [String: String]) {
+        milliseconds = Int32(Self.resolve(additionalFields: additionalFields))
+    }
+
+    init(milliseconds: Int) {
+        self.milliseconds = Int32(min(max(milliseconds, 1), Self.maximumMilliseconds))
+    }
+
+    var uriParameters: [String] {
+        [
+            "connectTimeoutMS=\(milliseconds)",
+            "serverSelectionTimeoutMS=\(milliseconds)"
+        ]
+    }
+
+    private static func resolve(additionalFields: [String: String]) -> Int {
+        if let rawMilliseconds = additionalFields["connectTimeoutMilliseconds"],
+           let parsedMilliseconds = Int64(rawMilliseconds.trimmingCharacters(in: .whitespaces)) {
+            return clamp(parsedMilliseconds)
+        }
+        if let rawSeconds = additionalFields["connectTimeoutSeconds"],
+           let parsedSeconds = Int64(rawSeconds.trimmingCharacters(in: .whitespaces)) {
+            let multiplied = parsedSeconds.multipliedReportingOverflow(by: 1_000)
+            return clamp(multiplied.overflow ? Int64.max : multiplied.partialValue)
+        }
+        return defaultMilliseconds
+    }
+
+    private static func clamp(_ milliseconds: Int64) -> Int {
+        Int(min(max(milliseconds, 1), Int64(maximumMilliseconds)))
+    }
+}
+
 enum MongoDBServerErrorCode {
     static let badValue: UInt32 = 2
     static let indexNotFound: UInt32 = 27
@@ -49,7 +88,7 @@ enum MongoDBTimeoutPolicy {
                 localized: """
                 The query timed out after %d seconds. Sorting or filtering on a field with no index \
                 makes MongoDB read the whole collection, even when you only ask for one page. \
-                Add an index for that field, or raise the query timeout in Settings.
+                Add an index for that field, or raise this connection's query timeout in Options.
                 """
             ),
             seconds(maxTimeMS)
@@ -59,7 +98,7 @@ enum MongoDBTimeoutPolicy {
     static func writeTimeoutMessage(maxTimeMS: Int32) -> String {
         String(
             format: String(
-                localized: "The write did not finish within %d seconds, so MongoDB stopped it. Raise the query timeout in Settings if it needs longer."
+                localized: "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer."
             ),
             seconds(maxTimeMS)
         )

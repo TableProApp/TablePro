@@ -81,7 +81,9 @@ enum IOSConnectionExportService {
                 sshProfileId: nil,
                 safeModeLevel: connection.safeModeLevel == .off ? nil : connection.safeModeLevel.rawValue,
                 aiPolicy: nil,
-                additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields,
+                connectTimeoutSeconds: validConnectTimeout(connection.connectTimeoutSeconds),
+                queryTimeoutSeconds: validQueryTimeout(connection.queryTimeoutSeconds),
+                additionalFields: exportableAdditionalFields(connection),
                 redisDatabase: nil,
                 startupCommands: nil,
                 localOnly: nil
@@ -153,6 +155,21 @@ enum IOSConnectionExportService {
         from store: any SecureStore
     ) -> String? {
         (try? store.retrieve(forKey: kind.account(for: connectionId))) ?? nil
+    }
+
+    private static func exportableAdditionalFields(_ connection: DatabaseConnection) -> [String: String]? {
+        var fields = connection.additionalFields
+        fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+        fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+        return fields.isEmpty ? nil : fields
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.connectTimeoutSecondsRange.contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { $0 >= 0 ? $0 : nil }
     }
 
     private static func exportableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {

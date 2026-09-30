@@ -45,7 +45,7 @@ struct KafkaTLSConfigurationTests {
             ssl: SSLConfiguration(mode: .verifyCa),
             credentials: KafkaCredentials(mechanism: nil, username: "", password: ""),
             routing: .advertised,
-            connectTimeoutSeconds: 1
+            connectTimeout: KafkaConnectTimeout(milliseconds: 1_000)
         )
         let error = await #expect(throws: KafkaError.self) {
             try await cluster.connect()

@@ -78,8 +78,11 @@ actor RemoteFileTransportManager: TunnelManaging {
         credentials: SSHTunnelCredentials,
         layout: DatabaseFileLayout,
         forceRefetch: Bool,
-        progress: (@Sendable (UInt64, UInt64) -> Void)? = nil
+        progress: (@Sendable (UInt64, UInt64) -> Void)? = nil,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> MaterializedRemoteFile {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.remoteFile("\(config.host):\(config.port ?? 22)")
+        try deadline.check(endpoint: timeoutEndpoint)
         if !forceRefetch, let existing = materialized[connectionId], existing.identity == identity {
             Self.logger.info(
                 "Reusing the working copy for \(identity.displayOrigin, privacy: .public)"
@@ -92,31 +95,48 @@ actor RemoteFileTransportManager: TunnelManaging {
         // The lock and the storage directory both key off the path the SERVER resolves, not the one
         // the user typed. Two connections naming `~/app.db` and `/home/deploy/app.db` are the same
         // file, and locking on the raw text lets them write one directory concurrently.
-        let session = try await self.session(for: connectionId, config: config, credentials: credentials)
+        let session = try await self.session(
+            for: connectionId,
+            config: config,
+            credentials: credentials,
+            deadline: deadline
+        )
 
         /// Any failure after the session is cached discards it, not only a failed transfer. A stat, a
         /// realpath, or a manifest write that throws leaves a session that is dead (the peer dropped)
         /// or pointed at a file that is gone, and reusing it makes every retry fail the same way
         /// until relaunch. This is the discard the fetch path used to make alone.
         do {
-            let resolvedIdentity = try Self.resolvingHome(identity, on: session)
+            let resolvedIdentity = try Self.resolvingHome(
+                identity,
+                on: session,
+                deadline: deadline
+            )
             let fileName = Self.workingCopyName(for: resolvedIdentity)
 
             return try await store.withExclusiveAccess(to: resolvedIdentity) {
+                try deadline.check(endpoint: timeoutEndpoint)
                 if !forceRefetch,
                    let reused = try await self.reusableCopy(
-                       for: resolvedIdentity, fileName: fileName, session: session, store: store
+                       for: resolvedIdentity,
+                       fileName: fileName,
+                       session: session,
+                       store: store,
+                       deadline: deadline
                    ) {
+                    try deadline.check(endpoint: timeoutEndpoint)
                     await self.remember(reused, for: connectionId)
                     return reused
                 }
 
                 let directory = try await store.prepareDirectory(for: resolvedIdentity)
+                try deadline.check(endpoint: timeoutEndpoint)
 
-                let plan = RemoteDatabaseFileTransfer.plan(
+                let plan = try RemoteDatabaseFileTransfer.plan(
                     session: session,
                     remotePath: resolvedIdentity.path,
-                    layout: layout
+                    layout: layout,
+                    deadline: deadline
                 )
 
                 let cancelFlag = CancellationFlag()
@@ -128,13 +148,16 @@ actor RemoteFileTransportManager: TunnelManaging {
                         layout: layout,
                         destinationDirectory: directory,
                         fileName: fileName,
+                        deadline: deadline,
                         progress: progress,
                         isCancelled: { cancelFlag.isCancelled }
                     )
                 } onCancel: {
                     cancelFlag.cancel()
                 }
+                try deadline.check(endpoint: timeoutEndpoint)
                 try await store.writeManifest(result.manifest, for: resolvedIdentity)
+                try deadline.check(endpoint: timeoutEndpoint)
 
                 let file = MaterializedRemoteFile(
                     identity: resolvedIdentity,
@@ -168,14 +191,17 @@ actor RemoteFileTransportManager: TunnelManaging {
         for identity: RemoteFileIdentity,
         fileName: String,
         session: LibSSH2SFTPSession,
-        store: RemoteDatabaseFileStore
+        store: RemoteDatabaseFileStore,
+        deadline: ConnectionDeadline
     ) async throws -> MaterializedRemoteFile? {
         guard let manifest = await store.manifest(for: identity) else { return nil }
         let workingCopy = await store.workingCopyURL(for: identity, fileName: fileName)
         guard FileManager.default.fileExists(atPath: workingCopy.path) else { return nil }
 
         let current = try RemoteDatabaseFileTransfer.fingerprint(
-            session: session, remotePath: identity.path
+            session: session,
+            remotePath: identity.path,
+            deadline: deadline
         )
         guard !current.differs(from: manifest.fingerprint) else { return nil }
 
@@ -225,8 +251,10 @@ actor RemoteFileTransportManager: TunnelManaging {
     private func session(
         for connectionId: UUID,
         config: SSHConfiguration,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        deadline: ConnectionDeadline
     ) async throws -> LibSSH2SFTPSession {
+        try deadline.check(endpoint: .remoteFile("\(config.host):\(config.port ?? 22)"))
         let key = Self.serverKey(config)
         if let existing = sessions[connectionId], sessionServerKeys[connectionId] == key {
             return existing
@@ -235,7 +263,8 @@ actor RemoteFileTransportManager: TunnelManaging {
         let session = try await LibSSH2SFTPSession.open(
             config: config,
             credentials: credentials,
-            label: connectionId.uuidString
+            label: connectionId.uuidString,
+            deadline: deadline
         )
         sessions[connectionId] = session
         sessionServerKeys[connectionId] = key
@@ -250,9 +279,10 @@ actor RemoteFileTransportManager: TunnelManaging {
     /// the button cannot succeed against a different file from the one that opens.
     private static func resolvingHome(
         _ identity: RemoteFileIdentity,
-        on session: LibSSH2SFTPSession
+        on session: LibSSH2SFTPSession,
+        deadline: ConnectionDeadline
     ) throws -> RemoteFileIdentity {
-        let resolved = try session.resolvedPath(identity.path)
+        let resolved = try session.resolvedPath(identity.path, deadline: deadline)
         guard resolved != identity.path else { return identity }
         return RemoteFileIdentity(
             username: identity.username,

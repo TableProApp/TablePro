@@ -17,6 +17,19 @@ struct WeaviateClientTests {
         #expect(transport.requests.map { $0.url.path } == ["/v1/.well-known/ready", "/v1/meta"])
     }
 
+    @Test("Connect asks for a fresh timeout before each bootstrap request")
+    func connectUsesRemainingTimeout() async throws {
+        let transport = FakeWeaviateTransport()
+        transport.respond(method: "GET", path: "/v1/.well-known/ready", status: 200, body: ".")
+        transport.respond(method: "GET", path: "/v1/meta", status: 200, json: WeaviateFixtures.meta)
+        let client = testClient(transport: transport)
+        let timeouts = WeaviateTimeoutSequence([2.5, 1.25])
+
+        try await client.connect(requestTimeout: { timeouts.next() })
+
+        #expect(transport.requests.map(\.timeoutInterval) == [2.5, 1.25])
+    }
+
     @Test("An API key is sent as a Bearer header")
     func apiKeyIsBearer() async throws {
         let transport = FakeWeaviateTransport()
@@ -148,6 +161,19 @@ struct WeaviateClientTests {
         await #expect(throws: WeaviateError.api(status: 200, message: "Cannot query field")) {
             _ = try await client.graphql("{ Get { Missing { title } } }")
         }
+    }
+}
+
+private final class WeaviateTimeoutSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [TimeInterval]
+
+    init(_ values: [TimeInterval]) {
+        self.values = values
+    }
+
+    func next() -> TimeInterval {
+        lock.withLock { values.removeFirst() }
     }
 }
 

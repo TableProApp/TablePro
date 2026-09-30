@@ -29,7 +29,11 @@ final class TeradataTLSTests: XCTestCase {
     func testVerifyCAWithoutACARefusesBeforeOpeningASocket() {
         let options = verifyingOptions(hostname: false, caCertificatePath: "")
         assertRefusal(containing: "no CA certificate") {
-            _ = try TeradataTLSTransport(host: "127.0.0.1", options: options, timeoutSeconds: 5)
+            _ = try TeradataTLSTransport(
+                host: "127.0.0.1",
+                options: options,
+                deadline: TeradataConnectDeadline(milliseconds: 5_000)
+            )
         }
     }
 
@@ -52,7 +56,11 @@ final class TeradataTLSTests: XCTestCase {
     func testUnreadableCAFileRefusesBeforeOpeningASocket() {
         let options = verifyingOptions(hostname: true, caCertificatePath: "/nonexistent/tablepro-teradata-tests/ca.pem")
         assertRefusal(containing: "could not be read") {
-            _ = try TeradataTLSTransport(host: "127.0.0.1", options: options, timeoutSeconds: 5)
+            _ = try TeradataTLSTransport(
+                host: "127.0.0.1",
+                options: options,
+                deadline: TeradataConnectDeadline(milliseconds: 5_000)
+            )
         }
     }
 

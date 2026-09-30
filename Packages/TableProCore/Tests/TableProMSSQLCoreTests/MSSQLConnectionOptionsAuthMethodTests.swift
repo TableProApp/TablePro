@@ -63,4 +63,38 @@ struct MSSQLConnectionOptionsAuthMethodTests {
         #expect(MSSQLConnectionOptions.authMethod(from: [:]) == .sqlServer)
         #expect(MSSQLConnectionOptions.authMethod(from: ["mssqlAuthMethod": "nonsense"]) == .sqlServer)
     }
+
+    @Test("remaining millisecond budget takes precedence over configured seconds")
+    func resolvesConnectTimeoutBudget() {
+        #expect(MSSQLConnectionOptions.connectTimeoutMilliseconds(from: [
+            "connectTimeoutMilliseconds": "1250",
+            "connectTimeoutSeconds": "30"
+        ]) == 1_250)
+        #expect(MSSQLConnectionOptions.connectTimeoutMilliseconds(from: [
+            "connectTimeoutSeconds": "2.5"
+        ]) == 2_500)
+    }
+
+    @Test("connect timeout keeps the driver default for old hosts")
+    func defaultsConnectTimeoutForOldHosts() {
+        #expect(
+            MSSQLConnectionOptions.connectTimeoutMilliseconds(from: [:])
+                == MSSQLConnectionOptions.defaultLoginTimeoutSeconds * 1_000
+        )
+        #expect(
+            MSSQLConnectionOptions.connectTimeoutMilliseconds(from: ["connectTimeoutMilliseconds": "invalid"])
+                == MSSQLConnectionOptions.defaultLoginTimeoutSeconds * 1_000
+        )
+    }
+
+    @Test("connect deadline reports one shrinking budget across phases")
+    func deadlineKeepsOneBudget() async throws {
+        let deadline = MSSQLConnectDeadline(timeoutMilliseconds: 500)
+        let first = deadline.remainingMilliseconds
+        try await Task.sleep(for: .milliseconds(20))
+        let second = deadline.remainingMilliseconds
+
+        #expect((1...500).contains(first))
+        #expect(second < first)
+    }
 }

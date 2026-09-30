@@ -2,6 +2,10 @@ import Foundation
 @_exported import TableProCoreTypes
 
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
+    public static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    public static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    public static let connectTimeoutSecondsRange = 1 ... 600
+
     public var id: UUID
     public var name: String
     public var type: DatabaseType
@@ -18,6 +22,22 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var safeModeLevel: SafeModeLevel
     public var queryTimeoutSeconds: Int?
     public var additionalFields: [String: String]
+
+    public var connectTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.connectTimeoutSecondsKey].flatMap(Int.init),
+                  Self.connectTimeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.connectTimeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
+            }
+        }
+    }
 
     public var sshEnabled: Bool
     public var sshConfiguration: SSHConfiguration?
@@ -73,7 +93,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.color = color
         self.isReadOnly = isReadOnly
         self.safeModeLevel = safeModeLevel
-        self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.queryTimeoutSeconds = queryTimeoutSeconds.flatMap { $0 >= 0 ? $0 : nil }
         self.additionalFields = additionalFields
         self.sshEnabled = sshEnabled
         self.sshConfiguration = sshConfiguration
@@ -118,6 +138,7 @@ extension DatabaseConnection: Codable {
             safeModeLevel = isReadOnly ? .readOnly : .off
         }
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds)
+            .flatMap { $0 >= 0 ? $0 : nil }
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         sshEnabled = try container.decodeIfPresent(Bool.self, forKey: .sshEnabled) ?? false
         sshConfiguration = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfiguration)

@@ -64,9 +64,22 @@ internal final class SpannerPluginDriver: PluginDatabaseDriver, @unchecked Senda
     func connect() async throws {
         do {
             let settings = try SpannerConnectionSettings.parse(fields: config.additionalFields)
-            let tokenProvider = try SpannerCredentialFactory.tokenProvider(settings: settings, config: config)
+            let connectTimeout = PluginConnectTimeout.milliseconds(
+                in: config.additionalFields,
+                default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+            )
+            let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
+            let connectTimeoutPhase = PluginConnectTimeoutPhase(deadline: deadline)
+            defer { connectTimeoutPhase.finish() }
+            let tokenProvider = try SpannerCredentialFactory.tokenProvider(
+                settings: settings,
+                config: config,
+                connectTimeoutPhase: connectTimeoutPhase
+            )
             let timeout = requestTimeout
-            let transport = URLSessionSpannerTransport(requestTimeout: { timeout.requestTimeoutInterval })
+            let transport = URLSessionSpannerTransport(requestTimeout: {
+                connectTimeoutPhase.remainingSeconds(or: timeout.requestTimeoutInterval)
+            })
             let client = SpannerRESTClient(settings: settings, transport: transport, tokenProvider: tokenProvider)
             let executor = try await Self.openExecutor(client: client, driver: self)
             let dialect = executor.dialect

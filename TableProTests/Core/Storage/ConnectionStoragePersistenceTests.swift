@@ -93,6 +93,28 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.first?.name == "Round Trip Test")
     }
 
+    @Test("round-trip save and load preserves timeout override states")
+    func roundTripPreservesTimeoutOverrides() {
+        let inherited = DatabaseConnection(name: "Inherited", type: .postgresql)
+        var disabled = DatabaseConnection(name: "Disabled", type: .postgresql)
+        disabled.connectTimeoutSeconds = 12
+        disabled.queryTimeoutSeconds = 0
+        var finite = DatabaseConnection(name: "Finite", type: .postgresql)
+        finite.connectTimeoutSeconds = 600
+        finite.queryTimeoutSeconds = 45
+
+        storage.saveConnections([inherited, disabled, finite])
+        storage.invalidateCache()
+        let loaded = storage.loadConnections()
+
+        #expect(loaded.first { $0.id == inherited.id }?.connectTimeoutSeconds == nil)
+        #expect(loaded.first { $0.id == inherited.id }?.queryTimeoutSeconds == nil)
+        #expect(loaded.first { $0.id == disabled.id }?.connectTimeoutSeconds == 12)
+        #expect(loaded.first { $0.id == disabled.id }?.queryTimeoutSeconds == 0)
+        #expect(loaded.first { $0.id == finite.id }?.connectTimeoutSeconds == 600)
+        #expect(loaded.first { $0.id == finite.id }?.queryTimeoutSeconds == 45)
+    }
+
     @Test("duplicating a connection carries tunnel modes and their secrets")
     func duplicateCarriesTunnelModesAndSecrets() throws {
         var connection = DatabaseConnection(name: "Tunnels", type: .postgresql)
@@ -102,6 +124,8 @@ struct ConnectionStoragePersistenceTests {
         connection.tunnelCommandMode = .inline(
             TunnelCommandConfiguration(method: .kubectl, kubernetesNamespace: "prod", kubernetesResource: "service/pg")
         )
+        connection.connectTimeoutSeconds = 12
+        connection.queryTimeoutSeconds = 0
         storage.addConnection(connection)
         storage.saveCloudflareTokenId("token-id", for: connection.id)
         storage.saveCloudflareTokenSecret("token-secret", for: connection.id)
@@ -114,6 +138,8 @@ struct ConnectionStoragePersistenceTests {
         #expect(duplicate.cloudSQLProxyMode == connection.cloudSQLProxyMode)
         #expect(duplicate.socksProxyMode == connection.socksProxyMode)
         #expect(duplicate.tunnelCommandMode == connection.tunnelCommandMode)
+        #expect(duplicate.connectTimeoutSeconds == 12)
+        #expect(duplicate.queryTimeoutSeconds == 0)
         #expect(storage.loadCloudflareTokenId(for: duplicate.id) == "token-id")
         #expect(storage.loadCloudflareTokenSecret(for: duplicate.id) == "token-secret")
         #expect(storage.loadCloudSQLProxyServiceAccountKey(for: duplicate.id) == "{\"type\":\"service_account\"}")
@@ -122,6 +148,8 @@ struct ConnectionStoragePersistenceTests {
         let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
         #expect(reloaded?.socksProxyMode == connection.socksProxyMode)
         #expect(reloaded?.tunnelCommandMode == connection.tunnelCommandMode)
+        #expect(reloaded?.connectTimeoutSeconds == 12)
+        #expect(reloaded?.queryTimeoutSeconds == 0)
     }
 
     @Test("deleting a connection removes its SOCKS proxy password")
@@ -266,7 +294,10 @@ struct ConnectionStoragePersistenceTests {
             "sshHost": "",
             "sshUsername": "",
             "sshAuthMethod": "password",
-            "sshPrivateKeyPath": ""
+            "sshPrivateKeyPath": "",
+            "additionalFields": {
+                "mongoAuthSource": "admin"
+            }
         }]
         """
         try Data(legacyJSON.utf8).write(to: fileURL, options: .atomic)
@@ -277,5 +308,8 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.count == 1)
         #expect(loaded.first?.name == "Legacy Connection")
         #expect(loaded.first?.isFavorite == false)
+        #expect(loaded.first?.connectTimeoutSeconds == nil)
+        #expect(loaded.first?.queryTimeoutSeconds == nil)
+        #expect(loaded.first?.mongoAuthSource == "admin")
     }
 }

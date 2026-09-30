@@ -2,11 +2,8 @@
 //  SSHTunnelDeadlineMarginTests.swift
 //  TableProTests
 //
-//  Guards the margin that lets the tunnel name a forwarding failure before the database
-//  driver reports its own timeout. The previous budget matched the driver's 10 seconds
-//  exactly, and since the driver's clock starts when it dials while the tunnel's starts
-//  only once the accept is noticed, the tunnel could never win and the user saw an errno
-//  that names no cause (#1981, recurrence of #1883).
+//  Guards the absolute deadline shared by the first tunnel client and the fresh configured
+//  budget each later metadata client receives.
 //
 
 import Foundation
@@ -14,21 +11,21 @@ import Foundation
 import Testing
 
 struct SSHTunnelDeadlineMarginTests {
-    /// Every bundled driver hardcodes a 10 second connect timeout.
-    private static let driverConnectTimeoutSeconds: TimeInterval = 10
+    @Test("The first relay keeps the original deadline and a second gets the configured 60 seconds")
+    func secondaryRelayGetsConfiguredBudget() {
+        let startedAt = ContinuousClock.now
+        let initial = ConnectionDeadline(configuredSeconds: 60, startedAt: startedAt)
+        let provider = ConnectionRelayDeadlineProvider(initialDeadline: initial)
 
-    @Test("The channel-open budget stays under every bundled driver's connect timeout")
-    func channelOpenBudgetStaysUnderDriverTimeout() {
-        #expect(LibSSH2Tunnel.channelOpenDeadlineSeconds < Self.driverConnectTimeoutSeconds)
-    }
+        let first = provider.next(startedAt: startedAt.advanced(by: .seconds(10)))
+        let secondStart = startedAt.advanced(by: .seconds(20))
+        let second = provider.next(startedAt: secondStart)
 
-    @Test("The margin is wide enough to absorb the accept poll and the scheduling hops")
-    func marginAbsorbsAcceptLatency() {
-        let margin = Self.driverConnectTimeoutSeconds - LibSSH2Tunnel.channelOpenDeadlineSeconds
-        let acceptPollSeconds = TimeInterval(LibSSH2Tunnel.acceptPollTimeoutMs) / 1_000
-
-        #expect(margin >= 2)
-        #expect(margin > acceptPollSeconds)
+        #expect(first.isInitial)
+        #expect(first.deadline == initial)
+        #expect(!second.isInitial)
+        #expect(second.deadline.configuredSeconds == 60)
+        #expect(second.deadline.instant == secondStart.advanced(by: .seconds(60)))
     }
 
     @Test("The accept loop notices a waiting client well inside the margin")

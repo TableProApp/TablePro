@@ -77,9 +77,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let client = EtcdHttpClient(config: config)
-        try await client.connect()
+        let version = try await client.connect()
 
-        let version = await client.serverVersion()
         lock.withLock {
             _serverVersion = version
             _httpClient = client

@@ -32,6 +32,10 @@ internal struct CompositeAuthenticator: SSHAuthenticator {
             Self.logger.debug("Trying authenticator \(index + 1)/\(authenticators.count)")
             do {
                 try authenticator.authenticate(session: session, username: username)
+            } catch let error as ConnectionTimeoutError {
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let error as SSHTunnelError where error.isUserCancelledAuthentication {
                 throw error
             } catch {

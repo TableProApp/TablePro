@@ -13,6 +13,7 @@ final class OracleCoreErrorMessageTests: XCTestCase {
         .connectionClosed,
         .protocolError,
         .loginTimedOut,
+        .connectTimedOut,
         .queryTimedOut,
         .transactionLost,
         .authVerifierUnsupported(flag: "unsupportedVerifierType(0x939)"),

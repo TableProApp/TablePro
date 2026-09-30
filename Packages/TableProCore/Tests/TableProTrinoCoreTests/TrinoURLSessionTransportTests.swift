@@ -170,6 +170,21 @@ struct TrinoURLSessionTransportTests {
         #expect(TrinoStubProtocol.lastTimeout == 330)
     }
 
+    @Test("A request preserves a subsecond timeout")
+    func subsecondTimeout() async throws {
+        let url = try #require(URL(string: TrinoStubProtocol.origin + "/ok"))
+        let request = TrinoHTTPRequest(
+            method: .get,
+            url: url,
+            headers: [:],
+            timeoutInterval: 0.125
+        )
+
+        _ = try await transport().send(request)
+
+        #expect(TrinoStubProtocol.lastTimeout == 0.125)
+    }
+
     @Test("A redirect is handed back to the caller, never followed")
     func redirectIsNotFollowed() async throws {
         let response = try await transport().send(try request(.post, "/redirect"))

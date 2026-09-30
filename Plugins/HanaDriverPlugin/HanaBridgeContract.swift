@@ -20,7 +20,7 @@ struct HanaConnectConfiguration: Encodable, Equatable, Sendable {
         }
     }
 
-    static let connectTimeoutSeconds = 30
+    static let defaultConnectTimeoutSeconds: Double = 30
 
     let host: String
     let port: Int
@@ -32,7 +32,7 @@ struct HanaConnectConfiguration: Encodable, Equatable, Sendable {
     let caCertificatePath: String
     let clientCertificatePath: String
     let clientKeyPath: String
-    let connectTimeoutSeconds: Int
+    let connectTimeoutSeconds: Double
 }
 
 enum HanaBridgeCell: Equatable, Sendable, Codable {

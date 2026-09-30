@@ -45,15 +45,35 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         let clientConfig = try Self.makeClientConfig(config)
         let transport = URLSessionTrinoTransport(tls: clientConfig.tls)
-        let client = TrinoStatementClient(transport: transport, config: clientConfig, session: session)
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: clientConfig.requestTimeoutSeconds * 1_000
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
+        let client = TrinoStatementClient(
+            transport: transport,
+            config: clientConfig,
+            session: session,
+            requestTimeout: { deadline.remainingSeconds() }
+        )
         lock.withLock { _client = client }
 
         let result: TrinoResultSet
         do {
             result = try await client.execute("SELECT version()")
         } catch let error as TrinoError {
+            lock.withLock {
+                if _client === client { _client = nil }
+            }
             throw error.connectionFailure
         }
+        let queryClient = TrinoStatementClient(transport: transport, config: clientConfig, session: session)
+        let adopted = lock.withLock { () -> Bool in
+            guard _client === client else { return false }
+            _client = queryClient
+            return true
+        }
+        guard adopted else { throw TrinoError.cancelled }
         if case .text(let version)? = result.rows.first?.first {
             lock.withLock { _serverVersion = "Trino \(version)" }
         } else {

@@ -651,6 +651,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
+        let additionalConnectionFields = driverType.additionalConnectionFields.filter {
+            // Kafka releases before the shared timeout setting exposed a second control under
+            // this id. An installed old bundle still registers its metadata over the curated
+            // snapshot, so retire the field here too while its saved value migrates in the model.
+            driverType.databaseTypeId != "Kafka" || $0.id != "kafkaConnectTimeout"
+        }
 
         // A capability with no DriverPlugin static is curated per type, so it has to be carried
         // over from the built-in snapshot or plugin registration silently resets it to the
@@ -771,7 +777,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 columnTypesByCategory: driverType.columnTypesByCategory
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
-                additionalConnectionFields: driverType.additionalConnectionFields,
+                additionalConnectionFields: additionalConnectionFields,
                 category: existingSnapshot?.connection.category
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline

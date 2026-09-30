@@ -3,7 +3,13 @@ import Foundation
 
 public final class TeradataConnection {
     private let config: TeradataConnectionConfig
-    private var socket: (any TeradataTransport)?
+    private let socketLock = NSLock()
+    private var _socket: (any TeradataTransport)?
+    private var socket: (any TeradataTransport)? {
+        get { socketLock.withLock { _socket } }
+        set { socketLock.withLock { _socket = newValue } }
+    }
+    private var connectDeadline: TeradataConnectDeadline?
     private var sessionNumber: UInt32 = 0
     private var aesKey: [UInt8] = []
     private var charsetCode: UInt8 = 0xBF
@@ -21,9 +27,26 @@ public final class TeradataConnection {
 
     public func connect() throws {
         try validateLogMech()
-        let socket = try makeTransport()
+        let deadline = TeradataConnectDeadline(milliseconds: config.connectTimeoutMilliseconds)
+        connectDeadline = deadline
+        let socket: any TeradataTransport
+        do {
+            socket = try makeTransport(deadline: deadline)
+        } catch {
+            connectDeadline = nil
+            throw error
+        }
         self.socket = socket
+        var established = false
+        defer {
+            if !established {
+                socket.close()
+                self.socket = nil
+                connectDeadline = nil
+            }
+        }
         serverIP = Self.resolveAddress(config.host) ?? config.host
+        _ = try deadline.remainingMilliseconds()
 
         try runConfig()
         let serverToken = try runAssign()
@@ -34,6 +57,19 @@ public final class TeradataConnection {
         if let database = config.database, !database.isEmpty {
             _ = try execute(TeradataSchemaQueries.setDatabase(database))
         }
+        _ = try deadline.remainingMilliseconds()
+        established = true
+    }
+
+    /// Keeps the transport's connect deadline active through the driver's required VERSION probe.
+    /// Only then may ordinary query I/O use the session's 20-second socket timeout.
+    public func finishConnecting() throws {
+        guard let socket, let connectDeadline else {
+            throw TeradataWireError.connectionFailed("not connecting")
+        }
+        _ = try connectDeadline.remainingMilliseconds()
+        socket.finishConnecting()
+        self.connectDeadline = nil
     }
 
     public func execute(_ sql: String) throws -> TeradataResultSet {
@@ -59,7 +95,10 @@ public final class TeradataConnection {
     }
 
     public func disconnect() {
-        guard let socket else { return }
+        guard let socket else {
+            connectDeadline = nil
+            return
+        }
         if sessionNumber != 0 {
             let message = LanMessage(
                 kind: .logoff, body: TeradataMessages.logoffParcel().encoded(),
@@ -69,6 +108,7 @@ public final class TeradataConnection {
         }
         socket.close()
         self.socket = nil
+        connectDeadline = nil
     }
 
     public func cancel() {
@@ -85,21 +125,18 @@ public final class TeradataConnection {
         return parcels.contains { terminators.contains($0.flavor) }
     }
 
-    private func makeTransport() throws -> any TeradataTransport {
+    private func makeTransport(deadline: TeradataConnectDeadline) throws -> any TeradataTransport {
         guard config.tls.enabled else {
-            return try TeradataSocket(
-                host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
+            return try TeradataSocket(host: config.host, port: config.port, deadline: deadline)
         }
         do {
             let transport = try TeradataTLSTransport(
-                host: config.host, options: config.tls,
-                timeoutSeconds: config.connectTimeoutSeconds)
+                host: config.host, options: config.tls, deadline: deadline)
             confidentialityBypassed = true
             return transport
         } catch {
             guard config.tls.allowPlaintextFallback else { throw error }
-            return try TeradataSocket(
-                host: config.host, port: config.port, timeoutSeconds: config.connectTimeoutSeconds)
+            return try TeradataSocket(host: config.host, port: config.port, deadline: deadline)
         }
     }
 

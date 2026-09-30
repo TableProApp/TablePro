@@ -92,7 +92,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             authMechanism: authMechanism,
             replicaSet: replicaSet,
             extraUriParams: extraParams,
-            uuidRepresentation: uuidRepresentation
+            uuidRepresentation: uuidRepresentation,
+            connectTimeout: MongoDBConnectTimeout(additionalFields: config.additionalFields)
         )
 
         try await conn.connect()

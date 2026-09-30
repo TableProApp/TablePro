@@ -7,16 +7,27 @@ nonisolated internal enum MariaDBCharacterSet {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MariaDBCharacterSet")
 
     static func establishSession(on mysql: UnsafeMutablePointer<MYSQL>, encoding: MySQLConnectionEncoding) -> Bool {
-        if mysql_set_character_set(mysql, MySQLConnectionEncoding.sessionCharacterSetName) != 0 {
+        establishSession(on: mysql, encoding: encoding) { operation in operation() }
+    }
+
+    static func establishSession(
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        encoding: MySQLConnectionEncoding,
+        performing: (_ operation: () -> Bool) throws -> Bool
+    ) rethrows -> Bool {
+        let established = try performing {
+            mysql_set_character_set(mysql, MySQLConnectionEncoding.sessionCharacterSetName) == 0
+        }
+        if !established {
             let refusal = errorSummary(of: mysql, encoding: encoding)
-            if run(MySQLConnectionEncoding.sessionFallbackStatement, on: mysql) {
+            if try performing({ run(MySQLConnectionEncoding.sessionFallbackStatement, on: mysql) }) {
                 logger.notice("Server refused utf8mb4 (\(refusal, privacy: .private)), so the session uses utf8")
             } else {
                 logger.warning("Server refused a UTF-8 session (\(refusal, privacy: .private)); keeping its own")
             }
         }
-        for statement in encoding.sessionStatements where !run(statement, on: mysql) {
-            return false
+        for statement in encoding.sessionStatements {
+            guard try performing({ run(statement, on: mysql) }) else { return false }
         }
         return true
     }

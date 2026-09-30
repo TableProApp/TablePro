@@ -130,6 +130,8 @@ struct ConnectionFormEditsCoverageTests {
             aiPolicy: original.aiPolicy,
             aiRules: original.aiRules,
             externalAccess: original.externalAccess,
+            connectTimeoutSeconds: original.connectTimeoutSeconds,
+            queryTimeoutSeconds: original.queryTimeoutSeconds,
             redisDatabase: original.redisDatabase,
             startupCommands: original.startupCommands,
             localOnly: original.localOnly,

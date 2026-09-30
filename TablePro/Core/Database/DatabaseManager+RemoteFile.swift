@@ -17,7 +17,8 @@ extension DatabaseManager {
     /// keeps every file-backed plugin working without changes.
     internal func buildRemoteFileEffectiveConnection(
         for connection: DatabaseConnection,
-        sshPasswordOverride: String? = nil
+        sshPasswordOverride: String? = nil,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         let sshConfig = connection.resolvedSSHConfig
         guard let field = pluginManager.localFilePathField(for: connection.type) else {
@@ -38,7 +39,8 @@ extension DatabaseManager {
             config: sshConfig,
             credentials: credentials,
             layout: DatabaseFileLayout.forType(connection.type),
-            forceRefetch: false
+            forceRefetch: false,
+            deadline: deadline
         )
 
         return connection.substitutingLocalFilePath(file.workingCopy.path, in: field)
@@ -53,7 +55,8 @@ extension DatabaseManager {
     /// of transfer to answer a question that took one round trip.
     internal func testRemoteDatabaseFile(
         _ connection: DatabaseConnection,
-        sshPassword: String?
+        sshPassword: String?,
+        deadline: ConnectionDeadline
     ) async throws -> Bool {
         let sshConfig = connection.resolvedSSHConfig
         guard !sshConfig.remoteFilePath.isEmpty else { throw ConnectionTunnelError.remoteFilePathMissing }
@@ -61,12 +64,13 @@ extension DatabaseManager {
         let session = try await LibSSH2SFTPSession.open(
             config: sshConfig,
             credentials: sshCredentials(for: connection, passwordOverride: sshPassword),
-            label: "test-\(connection.id.uuidString)"
+            label: "test-\(connection.id.uuidString)",
+            deadline: deadline
         )
         defer { session.close() }
 
-        let path = try session.resolvedPath(sshConfig.remoteFilePath)
-        let stat = try session.stat(path)
+        let path = try session.resolvedPath(sshConfig.remoteFilePath, deadline: deadline)
+        let stat = try session.stat(path, deadline: deadline)
         guard !stat.isDirectory else { throw SFTPError.notAFile(path: path) }
         return true
     }

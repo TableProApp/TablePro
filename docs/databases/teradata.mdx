@@ -75,7 +75,9 @@ Test TLS on **Required (skip verify)** rather than **Preferred**, or a failed ha
 
 ### Cannot reach the server
 
-The connect gives up after 20 seconds. Confirm the host, and that port `1025` is open from your network, or `443` if an SSL mode is set.
+The connect gives up when the connection's **Connect timeout** expires; an empty field under
+**Options** uses 30 seconds. Confirm the host, and that port `1025` is open from your network, or
+`443` if an SSL mode is set.
 
 ### Logon fails
 

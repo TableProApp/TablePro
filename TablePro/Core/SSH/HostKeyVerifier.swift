@@ -25,8 +25,11 @@ internal enum HostKeyVerifier {
         keyData: Data,
         keyType: String,
         hostname: String,
-        port: Int
+        port: Int,
+        attempt: SSHConnectionAttempt? = nil
     ) async throws {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel("\(hostname):\(port)")
+        try attempt?.check(for: timeoutEndpoint)
         let result = HostKeyStore.shared.verify(
             keyData: keyData,
             keyType: keyType,
@@ -41,11 +44,13 @@ internal enum HostKeyVerifier {
 
         case .unknown(let fingerprint, let keyType):
             logger.info("Unknown host key for [\(hostname)]:\(port), prompting user")
-            let accepted = await promptUnknownHost(
+            let accepted = try await promptUnknownHost(
                 hostname: hostname,
                 port: port,
                 fingerprint: fingerprint,
-                keyType: keyType
+                keyType: keyType,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
             )
             guard accepted else {
                 logger.info("User rejected unknown host key for [\(hostname)]:\(port)")
@@ -60,11 +65,13 @@ internal enum HostKeyVerifier {
 
         case .mismatch(let expected, let actual):
             logger.warning("Host key mismatch for [\(hostname)]:\(port)")
-            let accepted = await promptHostKeyMismatch(
+            let accepted = try await promptHostKeyMismatch(
                 hostname: hostname,
                 port: port,
                 expected: expected,
-                actual: actual
+                actual: actual,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
             )
             guard accepted else {
                 logger.info("User rejected changed host key for [\(hostname)]:\(port)")
@@ -86,8 +93,10 @@ internal enum HostKeyVerifier {
         hostname: String,
         port: Int,
         fingerprint: String,
-        keyType: String
-    ) async -> Bool {
+        keyType: String,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws -> Bool {
         let hostDisplay = "[\(hostname)]:\(port)"
         let title = String(localized: "Unknown SSH Host")
         let message = String(
@@ -115,13 +124,14 @@ internal enum HostKeyVerifier {
         )
 
         if let window = AlertHelper.resolveWindow(nil) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertFirstButtonReturn)
-                }
-            }
+            return try await runSheet(
+                alert,
+                on: window,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
+            )
         }
-        return alert.runModal() == .alertFirstButtonReturn
+        return try runModal(alert, attempt: attempt, timeoutEndpoint: timeoutEndpoint)
     }
 
     @MainActor
@@ -129,8 +139,10 @@ internal enum HostKeyVerifier {
         hostname: String,
         port: Int,
         expected: String,
-        actual: String
-    ) async -> Bool {
+        actual: String,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws -> Bool {
         let hostDisplay = "[\(hostname)]:\(port)"
         let title = String(localized: "SSH Host Key Changed")
         let message = String(
@@ -158,12 +170,62 @@ internal enum HostKeyVerifier {
         )
 
         if let window = AlertHelper.resolveWindow(nil) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertFirstButtonReturn)
-                }
+            return try await runSheet(
+                alert,
+                on: window,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
+            )
+        }
+        return try runModal(alert, attempt: attempt, timeoutEndpoint: timeoutEndpoint)
+    }
+
+    @MainActor
+    private static func runSheet(
+        _ alert: NSAlert,
+        on window: NSWindow,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws -> Bool {
+        let promptId = try attempt?.registerPrompt(for: timeoutEndpoint) {
+            guard alert.window.sheetParent === window else { return }
+            window.endSheet(alert.window, returnCode: .abort)
+        }
+        defer {
+            if let promptId {
+                attempt?.unregisterPrompt(promptId)
             }
         }
-        return alert.runModal() == .alertFirstButtonReturn
+
+        let accepted = await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { response in
+                continuation.resume(returning: response == .alertFirstButtonReturn)
+            }
+        }
+        try attempt?.check(for: timeoutEndpoint)
+        return accepted
+    }
+
+    @MainActor
+    private static func runModal(
+        _ alert: NSAlert,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) throws -> Bool {
+        let promptId = try attempt?.registerPrompt(for: timeoutEndpoint) {
+            if NSApp.modalWindow === alert.window {
+                NSApp.abortModal()
+            }
+            alert.window.orderOut(nil)
+        }
+        defer {
+            if let promptId {
+                attempt?.unregisterPrompt(promptId)
+            }
+        }
+
+        let accepted = alert.runModal() == .alertFirstButtonReturn
+        try attempt?.check(for: timeoutEndpoint)
+        return accepted
     }
 }

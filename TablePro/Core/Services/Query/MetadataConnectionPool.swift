@@ -93,8 +93,6 @@ final class MetadataConnectionPool {
     private var transportWaiters: [UUID: [TransportWaiter]] = [:]
     private let openDriver: DriverOpener
     static let maxPerConnection = 6
-    private static let operationTimeoutSeconds: Double = 15
-    private static let preparationTimeoutSeconds: Double = 60
     private var sweeper: Task<Void, Never>?
 
     /// How long a pooled connection may sit unused before it is handed back.
@@ -422,21 +420,36 @@ final class MetadataConnectionPool {
                 .switchesDatabaseWithoutReconnecting(for: connection.type)
         )
         connection.database = plan.connectDatabase
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(
+            for: connection,
+            purpose: .metadata
+        )
+        let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
+            session.connection.host.nilIfEmpty ?? session.connection.name
+        )
+        let operationTimeoutSeconds = session.effectiveQueryTimeoutSeconds > 0
+            ? Double(session.effectiveQueryTimeoutSeconds)
+            : nil
 
         let driver = try await DatabaseDriverFactory.createDriver(
             for: connection,
             passwordOverride: session.cachedPassword,
             awaitPlugins: true,
-            purpose: .metadata
+            purpose: .metadata,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
+            preparedConfiguration: preparedConfiguration
         )
         do {
-            try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
+            try await driver.connect()
             try await Self.prepareSession(
                 driver,
-                queryTimeoutSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds,
+                queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name,
-                timeoutSeconds: preparationTimeoutSeconds
+                timeoutSeconds: operationTimeoutSeconds
             )
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
@@ -449,16 +462,6 @@ final class MetadataConnectionPool {
             throw error
         }
         return driver
-    }
-
-    static func connect(_ driver: DatabaseDriver, database: String, timeoutSeconds: Double) async throws {
-        try await bounded(
-            driver: driver,
-            timeoutSeconds: timeoutSeconds,
-            timeoutMessage: String(format: String(localized: "Connecting to '%@' timed out."), database)
-        ) {
-            try await driver.connect()
-        }
     }
 
     struct ConnectionPlan: Sendable, Equatable {
@@ -496,7 +499,7 @@ final class MetadataConnectionPool {
         return ConnectionPlan(connectDatabase: configuredDatabase, switchDatabase: targetDatabase)
     }
 
-    static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double) async throws {
+    static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double?) async throws {
         guard let adapter = driver as? PluginDriverAdapter else {
             throw DatabaseError.unsupportedOperation
         }
@@ -509,7 +512,7 @@ final class MetadataConnectionPool {
         }
     }
 
-    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double) async throws {
+    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double?) async throws {
         guard let switchable = driver as? SchemaSwitchable else { return }
         try await bounded(
             driver: driver,
@@ -529,7 +532,7 @@ final class MetadataConnectionPool {
         queryTimeoutSeconds: Int,
         startupCommands: String?,
         connectionName: String,
-        timeoutSeconds: Double
+        timeoutSeconds: Double?
     ) async throws {
         try await bounded(
             driver: driver,
@@ -547,10 +550,14 @@ final class MetadataConnectionPool {
     /// ignores task cancellation still completes and the timeout can propagate.
     private static func bounded(
         driver: DatabaseDriver,
-        timeoutSeconds: Double,
+        timeoutSeconds: Double?,
         timeoutMessage: String,
         _ operation: @escaping @Sendable () async throws -> Void
     ) async throws {
+        guard let timeoutSeconds, timeoutSeconds > 0 else {
+            try await operation()
+            return
+        }
         do {
             try await withTimeout(
                 seconds: timeoutSeconds,

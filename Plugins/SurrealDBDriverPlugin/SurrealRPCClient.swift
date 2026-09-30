@@ -9,13 +9,22 @@ import os
 private final class TaskBox: @unchecked Sendable {
     private let lock = NSLock()
     private var task: URLSessionTask?
+    private var isCancelled = false
 
     func set(_ task: URLSessionTask) {
-        lock.withLock { self.task = task }
+        let shouldCancel = lock.withLock {
+            self.task = task
+            return isCancelled
+        }
+        if shouldCancel { task.cancel() }
     }
 
     func cancel() {
-        lock.withLock { task }?.cancel()
+        let task = lock.withLock {
+            isCancelled = true
+            return task
+        }
+        task?.cancel()
     }
 }
 
@@ -31,6 +40,7 @@ public struct SurrealStatementResult: Sendable {
 
 public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SurrealDBDriver")
+    private static let defaultRequestTimeout: TimeInterval = 60
 
     private let config: SurrealDBConnectionConfig
     private let lock = NSLock()
@@ -39,6 +49,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     private var inFlight: [URLSessionTask] = []
     private var requestId: Int = 0
     private var timeoutSeconds: Int?
+    private var connectDeadline: PluginConnectDeadline?
 
     public private(set) var serverVersion: String?
 
@@ -47,14 +58,20 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
         super.init()
     }
 
-    public func start() {
+    public func start(connectTimeoutMilliseconds: Int = 60_000) {
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpAdditionalHeaders = [:]
-        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForRequest = deadline.remainingSeconds()
         let delegate = config.skipTLSVerify ? self : nil
         lock.withLock {
+            connectDeadline = deadline
             session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         }
+    }
+
+    public func finishConnecting() {
+        lock.withLock { connectDeadline = nil }
     }
 
     public func stop() {
@@ -63,6 +80,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
             session = nil
             inFlight.removeAll()
             bearerToken = nil
+            connectDeadline = nil
         }
     }
 
@@ -175,8 +193,11 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        if let timeout = lock.withLock({ timeoutSeconds }) {
-            request.timeoutInterval = TimeInterval(timeout)
+        request.timeoutInterval = lock.withLock {
+            if let connectDeadline {
+                return connectDeadline.remainingSeconds()
+            }
+            return timeoutSeconds.map(TimeInterval.init) ?? Self.defaultRequestTimeout
         }
         guard authenticated else { return request }
 

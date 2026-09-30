@@ -70,14 +70,19 @@ struct IOSConnectionImportServiceTests {
 
     private func importedConnection(
         ssh: ExportableSSHConfig? = nil,
-        safeModeLevel: String? = nil
+        safeModeLevel: String? = nil,
+        connectTimeoutSeconds: Int? = nil,
+        queryTimeoutSeconds: Int? = nil,
+        additionalFields: [String: String]? = nil
     ) throws -> DatabaseConnection {
         let fixture = try AppStateFixture()
         let appState = fixture.makeState(syncEnabled: false, secureStore: MockSecureStore())
         let imported = ExportableConnection(
             name: "Bastion", host: "db-1", port: 5_432, database: "", username: "",
             type: DatabaseType.postgresql.rawValue, sshConfig: ssh, sslConfig: nil, color: nil, tagName: nil,
-            groupName: nil, sshProfileId: nil, safeModeLevel: safeModeLevel, aiPolicy: nil, additionalFields: nil,
+            groupName: nil, sshProfileId: nil, safeModeLevel: safeModeLevel, aiPolicy: nil,
+            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
+            additionalFields: additionalFields,
             redisDatabase: nil, startupCommands: nil, localOnly: nil
         )
         let item = ImportItem(connection: imported, status: .ready)
@@ -130,6 +135,51 @@ struct IOSConnectionImportServiceTests {
     @Test("An unrecognized level imports as Confirm Writes instead of Off")
     func unrecognizedLevelImportsAsConfirmWrites() throws {
         #expect(try importedConnection(safeModeLevel: "someFutureLevel").safeModeLevel == .confirmWrites)
+    }
+
+    @Test("Explicit timeout overrides import with query zero intact")
+    func explicitTimeoutOverridesImport() throws {
+        let connection = try importedConnection(
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 0,
+            additionalFields: [
+                DatabaseConnection.connectTimeoutSecondsKey: "99",
+                DatabaseConnection.queryTimeoutSecondsKey: "88",
+                "schema": "public"
+            ]
+        )
+
+        #expect(connection.connectTimeoutSeconds == 12)
+        #expect(connection.queryTimeoutSeconds == 0)
+        #expect(connection.additionalFields["schema"] == "public")
+    }
+
+    @Test("Older additional fields migrate to timeout overrides")
+    func legacyTimeoutAdditionalFieldsImport() throws {
+        let connection = try importedConnection(additionalFields: [
+            DatabaseConnection.connectTimeoutSecondsKey: "15",
+            DatabaseConnection.queryTimeoutSecondsKey: "0"
+        ])
+
+        #expect(connection.connectTimeoutSeconds == 15)
+        #expect(connection.queryTimeoutSeconds == 0)
+    }
+
+    @Test("Invalid explicit timeouts use defaults instead of legacy values")
+    func invalidExplicitTimeoutsImportAsNil() throws {
+        let connection = try importedConnection(
+            connectTimeoutSeconds: 601,
+            queryTimeoutSeconds: -1,
+            additionalFields: [
+                DatabaseConnection.connectTimeoutSecondsKey: "15",
+                DatabaseConnection.queryTimeoutSecondsKey: "30",
+                "schema": "public"
+            ]
+        )
+
+        #expect(connection.connectTimeoutSeconds == nil)
+        #expect(connection.queryTimeoutSeconds == nil)
+        #expect(connection.additionalFields == ["schema": "public"])
     }
 
     @Test("an imported jump host keeps its port, auth method and key path")

@@ -15,20 +15,27 @@ final class CloudflareR2SQLPluginDriver: PluginDatabaseDriver, @unchecked Sendab
     private var namespace: String?
     private var isConnected = false
     private let queryTimeout = HttpQueryTimeoutBox()
+    private let connectTimeoutMilliseconds: Int
 
     let transport: R2SQLTransport
     let connectionConfig: R2SQLConnectionConfig
 
     init(
         config: DriverConnectionConfig,
-        transport: R2SQLTransport = URLSessionR2SQLTransport(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
+        transport: R2SQLTransport? = nil
     ) {
         self.connectionConfig = R2SQLConnectionConfig(
             accountId: config.additionalFields[CloudflareR2SQLMetadata.accountIdFieldId] ?? "",
             bucket: config.additionalFields[CloudflareR2SQLMetadata.bucketFieldId] ?? "",
             token: config.password
         )
-        self.transport = transport
+        self.transport = transport ?? URLSessionR2SQLTransport(
+            resourceTimeout: HttpQueryTimeout.sessionResourceTimeout
+        )
+        self.connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+        )
     }
 
     var capabilities: PluginCapabilities { [.cancelQuery] }
@@ -56,9 +63,13 @@ final class CloudflareR2SQLPluginDriver: PluginDatabaseDriver, @unchecked Sendab
 
     func connect() async throws {
         _ = try connectionConfig.validated()
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         lock.withLock { isConnected = true }
         do {
-            _ = try await run(sql: R2SQLIntrospectionSQL.showNamespaces)
+            _ = try await run(
+                sql: R2SQLIntrospectionSQL.showNamespaces,
+                timeoutInterval: deadline.remainingSeconds()
+            )
         } catch {
             lock.withLock { isConnected = false }
             throw error
@@ -85,11 +96,15 @@ final class CloudflareR2SQLPluginDriver: PluginDatabaseDriver, @unchecked Sendab
     // MARK: - Transport
 
     func run(sql: String) async throws -> R2SQLResult {
+        try await run(sql: sql, timeoutInterval: queryTimeout.requestTimeoutInterval)
+    }
+
+    private func run(sql: String, timeoutInterval: TimeInterval) async throws -> R2SQLResult {
         guard lock.withLock({ isConnected }) else { throw R2SQLError.notConnected }
         let request = try R2SQLRequestBuilder.queryRequest(
             config: connectionConfig,
             sql: sql,
-            timeoutInterval: queryTimeout.requestTimeoutInterval
+            timeoutInterval: timeoutInterval
         )
         let response = try await transport.send(request)
         return try R2SQLResponseDecoder.decode(response)

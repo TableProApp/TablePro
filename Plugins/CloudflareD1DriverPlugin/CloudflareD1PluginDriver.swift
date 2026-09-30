@@ -70,13 +70,18 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         guard !databaseName.isEmpty else {
             throw CloudflareD1Error(message: String(localized: "Database name or UUID is required"))
         }
+        let connectTimeout = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
 
         let databaseId: String
         if isUuid(databaseName) {
             databaseId = databaseName
         } else {
             let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: "")
-            client.createSession()
+            client.createSession(connectDeadline: deadline)
             defer { client.invalidateSession() }
             let databases = try await client.listDatabases()
 
@@ -95,11 +100,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         }
 
         let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: databaseId)
-        client.createSession()
+        client.createSession(connectDeadline: deadline)
 
         do {
             let details = try await client.getDatabaseDetails()
             lock.withLock { _serverVersion = details.version ?? "D1" }
+            client.finishConnecting()
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")

@@ -1,5 +1,70 @@
 import Foundation
 
+struct RedisConnectTimeout: Equatable, Sendable {
+    static let defaultMilliseconds = 10_000
+    static let maximumMilliseconds = 3_600_000
+
+    let milliseconds: Int
+
+    init(additionalFields: [String: String]) {
+        milliseconds = Self.resolve(additionalFields: additionalFields)
+    }
+
+    init(milliseconds: Int) {
+        self.milliseconds = min(max(milliseconds, 1), Self.maximumMilliseconds)
+    }
+
+    var timeInterval: TimeInterval {
+        TimeInterval(milliseconds) / 1_000
+    }
+
+    private static func resolve(additionalFields: [String: String]) -> Int {
+        if let rawMilliseconds = additionalFields["connectTimeoutMilliseconds"],
+           let parsedMilliseconds = Int64(rawMilliseconds.trimmingCharacters(in: .whitespaces)) {
+            return clamp(parsedMilliseconds)
+        }
+        if let rawSeconds = additionalFields["connectTimeoutSeconds"],
+           let parsedSeconds = Int64(rawSeconds.trimmingCharacters(in: .whitespaces)) {
+            let multiplied = parsedSeconds.multipliedReportingOverflow(by: 1_000)
+            let milliseconds = multiplied.overflow
+                ? (parsedSeconds < 0 ? Int64.min : Int64.max)
+                : multiplied.partialValue
+            return clamp(milliseconds)
+        }
+        return defaultMilliseconds
+    }
+
+    private static func clamp(_ milliseconds: Int64) -> Int {
+        Int(min(max(milliseconds, 1), Int64(maximumMilliseconds)))
+    }
+}
+
+struct RedisConnectDeadline: Sendable {
+    private let expiresAt: TimeInterval
+
+    init(timeout: RedisConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        expiresAt = now + timeout.timeInterval
+    }
+
+    func remainingMilliseconds(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Int? {
+        let remaining = Int(((expiresAt - now) * 1_000).rounded(.up))
+        return remaining > 0 ? remaining : nil
+    }
+
+    func socketTimeout(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> RedisSocketTimeout? {
+        guard let milliseconds = remainingMilliseconds(now: now) else { return nil }
+        return RedisSocketTimeout(
+            seconds: milliseconds / 1_000,
+            microseconds: (milliseconds % 1_000) * 1_000
+        )
+    }
+}
+
+struct RedisSocketTimeout: Equatable, Sendable {
+    let seconds: Int
+    let microseconds: Int
+}
+
 /// Whether a connection carries an identity, asked of the server rather than assumed.
 ///
 /// A hiredis context that opened proves a reachable port and nothing else: an unauthenticated

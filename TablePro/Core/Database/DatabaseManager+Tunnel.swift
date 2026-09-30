@@ -105,12 +105,28 @@ extension DatabaseManager {
         }
     }
 
-    /// The SSH-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
+    /// The transport-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
     /// only ever sees a local socket that was accepted and then stayed silent, so its own error
     /// names a read timeout and never the cause. Read before the tunnel is torn down.
-    func attributedTunnelFailure(for connection: DatabaseConnection) async -> SSHTunnelError? {
-        guard let manager = activeTunnelManager(for: connection) as? SSHTunnelManager else { return nil }
-        return await manager.consumeLastForwardFailure(connectionId: connection.id)
+    func attributedTunnelFailure(for connection: DatabaseConnection) async -> (any Error)? {
+        if let manager = activeTunnelManager(for: connection) as? SSHTunnelManager {
+            return await manager.consumeLastForwardFailure(connectionId: connection.id)
+        }
+        if let manager = activeTunnelManager(for: connection) as? SOCKSProxyManager {
+            return await manager.consumeLastConnectionFailure(connectionId: connection.id)
+        }
+        if let manager = activeTunnelManager(for: connection) as? RemoteSQLiteTransportManager {
+            return await manager.consumeLastConnectionFailure(connectionId: connection.id)
+        }
+        return nil
+    }
+
+    static func preferredTunnelFailure(
+        replacing error: any Error,
+        attributedFailure: () async -> (any Error)?
+    ) async -> any Error {
+        guard !Task.isCancelled, !DatabaseCancellationDiagnosis.isCancellation(error) else { return error }
+        return await attributedFailure() ?? error
     }
 
     func closeActiveTunnel(for connection: DatabaseConnection) {

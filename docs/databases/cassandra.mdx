@@ -103,7 +103,9 @@ Both verifying modes need a **CA Certificate** path, and refuse to connect witho
 - Materialized views and UDTs do not appear in the sidebar. Query `system_schema` in the CQL editor to see them. UDFs and UDAs are listed under Functions; see [Procedures, functions, and triggers](/features/routines-triggers).
 - The DDL tab reconstructs `CREATE TABLE` from the column list, so table options (compaction, compression, `gc_grace_seconds`), clustering order, and the split between partition and clustering key are all missing from it. Read the real definition with `DESCRIBE TABLE` in `cqlsh`.
 - DataStax Astra DB does not connect. The Secure Connect Bundle it requires cannot be loaded, and there is no way around it.
-- Connect and request timeouts are fixed at 10 and 30 seconds. Neither the app-wide query timeout nor a multi-DC policy reaches this driver.
+- The connect timeout comes from the connection's **Options** section. The CQL request timeout
+  remains fixed at 30 seconds; neither a per-connection query override, the app-wide query timeout,
+  nor a multi-DC policy reaches this driver.
 
 ## Troubleshooting
 

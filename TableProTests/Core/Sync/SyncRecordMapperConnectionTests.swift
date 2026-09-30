@@ -72,6 +72,8 @@ struct SyncRecordMapperConnectionTests {
         connection.sortOrder = 7
         connection.isFavorite = true
         connection.additionalFields = ["schema": "public"]
+        connection.connectTimeoutSeconds = 12
+        connection.queryTimeoutSeconds = 0
         return connection
     }
 
@@ -217,6 +219,55 @@ struct SyncRecordMapperConnectionTests {
         #expect(decoded.redisDatabase == connection.redisDatabase)
         #expect(decoded.startupCommands == connection.startupCommands)
         #expect(decoded.sortOrder == connection.sortOrder)
+        #expect(decoded.connectTimeoutSeconds == 12)
+        #expect(decoded.queryTimeoutSeconds == 0)
+    }
+
+    @Test("Timeouts use their deployed wire fields without duplicating query timeout in JSON")
+    func timeoutWireFieldsStayCanonical() throws {
+        let record = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(record[ConnectionSyncField.queryTimeoutSeconds.key] as? Int64 == 0)
+        #expect(additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == "12")
+        #expect(additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
+        #expect(additionalFields["schema"] == "public")
+    }
+
+    @Test("Clearing timeouts and other additional fields clears the based record")
+    func clearingTimeoutsClearsBasedRecord() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.additionalFields = [:]
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.queryTimeoutSeconds.key] == nil)
+        #expect(updated[ConnectionSyncField.additionalFieldsJson.key] == nil)
+    }
+
+    @Test("Invalid synced timeouts become defaults and explicit query wins over legacy JSON")
+    func invalidSyncedTimeoutsAreDiscarded() throws {
+        let connection = makeFullyPopulatedConnection()
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = connection.name
+        fields[.type] = connection.type.rawValue
+        fields[.queryTimeoutSeconds] = Int64(-1)
+        fields[.additionalFieldsJson] = try JSONEncoder().encode([
+            DatabaseConnection.connectTimeoutSecondsKey: "601",
+            DatabaseConnection.queryTimeoutSecondsKey: "30",
+            "schema": "public"
+        ])
+
+        let decoded = try SyncRecordMapper.toConnection(record)
+
+        #expect(decoded.connectTimeoutSeconds == nil)
+        #expect(decoded.queryTimeoutSeconds == nil)
+        #expect(decoded.additionalFields == ["schema": "public"])
     }
 
     @Test("A connection the engine holds at Read-Only syncs the user's own level")

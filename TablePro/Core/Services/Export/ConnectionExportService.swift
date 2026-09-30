@@ -161,6 +161,8 @@ enum ConnectionExportService {
             let additionalFields: [String: String]?
             if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
                 var filteredFields = connection.additionalFields
+                filteredFields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+                filteredFields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
                 for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
                     filteredFields.removeValue(forKey: fieldId)
                 }
@@ -187,6 +189,8 @@ enum ConnectionExportService {
                 credentialProfileName: credentialProfileName(for: connection),
                 safeModeLevel: safeModeLevel,
                 aiPolicy: aiPolicy,
+                connectTimeoutSeconds: validConnectTimeout(connection.connectTimeoutSeconds),
+                queryTimeoutSeconds: validQueryTimeout(connection.queryTimeoutSeconds),
                 additionalFields: additionalFields,
                 redisDatabase: connection.redisDatabase,
                 startupCommands: connection.startupCommands,
@@ -811,7 +815,15 @@ enum ConnectionExportService {
         let finalHost = exportable.host.trimmingCharacters(in: .whitespaces).isEmpty
             ? "localhost" : exportable.host
 
-        return DatabaseConnection(
+        var additionalFields = exportable.additionalFields ?? [:]
+        let legacyConnectTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+            .flatMap(Int.init)
+        let legacyQueryTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+            .flatMap(Int.init)
+
+        var connection = DatabaseConnection(
             id: id,
             name: name,
             host: finalHost,
@@ -832,8 +844,23 @@ enum ConnectionExportService {
             redisDatabase: exportable.redisDatabase,
             startupCommands: exportable.startupCommands,
             localOnly: exportable.localOnly ?? false,
-            additionalFields: exportable.additionalFields
+            additionalFields: additionalFields
         )
+        if let connectTimeoutSeconds = validConnectTimeout(exportable.connectTimeoutSeconds ?? legacyConnectTimeout) {
+            connection.connectTimeoutSeconds = connectTimeoutSeconds
+        }
+        if let queryTimeoutSeconds = validQueryTimeout(exportable.queryTimeoutSeconds ?? legacyQueryTimeout) {
+            connection.queryTimeoutSeconds = queryTimeoutSeconds
+        }
+        return connection
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { (1 ... 600).contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { $0 >= 0 ? $0 : nil }
     }
 
     private static func uniqueCopyName(for baseName: String, taken: Set<String>) -> String {

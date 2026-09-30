@@ -59,12 +59,13 @@ struct RemoteFetchResult: Sendable {
 }
 
 internal protocol RemoteFileSource {
-    func exists(_ path: String) -> Bool
+    func exists(_ path: String, deadline: ConnectionDeadline) throws -> Bool
 
     @discardableResult
     func download(
         remotePath: String,
         to localURL: URL,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)?,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> (bytes: UInt64, sha256: String)
@@ -101,12 +102,14 @@ enum RemoteDatabaseFileTransfer {
     static func plan(
         session: LibSSH2SFTPSession,
         remotePath: String,
-        layout: DatabaseFileLayout
-    ) -> RemoteFetchPlan {
-        let presentSidecars = layout.dataCarryingSidecarSuffixes
-            .filter { session.exists(remotePath + $0) }
+        layout: DatabaseFileLayout,
+        deadline: ConnectionDeadline
+    ) throws -> RemoteFetchPlan {
+        let presentSidecars = try layout.dataCarryingSidecarSuffixes
+            .filter { try session.exists(remotePath + $0, deadline: deadline) }
 
-        guard layout.supportsRemoteSnapshot, let executable = snapshotExecutable(on: session) else {
+        guard layout.supportsRemoteSnapshot,
+              let executable = try snapshotExecutable(on: session, deadline: deadline) else {
             return .directCopy(sidecars: presentSidecars)
         }
         return .remoteSnapshot(executable: executable)
@@ -116,10 +119,21 @@ enum RemoteDatabaseFileTransfer {
     ///
     /// A server may refuse exec entirely, which a chrooted SFTP-only account does by design. That is
     /// an ordinary answer, not a failure: the caller copies directly and says so.
-    private static func snapshotExecutable(on session: LibSSH2SFTPSession) -> String? {
-        guard let result = try? session.runRemoteCommand("sqlite3 --version"), result.succeeded else {
+    private static func snapshotExecutable(
+        on session: LibSSH2SFTPSession,
+        deadline: ConnectionDeadline
+    ) throws -> String? {
+        let result: RemoteCommandResult
+        do {
+            result = try session.runRemoteCommand("sqlite3 --version", deadline: deadline)
+        } catch let timeout as ConnectionTimeoutError {
+            throw timeout
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             return nil
         }
+        guard result.succeeded else { return nil }
         let version = result.trimmedOutput.split(separator: " ").first.map(String.init) ?? ""
         let parts = version.split(separator: ".").compactMap { Int($0) }
         guard parts.count >= 2 else { return nil }
@@ -135,11 +149,21 @@ enum RemoteDatabaseFileTransfer {
 
     static func fingerprint(
         session: LibSSH2SFTPSession,
-        remotePath: String
+        remotePath: String,
+        deadline: ConnectionDeadline
     ) throws -> RemoteFileFingerprint {
-        let main = try session.stat(remotePath)
+        let main = try session.stat(remotePath, deadline: deadline)
         let walPath = remotePath + "-wal"
-        let wal = try? session.stat(walPath)
+        let wal: SFTPFileStat?
+        do {
+            wal = try session.stat(walPath, deadline: deadline)
+        } catch let timeout as ConnectionTimeoutError {
+            throw timeout
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            wal = nil
+        }
         return RemoteFileFingerprint(
             mainSize: main.size,
             mainModified: main.modified,
@@ -157,15 +181,18 @@ enum RemoteDatabaseFileTransfer {
         layout: DatabaseFileLayout,
         destinationDirectory: URL,
         fileName: String,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)? = nil,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) throws -> RemoteFetchResult {
         let remotePath = identity.path
-        let stat = try session.stat(remotePath)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.remoteFile("\(identity.host):\(identity.port)")
+        try deadline.check(endpoint: timeoutEndpoint)
+        let stat = try session.stat(remotePath, deadline: deadline)
         guard !stat.isDirectory else { throw SFTPError.notAFile(path: remotePath) }
         try requireLocalSpace(for: stat.size, at: destinationDirectory)
 
-        let before = try fingerprint(session: session, remotePath: remotePath)
+        let before = try fingerprint(session: session, remotePath: remotePath, deadline: deadline)
         let staging = destinationDirectory.appendingPathComponent(".\(fileName).incoming")
         try? FileManager.default.removeItem(at: staging)
 
@@ -178,13 +205,18 @@ enum RemoteDatabaseFileTransfer {
                 executable: executable,
                 remotePath: remotePath,
                 staging: staging,
+                deadline: deadline,
                 progress: progress,
                 isCancelled: isCancelled
             )
             fetchedSidecars = []
         case .directCopy(let sidecars):
             downloaded = try session.download(
-                remotePath: remotePath, to: staging, progress: progress, isCancelled: isCancelled
+                remotePath: remotePath,
+                to: staging,
+                deadline: deadline,
+                progress: progress,
+                isCancelled: isCancelled
             )
             fetchedSidecars = try fetchSidecars(
                 from: session,
@@ -192,9 +224,11 @@ enum RemoteDatabaseFileTransfer {
                 sidecars: sidecars,
                 destinationDirectory: destinationDirectory,
                 fileName: fileName,
+                deadline: deadline,
                 isCancelled: isCancelled
             )
         }
+        try deadline.check(endpoint: timeoutEndpoint)
 
         let expectedBytes = plan.method == .remoteSnapshot ? downloaded.bytes : stat.size
         let verdict = DatabaseFileIntegrity.verifyDownload(
@@ -206,6 +240,7 @@ enum RemoteDatabaseFileTransfer {
             try? FileManager.default.removeItem(at: staging)
             throw transferError(for: verdict, path: remotePath)
         }
+        try deadline.check(endpoint: timeoutEndpoint)
 
         let workingCopy = destinationDirectory.appendingPathComponent(fileName)
         try replaceLocalItem(at: workingCopy, with: staging)
@@ -215,6 +250,7 @@ enum RemoteDatabaseFileTransfer {
             destinationDirectory: destinationDirectory,
             fileName: fileName
         )
+        try deadline.check(endpoint: timeoutEndpoint)
 
         let manifest = RemoteFileManifest(
             origin: identity.displayOrigin,
@@ -268,12 +304,13 @@ enum RemoteDatabaseFileTransfer {
         executable: String,
         remotePath: String,
         staging: URL,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)?,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> (bytes: UInt64, sha256: String) {
         if isCancelled() { throw SFTPError.cancelled }
         let snapshotPath = "\(remotePath).tablepro-snapshot-\(UUID().uuidString)"
-        defer { session.remove(snapshotPath) }
+        defer { session.remove(snapshotPath, deadline: deadline) }
 
         /// `umask 077` makes `VACUUM INTO` create the snapshot `0600` from the start, so a full copy
         /// of a private database is never briefly world-readable beside it. The leading `rm` clears
@@ -284,7 +321,7 @@ enum RemoteDatabaseFileTransfer {
         let vacuum = "\(executable) \(quotedPath) "
             + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(sqlStringLiteral(snapshotPath))")
         let command = "umask 077; rm -f \(quotedPath).tablepro-snapshot-* 2>/dev/null; \(vacuum)"
-        let result = try session.runRemoteCommand(command)
+        let result = try session.runRemoteCommand(command, deadline: deadline)
         guard result.succeeded else {
             throw SFTPError.remoteCommandFailed(
                 command: "VACUUM INTO",
@@ -294,7 +331,11 @@ enum RemoteDatabaseFileTransfer {
         }
 
         return try session.download(
-            remotePath: snapshotPath, to: staging, progress: progress, isCancelled: isCancelled
+            remotePath: snapshotPath,
+            to: staging,
+            deadline: deadline,
+            progress: progress,
+            isCancelled: isCancelled
         )
     }
 
@@ -304,18 +345,25 @@ enum RemoteDatabaseFileTransfer {
         sidecars: [String],
         destinationDirectory: URL,
         fileName: String,
+        deadline: ConnectionDeadline,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> Set<String> {
         var fetched: Set<String> = []
         for suffix in sidecars {
             if isCancelled() { throw SFTPError.cancelled }
             let remoteSidecar = remotePath + suffix
-            guard source.exists(remoteSidecar) else {
+            guard try source.exists(remoteSidecar, deadline: deadline) else {
                 Self.logger.info("The \(suffix, privacy: .public) sidecar was gone before it was fetched")
                 continue
             }
             let target = destinationDirectory.appendingPathComponent(fileName + suffix)
-            try source.download(remotePath: remoteSidecar, to: target, progress: nil, isCancelled: isCancelled)
+            try source.download(
+                remotePath: remoteSidecar,
+                to: target,
+                deadline: deadline,
+                progress: nil,
+                isCancelled: isCancelled
+            )
             fetched.insert(suffix)
             Self.logger.info("Fetched the \(suffix, privacy: .public) sidecar")
         }

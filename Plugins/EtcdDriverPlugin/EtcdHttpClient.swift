@@ -322,6 +322,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private var authToken: String?
     private var authTask: Task<Void, Error>?
     private var apiPrefix = "v3"
+    private var connectDeadline: PluginConnectDeadline?
     private let queryTimeout = HttpQueryTimeoutBox()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
@@ -355,11 +356,21 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     // MARK: - Connection Lifecycle
 
-    func connect() async throws {
+    func connect() async throws -> String? {
         let tlsMode = config.additionalFields["etcdTlsMode"] ?? "Disabled"
+        let connectTimeout = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
+        lock.withLock { connectDeadline = deadline }
+        defer { lock.withLock { connectDeadline = nil } }
 
         let urlConfig = URLSessionConfiguration.default
-        urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        urlConfig.timeoutIntervalForRequest = max(
+            HttpQueryTimeout.sessionBootstrapRequestTimeout,
+            deadline.remainingSeconds()
+        )
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         let delegate: URLSessionDelegate?
@@ -385,6 +396,9 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 try await refreshToken(replacing: nil)
             }
             try await healthCheck()
+            let version = await serverVersion()
+            Self.logger.debug("Connected to etcd at \(self.config.host):\(self.config.port)")
+            return version
         } catch let etcdError as EtcdError {
             invalidateSession()
             Self.logger.error("Connection failed: \(etcdError.localizedDescription)")
@@ -394,8 +408,6 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             Self.logger.error("Connection failed: \(error.localizedDescription)")
             throw EtcdError.connectionFailed(error.localizedDescription)
         }
-
-        Self.logger.debug("Connected to etcd at \(self.config.host):\(self.config.port)")
     }
 
     private var hasCredentials: Bool {
@@ -431,6 +443,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             authTask?.cancel()
             authTask = nil
             authToken = nil
+            connectDeadline = nil
             session?.invalidateAndCancel()
             session = nil
         }
@@ -446,6 +459,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         session = nil
         authToken = nil
         apiPrefix = "v3"
+        connectDeadline = nil
         lock.unlock()
         for task in pending {
             task.cancel()
@@ -517,6 +531,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = effectiveRequestTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(probe)
 
@@ -584,7 +599,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         guard let url = URL(string: "\(baseUrl)/version") else { return nil }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        request.timeoutInterval = effectiveRequestTimeout
         guard let (data, response) = try? await session.data(for: request),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
@@ -799,7 +814,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             path: path,
             body: body,
             token: authorized ? token : nil,
-            timeout: queryTimeout.requestTimeoutInterval
+            timeout: effectiveRequestTimeout
         )
         let (data, response) = try await perform(request: request, cancellable: cancellable)
 
@@ -846,6 +861,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
         request.httpBody = try JSONEncoder().encode(body)
         return request
+    }
+
+    private var effectiveRequestTimeout: TimeInterval {
+        lock.withLock { connectDeadline }?.remainingSeconds() ?? queryTimeout.requestTimeoutInterval
     }
 
     private func perform(

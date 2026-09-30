@@ -135,6 +135,13 @@ final class HanaFailureMappingTests: XCTestCase {
         XCTAssertEqual(connectTimeout.kind, .connect)
         XCTAssertTrue(connectTimeout.message.contains("30"))
         XCTAssertNotEqual(connectTimeout.message, queryTimeout.message)
+
+        let remaining = try hanaError(HanaFailureMapping.connectError(
+            for: HanaBridgeFailure(kind: .timeout),
+            cancellationRequested: false,
+            timeoutSeconds: 1.25
+        ))
+        XCTAssertTrue(remaining.message.contains("2"))
     }
 
     func testConnectMappingLeavesOtherKindsAlone() throws {

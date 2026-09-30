@@ -23,6 +23,8 @@ final class ConnectionImportDecoderTests: XCTestCase {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 0,
             additionalFields: ["schema": "public"],
             redisDatabase: nil,
             startupCommands: nil,
@@ -45,11 +47,33 @@ final class ConnectionImportDecoderTests: XCTestCase {
         XCTAssertEqual(result.sshConfig?.port, 2_222)
         XCTAssertEqual(result.sslConfig?.mode, "require")
         XCTAssertEqual(result.tagName, "production")
+        XCTAssertEqual(result.connectTimeoutSeconds, 12)
+        XCTAssertEqual(result.queryTimeoutSeconds, 0)
         XCTAssertEqual(result.additionalFields?["schema"], "public")
     }
 
+    func testOlderEnvelopeWithoutTimeoutFieldsDecodesThemAsNil() throws {
+        let json = Data(
+            """
+            {"formatVersion":1,"exportedAt":"1970-01-01T00:00:00Z","appVersion":"0.1",\
+            "connections":[{"name":"Legacy","host":"localhost","port":3306,\
+            "database":"","username":"","type":"MySQL"}]}
+            """.utf8
+        )
+
+        let decoded = try ConnectionImportDecoder.decodeData(json)
+        let connection = try XCTUnwrap(decoded.connections.first)
+
+        XCTAssertNil(connection.connectTimeoutSeconds)
+        XCTAssertNil(connection.queryTimeoutSeconds)
+    }
+
     func testDecodeStripsBlockedAdditionalFields() throws {
-        let connection = makeConnection(additionalFields: ["schema": "public", "preConnectScript": "rm -rf /"])
+        let connection = makeConnection(
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 0,
+            additionalFields: ["schema": "public", "preConnectScript": "rm -rf /"]
+        )
         let envelope = makeEnvelope(connections: [connection])
         let data = try ConnectionImportDecoder.encode(envelope)
 
@@ -57,6 +81,47 @@ final class ConnectionImportDecoderTests: XCTestCase {
         let fields = try XCTUnwrap(decoded.connections.first?.additionalFields)
         XCTAssertEqual(fields["schema"], "public")
         XCTAssertNil(fields["preConnectScript"])
+        XCTAssertEqual(decoded.connections.first?.connectTimeoutSeconds, 12)
+        XCTAssertEqual(decoded.connections.first?.queryTimeoutSeconds, 0)
+    }
+
+    func testConnectionCopiesPreserveTimeouts() {
+        let connection = makeConnection(
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 0,
+            additionalFields: ["preConnectScript": "blocked", "schema": "public"]
+        )
+
+        let copies = [
+            connection.retyped(to: "PostgreSQL"),
+            connection.renamed(to: "Renamed"),
+            connection.withoutStartupCommands(),
+            connection.withoutTunnelCommand(),
+            connection.sanitizedForImport()
+        ]
+
+        XCTAssertTrue(copies.allSatisfy { $0.connectTimeoutSeconds == 12 })
+        XCTAssertTrue(copies.allSatisfy { $0.queryTimeoutSeconds == 0 })
+    }
+
+    func testImportRejectsInvalidExplicitTimeoutsInsteadOfFallingBackToLegacyFields() throws {
+        let connection = makeConnection(
+            connectTimeoutSeconds: 601,
+            queryTimeoutSeconds: -1,
+            additionalFields: [
+                "connectTimeoutSeconds": "15",
+                "queryTimeoutSeconds": "30",
+                "schema": "public"
+            ]
+        )
+        let data = try ConnectionImportDecoder.encode(makeEnvelope(connections: [connection]))
+
+        let decoded = try ConnectionImportDecoder.decodeData(data)
+        let imported = try XCTUnwrap(decoded.connections.first)
+
+        XCTAssertNil(imported.connectTimeoutSeconds)
+        XCTAssertNil(imported.queryTimeoutSeconds)
+        XCTAssertEqual(imported.additionalFields, ["schema": "public"])
     }
 
     func testFutureFormatVersionThrows() throws {
@@ -106,12 +171,15 @@ func makeConnection(
     database: String = "test",
     username: String = "root",
     type: String = "MySQL",
+    connectTimeoutSeconds: Int? = nil,
+    queryTimeoutSeconds: Int? = nil,
     additionalFields: [String: String]? = nil
 ) -> ExportableConnection {
     ExportableConnection(
         name: name, host: host, port: port, database: database, username: username, type: type,
         sshConfig: nil, sslConfig: nil, color: nil, tagName: nil, groupName: nil,
         sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+        connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
         additionalFields: additionalFields, redisDatabase: nil, startupCommands: nil, localOnly: nil
     )
 }

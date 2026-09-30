@@ -48,6 +48,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     var partitionsKeyspace: Bool { get }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
+    /// Adopts the provisionally opened channel after all required bootstrap probes have consumed
+    /// the same absolute deadline. Normal query/session timeouts begin only after this returns.
+    func finishConnecting() async throws
     func disconnect()
     func cancelCurrentQuery()
 
@@ -99,6 +102,8 @@ extension RedisCommandChannel {
     func connect() async throws {
         try await connect(reportingStage: { _ in })
     }
+
+    func finishConnecting() async throws {}
 
     func executeCommand(_ args: [Data]) async throws -> RedisReply {
         try await executeCommand(args, scope: .session)

@@ -50,7 +50,10 @@ actor CassandraConnectionActor {
         sslClientKeyPath: String?,
         sslClientKeyPassphrase: String?,
         awsCredentials: AWSCredentials? = nil,
-        awsRegion: String? = nil
+        awsRegion: String? = nil,
+        connectTimeout: CassandraConnectTimeout = CassandraConnectTimeout(
+            milliseconds: CassandraConnectTimeout.defaultMilliseconds
+        )
     ) throws {
         cluster = cass_cluster_new()
         guard let cluster else {
@@ -120,8 +123,9 @@ actor CassandraConnectionActor {
             cass_ssl_free(ssl)
         }
 
-        // Connection timeout (10 seconds)
-        cass_cluster_set_connect_timeout(cluster, 10_000)
+        let nativeTimeout = connectTimeout.nativeConfiguration
+        cass_cluster_set_connect_timeout(cluster, nativeTimeout.connectMilliseconds)
+        cass_cluster_set_resolve_timeout(cluster, nativeTimeout.resolveMilliseconds)
         cass_cluster_set_request_timeout(cluster, 30_000)
 
         let newSession = cass_session_new()
@@ -147,7 +151,14 @@ actor CassandraConnectionActor {
             throw CassandraPluginError.connectionFailed("Failed to initiate connection")
         }
 
-        cass_future_wait(future)
+        let didFinish = cass_future_wait_timed(future, cass_duration_t(nativeTimeout.waitMicroseconds))
+        guard didFinish == cass_true else {
+            cass_future_free(future)
+            cass_session_free(newSession)
+            cass_cluster_free(cluster)
+            self.cluster = nil
+            throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
+        }
         let rc = cass_future_error_code(future)
 
         if rc != CASS_OK {
@@ -535,9 +546,21 @@ actor CassandraConnectionActor {
         currentKeyspace = keyspace
     }
 
-    func serverVersion() throws -> String? {
-        let result = try executeQuery("SELECT release_version FROM system.local WHERE key = 'local'")
-        return result.rows.first?.first?.asText
+    func serverVersion(requestTimeoutMilliseconds: UInt32) throws -> String? {
+        guard let session else {
+            throw CassandraPluginError.notConnected
+        }
+        let cql = "SELECT release_version FROM system.local WHERE key = 'local'"
+        guard let statement = cass_statement_new(cql, 0) else {
+            throw CassandraPluginError.queryFailed("Failed to create server version probe")
+        }
+        defer { cass_statement_free(statement) }
+        guard cass_statement_set_request_timeout(statement, UInt64(requestTimeoutMilliseconds)) == CASS_OK else {
+            throw CassandraPluginError.queryFailed("Failed to set the server version probe timeout")
+        }
+        guard let result = try executePage(statement, on: session) else { return nil }
+        defer { cass_result_free(result) }
+        return Self.decodeRows(of: result, skipping: 0, taking: 1).first?.first?.asText
     }
 
     // MARK: - Private Helpers

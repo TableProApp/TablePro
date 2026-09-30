@@ -169,7 +169,7 @@ final class HanaBridgeContractTests: XCTestCase {
 
         XCTAssertEqual(object["tlsMode"] as? String, "verifyIdentity")
         XCTAssertEqual(object["port"] as? Int, 443)
-        XCTAssertEqual(object["connectTimeoutSeconds"] as? Int, 30)
+        XCTAssertEqual(object["connectTimeoutSeconds"] as? Double, 30)
         XCTAssertEqual(
             Set(object.keys),
             [

@@ -164,6 +164,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Connection
 
     func connect() async throws {
+        let connectDeadline = CassandraConnectDeadline(
+            timeout: CassandraConnectTimeout(additionalFields: config.additionalFields)
+        )
         let keyspace = config.database.isEmpty ? nil : config.database
         let legacyCaPath = config.additionalFields["sslCaCertPath"]
         let resolvedCaPath = config.ssl.caCertificatePath.isEmpty ? legacyCaPath : config.ssl.caCertificatePath
@@ -183,8 +186,21 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                     String(localized: "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
                 )
             }
+            guard let awsBudget = connectDeadline.awsSessionBudget() else {
+                throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
+            }
+            let awsSession = awsBudget.makeSession()
+            defer { awsSession.invalidateAndCancel() }
             awsRegion = region
-            awsCredentials = try await AWSCredentialResolver.resolve(source: awsAuth, fields: config.additionalFields)
+            awsCredentials = try await AWSCredentialResolver.resolve(
+                source: awsAuth,
+                fields: config.additionalFields,
+                session: awsSession
+            )
+        }
+
+        guard let remainingConnectMilliseconds = connectDeadline.remainingMilliseconds() else {
+            throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
         }
 
         try await connectionActor.connect(
@@ -199,25 +215,48 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslClientKeyPath: clientKeyPath,
             sslClientKeyPassphrase: clientKeyPassphrase,
             awsCredentials: awsCredentials,
-            awsRegion: awsRegion
+            awsRegion: awsRegion,
+            connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))
         )
 
         if let keyspace {
             stateLock.withLock { _currentKeyspace = keyspace }
         }
 
-        if let version = try? await connectionActor.serverVersion() {
-            stateLock.withLock { _cachedVersion = version }
+        guard let versionProbeMilliseconds = connectDeadline.remainingMilliseconds() else {
+            await connectionActor.close()
+            clearConnectedState()
+            throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
+        }
+        do {
+            if let version = try await connectionActor.serverVersion(
+                requestTimeoutMilliseconds: versionProbeMilliseconds
+            ) {
+                stateLock.withLock { _cachedVersion = version }
+            }
+        } catch {
+            await connectionActor.close()
+            clearConnectedState()
+            throw CassandraPluginError.connectionFailed(error.localizedDescription)
         }
 
         let caps = CassandraCapabilities(
             releaseVersionMajor: CassandraCapabilities.parseMajorVersion(serverVersion)
         )
         guard caps.hasSystemSchemaKeyspace else {
+            await connectionActor.close()
+            clearConnectedState()
             throw CassandraPluginError.connectionFailed(String(
                 format: String(localized: "Cassandra %@ is not supported. TablePro requires Cassandra 3.0 or later (the system_schema keyspace was introduced in 3.0)."),
                 serverVersion ?? "<unknown>"
             ))
+        }
+    }
+
+    private func clearConnectedState() {
+        stateLock.withLock {
+            _currentKeyspace = nil
+            _cachedVersion = nil
         }
     }
 
