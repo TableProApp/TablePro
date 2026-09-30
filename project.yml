@@ -831,6 +831,7 @@ targets:
       - Plugins/SurrealDBDriverPlugin/SurrealInfoParser.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQL.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQueryBuilder.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealRawCondition.swift
       - Plugins/SurrealDBDriverPlugin/SurrealRowFlattener.swift
       - Plugins/SurrealDBDriverPlugin/SurrealStatementGenerator.swift
       - Plugins/SurrealDBDriverPlugin/SurrealValue+Display.swift

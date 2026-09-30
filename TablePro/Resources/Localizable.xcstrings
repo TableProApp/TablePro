@@ -184849,6 +184849,12 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
+
+    },
+    "SurrealDB cannot filter rows with %@." : {
+
     }
   },
   "version" : "1.1"

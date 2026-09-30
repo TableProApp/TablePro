@@ -7,6 +7,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 struct SurrealQLTests {
     @Test("Identifiers are backtick-quoted only when they need it")
     func identifiers() {
@@ -97,7 +99,7 @@ struct SurrealQueryBuilderTests {
         let hostile = "x'; REMOVE TABLE person; --"
         let query = SurrealQueryBuilder.filtered(
             table: "person", scope: scope,
-            filters: [(column: "name", op: "=", value: hostile)],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: hostile)],
             logicMode: "and", sortColumns: [], limit: 10, offset: 0
         )
         #expect(query.contains("name = 'x\\'; REMOVE TABLE person; --'"))
@@ -105,48 +107,48 @@ struct SurrealQueryBuilderTests {
     }
 
     @Test("Filter operators map onto SurrealQL")
-    func operators() {
-        func clause(_ op: String, _ value: String) -> String {
-            SurrealQueryBuilder.whereClause(
-                filters: [(column: "c", op: op, value: value)], logicMode: "and"
+    func operators() throws {
+        func clause(_ op: String, _ value: String) throws -> String {
+            try SurrealQueryBuilder.whereClause(
+                filters: [PluginQueryFilter(column: "c", op: op, value: value)], logicMode: "and"
             ) ?? ""
         }
-        #expect(clause("=", "5") == "c = 5")
-        #expect(clause(">", "5") == "c > 5")
-        #expect(clause("=", "abc") == "c = 'abc'")
-        #expect(clause("=", "true") == "c = true")
-        #expect(clause("IS NULL", "") == "(c = NONE OR c = NULL)")
-        #expect(clause("CONTAINS", "x") == "string::contains(<string> c, 'x')")
-        #expect(clause("STARTS WITH", "x") == "string::starts_with(<string> c, 'x')")
-        #expect(clause("IN", "1, 2") == "c INSIDE [1, 2]")
+        #expect(try clause("=", "5") == "c = 5")
+        #expect(try clause(">", "5") == "c > 5")
+        #expect(try clause("=", "abc") == "c = 'abc'")
+        #expect(try clause("=", "true") == "c = true")
+        #expect(try clause("IS NULL", "") == "(c = NONE OR c = NULL)")
+        #expect(try clause("CONTAINS", "x") == "string::contains(<string> c, 'x')")
+        #expect(try clause("STARTS WITH", "x") == "string::starts_with(<string> c, 'x')")
+        #expect(try clause("IN", "1, 2") == "c INSIDE [1, 2]")
     }
 
     @Test("Only a real table:id shape becomes a record literal; look-alikes stay strings")
-    func literalRecordDisambiguation() {
-        func clause(_ value: String) -> String {
-            SurrealQueryBuilder.whereClause(
-                filters: [(column: "c", op: "=", value: value)], logicMode: "and"
+    func literalRecordDisambiguation() throws {
+        func clause(_ value: String) throws -> String {
+            try SurrealQueryBuilder.whereClause(
+                filters: [PluginQueryFilter(column: "c", op: "=", value: value)], logicMode: "and"
             ) ?? ""
         }
-        #expect(clause("person:tobie") == "c = person:tobie")
-        #expect(clause("12:30") == "c = '12:30'", "a time-shaped value is a string, not a record")
-        #expect(clause("1e5") == "c = 1e5")
-        #expect(clause("null") == "c = NULL")
-        #expect(clause("none") == "c = NONE")
-        #expect(clause("plain") == "c = 'plain'")
+        #expect(try clause("person:tobie") == "c = person:tobie")
+        #expect(try clause("12:30") == "c = '12:30'", "a time-shaped value is a string, not a record")
+        #expect(try clause("1e5") == "c = 1e5")
+        #expect(try clause("null") == "c = NULL")
+        #expect(try clause("none") == "c = NONE")
+        #expect(try clause("plain") == "c = 'plain'")
     }
 
     @Test("A hostile filter value cannot escape its literal in any branch")
-    func literalBranchesContainPayloads() {
-        func clause(_ value: String) -> String {
-            SurrealQueryBuilder.whereClause(
-                filters: [(column: "c", op: "=", value: value)], logicMode: "and"
+    func literalBranchesContainPayloads() throws {
+        func clause(_ value: String) throws -> String {
+            try SurrealQueryBuilder.whereClause(
+                filters: [PluginQueryFilter(column: "c", op: "=", value: value)], logicMode: "and"
             ) ?? ""
         }
         // String branch: the closing quote is escaped.
-        #expect(clause("x'; REMOVE TABLE person; --") == "c = 'x\\'; REMOVE TABLE person; --'")
+        #expect(try clause("x'; REMOVE TABLE person; --") == "c = 'x\\'; REMOVE TABLE person; --'")
         // Record branch: the id part is backtick-quoted, so ; stays inside the identifier.
-        let recordish = clause("person:a;REMOVE")
+        let recordish = try clause("person:a;REMOVE")
         #expect(recordish.hasPrefix("c = person:`") && recordish.hasSuffix("`"))
     }
 
@@ -154,6 +156,182 @@ struct SurrealQueryBuilderTests {
     func count() {
         let query = SurrealQueryBuilder.count(table: "person", scope: scope, filters: [], logicMode: "and")
         #expect(query.contains("SELECT count() AS total FROM person GROUP ALL;"))
+    }
+
+    private func clause(
+        _ filter: TableFilter,
+        kinds: [String: PluginColumnKind] = [:]
+    ) throws -> String? {
+        try SurrealQueryBuilder.whereClause(
+            filters: [filter.asPluginQueryFilter], logicMode: "and", columnKinds: kinds
+        )
+    }
+
+    @Test("IS EMPTY matches a missing, null or empty-string field")
+    func isEmpty() throws {
+        let filter = TableFilter(columnName: "name", filterOperator: .isEmpty)
+        #expect(try clause(filter) == "(name = NONE OR name = NULL OR name = '')")
+    }
+
+    @Test("IS NOT EMPTY keeps the fields that hold a value, not the empty ones")
+    func isNotEmpty() throws {
+        let filter = TableFilter(columnName: "name", filterOperator: .isNotEmpty)
+        #expect(try clause(filter) == "(name != NONE AND name != NULL AND name != '')")
+    }
+
+    @Test("REGEX matches the pattern and passes over a missing or null field")
+    func regex() throws {
+        let filter = TableFilter(columnName: "name", filterOperator: .regex, value: "^A")
+        #expect(try clause(filter) == "(name != NONE AND name != NULL AND string::matches(<string> name, '^A'))")
+    }
+
+    @Test("The raw filter row is spliced in as a SurrealQL condition")
+    func rawRow() throws {
+        let filter = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: "age > 10")
+        #expect(try clause(filter) == "(age > 10)")
+    }
+
+    @Test("A raw condition that only reads keeps its strings, identifiers and function calls")
+    func rawConditionThatReads() throws {
+        let conditions = [
+            "name = 'DELETE me' AND `update` = 1",
+            "array::len(array::remove([1, 2], 0)) = 1 OR ->likes->person CONTAINS person:\u{27E8}update\u{27E9}",
+            "(age > 10 AND age < 20) OR $session.update = NONE",
+            "age IN 10..20 AND string::lowercase(name) = 'a'"
+        ]
+        for text in conditions {
+            let filter = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: text)
+            #expect(try clause(filter) == "(" + text + ")")
+        }
+    }
+
+    @Test("A raw condition that could write, end the statement or hide the rest of it is refused")
+    func rawConditionThatWrites() {
+        let conditions = [
+            "age > 1 OR (CREATE probe) = []",
+            "true OR { DELETE person }",
+            "age > 1 OR (upsert probe:one) = []",
+            "fn::wipe() = true",
+            "fn ::wipe() = true",
+            "fn\n::wipe() = true",
+            "http::post('https://example.com') = NONE",
+            "http ::post('https://example.com') = NONE",
+            "file::delete(bucket:/a.txt) = NONE",
+            "NONE ?:UPSERT probe:one SET n += 1",
+            "{a:UPSERT probe:one}.a != NONE",
+            "age > 1 ?:DELETE person:z",
+            "age IN 1..UPSERT probe:one SET n += 1",
+            "age > 1; REMOVE TABLE person",
+            "age > 1 -- the rest",
+            "age > 1 /* note */",
+            "age > 1 # note",
+            "age > 1) OR (true",
+            "name = 'unterminated"
+        ]
+        for text in conditions {
+            let filter = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: text)
+            #expect(throws: SurrealFilterRefusal.rawConditionNotReadOnly, "\(text)") {
+                try clause(filter)
+            }
+        }
+    }
+
+    @Test("A record id named after a writing keyword is refused unless its id is bracketed")
+    func rawConditionWithKeywordRecordId() throws {
+        let bare = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: "id = person:update")
+        #expect(throws: SurrealFilterRefusal.rawConditionNotReadOnly) {
+            try clause(bare)
+        }
+        let bracketed = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: "id = person:\u{27E8}update\u{27E9}")
+        #expect(try clause(bracketed) == "(id = person:\u{27E8}update\u{27E9})")
+    }
+
+    @Test("A refused raw condition never reaches the server as SurrealQL")
+    func refusedRawConditionThrowsOnTheServer() {
+        let raw = TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: "true OR (DELETE person) = []")
+        let query = SurrealQueryBuilder.filtered(
+            table: "person", scope: scope, filters: [raw.asPluginQueryFilter],
+            logicMode: "and", sortColumns: [], limit: 10, offset: 0
+        )
+        #expect(query.hasPrefix("USE NS ns DB db;\nTHROW '"))
+        #expect(!query.contains("DELETE"))
+    }
+
+    @Test("BETWEEN from the filter bar's own encoding uses both bounds")
+    func betweenFromAppEncoding() throws {
+        let filter = TableFilter(columnName: "age", filterOperator: .between, value: "10", secondValue: "20")
+        #expect(filter.asPluginQueryFilter.value == "10,20")
+        #expect(try clause(filter, kinds: ["age": .integer]) == "(age >= 10 AND age <= 20)")
+    }
+
+    @Test("BETWEEN keeps a comma that belongs to a bound")
+    func betweenWithCommaInBound() throws {
+        let filter = TableFilter(columnName: "name", filterOperator: .between, value: "Smith, John", secondValue: "Zed")
+        #expect(try clause(filter, kinds: ["name": .text]) == "(name >= 'Smith, John' AND name <= 'Zed')")
+    }
+
+    @Test("BETWEEN takes the lower bound off by scalars, so a bound ending in a prepend mark keeps its text")
+    func betweenWithPrependScalarBeforeTheSeparator() throws {
+        let filter = TableFilter(columnName: "code", filterOperator: .between, value: "A\u{0600}", secondValue: "B")
+        #expect(try clause(filter, kinds: ["code": .text]) == "(code >= 'A\u{0600}' AND code <= 'B')")
+    }
+
+    @Test("BETWEEN without a separate upper bound splits the joined value")
+    func betweenFromJoinedValue() throws {
+        let clause = try SurrealQueryBuilder.whereClause(
+            filters: [PluginQueryFilter(column: "age", op: "BETWEEN", value: "10,20")], logicMode: "and"
+        )
+        #expect(clause == "(age >= 10 AND age <= 20)")
+    }
+
+    @Test("BETWEEN without a separate upper bound splits the joined value by scalars")
+    func betweenFromJoinedValueWithPrependScalar() throws {
+        let clause = try SurrealQueryBuilder.whereClause(
+            filters: [PluginQueryFilter(column: "code", op: "BETWEEN", value: "A\u{0600},B")],
+            logicMode: "and",
+            columnKinds: ["code": .text]
+        )
+        #expect(clause == "(code >= 'A\u{0600}' AND code <= 'B')")
+    }
+
+    @Test("BETWEEN with one bound is refused")
+    func betweenWithOneBound() {
+        #expect(throws: SurrealFilterRefusal.incompleteRange) {
+            try SurrealQueryBuilder.whereClause(
+                filters: [PluginQueryFilter(column: "age", op: "BETWEEN", value: "10")], logicMode: "and"
+            )
+        }
+    }
+
+    @Test("Every operator the filter bar offers has a condition of its own, never an equality")
+    func everyFilterBarOperatorIsMapped() throws {
+        for filterOperator in FilterOperator.allCases where filterOperator != .equal {
+            let filter = TableFilter(columnName: "c", filterOperator: filterOperator, value: "1", secondValue: "2")
+            let condition = try clause(filter)
+            #expect(condition != "c = 1", "\(filterOperator.rawValue) fell back to an equality")
+        }
+    }
+
+    @Test("An operator SurrealDB has no condition for is refused")
+    func unknownOperatorRefused() {
+        #expect(throws: SurrealFilterRefusal.unsupportedOperator("SOUNDS LIKE")) {
+            try SurrealQueryBuilder.whereClause(
+                filters: [PluginQueryFilter(column: "name", op: "SOUNDS LIKE", value: "x")], logicMode: "and"
+            )
+        }
+    }
+
+    @Test("A refused filter runs as a THROW, so the grid reports it instead of showing no rows")
+    func refusedFilterThrowsOnTheServer() {
+        let filters = [PluginQueryFilter(column: "name", op: "SOUNDS LIKE", value: "x")]
+        let refusal = "USE NS ns DB db;\nTHROW 'SurrealDB cannot filter rows with SOUNDS LIKE.';"
+        let browse = SurrealQueryBuilder.filtered(
+            table: "person", scope: scope, filters: filters,
+            logicMode: "and", sortColumns: [], limit: 10, offset: 0
+        )
+        let count = SurrealQueryBuilder.count(table: "person", scope: scope, filters: filters, logicMode: "and")
+        #expect(browse == refusal)
+        #expect(count == refusal)
     }
 }
 

@@ -66,6 +66,18 @@ Changing a cell runs an `UPDATE` that sets only the fields you touched, leaving 
 - On a `RELATION` table, `in` and `out` sit next to `id`.
 - A `SCHEMALESS` table has no declared fields, so its columns come from the rows fetched: a field only some records carry still gets a column, and the rest show an empty cell.
 
+## Filters
+
+Each filter bar operator becomes SurrealQL. **matches regex** runs `string::matches` and passes over records where the field is missing or NULL. **between** includes both bounds. **is empty** matches a missing field, NULL, or `''`.
+
+A **Raw SQL** row takes one SurrealQL condition, placed in parentheses in the `WHERE` clause:
+
+```sql
+->likes->person CONTAINS person:alice
+```
+
+The condition must only read. One that holds a writing statement such as `CREATE`, `UPDATE` or `DELETE`, a `;`, a comment, or a call into `fn::`, `http::`, `api::`, `file::` or `sequence::` is refused, and the grid shows the error in place of rows. Run it in the editor instead. A record id named after one of those statements needs angle brackets: `person:⟨update⟩`.
+
 ## SurrealQL
 
 The editor runs whole SurrealQL scripts, with completions for the common statements:
