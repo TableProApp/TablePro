@@ -82,7 +82,7 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             var isFirstBatch = true
             var columns: [String] = []
 
-            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            let stream = dataSource.streamRows(for: table)
             for try await element in stream {
                 try progress.checkCancellation()
 
