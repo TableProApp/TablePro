@@ -21,6 +21,7 @@ struct AppServices {
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
     let favoriteDatabasesStorage: FavoriteDatabasesStorage
+    let tableFolderStorage: TableFolderStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let aiAccessApprovals: AIAccessApprovals
@@ -54,6 +55,7 @@ struct AppServices {
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,
         favoriteDatabasesStorage: .shared,
+        tableFolderStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         aiAccessApprovals: .shared,

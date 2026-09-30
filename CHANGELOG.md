@@ -10,7 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Folders for tables and views in the sidebar. (#3167)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
+
+### Changed
+
+- Clipboard URL banner for every scheme Import from URL accepts, `+ssh` URLs included.
 
 ### Fixed
 
@@ -21,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
+- Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
+- CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
+- MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
+- XLSX export writing duplicate sheet names that Excel only opens after a repair.
+- Oracle, Snowflake and Dameng `NUMBER` rounded or left empty, and `DECIMAL` losing digits, in Parquet exports.
+- Oracle `BINARY_FLOAT` and `BINARY_DOUBLE` columns written as text in Parquet exports.
+- PostgreSQL `money` values written as null in Parquet exports.
+- Files left behind when a multi-table Parquet export is stopped between tables.
 - Filter-bar BETWEEN refused on Typesense and Weaviate, and given the wrong lower bound on BigQuery.
 - Cassandra filter error telling MCP clients to use a Match All control they do not have.
 - Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
@@ -45,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text.
+- MongoDB refusing text like `[DRAFT] Chapter one...` as a value shortened for display.
+- Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
+- Import from URL ignoring `ssl=1`, `ssl=require` and `ssl=0`.
+- Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for.
+- Release highlights in the update dialog run together into one paragraph.
+- Removed and Deprecated listed after Fixed in GitHub release notes.
 - PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.
 - Empty Check Constraints tab and no check constraints in MCP `describe_table` on CockroachDB.
 - Connect errors a server answered through PGlite, such as a missing database, reported as an unreachable socket server.
@@ -70,6 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop on a ClickHouse SELECT leaving the query running on the server.
 - ClickHouse connect errors such as a wrong password or unknown database shown as "Failed to establish connection".
 - ClickHouse client certificate and key never sent to servers that require mutual TLS.
+- iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
+
+### Security
+
+- Redis Verify Identity accepting a server certificate issued for another host.
 
 ## [0.76.1] - 2026-09-29
 

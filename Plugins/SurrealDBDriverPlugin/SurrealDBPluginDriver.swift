@@ -338,7 +338,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Mutations
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
         schema: String?,
         columns: [String],
@@ -347,8 +347,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        SurrealStatementGenerator.statements(
+    ) throws -> [PluginRowWrite]? {
+        try SurrealStatementGenerator.rowWrites(
             table: table,
             scope: scope(forSchema: schema),
             columns: columns,
