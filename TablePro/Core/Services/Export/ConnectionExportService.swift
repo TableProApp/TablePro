@@ -827,7 +827,7 @@ enum ConnectionExportService {
             sshProfileId: resolvedSSHProfileId,
             credentialMode: resolvedCredentialMode,
             tunnelCommandMode: exportable.tunnelCommand.map { .inline(TunnelCommandConfiguration($0)) } ?? .disabled,
-            safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
+            safeModeLevel: SafeModeLevel(wireValue: exportable.safeModeLevel, isReadOnly: false),
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,
             startupCommands: exportable.startupCommands,

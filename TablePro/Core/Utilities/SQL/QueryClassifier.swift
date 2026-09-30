@@ -232,6 +232,12 @@ enum QueryClassifier {
 private extension QueryClassifier {
     static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
 
+    static let executingExplainOptions: [String] = ["ANALYZE", "ANALYSE"]
+
+    static func explainExecutesStatement(_ options: String) -> Bool {
+        executingExplainOptions.contains { options.contains($0) }
+    }
+
     static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
     static let destructiveKeywords: Set<String> = ["DROP", "TRUNCATE"]
@@ -295,7 +301,10 @@ private extension QueryClassifier {
         let projection = StatementProjection(statement: statement, grammar: grammar)
         let body = projection.body
         let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
-        let base = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let base = keywordTier.tier == .safe
+            ? keywordTier.escalated(to: stateChangingCallTier(projection))
+            : keywordTier
         var classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
         if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType) {
             classification = classification.escalated(with: dynamic)
@@ -368,6 +377,19 @@ private extension QueryClassifier {
         }
 
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    static func stateChangingCallTier(_ projection: StatementProjection) -> QueryTier {
+        guard !explainPrefixes.contains(leadingCodeKeyword(projection.body)) else { return .safe }
+        let calls = SQLFunctionCallScanner.calls(
+            in: projection.statement as NSString,
+            code: projection.code as NSString
+        )
+        let changesState = calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            return SQLStateChangingFunctions.contains(name)
+        }
+        return changesState ? .write : .safe
     }
 
     private static let routineDefinitionKinds: Set<String> = [
@@ -513,7 +535,7 @@ private extension QueryClassifier {
             let word = code.substring(with: NSRange(location: cursor, length: wordEnd - cursor)).uppercased()
             if statementStartKeywords.contains(word) {
                 let statement = (projection.statement as NSString).substring(from: cursor)
-                return (statement, options.contains("ANALYZE"))
+                return (statement, explainExecutesStatement(options))
             }
             options += " " + word
             cursor = skipBlanks(in: code, from: wordEnd)
@@ -651,7 +673,7 @@ private extension QueryClassifier {
             let upperToken = token.uppercased()
             if statementStartKeywords.contains(upperToken) {
                 let statement = statementTriviaStart.map { trimmed[$0...] } ?? remainder
-                return (String(statement), options.contains("ANALYZE"))
+                return (String(statement), explainExecutesStatement(options))
             }
             options += " " + upperToken
             statementTriviaStart = nil

@@ -192,7 +192,7 @@ enum IOSConnectionImportService {
             }
         }
 
-        let safeMode = exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .off
+        let safeModeLevel = SafeModeLevel(wireValue: exportable.safeModeLevel, isReadOnly: false)
 
         return DatabaseConnection(
             id: id,
@@ -203,7 +203,8 @@ enum IOSConnectionImportService {
             username: exportable.username,
             database: exportable.database,
             color: exportable.color.map { ConnectionColor(storedValue: $0) } ?? .none,
-            safeModeLevel: safeMode,
+            isReadOnly: safeModeLevel.blocksWrites,
+            safeModeLevel: safeModeLevel,
             additionalFields: exportable.additionalFields ?? [:],
             sshEnabled: sshEnabled,
             sshConfiguration: sshConfiguration,
