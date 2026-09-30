@@ -184804,6 +184804,30 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "Connection timed out" : {
+
+    },
+    "Timed out while connecting to the Dameng server" : {
+
+    },
+    "Connecting to the remote DuckDB database timed out." : {
+
+    },
+    "Timed out while connecting to the Kafka cluster" : {
+
+    },
+    "Timed out while connecting to the Kafka broker" : {
+
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
+
+    },
+    "Failed to configure the connection timeout" : {
+
+    },
+    "If the query legitimately needs more time, raise this connection's query timeout in Options." : {
+
     }
   },
   "version" : "1.1"
