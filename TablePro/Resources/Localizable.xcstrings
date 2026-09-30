@@ -184770,6 +184770,15 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "Publish %d connections to your team?" : {
+
+    },
+    "Publish “%@” to your team?" : {
+
+    },
+    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
+
     }
   },
   "version" : "1.1"
