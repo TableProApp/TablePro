@@ -124,6 +124,47 @@ struct RowDetailViewModelTests {
         #expect(query.contains("WHERE"))
     }
 
+    @Test("A column the server owns is not offered for editing and is never written")
+    func serverOwnedColumnsTakeNoEdits() async {
+        let columns = [
+            ColumnInfo(name: "code", typeName: "VARCHAR(8)", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(
+                name: "ID", typeName: "INT", isNullable: false, ordinalPosition: 1,
+                isAutoIncrement: true, rejectsWrittenValues: true
+            ),
+            ColumnInfo(name: "doubled", typeName: "INT", ordinalPosition: 2, isGenerated: true),
+            ColumnInfo(name: "name", typeName: "VARCHAR(64)", ordinalPosition: 3)
+        ]
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("a"), .text("1761"), .text("3522"), .text("Alice")])],
+            initialIndex: 0,
+            table: TableInfo(name: "approved"),
+            session: makeSession(driver: driver),
+            columnDetails: columns
+        )
+
+        #expect(vm.takesEdits(at: 1) == false)
+        #expect(vm.takesEdits(at: 2) == false)
+        #expect(vm.takesEdits(at: 3) == true)
+
+        vm.startEditing()
+        vm.setEditedValue("1890", at: 1)
+        vm.setEditedValue("0", at: 2)
+        vm.setEditedValue("Bea", at: 3)
+        let success = await vm.saveChanges()
+
+        #expect(success == true)
+        let query = driver.executedQueries.first ?? ""
+        #expect(query.contains("Bea"))
+        #expect(!query.contains("1890"))
+        #expect(!query.contains("doubled"))
+    }
+
     @Test("saveChanges on an idle session opens a read-write transaction and commits it")
     func saveWrapsIdleSession() async {
         let driver = MockDatabaseDriver()

@@ -531,6 +531,32 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return statements.isEmpty ? nil : statements
     }
 
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        var generator = MSSQLStatementGenerator(
+            qualifiedTable: MSSQLSchemaQueries.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
+        generator.context = context
+        let writes = try generator.rowWrites(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+        return writes.isEmpty ? nil : writes
+    }
+
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {

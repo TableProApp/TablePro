@@ -798,6 +798,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let setClauses = change.cellChanges.map { cellChange -> String in
             let col = escapeOracleIdentifier(cellChange.columnName)
+            guard cellChange.newValue.asText != "__DEFAULT__" else { return "\(col) = DEFAULT" }
             parameters.append(cellChange.newValue)
             return "\(col) = ?"
         }.joined(separator: ", ")

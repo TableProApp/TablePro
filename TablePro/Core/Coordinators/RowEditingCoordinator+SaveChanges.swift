@@ -531,6 +531,12 @@ extension RowEditingCoordinator {
 
         let storage = parent.services.queryHistoryManager
         let generatedColumns = Array(parent.changeManager.generatedColumns)
+        let identityColumns = parent.tabManager.selectedTabId.map { tabId in
+            parent.tabSessionRegistry.tableRows(for: tabId).columnIdentity
+                .filter { $0.value == .always }
+                .map(\.key)
+                .sorted()
+        } ?? []
         let databaseType = connection.type
         let connectionId = connection.id
         let capturedAt = Date()
@@ -549,6 +555,7 @@ extension RowEditingCoordinator {
                     target: target,
                     capturedAt: capturedAt,
                     generatedColumns: generatedColumns,
+                    identityColumns: identityColumns,
                     operations: operations
                 )
             )

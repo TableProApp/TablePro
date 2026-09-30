@@ -21,6 +21,10 @@ struct RewindRecord: Codable, Sendable, Identifiable, Equatable {
     /// from an ordinary one, so the record has to remember them: the table's schema may have moved
     /// on by the time anyone asks for the rows back.
     let generatedColumns: [String]
+    /// The `GENERATED ALWAYS` and SQL Server `IDENTITY` columns among those, which a restore writes back so a deleted
+    /// row returns under the key it had. Nil in a record saved before it was kept, which then cannot tell an
+    /// allocated key from a computed column.
+    let identityColumns: [String]?
     let operations: [RowWriteOperation]
 
     var reversibleOperations: [RowWriteOperation] {

@@ -7,6 +7,10 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
+    /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 206 for `sql_variant`, 403
+    /// for the spatial types), so a keyless match compares them through a cast. `hierarchyid` compares as it is.
+    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "SQL_VARIANT", "IMAGE", "GEOGRAPHY", "GEOMETRY"]
+
     // swiftlint:disable function_body_length
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
@@ -280,7 +284,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
+                    rowMatchTextTypePrefixes: Self.mssqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mssqlDialect,

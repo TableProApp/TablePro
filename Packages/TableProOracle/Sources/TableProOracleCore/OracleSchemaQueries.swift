@@ -34,6 +34,32 @@ public struct OracleColumnRow: Sendable, Equatable {
     public let isPrimaryKey: Bool
     /// The exact SQL that follows `DEFAULT`, or nil when the column has no default. ``OracleColumnDefault`` decides it.
     public let defaultValue: String?
+    public let identityGeneration: OracleIdentityGeneration?
+    public let isVirtual: Bool
+
+    public init(
+        name: String,
+        dataType: String,
+        dataLength: String?,
+        precision: String?,
+        scale: String?,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String?,
+        identityGeneration: OracleIdentityGeneration? = nil,
+        isVirtual: Bool = false
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.dataLength = dataLength
+        self.precision = precision
+        self.scale = scale
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.identityGeneration = identityGeneration
+        self.isVirtual = isVirtual
+    }
 
     public var displayType: String {
         OracleSchemaQueries.fullType(
@@ -43,6 +69,13 @@ public struct OracleColumnRow: Sendable, Equatable {
             scale: scale
         )
     }
+}
+
+/// How an identity column takes its value, as `ALL_TAB_IDENTITY_COLS.GENERATION_TYPE` spells it. `ALWAYS` refuses any
+/// value a statement supplies (ORA-32795 on insert, ORA-32796 on update); `BY DEFAULT` takes one.
+public enum OracleIdentityGeneration: String, Sendable, Equatable {
+    case always = "ALWAYS"
+    case byDefault = "BY DEFAULT"
 }
 
 public struct OracleIndexRow: Sendable, Equatable {
@@ -169,6 +202,10 @@ public enum OracleSchemaQueries {
         let identity = release.hasIdentityColumns ? "c.IDENTITY_COLUMN" : "'NO'"
         let onNull = release.hasIdentityColumns ? "c.DEFAULT_ON_NULL" : "'NO'"
         let onNullForUpdate = release.hasDefaultOnNullForUpdate ? "c.DEFAULT_ON_NULL_UPD" : "'NO'"
+        let generation = release.hasIdentityColumns ? """
+            (SELECT i.GENERATION_TYPE FROM \(OracleDictionary.allTabIdentityCols) i
+                    WHERE i.OWNER = c.OWNER AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = c.COLUMN_NAME)
+            """ : "NULL"
         return """
             c.COLUMN_NAME,
                 c.DATA_TYPE,
@@ -181,7 +218,8 @@ public enum OracleSchemaQueries {
                 c.VIRTUAL_COLUMN,
                 \(identity) AS IDENTITY_COLUMN,
                 \(onNull) AS DEFAULT_ON_NULL,
-                \(onNullForUpdate) AS DEFAULT_ON_NULL_UPD
+                \(onNullForUpdate) AS DEFAULT_ON_NULL_UPD,
+                \(generation) AS GENERATION_TYPE
             """
     }
 
@@ -422,7 +460,11 @@ public enum OracleSchemaQueries {
             scale: row[safe: 4]?.stringValue,
             isNullable: row[safe: 5]?.stringValue == "Y",
             isPrimaryKey: row[safe: 6]?.stringValue == "Y",
-            defaultValue: columnDefault.clause
+            defaultValue: columnDefault.clause,
+            identityGeneration: columnDefault.isIdentity
+                ? row[safe: 12]?.stringValue.flatMap(OracleIdentityGeneration.init(rawValue:)) ?? .always
+                : nil,
+            isVirtual: columnDefault.isVirtual
         )
     }
 

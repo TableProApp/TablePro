@@ -51,8 +51,19 @@ extension OracleColumnRow {
             dataType: displayType,
             isNullable: isNullable,
             isPrimaryKey: isPrimaryKey,
-            defaultValue: defaultValue
+            defaultValue: defaultValue,
+            identityKind: identityGeneration.map(\.identityKind),
+            isGenerated: isVirtual
         )
+    }
+}
+
+extension OracleIdentityGeneration {
+    var identityKind: IdentityKind {
+        switch self {
+        case .always: return .always
+        case .byDefault: return .byDefault
+        }
     }
 }
 

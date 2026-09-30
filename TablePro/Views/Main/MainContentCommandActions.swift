@@ -482,7 +482,8 @@ final class MainContentCommandActions: ObservableObject {
         case .schemaGrid:
             return coordinator?.structureActions?.pasteRows != nil && TableStructureView.canPasteStructureRows
         case .dataGrid:
-            return tab.tabType == .table && isCurrentTabEditable && ClipboardService.shared.hasText
+            return tab.tabType == .table && isCurrentTabEditable && isCurrentTabSchemaResolved
+                && ClipboardService.shared.hasText
         case .none:
             return false
         }

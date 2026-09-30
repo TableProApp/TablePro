@@ -214,7 +214,7 @@ struct RowDetailView: View {
                 let column = viewModel.columns[index]
                 let value = values[index]
                 let isPK = viewModel.isPrimaryKey(at: index)
-                let takesEdits = viewModel.isEditing && !isPK && viewModel.isEditableAsText(at: index)
+                let takesEdits = viewModel.isEditing && viewModel.takesEdits(at: index)
                 Section {
                     if takesEdits {
                         editableField(index: index, value: value)

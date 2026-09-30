@@ -82,6 +82,31 @@ struct RewindPlan: Sendable {
     let record: RewindRecord
     let rows: [RewindRowPlan]
     let statements: [ParameterizedStatement]
+    /// Run outside the transaction around the statements: SQL Server's `IDENTITY_INSERT`, which a restored row with
+    /// its old identity needs.
+    let prologue: [String]
+    let epilogue: [String]
+
+    init(
+        record: RewindRecord,
+        rows: [RewindRowPlan],
+        statements: [ParameterizedStatement],
+        prologue: [String] = [],
+        epilogue: [String] = []
+    ) {
+        self.record = record
+        self.rows = rows
+        self.statements = statements
+        self.prologue = prologue
+        self.epilogue = epilogue
+    }
+
+    /// Everything the plan sends, with the bound values written in, in the order it runs.
+    var displayStatements: [String] {
+        prologue
+            + statements.map { SQLParameterInliner.inline($0, databaseType: record.databaseType) }
+            + epilogue
+    }
 
     var restorableCount: Int {
         rows.count(where: { $0.outcome.restores })

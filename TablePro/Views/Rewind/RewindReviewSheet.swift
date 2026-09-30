@@ -116,7 +116,7 @@ struct RewindReviewSheet: View {
     }
 
     private var displayStatements: [String] {
-        plan.statements.map { SQLParameterInliner.inline($0, databaseType: plan.record.databaseType) }
+        plan.displayStatements
     }
 
     private var footer: some View {

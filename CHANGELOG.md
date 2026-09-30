@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copy as UPDATE and INSERT including identity, computed and generated columns, which SQL Server refuses with "Cannot update identity column". (#3219)
+- Copy as UPDATE matching a composite primary key on its first column only, and matching unsaved edits instead of the stored row.
+- Copy as UPDATE and INSERT leaving out the table's schema.
+- Edits and pasted rows staged before a table's structure loaded writing identity and computed columns on save.
+- SQL Server `rowversion` and system-versioned period columns offered for editing, and Add Row failing on a table that has one.
+- SQL Server identity and computed columns not recognized in a table or schema whose name contains a dot.
+- Saves failing on a SQL Server table without a primary key that has an `ntext`, `text`, `xml` or `image` column.
+- A value typed into a new SQL Server row dropped when a same-named table in another schema has an identity column of that name.
+- Set Value > Default on SQL Server and Oracle storing the text `__DEFAULT__`.
+- New Snowflake, Teradata and Trino rows storing `__DEFAULT__` in columns left to their default.
+- Oracle identity and virtual columns offered for editing, and Add Row failing on a table that has one.
+- Restore Previous Values bringing a deleted SQL Server or PostgreSQL row back under a new identity key.
+- iOS row editor offering SQL Server identity and computed columns for editing.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.

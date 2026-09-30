@@ -112,15 +112,14 @@ struct RewindExecutor {
                 target: plan.record.target,
                 capturedAt: Date(),
                 generatedColumns: plan.record.generatedColumns,
+                identityColumns: plan.record.identityColumns,
                 operations: operations
             )
         )
     }
 
     func apply(_ plan: RewindPlan) async throws -> RewindApplyResult {
-        let displaySQL = plan.statements
-            .map { SQLParameterInliner.inline($0, databaseType: connection.type) }
-            .joined(separator: "\n")
+        let displaySQL = plan.displayStatements.joined(separator: "\n")
 
         let writePlan = DataWritePlan(
             scope: scope,
@@ -132,7 +131,9 @@ struct RewindExecutor {
                     expectedRowCount: 1,
                     tableName: plan.record.target.table
                 )
-            }
+            },
+            prologue: plan.prologue,
+            epilogue: plan.epilogue
         )
 
         let route = DatabaseManager.shared.executionRoute(for: scope)

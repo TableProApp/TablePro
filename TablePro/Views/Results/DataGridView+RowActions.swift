@@ -95,45 +95,69 @@ extension TableViewCoordinator {
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
+                schemaName: schemaName,
                 columns: projection.columns(tableRows.columns),
-                primaryKeyColumn: primaryKeyColumn,
+                primaryKeyColumns: primaryKeyColumns,
                 databaseType: databaseType,
+                unwritableColumns: unwritableColumns(in: tableRows),
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
             let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-            guard !typedRows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
+            writeCopiedStatements(converter.generateInserts(rows: typedRows))
         } catch {
             rowActionsLogger.error("copyRowsAsInsert failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
+    /// Every column takes part: SET is limited to the selected or visible ones, but the row is found by all of its
+    /// key, or with no key by every column it has, hidden ones included, as it is stored rather than as edited.
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
-        let settableColumns = selectionController.isEmpty
-            ? nil
-            : selectedColumnProjection().columns(tableRows.columns)
-        let pkIndex = primaryKeyColumn.flatMap { tableRows.columns.firstIndex(of: $0) }
-        let projection = visibleColumnProjection.including(pkIndex)
+        let settable = selectionController.isEmpty ? visibleColumnProjection : selectedColumnProjection()
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
-                columns: projection.columns(tableRows.columns),
-                primaryKeyColumn: primaryKeyColumn,
+                schemaName: schemaName,
+                columns: tableRows.columns,
+                primaryKeyColumns: primaryKeyColumns,
                 databaseType: databaseType,
-                settableColumns: settableColumns,
+                unwritableColumns: unwritableColumns(in: tableRows),
+                rowMatchPolicy: tableRows.rowMatchPolicy,
+                settableColumns: settable.columns(tableRows.columns),
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-            guard !typedRows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
+            let rows = indices.sorted().compactMap { displayRow(at: $0).map(copiedSourceRow) }
+            writeCopiedStatements(converter.generateUpdates(rows: rows))
         } catch {
             rowActionsLogger.error("copyRowsAsUpdate failed: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    private func unwritableColumns(in tableRows: TableRows) -> Set<String> {
+        Set(tableRows.columns.filter { tableRows.generatedColumns.contains($0) || !isColumnWritable($0) })
+    }
+
+    private func copiedSourceRow(_ row: Row) -> SQLRowToStatementConverter.SourceRow {
+        var stored = Array(row.values)
+        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        for cellChange in pendingUpdate?.cellChanges ?? [] where stored.indices.contains(cellChange.columnIndex) {
+            stored[cellChange.columnIndex] = cellChange.oldValue
+        }
+        return SQLRowToStatementConverter.SourceRow(
+            values: Array(row.values),
+            storedValues: stored,
+            isPendingInsert: changeManager.insertedRowIDs.contains(row.id)
+        )
+    }
+
+    /// A copy that produced no statement leaves the clipboard as it was, rather than replacing it with nothing.
+    private func writeCopiedStatements(_ statements: String) {
+        guard !statements.isEmpty else { return }
+        ClipboardService.shared.writeText(statements)
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {

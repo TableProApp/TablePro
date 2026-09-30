@@ -473,9 +473,12 @@ class DataGridRowView: NSTableRowView {
             copyAsMenu.addItem(inClauseItem)
         }
 
+        /// The statements leave out the columns the server owns, which only the schema names, so the items stay away
+        /// until it has arrived, as Duplicate does.
         if let dbType = coordinator.databaseType,
            dbType != .mongodb && dbType != .redis,
-           coordinator.tableName != nil {
+           coordinator.tableName != nil,
+           coordinator.tableRowsProvider().hasAuthoritativeSchema {
             copyAsMenu.addItem(NSMenuItem.separator())
 
             let insertItem = NSMenuItem(
