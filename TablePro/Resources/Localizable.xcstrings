@@ -130490,15 +130490,14 @@
         }
       }
     },
-    "Row %@, column %@ contains “%@”, which %@ cannot store. Choose Save As and pick UTF-8." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Row %1$@, column %2$@ contains “%3$@”, which %4$@ cannot store. Choose Save As and pick UTF-8."
-          }
-        }
-      }
+    "Row %@, column “%@” contains %@, which %@ cannot store. Choose Save As and pick UTF-8." : {
+
+    },
+    "A row the filter hides holds %@ in column “%@”, which %@ cannot store. Clear the filter to find it, or choose Save As and pick UTF-8." : {
+
+    },
+    "The column name “%@” contains %@, which %@ cannot store. Rename the column, or choose Save As and pick UTF-8." : {
+
     },
     "Row %@, column %@ is not valid JSON. Fix the value or clear it, then save again." : {
       "localizations" : {
@@ -182734,6 +182733,21 @@
     "1 row has a different number of fields" : {
 
     },
+    "1 line has unreadable characters" : {
+
+    },
+    "Line %@ holds binary data that cannot be read back exactly from a %@ file. Export the dump with --hex-blob, then import it again." : {
+
+    },
+    "Line %@ is not valid %@ text. Choose the file's encoding in the import options, then import again." : {
+
+    },
+    "%@ lines have unreadable characters" : {
+
+    },
+    "Bytes on those lines are not valid %@ and show as �. Pick another encoding in File Properties." : {
+
+    },
     "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size." : {
 
     },
@@ -184810,6 +184824,9 @@
 
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
+    "Next cursor: %@. The scan has not finished." : {
 
     }
   },

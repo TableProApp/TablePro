@@ -17,8 +17,29 @@ import Foundation
 /// Every path that rebuilds a file-backed tab reads it back here, so there is one door.
 internal enum FileTabBaseline {
     internal static func hydrate(_ tab: inout QueryTab) {
-        guard let url = tab.content.sourceFileURL, let loaded = FileTextLoader.load(url) else { return }
-        record(loaded.content, stamp: loaded.stamp, encoding: loaded.textEncoding, in: &tab.content)
+        guard let url = tab.content.sourceFileURL else { return }
+        if let recorded = tab.content.sourceFileEncoding, let loaded = FileTextLoader.load(url, as: recorded) {
+            record(loaded.content, stamp: loaded.stamp, encoding: loaded.textEncoding, in: &tab.content)
+            return
+        }
+        guard let loaded = FileTextLoader.load(url) else { return }
+        guard tab.content.sourceFileEncoding == nil, readsDifferentlyThanLatin1(loaded),
+              let latin1 = FileTextLoader.load(url, as: FileTextEncoding(encoding: .isoLatin1)),
+              tab.content.query != loaded.content else {
+            record(loaded.content, stamp: loaded.stamp, encoding: loaded.textEncoding, in: &tab.content)
+            return
+        }
+        if tab.content.query == latin1.content {
+            adopt(loaded, into: &tab.content)
+            return
+        }
+        record(latin1.content, stamp: latin1.stamp, encoding: latin1.textEncoding, in: &tab.content)
+    }
+
+    private static func readsDifferentlyThanLatin1(_ loaded: FileTextLoader.LoadedText) -> Bool {
+        let encoding = loaded.textEncoding
+        guard encoding.byteOrderMark == nil, encoding.attribute == nil else { return false }
+        return encoding.encoding != .utf8 && encoding.encoding != .isoLatin1
     }
 
     internal static func hydrate(_ tabs: inout [QueryTab]) {
