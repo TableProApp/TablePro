@@ -107,6 +107,39 @@ struct MQLExportHelpersTests {
             == "-3.9192320754595876e-07")
     }
 
+    @Test("A 64-bit integer exports as NumberLong so it keeps its type and every digit")
+    func bigintExportsAsNumberLong() {
+        #expect(
+            MQLExportHelpers.mqlTextValue(for: "9007199254740993", columnTypeName: "BIGINT")
+                == "NumberLong(\"9007199254740993\")"
+        )
+        #expect(MQLExportHelpers.mqlTextValue(for: "5", columnTypeName: "BIGINT") == "NumberLong(\"5\")")
+        #expect(
+            MQLExportHelpers.mqlTextValue(for: "-9223372036854775808", columnTypeName: "BIGINT")
+                == "NumberLong(\"-9223372036854775808\")"
+        )
+    }
+
+    @Test("A value that is not a 64-bit integer keeps its own form in a BIGINT column")
+    func nonIntegerInBigintColumnIsNotWrapped() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "3.5", columnTypeName: "BIGINT") == "3.5")
+        #expect(MQLExportHelpers.mqlTextValue(for: "n/a", columnTypeName: "BIGINT") == "\"n/a\"")
+    }
+
+    @Test("A whole double exports as Double, since a shell reads a bare whole number as an integer")
+    func wholeDoubleExportsAsDouble() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "3", columnTypeName: "FLOAT") == "Double(3)")
+        #expect(MQLExportHelpers.mqlTextValue(for: "-0", columnTypeName: "FLOAT") == "Double(-0)")
+        #expect(MQLExportHelpers.mqlTextValue(for: "3000000000", columnTypeName: "FLOAT") == "Double(3000000000)")
+    }
+
+    @Test("A fractional double, or one past the exact integers, is already read back as a double")
+    func doubleThatReadsBackAsDoubleStaysBare() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "3.5", columnTypeName: "FLOAT") == "3.5")
+        #expect(MQLExportHelpers.mqlTextValue(for: "1e+20", columnTypeName: "FLOAT") == "1e+20")
+        #expect(MQLExportHelpers.mqlTextValue(for: "later", columnTypeName: "FLOAT") == "\"later\"")
+    }
+
     @Test("A decimal column exports as NumberDecimal so it does not land as a double")
     func decimalColumnExportsAsNumberDecimal() {
         #expect(

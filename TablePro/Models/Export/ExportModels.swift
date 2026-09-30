@@ -346,6 +346,10 @@ extension ExportObjectItem {
         }
         return masked
     }
+
+    func offersRowScope(on databaseType: DatabaseType) -> Bool {
+        kind.carriesRows && ExportDataSourceAdapter.canApplyRowScope(on: databaseType)
+    }
 }
 
 extension [ExportDatabaseItem] {
@@ -381,6 +385,19 @@ extension [ExportDatabaseItem] {
                 $0.maskingUnsupportedOptions(columns: columns, supports: supports)
             }
             return maskedDatabase
+        }
+    }
+
+    func clearingRowScopes(unavailableOn databaseType: DatabaseType) -> [ExportDatabaseItem] {
+        map { database in
+            var clearedDatabase = database
+            clearedDatabase.objects = database.objects.map { object in
+                guard !object.offersRowScope(on: databaseType) else { return object }
+                var unscoped = object
+                unscoped.rowScope = .unrestricted
+                return unscoped
+            }
+            return clearedDatabase
         }
     }
 }

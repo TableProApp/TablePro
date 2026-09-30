@@ -51,11 +51,14 @@ targets:
       # bundle on iOS, so the driver links into the app.
       - ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
-      # Redis credential rules and key kinds the iOS driver shares with the macOS plugin.
+      # Redis credential rules, key kinds and TLS setup the iOS driver shares with the macOS plugin.
       - ../Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - ../Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - ../Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - ../Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSOptions.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSSession.swift
       # MySQL session character set and result decoding the iOS driver shares with the macOS plugin.
       - ../Plugins/MySQLDriverPlugin/DatabendResultShape.swift
       - ../Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
@@ -229,6 +232,8 @@ targets:
       - TableProMobileTests
     dependencies:
       - target: TableProMobile
+      - package: TableProCore
+        product: TableProTLSTestFixtures
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

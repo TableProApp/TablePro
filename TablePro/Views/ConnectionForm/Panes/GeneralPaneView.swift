@@ -27,11 +27,11 @@ struct GeneralPaneView: View {
 
     var body: some View {
         Form {
-            if let parsed = coordinator.clipboardCandidate {
+            if let candidate = coordinator.clipboardCandidate {
                 Section {
                     ClipboardConnectionBanner(
-                        parsed: parsed,
-                        onUse: { coordinator.applyClipboardCandidate(parsed) },
+                        candidate: candidate,
+                        onUse: { coordinator.applyClipboardCandidate(candidate) },
                         onDismiss: { coordinator.dismissClipboardCandidate() }
                     )
                     .listRowInsets(EdgeInsets())
