@@ -35,4 +35,10 @@ enum DataFileCountPhrase {
             ? String(localized: "1 row has a different number of fields")
             : String(format: String(localized: "%@ rows have a different number of fields"), count.formatted())
     }
+
+    static func undecodableLines(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 line has unreadable characters")
+            : String(format: String(localized: "%@ lines have unreadable characters"), count.formatted())
+    }
 }

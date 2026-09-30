@@ -14,8 +14,13 @@ import TableProPluginKit
 import Testing
 
 struct MaintenanceOperationDescriptorTests {
-    private func postgres(_ name: String) throws -> PluginMaintenanceOperation {
-        try #require(PostgreSQLMaintenance.operations.first { $0.name == name })
+    private static let current = PostgreSQLCapabilities(serverVersion: 170_011)
+
+    private func postgres(
+        _ name: String,
+        capabilities: PostgreSQLCapabilities = current
+    ) throws -> PluginMaintenanceOperation {
+        try #require(PostgreSQLMaintenance.operations(capabilities: capabilities).first { $0.name == name })
     }
 
     private func sqlite(_ name: String) throws -> PluginMaintenanceOperation {
@@ -30,7 +35,8 @@ struct MaintenanceOperationDescriptorTests {
         _ operation: String,
         table: String?,
         schema: String?,
-        options: [String: String] = [:]
+        options: [String: String] = [:],
+        serverVersion: Int32 = 170_011
     ) -> [String]? {
         PostgreSQLMaintenance.statements(
             operation: operation,
@@ -38,7 +44,7 @@ struct MaintenanceOperationDescriptorTests {
             schema: schema,
             options: options,
             connectedDatabase: "app",
-            capabilities: PostgreSQLCapabilities(serverVersion: 170_011)
+            capabilities: PostgreSQLCapabilities(serverVersion: serverVersion)
         )
     }
 
@@ -63,7 +69,7 @@ struct MaintenanceOperationDescriptorTests {
 
     @Test("Nothing PostgreSQL offers applies to a view")
     func noPostgresOperationAppliesToAView() {
-        #expect(PostgreSQLMaintenance.operations.allSatisfy { !$0.applies(to: .view) })
+        #expect(PostgreSQLMaintenance.operations(capabilities: Self.current).allSatisfy { !$0.applies(to: .view) })
     }
 
     @Test("REINDEX covers a partitioned table, which CLUSTER cannot")
@@ -122,6 +128,40 @@ struct MaintenanceOperationDescriptorTests {
         #expect(
             postgresStatements("REINDEX", table: "orders", schema: "app", options: ["verbose": "true"])
                 == ["REINDEX (VERBOSE) TABLE \"app\".\"orders\""]
+        )
+    }
+
+    @Test("REINDEX offers VERBOSE only from PostgreSQL 9.5, and VACUUM keeps its own")
+    func reindexVerboseIsOfferedFrom95() throws {
+        let before = PostgreSQLCapabilities(serverVersion: 90_400)
+        let from = PostgreSQLCapabilities(serverVersion: 90_500)
+        #expect(try postgres("REINDEX", capabilities: before).options.isEmpty)
+        #expect(try postgres("REINDEX", capabilities: from).options.map(\.key) == ["verbose"])
+        #expect(try postgres("VACUUM", capabilities: before).options.map(\.key).contains("verbose"))
+    }
+
+    @Test("REINDEX writes no option list before PostgreSQL 9.5, where it does not parse")
+    func reindexVerboseNeedsAnOptionList() {
+        #expect(
+            postgresStatements(
+                "REINDEX", table: "orders", schema: "app", options: ["verbose": "true"], serverVersion: 90_400
+            ) == ["REINDEX TABLE \"app\".\"orders\""]
+        )
+        #expect(
+            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"], serverVersion: 90_400)
+                == ["REINDEX DATABASE \"app\""]
+        )
+    }
+
+    @Test("REINDEX of the whole database keeps the VERBOSE it offers")
+    func reindexDatabaseVerbose() {
+        #expect(
+            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"])
+                == ["REINDEX (VERBOSE) DATABASE CONCURRENTLY"]
+        )
+        #expect(
+            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"], serverVersion: 90_500)
+                == ["REINDEX (VERBOSE) DATABASE \"app\""]
         )
     }
 
@@ -291,7 +331,7 @@ struct MaintenanceOperationDescriptorTests {
     /// in its other direction: the sheet would show a control that changes nothing.
     @Test("Every option a driver declares changes the statement it is declared on")
     func everyDeclaredOptionIsRead() throws {
-        for operation in PostgreSQLMaintenance.operations {
+        for operation in PostgreSQLMaintenance.operations(capabilities: Self.current) {
             let base = try #require(postgresStatements(
                 operation.name, table: "orders", schema: "app", options: operation.defaultOptionValues
             ))

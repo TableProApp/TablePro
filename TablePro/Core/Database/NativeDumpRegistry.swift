@@ -86,7 +86,7 @@ enum NativeDumpRegistry {
                 NativeDumpDescriptor.CommandLineTool(
                     backupBinaries: ["pg_dump"],
                     restoreBinaries: ["pg_restore"],
-                    installHint: String(localized: "Install it with `brew install libpq` and link it."),
+                    installHint: String(localized: "Install it with “brew install libpq” and link it."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     restoreExitPolicy: .toleratesUnrecognizedSessionSettings,
@@ -184,7 +184,7 @@ enum NativeDumpRegistry {
                 NativeDumpDescriptor.CommandLineTool(
                     backupBinaries: ["mysqldump", "mariadb-dump"],
                     restoreBinaries: ["mysql", "mariadb"],
-                    installHint: String(localized: "Install it with `brew install mysql-client` and link it."),
+                    installHint: String(localized: "Install it with “brew install mysql-client” and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
                     identifyExecutable: { name, path in
@@ -266,7 +266,7 @@ enum NativeDumpRegistry {
                 NativeDumpDescriptor.CommandLineTool(
                     backupBinaries: ["mongodump"],
                     restoreBinaries: ["mongorestore"],
-                    installHint: String(localized: "Install it with `brew install mongodb-database-tools`."),
+                    installHint: String(localized: "Install it with “brew install mongodb-database-tools”."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     needsCredentialsFile: true,
@@ -401,7 +401,7 @@ enum NativeDumpRegistry {
                 NativeDumpDescriptor.CommandLineTool(
                     backupBinaries: ["sqlite3"],
                     restoreBinaries: ["sqlite3"],
-                    installHint: String(localized: "Install it with `brew install sqlite` and link it."),
+                    installHint: String(localized: "Install it with “brew install sqlite” and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
                     backupArguments: { request, _ in

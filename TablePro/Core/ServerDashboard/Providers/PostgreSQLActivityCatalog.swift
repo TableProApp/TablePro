@@ -55,7 +55,8 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
 
     private static let hiddenSentinels = idleSentinels + [
         "<insufficient privilege>",
-        "<command string not enabled>"
+        "<command string not enabled>",
+        "<command string not found>"
     ]
 
     private static func literalList(_ values: [String]) -> String {
@@ -92,6 +93,7 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
                            WHEN '<IDLE> in transaction (aborted)' THEN 'idle in transaction (aborted)'
                            WHEN '<command string not enabled>' THEN 'disabled'
                            WHEN '<insufficient privilege>' THEN NULL
+                           WHEN '<command string not found>' THEN NULL
                            ELSE 'active'
                        END AS state,
                        EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,

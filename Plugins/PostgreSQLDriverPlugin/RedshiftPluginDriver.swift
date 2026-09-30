@@ -313,6 +313,10 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
     }
 
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        []
+    }
+
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         let resolvedSchema = schema ?? core.currentSchema
         guard !isExternalSchema(resolvedSchema) else { return nil }

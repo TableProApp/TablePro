@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProTabularIO
 
 internal struct FileTextEncoding: Hashable, Sendable {
     let encoding: String.Encoding
@@ -11,6 +12,8 @@ internal struct FileTextEncoding: Hashable, Sendable {
     let attribute: TextEncodingAttribute?
 
     static let utf8 = FileTextEncoding(encoding: .utf8)
+
+    private static let japaneseEncodings: Set<String.Encoding> = [.shiftJIS, .japaneseEUC]
 
     init(
         encoding: String.Encoding,
@@ -30,7 +33,8 @@ internal struct FileTextEncoding: Hashable, Sendable {
 
     func bytes(of text: String) -> Data? {
         let byteOrderedEncoding = byteOrderMark?.byteOrderedEncoding ?? encoding.unmarkedByteOrder
-        guard let body = text.data(using: byteOrderedEncoding, allowLossyConversion: false) else { return nil }
+        let storable = Self.japaneseEncodings.contains(encoding) ? TabularJISRoman.folded(text) : text
+        guard let body = storable.data(using: byteOrderedEncoding, allowLossyConversion: false) else { return nil }
         guard let byteOrderMark else { return body }
         return Data(byteOrderMark.bytes) + body
     }

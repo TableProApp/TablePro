@@ -89,4 +89,27 @@ struct RowPayloadTests {
             _ = try RowPayload.parseCSV(",\nAda,36")
         }
     }
+
+    @Test("reads a Shift JIS CSV file as its Japanese text")
+    func shiftJISFile() throws {
+        let csv = "氏名,住所\n山田太郎,東京都港区芝公園\n鈴木花子,大阪市北区梅田\n"
+        let data = try #require(csv.data(using: .shiftJIS))
+        #expect(try RowPayload.text(of: data) == csv)
+    }
+
+    @Test("reads a UTF-16 file and drops a UTF-8 byte order mark")
+    func markedFiles() throws {
+        let csv = "name,city\nAda,London\n"
+        let utf16 = Data([0xFF, 0xFE]) + (try #require(csv.data(using: .utf16LittleEndian)))
+        #expect(try RowPayload.text(of: utf16) == csv)
+        #expect(try RowPayload.text(of: Data([0xEF, 0xBB, 0xBF]) + Data(csv.utf8)) == csv)
+    }
+
+    @Test("names the line a file cannot be read at")
+    func unreadableLine() throws {
+        let data = Data("name,city\nJürgen,Köln\nZoë,Paris\n".utf8) + Data([0x43, 0x61, 0x66, 0xE9, 0x0A])
+        #expect(throws: IntentDataError.unreadableText(line: 4, encoding: "UTF-8")) {
+            _ = try RowPayload.text(of: data)
+        }
+    }
 }

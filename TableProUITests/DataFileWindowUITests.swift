@@ -119,6 +119,33 @@ final class DataFileWindowUITests: UITestCase {
         XCTAssertTrue(waitForRowCount("5 rows", in: window), "Choosing a sheet must show that sheet's rows")
     }
 
+    func testAShiftJISExportOpensWithItsJapaneseText() throws {
+        let export = "商品コード,商品名,在庫管理区分\n10001,ソフトウェア保守,在庫管理する\n10002,ポイント交換,在庫管理しない\n10003,髙橋商店の注文,在庫管理する\n"
+        let bytes = try XCTUnwrap(export.data(using: .shiftJIS, allowLossyConversion: false))
+        let app = try launchWithDataFile(named: "shift-jis.csv", contents: bytes)
+        let (window, grid) = try readyWindow(of: app)
+        XCTAssertTrue(waitForRowCount("3 rows", in: window), "The export must open with its three rows")
+        let format = window.descendants(matching: .any)["data-file-format"].firstMatch
+        XCTAssertTrue(format.waitToExist(timeout: 15), "The status bar must describe the file format")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 15) { "\(format.label) \(format.value ?? "")".contains("Shift JIS") },
+            "The status bar must name the detected encoding, not \(format.label) \(String(describing: format.value))"
+        )
+
+        cellPoint(in: grid, row: 1).click()
+        app.typeKey("i", modifierFlags: [.command, .option])
+        let header = window.descendants(matching: .any)["data-file-row-details-header"].firstMatch
+        XCTAssertTrue(header.waitToExist(timeout: 10), "Row Details must open beside the grid")
+        let name = window.descendants(matching: .any)
+            .matching(NSPredicate(format: "value == %@ OR label == %@", "ポイント交換", "ポイント交換"))
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) {
+                name.allElementsBoundByIndex.contains { $0.frame.minX >= header.frame.minX - 1 }
+            },
+            "Row Details must show the Japanese value, not Windows-1252 mojibake"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Two sheets, People (3 rows) and Cities (5 rows), with inline strings and a header row each.

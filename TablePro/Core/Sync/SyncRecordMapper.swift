@@ -195,7 +195,7 @@ struct SyncRecordMapper {
             ?? fields[.colorTag] as? String
             ?? ConnectionColor.none.rawValue
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = Self.safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = SafeModeLevel(wireValue: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let tagIds: [UUID]
         if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
             tagIds = rawIds.compactMap { UUID(uuidString: $0) }
@@ -268,16 +268,6 @@ struct SyncRecordMapper {
             isFavorite: isFavorite,
             additionalFields: additionalFields
         )
-    }
-
-    static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .silent }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "off": return .silent
-        case "confirmWrites": return .alert
-        default: return isReadOnly ? .readOnly : .alert
-        }
     }
 
     // MARK: - Connection Group
