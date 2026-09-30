@@ -9,7 +9,7 @@ import TableProPluginKit
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
 /// differ only in what this builds at the root; everything below the root is shared.
 extension DatabaseTreeOutlineCoordinator {
-    private func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
+    internal func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
         if let existing = nodeCache[id] {
             existing.kind = kind
             return existing
@@ -34,6 +34,10 @@ extension DatabaseTreeOutlineCoordinator {
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
             }
+        case .foldersSection:
+            return flatFolderNodes()
+        case .tableFolder(let ref):
+            return folderMemberNodes(of: ref)
         case .database(let metadata):
             return supportsSchemaLevel
                 ? schemaNodes(database: metadata.name)
@@ -153,6 +157,7 @@ extension DatabaseTreeOutlineCoordinator {
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
+        nodes += flatFoldersSectionNodes()
         nodes += visibleObjectKinds().map {
             node(id: DatabaseTreeNode.objectKindSectionId($0), kind: .objectKindSection($0))
         }
@@ -180,7 +185,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
         return SidebarObjectKind.visible(
             itemCounts: itemCounts,
-            declaredKinds: declaredObjectKinds,
+            declaredKinds: declaredObjectKinds.union(flatPlan().filedKinds),
             includingEmptyTables: true
         )
     }
@@ -196,7 +201,7 @@ extension DatabaseTreeOutlineCoordinator {
         guard let viewModel else { return 0 }
         switch kind.category {
         case .table:
-            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId)).count
+            return flatPlan().looseCount(of: kind)
         case .routine:
             return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId)).count
         case .trigger:
@@ -211,7 +216,9 @@ extension DatabaseTreeOutlineCoordinator {
     /// came back. A search that matches nothing in a section is not a reason, so it stays bare.
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         let rows = flatObjectRows(for: kind)
-        guard rows.isEmpty, searchText.isEmpty, viewModel != nil else { return rows }
+        guard rows.isEmpty, searchText.isEmpty, viewModel != nil, !flatPlan().hasFiledObjects(of: kind) else {
+            return rows
+        }
         return [
             statusNode(
                 parentId: DatabaseTreeNode.objectKindSectionId(kind),
@@ -234,7 +241,7 @@ extension DatabaseTreeOutlineCoordinator {
         let database = browsingDatabase
         switch kind.category {
         case .table:
-            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId))
+            return flatPlan().looseObjects(of: kind)
                 .map { table in
                     let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
                     return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
@@ -454,7 +461,9 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     internal func matchCount(in group: DatabaseTreeObjectGroup) -> Int {
-        objectBuckets(database: group.database, schema: group.schema).itemCounts[group.kind] ?? 0
+        let buckets = objectBuckets(database: group.database, schema: group.schema)
+        guard group.kind.category == .table else { return buckets.itemCounts[group.kind] ?? 0 }
+        return containerPlan(database: group.database, schema: group.schema, buckets: buckets).looseCount(of: group.kind)
     }
 
     /// Nil until the tree has loaded this schema's tables, so a search can tell a schema that holds
@@ -506,17 +515,19 @@ extension DatabaseTreeOutlineCoordinator {
         schema: String?,
         parentId: String
     ) -> [DatabaseTreeNode] {
-        guard !buckets.isEmpty else {
+        let plan = containerPlan(database: database, schema: schema, buckets: buckets)
+        let folders = containerFolderNodes(plan, database: database, schema: schema)
+        guard !buckets.isEmpty || !folders.isEmpty else {
             return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
         }
 
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: database,
             schema: schema,
-            itemCounts: buckets.itemCounts,
-            declaredKinds: declaredObjectKinds
+            itemCounts: looseItemCounts(buckets.itemCounts, plan: plan),
+            declaredKinds: declaredObjectKinds.union(plan.filedKinds)
         )
-        var nodes = groups.map { group in
+        var nodes = folders + groups.map { group in
             node(
                 id: DatabaseTreeNode.containerObjectKindSectionId(group),
                 kind: .containerObjectKindSection(group)
@@ -537,8 +548,10 @@ extension DatabaseTreeOutlineCoordinator {
         let placeholder = DatabaseTreeNode.Status.emptySection(sidePhases(for: group).phase(for: group.kind.category))
         switch group.kind.category {
         case .table:
-            let tables = buckets.tables[group.kind] ?? []
+            let plan = containerPlan(database: group.database, schema: group.schema, buckets: buckets)
+            let tables = plan.looseObjects(of: group.kind)
             guard !tables.isEmpty else {
+                guard !plan.hasFiledObjects(of: group.kind) else { return [] }
                 return [statusNode(parentId: emptyId, status: placeholder)]
             }
             return tables.map { table in

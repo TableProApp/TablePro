@@ -51,6 +51,7 @@ struct QuickSwitcherViewModelTests {
             sqlFavoriteManager: sqlFavoriteManager ?? live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
             favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             aiAccessApprovals: live.aiAccessApprovals,

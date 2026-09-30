@@ -964,7 +964,7 @@ struct TypesenseStatementGeneratorTests {
     }
 
     private func shortenedAuthors() -> String {
-        TypesenseSchema.cell((0..<1_500).map { "author-\($0)" }).asText ?? ""
+        TypesenseSchema.cell((0..<1_500).map { "author-\($0)" }, length: .display).asText ?? ""
     }
 
     private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
@@ -1025,7 +1025,7 @@ struct TypesenseStatementGeneratorTests {
 
     @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
     func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
-        let shownPart = TypesenseSchema.cell((0..<600).map { "author-\($0)" }).asText ?? ""
+        let shownPart = TypesenseSchema.cell((0..<600).map { "author-\($0)" }, length: .display).asText ?? ""
         try #require(!shownPart.hasSuffix("..."))
         #expect(throws: shortenedRefusal("authors")) {
             try updateRequest(authorsEdit(from: shortenedAuthors(), to: .text(shownPart)))
