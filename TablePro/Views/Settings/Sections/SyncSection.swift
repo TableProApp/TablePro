@@ -124,6 +124,7 @@ struct SyncSection: View {
             Toggle("Credential Profiles", isOn: $settingsManager.sync.syncCredentialProfiles)
             Toggle("Settings", isOn: $settingsManager.sync.syncSettings)
             Toggle("Table Favorites", isOn: $settingsManager.sync.syncTableFavorites)
+            Toggle("Table Folders", isOn: $settingsManager.sync.syncTableFolders)
             Toggle("Database Favorites", isOn: $settingsManager.sync.syncDatabaseFavorites)
             Toggle("Saved Queries", isOn: $settingsManager.sync.syncSQLFavorites)
         }
