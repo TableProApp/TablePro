@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column mappings remembered per table for CSV, JSON and Excel imports, plus Match by Name and Match by Position. (#3172)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
+### Changed
+
+- Clipboard URL banner for every scheme Import from URL accepts, `+ssh` URLs included.
+
 ### Fixed
 
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
@@ -52,6 +56,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Table Transfer emptying a destination table, then failing, when two source columns map to one column.
+- MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text.
+- MongoDB refusing text like `[DRAFT] Chapter one...` as a value shortened for display.
+- Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
+- Import from URL ignoring `ssl=1`, `ssl=require` and `ssl=0`.
+- Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for.
+- Release highlights in the update dialog run together into one paragraph.
+- Removed and Deprecated listed after Fixed in GitHub release notes.
+- PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.
+- Empty Check Constraints tab and no check constraints in MCP `describe_table` on CockroachDB.
+- Connect errors a server answered through PGlite, such as a missing database, reported as an unreachable socket server.
+- REINDEX VERBOSE offered on PostgreSQL 9.1 to 9.4, where it fails, and ignored when reindexing a whole database.
+- PGlite saying it cannot change the order of a table's columns.
+- `Use ~/.pgpass` toggle named `Use Password File` on Redshift and CockroachDB.
+- etcd `(root)` Delete and Truncate erasing the whole Key Prefix Root, and a root with no trailing `/` reaching sibling keys.
+- etcd commands and saved edits reaching a different key when the key starts with a combining mark.
 - Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
@@ -65,6 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+
+### Security
+
+- Redis Verify Identity accepting a server certificate issued for another host.
 
 ## [0.76.1] - 2026-09-29
 

@@ -518,8 +518,10 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
+      - Plugins/EtcdDriverPlugin/EtcdCommandArgument.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
+      - Plugins/EtcdDriverPlugin/EtcdKeyspace.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
@@ -686,6 +688,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQTypeNameRegistry.swift
+      - Plugins/PostgreSQLDriverPlugin/PGliteConnectFailure.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
@@ -783,6 +786,9 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure+ConnectError.swift
+      - Plugins/RedisDriverPlugin/RedisTLSOptions.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift
       - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
@@ -1500,6 +1506,9 @@ targets:
     templateAttributes:
       folder: SurrealDBDriverPlugin
       principalClass: SurrealDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   TeradataDriver:
     templates: [DriverPlugin]
