@@ -92,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Redis Verify Identity accepting a server certificate issued for another host.
+- Pre-connect script and other local-only settings sent in TablePro links, connection exports and the Team Library.
 
 ## [0.76.1] - 2026-09-29
 
