@@ -132,21 +132,21 @@ extension DatabaseTreeOutlineCoordinator {
                 mode: .copyTo,
                 database: ref?.database,
                 schema: ref?.qualifyingSchema,
-                objects: objects
+                preselection: .objects(objects)
             )
         case .copyContainerTo(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .copyTo,
                 database: container.database,
                 schema: container.kind == .schema ? container.schema : nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .duplicateDatabase(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .duplicateDatabase,
                 database: container.database,
                 schema: nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .showAllTablesMetadata:
             mainCoordinator?.showAllTablesMetadata()

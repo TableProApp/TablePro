@@ -1003,6 +1003,34 @@ struct DatabaseTreeMenuSpecTests {
         })
     }
 
+    @Test(
+        "A row Copy To cannot copy does not offer it",
+        arguments: [TableInfo.TableType.foreignTable, .sequence, .systemTable, .externalTable]
+    )
+    func uncopyableRowHidesCopyTo(type: TableInfo.TableType) {
+        let ref = tableRef("remote_orders", type: type)
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(ref), selectedTables: [ref])
+        ))
+
+        #expect(!issued.contains { if case .copyObjectsTo = $0 { return true } else { return false } })
+    }
+
+    @Test("A selection mixing a foreign table and a table copies only the table")
+    func mixedSelectionCopiesOnlyTheCopyableRows() {
+        let foreign = tableRef("remote_orders", type: .foreignTable)
+        let orders = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(foreign), selectedTables: [foreign, orders])
+        ))
+
+        let names = issued.compactMap { command -> [String]? in
+            guard case .copyObjectsTo(let objects, _) = command else { return nil }
+            return objects.map(\.name)
+        }
+        #expect(names == [["orders"]])
+    }
+
     @Test("An engine that cannot copy offers neither command")
     func ineligibleEngineHidesCopying() {
         let ref = tableRef("orders")

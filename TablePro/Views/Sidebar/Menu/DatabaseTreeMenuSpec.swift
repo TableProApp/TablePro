@@ -149,11 +149,9 @@ internal enum DatabaseTreeMenuSpec {
             items += importItems(context.importFormats, ref: ref)
         }
         items.append(.command(String(localized: "Transfer To…"), .transferTables(names: names, ref: ref)))
-        if context.canCopyObjects {
-            items.append(.command(
-                String(localized: "Copy To…"),
-                .copyObjectsTo(objects: copySelections(for: sameScope), ref: ref)
-            ))
+        let copyable = copySelections(for: sameScope)
+        if context.canCopyObjects, !copyable.isEmpty {
+            items.append(.command(String(localized: "Copy To…"), .copyObjectsTo(objects: copyable, ref: ref)))
         }
         /// Beside Maintenance, the other command that runs a server operation on the object's data.
         if DatabaseObjectToolEligibility.canRefresh(
