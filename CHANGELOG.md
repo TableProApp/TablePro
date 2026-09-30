@@ -23,16 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local only** connections taking edits and deletions made on another device.
 - Import sheet ignoring a CSV or Excel option change until the next edit, then resetting the column mapping.
 - Import sheet showing an earlier table's columns after switching tables while the first was still loading.
-- CSV import failing on every row when two headers differ only by case.
+- CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case.
 - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
 - Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Import sheet creating, emptying or filling tables in another database after a database switch in another window.
 - Import sheet discarding a new table's column edits when a CSV or Excel option changes.
 - JSON import leaving out fields first seen after row 200, and typing columns from those rows alone.
 - No fields found in a JSON Lines file with CRLF line endings or multi-byte text near its first 256 KB.
 - JSON Lines rows with U+2028, U+2029 or U+0085 in a string failing to import, and invalid UTF-8 imported as U+FFFD.
 - JSON Lines import stalling while GitHub Copilot is enabled.
-- Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 
 ## [0.76.1] - 2026-09-29
 
