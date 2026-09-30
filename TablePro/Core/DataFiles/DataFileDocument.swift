@@ -85,11 +85,11 @@ final class DataFileDocument: NSDocument {
         guard controller.offersSaveEncoding else { return super.prepareSavePanel(savePanel) }
         let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
         for encoding in TabularTextEncoding.allCases {
-            popUp.addItem(withTitle: DataFileEncodingNames.name(for: encoding))
+            popUp.addItem(withTitle: encoding.displayName)
             popUp.lastItem?.representedObject = encoding.rawValue
         }
         let current = controller.dialect?.encoding ?? .utf8
-        popUp.selectItem(withTitle: DataFileEncodingNames.name(for: current))
+        popUp.selectItem(withTitle: current.displayName)
         popUp.setAccessibilityLabel(String(localized: "Text Encoding"))
         let row = NSStackView(views: [NSTextField(labelWithString: String(localized: "Text Encoding:")), popUp])
         row.orientation = .horizontal
@@ -115,7 +115,7 @@ final class DataFileDocument: NSDocument {
         controller.saveEncoding = saveOperation == .saveOperation ? nil : chosen
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             if error == nil, saveOperation == .saveAsOperation {
-                self?.controller.adoptSaveEncoding()
+                self?.controller.adoptWrittenDialect()
             }
             self?.controller.saveEncoding = nil
             completionHandler(error)

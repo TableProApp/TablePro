@@ -11,7 +11,7 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
     case unknownColumns([String], String)
     case emptyPayload
     case expectedSingleRow
-    case fileIsNotUTF8
+    case unreadableText(line: Int, encoding: String)
     case invalidTextEncoding
     case jsonArrayContainsNonObject
     case invalidJSONShape
@@ -39,8 +39,8 @@ nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertibl
             return "No data was provided to add."
         case .expectedSingleRow:
             return "Add Row to Table expects one row. Use Add Rows to Table for multiple rows."
-        case .fileIsNotUTF8:
-            return LocalizedStringResource("The file is not UTF-8 text.")
+        case .unreadableText(let line, let encoding):
+            return "Line \(line) of the file is not valid \(encoding) text."
         case .invalidTextEncoding:
             return LocalizedStringResource("The text encoding is invalid.")
         case .jsonArrayContainsNonObject:

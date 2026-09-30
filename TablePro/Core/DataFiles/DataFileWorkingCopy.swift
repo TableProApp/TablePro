@@ -38,10 +38,6 @@ final class DataFileWorkingCopy: @unchecked Sendable {
             try await GzipProcess.decompress(source: url, destination: destination)
             return destination
         }
-        let values = try? url.resourceValues(forKeys: [.volumeSupportsFileCloningKey, .volumeIsLocalKey])
-        let supportsCloning = values?.volumeSupportsFileCloning ?? false
-        let isLocal = values?.volumeIsLocal ?? false
-        guard supportsCloning || !isLocal else { return url }
         let destination = file(named: "content-\(UUID().uuidString).\(kind.contentExtension)")
         try FileManager.default.copyItem(at: url, to: destination)
         return destination

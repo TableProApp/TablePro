@@ -76,7 +76,9 @@ public enum TabularTextCodec {
             return Array(string.utf8)
         case .windows1252, .isoLatin1:
             return try encodeSingleByte(string, as: encoding)
-        case .utf16LittleEndian, .utf16BigEndian, .shiftJIS, .gb18030, .big5, .eucKR:
+        case .shiftJIS, .eucJP:
+            return try encodeWithFoundation(TabularJISRoman.folded(string), as: encoding)
+        case .utf16LittleEndian, .utf16BigEndian, .gb18030, .big5, .eucKR:
             return try encodeWithFoundation(string, as: encoding)
         }
     }

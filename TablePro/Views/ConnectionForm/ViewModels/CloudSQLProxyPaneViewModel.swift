@@ -59,6 +59,12 @@ final class CloudSQLProxyPaneViewModel: ObservableObject {
         storage.saveCloudSQLProxyServiceAccountKey(state.serviceAccountKeyJSON, for: connectionId)
     }
 
+    internal var binaryNotFoundMessage: String {
+        String(
+            localized: "cloud-sql-proxy not found. Install it with “brew install cloud-sql-proxy”, download it above, or choose the binary."
+        )
+    }
+
     func resolveBinary() {
         Task {
             let found = await Task.detached { CLIExecutableFinder.findExecutable("cloud-sql-proxy") }.value

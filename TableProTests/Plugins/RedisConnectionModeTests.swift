@@ -172,6 +172,11 @@ struct RedisTopologyDiagnosticsTests {
 
     @Test("A cluster seed through a tunnel is left alone, because it is a data node")
     func clusterThroughTunnelIsFine() {
+        #expect(RedisTopologyDiagnostics.mismatch(expected: .standalone, actual: .cluster, isTunneled: true) == nil)
+    }
+
+    @Test("A standalone server through a tunnel is left alone")
+    func standaloneThroughTunnelIsFine() {
         #expect(RedisTopologyDiagnostics.mismatch(expected: .standalone, actual: .standalone, isTunneled: true) == nil)
     }
 
