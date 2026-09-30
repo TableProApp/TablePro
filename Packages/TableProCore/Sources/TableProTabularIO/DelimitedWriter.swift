@@ -22,13 +22,36 @@ public struct DelimitedWriter {
         self.source = source
     }
 
+    private enum SourceRowCopy {
+        case sourceBytes
+        case originalBytes(TabularTranscodingMap)
+        case fields
+    }
+
     public var canCopySourceBytes: Bool {
-        guard let source else { return false }
-        return source.byteEncoding == dialect.encoding
-            && source.dialect.delimiter == dialect.delimiter
-            && source.dialect.quote == dialect.quote
-            && source.dialect.escape == dialect.escape
-            && source.dialect.lineEnding == dialect.lineEnding
+        switch sourceRowCopy {
+        case .sourceBytes, .originalBytes:
+            return true
+        case .fields:
+            return false
+        }
+    }
+
+    private var sourceRowCopy: SourceRowCopy {
+        guard let source,
+              source.dialect.delimiter == dialect.delimiter,
+              source.dialect.quote == dialect.quote,
+              source.dialect.escape == dialect.escape,
+              source.dialect.lineEnding == dialect.lineEnding else {
+            return .fields
+        }
+        if source.byteEncoding == dialect.encoding {
+            return .sourceBytes
+        }
+        if let origin = source.origin, origin.encoding == dialect.encoding {
+            return .originalBytes(origin)
+        }
+        return .fields
     }
 
     public func write<Rows: Sequence>(
@@ -53,13 +76,21 @@ public struct DelimitedWriter {
             buffer.append(contentsOf: dialect.encoding.byteOrderMark)
         }
         let lineEnding = try encodedLineEnding()
+        let copy = sourceRowCopy
+        let originalRowStarts = originalRowBoundaries(for: copy)
         var pendingTerminator = false
         var outputRow = 0
         for row in rows {
             if pendingTerminator {
                 buffer.append(contentsOf: lineEnding)
             }
-            pendingTerminator = try append(row, outputRow: outputRow, lineEnding: lineEnding, into: &buffer)
+            pendingTerminator = try append(
+                row,
+                outputRow: outputRow,
+                copy: copy,
+                originalRowStarts: originalRowStarts,
+                into: &buffer
+            )
             outputRow += 1
             if buffer.count >= Self.flushThreshold {
                 if isCancelled() { throw TabularCancellation() }
@@ -104,7 +135,8 @@ public struct DelimitedWriter {
     private func append(
         _ row: DelimitedOutputRow,
         outputRow: Int,
-        lineEnding: [UInt8],
+        copy: SourceRowCopy,
+        originalRowStarts: [Int],
         into buffer: inout [UInt8]
     ) throws -> Bool {
         switch row {
@@ -113,7 +145,14 @@ public struct DelimitedWriter {
             return true
         case .source(let sourceRow):
             guard let source else { return false }
-            return try appendSourceRow(sourceRow, of: source, outputRow: outputRow, lineEnding: lineEnding, into: &buffer)
+            return try appendSourceRow(
+                sourceRow,
+                of: source,
+                outputRow: outputRow,
+                copy: copy,
+                originalRowStarts: originalRowStarts,
+                into: &buffer
+            )
         }
     }
 
@@ -121,20 +160,43 @@ public struct DelimitedWriter {
         _ sourceRow: Int,
         of source: DelimitedSource,
         outputRow: Int,
-        lineEnding: [UInt8],
+        copy: SourceRowCopy,
+        originalRowStarts: [Int],
         into buffer: inout [UInt8]
     ) throws -> Bool {
-        guard canCopySourceBytes else {
+        let range = source.rawRange(ofRow: sourceRow)
+        switch copy {
+        case .fields:
             buffer.append(contentsOf: try encodeRow(source.decodedFields(row: sourceRow), outputRow: outputRow))
             return true
+        case .sourceBytes:
+            let terminatorLength = source.bytes.withUnsafeBytes { raw -> Int in
+                let bytes = raw.bindMemory(to: UInt8.self)
+                buffer.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[range]))
+                return Self.terminatorLength(in: bytes, range: range)
+            }
+            return terminatorLength == 0
+        case .originalBytes(let origin):
+            let start = originalRowStarts[sourceRow]
+            let end = max(start, originalRowStarts[sourceRow + 1])
+            guard (end - start).isMultiple(of: origin.encoding.codeUnitLayout.width) else {
+                buffer.append(contentsOf: try encodeRow(source.decodedFields(row: sourceRow), outputRow: outputRow))
+                return true
+            }
+            origin.original.withUnsafeBytes { raw in
+                buffer.append(contentsOf: UnsafeBufferPointer(rebasing: raw.bindMemory(to: UInt8.self)[start..<end]))
+            }
+            let terminatorLength = source.bytes.withUnsafeBytes { raw in
+                Self.terminatorLength(in: raw.bindMemory(to: UInt8.self), range: range)
+            }
+            return terminatorLength == 0
         }
-        let range = source.rawRange(ofRow: sourceRow)
-        let terminatorLength = source.bytes.withUnsafeBytes { raw -> Int in
-            let bytes = raw.bindMemory(to: UInt8.self)
-            buffer.append(contentsOf: UnsafeBufferPointer(rebasing: bytes[range]))
-            return Self.terminatorLength(in: bytes, range: range)
-        }
-        return terminatorLength == 0
+    }
+
+    private func originalRowBoundaries(for copy: SourceRowCopy) -> [Int] {
+        guard case .originalBytes(let origin) = copy, let source else { return [] }
+        let index = source.index
+        return origin.originalOffsets(ofLineStarts: index.rowStarts + [index.endOffset], in: source.bytes)
     }
 
     private static func terminatorLength(in bytes: UnsafeBufferPointer<UInt8>, range: Range<Int>) -> Int {

@@ -10,6 +10,15 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
 # Configuration
 APP_NAME="TablePro"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ARCH="${2:-}"
+case "$ARCH" in
+    arm64 | x86_64) ;;
+    *)
+        echo "Usage: create-dmg.sh <version> <arm64|x86_64> [source_app]" >&2
+        echo "   source_app defaults to build/Release/${APP_NAME}-<arch>.app, which build-release.sh writes" >&2
+        exit 1
+        ;;
+esac
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
     # Configs/Version.xcconfig is the single declaration of the app version. The literal that
@@ -23,8 +32,7 @@ if [ -z "$VERSION" ]; then
     echo "❌ ERROR: MARKETING_VERSION missing from Configs/Version.xcconfig" >&2
     exit 1
 fi
-ARCH="${2:-universal}"
-SOURCE_APP="${3:-build/Release/${APP_NAME}.app}"
+SOURCE_APP="${3:-build/Release/${APP_NAME}-${ARCH}.app}"
 DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
 VOLUME_NAME="${APP_NAME} ${VERSION}"
 FINAL_DMG="build/Release/$DMG_NAME"

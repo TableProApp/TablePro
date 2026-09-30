@@ -217,17 +217,11 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
     }
 }
 
-nonisolated private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
-    guard let string else { return try body(nil) }
-    return try string.withCString { try body($0) }
-}
-
 // MARK: - Redis Actor (thread-safe C API access)
 
 private actor RedisActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RedisActor")
     private var ctx: UnsafeMutablePointer<redisContext>?
-    private var sslContext: OpaquePointer?
 
     private static let initSSL: Void = {
         let result = redisInitOpenSSL()
@@ -268,24 +262,12 @@ private actor RedisActor {
 
         if ssl.isEnabled {
             _ = Self.initSSL
-
-            let sslCtx: OpaquePointer
-            do {
-                sslCtx = try Self.makeSSLContext(host: host, ssl: ssl)
+            do throws(RedisTLSFailure) {
+                try RedisTLSSession.initiate(on: context, options: RedisTLSOptions(ssl: ssl, host: host))
             } catch {
                 redisFree(context)
-                throw error
+                throw RedisError(tlsFailure: error)
             }
-
-            let result = redisInitiateSSLWithContext(context, sslCtx)
-            if result != REDIS_OK {
-                redisFreeSSLContext(sslCtx)
-                let msg = withUnsafePointer(to: &context.pointee.errstr.0) { String(cString: $0) }
-                redisFree(context)
-                throw RedisError.connectionFailed("SSL handshake failed: \(msg)")
-            }
-
-            self.sslContext = sslCtx
         }
 
         self.ctx = context
@@ -323,41 +305,10 @@ private actor RedisActor {
         }
     }
 
-    private static func makeSSLContext(host: String, ssl: DriverSSLConfiguration) throws -> OpaquePointer {
-        try host.withCString { hostCStr in
-            try withOptionalCString(ssl.existingCACertificatePath) { caCStr in
-                try withOptionalCString(ssl.existingClientCertificatePath) { certCStr in
-                    try withOptionalCString(ssl.existingClientKeyPath) { keyCStr in
-                        var sslError = redisSSLContextError(0)
-                        var options = redisSSLOptions()
-                        memset(&options, 0, MemoryLayout<redisSSLOptions>.size)
-                        options.server_name = hostCStr
-                        options.cacert_filename = caCStr
-                        options.cert_filename = certCStr
-                        options.private_key_filename = keyCStr
-                        options.verify_mode = ssl.verifiesCertificate ? REDIS_SSL_VERIFY_PEER : REDIS_SSL_VERIFY_NONE
-
-                        guard let created = redisCreateSSLContextWithOptions(&options, &sslError) else {
-                            throw RedisError.connectionFailed(
-                                "Failed to create SSL context (error \(sslError.rawValue))"
-                            )
-                        }
-                        return created
-                    }
-                }
-            }
-        }
-    }
-
     func close() {
-        if let ctx {
-            redisFree(ctx)
-            self.ctx = nil
-        }
-        if let sslContext {
-            redisFreeSSLContext(sslContext)
-            self.sslContext = nil
-        }
+        guard let ctx else { return }
+        redisFree(ctx)
+        self.ctx = nil
     }
 
     func command(_ args: [String]) throws -> RedisReplyValue {
@@ -490,5 +441,29 @@ nonisolated enum RedisError: Error, LocalizedError, Equatable {
             return String(format: String(localized: "Keys of type %@ cannot be opened here."), typeName)
         case .unsupported(let msg): return msg
         }
+    }
+}
+
+nonisolated extension RedisError {
+    init(tlsFailure: RedisTLSFailure) {
+        switch tlsFailure {
+        case .contextRejected(let code):
+            self = .connectionFailed("Failed to create SSL context (error \(code))")
+        case .handshakeFailed(let message), .certificateNameMismatch(let message):
+            self = .connectionFailed("SSL handshake failed: \(message)")
+        }
+    }
+}
+
+nonisolated extension RedisTLSOptions {
+    init(ssl: DriverSSLConfiguration, host: String) {
+        self.init(
+            host: host,
+            verifiesCertificate: ssl.verifiesCertificate,
+            verifiesHostname: ssl.verifiesHostname,
+            caCertificatePath: ssl.existingCACertificatePath,
+            clientCertificatePath: ssl.existingClientCertificatePath,
+            clientKeyPath: ssl.existingClientKeyPath
+        )
     }
 }

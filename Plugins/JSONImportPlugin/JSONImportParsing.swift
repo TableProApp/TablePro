@@ -94,11 +94,24 @@ enum JSONImportParsing {
 
     // MARK: - Source introspection
 
+    static let sampleLength = 256 * 1_024
+
+    private static let longestUTF8Tail = 3
+
+    static func utf8Text(ofSample sample: Data) -> String {
+        for dropped in 0...min(longestUTF8Tail, sample.count) {
+            if let text = String(data: sample.dropLast(dropped), encoding: .utf8) {
+                return text
+            }
+        }
+        return ""
+    }
+
     static func sampleRawRows(at url: URL, targetTable: String?, limit: Int) throws -> [[String: Any]] {
         if isLineDelimited(url) {
             let handle = try FileHandle(forReadingFrom: url)
             defer { try? handle.close() }
-            let text = String(bytes: handle.readData(ofLength: 256 * 1_024), encoding: .utf8) ?? ""
+            let text = utf8Text(ofSample: handle.readData(ofLength: sampleLength))
             var rows: [[String: Any]] = []
             for line in text.split(separator: "\n") where rows.count < limit {
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -9,6 +9,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 private func field(
     _ name: String,
     _ type: String,
@@ -135,14 +137,14 @@ struct TypesenseSchemaTests {
         let documents: [[String: Any]] = [
             ["id": "a1", "title": "Dune", "meta": ["pages": 412]],
         ]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "title", "meta.pages"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "title", "meta.pages"], length: .display)
         #expect(rows == [[.text("a1"), .text("Dune"), .text("412")]])
     }
 
     @Test("A missing value is null, and arrays and objects render as JSON")
     func rendersMissingAndCompositeValues() {
         let documents: [[String: Any]] = [["id": "a1", "authors": ["Tolkien", "Lewis"]]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "authors", "title"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "authors", "title"], length: .display)
         #expect(rows[0][0] == .text("a1"))
         #expect(rows[0][1] == .text("[\"Tolkien\",\"Lewis\"]"))
         #expect(rows[0][2] == .null)
@@ -156,7 +158,9 @@ struct TypesenseSchemaTests {
             "id": "1",
             "variants": [["sku": "A1", "qty": 3], ["sku": "B2", "qty": 5]],
         ]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["id", "variants.sku", "variants.qty"])
+        let rows = TypesenseSchema.rows(
+            for: documents, columns: ["id", "variants.sku", "variants.qty"], length: .display
+        )
         #expect(rows[0][0] == .text("1"))
         #expect(rows[0][1] == .text("[\"A1\",\"B2\"]"))
         #expect(rows[0][2] == .text("[3,5]"))
@@ -169,7 +173,7 @@ struct TypesenseSchemaTests {
             ["variants": [["qty": 9]]],
             ["variants": []],
         ]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku"], length: .display)
         #expect(rows[0][0] == .text("[\"A1\",null]"))
         #expect(rows[1][0] == .null)
         #expect(rows[2][0] == .null)
@@ -180,7 +184,7 @@ struct TypesenseSchemaTests {
     @Test("Sibling leaves of one object array stay the same length")
     func objectArrayLeavesStayAligned() {
         let documents: [[String: Any]] = [["variants": [["qty": 3], ["sku": "B2", "qty": 5]]]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku", "variants.qty"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku", "variants.qty"], length: .display)
         #expect(rows[0][0] == .text("[null,\"B2\"]"))
         #expect(rows[0][1] == .text("[3,5]"))
     }
@@ -190,7 +194,7 @@ struct TypesenseSchemaTests {
         let documents: [[String: Any]] = [[
             "variants": [["price": ["eur": 10]], ["price": ["eur": 20]]],
         ]]
-        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.price.eur"])
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.price.eur"], length: .display)
         #expect(rows[0][0] == .text("[10,20]"))
     }
 
@@ -203,9 +207,42 @@ struct TypesenseSchemaTests {
         #expect(TypesenseSchema.presentedFields(fields).map(\.name) == ["variants.sku"])
     }
 
+    @Test("An export row keeps arrays and objects longer than the grid's cap whole")
+    func exportRowKeepsLongStructuresWhole() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let variants = (0..<4).map { _ in ["vector": embedding] }
+        let documents: [[String: Any]] = [["id": "1", "embedding": embedding, "variants": variants]]
+        let row = try #require(TypesenseSchema.rows(
+            for: documents,
+            columns: ["embedding", "variants", "variants.vector"],
+            length: .whole
+        ).first)
+
+        #expect(try parsedJSON(row[0]) as? [Double] == embedding)
+        #expect(try parsedJSON(row[1]) as? [[String: [Double]]] == variants)
+        #expect(try parsedJSON(row[2]) as? [[Double]] == variants.map { _ in embedding })
+    }
+
+    @Test("A grid row still cuts an array longer than the cap")
+    func gridRowCutsLongStructures() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let row = try #require(TypesenseSchema.rows(
+            for: [["embedding": embedding]], columns: ["embedding"], length: .display
+        ).first)
+        let text = try #require(row[0].asText)
+
+        #expect(text.hasSuffix("..."))
+        #expect((text as NSString).length == 10_003)
+    }
+
+    private func parsedJSON(_ cell: PluginCellValue) throws -> Any {
+        let text = try #require(cell.asText)
+        return try JSONSerialization.jsonObject(with: Data(text.utf8))
+    }
+
     @Test("Booleans render as true and false, not 1 and 0")
     func rendersBooleans() {
-        let rows = TypesenseSchema.rows(for: [["inprint": true]], columns: ["inprint"])
+        let rows = TypesenseSchema.rows(for: [["inprint": true]], columns: ["inprint"], length: .display)
         #expect(rows == [[.text("true")]])
     }
 
@@ -250,7 +287,34 @@ struct TypesenseFilterBuilderTests {
         #expect(try clause("year", ">", "1900") == "year:>1900")
         #expect(try clause("year", ">=", "1900") == "year:>=1900")
         #expect(try clause("rating", "<", "4.5") == "rating:<4.5")
-        #expect(try clause("year", "BETWEEN", "1937", second: "1965") == "year:[1937..1965]")
+        #expect(try clause("year", "BETWEEN", "1937,1965", second: "1965") == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func buildsRangeFromAppEncoding() throws {
+        let filter = TableFilter(
+            columnName: "year", filterOperator: .between, value: "1937", secondValue: "1965"
+        ).asPluginQueryFilter
+        #expect(filter.value == "1937,1965")
+
+        let clause = try TypesenseFilterBuilder.clause(for: TypesenseFilterSpec(filter), fields: booksFields)
+        #expect(clause == "year:[1937..1965]")
+    }
+
+    @Test("A filter-bar BETWEEN survives the search tag round-trip")
+    func buildsRangeAfterSearchTagRoundTrip() throws {
+        let filter = TableFilter(
+            columnName: "rating", filterOperator: .between, value: "3.5", secondValue: "4.5"
+        ).asPluginQueryFilter
+        let tag = TypesenseQueryBuilder.encodeSearch(
+            collection: "books", offset: 0, limit: 10, sorts: [],
+            filters: TypesenseFilterBuilder.specs(from: [filter]), logicMode: "AND"
+        )
+        let parsed = try #require(TypesenseQueryBuilder.parseSearch(tag))
+        let expression = try TypesenseFilterBuilder.expression(
+            filters: parsed.filters, logicMode: parsed.logicMode, fields: booksFields
+        )
+        #expect(expression == "rating:[3.5..4.5]")
     }
 
     @Test("A comparison on a string field is refused rather than silently matching nothing")
@@ -740,16 +804,15 @@ struct TypesenseStatementGeneratorTests {
         TypesenseStatementGenerator(collection: "books", columns: columns, fields: booksFields)
     }
 
-    private func request(_ statements: [(statement: String, parameters: [PluginCellValue])]) throws
-        -> TypesenseWriteRequest {
-        let first = try #require(statements.first)
+    private func request(_ writes: [PluginRowWrite]) throws -> TypesenseWriteRequest {
+        let first = try #require(writes.first)
         return try #require(TypesenseStatementGenerator.decode(first.statement))
     }
 
     @Test("An insert posts the document, typed by the collection schema")
     func insertPostsTheDocument() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change],
             insertedRowData: [0: [
                 .text("a1"), .text("Dune"), .text("1965"), .text("true"), .text("[\"Herbert\"]"),
@@ -757,7 +820,7 @@ struct TypesenseStatementGeneratorTests {
             deletedRowIndices: [],
             insertedRowIndices: [0]
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.method == "POST")
         #expect(request.path == "/collections/books/documents")
         #expect(request.body == #"{"authors":["Herbert"],"id":"a1","inprint":true,"title":"Dune","year":1965}"#)
@@ -766,13 +829,13 @@ struct TypesenseStatementGeneratorTests {
     @Test("A blank id is left out so Typesense assigns one")
     func insertOmitsABlankId() throws {
         let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change],
             insertedRowData: [0: [.text(""), .text("Dune"), .null, .null, .null]],
             deletedRowIndices: [],
             insertedRowIndices: [0]
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.body == #"{"title":"Dune"}"#)
     }
 
@@ -787,10 +850,10 @@ struct TypesenseStatementGeneratorTests {
             ],
             originalRow: [.text("a1"), .text("Dune"), .text("1965"), .text("true"), .null]
         )
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.method == "PATCH")
         #expect(request.path == "/collections/books/documents/a1")
         #expect(request.body == #"{"title":"Dune II"}"#)
@@ -802,17 +865,17 @@ struct TypesenseStatementGeneratorTests {
             rowIndex: 0, type: .delete, cellChanges: [],
             originalRow: [.text("a1"), .text("Dune"), .null, .null, .null]
         )
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.method == "DELETE")
         #expect(request.path == "/collections/books/documents/a1")
         #expect(request.body == nil)
     }
 
     @Test("An update or delete with no id is skipped rather than guessed at")
-    func skipsRowsWithoutAnId() {
+    func skipsRowsWithoutAnId() throws {
         let update = PluginRowChange(
             rowIndex: 0,
             type: .update,
@@ -820,10 +883,10 @@ struct TypesenseStatementGeneratorTests {
             originalRow: nil
         )
         let delete = PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: [.text("")])
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [update, delete], insertedRowData: [:], deletedRowIndices: [1], insertedRowIndices: []
         )
-        #expect(statements.isEmpty)
+        #expect(writes.isEmpty)
     }
 
     @Test("A document id needing escaping is percent-encoded into the path")
@@ -831,10 +894,10 @@ struct TypesenseStatementGeneratorTests {
         let change = PluginRowChange(
             rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("a/b c")]
         )
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.path == "/collections/books/documents/a%2Fb%20c")
     }
 
@@ -845,10 +908,10 @@ struct TypesenseStatementGeneratorTests {
         let change = PluginRowChange(
             rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("..")]
         )
-        let statements = generator.generateStatements(
+        let writes = try generator.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.path == "/collections/books/documents/%2E%2E")
         #expect(!request.path.hasSuffix("/.."))
     }
@@ -863,10 +926,10 @@ struct TypesenseStatementGeneratorTests {
         let change = PluginRowChange(
             rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("x")]
         )
-        let statements = slashed.generateStatements(
+        let writes = try slashed.generateRowWrites(
             from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        let request = try request(statements)
+        let request = try request(writes)
         #expect(request.path == "/collections/a%2Fb/documents/x")
     }
 
@@ -878,5 +941,111 @@ struct TypesenseStatementGeneratorTests {
         let encoded = TypesenseStatementGenerator.encode(original)
         #expect(TypesenseStatementGenerator.isTaggedStatement(encoded))
         #expect(TypesenseStatementGenerator.decode(encoded) == original)
+    }
+
+    @Test("Each request names the change it writes")
+    func writesNameTheirChange() throws {
+        let original: [PluginCellValue] = [.text("a1"), .text("Dune"), .null, .null, .null]
+        let writes = try generator.generateRowWrites(
+            from: [
+                PluginRowChange(
+                    rowIndex: 0,
+                    type: .update,
+                    cellChanges: [(columnIndex: 1, columnName: "title", oldValue: .text("Dune"), newValue: .text("II"))],
+                    originalRow: original
+                ),
+                PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: original),
+            ],
+            insertedRowData: [:],
+            deletedRowIndices: [1],
+            insertedRowIndices: []
+        )
+        #expect(writes.map(\.rowIndices) == [[0], [1]])
+    }
+
+    private func shortenedAuthors() -> String {
+        TypesenseSchema.cell((0..<1_500).map { "author-\($0)" }).asText ?? ""
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func authorsEdit(from old: String, to new: PluginCellValue) -> PluginRowChange {
+        PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 4, columnName: "authors", oldValue: .text(old), newValue: new)],
+            originalRow: [.text("a1"), .text("Dune"), .text("1965"), .text("true"), .text(old)]
+        )
+    }
+
+    private func updateRequest(_ change: PluginRowChange) throws -> TypesenseWriteRequest {
+        try request(generator.generateRowWrites(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ))
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedAuthors()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"author-0\"", with: "\"author-Z\"")
+        #expect(throws: shortenedRefusal("authors")) {
+            try updateRequest(authorsEdit(from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to an array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedAuthors()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("authors")) {
+            try updateRequest(authorsEdit(from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a value shortened for display is refused")
+    func insertRefusesAShortenedValue() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: shortenedRefusal("authors")) {
+            try generator.generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.text("a2"), .text("Dune"), .null, .null, .text(shortenedAuthors())]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = TypesenseSchema.cell((0..<600).map { "author-\($0)" }).asText ?? ""
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("authors")) {
+            try updateRequest(authorsEdit(from: shortenedAuthors(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let request = try updateRequest(authorsEdit(from: shortenedAuthors(), to: .null))
+        #expect(request.body == #"{"authors":null}"#)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "title", oldValue: .text("Dune"), newValue: .text("Dune II"))],
+            originalRow: [.text("a1"), .text("Dune"), .text("1965"), .text("true"), .text(shortenedAuthors())]
+        )
+        #expect(try updateRequest(change).body == #"{"title":"Dune II"}"#)
     }
 }

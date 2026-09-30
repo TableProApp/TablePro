@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct SSHTunnelErrorTests {
@@ -97,5 +97,27 @@ struct SSHTunnelErrorTests {
 
         #expect(error.errorDescription?.contains("db.internal:3306") == true)
         #expect(error.errorDescription?.contains("6") == true)
+    }
+
+    @Test("A missing SSH username is plain text that names the host")
+    func usernameMissingDescription() {
+        let description = SSHTunnelError.usernameMissing(host: "bastion.example").errorDescription ?? ""
+
+        #expect(!description.contains("`"))
+        #expect(description.contains("bastion.example"))
+        #expect(description.contains("~/.ssh/config"))
+    }
+
+    @Test("A failed remote command is plain text that names the command")
+    func remoteCommandFailedIsPlainText() {
+        let description = SFTPError.remoteCommandFailed(
+            command: "VACUUM INTO",
+            status: 1,
+            output: "disk I/O error"
+        ).errorDescription ?? ""
+
+        #expect(!description.contains("`"))
+        #expect(description.contains("VACUUM INTO"))
+        #expect(description.contains("disk I/O error"))
     }
 }

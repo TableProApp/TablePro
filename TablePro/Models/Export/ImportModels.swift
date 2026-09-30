@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProTabularIO
 
 // MARK: - Import Encoding Options
 
@@ -23,8 +24,27 @@ enum ImportEncoding: String, CaseIterable, Identifiable {
     case latin1 = "Latin1"
     case windows1252 = "Windows-1252"
     case ascii = "ASCII"
+    case shiftJIS = "Shift_JIS"
+    case eucJP = "EUC-JP"
+    case gb18030 = "GB18030"
+    case big5 = "Big5"
+    case eucKR = "EUC-KR"
 
     var id: String { rawValue }
+
+    init?(detected: TabularTextEncoding) {
+        guard let match = Self.allCases.first(where: { $0.tabularEncoding == detected }) else { return nil }
+        self = match
+    }
+
+    var canHideABackslashInsideACharacter: Bool {
+        switch self {
+        case .shiftJIS, .gb18030, .big5:
+            return true
+        case .utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .latin1, .windows1252, .ascii, .eucJP, .eucKR:
+            return false
+        }
+    }
 
     var label: String {
         switch self {
@@ -35,18 +55,33 @@ enum ImportEncoding: String, CaseIterable, Identifiable {
         case .latin1: return "Latin-1"
         case .windows1252: return "Windows-1252"
         case .ascii: return "ASCII"
+        case .shiftJIS, .eucJP, .gb18030, .big5, .eucKR:
+            return tabularEncoding?.displayName ?? rawValue
         }
     }
 
     var encoding: String.Encoding {
         switch self {
-        case .utf8: return .utf8
         case .utf16: return .utf16
+        case .ascii: return .ascii
+        case .utf8, .utf16LittleEndian, .utf16BigEndian, .latin1, .windows1252, .shiftJIS, .eucJP, .gb18030, .big5, .eucKR:
+            return tabularEncoding?.foundationEncoding ?? .utf8
+        }
+    }
+
+    private var tabularEncoding: TabularTextEncoding? {
+        switch self {
+        case .utf8: return .utf8
         case .utf16LittleEndian: return .utf16LittleEndian
         case .utf16BigEndian: return .utf16BigEndian
         case .latin1: return .isoLatin1
-        case .windows1252: return .windowsCP1252
-        case .ascii: return .ascii
+        case .windows1252: return .windows1252
+        case .shiftJIS: return .shiftJIS
+        case .eucJP: return .eucJP
+        case .gb18030: return .gb18030
+        case .big5: return .big5
+        case .eucKR: return .eucKR
+        case .utf16, .ascii: return nil
         }
     }
 }

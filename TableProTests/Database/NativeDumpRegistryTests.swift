@@ -414,4 +414,13 @@ struct NativeDumpRegistryTests {
         #expect(NativeDumpService.sizeQuery(for: .mongodb) == nil)
         #expect(NativeDumpService.sizeQuery(for: .sqlite) == nil)
     }
+
+    @Test("Every install hint is plain text")
+    func installHintsArePlainText() throws {
+        for type in [DatabaseType.postgresql, .redshift, .mysql, .mongodb, .sqlite] {
+            let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
+            #expect(!tool.installHint.contains("`"), "\(type.rawValue)")
+            #expect(tool.installHint.contains("brew install"), "\(type.rawValue)")
+        }
+    }
 }

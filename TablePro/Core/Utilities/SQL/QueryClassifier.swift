@@ -933,22 +933,6 @@ private extension QueryClassifier {
         return names
     }
 
-    static let etcdReadCommands: Set<String> = ["GET", "RANGE", "WATCH", "LIST", "STATUS", "VERSION", "ENDPOINT"]
-
-    static func etcdClassification(_ trimmed: String) -> QueryClassification {
-        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
-        if command == "SNAPSHOT" || command == "DEFRAG" {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
-        }
-        if command == "DEL" || command == "DELETE" || command == "COMPACT" || command == "COMPACTION" {
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        }
-        if etcdReadCommands.contains(command) {
-            return .safe
-        }
-        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
-    }
-
     static let elasticsearchReadPaths: [String] = [
         "_SEARCH", "_COUNT", "_MSEARCH", "_EXPLAIN", "_ANALYZE", "_FIELD_CAPS",
         "_VALIDATE", "_RENDER", "_MAPPING", "_SETTINGS", "_STATS", "_CAT", "_SQL"

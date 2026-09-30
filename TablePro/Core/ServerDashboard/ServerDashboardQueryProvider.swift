@@ -21,4 +21,12 @@ extension ServerDashboardQueryProvider {
     func fetchSlowQueries(execute: (String) async throws -> QueryResult) async throws -> [DashboardSlowQuery] { [] }
     func killSessionSQL(processId: String) -> String? { nil }
     func cancelQuerySQL(processId: String) -> String? { nil }
+
+    func canKill(_ session: DashboardSession) -> Bool {
+        session.canKill && killSessionSQL(processId: session.id) != nil
+    }
+
+    func canCancel(_ session: DashboardSession) -> Bool {
+        session.canCancel && cancelQuerySQL(processId: session.id) != nil
+    }
 }

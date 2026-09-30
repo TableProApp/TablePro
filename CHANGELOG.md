@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
+
+### Changed
+
+- Clipboard URL banner for every scheme Import from URL accepts, `+ssh` URLs included.
 
 ### Fixed
 
@@ -21,11 +26,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
 - Column header sort on Redis, etcd and Kafka re-running the last command with `ORDER BY` appended.
+- Filter-bar BETWEEN refused on Typesense and Weaviate, and given the wrong lower bound on BigQuery.
+- Cassandra filter error telling MCP clients to use a Match All control they do not have.
+- Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
+- Every row of a UTF-16 data file rewritten on save.
+- Latin-1 and Windows-1252 SQL dumps importing double-encoded text through their own `SET NAMES`.
+- Data file window stuck on an error after reloading it with the wrong encoding.
+- Encoding chosen in File Properties lost when another app changes the file.
+- No columns found for a JSON Lines file over 256 KB with non-ASCII text.
+- VoiceOver reading the data file status bar's delimiter and encoding as only "File format".
+- CSV import writing bytes it could not read into the table as Latin-1 text.
+- Data file window picking up another app's in-place writes on HFS+ and exFAT volumes.
+- Wrong row number and blank-looking characters in the data file save error for text the encoding cannot store.
+- Yen sign failing to save in Shift JIS and EUC-JP data files and SQL files.
+- CSV import with single quotes merging rows at a double quote inside a field.
+- Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
+- Shortcuts rejecting CSV and JSON files that are not UTF-8.
+- Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
+- Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
+- etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
 - Mac Alert (Full), Safe Mode and Safe Mode (Full) levels dropped to Alert by any edit to the connection on iOS.
 - `pg_terminate_backend`, `nextval` and other state-changing calls treated as reads by Safe Mode and external clients.
 - `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text.
+- MongoDB refusing text like `[DRAFT] Chapter one...` as a value shortened for display.
+- Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
+- Import from URL ignoring `ssl=1`, `ssl=require` and `ssl=0`.
+- Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for.
+- Release highlights in the update dialog run together into one paragraph.
+- Removed and Deprecated listed after Fixed in GitHub release notes.
+- PostgreSQL 18 virtual generated columns written without their expression in Show DDL, Copy DDL and SQL export.
+- Empty Check Constraints tab and no check constraints in MCP `describe_table` on CockroachDB.
+- Connect errors a server answered through PGlite, such as a missing database, reported as an unreachable socket server.
+- REINDEX VERBOSE offered on PostgreSQL 9.1 to 9.4, where it fails, and ignored when reindexing a whole database.
+- PGlite saying it cannot change the order of a table's columns.
+- `Use ~/.pgpass` toggle named `Use Password File` on Redshift and CockroachDB.
+- etcd `(root)` Delete and Truncate erasing the whole Key Prefix Root, and a root with no trailing `/` reaching sibling keys.
+- etcd commands and saved edits reaching a different key when the key starts with a combining mark.
+- Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
+- Server dashboard Slow Queries panel failing on every refresh on SQL Server.
+- Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.
+- Missing Terminate button on ClickHouse server dashboard sessions that MCP could terminate.
+- SQLite server dashboard showing Cache Size as "-2000 pages".
+- Untranslatable "% used" on the Typesense server dashboard.
+- SQL Server and ClickHouse server dashboards listing their own monitoring session.
+- Client certificate and key dropped by SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels.
+- SOCKS proxy dialing the hidden Host instead of the first host-list entry.
+- "SSH password rejected" shown for a Password-auth SSH tunnel with no saved password.
+- Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
+- Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
+- SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+
+### Security
+
+- Redis Verify Identity accepting a server certificate issued for another host.
 
 ## [0.76.1] - 2026-09-29
 
