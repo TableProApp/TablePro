@@ -169,6 +169,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var _currentDatabase: String
     var _lastQueryId: String?
     let _queryTimeout = HttpQueryTimeoutBox()
+    private(set) var acceptedExecutionTimeLimit: Int?
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
@@ -462,8 +463,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         _queryTimeout.set(serverTimeoutSeconds: seconds)
+        lock.withLock { acceptedExecutionTimeLimit = nil }
         guard seconds > 0 else { return }
-        _ = try await execute(query: "SET max_execution_time = \(seconds)")
+        _ = try await sendStatement("SELECT 1", queryId: nil, params: nil, executionTimeLimit: seconds)
+        lock.withLock { acceptedExecutionTimeLimit = seconds }
     }
 
     // MARK: - Database Switching
@@ -549,14 +552,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rowCap: Int,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
-            guard let session = self.session else { throw ClickHouseError.notConnected }
-            return (session, _currentDatabase)
-        }
-
+        let (session, database, executionTimeLimit) = try streamingContext()
         let request = try buildStreamRequest(
             query: Self.withoutTrailingSemicolons(query),
             database: database,
+            executionTimeLimit: executionTimeLimit,
             rowCap: rowCap
         )
         try await streamTabSeparatedRows(
@@ -639,12 +639,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
-            guard let session = self.session else { throw ClickHouseError.notConnected }
-            return (session, _currentDatabase)
-        }
-
-        let request = try buildStreamRequest(query: Self.withoutTrailingSemicolons(query), database: database)
+        let (session, database, executionTimeLimit) = try streamingContext()
+        let request = try buildStreamRequest(
+            query: Self.withoutTrailingSemicolons(query),
+            database: database,
+            executionTimeLimit: executionTimeLimit
+        )
         try await streamTabSeparatedRows(
             request: request,
             session: session,
@@ -653,7 +653,19 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func buildStreamRequest(query: String, database: String, rowCap: Int? = nil) throws -> URLRequest {
+    private func streamingContext() throws -> (session: URLSession, database: String, executionTimeLimit: Int?) {
+        try lock.withLock {
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase, acceptedExecutionTimeLimit)
+        }
+    }
+
+    private func buildStreamRequest(
+        query: String,
+        database: String,
+        executionTimeLimit: Int?,
+        rowCap: Int? = nil
+    ) throws -> URLRequest {
         let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
@@ -670,6 +682,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             name: "default_format",
             value: ClickHouseResponseClassifier.requestedFormat
         ))
+        queryItems.append(contentsOf: Self.executionTimeLimitItems(executionTimeLimit))
         if let rowCap {
             /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
             /// user wrote. One row past the cap, so a full page can be told from a truncated one.
@@ -685,6 +698,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
 
         if let authorization = ClickHouseCredentials.basicAuthorizationHeader(
             username: config.username,

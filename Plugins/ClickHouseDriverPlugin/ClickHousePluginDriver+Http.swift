@@ -10,7 +10,24 @@ import TableProPluginKit
 extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
+    var executionTimeLimit: Int? {
+        lock.withLock { acceptedExecutionTimeLimit }
+    }
+
     func executeRaw(_ query: String, queryId: String? = nil) async throws -> CHQueryResult {
+        try await sendStatement(query, queryId: queryId, params: nil, executionTimeLimit: executionTimeLimit)
+    }
+
+    func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
+        try await sendStatement(query, queryId: queryId, params: params, executionTimeLimit: executionTimeLimit)
+    }
+
+    func sendStatement(
+        _ query: String,
+        queryId: String?,
+        params: [String: String?]?,
+        executionTimeLimit: Int?
+    ) async throws -> CHQueryResult {
         let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
             guard let session = self.session else { throw ClickHouseError.notConnected }
             let database = _currentDatabase
@@ -20,24 +37,20 @@ extension ClickHousePluginDriver {
             return (session, database)
         }
 
-        var request = try buildRequest(query: query, database: database, queryId: queryId)
+        var request = try buildRequest(
+            query: query,
+            database: database,
+            queryId: queryId,
+            params: params,
+            executionTimeLimit: executionTimeLimit
+        )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         return try await perform(request: request, session: session)
     }
 
-    func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
-        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
-            guard let session = self.session else { throw ClickHouseError.notConnected }
-            let database = _currentDatabase
-            if let queryId {
-                _lastQueryId = queryId
-            }
-            return (session, database)
-        }
-
-        var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
-        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        return try await perform(request: request, session: session)
+    static func executionTimeLimitItems(_ seconds: Int?) -> [URLQueryItem] {
+        guard let seconds, seconds > 0 else { return [] }
+        return [URLQueryItem(name: "max_execution_time", value: String(seconds))]
     }
 
     private func perform(request: URLRequest, session: URLSession) async throws -> CHQueryResult {
@@ -107,7 +120,13 @@ extension ClickHousePluginDriver {
         return fields
     }
 
-    func buildRequest(query: String, database: String, queryId: String? = nil, params: [String: String?]? = nil) throws -> URLRequest {
+    func buildRequest(
+        query: String,
+        database: String,
+        queryId: String? = nil,
+        params: [String: String?]? = nil,
+        executionTimeLimit: Int? = nil
+    ) throws -> URLRequest {
         let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
@@ -123,6 +142,7 @@ extension ClickHousePluginDriver {
         if let queryId {
             queryItems.append(URLQueryItem(name: "query_id", value: queryId))
         }
+        queryItems.append(contentsOf: Self.executionTimeLimitItems(executionTimeLimit))
         queryItems.append(URLQueryItem(name: "send_progress_in_http_headers", value: "1"))
         queryItems.append(contentsOf: ClickHouseResponseClassifier.transportQueryItems(
             supportsWriteExceptionSetting: ClickHouseCapabilities.parse(serverVersion).hasWriteExceptionInOutputFormatSetting
