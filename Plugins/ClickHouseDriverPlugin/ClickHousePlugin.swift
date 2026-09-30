@@ -500,7 +500,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.unlock()
         guard let connectedSession else { return }
 
-        let killConfig = URLSessionConfiguration.default
+        let killConfig = connectedSession.configuration
         killConfig.timeoutIntervalForRequest = 5
         let killSession = URLSession(
             configuration: killConfig,
@@ -552,10 +552,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rowCap: Int,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database, executionTimeLimit) = try streamingContext()
+        let queryId = UUID().uuidString
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
         let request = try buildStreamRequest(
             query: Self.withoutTrailingSemicolons(query),
             database: database,
+            queryId: queryId,
             executionTimeLimit: executionTimeLimit,
             rowCap: rowCap
         )
@@ -639,10 +641,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database, executionTimeLimit) = try streamingContext()
+        let queryId = UUID().uuidString
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
         let request = try buildStreamRequest(
             query: Self.withoutTrailingSemicolons(query),
             database: database,
+            queryId: queryId,
             executionTimeLimit: executionTimeLimit
         )
         try await streamTabSeparatedRows(
@@ -653,9 +657,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func streamingContext() throws -> (session: URLSession, database: String, executionTimeLimit: Int?) {
+    private func streamingContext(
+        queryId: String
+    ) throws -> (session: URLSession, database: String, executionTimeLimit: Int?) {
         try lock.withLock {
             guard let session = self.session else { throw ClickHouseError.notConnected }
+            _lastQueryId = queryId
             return (session, _currentDatabase, acceptedExecutionTimeLimit)
         }
     }
@@ -663,6 +670,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func buildStreamRequest(
         query: String,
         database: String,
+        queryId: String,
         executionTimeLimit: Int?,
         rowCap: Int? = nil
     ) throws -> URLRequest {
@@ -678,6 +686,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
+        queryItems.append(URLQueryItem(name: "query_id", value: queryId))
         queryItems.append(URLQueryItem(
             name: "default_format",
             value: ClickHouseResponseClassifier.requestedFormat

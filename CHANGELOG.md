@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
 - ClickHouse query timeout never reaching the server, and capped SELECTs failing at 60 seconds whatever it is set to.
+- Stop on a ClickHouse SELECT leaving the query running on the server.
 
 ## [0.76.1] - 2026-09-29
 
