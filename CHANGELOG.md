@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Use ~/.pgpass` toggle named `Use Password File` on Redshift and CockroachDB.
 - etcd `(root)` Delete and Truncate erasing the whole Key Prefix Root, and a root with no trailing `/` reaching sibling keys.
 - etcd commands and saved edits reaching a different key when the key starts with a combining mark.
+- etcd Value edits and key renames detaching the key's lease.
 - Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.

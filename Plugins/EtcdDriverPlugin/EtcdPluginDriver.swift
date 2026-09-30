@@ -231,16 +231,13 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let version = kv.version ?? "0"
             let modRevision = kv.modRevision ?? "0"
             let createRevision = kv.createRevision ?? "0"
-            let lease = kv.lease ?? "0"
-            let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
-
             rows.append([
                 .text(key),
                 PluginCellValue.fromOptional(value),
                 .text(version),
                 .text(modRevision),
                 .text(createRevision),
-                .text(leaseDisplay)
+                .text(EtcdLeaseID.cellText(serverValue: kv.lease))
             ])
         }
 
@@ -668,13 +665,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let response = try await client.leaseGrant(ttl: ttl)
         let leaseIdStr = response.ID ?? "unknown"
         let grantedTtl = response.TTL ?? String(ttl)
-
-        let hexId: String
-        if let idNum = Int64(leaseIdStr) {
-            hexId = String(idNum, radix: 16)
-        } else {
-            hexId = leaseIdStr
-        }
+        let hexId = EtcdLeaseID.hexText(serverValue: leaseIdStr)
 
         return PluginQueryResult(
             columns: ["LeaseID", "LeaseID (hex)", "TTL"],
@@ -689,7 +680,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         leaseId: Int64, client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
         try await client.leaseRevoke(leaseId: leaseId)
-        let hexId = String(leaseId, radix: 16)
+        let hexId = EtcdLeaseID.hexText(leaseId)
         return singleMessageResult("Lease \(hexId) revoked", startTime: startTime)
     }
 
@@ -699,13 +690,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let response = try await client.leaseTimeToLive(leaseId: leaseId, keys: keys)
 
-        let idStr = response.ID ?? String(leaseId)
-        let hexId: String
-        if let idNum = Int64(idStr) {
-            hexId = String(idNum, radix: 16)
-        } else {
-            hexId = idStr
-        }
+        let hexId = EtcdLeaseID.hexText(serverValue: response.ID ?? String(leaseId))
 
         let ttl = response.TTL ?? "unknown"
         let grantedTtl = response.grantedTTL ?? "unknown"
@@ -727,14 +712,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let response = try await client.leaseList()
         let rowsRaw: [[String?]] = (response.leases ?? []).map { lease in
-            let idStr = lease.ID
-            let hexId: String
-            if let idNum = Int64(idStr) {
-                hexId = String(idNum, radix: 16)
-            } else {
-                hexId = idStr
-            }
-            return [idStr, hexId]
+            [lease.ID, EtcdLeaseID.hexText(serverValue: lease.ID)]
         }
 
         return PluginQueryResult(
@@ -753,7 +731,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // Show the current TTL instead so the user can see the lease status.
         let response = try await client.leaseTimeToLive(leaseId: leaseId, keys: false)
         let ttl = response.TTL ?? "unknown"
-        let hexId = String(leaseId, radix: 16)
+        let hexId = EtcdLeaseID.hexText(leaseId)
         return singleMessageResult("Lease \(hexId) current TTL: \(ttl)s (keep-alive requires streaming; use etcdctl CLI for persistent keep-alive)", startTime: startTime)
     }
 
@@ -974,9 +952,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let version = kv.version ?? "0"
             let modRevision = kv.modRevision ?? "0"
             let createRevision = kv.createRevision ?? "0"
-            let lease = kv.lease ?? "0"
-            let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
-            return [key, value, version, modRevision, createRevision, leaseDisplay]
+            return [key, value, version, modRevision, createRevision, EtcdLeaseID.cellText(serverValue: kv.lease)]
         }
 
         return PluginQueryResult(
@@ -1006,12 +982,5 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )
-    }
-
-    private func formatLeaseHex(_ leaseStr: String) -> String {
-        if let leaseNum = Int64(leaseStr) {
-            return String(leaseNum, radix: 16)
-        }
-        return leaseStr
     }
 }
