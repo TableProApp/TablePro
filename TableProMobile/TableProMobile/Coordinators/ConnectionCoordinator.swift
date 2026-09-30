@@ -26,7 +26,7 @@ final class ConnectionCoordinator {
 
     var selectedTab: ConnectedTab = .tables {
         didSet {
-            UserDefaults.standard.set(selectedTab.rawValue, forKey: "lastTab.\(connection.id.uuidString)")
+            UserDefaults.standard.set(selectedTab.rawValue, forKey: ConnectionDefaultsKey.lastTab.name(for: connection.id))
         }
     }
     var pendingQuery: String?
@@ -34,7 +34,7 @@ final class ConnectionCoordinator {
     var selectedTable: TableInfo?
 
     private(set) var queryHistory: [QueryHistoryItem] = []
-    private let historyStorage = QueryHistoryStorage()
+    private var historyStorage: QueryHistoryStorage { appState.queryHistory }
 
     private let appState: AppState
 
@@ -72,13 +72,13 @@ final class ConnectionCoordinator {
     // MARK: - Persisted State
 
     func restorePersistedState() {
-        let key = connection.id.uuidString
-        if let savedTab = UserDefaults.standard.string(forKey: "lastTab.\(key)"),
+        let defaults = UserDefaults.standard
+        if let savedTab = defaults.string(forKey: ConnectionDefaultsKey.lastTab.name(for: connection.id)),
            let tab = ConnectedTab(rawValue: savedTab) {
             selectedTab = tab
         }
-        activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
-        activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
+        activeDatabase = defaults.string(forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id)) ?? ""
+        activeSchema = defaults.string(forKey: ConnectionDefaultsKey.lastSchema.name(for: connection.id)) ?? "public"
     }
 
     // MARK: - Connection Lifecycle
@@ -272,7 +272,7 @@ final class ConnectionCoordinator {
                     self.session = freshSession
                 }
                 activeDatabase = name
-                UserDefaults.standard.set(name, forKey: "lastDB.\(connection.id.uuidString)")
+                UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
                 if let current = self.session {
                     self.tables = try await current.driver.fetchTables(schema: nil)
                 }
@@ -297,7 +297,7 @@ final class ConnectionCoordinator {
             self.session = newSession
             self.tables = try await newSession.driver.fetchTables(schema: nil)
             activeDatabase = database
-            UserDefaults.standard.set(database, forKey: "lastDB.\(connection.id.uuidString)")
+            UserDefaults.standard.set(database, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
             await loadSchemas()
         } catch {
             Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -329,7 +329,7 @@ final class ConnectionCoordinator {
         do {
             try await session.driver.switchSchema(to: name)
             activeSchema = name
-            UserDefaults.standard.set(name, forKey: "lastSchema.\(connection.id.uuidString)")
+            UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastSchema.name(for: connection.id))
             self.tables = try await session.driver.fetchTables(schema: name)
         } catch {
             failureAlertMessage = String(localized: "Failed to switch schema")
@@ -368,7 +368,7 @@ final class ConnectionCoordinator {
     }
 
     func clearHistory() {
-        historyStorage.clearAll(for: connection.id)
+        historyStorage.clearAll(for: [connection.id])
         queryHistory = []
     }
 

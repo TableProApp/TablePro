@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shortcuts Add Row and Add Rows rejecting CSV with CRLF or CR line endings as having no data.
 - iOS Info tab showing a DuckDB connection as a server at 127.0.0.1:3306 instead of its file.
 - iOS `SELECT * FROM` template writing `LIMIT 100` on SQL Server, Oracle and Redis, and leaving out the selected schema.
+- iOS keeping the query history of deleted connections, and the passwords of connections deleted on another device.
 - Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
 - Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
 - etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.

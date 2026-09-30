@@ -57,7 +57,7 @@ struct QueryEditorView: View {
                 query = pending
                 coordinator.pendingQuery = nil
             } else if query.isEmpty {
-                query = UserDefaults.standard.string(forKey: "lastQuery.\(connectionId.uuidString)") ?? ""
+                query = UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId)) ?? ""
             }
         }
         .onChange(of: query) { _, newValue in
@@ -65,7 +65,7 @@ struct QueryEditorView: View {
             saveQueryTask = Task {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
-                UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
+                UserDefaults.standard.set(newValue, forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId))
             }
         }
         .onDisappear {
