@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Folders for tables and views in the sidebar. (#3167)
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Changed
@@ -87,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+- iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 
 ### Security
 

@@ -22,6 +22,7 @@ struct SyncCoordinatorEchoTests {
     private let groups: GroupStorage
     private let tags: TagStorage
     private let favoriteDatabases: FavoriteDatabasesStorage
+    private let tableFolders: TableFolderStorage
     private let columnLayouts: FileColumnLayoutPersister
     private let favorites: SQLFavoriteManager
 
@@ -55,6 +56,7 @@ struct SyncCoordinatorEchoTests {
         )
         tags = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: AppEvents())
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
+        tableFolders = TableFolderStorage(defaults: defaults, syncTracker: tracker, notificationCenter: NotificationCenter())
         columnLayouts = FileColumnLayoutPersister(
             storageDirectory: directory.appendingPathComponent("ColumnLayout", isDirectory: true),
             defaults: defaults,
@@ -498,6 +500,122 @@ struct SyncCoordinatorEchoTests {
         #expect(await favorites.fetchFavorite(id: keptQuery.id) != nil)
     }
 
+    /// A Local-only connection keeps its folder names off iCloud, and its marks stay put so the
+    /// folders go up the moment the connection is included in sync.
+    @Test("A Local-only connection's folders are held back from the push and stay dirty")
+    func localOnlyFoldersAreHeldBack() async {
+        var hidden = TestFixtures.makeConnection()
+        hidden.localOnly = true
+        let shared = TestFixtures.makeConnection()
+        connections.addConnection(hidden)
+        connections.addConnection(shared)
+        let hiddenFolder = tableFolders.createFolder(
+            named: "Clients",
+            in: DatabaseScope(connectionId: hidden.id, database: "crm", schema: nil),
+            containing: ["accounts"]
+        )
+        let sharedFolder = tableFolders.createFolder(
+            named: "Billing",
+            in: DatabaseScope(connectionId: shared.id, database: "shop", schema: nil)
+        )
+        let snapshot = SyncEditSnapshot(
+            dirty: Set(
+                tracker.dirtyRecords(for: .tableFolder).map { SyncRecordIdentity(type: .tableFolder, id: $0) }
+                    + tracker.dirtyRecords(for: .tableFolderItem).map { SyncRecordIdentity(type: .tableFolderItem, id: $0) }
+            ),
+            generations: [:]
+        )
+
+        let batch = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .collectPushBatch(snapshot: snapshot, settings: .default, zoneID: Self.zoneID)
+
+        let pushed = Set(batch.records.map(\.recordID.recordName))
+        #expect(pushed == [SyncRecordType.tableFolder.recordName(for: sharedFolder.id.uuidString)])
+        #expect(tracker.dirtyRecords(for: .tableFolder).contains(hiddenFolder.id.uuidString))
+    }
+
+    @Test("A folder of a connection this Mac does not hold is held back from the push")
+    func foldersOfUnknownConnectionsAreHeldBack() async {
+        let orphan = tableFolders.createFolder(
+            named: "Elsewhere",
+            in: DatabaseScope(connectionId: UUID(), database: "crm", schema: nil)
+        )
+        let snapshot = SyncEditSnapshot(
+            dirty: [SyncRecordIdentity(type: .tableFolder, id: orphan.id.uuidString)],
+            generations: [:]
+        )
+
+        let batch = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .collectPushBatch(snapshot: snapshot, settings: .default, zoneID: Self.zoneID)
+
+        #expect(batch.records.isEmpty)
+    }
+
+    @Test("Deleting a folder the server never had settles instead of failing every later sync")
+    func deletionOfANeverPushedRecordSettles() async {
+        let id = UUID().uuidString
+        tracker.markDeleted(.tableFolder, id: id)
+        let missing = SyncRecordMapper.recordID(type: .tableFolder, id: id, in: Self.zoneID)
+
+        let failure = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID, missing: [missing]))
+            .runSyncCycle()
+
+        #expect(failure == nil)
+        #expect(metadata.tombstones(for: .tableFolder).isEmpty)
+    }
+
+    @Test("A Local only connection takes no folder change from another device")
+    func localOnlyConnectionIgnoresRemoteFolders() {
+        var kept = TestFixtures.makeConnection()
+        kept.localOnly = true
+        connections.addConnection(kept)
+        let scope = DatabaseScope(connectionId: kept.id, database: "crm", schema: nil)
+        let local = tableFolders.createFolder(named: "Clients", in: scope)
+        tracker.discardDirty(.tableFolder, ids: [local.id.uuidString])
+        let incomingId = UUID()
+        let record = CloudKitRecordFixtures.serverRecord(
+            type: .tableFolder,
+            id: incomingId.uuidString,
+            in: Self.zoneID,
+            fields: [
+                "folderId": incomingId.uuidString,
+                "connectionId": kept.id.uuidString,
+                "database": "crm",
+                "name": "From elsewhere"
+            ]
+        )
+        let coordinator = makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+
+        coordinator.applyRemoteTableFolderRecords([record])
+        coordinator.applyRemoteTableFolderDeletions(folderIds: [local.id], itemSyncIds: [])
+
+        #expect(tableFolders.layout(in: scope).folders.map(\.id) == [local.id])
+    }
+
+    @Test("A pulled folder loses to a local change that has not gone up yet")
+    func pulledFolderLosesToPendingLocalEdit() {
+        let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
+        let folder = tableFolders.createFolder(named: "Billing", in: scope)
+        tableFolders.renameFolder(id: folder.id, connectionId: scope.connectionId, to: "Money")
+        let record = CloudKitRecordFixtures.serverRecord(
+            type: .tableFolder,
+            id: folder.id.uuidString,
+            in: Self.zoneID,
+            fields: [
+                "folderId": folder.id.uuidString,
+                "connectionId": scope.connectionId.uuidString,
+                "database": "shop",
+                "name": "Stale"
+            ]
+        )
+        let coordinator = makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+
+        coordinator.applyRemoteTableFolderRecords([record])
+        coordinator.applyRemoteTableFolderDeletions(folderIds: [folder.id], itemSyncIds: [])
+
+        #expect(tableFolders.folder(id: folder.id, connectionId: scope.connectionId)?.name == "Money")
+    }
+
     @Test("Marks with no record behind them are dropped once their stores read cleanly")
     func unreachableMarksAreDropped() async {
         let missingTag = UUID().uuidString
@@ -624,6 +742,7 @@ struct SyncCoordinatorEchoTests {
             sqlFavoriteManager: favorites ?? self.favorites,
             favoriteTablesStorage: FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker),
             favoriteDatabasesStorage: favoriteDatabases,
+            tableFolderStorage: tableFolders,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             aiAccessApprovals: live.aiAccessApprovals,
@@ -671,6 +790,7 @@ private final class CoordinatorBox {
 private actor ScriptedSyncTransport: SyncTransport {
     let currentZoneID: CKRecordZone.ID
     private let rejectedRecordIDs: Set<CKRecord.ID>
+    private let missingRecordIDs: Set<CKRecord.ID>
     private let interruption: (any Error)?
     private let duringPush: @MainActor @Sendable () async -> Void
     private let pulled: @Sendable ([CKRecord]) -> PullResult
@@ -680,6 +800,7 @@ private actor ScriptedSyncTransport: SyncTransport {
     init(
         zoneID: CKRecordZone.ID,
         rejecting rejectedRecordIDs: Set<CKRecord.ID> = [],
+        missing missingRecordIDs: Set<CKRecord.ID> = [],
         interruption: (any Error)? = nil,
         duringPush: @escaping @MainActor @Sendable () async -> Void = {},
         pulled: @escaping @Sendable ([CKRecord]) -> PullResult = { _ in
@@ -688,6 +809,7 @@ private actor ScriptedSyncTransport: SyncTransport {
     ) {
         self.currentZoneID = zoneID
         self.rejectedRecordIDs = rejectedRecordIDs
+        self.missingRecordIDs = missingRecordIDs
         self.interruption = interruption
         self.duringPush = duringPush
         self.pulled = pulled
@@ -718,7 +840,14 @@ private actor ScriptedSyncTransport: SyncTransport {
             )
         }
         for recordID in deletions {
-            outcome.recordDeletion(recordID)
+            guard missingRecordIDs.contains(recordID) else {
+                outcome.recordDeletion(recordID)
+                continue
+            }
+            outcome.recordFailure(
+                SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: nil, message: "Record not found"),
+                for: recordID
+            )
         }
         if let interruption {
             throw SyncPushInterruption(completed: outcome, cause: interruption)
