@@ -20,11 +20,11 @@ private final class TaskBox: @unchecked Sendable {
     }
 
     func cancel() {
-        let task = lock.withLock {
+        let pending = lock.withLock {
             isCancelled = true
             return task
         }
-        task?.cancel()
+        pending?.cancel()
     }
 }
 
