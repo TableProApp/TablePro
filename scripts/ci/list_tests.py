@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Turns xcodebuild's test enumeration into the -only-testing arguments for one shard.
+"""Turns xcodebuild's test enumeration into -only-testing or -skip-testing arguments.
 
-Driven by list-tests.sh, which owns the xcodebuild call. This half exists in Python because the
-enumeration is JSON and the quarantine file needs comment stripping, and neither is work bash does
-without producing the kind of quoting bug the quarantine parser used to have.
-
-Reads TARGET, QUARANTINE and SHARD from the environment; takes the enumeration JSON as argv[1].
+Driven by list-tests.sh, which owns the xcodebuild call. Reads TARGET, QUARANTINE, SHARD and MODE
+from the environment and takes the enumeration JSON as argv[1]. MODE `skip` prints a -skip-testing
+argument for every quarantined case; anything else prints -only-testing for one shard of the rest.
+Prints one argument per line and nothing at all when there is none, because the caller turns every
+line into an argument and xcodebuild refuses an empty one.
 """
 
 import json
@@ -14,7 +14,7 @@ import sys
 
 
 def quarantined_names(path):
-    """Suite names to skip. '#' starts a comment, blank lines are ignored."""
+    """Entries to skip. '#' starts a comment, blank lines are ignored."""
     if not path:
         return set()
     names = set()
@@ -42,6 +42,14 @@ def enumerated_identifiers(path):
     return sorted(identifiers)
 
 
+def forms(identifier):
+    """Every spelling an entry may use: Target/Suite/case(), Suite/case() and Suite."""
+    parts = identifier.split("/")
+    if len(parts) <= 1:
+        return {identifier}
+    return {identifier, "/".join(parts[1:]), parts[1]}
+
+
 def parse_shard(raw, total):
     """'I/N' -> (index, count). Absent means one shard holding everything."""
     if not raw:
@@ -66,30 +74,24 @@ def main():
     quarantine = os.environ.get("QUARANTINE")
     skipped = quarantined_names(quarantine)
 
-    def forms(identifier):
-        """Every spelling an entry may use: full identifier, Suite/case(), and bare Suite."""
-        parts = identifier.split("/")
-        if len(parts) <= 1:
-            return {identifier}
-        return {identifier, "/".join(parts[1:]), parts[1]}
-
-    def is_quarantined(identifier):
-        return bool(forms(identifier) & skipped)
-
-    # An entry that matches nothing is not harmless: it reads like a working skip and the case it
-    # was meant to hold back is running. The unit quarantine kept one such line for 479 commits.
-    # Entries are matched unqualified, so compare against both halves of every identifier.
     known = set()
     for identifier in identifiers:
         known |= forms(identifier)
     inert = sorted(skipped - known)
     if inert:
         sys.exit(
-            f"{quarantine}: these entries match no enumerated case, so they skip nothing: "
-            + ", ".join(inert)
+            f"{quarantine}: these entries match no enumerated case, so they skip nothing "
+            "(a Swift Testing case needs its parentheses): " + ", ".join(inert)
         )
 
-    runnable = [identifier for identifier in identifiers if not is_quarantined(identifier)]
+    quarantined = [identifier for identifier in identifiers if forms(identifier) & skipped]
+    if os.environ.get("MODE") == "skip":
+        if quarantined:
+            print("\n".join(f"-skip-testing:{identifier}" for identifier in quarantined))
+        return
+
+    held_back = set(quarantined)
+    runnable = [identifier for identifier in identifiers if identifier not in held_back]
     if not runnable:
         sys.exit(f"every enumerated case in {target} is quarantined")
 

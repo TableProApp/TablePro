@@ -3,7 +3,7 @@
 //  TableProTests
 //
 //  What the server answers for these filters is checked against a live server by
-//  scripts/check-mongodb-document-guard.sh; these pin the text the driver builds.
+//  scripts/probes/check-mongodb-document-guard.sh; these pin the text the driver builds.
 //
 
 import Foundation

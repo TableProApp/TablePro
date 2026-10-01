@@ -30,7 +30,7 @@ public enum OracleDefaultOnNull: Sendable, Equatable {
 /// No default is SQL NULL, and an explicit `DEFAULT NULL` is the text `null` as typed, so the two stay apart: the
 /// second comes back as `NULL`, the spelling the default menu offers.
 ///
-/// `scripts/check-oracle-column-defaults.sh` re-measures every one of these shapes against a live server.
+/// `scripts/probes/check-oracle-column-defaults.sh` re-measures every one of these shapes against a live server.
 public struct OracleColumnDefault: Sendable, Equatable {
     public let storedText: String?
     public let isIdentity: Bool

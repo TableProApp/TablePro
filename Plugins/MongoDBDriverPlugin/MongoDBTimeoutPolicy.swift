@@ -15,7 +15,7 @@ enum MongoDBServerErrorCode {
     /// Every code in the server's `Interruption` category on each release branch from 4.0 through
     /// 9.0, read from its `src/mongo/base/error_codes.yml` (`error_codes.err` before 4.4). The
     /// server fails a whole write batch with `ok: 0` for these, keeping the documents it already
-    /// wrote. `scripts/check-mongodb-interruption-codes.sh` diffs the set against every branch.
+    /// wrote. `scripts/probes/check-mongodb-interruption-codes.sh` diffs the set against every branch.
     static let interruptionCategory: Set<UInt32> = [
         24, maxTimeMSExpired, cursorKilled, 262, 279, 281, 282, 290, 355, 453, 471, 473, 485, 509,
         11_600, 11_601, 11_602, 46_841, 91_331, 10_045_600

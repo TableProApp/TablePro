@@ -7,48 +7,46 @@ Lint covers `TablePro/` and `Packages/`, which includes `TableProPluginKit` thro
 `TableProCore`. The rest of `Plugins/` and the app's own test bundles get no automated style check,
 so on a change there the conventions on this page are all there is.
 
-`.swiftlint.yml` and `.swiftformat` settle the mechanical half. `CLAUDE.md` carries the rest, the
-rules no linter can check: no comments, early returns over nested conditionals, explicit access
-control, `String(localized:)` for user-facing strings, OSLog instead of `print()`.
+`.swiftlint.yml` settles the mechanical half. `AGENTS.md` carries the rest, the rules no linter can
+check: comments that say why and never what, early returns over nested conditionals, explicit
+access control, `String(localized:)` for user-facing strings, OSLog instead of `print()`.
 
 ## Running the tools
 
 ```bash
-swiftlint lint --strict     # the pre-commit gate, and what the release workflow runs
+swiftlint lint --strict     # the pre-commit gate, and what CI runs on every pull request
 swiftlint --fix             # apply the autocorrectable rules
-swiftformat .               # format in place
-swiftformat --lint .        # report without writing
 ```
 
 `--strict` promotes every warning to an error. Several rules are configured as warnings on purpose,
-so a plain `swiftlint lint` exits 0 on code the release workflow rejects. There is no SwiftLint
+so a plain `swiftlint lint` exits 0 on code CI rejects. There is no SwiftLint
 build phase in the generated project, so nothing lints during a normal Xcode build.
 
 The scope comes from `included: [TablePro]` in `.swiftlint.yml`, and that key beats any path on the
 command line: `swiftlint lint Plugins/` lints `TablePro/` and reports nothing about your plugin. It
 exits 0, which reads like a pass.
 
-SwiftFormat is not run in CI at all. It rewrites files, so run it before you stage, not after.
-
 ## Formatting
 
-| Rule | Value | Set by |
-|---|---|---|
-| Indentation | 4 spaces, never tabs; `case` not indented inside `switch` | `--indent 4`, `--indentcase false` |
-| Wrap target | 120 characters | `--maxwidth 120` |
-| Hard line limit | Warns at 180, errors at 300 | `line_length` in `.swiftlint.yml` |
-| Braces | K&R, `else` and `guard else` on the closing brace line | `--allman false`, `--elseposition same-line`, `--guardelse same-line` |
-| Wrapped arguments | One per line, opening paren last, closing paren balanced | `--wraparguments before-first`, `--closingparen balanced` |
-| Line endings | LF | `--linebreaks lf` |
-| Semicolons | Removed | `--semicolons never` |
-| `self.` | Removed where the compiler does not need it | `--self remove` |
+Only the line limit is enforced. The rest is the convention the tree follows, so match the file
+around you.
+
+| Rule | Value |
+|---|---|
+| Indentation | 4 spaces, never tabs; `case` not indented inside `switch` |
+| Wrap target | 120 characters |
+| Hard line limit | Warns at 180, errors at 300 (`line_length` in `.swiftlint.yml`) |
+| Braces | K&R, `else` and `guard else` on the closing brace line |
+| Wrapped arguments | One per line, opening paren last, closing paren balanced |
+| Line endings | LF |
+| Semicolons | None |
+| `self.` | Only where the compiler needs it |
 
 `line_length` ignores URLs, function declarations, comments and interpolated strings, so a long
 signature or a long log line is not what trips it.
 
-Trailing commas are omitted throughout the tree, and nothing enforces that: SwiftFormat has
-`trailingCommas` disabled and SwiftLint has `trailing_comma` in `disabled_rules`. Match what the
-file around you does.
+Trailing commas are omitted throughout the tree. SwiftLint has `trailing_comma` in
+`disabled_rules`, so nothing enforces it.
 
 ## Naming
 

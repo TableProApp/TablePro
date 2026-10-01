@@ -28,7 +28,7 @@ enum DuckDBTableListingScope: Sendable, Equatable {
 /// `Binder Error: Referenced table "system" not found!`, which left the sidebar with no
 /// databases, schemas, tables or columns at all. The `duckdb_*()` table functions and the
 /// remaining `information_schema` views are part of the core engine and need no download.
-/// `scripts/check-duckdb-offline-metadata.sh` runs every query here against the shipped
+/// `scripts/probes/check-duckdb-offline-metadata.sh` runs every query here against the shipped
 /// static library with the extension directory pointed at an empty folder.
 enum DuckDBSchemaQueries {
     /// `system` and `temp` are DuckDB's built-in catalogs; `internal` marks them and

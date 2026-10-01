@@ -1,32 +1,28 @@
 # Running under Claude Code
 
-How each step of `SKILL.md` maps onto Claude Code's tools.
+How `SKILL.md` maps onto Claude Code.
 
-## Tracking
+## Tracking and asking
 
-When `TodoWrite` or the task tools are present, open a list with the phases this run uses and keep it current. It is how the user follows a long run, and how you find your place after a compaction. Otherwise state the phase at each boundary.
+- Keep a task list with the phases this run uses (`TodoWrite` or the task tools, when present), and progress in `plan.md` either way.
+- Ask with `AskUserQuestion`, recommendation first, only for the cases in "Autonomy".
+- The Bash tool's working directory resets to the main checkout between calls: start every command for the tree with `cd <tree> &&` or pass `-C <tree>`.
 
-## Asking
+## Lanes
 
-Use `AskUserQuestion`, with your recommendation as the first option. Ask only for the two cases in "Autonomy".
-
-## Full-mode investigation: the `Workflow` tool
-
-When `Workflow` is not in your tool list (a subagent session, for one), run each lane as a background `Agent` (general-purpose) with the same brief. The rest of this section still applies.
-
-This skill's instructions are the opt-in the tool requires. Every lane gets the whole brief from `references/lanes.md` and writes its full report to a file, so the script stays small and a failed schema never loses the work. Fill in `SKILL`, `TREE`, `RUN` and `SUBSYSTEM` as absolute values, and drop `research` from `LANES` when the fix is purely internal logic.
+Run the Full-mode lanes as one `Workflow` (the skill is the opt-in it requires), or as background `Agent`s in one message when `Workflow` is not available. Each lane gets its brief from `references/lanes.md`, writes its full report to a file and returns a short digest, so a failed schema never loses the work.
 
 ```js
 export const meta = {
   name: 'fix-issue-investigation',
-  description: 'Trace a TablePro defect, establish the correct behaviour, hunt and verify related defects',
+  description: 'Trace a TablePro defect, establish the correct behavior, hunt and verify related defects',
   phases: [{ title: 'Investigate' }, { title: 'Verify' }],
 }
 
-const SKILL = '/Users/ngoquocdat/Workspaces/TablePro/.claude/skills/fix-issue'
-const TREE = '/Users/ngoquocdat/Workspaces/TablePro/.claude/worktrees/<slug>'
+const SKILL = '<tree>/.claude/skills/fix-issue'
+const TREE = '<tree>'
 const RUN = `${TREE}/.analysis/<slug>`
-const SUBSYSTEM = 'Plugins/DuckDBDriverPlugin/, TablePro/Core/Database/'
+const SUBSYSTEM = '<the folders the fix lands in>'
 const LANES = ['trace', 'research', 'hunt']
 
 const DIGEST = {
@@ -47,7 +43,6 @@ const DIGEST = {
           location: { type: 'string', maxLength: 600 },
           evidence: { type: 'string', maxLength: 3000 },
           failureScenario: { type: 'string', maxLength: 3000 },
-          blocksPrimaryFix: { type: 'boolean' },
         },
       },
     },
@@ -56,7 +51,7 @@ const DIGEST = {
 
 const brief = lane => `
 You are the ${lane} lane of a TablePro fix investigation. The code is in ${TREE}: read it there.
-Read ${SKILL}/references/lanes.md: the "Rules for every lane" section and the "${lane}" section.
+Read ${SKILL}/references/lanes.md: "Rules for every lane" and "${lane}".
 The problem statement is ${RUN}/problem.md. The subsystem in play: ${SUBSYSTEM}.
 Write your full report to ${RUN}/lanes/${lane}.md, then return the digest schema.
 ${lane === 'hunt' ? 'Put every finding in the findings array too.' : 'Leave findings empty.'}
@@ -68,72 +63,52 @@ const results = await parallel(LANES.map(lane => () =>
 
 const hunt = results[LANES.indexOf('hunt')]
 const candidates = (hunt && hunt.findings) || []
-log(`${candidates.length} related-defect candidates`)
 
 phase('Verify')
 const verdict = candidates.length === 0 ? null : await agent(`
-You are the verify lane of a TablePro fix investigation.
+You are the verify lane of a TablePro fix investigation. The code is in ${TREE}.
 Read ${SKILL}/references/lanes.md: "Rules for every lane" and "verify".
 Findings to refute, as JSON:
 ${JSON.stringify(candidates, null, 2)}
-Write one row per finding to ${RUN}/lanes/verify.md, then return the digest schema,
-with a findings array holding only the findings that are real.
+Write one row per finding to ${RUN}/lanes/verify.md, then return the digest schema
+with a findings array holding only the real ones.
 `, { label: 'verify', phase: 'Verify', schema: DIGEST })
 
 return { results, verdict }
 ```
 
-Rules that have cost real runs:
+- Fill in every `<...>` and hardcode it: the tool's `args` can arrive empty. `meta` is a pure literal; `Date.now()`, `Math.random()` and an argless `new Date()` throw.
+- Return raw results; an `agent(...).then(...)` chain inside `parallel()` has come back empty.
+- When a digest is missing or the return looks empty, read the lane's report file, or `journal.jsonl` for the run.
+- A lane that stalls is re-run as one background `Agent` with the same brief. Never `SendMessage` a lane that is still running: that starts a second copy.
+- Run the `critic` lane as one background `Agent`; long critic turns trip the workflow's stall watchdog.
+- Afterwards, `git -C <tree> status --short` confirms no lane edited the tree.
 
-- **Hardcode every input** in the script. The tool's `args` parameter has arrived as an empty global and run a lane on nothing. `meta` must be a pure literal, the script is plain JavaScript, and `Date.now()`, `Math.random()` and an argless `new Date()` throw.
-- **No `.then()` inside `parallel()`.** An `agent(...).then(...)` chain there has come back empty while every agent succeeded. Return raw results and pair them yourself.
-- **Keep schema caps generous.** A field cap that is exceeded rejects the report after the work is done, and the lane comes back null. The report file survives either way, so read it when a digest is missing.
-- **When the aggregated return looks empty**, read `subagents/workflows/<run>/journal.jsonl` before believing it. Each `{"type":"result"}` line holds one agent's full return.
-- **A lane that stalls** (killed after 180 seconds without progress) is re-run as one background `Agent` with the same brief, not by re-running the whole workflow.
-- **Never `SendMessage` a lane that is still running.** It resumes a second copy that writes the same files. Note the answer and apply it after the workflow returns.
-- After it returns, run `git status --short` to confirm no lane touched the checkout.
-
-## Critic
-
-Run the `critic` lane as one background `Agent` (general-purpose), not as a workflow. Critic turns on a large plan have tripped the workflow's stall watchdog on every attempt, and the same brief as an `Agent` finishes. Its prompt names `references/lanes.md`, `plan.md`, and `<tree>/.analysis/<slug>/lanes/critic.md` as its output file.
-
-## Parallel implementation
-
-When `SKILL.md` Phase 3 splits a large change, launch the implementers as background `Agent`s (general-purpose) in one message, or as one `Workflow` with a `parallel()` of agents. Each prompt names the tree, `plan.md`, and the exact files it owns, and says to edit nothing else, run no build or `verify.sh` (two builds in one tree collide), and finish with the list of files it changed. Read every diff when they return, then verify.
+Parallel implementers (`SKILL.md` Phase 3) are background `Agent`s in one message, each prompt naming the tree, `plan.md` and the exact files it owns, and saying to edit nothing else, build nothing, and finish with the files it changed.
 
 ## Long commands
 
-Pass `run_in_background: true` for `verify.sh build`, `plugins`, `test` and `uitest`, for the Codex review, and for the CI watch, so a multi-minute step does not block the session. You are re-invoked when it exits, so never poll it in between: past runs spent 1,095 calls polling Codex `status`. Keep `generate` and `lint` in the foreground. Never have two `xcodebuild` runs in flight in the same tree.
+Run `build`, `plugins`, `test`, `uitest`, the Codex review and the CI watch with `run_in_background: true`. You are re-invoked when each exits, so never poll in between. Keep `generate` and `lint` in the foreground, and never run two `xcodebuild` in one tree.
 
-The Bash tool's working directory resets to the main checkout between calls, so start every command for the tree with `cd <tree> &&` or pass `-C <tree>`.
-
-## Watching CI
-
-```bash
-gh pr checks <number> --repo TableProApp/TablePro --watch --interval 60
-```
-
-Run it in the background. It exits when every check has finished, non-zero when one failed. A background command stops after two hours; when that happens with checks still queued, follow the runner-backlog rule in Phase 7 rather than re-arming it. Then `gh pr checks <number>` lists the failures, and `gh run view <run-id> --log-failed` gives the log of each failed job.
+CI watch: `gh pr checks <n> --repo TableProApp/TablePro --watch --interval 60` exits when every check finishes, non-zero on a failure; `gh run view <run-id> --log-failed` gives the log. A background command stops after two hours; if checks are still queued then, Phase 7's backlog rule applies.
 
 ## Review: Codex
 
-A different model from a different lab reads the diff cold. Run it through the Codex plugin's companion script from inside the tree, with `cd <tree> &&` on every call: Codex job state is keyed by the checkout, so `status` run from anywhere else reports no jobs.
+Run the Codex plugin's companion from inside the tree (`cd <tree> &&` on every call; its job state is keyed by the checkout):
 
 ```bash
 CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)"
-node "$CODEX" review --wait --scope working-tree
-node "$CODEX" adversarial-review --wait --scope working-tree "<the mechanism the fix rests on, in one sentence>"
+node "$CODEX" review --wait --scope working-tree        # --base main once the work is committed
+node "$CODEX" adversarial-review --wait --scope working-tree "<the mechanism the fix rests on>"
 node "$CODEX" status
 node "$CODEX" result <job-id>
 ```
 
-- Launch with `--wait` in the background and read `result` once when you are re-invoked.
-- Run `review` every round. Add `adversarial-review` in Full mode, on the first round, because it attacks the design rather than the lines. Never run the two at once; each takes about 25 minutes on a large diff, so start the first as soon as the diff is complete. Use `--base main` instead of `--scope working-tree` once the work is committed.
-- **Read the findings from `result`, never from stdout.** A `--wait` run prints only reasoning headlines whether it succeeded or died, and it exits 0 either way. `status` says whether the job finished and gives its verdict. `result` has the findings, with `file:line`.
-- `/codex:review` and `/codex:adversarial-review` only run when the user types them, so call the script.
-- **When Codex cannot review** (`status` shows a failure: CLI missing, out of credits, usage limit), fall back to `Skill(code-review)` and say so in the PR and the report. A run that died still leaves its reasoning headlines in the job log that `status` names. Grep them for bug, risk and mismatch, and check each lead against the code. An authentication or setup error goes back to the user with `/codex:setup`.
-- **The security pass** (when the change touches a boundary listed in `SKILL.md` Phase 5) runs as a background `Agent`, not as `Skill(security-review)`: that skill reads the session's own checkout, which is the main checkout and not the tree. Tell the agent to review `git -C <tree> diff origin/main...HEAD` for injection, credential exposure, authorization and unsafe execution, and to report only high or medium findings with a concrete exploit scenario.
+- `review` every round; `adversarial-review` in Full mode on the first round. One at a time, each in the background with `--wait`.
+- Read the findings with `result`, never from stdout, which shows only progress whether the job succeeded or died. `status` says whether it finished.
+- When `status` shows Codex cannot review (not installed, out of credits, usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
+- The security pass is a background `Agent` told to review `git -C <tree> diff origin/main...HEAD` for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
 
 ## Screenshots
 
-Drive a Debug build with `osascript` and capture with `screencapture`. Screen Recording has to be granted to whatever runs them. Launch the app with `TABLEPRO_UI_TEST_SANDBOX` set to a scratch directory.
+Drive a Debug build with `osascript` and capture with `screencapture`; Screen Recording must be granted to whatever runs them.

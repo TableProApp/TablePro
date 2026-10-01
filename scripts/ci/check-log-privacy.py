@@ -2,24 +2,14 @@
 """Check no source publishes an error's text to the system log.
 
 `.swiftlint.yml` forbids it through the `public_error_text_in_log` custom rule, because a driver
-error's text carries row values, paths and server messages: PostgreSQL puts the offending value in
-a unique-violation message, and `.public` hands it to any process that reads the log and to every
-sysdiagnose. Two things kept the rule from holding. SwiftLint's `included:` names `TablePro` and
-`Packages` only, so it never read `Plugins/`, where fifteen log lines broke it. And SwiftLint runs
-in CI only on a release tag, so nothing checked the rule on a pull request anywhere.
-
-Bringing all of `Plugins/` under SwiftLint is the fuller answer and a larger one: measured on
-2026-09-23 with SwiftLint 0.65.1, `swiftlint lint --strict` over the 536 plugin sources outside
-TableProPluginKit, passed as file paths, reports 175 violations across 23 plugins, and only 15 of
-them were this rule.
-
-So this applies the one rule to every Swift file under `TablePro/`, `Packages/` and `Plugins/`,
-across line breaks the way SwiftLint matches it. It reads the regex out of `.swiftlint.yml` rather
-than repeating it, so the lint rule and this check cannot drift apart. It runs on Ubuntu in about a
-second with no Xcode, and `test_check_log_privacy.py` pins what the regex must and must not match.
+error's text carries row values, paths and server messages, and `.public` hands them to every
+process that reads the log. SwiftLint's `included:` does not reach `Plugins/`, where
+`swiftlint lint --strict` still reports other violations, so this applies the one rule to every
+Swift file under `TablePro/`, `Packages/` and `Plugins/`. It reads the regex out of
+`.swiftlint.yml`, so the two cannot drift, and `test_check_log_privacy.py` pins what it matches.
 
 A regex sees one interpolation, not where its text came from: an error's description bound to a
-variable first and published under another name passes. Those sites are found by reading.
+variable first and published under another name passes.
 
 `TableProMobile/` is not scanned yet: it still holds log lines this rule rejects.
 """
