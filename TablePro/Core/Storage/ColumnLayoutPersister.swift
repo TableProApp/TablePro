@@ -27,7 +27,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         var hiddenColumns: [String]?
     }
 
-    static let syncCategoryPrefix = "columnLayout."
+    nonisolated static let syncCategoryPrefix = "columnLayout."
 
     private let storageDirectory: URL
     private let defaults: UserDefaults
@@ -141,7 +141,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         cache[oldScope.connectionId] = entries
         writeEntries(entries, for: oldScope.connectionId)
         syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey))
-        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey))
+        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: oldKey)], owner: oldScope.connectionId)
     }
 
     /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
@@ -173,7 +173,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         writeEntries(entries, for: connectionId)
         for key in moving {
             syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
-            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key))
+            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key)], owner: connectionId)
         }
     }
 
@@ -199,20 +199,14 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
             entries.removeValue(forKey: key)
         }
 
-        if entries.isEmpty {
-            cache[connectionId] = [:]
-            removeFile(for: connectionId)
-        } else {
-            cache[connectionId] = entries
-            writeEntries(entries, for: connectionId)
-        }
-        syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)))
+        guard store(entries, for: connectionId) else { return }
+        syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)), owner: connectionId)
     }
 
     func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
-        var categories: [String] = []
+        var categoriesByConnection: [UUID: Set<String>] = [:]
         for connectionId in connectionIds {
-            categories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
+            categoriesByConnection[connectionId] = Set(loadEntries(for: connectionId).keys.map(Self.syncCategory(for:)))
             cache[connectionId] = [:]
             removeFile(for: connectionId)
         }
@@ -220,9 +214,9 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         /// own deletion back at it, but leaving the ids dirty means the next push looks for entries
         /// that are gone and never drains them.
         if leavesTombstones {
-            syncTracker.markDeleted(.settings, ids: categories)
+            syncTracker.markDeleted(.settings, idsByOwner: categoriesByConnection)
         } else {
-            syncTracker.discardDirty(.settings, ids: categories)
+            syncTracker.discardDirty(.settings, ids: categoriesByConnection.values.flatMap { $0 })
         }
     }
 
@@ -232,14 +226,8 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         var entries = loadEntries(for: key.connectionId)
         guard entries.removeValue(forKey: key.storageKey) != nil else { return }
 
-        if entries.isEmpty {
-            cache[key.connectionId] = [:]
-            removeFile(for: key.connectionId)
-        } else {
-            cache[key.connectionId] = entries
-            writeEntries(entries, for: key.connectionId)
-        }
-        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+        guard store(entries, for: key.connectionId) else { return }
+        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
     }
 
     func clearGeometry(for key: ColumnLayoutTableKey) {
@@ -256,19 +244,46 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
             syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
         } else {
             entries.removeValue(forKey: key.storageKey)
-            if entries.isEmpty {
-                cache[key.connectionId] = [:]
-                removeFile(for: key.connectionId)
-            } else {
-                cache[key.connectionId] = entries
-                writeEntries(entries, for: key.connectionId)
-            }
-            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+            guard store(entries, for: key.connectionId) else { return }
+            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
         }
     }
 
     static func syncCategory(for storageKey: String) -> String {
         syncCategoryPrefix + storageKey
+    }
+
+    nonisolated static func connectionId(ofSyncCategory category: String) -> UUID? {
+        guard category.hasPrefix(syncCategoryPrefix) else { return nil }
+        return TableScope(storageComponent: String(category.dropFirst(syncCategoryPrefix.count)))?.connectionId
+    }
+
+    func storageKeys(forSyncRecordNames recordNames: Set<String>) -> [String] {
+        let layoutPrefix = SyncRecordType.settings.recordNamePrefix + Self.syncCategoryPrefix
+        let digestPrefix = SyncRecordType.settings.recordNamePrefix + SyncRecordName.digestPrefix
+        let named = recordNames.filter { $0.hasPrefix(layoutPrefix) }.map { String($0.dropFirst(layoutPrefix.count)) }
+        let digested = recordNames.filter { $0.hasPrefix(digestPrefix) }
+        guard !digested.isEmpty else { return named }
+        return named + customizedStorageKeys().filter { storageKey in
+            digested.contains(SyncRecordType.settings.recordName(for: Self.syncCategory(for: storageKey)))
+        }
+    }
+
+    func removeWithoutSync(storageKeys: [String]) -> Bool {
+        let scoped = storageKeys.compactMap { key in TableScope(storageComponent: key).map { (key, $0.connectionId) } }
+        var persisted = true
+        for (connectionId, keys) in Dictionary(grouping: scoped, by: \.1) {
+            var entries = loadEntries(for: connectionId)
+            let removed = keys.map(\.0).filter { entries.removeValue(forKey: $0) != nil }
+            guard !removed.isEmpty else { continue }
+            guard store(entries, for: connectionId) else {
+                persisted = false
+                continue
+            }
+            removed.forEach(removeLegacyHidden(storageKey:))
+            syncTracker.discardDirty(.settings, ids: removed.map(Self.syncCategory(for:)))
+        }
+        return persisted
     }
 
     func rawData(forStorageKey storageKey: String) -> Data? {
@@ -309,7 +324,18 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
     }
 
     private func removeLegacyHidden(for key: ColumnLayoutTableKey) {
-        defaults.removeObject(forKey: Self.legacyVisibilityPrefix + key.storageKey)
+        removeLegacyHidden(storageKey: key.storageKey)
+    }
+
+    private func removeLegacyHidden(storageKey: String) {
+        defaults.removeObject(forKey: Self.legacyVisibilityPrefix + storageKey)
+    }
+
+    @discardableResult
+    private func store(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) -> Bool {
+        let stored = entries.isEmpty ? removeFile(for: connectionId) : writeEntries(entries, for: connectionId)
+        cache[connectionId] = stored ? entries : nil
+        return stored
     }
 
     private func loadEntries(for connectionId: UUID) -> [String: PersistedColumnLayout] {
@@ -335,27 +361,33 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
     }
 
-    private func writeEntries(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) {
+    @discardableResult
+    private func writeEntries(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) -> Bool {
         let fileURL = fileURL(for: connectionId)
         do {
             let data = try encoder.encode(entries)
             try data.write(to: fileURL, options: .atomic)
+            return true
         } catch {
             Self.logger.error(
                 "Failed to write column layouts for \(connectionId): \(error.localizedDescription)"
             )
+            return false
         }
     }
 
-    private func removeFile(for connectionId: UUID) {
+    @discardableResult
+    private func removeFile(for connectionId: UUID) -> Bool {
         let fileURL = fileURL(for: connectionId)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return true }
         do {
             try FileManager.default.removeItem(at: fileURL)
+            return true
         } catch {
             Self.logger.error(
                 "Failed to remove column layout file for \(connectionId): \(error.localizedDescription)"
             )
+            return false
         }
     }
 

@@ -20,6 +20,20 @@ struct XLSXSheetParserTests {
         #expect(XLSXSheetParser.columnIndex(fromReference: "BA10") == 52)
     }
 
+    @Test("A repeated or blank header gets a name of its own")
+    func headerNamesAreUnique() {
+        let names = XLSXSheetParser.headerNames(from: ["Notes", "Notes", nil, "  Id  "])
+
+        #expect(names == ["Notes", "Notes 2", "column3", "Id"])
+    }
+
+    @Test("A header spelled out keeps its name over a blank cell's placeholder that comes first")
+    func literalHeaderKeepsItsName() {
+        let names = XLSXSheetParser.headerNames(from: [nil, "column1", "Code", "Code", "Code 2"])
+
+        #expect(names == ["column1 2", "column1", "Code", "Code 3", "Code 2"])
+    }
+
     @Test("A reference with no letters is refused")
     func invalidReference() {
         #expect(XLSXSheetParser.columnIndex(fromReference: "1") == nil)
