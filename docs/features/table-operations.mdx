@@ -69,6 +69,12 @@ No other engine has a rename, so the item never appears on Cassandra, DynamoDB, 
 
 **Rename Database** and **Rename Schema** are absent on the container the connection is browsing. Switch to another one first, then rename the one you left.
 
+## Drop or rename with SQL
+
+A `DROP TABLE`, `DROP VIEW`, `ALTER TABLE ... RENAME TO`, `RENAME TABLE` or SQL Server `sp_rename` run in a query tab, or by an MCP client, counts as a sidebar drop or rename once it commits. Tabs on the table close or take the new name, and its saved filters, column layout, highlight rules, value formats, favorite and Recent entry go with it. A drop that is rolled back leaves all of them in place. So does every drop in a run that ends inside a transaction, every drop on a SQL Server session with `IMPLICIT_TRANSACTIONS` on, and every drop in a SQL Server script that uses `IF`, `WHILE`, `GOTO`, `RETURN` or `TRY...CATCH`. A SQL file run through **Import Data**, or a restored backup, refreshes the sidebar and keeps every table's settings.
+
+This works on MySQL, MariaDB, PostgreSQL, Redshift, SQLite, SQL Server, Oracle, ClickHouse and DuckDB. On PostgreSQL, Redshift and SQL Server, name the schema, as in `public.orders`, and on DuckDB the database and the schema, because a bare name there resolves through session state such as the search path or the login's default schema. On the other engines a name stops being followed once something on the connection could have redirected it: a temporary table of the same name, a procedure call or anonymous block, or a statement that changes the current schema, whether it ran in a query tab, in the connection's **Startup Commands** or in an imported SQL file. A rename written with `IF EXISTS` is never followed, since it succeeds when there was nothing to rename.
+
 ## Maintenance
 
 Right-click a table, choose **Maintenance**, and pick an operation. The sheet shows the operation's options and the statement the driver will run, rebuilt as each option changes, so what is previewed is what executes.

@@ -106,10 +106,11 @@ struct CatalogEditAdoption {
     /// that name, reach the wrong object. It is dropped rather than moved, because the confirmation
     /// the user gave named the object they were looking at.
     func adoptTableRename(_ ref: DatabaseTreeTableRef, to newName: String, connectionId: UUID) {
-        guard let scope = objectScope(for: ref, connectionId: connectionId) else { return }
-        let oldScope = TableScope(connectionId: connectionId, database: scope.database, schema: scope.schema, table: ref.table.name)
-        let newScope = TableScope(connectionId: connectionId, database: scope.database, schema: scope.schema, table: newName)
-        for store in TableScopedSettingsRegistry.stores {
+        guard let oldScope = tableScope(for: ref, connectionId: connectionId) else { return }
+        let newScope = TableScope(
+            connectionId: connectionId, database: oldScope.database, schema: oldScope.schema, table: newName
+        )
+        for store in settingsStores {
             store.renameTable(from: oldScope, to: newScope)
         }
         let oldFavorite = favoriteEntry(for: ref, connectionId: connectionId)
@@ -120,7 +121,35 @@ struct CatalogEditAdoption {
         SharedSidebarState.forConnection(connectionId).renameRecentTable(
             database: ref.database, schema: ref.schema, from: ref.table.name, to: newName
         )
-        updatePendingOperations(connectionId: connectionId) { $0 == ref ? nil : $0 }
+        updatePendingOperations(connectionId: connectionId) { queued in
+            tableScope(for: queued, connectionId: connectionId) == oldScope ? nil : queued
+        }
+    }
+
+    /// The object a reference names, which is what a queued operation and the saved settings are
+    /// matched on. Two references to one table can differ in how their `TableInfo` spells its
+    /// schema, and a table named by SQL carries no row the sidebar built at all.
+    private func tableScope(for ref: DatabaseTreeTableRef, connectionId: UUID) -> TableScope? {
+        guard let scope = objectScope(for: ref, connectionId: connectionId) else { return nil }
+        return TableScope(connectionId: connectionId, database: scope.database, schema: scope.schema, table: ref.table.name)
+    }
+
+    /// A table a statement named, as a reference spelled the way the sidebar spells its row, so
+    /// the favorite and the Recent entry it keys are the ones found. The sidebar takes a favorite's
+    /// schema from the driver's listing, which Oracle, MySQL and SQLite leave empty, so an entry
+    /// already saved without one is matched in that spelling.
+    func tableRef(for table: TablePlacement, kind: TableInfo.TableType, connectionId: UUID) -> DatabaseTreeTableRef {
+        let saved = favoriteTables.favorites(for: connectionId).filter {
+            $0.name == table.name && $0.database == table.database.nilIfEmpty
+        }
+        let listsWithoutSchema = !saved.contains { $0.schema == table.schema } && saved.contains { $0.schema == nil }
+        return DatabaseTreeTableRef(
+            database: table.database,
+            schema: table.schema,
+            table: TableInfo(
+                name: table.name, type: kind, rowCount: nil, schema: listsWithoutSchema ? nil : table.schema
+            )
+        )
     }
 
     func adoptContainerRename(_ container: DatabaseContainerRef, to newName: String, connectionId: UUID) {
@@ -163,7 +192,7 @@ struct CatalogEditAdoption {
         /// Every table inside the container loses its saved settings and its favorite, for the
         /// reason a dropped table does. Swept by prefix rather than by table, because the table
         /// list is lazy and a table nobody opened this session still has settings on disk.
-        for store in TableScopedSettingsRegistry.stores {
+        for store in settingsStores {
             store.dropContainer(connectionId: connectionId, database: database, schema: schema)
         }
         favoriteTables.removeFavorites(inDatabase: database, schema: schema, connectionId: connectionId)
@@ -268,7 +297,7 @@ struct CatalogEditAdoption {
                 table: ref.table
             )
         }
-        for store in TableScopedSettingsRegistry.stores {
+        for store in settingsStores {
             store.renameContainer(
                 connectionId: connectionId, fromDatabase: database, fromSchema: schema,
                 toDatabase: toDatabase, toSchema: toSchema

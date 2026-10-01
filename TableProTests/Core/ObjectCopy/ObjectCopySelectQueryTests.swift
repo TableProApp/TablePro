@@ -11,13 +11,21 @@ import TableProPluginKit
 import XCTest
 
 private final class QuotingDriver: PluginDatabaseDriver, @unchecked Sendable {
+    private let injectsRowLimit: Bool
+
+    init(injectsRowLimit: Bool = true) {
+        self.injectsRowLimit = injectsRowLimit
+    }
+
     func connect() async throws {}
     func disconnect() {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
     func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
-    func injectRowLimit(_ query: String, limit: Int) -> String? { "\(query) LIMIT \(limit)" }
+    func injectRowLimit(_ query: String, limit: Int) -> String? {
+        injectsRowLimit ? "\(query) LIMIT \(limit)" : nil
+    }
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
@@ -111,6 +119,66 @@ final class ObjectCopySelectQueryTests: XCTestCase {
                 scope: PluginExportRowScope(filter: "total > 10", rowLimit: 50)
             ),
             "SELECT \"id\" FROM \"orders\" WHERE total > 10 LIMIT 50"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForSQLServer() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: "dbo", driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .mssql, scope: PluginExportRowScope(filter: "total > 10", rowLimit: 10)
+            ),
+            "SELECT TOP 10 \"id\" FROM \"dbo\".\"orders\" WHERE total > 10"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForOracle() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["ID"], table: "ORDERS", schema: "HR", driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .oracle, scope: PluginExportRowScope(filter: "TOTAL > 10", rowLimit: 10)
+            ),
+            "SELECT \"ID\" FROM \"HR\".\"ORDERS\" WHERE TOTAL > 10 FETCH FIRST 10 ROWS ONLY"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForDamengWithoutSorting() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["DOC"], table: "ORDERS", schema: "SYSDBA", driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .dameng, scope: PluginExportRowScope(rowLimit: 10)
+            ),
+            "SELECT \"DOC\" FROM \"SYSDBA\".\"ORDERS\" FETCH FIRST 10 ROWS ONLY"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectStaysLimitOnTrino() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: "sales", driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .trino, scope: PluginExportRowScope(rowLimit: 10)
+            ),
+            "SELECT \"id\" FROM \"sales\".\"orders\" LIMIT 10"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForTeradata() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: "sales", driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .teradata, scope: PluginExportRowScope(rowLimit: 10)
+            ),
+            "SELECT TOP 10 \"id\" FROM \"sales\".\"orders\""
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectStaysLimitOnMySQL() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: nil, driver: QuotingDriver(injectsRowLimit: false),
+                databaseType: .mysql, scope: PluginExportRowScope(filter: "total > 10", rowLimit: 10)
+            ),
+            "SELECT \"id\" FROM \"orders\" WHERE total > 10 LIMIT 10"
         )
     }
 

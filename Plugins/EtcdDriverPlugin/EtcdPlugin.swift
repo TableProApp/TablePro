@@ -18,7 +18,7 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "etcd"
     static let databaseDisplayName = "etcd"
     static let iconName = "etcd-icon"
-    static let defaultPort = 2379
+    static let defaultPort = 2_379
     static let isDownloadable = true
 
     static let navigationModel: NavigationModel = .standard
@@ -32,6 +32,7 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSchemaEditing = false
     static let supportsDatabaseSwitching = false
     static let supportsImport = false
+    static let supportsSSL = false
     static let tableEntityName = "Keys"
     static let supportsForeignKeyDisable = false
     static let supportsReadOnlyMode = false
