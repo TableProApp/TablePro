@@ -11,24 +11,45 @@ import SwiftUI
 /// the two schemas were renamed apart. Without this the only way to correct that would be to rename
 /// a column on one side.
 internal struct TableTransferMappingEditor: View {
+    internal static var contestedMappingMessage: String {
+        String(localized: "Each destination column can be mapped from only one source column.")
+    }
+
     internal let tableName: String
     internal let sourceColumns: [String]
     internal let destinationColumns: [String]
-    @Binding internal var overrides: [String: String?]
+    internal let onChange: ([String: String?]) -> Void
     internal let dismiss: () -> Void
 
-    private var automatic: TableColumnMatcher.Match {
-        TableColumnMatcher.match(source: sourceColumns, destination: destinationColumns)
+    /// Held here rather than read back through the sheet: SwiftUI does not re-evaluate `.popover`
+    /// content when the presenting view re-renders, so a pick that only wrote the sheet's state
+    /// left this view drawing the mapping it opened with.
+    @State private var overrides: [String: String?]
+
+    internal init(
+        tableName: String,
+        sourceColumns: [String],
+        destinationColumns: [String],
+        overrides: [String: String?],
+        onChange: @escaping ([String: String?]) -> Void,
+        dismiss: @escaping () -> Void
+    ) {
+        self.tableName = tableName
+        self.sourceColumns = sourceColumns
+        self.destinationColumns = destinationColumns
+        self.onChange = onChange
+        self.dismiss = dismiss
+        _overrides = State(initialValue: overrides)
     }
 
     private var resolved: TableColumnMatcher.Match {
-        overrides.isEmpty
-            ? automatic
-            : TableColumnMatcher.applying(
-                overrides: overrides, to: automatic, destination: destinationColumns)
+        TableColumnMatcher.match(
+            source: sourceColumns, destination: destinationColumns, overrides: overrides)
     }
 
     internal var body: some View {
+        let match = resolved
+        let contested = Set(match.contestedDestinations)
         VStack(alignment: .leading, spacing: 10) {
             Text(tableName)
                 .font(.headline)
@@ -42,36 +63,28 @@ internal struct TableTransferMappingEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(sourceColumns, id: \.self) { column in
-                        HStack(spacing: 6) {
-                            Text(column)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(width: 130, alignment: .leading)
-
-                            Picker(String(format: String(localized: "Destination for %@"), column),
-                                   selection: binding(for: column)) {
-                                Text("Skip").tag(String?.none)
-                                ForEach(destinationColumns, id: \.self) { target in
-                                    Text(target).tag(String?.some(target))
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 150)
-                        }
+                        row(for: column, isContested: match.mapping[column].map(contested.contains) ?? false)
                     }
                 }
             }
             .frame(height: 200)
 
-            if !resolved.unmatchedDestination.isEmpty {
-                Text(unmatchedDestinationLabel)
+            if !contested.isEmpty {
+                Text(Self.contestedMappingMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !match.unmatchedDestination.isEmpty {
+                Text(unmatchedDestinationLabel(match.unmatchedDestination))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
-                Button("Match by Name") { overrides = [:] }
+                Button("Match by Name") { update([:]) }
                 Spacer()
                 Button("Done", action: dismiss)
                     .keyboardShortcut(.defaultAction)
@@ -81,19 +94,55 @@ internal struct TableTransferMappingEditor: View {
         .frame(width: 340)
     }
 
+    private func row(for column: String, isContested: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(column)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: 130, alignment: .leading)
+
+            Picker(String(format: String(localized: "Destination for %@"), column),
+                   selection: binding(for: column)) {
+                Text("Skip").tag(String?.none)
+                ForEach(destinationColumns, id: \.self) { target in
+                    Text(target).tag(String?.some(target))
+                }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+
+            if isContested {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .help(String(localized: "Another source column is mapped to the same destination column."))
+                    .accessibilityLabel(
+                        Text("Another source column is mapped to the same destination column."))
+            }
+        }
+    }
+
     /// A destination column nothing writes to takes its own default or null, which only fails when
     /// it is `NOT NULL` without one, so it is stated rather than blocked.
-    private var unmatchedDestinationLabel: String {
+    private func unmatchedDestinationLabel(_ columns: [String]) -> String {
         String(
             format: String(localized: "Not written: %@. Each takes its default or null."),
-            resolved.unmatchedDestination.joined(separator: ", ")
+            columns.joined(separator: ", ")
         )
     }
 
     private func binding(for column: String) -> Binding<String?> {
         Binding(
             get: { resolved.mapping[column] },
-            set: { overrides[column] = .some($0) }
+            set: { target in
+                var updated = overrides
+                updated[column] = .some(target)
+                update(updated)
+            }
         )
+    }
+
+    private func update(_ updated: [String: String?]) {
+        overrides = updated
+        onChange(updated)
     }
 }

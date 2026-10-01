@@ -31,22 +31,10 @@ enum CSVImportParsing {
     }
 
     static func columnNames(header: [String]?, columnCount: Int) -> [String] {
-        var names: [String] = []
-        names.reserveCapacity(columnCount)
-        var used = Set<String>()
-        for index in 0..<columnCount {
-            let raw = header.flatMap { index < $0.count ? $0[index] : nil } ?? ""
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            let base = trimmed.isEmpty ? defaultColumnName(index) : trimmed
-            var unique = base
-            var suffix = 2
-            while !used.insert(unique).inserted {
-                unique = "\(base) \(suffix)"
-                suffix += 1
-            }
-            names.append(unique)
+        let cells = (0..<columnCount).map { index in
+            header.flatMap { index < $0.count ? $0[index] : nil }
         }
-        return names
+        return ImportFieldNaming.uniqueNames(for: cells, placeholder: defaultColumnName)
     }
 
     static func cellValue(from raw: String, options: CSVImportOptions) -> PluginCellValue {

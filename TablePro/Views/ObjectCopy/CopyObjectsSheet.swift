@@ -23,7 +23,7 @@ internal struct CopyObjectsSheet: View {
             mode: launch.mode,
             source: launch.source,
             sourceConnection: connection,
-            preselected: launch.preselected
+            preselection: launch.preselection
         ))
     }
 
@@ -159,17 +159,24 @@ internal struct CopyObjectsSheet: View {
 internal struct ObjectCopyLaunchRequest: Hashable, Identifiable, Sendable {
     internal let mode: ObjectCopyMode
     internal let source: DatabaseEndpoint
-    /// Empty means every object in the source, which is what a right-click on a database means.
-    internal let preselected: [ObjectCopySelection]
+    internal let preselection: ObjectCopyPreselection
 
-    internal init(mode: ObjectCopyMode, source: DatabaseEndpoint, preselected: [ObjectCopySelection] = []) {
+    internal init(mode: ObjectCopyMode, source: DatabaseEndpoint, preselection: ObjectCopyPreselection) {
         self.mode = mode
         self.source = source
-        self.preselected = preselected
+        self.preselection = preselection
     }
 
     internal var id: String {
-        let names = preselected.map(\.id).sorted().joined(separator: ",")
-        return "\(mode)|\(source.id)|\(names)"
+        "\(mode)|\(source.id)|\(preselectionKey)"
+    }
+
+    private var preselectionKey: String {
+        switch preselection {
+        case .wholeScope:
+            return "*"
+        case .objects(let objects):
+            return objects.map(\.id).sorted().joined(separator: ",")
+        }
     }
 }

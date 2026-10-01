@@ -75,6 +75,7 @@ struct UsersRolesTabView: View {
                 isPresented: reviewBinding,
                 statements: viewModel.previewSQL,
                 databaseType: viewModel.databaseType,
+                subtitle: viewModel.openInEditorPasswordNotice,
                 warning: viewModel.lockoutWarning,
                 failure: viewModel.applyFailure,
                 primaryAction: SQLReviewSheet.PrimaryAction(
@@ -84,11 +85,7 @@ struct UsersRolesTabView: View {
                     await viewModel.executePendingChanges()
                 },
                 onOpenInEditor: {
-                    coordinator?.loadQueryIntoEditor(
-                        viewModel.previewSQL
-                            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
-                            .joined(separator: "\n\n")
-                    )
+                    coordinator?.loadQueryIntoEditor(viewModel.editorScript.text)
                     viewModel.activeSheet = nil
                 }
             )

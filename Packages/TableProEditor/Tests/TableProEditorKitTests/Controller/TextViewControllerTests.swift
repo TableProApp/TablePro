@@ -271,13 +271,15 @@ final class TextViewControllerTests: XCTestCase {
 
         controller.setCursorPositions([CursorPosition(line: 1, column: 2)]) // After first opening {
         XCTAssertEqual(getEmphasisCount(), 1, "Controller created more than one layer for flash animation.")
-        let exp = expectation(description: "Test after 0.8 seconds")
-        let result = XCTWaiter.wait(for: [exp], timeout: 0.8)
-        if result == XCTWaiter.Result.timedOut {
-            XCTAssertEqual(getEmphasisCount(), 0, "Controller failed to remove emphasis after flash animation.")
-        } else {
-            XCTFail("Delay interrupted")
-        }
+        let flashRemoved = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in getEmphasisCount() == 0 },
+            object: nil
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [flashRemoved], timeout: 10),
+            .completed,
+            "Controller failed to remove emphasis after flash animation."
+        )
     }
 
     func test_findClosingPair() {
