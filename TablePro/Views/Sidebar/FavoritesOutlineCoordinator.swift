@@ -154,11 +154,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         }
         if !owner.input.tables.isEmpty {
             nodes.append(node(id: FavoritesOutlineNode.tablesHeaderId, kind: .header(String(localized: "Tables"))))
-            nodes += owner.input.tables.map { table in
-                let id = FavoritesOutlineNode.tableId(
-                    database: owner.input.activeDatabase, schema: table.schema, name: table.name
-                )
-                return node(id: id, kind: .table(table))
+            nodes += owner.input.tables.map { row in
+                node(id: row.id, kind: .table(row))
             }
         }
         if !owner.input.queryNodes.isEmpty {
@@ -269,9 +266,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         }
         /// Selecting is not running. Arrowing through saved queries must never insert or execute
         /// them, so the primary action stays behind a double-click or Return.
-        owner.selection = FavoritesOutlineSelection.selection(
-            for: node.kind, database: owner.input.activeDatabase
-        )
+        owner.selection = FavoritesOutlineSelection.selection(for: node.kind)
     }
 
     // MARK: - Actions
