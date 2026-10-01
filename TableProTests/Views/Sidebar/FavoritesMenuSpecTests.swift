@@ -13,12 +13,14 @@ struct FavoritesMenuSpecTests {
     private func context(
         clicked: FavoritesOutlineNode.Kind?,
         allFolders: [SQLFavoriteFolder] = [],
-        teamLibraryAvailable: Bool = false
+        teamLibraryAvailable: Bool = false,
+        activeDatabase: String? = "shop"
     ) -> FavoritesMenuContext {
         FavoritesMenuContext(
             clicked: clicked,
             allFolders: allFolders,
-            teamLibraryAvailable: teamLibraryAvailable
+            teamLibraryAvailable: teamLibraryAvailable,
+            activeDatabase: activeDatabase
         )
     }
 
@@ -61,8 +63,15 @@ struct FavoritesMenuSpecTests {
         }
     }
 
-    private func table() -> TableInfo {
-        TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+    private func table(schema: String = "public", otherSchema: String? = nil) -> FavoriteTableRow {
+        FavoriteTableRow(
+            entry: FavoriteTablesStorage.FavoriteEntry(
+                connectionId: UUID(), database: "shop", schema: schema, name: "orders"
+            ),
+            listedTable: TableInfo(name: "orders", type: .table, rowCount: nil, schema: schema),
+            isVerified: true,
+            otherSchema: otherSchema
+        )
     }
 
     private func database() -> FavoriteDatabaseEntry {
@@ -118,6 +127,42 @@ struct FavoritesMenuSpecTests {
             let sections = FavoritesMenuSpec.sections(for: context(clicked: kind)).nonEmptySections()
             #expect(sections.count <= 4, "\(String(describing: kind)) produced \(sections.count) groups")
         }
+    }
+
+    @Test("A table row opens, diagrams and removes the favorite it was built from")
+    func tableRowCommandsCarryTheRow() {
+        let row = table()
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .table(row))))
+
+        #expect(issued == [.openTable(row), .showERDiagram(schema: nil), .removeTableFavorite(row.entry)])
+    }
+
+    @Test("A table outside the browsed schema diagrams its own schema")
+    func otherSchemaRowDiagramsItsSchema() {
+        let row = table(schema: "sales", otherSchema: "sales")
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: .table(row))))
+
+        #expect(issued.contains(.showERDiagram(schema: "sales")))
+        #expect(issued.contains(.removeTableFavorite(row.entry)))
+    }
+
+    @Test("A diagram the tab could not tell apart from the browsed schema's is not offered")
+    func unrepresentableDiagramIsNotOffered() {
+        let noDatabase = commands(FavoritesMenuSpec.sections(for: context(
+            clicked: .table(table(schema: "sales", otherSchema: "sales")),
+            activeDatabase: nil
+        )))
+        let markerSchema = commands(FavoritesMenuSpec.sections(for: context(
+            clicked: .table(table(schema: "default", otherSchema: "default"))
+        )))
+        let browsedSchema = commands(FavoritesMenuSpec.sections(for: context(
+            clicked: .table(table()),
+            activeDatabase: nil
+        )))
+
+        #expect(!noDatabase.contains { if case .showERDiagram = $0 { true } else { false } })
+        #expect(!markerSchema.contains { if case .showERDiagram = $0 { true } else { false } })
+        #expect(browsedSchema.contains(.showERDiagram(schema: nil)))
     }
 
     /// These moved out of the bar at the bottom of the sidebar.

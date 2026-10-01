@@ -83,9 +83,9 @@ internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @un
 
     internal func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let failure = lock.withLock { () -> Error? in
-            guard failureStatusCode != nil else { return error }
+            guard let statusCode = failureStatusCode else { return error }
             let body = String(decoding: failureBody, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
-            return ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+            return ClickHouseError.httpFailure(statusCode: statusCode, body: body)
         }
         guard let failure else {
             continuation.finish()

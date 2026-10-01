@@ -57,7 +57,8 @@ struct ScannedConnectionFields {
             safeModeLevel: safeModeLevel,
             useSrv: false,
             mongoQueryParams: [:],
-            multiHost: nil
+            multiHost: nil,
+            additionalFields: [:]
         )
     }
 }

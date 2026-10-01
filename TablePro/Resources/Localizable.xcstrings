@@ -30319,40 +30319,6 @@
         }
       }
     },
-    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > %1$@ > %2$@에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > %1$@ > %2$@ altına ekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > %1$@ > %2$@ để xem các kết nối đã xuất bản."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > %1$@ > %2$@”中添加此文件夹即可看到已发布的连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > %1$@ > %2$@」中加入此資料夾即可看到已發佈的連線。"
-          }
-        }
-      }
-    },
     "Choose a source and a target first." : {
       "localizations" : {
         "ko" : {
@@ -30942,6 +30908,40 @@
     },
     "Choose Value" : {
 
+    },
+    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > %1$@ > %2$@에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > %1$@ > %2$@ altına ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > %1$@ > %2$@ để xem các kết nối đã xuất bản."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > %1$@ > %2$@”中添加此文件夹即可看到已发布的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > %1$@ > %2$@」中加入此資料夾即可看到已發佈的連線。"
+          }
+        }
+      }
     },
     "Choose what happens to them when the role is dropped." : {
       "localizations" : {
@@ -32675,6 +32675,9 @@
           }
         }
       }
+    },
+    "ClickHouse returned HTTP %lld." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -59484,6 +59487,9 @@
           }
         }
       }
+    },
+    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
+
     },
     "encoding: %@" : {
       "localizations" : {
@@ -99532,6 +99538,9 @@
         }
       }
     },
+    "No Favorites in This %@" : {
+
+    },
     "No favorites match the selected environment." : {
       "localizations" : {
         "ko" : {
@@ -106571,6 +106580,12 @@
         }
       }
     },
+    "Publish %d connections to your team?" : {
+
+    },
+    "Publish “%@” to your team?" : {
+
+    },
     "SAP HANA did not return the table definition." : {
 
     },
@@ -108519,6 +108534,9 @@
           }
         }
       }
+    },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -162275,6 +162293,9 @@
     "The table's primary key is not loaded, so the row cannot be written." : {
 
     },
+    "The tables you starred here no longer exist." : {
+
+    },
     "the target" : {
       "localizations" : {
         "ko" : {
@@ -181006,6 +181027,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -184771,13 +184795,10 @@
     "Next cursor: %@. The scan has not finished." : {
 
     },
-    "Publish %d connections to your team?" : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
 
     },
-    "Publish “%@” to your team?" : {
-
-    },
-    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     }
   },
