@@ -350,6 +350,32 @@ struct ConnectionURLFormatterTests {
         #expect(TransientConnectionFactory.build(from: parsed).sslConfig.mode == mode, "\(url)")
     }
 
+    @Test("A copied etcd URL keeps the TLS Mode its driver reads when it is opened again")
+    func etcdTLSModeRoundTrips() {
+        for tlsMode in ["Required", "VerifyCA", "VerifyIdentity", "Disabled"] {
+            let conn = DatabaseConnection(
+                name: "", host: "etcd.example.com", port: 2_379, database: "", username: "root", type: .etcd,
+                sslConfig: SSLConfiguration(mode: .disabled), additionalFields: ["etcdTlsMode": tlsMode]
+            )
+            let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("\(url) did not parse")
+                continue
+            }
+            #expect(parsed.additionalFields["etcdTlsMode"] == tlsMode, "\(url)")
+        }
+    }
+
+    @Test("An etcd URL never carries the generic SSL Mode its driver ignores")
+    func etcdURLIgnoresTheGenericSSLMode() {
+        let conn = DatabaseConnection(
+            name: "", host: "etcd.example.com", port: 2_379, database: "", username: "root", type: .etcd,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity), additionalFields: ["etcdTlsMode": "Disabled"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "", sshPassword: nil)
+        #expect(!url.contains("sslmode"), "\(url)")
+    }
+
     // MARK: - Connection Name
 
     @Test("Connection name in query string")

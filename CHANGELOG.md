@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case.
 - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
 - Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Favorites tab missing starred tables from other schemas, and every starred table on Oracle, Snowflake, BigQuery and Trino.
+- etcd SSL Mode that the driver ignored, and etcd URLs that lost or faked TLS on import and Copy as URL.
 - Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
 - CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
 - MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
@@ -56,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV import with single quotes merging rows at a double quote inside a field.
 - Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
 - Shortcuts rejecting CSV and JSON files that are not UTF-8.
+- Shortcuts Add Row and Add Rows rejecting CSV with CRLF or CR line endings as having no data.
+- iOS Info tab showing a DuckDB connection as a server at 127.0.0.1:3306 instead of its file.
+- iOS `SELECT * FROM` template writing `LIMIT 100` on SQL Server, Oracle and Redis, and leaving out the selected schema.
+- iOS keeping the query history of deleted connections, and the passwords of connections deleted on another device.
+- iOS history list showing a repeated query twice until the connection is reopened.
 - Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
 - Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
 - etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
@@ -99,10 +106,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+- ClickHouse query timeout never reaching the server, and capped SELECTs failing at 60 seconds whatever it is set to.
+- Stop on a ClickHouse SELECT leaving the query running on the server.
+- ClickHouse connect errors such as a wrong password or unknown database shown as "Failed to establish connection".
+- ClickHouse client certificate and key never sent to servers that require mutual TLS.
+- Row limit on Copy To and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata.
+- Copy To on a foreign table, sequence, system table or external table preselecting every object in the schema.
+- Copy To between two schemas of one DuckDB or PGlite connection refused with a message about comparing databases.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 
 ### Security
 
+- Plaintext passwords saved with the query tab that Open in Query Editor opens from Users & Roles.
 - Redis Verify Identity accepting a server certificate issued for another host.
 
 ## [0.76.1] - 2026-09-29

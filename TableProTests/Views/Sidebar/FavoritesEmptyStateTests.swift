@@ -14,14 +14,18 @@ struct FavoritesEmptyStateTests {
         hasAnyFavorite: Bool = true,
         hasVisibleContent: Bool = false,
         searchText: String = "",
-        isEnvironmentFiltered: Bool = false
+        isEnvironmentFiltered: Bool = false,
+        favoriteTablesInOtherDatabases: Int = 0,
+        missingFavoriteTables: Int = 0
     ) -> FavoritesEmptyState.Input {
         FavoritesEmptyState.Input(
             isInitialLoadComplete: isInitialLoadComplete,
             hasAnyFavorite: hasAnyFavorite,
             hasVisibleContent: hasVisibleContent,
             searchText: searchText,
-            isEnvironmentFiltered: isEnvironmentFiltered
+            isEnvironmentFiltered: isEnvironmentFiltered,
+            favoriteTablesInOtherDatabases: favoriteTablesInOtherDatabases,
+            missingFavoriteTables: missingFavoriteTables
         )
     }
 
@@ -76,6 +80,43 @@ struct FavoritesEmptyStateTests {
     @Test("Favorites exist, nothing is narrowing, and nothing shows: still the onboarding state")
     func neitherNarrowing() {
         #expect(FavoritesEmptyState.resolve(input()) == .noFavorites)
+    }
+
+    @Test("Favorite tables that all live in other databases say so, not the onboarding state")
+    func favoriteTablesElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(favoriteTablesInOtherDatabases: 2))
+                == .favoriteTablesInOtherDatabases
+        )
+    }
+
+    @Test("Favorite tables whose tables are all gone say so, not the onboarding state")
+    func favoriteTablesMissing() {
+        #expect(FavoritesEmptyState.resolve(input(missingFavoriteTables: 1)) == .favoriteTablesMissing)
+    }
+
+    @Test("Favorites in other databases outrank missing ones")
+    func otherDatabasesOutrankMissing() {
+        #expect(
+            FavoritesEmptyState.resolve(input(favoriteTablesInOtherDatabases: 1, missingFavoriteTables: 3))
+                == .favoriteTablesInOtherDatabases
+        )
+    }
+
+    @Test("A search that matches nothing stays a search miss while favorites sit elsewhere")
+    func searchMissWinsOverElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(searchText: "orders", favoriteTablesInOtherDatabases: 1))
+                == .noSearchMatch("orders")
+        )
+    }
+
+    @Test("Visible content wins over favorites elsewhere")
+    func contentWinsOverElsewhere() {
+        #expect(
+            FavoritesEmptyState.resolve(input(hasVisibleContent: true, favoriteTablesInOtherDatabases: 1))
+                == .content
+        )
     }
 
     // MARK: - hasAnyFavorite

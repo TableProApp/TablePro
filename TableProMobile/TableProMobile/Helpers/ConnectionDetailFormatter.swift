@@ -3,12 +3,8 @@ import TableProModels
 
 nonisolated enum ConnectionDetailFormatter {
     static func detail(for connection: DatabaseConnection) -> String {
-        switch connection.type {
-        case .sqlite, .duckdb:
-            return fileDetail(connection.database)
-        default:
-            return networkDetail(for: connection)
-        }
+        guard connection.type.isLocalFile else { return networkDetail(for: connection) }
+        return fileDetail(connection.database)
     }
 
     private static func fileDetail(_ path: String) -> String {
