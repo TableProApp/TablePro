@@ -22,6 +22,9 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     private let store: TeamLibraryStore
     private let isFeatureAvailable: @MainActor () -> Bool
     private let credentialsProvider: @MainActor () -> (key: String, machineId: String)?
+    private let licenseStatusChanges: AnyPublisher<Void, Never>
+    private var licenseCancellable: AnyCancellable?
+    private var wasFeatureAvailable = false
 
     @Published private(set) var library: TeamLibraryPullResponse = .empty
     @Published private(set) var isPublishing = false
@@ -33,15 +36,20 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         credentialsProvider: @escaping @MainActor () -> (key: String, machineId: String)? = {
             guard let key = LicenseManager.shared.license?.key else { return nil }
             return (key, LicenseStorage.shared.machineId)
-        }
+        },
+        licenseStatusChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange
+            .receive(on: RunLoop.main)
+            .eraseToAnyPublisher()
     ) {
         self.apiClient = apiClient
         self.store = store
         self.isFeatureAvailable = isFeatureAvailable
         self.credentialsProvider = credentialsProvider
+        self.licenseStatusChanges = licenseStatusChanges
     }
 
     func start() {
+        observeLicenseChanges()
         guard isFeatureAvailable() else { return }
         Task {
             if let cached = await store.load() {
@@ -72,6 +80,21 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
 
     func refresh() {
         Task { await pull() }
+    }
+
+    private func observeLicenseChanges() {
+        wasFeatureAvailable = isFeatureAvailable()
+        licenseCancellable = licenseStatusChanges.sink { [weak self] in
+            self?.licenseStatusDidChange()
+        }
+    }
+
+    private func licenseStatusDidChange() {
+        let isAvailable = isFeatureAvailable()
+        let becameAvailable = isAvailable && !wasFeatureAvailable
+        wasFeatureAvailable = isAvailable
+        guard becameAvailable else { return }
+        refresh()
     }
 
     /// Drop the team's shared set, on disk and in the copy every view reads.

@@ -145,7 +145,7 @@ struct SyncDirtyMarkingTests {
         let tableId = String(repeating: "a", count: 64)
         tracker.markDirty(.tableFavorite, id: tableId)
 
-        tables.removeFavoriteWithoutSync(id: tableId)
+        tables.applyRemote(saved: [], deletedIds: [tableId])
 
         #expect(metadata.dirtyIds(for: .tableFavorite).isEmpty)
     }

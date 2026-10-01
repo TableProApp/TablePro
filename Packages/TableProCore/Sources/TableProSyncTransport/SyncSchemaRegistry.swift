@@ -5,7 +5,7 @@ public extension SyncRecordType {
     static let verifiedInProduction: Set<SyncRecordType> = [
         .connection, .group, .tag, .settings,
         .favorite, .favoriteFolder, .tableFavorite, .sshProfile, .credentialProfile,
-        .favoriteDatabase
+        .favoriteDatabase, .tableFolder, .tableFolderItem
     ]
 
     var productionSchemaState: ProductionSchemaState {

@@ -30331,40 +30331,6 @@
         }
       }
     },
-    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > Linked Folders to see published connections." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > 연결된 폴더에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > Bağlı Klasörler altına ekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > Thư mục liên kết để xem các kết nối đã xuất bản."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > 关联文件夹”中添加此文件夹即可看到已发布的连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > 連結資料夾」中加入此資料夾即可看到已發佈的連線。"
-          }
-        }
-      }
-    },
     "Choose a source and a target first." : {
       "localizations" : {
         "ko" : {
@@ -30954,6 +30920,40 @@
     },
     "Choose Value" : {
 
+    },
+    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > %1$@ > %2$@에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > %1$@ > %2$@ altına ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > %1$@ > %2$@ để xem các kết nối đã xuất bản."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > %1$@ > %2$@”中添加此文件夹即可看到已发布的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > %1$@ > %2$@」中加入此資料夾即可看到已發佈的連線。"
+          }
+        }
+      }
     },
     "Choose what happens to them when the role is dropped." : {
       "localizations" : {
@@ -59509,7 +59509,7 @@
         }
       }
     },
-    "Failed to configure the connection timeout" : {
+    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
 
     },
     "encoding: %@" : {
@@ -66124,6 +66124,9 @@
           }
         }
       }
+    },
+    "Failed to configure the connection timeout" : {
+
     },
     "Failed to create terminal process (errno: %d)" : {
       "extractionState" : "stale",
@@ -106610,6 +106613,12 @@
         }
       }
     },
+    "Publish %d connections to your team?" : {
+
+    },
+    "Publish “%@” to your team?" : {
+
+    },
     "Query timeout must be between 0 and 2,147,483 seconds." : {
       "localizations" : {
         "ko" : {
@@ -106662,13 +106671,7 @@
     "The SAP HANA schema name cannot be empty." : {
 
     },
-    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
-
-    },
     "Timed out while connecting to the Dameng server" : {
-
-    },
-    "Timed out while connecting to the Kafka broker" : {
 
     },
     "Timed out while connecting to the Kafka cluster" : {
@@ -159191,7 +159194,16 @@
         }
       }
     },
+    "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
+
+    },
+    "The dump is imported into this database, and the change cannot be undone. The import needs an empty database and stops if this one already holds objects." : {
+
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+
+    },
+    "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
 
     },
     "The encrypted file is corrupt or incomplete" : {
@@ -163062,6 +163074,9 @@
       }
     },
     "The view's query runs again and replaces its stored rows. A plain refresh stops other sessions from reading the view until it finishes." : {
+
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
 
     },
     "Theme" : {
@@ -183147,6 +183162,15 @@
     "Weaviate does not support views." : {
 
     },
+    "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor." : {
+
+    },
+    "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
+
+    },
+    "Weaviate returned the same page of %@ twice. Reading a whole collection needs Weaviate 1.18 or later." : {
+
+    },
     "The first sheet has no header row to map columns from." : {
 
     },
@@ -184848,6 +184872,9 @@
 
     },
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
+
+    },
+    "Timed out while connecting to the Kafka broker" : {
 
     },
     "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {

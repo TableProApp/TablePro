@@ -423,6 +423,10 @@ extension DatabaseConnection {
 // MARK: - Device-Local State
 
 internal extension DatabaseConnection {
+    var participatesInSync: Bool {
+        !localOnly && !isSample
+    }
+
     func adoptingDeviceLocalState(from local: DatabaseConnection) -> DatabaseConnection {
         var adopted = self
         adopted.localOnly = local.localOnly

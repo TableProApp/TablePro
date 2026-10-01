@@ -6,6 +6,7 @@
 //  cadence, and that publishing sends the mapped content and refreshes.
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import Testing
@@ -66,6 +67,45 @@ struct TeamLibrarySyncCoordinatorTests {
         TeamLibraryMetadataStorage.reset()
     }
 
+    @Test("A license that turns the team library on mid-session pulls it once")
+    func licenseActivationPullsLibrary() async throws {
+        TeamLibraryMetadataStorage.recordPull()
+        defer { TeamLibraryMetadataStorage.reset() }
+        let mock = MockTeamLibraryAPIClient()
+        mock.pullResponse = TeamLibraryPullResponse(
+            connections: [],
+            queryFolders: [],
+            queries: [
+                .init(
+                    clientId: UUID().uuidString, folderClientId: nil, connectionClientId: nil,
+                    name: "Q", query: "select 1", keyword: nil, sortOrder: 0, publishedBy: "a@b.com"
+                )
+            ],
+            fetchedAt: "now"
+        )
+        let availability = FeatureAvailability()
+        let licenseChanges = PassthroughSubject<Void, Never>()
+        let coordinator = TeamLibrarySyncCoordinator(
+            apiClient: mock,
+            store: TeamLibraryStore(fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("team_library_\(UUID().uuidString).json")),
+            isFeatureAvailable: { availability.isAvailable },
+            credentialsProvider: { ("AAAAA-BBBBB-CCCCC-DDDDD-EEEEE", String(repeating: "a", count: 64)) },
+            licenseStatusChanges: licenseChanges.eraseToAnyPublisher()
+        )
+
+        coordinator.start()
+        licenseChanges.send()
+        availability.isAvailable = true
+        licenseChanges.send()
+        licenseChanges.send()
+        try await waitUntil { coordinator.library.queries.count == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(coordinator.library.queries.map(\.name) == ["Q"])
+        #expect(mock.pullCallCount == 1)
+    }
+
     @Test("publish sends the mapped saved queries and then refreshes")
     func publishSendsQueries() async throws {
         TeamLibraryMetadataStorage.reset()
@@ -90,4 +130,16 @@ struct TeamLibrarySyncCoordinatorTests {
         #expect(mock.publishedRequests[0].queries[0].name == "Recent")
         #expect(mock.pullCallCount == 1)
     }
+
+    private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
+@MainActor
+private final class FeatureAvailability {
+    var isAvailable = false
 }

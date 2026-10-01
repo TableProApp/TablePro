@@ -361,6 +361,21 @@ struct ConnectionSharingTests {
             #expect(url?.scheme == "tablepro")
             #expect(url?.host() == "import")
         }
+
+        @Test("Leaves out the fields every importer drops")
+        @MainActor
+        func testLeavesOutImportBlockedFields() throws {
+            let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
+            let link = try #require(ConnectionExportService.buildImportDeeplink(for: connection))
+            let components = try #require(URLComponents(string: link))
+            let fieldNames = Set((components.queryItems ?? []).map(\.name))
+
+            #expect(!fieldNames.contains("af_preConnectScript"))
+            #expect(!fieldNames.contains("af_usePgpass"))
+            #expect(!fieldNames.contains("af_promptForPassword"))
+            #expect(!fieldNames.contains("af_awsRegion"))
+            #expect(fieldNames.contains("af_connectionOptions"))
+        }
     }
 
     // MARK: - buildCompactJSON
@@ -426,6 +441,35 @@ struct ConnectionSharingTests {
             #expect(decoded.sshConfig != nil)
             #expect(decoded.sshConfig?.host == "bastion.com")
         }
+
+        @Test("Export files and the Team Library leave out the fields every importer drops")
+        @MainActor
+        func testEnvelopeLeavesOutImportBlockedFields() throws {
+            let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
+            let envelope = ConnectionExportService.buildEnvelope(for: [connection])
+            let fields = try #require(envelope.connections.first?.additionalFields)
+
+            #expect(fields["preConnectScript"] == nil)
+            #expect(fields["usePgpass"] == nil)
+            #expect(fields["promptForPassword"] == nil)
+            #expect(fields["awsRegion"] == nil)
+            #expect(fields["connectionOptions"] == "--cluster=prod")
+        }
+    }
+
+    @MainActor
+    static func connectionWithLocalOnlyFields() -> DatabaseConnection {
+        DatabaseConnection(
+            name: "Prod", host: "db.example.com", port: 5_432,
+            database: "main", username: "app", type: .postgresql,
+            additionalFields: [
+                "preConnectScript": "echo secret",
+                "usePgpass": "true",
+                "promptForPassword": "true",
+                "awsRegion": "us-east-1",
+                "connectionOptions": "--cluster=prod"
+            ]
+        )
     }
 
     // MARK: - Round-Trip

@@ -36,12 +36,20 @@ extension WelcomeViewModel {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = String(localized: "Choose Folder")
-        panel.message = String(
-            localized: "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > Linked Folders to see published connections."
-        )
+        panel.message = Self.teamCatalogFolderPanelMessage
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         TeamCatalogStorage.folderURL = url
         return url
+    }
+
+    static var teamCatalogFolderPanelMessage: String {
+        String(
+            format: String(
+                localized: "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections."
+            ),
+            SettingsPane.general.title,
+            LinkedFoldersSection.title
+        )
     }
 
     private func presentTeamCatalogError(_ error: Error) {

@@ -158,4 +158,27 @@ struct IOSConnectionExportServiceTests {
 
         #expect(exported.queryTimeoutSeconds == nil)
     }
+
+    @Test("An export leaves out the fields every importer drops and keeps the rest")
+    func exportLeavesOutImportBlockedFields() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let connection = DatabaseConnection(
+            name: "Scripted",
+            type: .postgresql,
+            host: "10.0.0.5",
+            additionalFields: [
+                "preConnectScript": "export PGTOKEN=secret-token",
+                "usePgpass": "true",
+                "promptForPassword": "true",
+                "awsRegion": "us-east-1",
+                "connectionOptions": "-c search_path=app"
+            ]
+        )
+        #expect(state.addConnection(connection))
+
+        let envelope = IOSConnectionExportService.buildEnvelope([connection], appState: state)
+        let fields = try #require(envelope.connections.first?.additionalFields)
+
+        #expect(fields == ["connectionOptions": "-c search_path=app"])
+    }
 }

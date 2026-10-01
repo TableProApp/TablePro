@@ -163,10 +163,10 @@ enum ConnectionExportService {
                 var filteredFields = connection.additionalFields
                 filteredFields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
                 filteredFields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
-                for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
-                    filteredFields.removeValue(forKey: fieldId)
-                }
-                additionalFields = filteredFields.isEmpty ? nil : filteredFields
+                additionalFields = ExportableConnection.shareableAdditionalFields(
+                    filteredFields,
+                    excluding: Set(PluginManager.shared.secureConnectionFieldIds(for: connection.type))
+                )
             } else {
                 additionalFields = nil
             }

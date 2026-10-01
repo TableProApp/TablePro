@@ -19,15 +19,31 @@ enum NewTableImportPlan: Equatable {
 /// the table as it stands would write those rows a second time. The table is only ever reused when
 /// this sheet created it in this session with exactly the columns being asked for now, which is the
 /// one case where clearing it can lose nothing but the sheet's own failed attempt.
-enum NewTableImportPlanner {
-    static func plan(
-        forTable tableName: String,
-        createTableSQL: String,
-        alreadyCreated: [String: String]
-    ) -> NewTableImportPlan {
-        guard let previousSQL = alreadyCreated[tableName] else {
+///
+/// A table is known by its database and schema as well as its name. Keyed by name alone, a table the
+/// sheet made in one database vouched for a same-named table in another, and the retry cleared that
+/// one with `DELETE FROM`.
+struct NewTableImportPlanner {
+    private var createStatements: [TableScope: String] = [:]
+
+    func plan(forTable table: TableScope, createTableSQL: String) -> NewTableImportPlan {
+        guard let previousSQL = createStatements[table] else {
             return .create
         }
         return previousSQL == createTableSQL ? .reuseAfterClearing : .nameTakenWithDifferentColumns
+    }
+
+    func created(_ table: TableScope) -> Bool {
+        createStatements[table] != nil
+    }
+
+    func createdTableNames(in scope: DatabaseScope) -> [String] {
+        createStatements.keys
+            .filter { $0 == TableScope(table: $0.table, in: scope) }
+            .map(\.table)
+    }
+
+    mutating func recordCreated(_ table: TableScope, createTableSQL: String) {
+        createStatements[table] = createTableSQL
     }
 }

@@ -161,7 +161,7 @@ enum IOSConnectionExportService {
         var fields = connection.additionalFields
         fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
         fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
-        return fields.isEmpty ? nil : fields
+        return ExportableConnection.shareableAdditionalFields(fields)
     }
 
     private static func validConnectTimeout(_ value: Int?) -> Int? {

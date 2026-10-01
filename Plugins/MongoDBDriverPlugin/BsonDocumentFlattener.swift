@@ -461,7 +461,7 @@ struct BsonDocumentFlattener {
         return counts.max(by: { $0.value < $1.value })?.key ?? .string
     }
 
-    private static func valueKind(for value: Any, representation: MongoDBUuidRepresentation) -> BsonValueKind {
+    static func valueKind(for value: Any, representation: MongoDBUuidRepresentation) -> BsonValueKind {
         if value is NSNull { return .null }
 
         switch value {

@@ -65,11 +65,37 @@ public final class WeaviateClient: @unchecked Sendable {
         offset: Int,
         includeVector: Bool = true
     ) async throws -> [WeaviateObject] {
-        var query = [
-            "class": collection,
-            "limit": String(max(limit, 0)),
-            "offset": String(max(offset, 0))
-        ]
+        try await listObjects(
+            collection: collection,
+            limit: limit,
+            position: ["offset": String(max(offset, 0))],
+            includeVector: includeVector
+        )
+    }
+
+    public func objects(
+        collection: String,
+        limit: Int,
+        after: String?,
+        includeVector: Bool = true
+    ) async throws -> [WeaviateObject] {
+        try await listObjects(
+            collection: collection,
+            limit: limit,
+            position: after.map { ["after": $0] } ?? [:],
+            includeVector: includeVector
+        )
+    }
+
+    private func listObjects(
+        collection: String,
+        limit: Int,
+        position: [String: String],
+        includeVector: Bool
+    ) async throws -> [WeaviateObject] {
+        var query = position
+        query["class"] = collection
+        query["limit"] = String(max(limit, 0))
         if includeVector {
             query["include"] = "vector"
         }
