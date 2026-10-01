@@ -137,11 +137,11 @@ extension MainContentCommandActions {
     }
 
     func copyObjectsToAnotherDatabase() {
-        coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, objects: [])
+        coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, preselection: .wholeScope)
     }
 
     func duplicateCurrentDatabase() {
-        coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, objects: [])
+        coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, preselection: .wholeScope)
     }
 }
 
@@ -156,7 +156,7 @@ internal extension MainContentCoordinator {
         mode: ObjectCopyMode,
         database: String?,
         schema: String?,
-        objects: [ObjectCopySelection]
+        preselection: ObjectCopyPreselection
     ) {
         let source = DatabaseEndpoint.from(
             connection: connection,
@@ -164,7 +164,7 @@ internal extension MainContentCoordinator {
             schema: schema
         )
         activeSheet = .copyObjects(ObjectCopyLaunchRequest(
-            mode: mode, source: source, preselected: objects
+            mode: mode, source: source, preselection: preselection
         ))
     }
 }

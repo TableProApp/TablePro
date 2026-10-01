@@ -35,13 +35,14 @@ struct ConnectionInfoView: View {
                 }
             }
 
-            if connection.type != .sqlite {
+            switch ConnectionInfoContent.section(for: connection, fileURL: databaseFileURL) {
+            case .server:
                 serverSection
                 if connection.sshEnabled, let ssh = connection.sshConfiguration {
                     sshSection(ssh)
                 }
-            } else {
-                sqliteFileSection
+            case .file(let file):
+                fileSection(file)
             }
 
             statsSection
@@ -115,17 +116,18 @@ struct ConnectionInfoView: View {
     }
 
     @ViewBuilder
-    private var sqliteFileSection: some View {
+    private func fileSection(_ file: ConnectionFileDetail) -> some View {
         Section("File") {
-            let fileURL = databaseFileURL
-            LabeledContent("Name", value: fileURL?.lastPathComponent ?? connection.database)
-            LabeledContent("Path") {
-                Text(fileURL?.path ?? connection.database)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+            LabeledContent("Name", value: file.name)
+            if let path = file.path {
+                LabeledContent("Path") {
+                    Text(path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
             }
         }
     }
