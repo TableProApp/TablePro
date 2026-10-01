@@ -15,7 +15,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
     private let grammar: SQLLexicalGrammar
-    private let columnMapping: [String: String]
+    private let exactMapping: [String: String]
+    private let foldedMapping: [String: String]
+    private let sourceFields: Set<String>
+    private let sourceFieldsPerFoldedName: [String: Int]
     private let rowGenerator: SQLStatementGenerator?
 
     /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
@@ -41,6 +44,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         databaseType: DatabaseType,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
+        sourceFields: Set<String> = [],
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.isCancelled = isCancelled
@@ -50,10 +54,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
-        self.columnMapping = Dictionary(
-            columnMapping.map { ($0.key.lowercased(), $0.value) },
-            uniquingKeysWith: { _, last in last }
-        )
+        self.exactMapping = columnMapping
+        self.sourceFields = sourceFields
+        self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
+        self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
+            .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
@@ -122,14 +127,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for \(targetTable)")
         }
 
-        var columns: [String] = []
-        var bindValues: [PluginCellValue] = []
-        for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
-            columns.append(column)
-            bindValues.append(value)
-        }
-
+        let (columns, bindValues) = mappedColumnsAndValues(values)
         guard !columns.isEmpty else {
             guard values.isEmpty else {
                 throw PluginImportError.importFailed(Self.unmappedRowMessage)
@@ -225,11 +223,23 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         String(localized: "No values in this row matched the column mapping")
     }
 
-    private func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
+    /// Exact names first. A case-insensitive match is only a fallback for a field the sheet never
+    /// listed, such as a JSON key respelled past the sample, and only when that spelling points at
+    /// one listed field, one mapping key and one field of the row, none of them already matched.
+    func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
         var pairs: [(column: String, value: PluginCellValue)] = []
+        var matchedNames = Set<String>()
         for (field, value) in values {
-            guard let column = columnMapping[field.lowercased()] else { continue }
+            guard let column = exactMapping[field] else { continue }
             pairs.append((column, value))
+            matchedNames.insert(field.lowercased())
+        }
+        let unmatched = values.filter { exactMapping[$0.key] == nil && !sourceFields.contains($0.key) }
+        for (folded, group) in Dictionary(grouping: unmatched, by: { $0.key.lowercased() }) {
+            guard group.count == 1, let entry = group.first, !matchedNames.contains(folded),
+                  sourceFieldsPerFoldedName[folded, default: 0] <= 1,
+                  let column = foldedMapping[folded] else { continue }
+            pairs.append((column, entry.value))
         }
         pairs.sort { $0.column < $1.column }
         return (pairs.map(\.column), pairs.map(\.value))

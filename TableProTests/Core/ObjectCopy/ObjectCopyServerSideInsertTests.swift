@@ -3,13 +3,19 @@
 //  TableProTests
 //
 
+@testable import TablePro
 import TableProPluginKit
 import XCTest
-@testable import TablePro
 
 /// Quotes with backticks and takes the MySQL spelling of a row limit, which is enough to read the
 /// statements back. The rules under test are about which name is used, not about how it is quoted.
 private final class ServerSideInsertDriver: PluginDatabaseDriver, @unchecked Sendable {
+    private let injectsRowLimit: Bool
+
+    init(injectsRowLimit: Bool = true) {
+        self.injectsRowLimit = injectsRowLimit
+    }
+
     func connect() async throws {}
     func disconnect() {}
 
@@ -22,7 +28,7 @@ private final class ServerSideInsertDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func injectRowLimit(_ query: String, limit: Int) -> String? {
-        "\(query) LIMIT \(limit)"
+        injectsRowLimit ? "\(query) LIMIT \(limit)" : nil
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
@@ -186,6 +192,42 @@ final class ObjectCopyServerSideInsertTests: XCTestCase {
         )
         XCTAssertEqual(sql?.contains("WHERE total > 10"), true)
         XCTAssertEqual(sql?.hasSuffix("LIMIT 100"), true)
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForSQLServer() {
+        let sql = ObjectCopyServerSideInsert.statement(
+            input(
+                source: endpoint("shop", schema: "sales", type: .mssql),
+                target: endpoint("shop_copy", schema: "dbo", type: .mssql),
+                sourceSchema: "sales",
+                targetSchema: "dbo",
+                scope: PluginExportRowScope(filter: "total > 10", rowLimit: 100)
+            ),
+            driver: ServerSideInsertDriver(injectsRowLimit: false)
+        )
+        XCTAssertEqual(
+            sql,
+            "INSERT INTO `dbo`.`orders` (`id`, `name`) SELECT TOP 100 `id`, `name` FROM `shop`.`sales`.`orders`"
+                + " WHERE total > 10"
+        )
+    }
+
+    func testARowLimitTheDriverCannotInjectIsSpelledForOracle() {
+        let sql = ObjectCopyServerSideInsert.statement(
+            input(
+                source: endpoint("ORCL", schema: "HR", type: .oracle),
+                target: endpoint("ORCL", schema: "ARCHIVE", type: .oracle),
+                sourceSchema: "HR",
+                targetSchema: "ARCHIVE",
+                scope: PluginExportRowScope(rowLimit: 100)
+            ),
+            driver: ServerSideInsertDriver(injectsRowLimit: false)
+        )
+        XCTAssertEqual(
+            sql,
+            "INSERT INTO `ARCHIVE`.`orders` (`id`, `name`) SELECT `id`, `name` FROM `HR`.`orders`"
+                + " FETCH FIRST 100 ROWS ONLY"
+        )
     }
 
     /// The same rule the streamed path follows: a filter is one expression, and text carrying a

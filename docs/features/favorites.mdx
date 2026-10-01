@@ -34,9 +34,11 @@ Database favorites belong to the connection, and go when you delete it. A droppe
 
 Hover a table row and click the star at its trailing edge, or right-click and choose **Add to Favorites**. A pinned row keeps its star, filled and yellow.
 
-Pinned tables sit under **Tables** in the Favorites tab. Double-click, or press `Return`, to open one. Its right-click menu has **Open Table**, **View ER Diagram**, and **Remove from Favorites**; `Delete` removes the selection.
+Pinned tables sit under **Tables** in the Favorites tab, from every schema of the database you are browsing. A table outside the schema you browse shows its schema beside its name. Double-click, or press `Return`, to open one in a tab of its own schema; the schema you browse stays where it is. Its right-click menu has **Open Table**, **View ER Diagram**, and **Remove from Favorites**; the diagram is of the table's own schema, and `Delete` removes the selection.
 
-Table favorites are scoped to the connection, database, and schema, and sync through [iCloud](/features/icloud-sync). One whose table is missing from the database you are browsing is hidden rather than shown broken.
+The search field matches table names. Add the schema to narrow by it: `sales.` lists every favorite in `sales`, and `sales.ord` the ones whose names contain `ord`.
+
+Table favorites are scoped to the connection, database, and schema, and sync through [iCloud](/features/icloud-sync). A favorite from another database is listed once you browse that database. One whose table no longer exists is hidden rather than shown broken.
 
 ## Recent tables
 

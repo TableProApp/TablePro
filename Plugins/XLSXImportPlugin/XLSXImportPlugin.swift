@@ -19,6 +19,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     static let acceptedFileExtensions = ["xlsx"]
     static let iconName = "tablecells"
     static let requiresTargetTable = true
+    static let sourceFieldsFollowFileOrder = true
 
     typealias Settings = XLSXImportOptions
     static let settingsStorageId = "xlsximport"
@@ -154,17 +155,13 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         guard settings.hasHeaderRow else {
             let width = rows.first?.count ?? 0
             return Sheet(
-                header: (0 ..< width).map { "column\($0 + 1)" },
+                header: (0 ..< width).map(XLSXSheetParser.placeholderName),
                 rows: rows
             )
         }
         guard !rows.isEmpty else { return Sheet(header: nil, rows: []) }
         let headerRow = rows.removeFirst()
-        let header = headerRow.enumerated().map { index, value -> String in
-            let name = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return name.isEmpty ? "column\(index + 1)" : name
-        }
-        return Sheet(header: header, rows: rows)
+        return Sheet(header: XLSXSheetParser.headerNames(from: headerRow), rows: rows)
     }
 
     /// Every value arrives as text, so the type is inferred from what the values look like. The

@@ -262,6 +262,15 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.pagination == .leadingRowsOnly(maximumRows: nil))
     }
 
+    @Test("Redis, etcd and Kafka offer no column sort, since their commands take no ORDER BY", arguments: [
+        "Redis", "etcd", "Kafka"
+    ])
+    func commandLanguagesWithoutOrderByOfferNoColumnSort(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsColumnSort == false)
+    }
+
     @Test("ScyllaDB declares the same query limits as Cassandra on its own curated entry")
     func scyllaDBDeclaresTheCassandraQueryLimits() {
         let registry = PluginMetadataRegistry.shared
@@ -420,6 +429,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
 
         #expect(built.capabilities.tlsImpliedPorts == [8_443, 443])
         #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
+    @MainActor
+    func etcdDeclaresNoGenericSSL() {
+        #expect(PluginManager.shared.supportsSSL(for: .etcd) == false)
+        #expect(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd")?.capabilities.supportsSSL == false)
     }
 
     @Test("SQL Server keeps its missing certificate fields when its plugin registers")
