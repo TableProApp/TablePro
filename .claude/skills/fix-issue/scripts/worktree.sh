@@ -8,15 +8,22 @@
 # re-running scripts/download-libs.sh per worktree.
 #
 # Usage:
-#   worktree.sh <branch>            # new branch off the current main checkout's HEAD
+#   worktree.sh <branch>            # new branch off a freshly fetched origin/main
 #   worktree.sh <branch> <base>     # new branch off an explicit base
-#   worktree.sh --remove <branch>   # remove the worktree, keeping the branch
+#   worktree.sh --remove <branch>   # remove a clean worktree, keeping the branch
+#   worktree.sh --prune-merged [--dry-run]
+#                                   # remove every clean worktree whose pull requests are all
+#                                   # merged or closed, with its DerivedData folder
 #
 # Prints the worktree path on success. Pass it to verify.sh as --root.
 
 set -uo pipefail
 
-MAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+# The main checkout, even when this script runs from a worktree's copy of the skill: the common git
+# directory is shared by every worktree and sits inside the main checkout.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_DIR="$(cd "$SCRIPT_DIR" && git rev-parse --path-format=absolute --git-common-dir)" || exit 1
+MAIN_ROOT="$(cd "$COMMON_DIR/.." && pwd)"
 WORKTREE_HOME="$MAIN_ROOT/.claude/worktrees"
 
 usage() {
@@ -29,17 +36,75 @@ case "$1" in
     -h | --help) usage ;;
 esac
 
+# A worktree is only reclaimed when nothing can be lost: every pull request for its branch is
+# merged or closed, `git status` is empty, and no process has its working directory inside it.
+# Each one holds about 7 GB of DerivedData, and a full disk has stopped sessions mid-build.
+prune_merged() {
+    local dry_run="$1" finished cwds dir branch derived plist
+    finished="$(gh pr list --repo TableProApp/TablePro --state all --limit 2000 --json headRefName,state \
+        --jq 'group_by(.headRefName)[] | select(all(.[]; .state != "OPEN")) | .[0].headRefName')" \
+        || { echo "could not list pull requests; nothing removed" >&2; exit 1; }
+    cwds="$(lsof -a -d cwd -Fn 2> /dev/null | sed -n 's/^n//p')"
+
+    while IFS=$'\t' read -r dir branch <&3; do
+        case "$dir" in "$WORKTREE_HOME"/*) ;; *) continue ;; esac
+        grep -qxF -- "$branch" <<< "$finished" || continue
+        if [ -n "$(git -C "$dir" status --porcelain 2> /dev/null)" ]; then
+            echo "kept, uncommitted changes: $dir"
+            continue
+        fi
+        if printf '%s\n' "$cwds" | awk -v d="$dir" '$0 == d || index($0, d "/") == 1 { found = 1 } END { exit !found }'; then
+            echo "kept, a process is working in it: $dir"
+            continue
+        fi
+        derived=""
+        for plist in "$HOME"/Library/Developer/Xcode/DerivedData/TablePro-*/info.plist; do
+            [ -f "$plist" ] || continue
+            case "$(/usr/libexec/PlistBuddy -c 'Print WorkspacePath' "$plist" 2> /dev/null)" in
+                "$dir"/*) derived="$(dirname "$plist")" ;;
+            esac
+        done
+        if [ "$dry_run" = 1 ]; then
+            echo "would remove: $dir${derived:+ and $derived}"
+            continue
+        fi
+        git -C "$MAIN_ROOT" worktree remove "$dir" || { echo "kept, git refused: $dir"; continue; }
+        [ -n "$derived" ] && rm -rf "$derived"
+        echo "removed: $dir${derived:+ and $derived}"
+    done 3< <(git -C "$MAIN_ROOT" worktree list --porcelain | awk '
+        /^worktree / { dir = substr($0, 10) }
+        /^branch /   { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch); print dir "\t" branch }')
+
+    [ "$dry_run" = 1 ] || git -C "$MAIN_ROOT" worktree prune
+}
+
+if [ "$1" = "--prune-merged" ]; then
+    dry_run=0
+    [ "${2:-}" = "--dry-run" ] && dry_run=1
+    prune_merged "$dry_run"
+    exit 0
+fi
+
 if [ "$1" = "--remove" ]; then
     [ $# -ge 2 ] || usage
     target="$WORKTREE_HOME/${2//\//-}"
-    git -C "$MAIN_ROOT" worktree remove "$target" 2> /dev/null || git -C "$MAIN_ROOT" worktree remove --force "$target"
+    # Never --force: it deletes uncommitted work in the tree along with the tree.
+    if ! git -C "$MAIN_ROOT" worktree remove "$target"; then
+        echo "not removed: $target has uncommitted or untracked changes. Commit them, or remove it by hand." >&2
+        exit 1
+    fi
     git -C "$MAIN_ROOT" worktree prune
     echo "removed $target"
     exit 0
 fi
 
 BRANCH="$1"
-BASE="${2:-HEAD}"
+BASE="${2:-}"
+# A fix branch starts from what main is now, not from whatever the main checkout has checked out.
+if [ -z "$BASE" ]; then
+    git -C "$MAIN_ROOT" fetch --quiet origin main || { echo "could not fetch origin main" >&2; exit 1; }
+    BASE="origin/main"
+fi
 DIR="$WORKTREE_HOME/${BRANCH//\//-}"
 
 if [ -e "$DIR" ]; then
@@ -59,6 +124,7 @@ link() {
 # used to be linked instead, so every fresh worktree failed with "Unable to open base
 # configuration reference file" until it was linked by hand.
 link "$MAIN_ROOT/Configs/Secrets.xcconfig" "$DIR/Configs/Secrets.xcconfig"
+link "$MAIN_ROOT/TableProMobile/Secrets.xcconfig" "$DIR/TableProMobile/Secrets.xcconfig"
 mkdir -p "$DIR/Libs"
 for archive in "$MAIN_ROOT"/Libs/*.a; do
     [ -e "$archive" ] && ln -sf "$archive" "$DIR/Libs/$(basename "$archive")"
@@ -77,7 +143,7 @@ missing=""
 [ -e "$DIR/Configs/Secrets.xcconfig" ] || missing="$missing Configs/Secrets.xcconfig"
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
 [ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
-[ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin"
+[ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin (verify.sh plugins builds it)"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
 ls "$DIR"/Libs/ios/*.xcframework > /dev/null 2>&1 || missing="$missing Libs/ios/*.xcframework"
 if [ -n "$missing" ]; then

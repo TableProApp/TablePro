@@ -32676,6 +32676,9 @@
         }
       }
     },
+    "ClickHouse returned HTTP %lld." : {
+
+    },
     "Client" : {
       "localizations" : {
         "ko" : {
@@ -99532,6 +99535,9 @@
         }
       }
     },
+    "No Favorites in This %@" : {
+
+    },
     "No favorites match the selected environment." : {
       "localizations" : {
         "ko" : {
@@ -162275,6 +162281,9 @@
     "The table's primary key is not loaded, so the row cannot be written." : {
 
     },
+    "The tables you starred here no longer exist." : {
+
+    },
     "the target" : {
       "localizations" : {
         "ko" : {
@@ -181006,6 +181015,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -184771,7 +184783,10 @@
     "Next cursor: %@. The scan has not finished." : {
 
     },
-    "ClickHouse returned HTTP %lld." : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     }
   },
