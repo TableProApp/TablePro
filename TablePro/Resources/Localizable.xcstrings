@@ -350,6 +350,9 @@
         }
       }
     },
+    "Use Saved Mapping" : {
+
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -3508,6 +3511,9 @@
     "%@ loses its default" : {
 
     },
+    "%@ mapped more than once" : {
+
+    },
     "%@ matches" : {
 
     },
@@ -5966,6 +5972,9 @@
       }
     },
     "%1$@: %2$@ had no column of that name on the destination." : {
+
+    },
+    "%1$@: more than one source column is mapped to %2$@." : {
 
     },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
@@ -19888,6 +19897,9 @@
     "Another profile already has this name." : {
 
     },
+    "Another source column is mapped to the same destination column." : {
+
+    },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
       "localizations" : {
         "ko" : {
@@ -32675,6 +32687,9 @@
           }
         }
       }
+    },
+    "ClickHouse returned HTTP %lld." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -57273,6 +57288,9 @@
       }
     },
     "Each database is written to its own file." : {
+
+    },
+    "Each destination column can be mapped from only one source column." : {
 
     },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
@@ -90971,6 +90989,9 @@
         }
       }
     },
+    "Match by Position" : {
+
+    },
     "Match case exactly" : {
       "localizations" : {
         "ko" : {
@@ -91004,6 +91025,9 @@
           }
         }
       }
+    },
+    "Match Columns" : {
+
     },
     "Match System" : {
       "comment" : "Text for a sidebar row size preference that matches the system's sidebar row size.",
@@ -99532,6 +99556,9 @@
         }
       }
     },
+    "No Favorites in This %@" : {
+
+    },
     "No favorites match the selected environment." : {
       "localizations" : {
         "ko" : {
@@ -106589,6 +106616,12 @@
     "The SAP HANA schema name cannot be empty." : {
 
     },
+    "The server fills in %@, so it cannot be given a value." : {
+
+    },
+    "This table has no primary key, and %@ cannot be compared to find the row." : {
+
+    },
     "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
 
     },
@@ -108519,6 +108552,9 @@
           }
         }
       }
+    },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -128688,6 +128724,9 @@
           }
         }
       }
+    },
+    "Restored the mapping saved for %@." : {
+
     },
     "Restored “%@” from %@" : {
       "localizations" : {
@@ -159100,7 +159139,16 @@
         }
       }
     },
+    "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
+
+    },
+    "The dump is imported into this database, and the change cannot be undone. The import needs an empty database and stops if this one already holds objects." : {
+
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+
+    },
+    "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
 
     },
     "The encrypted file is corrupt or incomplete" : {
@@ -162273,6 +162321,9 @@
 
     },
     "The table's primary key is not loaded, so the row cannot be written." : {
+
+    },
+    "The tables you starred here no longer exist." : {
 
     },
     "the target" : {
@@ -181006,6 +181057,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -183050,6 +183104,15 @@
     "Weaviate does not support views." : {
 
     },
+    "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor." : {
+
+    },
+    "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
+
+    },
+    "Weaviate returned the same page of %@ twice. Reading a whole collection needs Weaviate 1.18 or later." : {
+
+    },
     "The first sheet has no header row to map columns from." : {
 
     },
@@ -184771,10 +184834,10 @@
     "Next cursor: %@. The scan has not finished." : {
 
     },
-    "The server fills in %@, so it cannot be given a value." : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
 
     },
-    "This table has no primary key, and %@ cannot be compared to find the row." : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     }
   },

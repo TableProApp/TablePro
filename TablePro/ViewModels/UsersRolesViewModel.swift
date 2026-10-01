@@ -80,6 +80,7 @@ final class UsersRolesViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isResolvingDrop = false
     @Published var previewStatements: [SchemaStatement] = []
+    @Published var editorScript = PrincipalStatementGenerator.EditorScript.empty
     @Published var applyFailure: String?
 
     @Published var selection: PluginPrincipalRef?

@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SAP HANA database driver plugin. (#1966)
+- Column mappings remembered per table for CSV, JSON and Excel imports, plus Match by Name and Match by Position. (#3172)
 - Folders for tables and views in the sidebar. (#3167)
+- iCloud sync for table folders between Macs.
 - Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 options for CSV and SQL import.
 
 ### Changed
@@ -39,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
+- Saved filters, layout, favorite and Recent entry kept by a table dropped or renamed from a query tab or MCP client.
+- Column header sort on Redis, etcd and Kafka re-running the last command with `ORDER BY` appended.
+- Import sheet ignoring a CSV or Excel option change until the next edit, then resetting the column mapping.
+- Import sheet showing an earlier table's columns after switching tables while the first was still loading.
+- CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case.
+- CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first.
+- Import sheet's Try Again for an existing table discarding the column edits made for a new table.
+- Favorites tab missing starred tables from other schemas, and every starred table on Oracle, Snowflake, BigQuery and Trino.
+- etcd SSL Mode that the driver ignored, and etcd URLs that lost or faked TLS on import and Copy as URL.
 - Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
 - CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
 - MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
@@ -63,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CSV import with single quotes merging rows at a double quote inside a field.
 - Binary values in Latin-1 and Windows-1252 SQL dumps imported as different bytes.
 - Shortcuts rejecting CSV and JSON files that are not UTF-8.
+- Shortcuts Add Row and Add Rows rejecting CSV with CRLF or CR line endings as having no data.
+- iOS Info tab showing a DuckDB connection as a server at 127.0.0.1:3306 instead of its file.
+- iOS `SELECT * FROM` template writing `LIMIT 100` on SQL Server, Oracle and Redis, and leaving out the selected schema.
+- iOS keeping the query history of deleted connections, and the passwords of connections deleted on another device.
+- iOS history list showing a repeated query twice until the connection is reopened.
 - Redis Cluster through a tunnel failing to connect with advice to set Connection Mode to Cluster.
 - Redis `SCAN` typed in a query tab showing one page of keys with no next cursor to continue from.
 - etcd `lease revoke`, `auth disable` and user or role deletion skipping confirmation, and list commands gated as writes.
@@ -71,6 +87,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EXPLAIN ANALYSE` treated as a plain `EXPLAIN` that does not run its statement.
 - Safe Mode level lost when importing a connection file from Mac to iOS or from iOS to Mac.
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
+- App pausing while renaming or dropping a database or schema that holds many favorite tables.
+- iCloud sync mixing up two favorite tables whose names contain a vertical bar.
+- iCloud sync sending both a save and a deletion for an item unstarred and starred again, or renamed back, before it ran.
+- Favorite table starred again while its removal was syncing to iCloud disappearing when the sync finished.
+- Table favorites, saved queries and column layouts of **Local only** connections syncing to iCloud.
+- Database favorites and column layouts removed on another Mac staying on this one.
+- Table Transfer emptying a destination table, then failing, when two source columns map to one column.
 - MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text.
 - MongoDB refusing text like `[DRAFT] Chapter one...` as a value shortened for display.
 - Clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into Required and ignoring `sslmode=disable`.
@@ -99,10 +122,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+- Weaviate exports failing after the first 10,000 objects of a collection.
+- Weaviate Raw Filter row sent as a filter on a property named `__RAW__`.
+- MongoDB restore into a database with a different name restoring nothing and reporting success.
+- MongoDB Backup Dump and Restore ignoring the connection's Auth Database, Hosts list, SRV and TLS options.
+- Restore confirmation claiming existing objects are overwritten on PostgreSQL, MongoDB, SQLite, SQL Server and DuckDB.
+- MongoDB exports dropping fields first seen after the 200th document, and exporting a field null in the first 200 as text.
+- ClickHouse query timeout never reaching the server, and capped SELECTs failing at 60 seconds whatever it is set to.
+- Stop on a ClickHouse SELECT leaving the query running on the server.
+- ClickHouse connect errors such as a wrong password or unknown database shown as "Failed to establish connection".
+- ClickHouse client certificate and key never sent to servers that require mutual TLS.
+- Row limit on Copy To and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata.
+- Copy To on a foreign table, sequence, system table or external table preselecting every object in the schema.
+- Copy To between two schemas of one DuckDB or PGlite connection refused with a message about comparing databases.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 
 ### Security
 
+- Plaintext passwords saved with the query tab that Open in Query Editor opens from Users & Roles.
 - Redis Verify Identity accepting a server certificate issued for another host.
 
 ## [0.76.1] - 2026-09-29

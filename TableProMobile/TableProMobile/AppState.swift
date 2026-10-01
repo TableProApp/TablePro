@@ -40,6 +40,7 @@ final class AppState {
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
     let localDatabaseFiles: LocalDatabaseFileLocator
+    let queryHistory: QueryHistoryStorage
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
@@ -65,6 +66,7 @@ final class AppState {
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
         storage = ConnectionPersistence(directory: libraryDirectory)
+        queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory = IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
@@ -141,7 +143,9 @@ final class AppState {
     func applySyncedConnections(_ merged: [DatabaseConnection]) {
         guard !refuseWriteIfNotReady() else { return }
         guard merged != connections else { return }
+        let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
         persist(connections: merged)
+        localState.purge(removedIds)
         publishLibrary()
     }
 
@@ -316,12 +320,8 @@ final class AppState {
         guard !refuseWriteIfNotReady() else { return }
         let removed = connections.filter { ids.contains($0.id) }
         guard !removed.isEmpty else { return }
-        let secrets = ConnectionSecrets(secureStore: secureStore)
-        for connection in removed {
-            secrets.delete(for: connection.id)
-            clearPerConnectionPreferences(for: connection.id)
-        }
         persist(connections: connections.filter { !ids.contains($0.id) })
+        localState.purge(Set(removed.map(\.id)))
         publishLibrary()
         for connection in removed where connection.participatesInSync {
             syncCoordinator.markDeleted(connection.id)
@@ -343,12 +343,12 @@ final class AppState {
         return true
     }
 
-    private func clearPerConnectionPreferences(for id: UUID) {
-        let suffix = id.uuidString
-        let defaults = UserDefaults.standard
-        for prefix in ["lastTab.", "lastDB.", "lastSchema.", "lastQuery."] {
-            defaults.removeObject(forKey: prefix + suffix)
-        }
+    private var localState: ConnectionLocalState {
+        ConnectionLocalState(
+            secrets: ConnectionSecrets(secureStore: secureStore),
+            queryHistory: queryHistory,
+            defaults: .standard
+        )
     }
 
     // MARK: - Groups

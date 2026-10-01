@@ -41,6 +41,7 @@ struct QueryEditorView: View {
     private var session: ConnectionSession? { coordinator.session }
     private var tables: [TableInfo] { coordinator.tables }
     private var databaseType: DatabaseType { coordinator.connection.type }
+    private var activeSchema: String? { coordinator.supportsSchemas ? coordinator.activeSchema : nil }
     private var safeModeLevel: SafeModeLevel { coordinator.connection.safeModeLevel }
     private var connectionId: UUID { coordinator.connection.id }
 
@@ -56,7 +57,7 @@ struct QueryEditorView: View {
                 query = pending
                 coordinator.pendingQuery = nil
             } else if query.isEmpty {
-                query = UserDefaults.standard.string(forKey: "lastQuery.\(connectionId.uuidString)") ?? ""
+                query = UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId)) ?? ""
             }
         }
         .onChange(of: query) { _, newValue in
@@ -64,7 +65,7 @@ struct QueryEditorView: View {
             saveQueryTask = Task {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
-                UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
+                UserDefaults.standard.set(newValue, forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId))
             }
         }
         .onDisappear {
@@ -354,12 +355,15 @@ struct QueryEditorView: View {
                 Label("History", systemImage: "clock")
             }
 
-            if !tables.isEmpty {
+            if !tables.isEmpty, databaseType.speaksSQL {
                 Menu {
                     ForEach(tables) { table in
-                        Button(table.name) {
-                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: databaseType)
-                            query = "SELECT * FROM \(quoted) LIMIT 100"
+                        if let template = QueryTemplate.selectAll(
+                            table: table.name, schema: activeSchema, type: databaseType
+                        ) {
+                            Button(table.name) {
+                                query = template
+                            }
                         }
                     }
                 } label: {
