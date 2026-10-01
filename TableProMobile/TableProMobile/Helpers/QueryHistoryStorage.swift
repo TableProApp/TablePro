@@ -38,32 +38,34 @@ nonisolated struct QueryHistoryItem: Identifiable, Codable, Hashable {
 nonisolated struct QueryHistoryStorage {
     private static let maxEntries = 200
 
-    private var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let appDir = dir.appendingPathComponent("TableProMobile", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
-        return appDir.appendingPathComponent("query-history.json")
+    private let directory: URL
+
+    init(directory: URL) {
+        self.directory = directory
     }
 
-    func save(_ item: QueryHistoryItem) {
+    private var fileURL: URL {
+        directory.appendingPathComponent("query-history.json")
+    }
+
+    @discardableResult
+    func save(_ item: QueryHistoryItem) -> Bool {
         var items = loadAll()
         if let last = items.last,
            last.query == item.query,
            last.connectionId == item.connectionId,
            last.wasSuccessful == item.wasSuccessful {
-            return
+            return false
         }
         items.append(item)
         if items.count > Self.maxEntries {
             items.removeFirst(items.count - Self.maxEntries)
         }
-        writeAll(items)
+        return writeAll(items)
     }
 
     func loadAll() -> [QueryHistoryItem] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
+        guard let data = try? Data(contentsOf: fileURL),
               let items = try? JSONDecoder().decode([QueryHistoryItem].self, from: data) else {
             return []
         }
@@ -80,14 +82,17 @@ nonisolated struct QueryHistoryStorage {
         writeAll(items)
     }
 
-    func clearAll(for connectionId: UUID) {
-        var items = loadAll()
-        items.removeAll { $0.connectionId == connectionId }
-        writeAll(items)
+    func clearAll(for connectionIds: Set<UUID>) {
+        let items = loadAll()
+        let kept = items.filter { !connectionIds.contains($0.connectionId) }
+        guard kept.count != items.count else { return }
+        writeAll(kept)
     }
 
-    private func writeAll(_ items: [QueryHistoryItem]) {
-        guard let fileURL, let data = try? JSONEncoder().encode(items) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+    @discardableResult
+    private func writeAll(_ items: [QueryHistoryItem]) -> Bool {
+        guard let data = try? JSONEncoder().encode(items) else { return false }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return (try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])) != nil
     }
 }
