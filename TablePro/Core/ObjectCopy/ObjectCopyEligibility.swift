@@ -121,7 +121,31 @@ internal enum ObjectCopyEligibility {
         target: DatabaseEndpoint
     ) -> String? {
         guard sharesObjectSpace(source, target) else { return nil }
-        return String(localized: "The source and the target are the same database. Choose a different target.")
+        return sameTargetMessage
+    }
+
+    internal static func concurrentReadMessage(
+        for refusal: ConcurrentReadRefusal,
+        source: DatabaseEndpoint,
+        target: DatabaseEndpoint
+    ) -> String {
+        switch refusal {
+        case .sameScope:
+            return sameTargetMessage
+        case .sharedConnection(let databaseType):
+            let format = source.database == target.database
+                ? String(
+                    localized: "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target."
+                )
+                : String(
+                    localized: "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target."
+                )
+            return String(format: format, databaseType.rawValue)
+        }
+    }
+
+    private static var sameTargetMessage: String {
+        String(localized: "The source and the target are the same database. Choose a different target.")
     }
 
     /// Whether the two sides can resolve to one set of objects.

@@ -61,6 +61,8 @@ internal enum TransientConnectionFactory {
             oracleServiceName: parsed.oracleServiceName
         )
 
+        connection.additionalFields.merge(parsed.additionalFields) { _, imported in imported }
+
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
             if key != "authMechanism" && key != "replicaSet" {
                 connection.additionalFields["mongoParam_\(key)"] = value
