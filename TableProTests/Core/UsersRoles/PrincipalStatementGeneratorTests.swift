@@ -131,4 +131,17 @@ struct PrincipalStatementGeneratorTests {
             ])
         }
     }
+
+    @Test("An editor script hides nothing when the driver never writes the password")
+    func editorScriptHidesNothingTheDriverLeftOut() throws {
+        let generator = PrincipalStatementGenerator(driver: MockPrincipalDriver())
+
+        let script = try generator.editorScript(changes: [
+            .create(PluginPrincipalDefinition(ref: alice, password: "s3cret")),
+            .setPassword(ref: alice, password: "n3w-s3cret")
+        ])
+
+        #expect(script.text == "CREATE ROLE alice;\n\nALTER ROLE alice PASSWORD;")
+        #expect(!script.hidesPasswords)
+    }
 }

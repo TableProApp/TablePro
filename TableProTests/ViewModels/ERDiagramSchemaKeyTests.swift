@@ -56,6 +56,21 @@ struct ERDiagramSchemaKeyTests {
         #expect(ERDiagramViewModel.resolveSchemaName(fromSchemaKey: ".public", databaseName: "") == nil)
     }
 
+    @Test("A built key reads back as the schema it was built for")
+    func builtKeyRoundTrips() {
+        let key = ERDiagramViewModel.schemaKey(databaseName: "app", schema: "sales")
+        #expect(key == "app.sales")
+        #expect(ERDiagramViewModel.resolveSchemaName(fromSchemaKey: key, databaseName: "app") == "sales")
+        #expect(ERDiagramViewModel.schemaKey(databaseName: "app", schema: nil) == "app.default")
+    }
+
+    @Test("A key keeps a schema only when a database is named and the schema is not the marker")
+    func keyPreservesSchema() {
+        #expect(ERDiagramViewModel.schemaKeyPreserves("sales", databaseName: "app"))
+        #expect(!ERDiagramViewModel.schemaKeyPreserves("sales", databaseName: ""))
+        #expect(!ERDiagramViewModel.schemaKeyPreserves("default", databaseName: "app"))
+    }
+
     @Test("The view model binds to the schema its key names")
     func viewModelBindsSchema() {
         let viewModel = ERDiagramViewModel(

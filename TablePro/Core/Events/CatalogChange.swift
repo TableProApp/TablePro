@@ -64,6 +64,7 @@ struct CatalogChange: Sendable, Equatable {
 /// Something that happened to a connection's catalog, as the caller that caused it knows it.
 enum CatalogEvent: Sendable {
     case statementsRan(connectionId: UUID, statements: [String], databaseType: DatabaseType)
+    case statementsSucceeded(SucceededStatements)
     case transactionEnded(connectionId: UUID)
     case tablesDropped([DatabaseTreeTableRef], connectionId: UUID)
     case tableRenamed(DatabaseTreeTableRef, to: String, connectionId: UUID)
@@ -80,6 +81,8 @@ enum CatalogEvent: Sendable {
              .containerDropped(_, let connectionId),
              .containerRenamed(_, _, let connectionId):
             return connectionId
+        case .statementsSucceeded(let succeeded):
+            return succeeded.scope.connectionId
         case .changed(let change):
             return change.connectionId
         }

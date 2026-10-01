@@ -69,6 +69,12 @@ struct CSVImportPluginTests {
         #expect(names == ["x", "x 2", "x 3"])
     }
 
+    @Test("A header spelled out keeps its name over a blank header's placeholder that comes first")
+    func testLiteralHeaderKeepsItsName() {
+        let names = CSVImportParsing.columnNames(header: ["", "Column 1"], columnCount: 2)
+        #expect(names == ["Column 1 2", "Column 1"])
+    }
+
     @Test("Without a header, names are synthesized positionally")
     func testColumnNamesSynthesized() {
         let names = CSVImportParsing.columnNames(header: nil, columnCount: 3)

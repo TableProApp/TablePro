@@ -7,6 +7,7 @@ import Foundation
 import os
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProTLSClientIdentity
 
 final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "ClickHouse Driver"
@@ -129,16 +130,28 @@ struct ClickHouseError: Error, PluginDriverError {
     var pluginErrorMessage: String { message }
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
-    static let connectionFailed = ClickHouseError(message: String(localized: "Failed to establish connection"))
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
         Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
         the server's certificate, or set SSL Mode to Verify Identity.
+        """))
+    static let clientCertificateNeedsKey = ClickHouseError(message: String(localized: """
+        A client certificate needs its client key. On the connection's Network tab, choose the client key, or \
+        clear the client certificate.
         """))
 
     static func unreadableCACertificate(at path: String) -> ClickHouseError {
         ClickHouseError(message: String(
             format: String(localized: "The CA certificate at %@ could not be read as a PEM or DER certificate."),
             path
+        ))
+    }
+
+    static func httpFailure(statusCode: Int, body: String) -> ClickHouseError {
+        let serverText = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard serverText.isEmpty else { return ClickHouseError(message: serverText) }
+        return ClickHouseError(message: String(
+            format: String(localized: "ClickHouse returned HTTP %lld."),
+            Int64(statusCode)
         ))
     }
 }
@@ -169,6 +182,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var _currentDatabase: String
     var _lastQueryId: String?
     let _queryTimeout = HttpQueryTimeoutBox()
+    private(set) var acceptedExecutionTimeLimit: Int?
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
@@ -253,13 +267,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 session = nil
             }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
-            if let refusal = tlsDelegate?.recordedRefusal {
-                throw refusal
-            }
-            if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
-                throw sslError
-            }
-            throw ClickHouseError.connectionFailed
+            throw ClickHouseConnectFailure.error(for: error, tlsRefusal: tlsDelegate?.recordedRefusal)
         }
 
         report(.preparingSession)
@@ -462,8 +470,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         _queryTimeout.set(serverTimeoutSeconds: seconds)
+        lock.withLock { acceptedExecutionTimeLimit = nil }
         guard seconds > 0 else { return }
-        _ = try await execute(query: "SET max_execution_time = \(seconds)")
+        _ = try await sendStatement("SELECT 1", queryId: nil, params: nil, executionTimeLimit: seconds)
+        lock.withLock { acceptedExecutionTimeLimit = seconds }
     }
 
     // MARK: - Database Switching
@@ -497,7 +507,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.unlock()
         guard let connectedSession else { return }
 
-        let killConfig = URLSessionConfiguration.default
+        let killConfig = connectedSession.configuration
         killConfig.timeoutIntervalForRequest = 5
         let killSession = URLSession(
             configuration: killConfig,
@@ -549,14 +559,13 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rowCap: Int,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
-            guard let session = self.session else { throw ClickHouseError.notConnected }
-            return (session, _currentDatabase)
-        }
-
+        let queryId = UUID().uuidString
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
         let request = try buildStreamRequest(
             query: Self.withoutTrailingSemicolons(query),
             database: database,
+            queryId: queryId,
+            executionTimeLimit: executionTimeLimit,
             rowCap: rowCap
         )
         try await streamTabSeparatedRows(
@@ -639,12 +648,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
-            guard let session = self.session else { throw ClickHouseError.notConnected }
-            return (session, _currentDatabase)
-        }
-
-        let request = try buildStreamRequest(query: Self.withoutTrailingSemicolons(query), database: database)
+        let queryId = UUID().uuidString
+        let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
+        let request = try buildStreamRequest(
+            query: Self.withoutTrailingSemicolons(query),
+            database: database,
+            queryId: queryId,
+            executionTimeLimit: executionTimeLimit
+        )
         try await streamTabSeparatedRows(
             request: request,
             session: session,
@@ -653,7 +664,23 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func buildStreamRequest(query: String, database: String, rowCap: Int? = nil) throws -> URLRequest {
+    private func streamingContext(
+        queryId: String
+    ) throws -> (session: URLSession, database: String, executionTimeLimit: Int?) {
+        try lock.withLock {
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            _lastQueryId = queryId
+            return (session, _currentDatabase, acceptedExecutionTimeLimit)
+        }
+    }
+
+    private func buildStreamRequest(
+        query: String,
+        database: String,
+        queryId: String,
+        executionTimeLimit: Int?,
+        rowCap: Int? = nil
+    ) throws -> URLRequest {
         let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
@@ -666,10 +693,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
+        queryItems.append(URLQueryItem(name: "query_id", value: queryId))
         queryItems.append(URLQueryItem(
             name: "default_format",
             value: ClickHouseResponseClassifier.requestedFormat
         ))
+        queryItems.append(contentsOf: Self.executionTimeLimitItems(executionTimeLimit))
         if let rowCap {
             /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
             /// user wrote. One row past the cap, so a full page can be told from a truncated one.
@@ -685,6 +714,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
 
         if let authorization = ClickHouseCredentials.basicAuthorizationHeader(
             username: config.username,
@@ -846,11 +876,13 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private enum Strategy {
+        case systemTrust
         case skipVerify
         case verifyChain(anchor: SecCertificate, checksHostname: Bool)
     }
 
     private let strategy: Strategy
+    private let clientCredential: URLCredential?
     private let lock = NSLock()
     private var refusal: SSLHandshakeError?
 
@@ -858,19 +890,30 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         lock.withLock { refusal }
     }
 
-    private init(strategy: Strategy) {
+    private init(strategy: Strategy, clientCredential: URLCredential?) {
         self.strategy = strategy
+        self.clientCredential = clientCredential
     }
 
     static func make(for ssl: SSLConfiguration) throws -> ClickHouseTLSDelegate? {
+        guard ssl.isEnabled else { return nil }
+        let strategy = try serverTrustStrategy(for: ssl)
+        let clientCredential = try clientCredential(for: ssl)
+        if case .systemTrust = strategy, clientCredential == nil {
+            return nil
+        }
+        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential)
+    }
+
+    private static func serverTrustStrategy(for ssl: SSLConfiguration) throws -> Strategy {
         let caPath = ssl.caCertificatePath.trimmingCharacters(in: .whitespaces)
         switch ssl.mode {
         case .disabled:
-            return nil
+            return .systemTrust
         case .preferred, .required:
-            return ClickHouseTLSDelegate(strategy: .skipVerify)
+            return .skipVerify
         case .verifyIdentity:
-            guard !caPath.isEmpty else { return nil }
+            guard !caPath.isEmpty else { return .systemTrust }
             return try anchored(at: caPath, checksHostname: true)
         case .verifyCa:
             guard !caPath.isEmpty else { throw ClickHouseError.verifyCaNeedsCertificate }
@@ -878,11 +921,11 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         }
     }
 
-    private static func anchored(at path: String, checksHostname: Bool) throws -> ClickHouseTLSDelegate {
+    private static func anchored(at path: String, checksHostname: Bool) throws -> Strategy {
         guard let anchor = loadAnchor(at: path) else {
             throw ClickHouseError.unreadableCACertificate(at: path)
         }
-        return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor, checksHostname: checksHostname))
+        return .verifyChain(anchor: anchor, checksHostname: checksHostname)
     }
 
     private static func loadAnchor(at path: String) -> SecCertificate? {
@@ -893,18 +936,48 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         return SecCertificateCreateWithData(nil, der as CFData)
     }
 
+    private static func clientCredential(for ssl: SSLConfiguration) throws -> URLCredential? {
+        let certificatePath = ssl.clientCertificatePath.trimmingCharacters(in: .whitespaces)
+        let keyPath = ssl.clientKeyPath.trimmingCharacters(in: .whitespaces)
+        guard !certificatePath.isEmpty else { return nil }
+        guard !keyPath.isEmpty else { throw ClickHouseError.clientCertificateNeedsKey }
+        do {
+            return try TLSClientIdentity.credential(
+                certificateFile: URL(fileURLWithPath: certificatePath),
+                privateKeyFile: URL(fileURLWithPath: keyPath)
+            )
+        } catch let failure as TLSClientIdentityError {
+            throw ClickHouseError(message: failure.message(certificatePath: certificatePath, keyPath: keyPath))
+        }
+    }
+
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let serverTrust = challenge.protectionSpace.serverTrust else {
+        switch challenge.protectionSpace.authenticationMethod {
+        case NSURLAuthenticationMethodServerTrust:
+            answerServerTrust(challenge, completionHandler: completionHandler)
+        case NSURLAuthenticationMethodClientCertificate:
+            answerClientCertificate(completionHandler: completionHandler)
+        default:
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+
+    private func answerServerTrust(
+        _ challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
 
         switch strategy {
+        case .systemTrust:
+            completionHandler(.performDefaultHandling, nil)
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         case .verifyChain(let anchor, let checksHostname):
@@ -919,6 +992,16 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
             }
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         }
+    }
+
+    private func answerClientCertificate(
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let clientCredential else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, clientCredential)
     }
 
     static func refusal(for error: CFError?) -> SSLHandshakeError {

@@ -448,6 +448,7 @@ targets:
       - Plugins/CSVImportPlugin/CSVImportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportText.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseConnectFailure.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseHTTPChunks.swift
@@ -620,6 +621,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteLedger.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldCensus.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptCursorPlan.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
       - Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift
@@ -995,6 +998,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProTLSClientIdentity
 
   RedisDriver:
     templates: [DriverPlugin]

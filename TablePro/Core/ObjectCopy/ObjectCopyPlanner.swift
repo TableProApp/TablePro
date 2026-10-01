@@ -207,10 +207,15 @@ internal struct ObjectCopyPlanner {
             throw ObjectCopyError.refused(reason)
         }
         guard request.content.includesData else { return }
-        if let reason = CompareRowService(manager: manager)
-            .concurrentReadRefusal(source: request.source, target: request.target) {
+        if let reason = concurrentReadRefusal(source: request.source, target: request.target) {
             throw ObjectCopyError.refused(reason)
         }
+    }
+
+    internal func concurrentReadRefusal(source: DatabaseEndpoint, target: DatabaseEndpoint) -> String? {
+        CompareRowService(manager: manager)
+            .concurrentReadRefusal(source: source, target: target)
+            .map { ObjectCopyEligibility.concurrentReadMessage(for: $0, source: source, target: target) }
     }
 
 

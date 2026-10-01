@@ -57,7 +57,8 @@ final class ImportService: ObservableObject {
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil,
         targetTable: String? = nil,
-        columnMapping: [String: String] = [:]
+        columnMapping: [String: String] = [:],
+        sourceFields: Set<String> = []
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -139,7 +140,8 @@ final class ImportService: ObservableObject {
                     source: source,
                     progress: progress,
                     targetTable: targetTable,
-                    columnMapping: columnMapping
+                    columnMapping: columnMapping,
+                    sourceFields: sourceFields
                 )
             }
         } catch {
@@ -209,16 +211,28 @@ final class ImportService: ObservableObject {
         source: any PluginImportSource,
         progress: PluginImportProgress,
         targetTable: String?,
-        columnMapping: [String: String]
+        columnMapping: [String: String],
+        sourceFields: Set<String>
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,
             databaseType: connection.type,
             targetTable: targetTable,
             columnMapping: columnMapping,
+            sourceFields: sourceFields,
             isCancelled: { progress.isCancelled }
         )
+        defer { reportNameHazards(sink.nameHazardStatements) }
         return try await plugin.performImport(source: source, sink: sink, progress: progress)
+    }
+
+    /// The file ran on the same session as the editor, so a temporary table it made shadows a real one there
+    /// for as long as the connection stays open, and has to reach the catalog like any statement the editor ran.
+    private func reportNameHazards(_ statements: [String]) {
+        guard !statements.isEmpty else { return }
+        CatalogChangeService.post(
+            .statementsRan(connectionId: connection.id, statements: statements, databaseType: connection.type)
+        )
     }
 
     /// An import the user cancelled reports nothing, matching what history already does with one

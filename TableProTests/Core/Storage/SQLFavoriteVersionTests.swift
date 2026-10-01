@@ -104,7 +104,7 @@ struct SQLFavoriteVersionTests {
         #expect(await storage.updateFavorite(favorite).succeeded)
         #expect(await storage.fetchVersions(favoriteId: favorite.id).count == 1)
 
-        #expect(await storage.deleteFavorite(id: favorite.id))
+        #expect(await storage.deleteFavorites(ids: [favorite.id]) != nil)
 
         #expect(await storage.fetchVersions(favoriteId: favorite.id).isEmpty)
     }
@@ -135,7 +135,7 @@ struct SQLFavoriteVersionTests {
         favorite.query = "SELECT new"
         #expect(await storage.updateFavorite(favorite).succeeded)
         let old = try #require(await manager.fetchVersions(favoriteId: favorite.id).first)
-        #expect(await storage.deleteFavorite(id: favorite.id))
+        #expect(await storage.deleteFavorites(ids: [favorite.id]) != nil)
 
         #expect(await manager.restore(old) == false)
     }

@@ -29,6 +29,13 @@ struct ExecutableBatch: Sendable {
         return NSRange(location: first.range.location, length: last.range.upperBound - first.range.location)
     }
 
+    /// Every statement the server ran for the batch, in the order it ran them: `GO 3` runs all of them three
+    /// times, and a rename chain run twice leaves each table where it started.
+    var executedStatementTexts: [String] {
+        let once = statements.map(\.sql)
+        return (0..<max(repeatCount, 1)).flatMap { _ in once }
+    }
+
     /// A routine definition takes no bind parameter, and SQL Server requires it to be alone in its batch.
     var acceptsBindParameters: Bool {
         statements.allSatisfy(\.acceptsBindParameters)

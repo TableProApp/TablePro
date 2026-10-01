@@ -13,15 +13,20 @@
 #   verify.sh [options] plugins                 # AllPlugins aggregate
 #   verify.sh [options] test  <Suite> [Suite…]
 #   verify.sh [options] uitest <Suite> [Suite…]
+#   verify.sh [options] package <Package> [filter]   # swift test in Packages/<Package>
+#   verify.sh [options] ios <Suite> [Suite…]         # TableProMobileTests on a simulator
 #   verify.sh [options] abi   <merge-base>
 #   verify.sh [options] lint  <path> [path…]
 #   verify.sh [options] docs                    # docs/ house style + claims against source
+#   verify.sh [options] l10n                    # both String Catalogs, and plugin strings in the app catalog
+#   verify.sh [options] agent-docs              # CLAUDE.md, .claude/rules and this skill against the tree
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
 # Options, accepted before or after the step:
-#   --run <dir>     run directory for logs (default: <repo>/.analysis/<branch>)
-#   --root <dir>    repository root (default: the checkout this script lives in)
+#   --run <dir>     run directory; logs go in <dir>/logs (default: <root>/.analysis/<branch>)
+#   --root <dir>    repository root (default: the checkout the current directory is in, when it
+#                   is this repository, else the checkout this script lives in)
 #   --no-wait       do not wait for a concurrent xcodebuild to finish
 #   --offline       pin SwiftPM to Package.resolved
 #
@@ -30,13 +35,22 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+# Run from inside a worktree, the absolute path of the main checkout's copy of this script used to
+# verify the main checkout instead, which produced green runs of the wrong tree. When the current
+# directory is a checkout of this same repository, that checkout is the default.
+caller_root="$(git rev-parse --show-toplevel 2> /dev/null)"
+if [ -n "$caller_root" ] && [ "$caller_root" != "$REPO_ROOT" ] \
+    && [ "$(git -C "$caller_root" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" \
+        = "$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" ]; then
+    REPO_ROOT="$caller_root"
+fi
 RUN_DIR=""
 WAIT_FOR_XCODEBUILD=1
 OFFLINE=0
 MAX_WAIT_SECONDS=1800
 
 # Suites that fail on this machine for environment reasons and are not in the CI quarantine file.
-# Source: .claude/skills/fix-issue/references/verification.md ("Test", rule 3).
+# Source: .claude/skills/fix-issue/references/verification.md, "Unit tests".
 KNOWN_ENV_FAILURES="StatusBarSnapshotTests RowOperationsManagerBinaryCopyTests AWSSSOFetchTests SSEEventStreamTests CopilotIdleStopControllerTests"
 
 # Asking for help is not a usage error, so -h exits 0. Anything else exits 3, which a caller
@@ -98,18 +112,25 @@ NOTES=("")
 
 note() { NOTES=("${NOTES[@]}" "$1"); }
 
+# The verdict is also written beside the log, because some of what decides it (the exit code, the
+# root, the agent-docs result) is not in the log, and `parse` replaying the log alone reached a
+# different verdict than the live run more than once.
 emit() {
-    local log="$1" exit_code="$2"
-    echo "step: $STEP ${STEP_DETAIL:-}"
-    echo "status: $STATUS"
-    [ "$exit_code" != "-" ] && echo "exit: $exit_code"
-    if [ -n "$log" ]; then
-        echo "log: $log ($(wc -l < "$log" | tr -d ' ') lines)"
-    fi
-    local n
-    for n in "${NOTES[@]:-}"; do
-        [ -n "$n" ] && echo "$n"
-    done
+    local log="$1" exit_code="$2" receipt=""
+    [ -n "$log" ] && [ "$STEP" != "parse" ] && receipt="$log.verdict"
+    {
+        echo "step: $STEP ${STEP_DETAIL:-}"
+        echo "root: $REPO_ROOT"
+        echo "status: $STATUS"
+        [ "$exit_code" != "-" ] && echo "exit: $exit_code"
+        if [ -n "$log" ]; then
+            echo "log: $log ($(wc -l < "$log" | tr -d ' ') lines)"
+        fi
+        local n
+        for n in "${NOTES[@]:-}"; do
+            [ -n "$n" ] && echo "$n"
+        done
+    } | if [ -n "$receipt" ]; then tee "$receipt"; else cat; fi
     case "$STATUS" in
         PASS) exit 0 ;;
         INCONCLUSIVE) exit 2 ;;
@@ -175,12 +196,24 @@ setup_toolchain() {
     done
 }
 
+# Only a build of THIS checkout contends: every worktree builds into its own DerivedData, so a
+# machine-wide wait stalled a worktree run for as long as a peer session built somewhere else.
+# A build belongs here when it names this checkout's project or runs from its root.
+checkout_busy() {
+    local pid
+    for pid in $(pgrep -f 'Developer/usr/bin/xcodebuild' 2> /dev/null); do
+        ps -o args= -p "$pid" 2> /dev/null | grep -qF "$REPO_ROOT/TablePro.xcodeproj" && return 0
+        [ "$(lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | sed -n 's/^n//p')" = "$REPO_ROOT" ] && return 0
+    done
+    return 1
+}
+
 wait_for_free_toolchain() {
     [ "$WAIT_FOR_XCODEBUILD" -eq 1 ] || return 0
-    pgrep -f 'Developer/usr/bin/xcodebuild' > /dev/null 2>&1 || return 0
+    checkout_busy || return 0
     echo "waiting: another xcodebuild is running in this checkout" >&2
     local waited=0
-    while pgrep -f 'Developer/usr/bin/xcodebuild' > /dev/null 2>&1; do
+    while checkout_busy; do
         sleep 10
         waited=$((waited + 10))
         if [ "$waited" -ge "$MAX_WAIT_SECONDS" ]; then
@@ -221,6 +254,14 @@ report_tests() {
         return
     fi
     if [ "$failed" -eq 0 ]; then
+        # A crash, a timeout or an unrecognised line format fails the run without a case line the
+        # patterns above can count. This printed PASS over a log that said TEST FAILED.
+        if grep -qE '^\*\* TEST FAILED \*\*|^Failing tests:' "$log" 2> /dev/null; then
+            STATUS=FAIL
+            note "cause: xcodebuild reported a failure that no counted case line names. Read the block below."
+            note "$(grep -A 8 '^Failing tests:' "$log" 2> /dev/null | sed 's/^/  /' | head -10)"
+            return
+        fi
         STATUS=PASS
         return
     fi
@@ -357,6 +398,14 @@ case "$STEP" in
     parse)
         [ $# -ge 1 ] || usage
         [ -f "$1" ] || { echo "no such log: $1" >&2; exit 3; }
+        if [ -f "$1.verdict" ]; then
+            cat "$1.verdict"
+            case "$(sed -n 's/^status: //p' "$1.verdict")" in
+                PASS) exit 0 ;;
+                INCONCLUSIVE) exit 2 ;;
+                *) exit 1 ;;
+            esac
+        fi
         STEP_DETAIL="$1"
         STATUS=PASS
         grep -q '^\*\* \(BUILD\|TEST\) FAILED \*\*' "$1" 2> /dev/null && STATUS=FAIL
@@ -405,9 +454,17 @@ case "$STEP" in
         setup_toolchain
         wait_for_free_toolchain
         log="$(new_log "build-$scheme")"
+        : > "$log"
+        # The HANA plugin embeds a Go helper that is built, not downloaded, so a fresh worktree has
+        # none and AllPlugins fails on "has no arm64 slice" every time until someone builds it.
+        helper="$REPO_ROOT/Native/HanaBridge/bin/tablepro-hana-helper"
+        if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ] && command -v go > /dev/null; then
+            "$REPO_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
+                && note "built the HANA helper first: $helper"
+        fi
         # shellcheck disable=SC2046
-        run_logged "$log" xcodebuild -project "$REPO_ROOT/TablePro.xcodeproj" -scheme "$scheme" \
-            -configuration Debug build $(xcodebuild_flags)
+        xcodebuild -project "$REPO_ROOT/TablePro.xcodeproj" -scheme "$scheme" \
+            -configuration Debug build $(xcodebuild_flags) >> "$log" 2>&1
         code=$?
         if grep -q '^\*\* BUILD SUCCEEDED \*\*' "$log" 2> /dev/null; then
             STATUS=PASS
@@ -492,26 +549,95 @@ case "$STEP" in
             note "  a directory argument is filtered, a file argument is not: <dir>/**/*.swift"
         fi
 
-        # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,
-        # so a stale symbol there is a defect the same way a lint violation is, and it is the one
-        # class of defect nothing else in this repo catches.
-        #
-        # This covers CLAUDE.md and .claude/ ONLY. It never reads docs/. The line it prints is
-        # labelled "agent docs:" for that reason: an earlier "docs: clean" was read as validation of
-        # the user-facing docs and a page shipped with a wrong capability table on a green run.
-        # For docs/, run `verify.sh docs`.
-        doc_check="$REPO_ROOT/scripts/check-doc-symbols.sh"
-        if [ -x "$doc_check" ]; then
-            doc_out="$("$doc_check" 2>&1)"
-            doc_code=$?
-            if [ "$doc_code" -ne 0 ]; then
-                [ "$STATUS" = "PASS" ] && STATUS=FAIL
-                note "agent docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
-                note "$(printf '%s' "$doc_out" | grep -E '^(CLAUDE|\.claude)' | sed 's/^/  /' | head -10)"
-                note "  run scripts/check-doc-symbols.sh for the full list"
-            else
-                note "agent docs: $(printf '%s' "$doc_out" | tail -1)"
-            fi
+        emit "$log" $code
+        ;;
+
+    package)
+        [ $# -ge 1 ] || usage
+        package_dir="$REPO_ROOT/Packages/$1"
+        [ -f "$package_dir/Package.swift" ] || { echo "no such package: Packages/$1" >&2; exit 3; }
+        STEP_DETAIL="$1${2:+ --filter $2}"
+        setup_toolchain
+        log="$(new_log "package-$1")"
+        filter=()
+        [ $# -ge 2 ] && filter=(--filter "$2")
+        run_logged "$log" swift test --package-path "$package_dir" --force-resolved-versions ${filter[@]+"${filter[@]}"}
+        code=$?
+        report_tests "$log"
+        # swift test exits non-zero for a compile error or a crash that leaves no case line.
+        if [ $code -ne 0 ] && [ "$STATUS" = "PASS" ]; then
+            STATUS=FAIL
+            note "cause: swift test exited $code. The errors below are from the log."
+            note "$(report_errors "$log")"
+        fi
+        diagnose_environment "$log" && STATUS=INCONCLUSIVE
+        emit "$log" $code
+        ;;
+
+    ios)
+        [ $# -ge 1 ] || usage
+        STEP_DETAIL="TableProMobileTests: $*"
+        setup_toolchain
+        wait_for_free_toolchain
+        log="$(new_log "ios-${1}")"
+        : > "$log"
+        project="$REPO_ROOT/TableProMobile/TableProMobile.xcodeproj"
+        if [ ! -d "$project" ]; then
+            "$REPO_ROOT/scripts/generate-project.sh" ios >> "$log" 2>&1
+        fi
+        # CI names one simulator; this machine may not have it, so take the first available iPhone.
+        simulator="$(xcrun simctl list devices available 2> /dev/null \
+            | grep -m1 -oE 'iPhone[^(]*\([0-9A-F-]{36}\)' | grep -oE '[0-9A-F-]{36}')"
+        if [ -z "$simulator" ]; then
+            STATUS=INCONCLUSIVE
+            note "cause: no available iPhone simulator. Nothing was run."
+            emit "$log" 2
+        fi
+        filters=()
+        for suite in "$@"; do filters+=("-only-testing:TableProMobileTests/$suite"); done
+        xcodebuild test -project "$project" -scheme TableProMobile -destination "id=$simulator" \
+            -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            "${filters[@]}" >> "$log" 2>&1
+        code=$?
+        report_tests "$log"
+        diagnose_environment "$log" && STATUS=INCONCLUSIVE
+        emit "$log" $code
+        ;;
+
+    agent-docs)
+        # CLAUDE.md, .claude/rules and this skill, checked for paths, symbols and skills that no
+        # longer exist. It never reads docs/, and it used to run inside every `lint`, which made
+        # every code lint red whenever main carried one stale reference nobody on the branch wrote.
+        log="$(new_log agent-docs)"
+        run_logged "$log" "$REPO_ROOT/scripts/check-doc-symbols.sh"
+        code=$?
+        if [ $code -eq 0 ]; then
+            STATUS=PASS
+            note "$(tail -1 "$log")"
+        else
+            STATUS=FAIL
+            note "$(grep -E '^(CLAUDE|AGENTS|\.claude)' "$log" | sed 's/^/  /' | head -10)"
+        fi
+        emit "$log" $code
+        ;;
+
+    l10n)
+        # Plugin strings live in the app's catalog, and CI fails a PR whose new plugin message is
+        # missing from it, which neither a build nor SwiftLint notices.
+        log="$(new_log l10n)"
+        : > "$log"
+        code=0
+        for args in "verify" "plugins"; do
+            echo "== localization.py $args" >> "$log"
+            # shellcheck disable=SC2086
+            (cd "$REPO_ROOT" && python3 scripts/localization.py $args) >> "$log" 2>&1 || code=1
+        done
+        if [ $code -eq 0 ]; then
+            STATUS=PASS
+        else
+            STATUS=FAIL
+            note "$(grep -vE '^==' "$log" | tail -12 | sed 's/^/  /')"
+            note "  plugin strings: python3 scripts/localization.py plugins --add"
         fi
         emit "$log" $code
         ;;
