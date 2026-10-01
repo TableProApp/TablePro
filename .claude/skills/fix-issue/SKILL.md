@@ -125,7 +125,7 @@ Fix what is real and inside the scope boundary without asking; a real finding ab
 Watch the checks until they finish (the harness file says how, without spending tokens):
 
 - a check this PR broke: fix it, re-verify, push a new commit;
-- a merge conflict: `git -C <tree> fetch origin main && git -C <tree> merge origin/main`, resolve, re-verify, push; never rebase or force-push;
+- a merge conflict: `git -C <tree> fetch origin main && git -C <tree> merge origin/main`, resolve, run `generate` (main may have added files), re-verify, push; never rebase or force-push;
 - a check that is not this PR's (red on `main` too, a runner fault), or one still queued after 45 minutes with no job started: leave it and report it.
 
 Stop after two rounds of CI fixes. Never merge the PR.

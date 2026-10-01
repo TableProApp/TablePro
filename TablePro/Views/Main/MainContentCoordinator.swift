@@ -1313,19 +1313,8 @@ final class MainContentCoordinator: ObservableObject {
         let queryTask = Task { [weak self] in
             guard let self else { return }
 
-            if isAutoLoad {
-                do {
-                    try await services.databaseManager.ensureConnected(conn)
-                } catch {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        traceConnectUnavailable(traceToken)
-                        guard tabExecution.settle(claim) else { return }
-                        retireQueryTask(.claim(claim))
-                        pendingLoadTrigger = trigger
-                    }
-                    return
-                }
+            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) {
+                return
             }
 
             let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
