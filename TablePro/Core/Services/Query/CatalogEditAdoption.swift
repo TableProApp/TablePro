@@ -44,6 +44,7 @@ struct CatalogEditAdoption {
     private let schemaService: SchemaService
     private let connectionStorage: ConnectionStorage
     private let appSettings: AppSettingsStorage
+    private let settingsStores: [any TableScopedSettingsStore]
     private let favoriteTables: FavoriteTablesStorage
     private let favoriteDatabases: FavoriteDatabasesStorage
 
@@ -52,6 +53,7 @@ struct CatalogEditAdoption {
         schemaService: SchemaService = .shared,
         connectionStorage: ConnectionStorage = .shared,
         appSettings: AppSettingsStorage = .shared,
+        settingsStores: [any TableScopedSettingsStore]? = nil,
         favoriteTables: FavoriteTablesStorage = .shared,
         favoriteDatabases: FavoriteDatabasesStorage = .shared
     ) {
@@ -59,6 +61,7 @@ struct CatalogEditAdoption {
         self.schemaService = schemaService
         self.connectionStorage = connectionStorage
         self.appSettings = appSettings
+        self.settingsStores = settingsStores ?? TableScopedSettingsRegistry.stores
         self.favoriteTables = favoriteTables
         self.favoriteDatabases = favoriteDatabases
     }
@@ -85,19 +88,20 @@ struct CatalogEditAdoption {
     /// Left behind, they outlive the table and come back on a table that is recreated with the same
     /// name: a filter on a column the new table does not have opens the tab on a server error.
     func adoptDroppedTables(_ refs: [DatabaseTreeTableRef], connectionId: UUID) {
-        let dropped = Set(refs)
-        updatePendingOperations(connectionId: connectionId) { dropped.contains($0) ? nil : $0 }
+        let dropped = Set(refs.compactMap { tableScope(for: $0, connectionId: connectionId) })
+        updatePendingOperations(connectionId: connectionId) { ref in
+            guard let identity = tableScope(for: ref, connectionId: connectionId),
+                  dropped.contains(identity) else { return ref }
+            return nil
+        }
         let droppedFavorites = Set(refs.map { favoriteEntry(for: $0, connectionId: connectionId) })
         favoriteTables.retarget(connectionId: connectionId) { droppedFavorites.contains($0) ? nil : $0 }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
         for ref in refs {
             sidebarState.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
-            guard let scope = objectScope(for: ref, connectionId: connectionId) else { continue }
-            let tableScope = TableScope(
-                connectionId: connectionId, database: scope.database, schema: scope.schema, table: ref.table.name
-            )
-            for store in TableScopedSettingsRegistry.stores {
-                store.dropTable(tableScope)
+            guard let droppedScope = tableScope(for: ref, connectionId: connectionId) else { continue }
+            for store in settingsStores {
+                store.dropTable(droppedScope)
             }
         }
     }
