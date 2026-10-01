@@ -407,15 +407,7 @@ final class PrincipalChangeManager: ObservableObject {
         into staged: PluginPrincipalDefinition
     ) -> PluginPrincipalDefinition {
         guard (definition.password ?? "").isEmpty else { return definition }
-        return PluginPrincipalDefinition(
-            ref: definition.ref,
-            password: staged.password,
-            canLogin: definition.canLogin,
-            attributes: definition.attributes,
-            memberOf: definition.memberOf,
-            connectionLimit: definition.connectionLimit,
-            comment: definition.comment
-        )
+        return definition.replacingPassword(with: staged.password)
     }
 
     func unstageAlter(_ ref: PluginPrincipalRef) {

@@ -247,11 +247,17 @@ Right-click tables in the sidebar and choose **Transfer To…** to copy their ro
   </Step>
 </Steps>
 
-Rows only. The destination table has to exist and its column names have to match, because inventing DDL that crosses from one engine to another would create tables whose types quietly disagree with the data landing in them. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
+Rows only, into a destination table that already exists. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
 
 <Warning>
 **Delete existing rows first** empties each destination table before writing. There is no undo.
 </Warning>
+
+### Column mapping
+
+Each ticked table shows how many of its columns map. Columns match by name, the same spelling first and then the same name in another case. Click the count to point a column at a different destination column, or pick **Skip** to leave it out. **Match by Name** puts every column back.
+
+A destination column takes one source column. Map a second column onto it and **Transfer** stays off until one of the two moves or is skipped.
 
 ## Clipboard paste (CSV/TSV)
 
@@ -322,7 +328,7 @@ A server that rejects the statement stops the import with that error, so clear t
 
 The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON streamed a line at a time, and TablePro's own export shape `{ "table": [ {…} ] }`, so an export round-trips. Then choose a destination:
 
-- **Existing table**: map each JSON field to a column. Fields auto-match by name; switch one off to skip it. A column with no matching field keeps its default or NULL. The list holds tables and partitioned tables, and the server routes each row to the right partition.
+- **Existing table**: map each JSON field to a column, as [Map fields to columns](#map-fields-to-columns) describes. A column with no field mapped to it keeps its default or NULL. The list holds tables and partitioned tables, and the server routes each row to the right partition.
 - **New table**: the name field opens on a name derived from the file, already selected, so one keystroke replaces it. Review the inferred columns underneath. Name, type, primary key, nullable flag, and default are all editable before the table is created.
 
 The proposed name drops the extension, turns spaces and punctuation into underscores, and lowercases the result. Letters from any script are kept as they are. On Oracle the name comes through in upper case instead, and is cut to 30 bytes rather than 63. A name an existing table or view already holds gains a numeric suffix, so re-importing `users.csv` next to a `users` table proposes `users_2`. Whatever you type over it is held to the same rules: a name already taken, one longer than the engine allows, or one starting with a prefix the engine keeps for itself is reported in the sheet, with **Import** off until it changes.
@@ -346,7 +352,7 @@ The workbook is read whole rather than streamed, because a sheet's rows refer ba
 
 ### Import CSV
 
-CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file; change any option and the mapping re-reads it.
+CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file. Changing any option reads the file again: a field that is still there keeps the column it was mapped to, and a new table's column list is rebuilt.
 
 | Option | What it does | Default |
 |--------|-------------|---------|
@@ -359,6 +365,22 @@ CSV and TSV open the same sheet as JSON, with parsing options in front of the ma
 | NULL text | One more value to import as NULL, `\N` for instance | None |
 
 Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one. A line the encoding cannot read stops the import before any row is deleted or inserted, and the error names the line.
+
+### Map fields to columns
+
+Every field in the file gets a row with a checkbox and a column menu. A field named like a column, ignoring case, starts mapped to it. The rest start on **Skip**.
+
+**Match Columns** above the rows fills them all at once:
+
+| Item | Result |
+|---|---|
+| **Match by Name** | Each field goes to the column of the same name, ignoring case. Fields with no such column are skipped |
+| **Match by Position** | The first field goes to the first column, the second to the second, and so on. Dimmed for JSON, whose fields are listed alphabetically |
+| **Use Saved Mapping** | Puts back the mapping saved for this table |
+
+Clicking **Import** saves each choice that differs from Match by Name for that table, whether the import succeeds or not. The next file imported into the same table starts from those choices, and the sheet reads **Restored the mapping saved for** and the table name. A saved column the table no longer has falls back to the name match. Importing into a new table saves any column you renamed, so the same file lands on the renamed columns next time.
+
+Saved mappings stay on this Mac. They follow a table renamed from the sidebar, and are forgotten when the table is dropped from the sidebar or the connection is deleted. A `DROP TABLE` run in the SQL editor leaves them in place, so a table created again under the same name starts from the old mapping.
 
 ### Row imports
 

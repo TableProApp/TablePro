@@ -431,6 +431,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.verifiesServerWithSystemTrust == true)
     }
 
+    @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
+    @MainActor
+    func etcdDeclaresNoGenericSSL() {
+        #expect(PluginManager.shared.supportsSSL(for: .etcd) == false)
+        #expect(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd")?.capabilities.supportsSSL == false)
+    }
+
     @Test("SQL Server keeps its missing certificate fields when its plugin registers")
     func mssqlKeepsItsCertificateFieldOptOut() {
         let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMSSQLPlugin.self)

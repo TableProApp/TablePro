@@ -350,6 +350,9 @@
         }
       }
     },
+    "Use Saved Mapping" : {
+
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -3508,6 +3511,9 @@
     "%@ loses its default" : {
 
     },
+    "%@ mapped more than once" : {
+
+    },
     "%@ matches" : {
 
     },
@@ -5966,6 +5972,9 @@
       }
     },
     "%1$@: %2$@ had no column of that name on the destination." : {
+
+    },
+    "%1$@: more than one source column is mapped to %2$@." : {
 
     },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
@@ -19888,6 +19897,9 @@
     "Another profile already has this name." : {
 
     },
+    "Another source column is mapped to the same destination column." : {
+
+    },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
       "localizations" : {
         "ko" : {
@@ -32675,6 +32687,9 @@
           }
         }
       }
+    },
+    "ClickHouse returned HTTP %lld." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -57273,6 +57288,9 @@
       }
     },
     "Each database is written to its own file." : {
+
+    },
+    "Each destination column can be mapped from only one source column." : {
 
     },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
@@ -90971,6 +90989,9 @@
         }
       }
     },
+    "Match by Position" : {
+
+    },
     "Match case exactly" : {
       "localizations" : {
         "ko" : {
@@ -91004,6 +91025,9 @@
           }
         }
       }
+    },
+    "Match Columns" : {
+
     },
     "Match System" : {
       "comment" : "Text for a sidebar row size preference that matches the system's sidebar row size.",
@@ -99531,6 +99555,9 @@
           }
         }
       }
+    },
+    "No Favorites in This %@" : {
+
     },
     "No favorites match the selected environment." : {
       "localizations" : {
@@ -108519,6 +108546,9 @@
           }
         }
       }
+    },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -128688,6 +128718,9 @@
           }
         }
       }
+    },
+    "Restored the mapping saved for %@." : {
+
     },
     "Restored “%@” from %@" : {
       "localizations" : {
@@ -162275,6 +162308,9 @@
     "The table's primary key is not loaded, so the row cannot be written." : {
 
     },
+    "The tables you starred here no longer exist." : {
+
+    },
     "the target" : {
       "localizations" : {
         "ko" : {
@@ -181006,6 +181042,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -184769,6 +184808,12 @@
 
     },
     "Next cursor: %@. The scan has not finished." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     }
   },

@@ -902,7 +902,7 @@ extension PluginMetadataRegistry {
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
-                    supportsSSL: true,
+                    supportsSSL: false,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
