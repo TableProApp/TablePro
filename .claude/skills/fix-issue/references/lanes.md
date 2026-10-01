@@ -11,11 +11,11 @@ The lead hands each lane the path of `<tree>/.analysis/<slug>/problem.md` (and, 
 
 ## trace
 
-Find the cause of the reported behaviour.
+Find the cause of the reported behavior.
 
 1. The files, types and functions involved, with `file:line`.
-2. The real call path the reported scenario takes: what triggers it, what state flows through it, and where the wrong behaviour starts. When several paths reach the behaviour, prove which one this scenario takes from the dispatch code.
-3. The mechanism, separated from the symptom. When the current structure cannot express the correct behaviour without a special case, say so and why.
+2. The real call path the reported scenario takes: what triggers it, what state flows through it, and where the wrong behavior starts. When several paths reach the behavior, prove which one this scenario takes from the dispatch code.
+3. The mechanism, separated from the symptom. When the current structure cannot express the correct behavior without a special case, say so and why.
 4. The blast radius: every other input, type, engine, state or sibling surface the same cause reaches.
 5. The `CLAUDE.md` invariants this area touches, and whether that list already records this area breaking before.
 6. The existing tests here and where a real regression test belongs. Tests behind `#if canImport(C...)` compile to nothing.
@@ -23,9 +23,9 @@ Find the cause of the reported behaviour.
 
 ## research
 
-Establish the correct behaviour from the authoritative source. `references/research-sources.md` lists where to look.
+Establish the correct behavior from the authoritative source. `references/research-sources.md` lists where to look.
 
-- **UI or interaction**: the HIG section, quoted and linked; the AppKit or SwiftUI API, named exactly, with its documented behaviour, its availability against macOS 13 and its gotchas; any standard control that already does this. Confirm every symbol against the SDK `.swiftinterface`.
+- **UI or interaction**: the HIG section, quoted and linked; the AppKit or SwiftUI API, named exactly, with its documented behavior, its availability against macOS 13 and its gotchas; any standard control that already does this. Confirm every symbol against the SDK `.swiftinterface`.
 - **Driver or dependency**: the vendored header, with the version we actually link, the doc comments for each symbol in play, and what a call returns when it cannot do the job. Where the header does not settle it, compile a probe against `Libs/*.a` in the scratchpad and report the output verbatim.
 - **New feature or changed interaction**: how comparable clients behave, starting with the one most users arrive from, each claim marked confirmed or inferred. Where a client and the HIG disagree, the HIG wins. This is input to the design, never text for the repo.
 

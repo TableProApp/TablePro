@@ -1,6 +1,6 @@
 # Research sources
 
-Where to find the correct behaviour, and what counts as evidence for it.
+Where to find the correct behavior, and what counts as evidence for it.
 
 ## Apple platform
 
@@ -27,12 +27,12 @@ Use these for a new feature or a changed interaction. A reporter describing how 
 | Client | Why read it | Where |
 | --- | --- | --- |
 | TablePlus | Closest comparison, and where most users arrive from | `tableplus.com/changelog`, `docs.tableplus.com` |
-| Sequel Ace | Open source, so its behaviour can be read rather than inferred | `github.com/Sequel-Ace/Sequel-Ace` |
+| Sequel Ace | Open source, so its behavior can be read rather than inferred | `github.com/Sequel-Ace/Sequel-Ace` |
 | Postico | Strongly native, a good guide to the HIG-correct version of a surface | `eggerapps.at/postico` |
 | DataGrip | Deepest SQL tooling; take the capability, not the non-native interaction | `jetbrains.com/datagrip` |
 | Beekeeper Studio | Open source | `github.com/beekeeper-studio/beekeeper-studio` |
 | DBeaver | Widest driver and dialect coverage, for engine quirks | `github.com/dbeaver/dbeaver` |
 
-Method: search each one's docs and changelog for the surface in its own words, since the changelog says when and why behaviour changed. Read the source for the open-source ones. Write one line per client, then say where they agree, because agreement across three clients is a strong signal of what users expect. Mark each claim confirmed or inferred, since none of these apps can be run from here. Where a client and the HIG disagree, the HIG wins.
+Method: search each one's docs and changelog for the surface in its own words, since the changelog says when and why behavior changed. Read the source for the open-source ones. Write one line per client, then say where they agree, because agreement across three clients is a strong signal of what users expect. Mark each claim confirmed or inferred, since none of these apps can be run from here. Where a client and the HIG disagree, the HIG wins.
 
 Competitor findings shape the plan and stay out of the repo: no client is named in code, commits, the PR, CHANGELOG or docs.

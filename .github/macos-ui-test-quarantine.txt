@@ -1,8 +1,4 @@
-# UI tests skipped on CI, as "Suite/testMethod()". Same idea as macos-test-quarantine.txt:
-# a gate that fails for reasons unrelated to the change under review is worse than no gate.
-#
-# Each entry needs a reason and, where known, what would take it off the list.
-# list-tests.sh fails the job on an entry that matches no enumerated case, so a line here cannot
-# quietly stop meaning anything.
-#
-# The list is empty. Keep it that way: a failing case gets fixed, not listed.
+# UI test cases the macOS Tests workflow skips. One per line, as xcodebuild enumerates it:
+# Suite/testMethod().
+# Write the reason, and what would lift it, on a comment line directly above the entry.
+# The job fails on an entry that matches no case. A failing case gets fixed, not listed.

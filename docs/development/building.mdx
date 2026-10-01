@@ -21,12 +21,6 @@ In Xcode, `Cmd+B` builds and `Cmd+R` builds and runs. From the command line:
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 ```
 
-Build and launch in one line:
-
-```bash
-xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation && open build/Debug/TablePro.app
-```
-
 `-skipPackagePluginValidation` belongs on every `xcodebuild` invocation.
 `scripts/build-release.sh`, `scripts/build-plugin.sh`, `scripts/check-pluginkit-abi.sh` and every
 CI job that shells out to `xcodebuild` pass it.
@@ -82,9 +76,9 @@ A plugin that builds and signs can still fail to load, which is why the load ste
 `.github/workflows/repo-hygiene.yml` runs beside it on Ubuntu in under a minute. It runs
 `actionlint` over every workflow, which shells out to `shellcheck` for each inline `run:` block;
 `shellcheck` at warning severity over every script; the plugin manifest check; and the
-shared-contract drift gates in `scripts/audit-refactor-health.sh`.
+shared-contract drift gate in `scripts/audit-refactor-health.sh`.
 
-Lint runs in the release workflow rather than this one. Run `swiftlint lint --strict` yourself
+SwiftLint runs in its own workflow on every pull request. Run `swiftlint lint --strict` yourself
 before pushing; see [Code Style](/development/code-style).
 
 ## Related

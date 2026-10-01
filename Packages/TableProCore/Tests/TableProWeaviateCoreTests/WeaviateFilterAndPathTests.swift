@@ -171,6 +171,31 @@ struct WeaviateFilterOperatorTests {
         }
     }
 
+    @Test("The raw filter row is refused instead of filtering a property named __RAW__")
+    func rawFilterRowIsRefused() {
+        #expect(throws: WeaviateFilterError.rawFilterUnsupported) {
+            _ = try operand("__RAW__", "=", "wordCount > 10")
+        }
+        #expect(throws: WeaviateFilterError.rawFilterUnsupported) {
+            _ = try WeaviateFilterBuilder.graphQLWhere(
+                filters: [
+                    WeaviateFilterSpec(column: "title", op: "=", value: "a"),
+                    WeaviateFilterSpec(column: "__RAW__", op: "=", value: "{ path: [\"title\"] }")
+                ],
+                logicMode: "AND",
+                types: articleTypes
+            )
+        }
+    }
+
+    @Test("The raw filter refusal points at the GraphQL editor")
+    func rawFilterRefusalNamesTheEditor() {
+        #expect(
+            WeaviateFilterError.rawFilterUnsupported.errorDescription
+                == "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor."
+        )
+    }
+
     @Test("A quote in a value cannot break out of the GraphQL string")
     func valuesAreEscaped() throws {
         let clause = try operand("title", "=", "a\"b\\c")

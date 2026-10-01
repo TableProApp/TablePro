@@ -27,6 +27,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     /// the sink, so without this a Stop was followed by every remaining INSERT of the batch.
     private let isCancelled: @Sendable () -> Bool
 
+    private let tableEditDialect: TableEditDialect?
+    private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
 
     /// Rows go in as SQL `INSERT`s, so an engine with no SQL dialect can take none of them.
@@ -48,6 +51,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.driver = driver
         self.databaseType = databaseType
         self.grammar = databaseType.lexicalGrammar
+        self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
         self.exactMapping = columnMapping
@@ -71,11 +75,31 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         try await execute(statement: statement, line: 1)
     }
 
+    /// What the file ran that changes where a name resolves for the rest of the session, such as a temporary table, so
+    /// the catalog can stop following a later drop of that name onto the real table.
+    var nameHazardStatements: [String] {
+        nameHazards.withLock { $0 }
+    }
+
+    /// Read before the statement runs, because one that fails part way can already have made a temporary table.
+    private func noteNameHazards(in text: String) {
+        guard let tableEditDialect else { return }
+        let statements = grammar.contains(.batchSeparatorLines)
+            ? SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
+            : [text]
+        let hazards = statements.filter {
+            TableEditStatementParser.parse($0, dialect: tableEditDialect, grammar: grammar).changesNameHazards
+        }
+        guard !hazards.isEmpty else { return }
+        nameHazards.withLock { $0 += hazards }
+    }
+
     /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
     /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
     /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
     /// statements one by one, as the editor does.
     func execute(statement: String, line: Int) async throws {
+        noteNameHazards(in: statement)
         guard grammar.contains(.batchSeparatorLines) else {
             _ = try await driver.execute(query: statement)
             return

@@ -4,8 +4,8 @@
 #
 # The point is context economy: a Debug build prints thousands of lines and a test run enumerates
 # every case, which is unreadable and crowds out the work. This keeps the full log on disk and
-# prints at most ~30 lines: status, the real errors, test counts, and whether a failure is one of
-# the known false alarms in this checkout.
+# prints at most ~30 lines: status, the real errors, test counts, and whether a failing case is
+# quarantined.
 #
 # Usage:
 #   verify.sh [options] generate
@@ -49,9 +49,6 @@ WAIT_FOR_XCODEBUILD=1
 OFFLINE=0
 MAX_WAIT_SECONDS=1800
 
-# Suites that fail on this machine for environment reasons and are not in the CI quarantine file.
-# Source: .claude/skills/fix-issue/references/verification.md, "Unit tests".
-KNOWN_ENV_FAILURES="StatusBarSnapshotTests RowOperationsManagerBinaryCopyTests AWSSSOFetchTests SSEEventStreamTests CopilotIdleStopControllerTests"
 
 # Asking for help is not a usage error, so -h exits 0. Anything else exits 3, which a caller
 # running under `set -e` can distinguish from a real verdict.
@@ -235,8 +232,8 @@ new_log() {
 
 # ---------------------------------------------------------------------------- test reporting
 
-# Cross-references failing suites against the CI quarantine and the known-env list so a red run
-# is reported as "N new failures", not "N failures".
+# Mutes failing cases listed in the CI quarantine files, so a red run reports only the failures
+# that are new.
 PASS_PATTERN="^test case .* passed|✔ test .* passed"
 FAIL_PATTERN="^test case .* failed|✘ test .* (failed|recorded an issue)"
 
@@ -327,24 +324,9 @@ report_tests() {
         return
     fi
 
-    local new_suites="" muted=0 suite
-    for suite in $suites; do
-        if [[ " $KNOWN_ENV_FAILURES " == *" $suite "* ]]; then
-            muted=$((muted + 1))
-        else
-            new_suites="$new_suites $suite"
-        fi
-    done
-
-    [ "$muted" -gt 0 ] && note "muted: $muted failing suite(s) are known environment failures"
-    if [ -z "$new_suites" ]; then
-        STATUS=PASS
-        note "verdict: no unexplained failures. Every failing suite is already red on this machine."
-    else
-        STATUS=FAIL
-        note "new failures:$new_suites"
-        note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
-    fi
+    STATUS=FAIL
+    note "failing suites: $(printf '%s ' $suites)"
+    note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
 }
 
 # ---------------------------------------------------------------------------- steps

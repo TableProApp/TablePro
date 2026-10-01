@@ -81,7 +81,7 @@ enum IOSConnectionExportService {
                 sshProfileId: nil,
                 safeModeLevel: connection.safeModeLevel == .off ? nil : connection.safeModeLevel.rawValue,
                 aiPolicy: nil,
-                additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields,
+                additionalFields: ExportableConnection.shareableAdditionalFields(connection.additionalFields),
                 redisDatabase: nil,
                 startupCommands: nil,
                 localOnly: nil

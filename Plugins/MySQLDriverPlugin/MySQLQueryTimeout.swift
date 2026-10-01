@@ -37,7 +37,7 @@ internal enum MySQLQueryTimeoutEnforcement: Equatable {
 
 /// What the version floors say this server should do with the timeout. The driver runs the flavor's
 /// statements first and falls back to the deadline on the server's own refusal, so this is the
-/// predicate the tests and `scripts/check-mysql-query-timeout.sh` compare a live server against
+/// predicate the tests and `scripts/probes/check-mysql-query-timeout.sh` compare a live server against
 /// rather than the runtime gate: a proxy or a fork gets the banner wrong in both directions.
 internal func mysqlQueryTimeoutEnforcement(
     seconds: Int,

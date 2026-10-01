@@ -8,6 +8,26 @@ import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
+    /// An auto-load that cannot connect is parked as the pending load, so it runs once the
+    /// connection comes back instead of failing the tab.
+    internal func connectBeforeAutoLoad(
+        _ connection: DatabaseConnection,
+        claim: TabExecutionClaim,
+        trigger: TableLoadTrigger,
+        traceToken: TableLoadTraceToken?
+    ) async -> Bool {
+        do {
+            try await services.databaseManager.ensureConnected(connection)
+            return true
+        } catch {
+            traceConnectUnavailable(traceToken)
+            guard tabExecution.settle(claim) else { return false }
+            retireQueryTask(.claim(claim))
+            pendingLoadTrigger = trigger
+            return false
+        }
+    }
+
     /// Opens a tab's execution: it ends what that tab was doing, claims it, and mints the driver
     /// lease every statement of the new execution runs under.
     ///

@@ -26,6 +26,26 @@ internal enum BatchStatementOutcome<Output> {
 
 extension BatchStatementOutcome: Sendable where Output: Sendable {}
 
+internal extension BatchStatementOutcome {
+    /// How many of the run's statements or batches, from the first, ran to the end without an
+    /// error. A batch that answered with a server error is among the results but is not one of them.
+    var succeededCount: Int {
+        switch self {
+        case .completed(let results), .cancelled(let results):
+            return results.count
+        case .failed(let results, .batch, _):
+            return max(results.count - 1, 0)
+        case .failed(let results, _, _):
+            return results.count
+        }
+    }
+
+    var isCompleted: Bool {
+        guard case .completed = self else { return false }
+        return true
+    }
+}
+
 /// The driver calls one multi-statement run makes, in order, for one ``BatchTransactionPlan``.
 ///
 /// Extracted from the coordinator so the order is testable without a window, a tab or a server:

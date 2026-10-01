@@ -160,11 +160,10 @@ enum ConnectionExportService {
             // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
             let additionalFields: [String: String]?
             if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
-                var filteredFields = connection.additionalFields
-                for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
-                    filteredFields.removeValue(forKey: fieldId)
-                }
-                additionalFields = filteredFields.isEmpty ? nil : filteredFields
+                additionalFields = ExportableConnection.shareableAdditionalFields(
+                    connection.additionalFields,
+                    excluding: Set(PluginManager.shared.secureConnectionFieldIds(for: connection.type))
+                )
             } else {
                 additionalFields = nil
             }

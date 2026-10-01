@@ -94,7 +94,7 @@ struct PostgreSQLRelationSQLTests {
     }
 
     /// The predicate measured against every index shape on PostgreSQL 17.11:
-    /// `scripts/check-postgres-matview-refresh.sh` re-runs that comparison against a live server.
+    /// `scripts/probes/check-postgres-matview-refresh.sh` re-runs that comparison against a live server.
     @Test("The eligibility query tests exactly what the server requires")
     func eligibilityQueryPredicate() {
         let sql = PostgreSQLRelationSQL.concurrentRefreshQuery(name: "mv", schema: "sales")
