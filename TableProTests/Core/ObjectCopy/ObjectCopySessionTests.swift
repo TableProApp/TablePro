@@ -36,13 +36,13 @@ final class ObjectCopySessionTests: XCTestCase {
 
     private func session(
         mode: ObjectCopyMode = .copyTo,
-        preselected: [ObjectCopySelection] = []
+        preselection: ObjectCopyPreselection = .wholeScope
     ) -> ObjectCopySession {
         let session = ObjectCopySession(
             mode: mode,
             source: endpoint("shop"),
             sourceConnection: connection(),
-            preselected: preselected
+            preselection: preselection
         )
         session.availableObjects = [
             ObjectCopySelection(kind: .table, name: "orders", schema: nil),
@@ -248,9 +248,9 @@ final class ObjectCopySessionTests: XCTestCase {
     /// function and a trigger that happened to share the table's name, and matching nothing at all
     /// selected the whole database: with Replace that acted on objects nobody chose.
     func testPreselectionTakesOnlyTheClickedKindAndName() {
-        let subject = session(preselected: [
+        let subject = session(preselection: .objects([
             ObjectCopySelection(kind: .table, name: "orders", schema: nil)
-        ])
+        ]))
         subject.availableObjects = [
             ObjectCopySelection(kind: .table, name: "orders", schema: nil),
             ObjectCopySelection(kind: .trigger, name: "orders", schema: nil, owner: "orders"),
@@ -263,9 +263,9 @@ final class ObjectCopySessionTests: XCTestCase {
     }
 
     func testAPreselectionThatMatchesNothingSelectsNothing() {
-        let subject = session(preselected: [
+        let subject = session(preselection: .objects([
             ObjectCopySelection(kind: .table, name: "gone", schema: nil)
-        ])
+        ]))
         subject.availableObjects = [
             ObjectCopySelection(kind: .table, name: "orders", schema: nil),
             ObjectCopySelection(kind: .table, name: "customers", schema: nil)
@@ -278,13 +278,19 @@ final class ObjectCopySessionTests: XCTestCase {
         )
     }
 
-    /// A right-click on a database carries no preselection, and that is what "copy this database"
-    /// means.
-    func testNoPreselectionSelectsEverything() {
-        let subject = session(preselected: [])
+    func testAWholeScopePreselectionSelectsEverything() {
+        let subject = session(preselection: .wholeScope)
+        subject.selectedObjectIds = []
         subject.applyPreselectionForTesting()
 
         XCTAssertEqual(subject.selectedObjectIds.count, subject.availableObjects.count)
+    }
+
+    func testAnEmptyObjectPreselectionSelectsNothing() {
+        let subject = session(preselection: .objects([]))
+        subject.applyPreselectionForTesting()
+
+        XCTAssertTrue(subject.selectedObjectIds.isEmpty)
     }
 
     func testTogglingFlipsOneObject() {

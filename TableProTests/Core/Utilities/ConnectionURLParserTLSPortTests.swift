@@ -149,4 +149,50 @@ struct ConnectionURLParserTLSPortTests {
         let connection = TransientConnectionFactory.build(from: try parse("trino://trino.example.com:443/hive?SSL=false"))
         #expect(connection.sslConfig.mode == .disabled)
     }
+
+    @Test("An etcd URL sets the TLS Mode its driver reads, never the generic SSL Mode it ignores")
+    func etcdURLSetsTheDriverTLSMode() throws {
+        let cases: [(url: String, tlsMode: String)] = [
+            ("etcds://etcd.example.com:2379", "Required"),
+            ("etcd://etcd.example.com:2379", "Disabled"),
+            ("etcds://etcd.example.com:2379?sslmode=verify-full", "VerifyIdentity"),
+            ("etcds://etcd.example.com:2379?sslmode=verify-ca", "VerifyCA"),
+            ("etcds://etcd.example.com:2379?sslmode=disable", "Disabled"),
+            ("etcd://etcd.example.com:2379?tls=true", "Required"),
+            ("etcd://etcd.example.com:2379?sslmode=prefer", "Required"),
+            ("etcd://etcd.example.com:2379?tls=false", "Disabled"),
+            ("etcd+ssh://me@bastion.example.com/10.0.0.5:2379?sslmode=verify-full", "VerifyIdentity")
+        ]
+        for (url, tlsMode) in cases {
+            let parsed = try parse(url)
+            #expect(parsed.additionalFields["etcdTlsMode"] == tlsMode, "\(url)")
+            #expect(parsed.sslMode == nil, "\(url)")
+            #expect(parsed.disablesTLS == false, "\(url)")
+            let connection = TransientConnectionFactory.build(from: parsed)
+            #expect(connection.additionalFields["etcdTlsMode"] == tlsMode, "\(url)")
+            #expect(connection.sslConfig.mode == .disabled, "\(url)")
+        }
+    }
+
+    @Test("Only etcd carries its TLS in a plugin field; other engines keep the generic SSL Mode")
+    func otherEnginesKeepTheGenericSSLMode() throws {
+        let redis = try parse("rediss://cache.example.com")
+        #expect(redis.sslMode == .required)
+        #expect(redis.additionalFields.isEmpty)
+        let postgres = try parse("postgresql+ssh://deploy@bastion.example.com/app@db.example.com/app?sslmode=verify-full")
+        #expect(postgres.sslMode == .verifyIdentity)
+        #expect(postgres.additionalFields.isEmpty)
+    }
+
+    @Test("Importing etcds:// into the form sets TLS Mode to Required, and a plain etcd:// import sets it to Disabled")
+    func etcdFormImportSetsTLSMode() throws {
+        let secure = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: try parse("etcds://etcd.example.com:2379"))
+        secure.start()
+        #expect(secure.advanced.additionalFieldValues["etcdTlsMode"] == "Required")
+        #expect(secure.ssl.mode == .disabled)
+
+        let plain = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: try parse("etcd://etcd.example.com:2379"))
+        plain.start()
+        #expect(plain.advanced.additionalFieldValues["etcdTlsMode"] == "Disabled")
+    }
 }

@@ -38636,6 +38636,9 @@
         }
       }
     },
+    "Connecting to the remote DuckDB database timed out." : {
+
+    },
     "Connecting…" : {
       "localizations" : {
         "ko" : {
@@ -39913,6 +39916,9 @@
           }
         }
       }
+    },
+    "Connection timed out" : {
+
     },
     "Connection: %@" : {
       "localizations" : {
@@ -59485,6 +59491,9 @@
         }
       }
     },
+    "Failed to configure the connection timeout" : {
+
+    },
     "encoding: %@" : {
       "localizations" : {
         "ko" : {
@@ -76025,6 +76034,9 @@
           }
         }
       }
+    },
+    "If the query legitimately needs more time, raise this connection's query timeout in Options." : {
+
     },
     "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
 
@@ -106571,6 +106583,40 @@
         }
       }
     },
+    "Query timeout must be between 0 and 2,147,483 seconds." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리 제한 시간은 0초에서 2,147,483초 사이여야 합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorgu zaman aşımı 0 ile 2.147.483 saniye arasında olmalıdır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thời gian chờ truy vấn phải từ 0 đến 2.147.483 giây."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询超时必须介于 0 到 2,147,483 秒之间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢逾時必須介於 0 到 2,147,483 秒之間。"
+          }
+        }
+      }
+    },
     "SAP HANA did not return the table definition." : {
 
     },
@@ -106587,6 +106633,18 @@
 
     },
     "The SAP HANA schema name cannot be empty." : {
+
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
+
+    },
+    "Timed out while connecting to the Dameng server" : {
+
+    },
+    "Timed out while connecting to the Kafka broker" : {
+
+    },
+    "Timed out while connecting to the Kafka cluster" : {
 
     },
     "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
@@ -120564,40 +120622,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查詢逾時秒數（最多 300）。預設使用伺服器設定的查詢逾時。"
-          }
-        }
-      }
-    },
-    "Query timeout must be between 0 and 2,147,483 seconds." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "쿼리 제한 시간은 0초에서 2,147,483초 사이여야 합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorgu zaman aşımı 0 ile 2.147.483 saniye arasında olmalıdır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thời gian chờ truy vấn phải từ 0 đến 2.147.483 giây."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查询超时必须介于 0 到 2,147,483 秒之间。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查詢逾時必須介於 0 到 2,147,483 秒之間。"
           }
         }
       }
@@ -184805,28 +184829,10 @@
     "Next cursor: %@. The scan has not finished." : {
 
     },
-    "Connection timed out" : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
 
     },
-    "Timed out while connecting to the Dameng server" : {
-
-    },
-    "Connecting to the remote DuckDB database timed out." : {
-
-    },
-    "Timed out while connecting to the Kafka cluster" : {
-
-    },
-    "Timed out while connecting to the Kafka broker" : {
-
-    },
-    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
-
-    },
-    "Failed to configure the connection timeout" : {
-
-    },
-    "If the query legitimately needs more time, raise this connection's query timeout in Options." : {
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     }
   },

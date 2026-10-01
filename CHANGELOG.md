@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explain Analyze running write statements on Read-Only connections and skipping the Alert and Safe Mode confirmation.
 - Remote deletions of connections, groups, tags, SSH profiles and table favorites applied with their sync category off.
 - **Local only** connections taking edits and deletions made on another device.
+- etcd SSL Mode that the driver ignored, and etcd URLs that lost or faked TLS on import and Copy as URL.
 - Export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL.
 - CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice.
 - MQL export rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones.
@@ -99,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages.
 - Tunnel command preview showing port 0 or the wrong host when Port is blank or the connection uses a host list.
 - SSH tab host-list warning naming replica set failover for Redis and Kafka, and implying Sentinel works through a tunnel.
+- Row limit on Copy To and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata.
+- Copy To on a foreign table, sequence, system table or external table preselecting every object in the schema.
+- Copy To between two schemas of one DuckDB or PGlite connection refused with a message about comparing databases.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
 
 ### Security

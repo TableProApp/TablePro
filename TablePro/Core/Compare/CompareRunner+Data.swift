@@ -50,7 +50,7 @@ internal extension CompareRunner {
 
     func runDataCompare(_ context: Context, claim: CompareSyncSession.RunClaim) async throws {
         if let refusal = rowService.concurrentReadRefusal(source: context.source, target: context.target) {
-            throw CompareSyncError.unsupportedOperation(refusal)
+            throw CompareSyncError.unsupportedOperation(refusal.comparisonMessage)
         }
 
         /// The metadata is read again on every explicit Compare, never reused from the preload.

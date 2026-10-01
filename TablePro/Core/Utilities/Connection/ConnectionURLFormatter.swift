@@ -270,9 +270,17 @@ struct ConnectionURLFormatter {
     }
 
     private static func sslModeParam(for connection: DatabaseConnection) -> String? {
+        guard connection.type != .etcd else {
+            return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
+                .map(sslModeParamValue)
+        }
         let mode = connection.sslConfig.mode
         let portImpliesTLS = connection.type.impliedSSLMode(forPort: connection.port) != nil
         guard mode != connection.type.defaultSSLMode || portImpliesTLS else { return nil }
+        return sslModeParamValue(mode)
+    }
+
+    private static func sslModeParamValue(_ mode: SSLMode) -> String {
         switch mode {
         case .disabled: return "disable"
         case .preferred: return "prefer"

@@ -959,6 +959,9 @@ final class ConnectionFormCoordinator: ObservableObject {
         if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
             writeFieldByRegistry("oracleServiceName", value: svcName)
         }
+        for (fieldId, value) in parsed.additionalFields {
+            writeFieldByRegistry(fieldId, value: value)
+        }
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
         }
