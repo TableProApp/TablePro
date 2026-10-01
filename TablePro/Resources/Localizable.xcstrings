@@ -184770,6 +184770,12 @@
     },
     "Next cursor: %@. The scan has not finished." : {
 
+    },
+    "The server fills in %@, so it cannot be given a value." : {
+
+    },
+    "This table has no primary key, and %@ cannot be compared to find the row." : {
+
     }
   },
   "version" : "1.1"
