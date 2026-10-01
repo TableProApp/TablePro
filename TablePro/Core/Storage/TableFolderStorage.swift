@@ -81,6 +81,10 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         document(for: connectionId).folders.first { $0.id == id }
     }
 
+    var hasUnreadableDocuments: Bool {
+        !unreadableConnectionIds.isEmpty
+    }
+
     func allFolders() -> [TableFolder] {
         storedConnectionIds().flatMap { document(for: $0).folders }
     }
@@ -401,8 +405,8 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             let folderIds = document.folders.map(\.id.uuidString)
             let itemIds = document.items.map(\.syncId)
             if leavesTombstones {
-                syncTracker.markDeleted(.tableFolder, ids: folderIds)
-                syncTracker.markDeleted(.tableFolderItem, ids: itemIds)
+                syncTracker.markDeleted(.tableFolder, ids: folderIds, owner: connectionId)
+                syncTracker.markDeleted(.tableFolderItem, ids: itemIds, owner: connectionId)
             } else {
                 syncTracker.discardDirty(.tableFolder, ids: folderIds)
                 syncTracker.discardDirty(.tableFolderItem, ids: itemIds)
@@ -424,8 +428,8 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     @discardableResult
     private func commit(_ document: Document, for connectionId: UUID, marks: SyncMarks) -> Bool {
         guard persist(document, for: connectionId) else { return false }
-        syncTracker.markDeleted(.tableFolder, ids: marks.deletedFolders)
-        syncTracker.markDeleted(.tableFolderItem, ids: marks.deletedItems)
+        syncTracker.markDeleted(.tableFolder, ids: marks.deletedFolders, owner: connectionId)
+        syncTracker.markDeleted(.tableFolderItem, ids: marks.deletedItems, owner: connectionId)
         syncTracker.markDirty(.tableFolder, ids: marks.dirtyFolders)
         syncTracker.markDirty(.tableFolderItem, ids: marks.dirtyItems)
         postChange(for: [connectionId])

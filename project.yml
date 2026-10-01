@@ -621,6 +621,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteLedger.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldCensus.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptCursorPlan.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
       - Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift

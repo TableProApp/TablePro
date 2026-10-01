@@ -16,10 +16,16 @@ internal enum ConnectionLocalState {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionLocalState")
 
     /// Who deleted the connection. A local delete leaves tombstones so the other devices follow;
-    /// a remote delete must not, or it pushes back a deletion the sender already made.
+    /// a remote delete must not, or it pushes back a deletion the sender already made, and neither
+    /// may the local delete of a connection kept off iCloud.
     internal enum Origin {
         case local
+        case localOnly
         case remote
+
+        var leavesTombstones: Bool {
+            self == .local
+        }
     }
 
     internal static func purge(
@@ -27,9 +33,12 @@ internal enum ConnectionLocalState {
         origin: Origin,
         appSettings: AppSettingsStorage = .shared,
         tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores,
+        favoriteTables: FavoriteTablesStorage = .shared,
+        favoriteDatabases: FavoriteDatabasesStorage = .shared,
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
-        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        syncTracker: SyncChangeTracker = .shared
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -37,7 +46,12 @@ internal enum ConnectionLocalState {
             purgeLiveState(connectionId)
             appSettings.saveLastDatabase(nil, for: connectionId)
             appSettings.saveLastSchema(nil, for: connectionId)
-            purgeFavorites(connectionId, origin: origin)
+            purgeFavorites(
+                connectionId,
+                leavesTombstones: origin.leavesTombstones,
+                tables: favoriteTables,
+                databases: favoriteDatabases
+            )
             SidebarPersistenceKey.removeAll(connectionId: connectionId)
             RecentTablesStore.shared.removeEntries(for: connectionId)
             HistoryPanelPreferencesStorage.remove(for: connectionId)
@@ -47,7 +61,11 @@ internal enum ConnectionLocalState {
         purgeTrailingPaneKeys(connectionIds, defaults: defaults)
 
         for store in tableScopedStores {
-            store.purgeConnections(connectionIds, leavesTombstones: origin == .local)
+            store.purgeConnections(connectionIds, leavesTombstones: origin.leavesTombstones)
+        }
+        if origin == .localOnly {
+            syncTracker.discardTombstones(ownedBy: connectionIds)
+            syncTracker.keepOffSync(owners: connectionIds)
         }
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         LoadableExtensionApprovalStore.shared.revoke(for: connectionIds)
@@ -55,7 +73,11 @@ internal enum ConnectionLocalState {
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
         Task {
             await purgeAsyncStores(
-                connectionIds, origin: origin, sqlFavorites: sqlFavorites, queryHistory: queryHistory
+                connectionIds,
+                origin: origin,
+                sqlFavorites: sqlFavorites,
+                queryHistory: queryHistory,
+                syncTracker: syncTracker
             )
         }
     }
@@ -80,12 +102,17 @@ internal enum ConnectionLocalState {
         _ connectionIds: Set<UUID>,
         origin: Origin,
         sqlFavorites: SQLFavoriteManager = .shared,
-        queryHistory: QueryHistoryManager = .shared
+        queryHistory: QueryHistoryManager = .shared,
+        syncTracker: SyncChangeTracker = .shared
     ) async {
         for connectionId in connectionIds {
             switch origin {
             case .local:
                 await sqlFavorites.removeFavoritesAndFolders(for: connectionId)
+            case .localOnly:
+                if await sqlFavorites.removeFavoritesAndFoldersWithoutSync(for: connectionId) {
+                    syncTracker.releaseOwnersKeptOffSync([connectionId])
+                }
             case .remote:
                 await sqlFavorites.removeFavoritesAndFoldersWithoutSync(for: connectionId)
             }
@@ -125,14 +152,18 @@ internal enum ConnectionLocalState {
         ConnectionDataCache.removeConnection(connectionId)
     }
 
-    private static func purgeFavorites(_ connectionId: UUID, origin: Origin) {
-        switch origin {
-        case .local:
-            FavoriteTablesStorage.shared.removeFavorites(for: connectionId)
-            FavoriteDatabasesStorage.shared.removeFavorites(for: connectionId)
-        case .remote:
-            FavoriteTablesStorage.shared.removeFavoritesWithoutSync(for: connectionId)
-            FavoriteDatabasesStorage.shared.removeFavoritesWithoutSync(for: connectionId)
+    private static func purgeFavorites(
+        _ connectionId: UUID,
+        leavesTombstones: Bool,
+        tables: FavoriteTablesStorage,
+        databases: FavoriteDatabasesStorage
+    ) {
+        guard leavesTombstones else {
+            tables.removeFavoritesWithoutSync(for: connectionId)
+            databases.removeFavoritesWithoutSync(for: connectionId)
+            return
         }
+        tables.removeFavorites(for: connectionId)
+        databases.removeFavorites(for: connectionId)
     }
 }

@@ -153,7 +153,8 @@ extension MongoDBConnection {
     }
 
     func aggregateSync(
-        client: OpaquePointer, database: String, collection: String, pipeline: String
+        client: OpaquePointer, database: String, collection: String, pipeline: String,
+        optionsJson: String? = nil
     ) throws -> (docs: [[String: Any]], isTruncated: Bool) {
         try checkCancelled()
 
@@ -167,7 +168,9 @@ extension MongoDBConnection {
 
         let timeoutMS = queryTimeoutMS
         var optsBson: OpaquePointer?
-        if timeoutMS > 0 {
+        if let optionsJson {
+            optsBson = jsonToBson(optionsJson)
+        } else if timeoutMS > 0 {
             optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
         }
         defer { if let opts = optsBson { bson_destroy(opts) } }
@@ -415,12 +418,14 @@ extension MongoDBConnection {
     func iterateCursorStreaming(
         cursor: OpaquePointer,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        streamState: MongoStreamState
+        streamState: MongoStreamState,
+        census: () throws -> MongoFieldCensus?
     ) {
         var docPtr: OpaquePointer?
         var sample: [[String: Any]] = []
         var projection: MongoStreamProjection?
         var emitted = 0
+        var unannounced = Set<String>()
 
         while mongoc_cursor_next(cursor, &docPtr) {
             if Task.isCancelled {
@@ -432,23 +437,33 @@ extension MongoDBConnection {
             guard let doc = docPtr else { continue }
             let dict = bsonToDict(doc)
 
-            if let projection {
-                continuation.yield(.rows([projection.row(for: dict, convert: streamCellValue)]))
-                emitted += 1
-                if emitted >= PluginRowLimits.emergencyMax {
-                    logger.warning("Streamed result truncated at \(PluginRowLimits.emergencyMax) documents")
-                    break
+            if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
+                do {
+                    projection = openStream(sample: sample, census: try census(), continuation: continuation)
+                } catch {
+                    cleanup(streamState)
+                    continuation.finish(throwing: error)
+                    return
                 }
-                continue
-            }
-
-            sample.append(dict)
-            if sample.count >= MongoStreamProjection.sampleSize {
-                projection = openStream(sample: sample, continuation: continuation)
                 emitted += sample.count
                 sample = []
             }
+
+            guard let projection else {
+                sample.append(dict)
+                continue
+            }
+
+            continuation.yield(.rows([projection.row(for: dict, convert: streamCellValue)]))
+            unannounced.formUnion(projection.unannouncedFields(in: dict))
+            emitted += 1
+            if emitted >= PluginRowLimits.emergencyMax {
+                logger.warning("Streamed result truncated at \(PluginRowLimits.emergencyMax) documents")
+                break
+            }
         }
+
+        logUnannouncedFields(unannounced)
 
         var error = bson_error_t()
         if mongoc_cursor_error(cursor, &error) {
@@ -458,27 +473,48 @@ extension MongoDBConnection {
         }
 
         if projection == nil {
-            _ = openStream(sample: sample, continuation: continuation)
+            _ = openStream(sample: sample, census: nil, continuation: continuation)
         }
 
         cleanup(streamState)
         continuation.finish()
     }
 
+    func fieldCensus(
+        _ request: MongoFieldCensus.Request?,
+        client: OpaquePointer,
+        database: String,
+        collection: String
+    ) throws -> MongoFieldCensus? {
+        guard let request else { return nil }
+        do {
+            let groups = try aggregateSync(
+                client: client, database: database, collection: collection,
+                pipeline: request.pipeline, optionsJson: request.optionsJson
+            )
+            return MongoFieldCensus(groups: groups.docs)
+        } catch let error as MongoDBError {
+            logger.warning(
+                "Field census failed, the stream header holds the sampled fields only: \(error.message)"
+            )
+            return nil
+        }
+    }
+
+    private func logUnannouncedFields(_ fields: Set<String>) {
+        guard !fields.isEmpty else { return }
+        let names = fields.sorted().joined(separator: ", ")
+        logger.warning(
+            "Stream header left out \(fields.count) fields first seen after the sample: \(names, privacy: .private)"
+        )
+    }
+
     private func openStream(
         sample: [[String: Any]],
+        census: MongoFieldCensus?,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) -> MongoStreamProjection {
-        let columns = BsonDocumentFlattener.unionColumns(from: sample)
-        let kinds = BsonDocumentFlattener.columnKinds(
-            for: columns, documents: sample, representation: uuidRepresentation
-        )
-        let columnTypeNames = kinds.map {
-            BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation)
-        }
-        let projection = MongoStreamProjection(
-            columns: columns, columnTypeNames: columnTypeNames, kinds: kinds
-        )
+        let projection = MongoStreamProjection(sample: sample, census: census, representation: uuidRepresentation)
 
         continuation.yield(.header(projection.header))
 

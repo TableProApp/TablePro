@@ -102,6 +102,11 @@ struct NativeDumpDescriptor: Sendable {
         }
     }
 
+    internal struct ConfigurationEntry: Sendable, Equatable {
+        let key: String
+        let value: String
+    }
+
     /// A tool on the user's Mac that the app spawns.
     struct CommandLineTool: Sendable {
         /// The candidate names, in the order they are tried. More than one because a tool can ship
@@ -123,10 +128,7 @@ struct NativeDumpDescriptor: Sendable {
         /// such a tool say so rather than leaving the user to find out.
         let exposesPasswordInArguments: Bool
 
-        /// True when the tool reads a password from neither the environment nor standard input, so
-        /// the only channel left is a file written at mode `0600`. Declared rather than inferred
-        /// from the binary's name, which is what `buildCommand` used to do.
-        let needsCredentialsFile: Bool
+        let configurationFileEntries: @Sendable (Request) -> [ConfigurationEntry]
 
         internal let restoreExitPolicy: NativeDumpExitPolicy
 
@@ -153,14 +155,14 @@ struct NativeDumpDescriptor: Sendable {
             backupDelivery: OutputDelivery,
             restoreDelivery: OutputDelivery,
             exposesPasswordInArguments: Bool = false,
-            needsCredentialsFile: Bool = false,
             restoreExitPolicy: NativeDumpExitPolicy = .zeroExitOnly,
             requiresUntranslatedMessages: Bool = false,
             toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)? = nil,
             identifyExecutable: (@Sendable (_ name: String, _ path: String) -> NativeDumpResolvedTool)? = nil,
             backupArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
-            environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] }
+            environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
+            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries
@@ -168,7 +170,6 @@ struct NativeDumpDescriptor: Sendable {
             self.backupDelivery = backupDelivery
             self.restoreDelivery = restoreDelivery
             self.exposesPasswordInArguments = exposesPasswordInArguments
-            self.needsCredentialsFile = needsCredentialsFile
             self.restoreExitPolicy = restoreExitPolicy
             self.requiresUntranslatedMessages = requiresUntranslatedMessages
             self.toolForServer = toolForServer
@@ -176,6 +177,7 @@ struct NativeDumpDescriptor: Sendable {
             self.backupArguments = backupArguments
             self.restoreArguments = restoreArguments
             self.environment = environment
+            self.configurationFileEntries = configurationFileEntries
         }
 
         func binaries(for kind: NativeDumpKind) -> [String] {
@@ -230,9 +232,17 @@ struct NativeDumpDescriptor: Sendable {
         case engineStatements(EngineStatements)
     }
 
+    internal enum RestoreSemantics: Sendable, Equatable {
+        case replacesObjects
+        case addsToExistingObjects
+        case stopsAtExistingObjects
+        case requiresEmptyDatabase
+    }
+
     let mechanism: Mechanism
     let archiveFormat: ArchiveFormat
     let objectScope: NativeDumpObjectScope
+    let restoreSemantics: RestoreSemantics
 
     /// True when the tool opens the database file itself and so cannot reach a connection that has
     /// no local file. libSQL claims the SQLite descriptor and reaches either a file or a Turso URL,
@@ -243,11 +253,13 @@ struct NativeDumpDescriptor: Sendable {
         mechanism: Mechanism,
         archiveFormat: ArchiveFormat,
         objectScope: NativeDumpObjectScope,
+        restoreSemantics: RestoreSemantics,
         requiresLocalFile: Bool = false
     ) {
         self.mechanism = mechanism
         self.archiveFormat = archiveFormat
         self.objectScope = objectScope
+        self.restoreSemantics = restoreSemantics
         self.requiresLocalFile = requiresLocalFile
     }
 

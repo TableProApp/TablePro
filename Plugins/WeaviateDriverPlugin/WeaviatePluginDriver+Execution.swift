@@ -74,20 +74,12 @@ extension WeaviatePluginDriver {
             estimatedRowCount: nil
         )))
 
-        var offset = 0
-        while true {
-            try Task.checkCancellation()
-            let objects = try await client.objects(
-                collection: name, limit: Self.exportPageSize, offset: offset, includeVector: true
-            )
-            guard !objects.isEmpty else { break }
+        for try await objects in client.objectPages(collection: name, pageSize: Self.exportPageSize) {
             continuation.yield(.rows(objects.map { object in
                 WeaviateObjectCodec.row(for: object, columns: columns).map { value in
                     value.map(PluginCellValue.text) ?? .null
                 }
             }))
-            if objects.count < Self.exportPageSize { break }
-            offset += objects.count
         }
     }
 
