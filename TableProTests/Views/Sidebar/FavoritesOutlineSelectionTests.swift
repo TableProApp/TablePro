@@ -11,8 +11,13 @@ import Testing
 
 @MainActor
 struct FavoritesOutlineSelectionTests {
-    private func table(_ name: String, schema: String? = "public") -> TableInfo {
-        TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
+    private func table(_ name: String, schema: String? = "public") -> FavoriteTableRow {
+        FavoriteTableRow(
+            entry: FavoriteTablesStorage.FavoriteEntry(connectionId: UUID(), database: "app", schema: schema, name: name),
+            listedTable: TableInfo(name: name, type: .table, rowCount: nil, schema: schema),
+            isVerified: true,
+            otherSchema: nil
+        )
     }
 
     private func favorite(_ name: String) -> SQLFavorite {
@@ -38,20 +43,29 @@ struct FavoritesOutlineSelectionTests {
 
     @Test("A table row maps to the table selection the app persists")
     func tableMapsToSelection() {
-        let selection = FavoritesOutlineSelection.selection(for: .table(table("users")), database: "app")
+        let selection = FavoritesOutlineSelection.selection(for: .table(table("users")))
         #expect(selection == .table(database: "app", schema: "public", name: "users"))
+    }
+
+    @Test("A table row outside the browsed schema persists and restores to its own row")
+    func otherSchemaRowRoundTrips() {
+        let row = table("orders", schema: "sales")
+        let selection = FavoritesOutlineSelection.selection(for: .table(row))
+
+        #expect(selection == .table(database: "app", schema: "sales", name: "orders"))
+        #expect(selection.map(FavoritesOutlineSelection.nodeId(for:)) == row.id)
     }
 
     @Test("A saved query maps to its node id")
     func queryMapsToNodeId() {
         let node = FavoriteNode.favorite(favorite("daily"))
-        #expect(FavoritesOutlineSelection.selection(for: .query(node), database: nil) == .node(id: node.id))
+        #expect(FavoritesOutlineSelection.selection(for: .query(node)) == .node(id: node.id))
     }
 
     @Test("A database row maps to its stable node id")
     func databaseMapsToNodeId() {
         let entry = database("analytics")
-        let selection = FavoritesOutlineSelection.selection(for: .database(entry), database: nil)
+        let selection = FavoritesOutlineSelection.selection(for: .database(entry))
 
         #expect(selection == .node(id: FavoritesOutlineNode.databaseId(entry)))
     }
@@ -83,17 +97,17 @@ struct FavoritesOutlineSelectionTests {
     @Test("A Team Library row maps to a selection of its own")
     func teamQueryMapsToSelection() {
         let selection = FavoritesOutlineSelection.selection(
-            for: .teamQuery(id: "abc", name: "Shared", publishedBy: "sam"), database: nil
+            for: .teamQuery(id: "abc", name: "Shared", publishedBy: "sam")
         )
         #expect(selection == .node(id: FavoritesOutlineNode.teamQueryId("abc")))
     }
 
     @Test("A header maps to no selection")
     func headerMapsToNothing() {
-        #expect(FavoritesOutlineSelection.selection(for: .header("Queries"), database: "app") == nil)
+        #expect(FavoritesOutlineSelection.selection(for: .header("Queries")) == nil)
     }
 
-    /// Restoring a persisted selection must find the same row again without a live TableInfo.
+    /// Restoring a persisted selection must find the same row again without a live row.
     @Test("A persisted selection round-trips to the row id")
     func selectionRoundTripsToNodeId() {
         let selection = FavoriteSelection.table(database: "app", schema: "public", name: "users")

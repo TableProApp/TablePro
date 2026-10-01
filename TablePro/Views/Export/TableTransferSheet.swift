@@ -55,7 +55,13 @@ struct TableTransferSheet: View {
     }
 
     private var canTransfer: Bool {
-        !isRunning && !selectedTables.isEmpty && destinationConnection != nil
+        !isRunning && !selectedTables.isEmpty && destinationConnection != nil && !hasContestedMapping
+    }
+
+    /// Two source columns mapped to one destination column build an INSERT naming it twice, which
+    /// the server refuses only after "Delete existing rows first" has emptied the table.
+    private var hasContestedMapping: Bool {
+        selectedTables.contains { !resolvedMatch(for: $0.name).contestedDestinations.isEmpty }
     }
 
     var body: some View {
@@ -177,6 +183,11 @@ struct TableTransferSheet: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            } else if hasContestedMapping {
+                Text(TableTransferMappingEditor.contestedMappingMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
             }
         } actions: {
             Button(isRunning ? String(localized: "Stop") : String(localized: "Cancel")) {
@@ -213,6 +224,7 @@ struct TableTransferSheet: View {
     @ViewBuilder
     private func mappingSummary(for table: String) -> some View {
         let match = resolvedMatch(for: table)
+        let cannotTransfer = match.isEmpty || !match.contestedDestinations.isEmpty
         if isMatching, destinationColumns[table] == nil {
             ProgressView()
                 .scaleEffect(0.5)
@@ -228,7 +240,7 @@ struct TableTransferSheet: View {
                 HStack(spacing: 3) {
                     Text(mappingLabel(match))
                         .font(.caption)
-                        .foregroundStyle(match.isEmpty ? Color.red : .secondary)
+                        .foregroundStyle(cannotTransfer ? Color.red : .secondary)
                     Image(systemName: "arrow.left.arrow.right")
                         .font(.caption)
                 }
@@ -242,10 +254,8 @@ struct TableTransferSheet: View {
                     tableName: table,
                     sourceColumns: sourceColumns[table] ?? [],
                     destinationColumns: destinationColumns[table] ?? [],
-                    overrides: Binding(
-                        get: { overrides[table] ?? [:] },
-                        set: { overrides[table] = $0 }
-                    ),
+                    overrides: overrides[table] ?? [:],
+                    onChange: { overrides[table] = $0 },
                     dismiss: { inspectedTable = nil }
                 )
             }
@@ -254,6 +264,12 @@ struct TableTransferSheet: View {
 
     private func mappingLabel(_ match: TableColumnMatcher.Match) -> String {
         guard !match.isEmpty else { return String(localized: "No columns match") }
+        let contested = match.contestedDestinations
+        guard contested.isEmpty else {
+            return String(
+                format: String(localized: "%@ mapped more than once"),
+                contested.joined(separator: ", "))
+        }
         guard match.unmatchedSource.isEmpty else {
             return String(
                 format: String(localized: "%1$lld mapped, %2$lld skipped"),
@@ -264,12 +280,10 @@ struct TableTransferSheet: View {
     }
 
     private func resolvedMatch(for table: String) -> TableColumnMatcher.Match {
-        let destination = destinationColumns[table] ?? []
-        let automatic = TableColumnMatcher.match(
-            source: sourceColumns[table] ?? [], destination: destination)
-        guard let tableOverrides = overrides[table], !tableOverrides.isEmpty else { return automatic }
-        return TableColumnMatcher.applying(
-            overrides: tableOverrides, to: automatic, destination: destination)
+        TableColumnMatcher.match(
+            source: sourceColumns[table] ?? [],
+            destination: destinationColumns[table] ?? [],
+            overrides: overrides[table] ?? [:])
     }
 
     private func binding(for table: ExportObjectItem) -> Binding<Bool> {

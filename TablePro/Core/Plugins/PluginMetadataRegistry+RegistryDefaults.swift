@@ -144,7 +144,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -901,14 +902,15 @@ extension PluginMetadataRegistry {
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
-                    supportsSSL: true,
+                    supportsSSL: false,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

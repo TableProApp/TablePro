@@ -1307,6 +1307,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
+        let grammar = lexicalGrammar
 
         let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
@@ -1331,21 +1332,25 @@ final class MainContentCoordinator: ObservableObject {
 
             let fetchBeganAt = ContinuousClock.now
             do {
-                let fetchResult = try await withExecutionDriver(
+                let (fetchResult, tableEdits) = try await withExecutionDriver(
                     scope: scope,
                     isTableTab: isTableTab,
                     lease: lease
                 ) { [queryExecutor] driver in
-                    try await queryExecutor.executeQuery(
+                    let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
                         parameters: nil,
                         rowCap: rowCap,
                         capturingOutputInto: isTableTab ? nil : failureOutput
                     )
+                    let edits = isAutoLoad ? nil : await SucceededStatements.single(
+                        statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
+                    )
+                    return (fetched, edits)
                 }
                 let fetchEndedAt = ContinuousClock.now
-                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }
+                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
