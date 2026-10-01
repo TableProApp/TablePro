@@ -44,7 +44,8 @@ extension ParsedConnectionURL {
             safeModeLevel: overriddenSafeModeLevel ?? safeModeLevel,
             useSrv: useSrv,
             mongoQueryParams: mongoQueryParams,
-            multiHost: multiHost
+            multiHost: multiHost,
+            additionalFields: additionalFields
         )
     }
 }
