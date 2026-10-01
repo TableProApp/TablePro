@@ -25,12 +25,12 @@ final class PluginURLSessionTaskBox: @unchecked Sendable {
     }
 
     func cancel() {
-        let task = lock.withLock {
+        let pending = lock.withLock {
             isCancelled = true
-            let task = task
-            self.task = nil
-            return task
+            let current = task
+            task = nil
+            return current
         }
-        task?.cancel()
+        pending?.cancel()
     }
 }
