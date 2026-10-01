@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 
 extension MainContentCoordinator {
-    /// Open (or focus) an ER Diagram tab for the current database/schema.
+    /// Open (or focus) an ER Diagram tab for the current database and `schema`, or the browsed
+    /// schema when none is named.
     ///
     /// Resolution order:
     /// 1. If another window for this connection already hosts an ER Diagram
@@ -11,10 +12,10 @@ extension MainContentCoordinator {
     ///    tabs yet), add the ER Diagram tab locally.
     /// 3. Otherwise open a new native window tab so the current tab's content
     ///    (unsaved queries, filters, etc.) is preserved.
-    func showERDiagram() {
+    func showERDiagram(schema: String? = nil) {
         let dbName = browseDatabaseName
-        let schemaName = DatabaseManager.shared.session(for: connectionId)?.browseSchema
-        let schemaKey = "\(dbName).\(schemaName ?? "default")"
+        let schemaName = schema ?? DatabaseManager.shared.session(for: connectionId)?.browseSchema
+        let schemaKey = ERDiagramViewModel.schemaKey(databaseName: dbName, schema: schemaName)
 
         if let existing = Self.coordinator(forConnection: connectionId, tabMatching: {
             $0.tabType == .erDiagram && $0.display.erDiagramSchemaKey == schemaKey

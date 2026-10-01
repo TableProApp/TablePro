@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Which of the four states the Favorites tab is in.
+/// Which state the Favorites tab is in.
 ///
 /// The tab used to decide this inline, and read a list emptied by the environment filter as a
 /// failed search: `ContentUnavailableView.search(text:)` renders "No Results for “”" over spelling
@@ -16,6 +16,8 @@ internal enum FavoritesEmptyState: Equatable {
     case noFavorites
     case noFilterMatch
     case noSearchMatch(String)
+    case favoriteTablesInOtherDatabases
+    case favoriteTablesMissing
     case content
 
     internal struct Input {
@@ -24,19 +26,25 @@ internal enum FavoritesEmptyState: Equatable {
         internal let hasVisibleContent: Bool
         internal let searchText: String
         internal let isEnvironmentFiltered: Bool
+        internal let favoriteTablesInOtherDatabases: Int
+        internal let missingFavoriteTables: Int
 
         internal init(
             isInitialLoadComplete: Bool,
             hasAnyFavorite: Bool,
             hasVisibleContent: Bool,
             searchText: String,
-            isEnvironmentFiltered: Bool
+            isEnvironmentFiltered: Bool,
+            favoriteTablesInOtherDatabases: Int = 0,
+            missingFavoriteTables: Int = 0
         ) {
             self.isInitialLoadComplete = isInitialLoadComplete
             self.hasAnyFavorite = hasAnyFavorite
             self.hasVisibleContent = hasVisibleContent
             self.searchText = searchText
             self.isEnvironmentFiltered = isEnvironmentFiltered
+            self.favoriteTablesInOtherDatabases = favoriteTablesInOtherDatabases
+            self.missingFavoriteTables = missingFavoriteTables
         }
     }
 
@@ -59,6 +67,8 @@ internal enum FavoritesEmptyState: Equatable {
         if !input.hasAnyFavorite { return .noFavorites }
         if !input.searchText.isEmpty { return .noSearchMatch(input.searchText) }
         if input.isEnvironmentFiltered { return .noFilterMatch }
+        if input.favoriteTablesInOtherDatabases > 0 { return .favoriteTablesInOtherDatabases }
+        if input.missingFavoriteTables > 0 { return .favoriteTablesMissing }
         return .noFavorites
     }
 }

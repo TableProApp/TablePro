@@ -75,6 +75,202 @@ struct ClickHouseTLSConfigurationTests {
         }
     }
 
+    private static let clientCertificatePEM = """
+        -----BEGIN CERTIFICATE-----
+        MIIBRjCB7AIJAI8IxGRVwB2sMAoGCCqGSM49BAMCMCoxKDAmBgNVBAMMH1RhYmxl
+        UHJvIENsaWNrSG91c2UgVGVzdCBDbGllbnQwIBcNMjYwOTMwMDgwODM5WhgPMjEy
+        NjA5MDYwODA4MzlaMCoxKDAmBgNVBAMMH1RhYmxlUHJvIENsaWNrSG91c2UgVGVz
+        dCBDbGllbnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR4MsJgLIbNVUdTp1AI
+        +UI59GxEZNE+2GS37Dq8sEluUP+MK4lJmP5eamZoDI1FJgXuol/6/j99J3x9tWSo
+        2JCGMAoGCCqGSM49BAMCA0kAMEYCIQDo8UPcX3AbSM4vSga4ZmNz8l1yt7PI0i5+
+        pis0886smAIhALdWMO0Vi6SA4NEJUr3EeQyye3rrS9j43ZMTMhXxovX/
+        -----END CERTIFICATE-----
+        """
+
+    private static let clientKeyPEM = """
+        -----BEGIN PRIVATE KEY-----
+        MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgyzfBMM5MAZs5n7VW
+        ZAMWdxn0FdlZiRKhL2eWOwXfs96hRANCAAR4MsJgLIbNVUdTp1AI+UI59GxEZNE+
+        2GS37Dq8sEluUP+MK4lJmP5eamZoDI1FJgXuol/6/j99J3x9tWSo2JCG
+        -----END PRIVATE KEY-----
+        """
+
+    private struct ClientIdentityFiles {
+        let certificate: URL
+        let key: URL
+
+        init() throws {
+            let folder = FileManager.default.temporaryDirectory
+            certificate = folder.appendingPathComponent("client-\(UUID().uuidString).pem")
+            key = folder.appendingPathComponent("client-\(UUID().uuidString).key")
+            try Data(ClickHouseTLSConfigurationTests.clientCertificatePEM.utf8).write(to: certificate)
+            try Data(ClickHouseTLSConfigurationTests.clientKeyPEM.utf8).write(to: key)
+        }
+
+        func remove() {
+            try? FileManager.default.removeItem(at: certificate)
+            try? FileManager.default.removeItem(at: key)
+        }
+    }
+
+    private final class IgnoringChallengeSender: NSObject, URLAuthenticationChallengeSender {
+        func use(_ credential: URLCredential, for challenge: URLAuthenticationChallenge) {}
+        func continueWithoutCredential(for challenge: URLAuthenticationChallenge) {}
+        func cancel(_ challenge: URLAuthenticationChallenge) {}
+    }
+
+    private final class ServerTrustProtectionSpace: URLProtectionSpace, @unchecked Sendable {
+        private let trust: SecTrust
+
+        init(trust: SecTrust) {
+            self.trust = trust
+            super.init(
+                host: "clickhouse.example.com",
+                port: 8_443,
+                protocol: NSURLProtectionSpaceHTTPS,
+                realm: nil,
+                authenticationMethod: NSURLAuthenticationMethodServerTrust
+            )
+        }
+
+        required init?(coder: NSCoder) {
+            nil
+        }
+
+        override var serverTrust: SecTrust? { trust }
+    }
+
+    private func fixtureServerTrust() throws -> SecTrust {
+        let base64 = Self.clientCertificatePEM
+            .split(separator: "\n")
+            .filter { !$0.hasPrefix("-----") }
+            .joined()
+        let der = try #require(Data(base64Encoded: base64))
+        let certificate = try #require(SecCertificateCreateWithData(nil, der as CFData))
+        var trust: SecTrust?
+        let status = SecTrustCreateWithCertificates(
+            certificate,
+            SecPolicyCreateSSL(true, "clickhouse.example.com" as CFString),
+            &trust
+        )
+        try #require(status == errSecSuccess)
+        return try #require(trust)
+    }
+
+    private func answer(
+        _ authenticationMethod: String,
+        with delegate: ClickHouseTLSDelegate
+    ) -> (disposition: URLSession.AuthChallengeDisposition, credential: URLCredential?) {
+        answer(
+            URLProtectionSpace(
+                host: "clickhouse.example.com",
+                port: 8_443,
+                protocol: NSURLProtectionSpaceHTTPS,
+                realm: nil,
+                authenticationMethod: authenticationMethod
+            ),
+            with: delegate
+        )
+    }
+
+    private func answer(
+        _ protectionSpace: URLProtectionSpace,
+        with delegate: ClickHouseTLSDelegate
+    ) -> (disposition: URLSession.AuthChallengeDisposition, credential: URLCredential?) {
+        let challenge = URLAuthenticationChallenge(
+            protectionSpace: protectionSpace,
+            proposedCredential: nil,
+            previousFailureCount: 0,
+            failureResponse: nil,
+            error: nil,
+            sender: IgnoringChallengeSender()
+        )
+        var answer: (URLSession.AuthChallengeDisposition, URLCredential?) = (.rejectProtectionSpace, nil)
+        delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, credential in
+            answer = (disposition, credential)
+        }
+        return answer
+    }
+
+    @Test("A client certificate and key are presented when the server asks for one, in every TLS mode")
+    func clientIdentityAnswersTheCertificateChallenge() throws {
+        let files = try ClientIdentityFiles()
+        defer { files.remove() }
+        for mode in [SSLMode.verifyIdentity, .required, .preferred] {
+            let ssl = SSLConfiguration(
+                mode: mode,
+                clientCertificatePath: files.certificate.path,
+                clientKeyPath: files.key.path
+            )
+            let delegate = try #require(try ClickHouseTLSDelegate.make(for: ssl), "\(mode)")
+
+            let answered = answer(NSURLAuthenticationMethodClientCertificate, with: delegate)
+
+            #expect(answered.disposition == .useCredential, "\(mode)")
+            #expect(answered.credential?.identity != nil, "\(mode)")
+        }
+    }
+
+    @Test("Verify Identity with only a client identity still leaves the server's certificate to the system")
+    func clientIdentityKeepsSystemServerTrust() throws {
+        let files = try ClientIdentityFiles()
+        defer { files.remove() }
+        let trust = try fixtureServerTrust()
+        let identityOnly = try #require(try ClickHouseTLSDelegate.make(for: SSLConfiguration(
+            mode: .verifyIdentity,
+            clientCertificatePath: files.certificate.path,
+            clientKeyPath: files.key.path
+        )))
+        let skipVerify = try #require(try ClickHouseTLSDelegate.make(for: SSLConfiguration(
+            mode: .required,
+            clientCertificatePath: files.certificate.path,
+            clientKeyPath: files.key.path
+        )))
+
+        #expect(answer(ServerTrustProtectionSpace(trust: trust), with: skipVerify).disposition == .useCredential)
+        #expect(
+            answer(ServerTrustProtectionSpace(trust: trust), with: identityOnly).disposition == .performDefaultHandling
+        )
+    }
+
+    @Test("A certificate challenge with no client identity configured is left to the system")
+    func noClientIdentityLeavesTheChallenge() throws {
+        let delegate = try #require(try ClickHouseTLSDelegate.make(for: configuration(.required)))
+
+        let answered = answer(NSURLAuthenticationMethodClientCertificate, with: delegate)
+
+        #expect(answered.disposition == .performDefaultHandling)
+        #expect(answered.credential == nil)
+    }
+
+    @Test("SSL off presents no client identity even when the paths are filled in")
+    func disabledPresentsNothing() throws {
+        let files = try ClientIdentityFiles()
+        defer { files.remove() }
+        let ssl = SSLConfiguration(
+            mode: .disabled,
+            clientCertificatePath: files.certificate.path,
+            clientKeyPath: files.key.path
+        )
+
+        #expect(try ClickHouseTLSDelegate.make(for: ssl) == nil)
+    }
+
+    @Test("A client certificate without its key, or a key that does not load, is refused before any request")
+    func unusableClientIdentityIsRefused() throws {
+        let files = try ClientIdentityFiles()
+        defer { files.remove() }
+        let withoutKey = SSLConfiguration(mode: .verifyIdentity, clientCertificatePath: files.certificate.path)
+        let unreadableKey = SSLConfiguration(
+            mode: .verifyIdentity,
+            clientCertificatePath: files.certificate.path,
+            clientKeyPath: files.certificate.path
+        )
+
+        #expect(refusal(withoutKey)?.contains("client key") == true)
+        #expect(refusal(unreadableKey)?.contains(files.certificate.path) == true)
+    }
+
     @Test("A certificate that fails its host check is reported as a hostname mismatch, anything else as untrusted")
     func refusalKinds() {
         let hostname = CFErrorCreate(nil, NSOSStatusErrorDomain as CFString, CFIndex(errSecHostNameMismatch), nil)

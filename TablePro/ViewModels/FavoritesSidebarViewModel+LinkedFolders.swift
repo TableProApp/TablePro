@@ -64,9 +64,9 @@ extension FavoritesSidebarViewModel {
         FavoriteTablesStorage.shared.favorites(for: connectionId).sorted { $0.name < $1.name }
     }
 
-    internal func removeTableFavorite(_ table: TableInfo, database: String?) {
+    internal func removeTableFavorite(_ entry: FavoriteTablesStorage.FavoriteEntry) {
         FavoriteTablesStorage.shared.removeFavorite(
-            name: table.name, schema: table.schema, database: database, connectionId: connectionId
+            name: entry.name, schema: entry.schema, database: entry.database, connectionId: entry.connectionId
         )
     }
 }

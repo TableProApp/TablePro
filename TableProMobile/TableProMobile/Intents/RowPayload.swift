@@ -80,7 +80,7 @@ nonisolated enum RowPayload {
     }
 
     static func parseCSV(_ text: String) throws -> [PayloadRow] {
-        let records = CSVRecordParser.parse(text)
+        let records = try csvRecords(in: text)
         guard let header = records.first, !header.allSatisfy(\.isEmpty) else {
             throw IntentDataError.csvMissingHeader
         }
@@ -92,6 +92,16 @@ nonisolated enum RowPayload {
                 values[column] = .text(field)
             }
             return PayloadRow(values: values)
+        }
+    }
+
+    private static func csvRecords(in text: String) throws -> [[String]] {
+        let dialect = DelimitedDialect()
+        let reader = DelimitedFieldReader(dialect: dialect)
+        return try Array(text.utf8).withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return [] }
+            let index = try DelimitedRowIndexer.index(buffer, dialect: dialect, contentStart: 0)
+            return (0..<index.rowCount).map { reader.fields(in: base, range: index.range(ofRow: $0)) }
         }
     }
 
@@ -125,54 +135,5 @@ nonisolated enum RowPayload {
             return number.boolValue ? "true" : "false"
         }
         return number.stringValue
-    }
-}
-
-nonisolated enum CSVRecordParser {
-    static func parse(_ text: String) -> [[String]] {
-        var records: [[String]] = []
-        var record: [String] = []
-        var field = ""
-        var inQuotes = false
-        let characters = Array(text)
-        var index = 0
-
-        while index < characters.count {
-            let character = characters[index]
-            if inQuotes {
-                if character == "\"" {
-                    if index + 1 < characters.count, characters[index + 1] == "\"" {
-                        field.append("\"")
-                        index += 1
-                    } else {
-                        inQuotes = false
-                    }
-                } else {
-                    field.append(character)
-                }
-            } else {
-                switch character {
-                case "\"":
-                    inQuotes = true
-                case ",":
-                    record.append(field)
-                    field = ""
-                case "\n":
-                    record.append(field)
-                    field = ""
-                    records.append(record)
-                    record = []
-                case "\r":
-                    break
-                default:
-                    field.append(character)
-                }
-            }
-            index += 1
-        }
-
-        record.append(field)
-        records.append(record)
-        return records
     }
 }

@@ -43,6 +43,41 @@ enum PrincipalChange {
         case .drop: 4
         }
     }
+
+    func maskingPassword(with placeholder: String) -> PrincipalChange {
+        switch self {
+        case let .create(definition):
+            .create(definition.maskingPassword(with: placeholder))
+        case let .alter(old, new):
+            .alter(
+                old: old.maskingPassword(with: placeholder),
+                new: new.maskingPassword(with: placeholder)
+            )
+        case let .setPassword(ref, password):
+            password.isEmpty ? self : .setPassword(ref: ref, password: placeholder)
+        case .modifyGrants, .drop:
+            self
+        }
+    }
+}
+
+extension PluginPrincipalDefinition {
+    func replacingPassword(with password: String?) -> PluginPrincipalDefinition {
+        PluginPrincipalDefinition(
+            ref: ref,
+            password: password,
+            canLogin: canLogin,
+            attributes: attributes,
+            memberOf: memberOf,
+            connectionLimit: connectionLimit,
+            comment: comment
+        )
+    }
+
+    func maskingPassword(with placeholder: String) -> PluginPrincipalDefinition {
+        guard let password, !password.isEmpty else { return self }
+        return replacingPassword(with: placeholder)
+    }
 }
 
 extension PluginPrincipalRef {
