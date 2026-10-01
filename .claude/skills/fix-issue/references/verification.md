@@ -1,6 +1,6 @@
 # Verification traps
 
-Read this when a `verify.sh` verdict needs interpreting, or before writing a UI test. The usage line is `verify.sh [--root <tree>] [--run <log dir>] [--no-wait] [--offline] <step> [args]`, `verify.sh tail <log> [n]` re-reads a stored log, and `verify.sh parse <log>` re-reads its verdict.
+Read this when a `verify.sh` verdict needs interpreting, or before writing a UI test. The usage line is `verify.sh [--root <tree>] [--run <dir>] [--no-wait] [--offline] <step> [args]`. `--run <dir>` puts logs in `<dir>/logs`. Without `--root`, the root is the checkout the current directory is in, falling back to the one the script lives in. `verify.sh tail <log> [n]` re-reads a stored log, and `verify.sh parse <log>` prints the verdict the live run wrote to `<log>.verdict`, re-deriving it from the log only when no receipt exists.
 
 ## Why the wrapper, always
 
@@ -14,15 +14,23 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 - **`cannot find 'X' in scope` for code you just wrote** means the project was not regenerated.
 - **MemberImportVisibility errors** on a new file that uses `Combine` or `TableProPluginKit` members are real: add the `import`.
 - **SourceKit diagnostics in the editor are noise here** (`No such module 'TablePro'` and the like). Only an `xcodebuild` run counts.
+- **One plugin's scheme is its target name in `project.yml`**, which is not always `<Name>Driver`: `MSSQLDriver`, but `SnowflakeDriverPlugin` and `TrinoDriverPlugin`. `xcodebuild -list -project <tree>/TablePro.xcodeproj` lists them; `verify.sh build <Scheme>` builds one.
+- **`verify.sh plugins` builds the HANA helper first** when the tree has none and Go is installed, since `AllPlugins` otherwise fails on `tablepro-hana-helper has no arm64 slice`.
 - **`scripts/check-pluginkit-abi.sh` has no CI wiring.** For any PluginKit change, `verify.sh abi <merge-base>` is the only check that runs.
 
 ## Unit tests
 
 - **A full `TableProTests` run is never a gate.** It is red on an untouched `main`, because CI skips the suites in `.github/macos-test-quarantine.txt` and a local run does not, and a few more fail on this machine for environment reasons (locale `en_VN`, `NSPasteboard.general`, live network, wall-clock timers). The wrapper mutes both groups. Run only the suites that own the types you changed, plus their neighbours.
 - **Filter by Swift type name.** `-only-testing` matches the type, not the file name, not the `@Suite` display name and not a `@Test` function, and a filter that matches nothing still prints `TEST SUCCEEDED`. Resolve each name with `grep -rn "struct <Suite>\|class <Suite>" TableProTests` and compare the executed count with the number of tests those suites hold.
-- **Zero cases executed** is a wedged host or an empty filter, which the wrapper reports as `INCONCLUSIVE`.
+- **`The test runner hung before establishing connection`**, twice in a row, is a wedged `testmanagerd`, and every later run on the machine hangs the same way for about 14 minutes each. When no `xcodebuild` is running (`pgrep -f Developer/usr/bin/xcodebuild` prints nothing), `kill -9 $(pgrep testmanagerd)` (SIGTERM does not stop it); launchd starts a fresh one on the next run.
+- **Zero cases executed** is a wedged host, an empty filter, or a test target that did not compile. The live run tells the last apart and reports it as `FAIL` with the compile errors; the other two are `INCONCLUSIVE`.
 - **To run one test case**, which the wrapper cannot do because it takes suites, call `xcodebuild ... "-only-testing:TableProTests/<Suite>/<test>()"` yourself with `DEVELOPER_DIR` set and the output redirected to a scratch log. Swift Testing's expectation text is in the result bundle (`xcrun xcresulttool get test-results tests --path <xcresult>`), not in the log.
 - **To decide whether a failing suite is yours**, grep its file for the symbols you changed. Zero references plus a known environment cause is a faster answer than a baseline build.
+
+## Package and iOS tests
+
+- `verify.sh package <Package> [filter]` runs `swift test` in `Packages/<Package>` with the pinned versions. Package test targets such as `TableProMSSQLCoreTests` live inside `Packages/TableProCore`; pass the test type as the filter.
+- `verify.sh ios <Suite>` runs the iOS unit tests on the first available iPhone simulator, generating the iOS project if the tree has none. It needs `TableProMobile/Secrets.xcconfig`, which `worktree.sh` links. Run it when `TableProMobile/` changed, or a file it compiles from `Plugins/` or `Packages/`.
 
 ## UI tests
 
@@ -34,6 +42,7 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 
 ## Lint
 
+- **`lint` is SwiftLint only.** The check of `CLAUDE.md` and `.claude/` against the tree is its own step, `agent-docs`, because a stale reference already on `main` made every code lint red.
 - **Pass file paths, not directories.** `.swiftlint.yml` limits `included:` to `TablePro` and `Packages`, and a directory argument outside it lints nothing while reporting zero violations. The wrapper names any directory it dropped.
 - **Never remove a `swiftlint:disable force_unwrapping`** to satisfy a local run. The CI toolchain differs, and those disables are needed there.
 - **Local `swiftformat` cannot read the repo's `.swiftformat`**, so rely on SwiftLint and on reading the diff.

@@ -1,6 +1,6 @@
 # Lane briefs
 
-The lead hands each lane the path of `.analysis/<branch>/problem.md` (and, for `critic`, `plan.md`), the subsystem in play, and the one section of this file it runs. A lane reads only its own section plus the rules below.
+The lead hands each lane the path of `<tree>/.analysis/<slug>/problem.md` (and, for `critic`, `plan.md`), the subsystem in play, and the one section of this file it runs. A lane reads only its own section plus the rules below.
 
 ## Rules for every lane
 

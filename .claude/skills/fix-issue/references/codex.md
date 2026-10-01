@@ -8,11 +8,11 @@ Codex does not load `CLAUDE.md` or `.claude/rules/` by itself. Before editing, r
 
 ## Tracking and asking
 
-Keep the phases in `update_plan`. Ask with `request_user_input`, recommendation first, and only for the two cases in "Autonomy".
+Keep the phases in the plan or goal tool your session offers, if it offers one, and in `plan.md` either way. Ask with `request_user_input`, recommendation first, and only for the two cases in "Autonomy".
 
 ## Full-mode investigation: subagents
 
-Spawn the lanes with `spawn_agent`, using the project agents in `.codex/agents/`. Launch them in parallel, collect them with `wait_agent`, and `close_agent` each one when you are done with it.
+Spawn the lanes with `spawn_agent`, using the project agents in `.codex/agents/`. Launch them in parallel and collect them with `wait_agent`; end any lane you no longer need with whichever of `close_agent` or `interrupt_agent` the session exposes. Keep the count down: the lanes below, one reviewer per round, and at most six implementers. The first Codex run of this skill spawned more than thirty named subagents for one issue.
 
 | Lane | `agent_type` |
 | --- | --- |
@@ -26,8 +26,12 @@ Each message names the brief to follow (`.claude/skills/fix-issue/references/lan
 
 These agents run in a read-only sandbox, which changes two things:
 
-- **They cannot write report files.** A lane returns its report as its final message, and you save it to `.analysis/<branch>/lanes/<lane>.md` before reading only what the plan needs.
+- **They cannot write report files.** A lane returns its report as its final message, and you save it to `<tree>/.analysis/<slug>/lanes/<lane>.md` before reading only what the plan needs.
 - **They cannot compile a probe.** When a lane says a question needs measuring, run the probe yourself in the scratchpad.
+
+## Parallel implementation
+
+When `SKILL.md` Phase 3 splits a large change, spawn each implementer with the default agent type: the project agents are read-only. Its message names the tree, `plan.md`, and the exact files it owns, and says to edit nothing else, run no build or `verify.sh`, and finish with the list of files it changed. Wait for all of them, then read every diff before verifying.
 
 ## Long commands and the sandbox
 

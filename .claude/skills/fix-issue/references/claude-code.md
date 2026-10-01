@@ -12,6 +12,8 @@ Use `AskUserQuestion`, with your recommendation as the first option. Ask only fo
 
 ## Full-mode investigation: the `Workflow` tool
 
+When `Workflow` is not in your tool list (a subagent session, for one), run each lane as a background `Agent` (general-purpose) with the same brief. The rest of this section still applies.
+
 This skill's instructions are the opt-in the tool requires. Every lane gets the whole brief from `references/lanes.md` and writes its full report to a file, so the script stays small and a failed schema never loses the work. Fill in `SKILL`, `TREE`, `RUN` and `SUBSYSTEM` as absolute values, and drop `research` from `LANES` when the fix is purely internal logic.
 
 ```js
@@ -23,7 +25,7 @@ export const meta = {
 
 const SKILL = '/Users/ngoquocdat/Workspaces/TablePro/.claude/skills/fix-issue'
 const TREE = '/Users/ngoquocdat/Workspaces/TablePro/.claude/worktrees/<slug>'
-const RUN = `${TREE}/.analysis/<branch>`
+const RUN = `${TREE}/.analysis/<slug>`
 const SUBSYSTEM = 'Plugins/DuckDBDriverPlugin/, TablePro/Core/Database/'
 const LANES = ['trace', 'research', 'hunt']
 
@@ -93,7 +95,11 @@ Rules that have cost real runs:
 
 ## Critic
 
-Run the `critic` lane as one background `Agent` (general-purpose), not as a workflow. Critic turns on a large plan have tripped the workflow's stall watchdog on every attempt, and the same brief as an `Agent` finishes. Its prompt names `references/lanes.md`, `plan.md`, and `.analysis/<branch>/lanes/critic.md` as its output file.
+Run the `critic` lane as one background `Agent` (general-purpose), not as a workflow. Critic turns on a large plan have tripped the workflow's stall watchdog on every attempt, and the same brief as an `Agent` finishes. Its prompt names `references/lanes.md`, `plan.md`, and `<tree>/.analysis/<slug>/lanes/critic.md` as its output file.
+
+## Parallel implementation
+
+When `SKILL.md` Phase 3 splits a large change, launch the implementers as background `Agent`s (general-purpose) in one message, or as one `Workflow` with a `parallel()` of agents. Each prompt names the tree, `plan.md`, and the exact files it owns, and says to edit nothing else, run no build or `verify.sh` (two builds in one tree collide), and finish with the list of files it changed. Read every diff when they return, then verify.
 
 ## Long commands
 
@@ -107,7 +113,7 @@ The Bash tool's working directory resets to the main checkout between calls, so 
 gh pr checks <number> --repo TableProApp/TablePro --watch --interval 60
 ```
 
-Run it in the background. It exits when every check has finished, non-zero when one failed. Then `gh pr checks <number>` lists the failures, and `gh run view <run-id> --log-failed` gives the log of each failed job.
+Run it in the background. It exits when every check has finished, non-zero when one failed. A background command stops after two hours; when that happens with checks still queued, follow the runner-backlog rule in Phase 7 rather than re-arming it. Then `gh pr checks <number>` lists the failures, and `gh run view <run-id> --log-failed` gives the log of each failed job.
 
 ## Review: Codex
 
@@ -122,11 +128,11 @@ node "$CODEX" result <job-id>
 ```
 
 - Launch with `--wait` in the background and read `result` once when you are re-invoked.
-- Run `review` every round. Add `adversarial-review` in Full mode, on the first round, because it attacks the design rather than the lines. Never run the two at once. Use `--base main` instead of `--scope working-tree` once the work is committed.
+- Run `review` every round. Add `adversarial-review` in Full mode, on the first round, because it attacks the design rather than the lines. Never run the two at once; each takes about 25 minutes on a large diff, so start the first as soon as the diff is complete. Use `--base main` instead of `--scope working-tree` once the work is committed.
 - **Read the findings from `result`, never from stdout.** A `--wait` run prints only reasoning headlines whether it succeeded or died, and it exits 0 either way. `status` says whether the job finished and gives its verdict. `result` has the findings, with `file:line`.
 - `/codex:review` and `/codex:adversarial-review` only run when the user types them, so call the script.
 - **When Codex cannot review** (`status` shows a failure: CLI missing, out of credits, usage limit), fall back to `Skill(code-review)` and say so in the PR and the report. A run that died still leaves its reasoning headlines in the job log that `status` names. Grep them for bug, risk and mismatch, and check each lead against the code. An authentication or setup error goes back to the user with `/codex:setup`.
-- Add `Skill(security-review)` when the change touches a security boundary (list in `SKILL.md`, Phase 5). It reads the branch diff from git, so run it once the diff is complete.
+- **The security pass** (when the change touches a boundary listed in `SKILL.md` Phase 5) runs as a background `Agent`, not as `Skill(security-review)`: that skill reads the session's own checkout, which is the main checkout and not the tree. Tell the agent to review `git -C <tree> diff origin/main...HEAD` for injection, credential exposure, authorization and unsafe execution, and to report only high or medium findings with a concrete exploit scenario.
 
 ## Screenshots
 

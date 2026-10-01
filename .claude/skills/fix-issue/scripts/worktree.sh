@@ -46,7 +46,7 @@ prune_merged() {
         || { echo "could not list pull requests; nothing removed" >&2; exit 1; }
     cwds="$(lsof -a -d cwd -Fn 2> /dev/null | sed -n 's/^n//p')"
 
-    while IFS=$'\t' read -r dir branch; do
+    while IFS=$'\t' read -r dir branch <&3; do
         case "$dir" in "$WORKTREE_HOME"/*) ;; *) continue ;; esac
         grep -qxF -- "$branch" <<< "$finished" || continue
         if [ -n "$(git -C "$dir" status --porcelain 2> /dev/null)" ]; then
@@ -71,7 +71,7 @@ prune_merged() {
         git -C "$MAIN_ROOT" worktree remove "$dir" || { echo "kept, git refused: $dir"; continue; }
         [ -n "$derived" ] && rm -rf "$derived"
         echo "removed: $dir${derived:+ and $derived}"
-    done < <(git -C "$MAIN_ROOT" worktree list --porcelain | awk '
+    done 3< <(git -C "$MAIN_ROOT" worktree list --porcelain | awk '
         /^worktree / { dir = substr($0, 10) }
         /^branch /   { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch); print dir "\t" branch }')
 
@@ -124,6 +124,7 @@ link() {
 # used to be linked instead, so every fresh worktree failed with "Unable to open base
 # configuration reference file" until it was linked by hand.
 link "$MAIN_ROOT/Configs/Secrets.xcconfig" "$DIR/Configs/Secrets.xcconfig"
+link "$MAIN_ROOT/TableProMobile/Secrets.xcconfig" "$DIR/TableProMobile/Secrets.xcconfig"
 mkdir -p "$DIR/Libs"
 for archive in "$MAIN_ROOT"/Libs/*.a; do
     [ -e "$archive" ] && ln -sf "$archive" "$DIR/Libs/$(basename "$archive")"
@@ -142,7 +143,7 @@ missing=""
 [ -e "$DIR/Configs/Secrets.xcconfig" ] || missing="$missing Configs/Secrets.xcconfig"
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
 [ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
-[ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin"
+[ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin (verify.sh plugins builds it)"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
 ls "$DIR"/Libs/ios/*.xcframework > /dev/null 2>&1 || missing="$missing Libs/ios/*.xcframework"
 if [ -n "$missing" ]; then

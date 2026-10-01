@@ -58,8 +58,8 @@ Never do these, even inside an authorized run: force-push, rewrite published his
    .claude/skills/fix-issue/scripts/worktree.sh --prune-merged   # reclaim trees whose PRs are merged or closed
    .claude/skills/fix-issue/scripts/worktree.sh <type>/<slug>    # prints the new tree's path
    ```
-   The new tree starts from a fresh `origin/main` and has the untracked libraries and secrets linked. From here on, every command runs in it: `git -C <tree>`, `verify.sh --root <tree> --no-wait`. The main checkout is left alone, including whatever is uncommitted there.
-3. **Write the problem statement** to `<tree>/.analysis/<branch>/problem.md` (the folder is gitignored and survives a context compaction or a usage limit): what happens, what should happen, the smallest reproduction, and the environment (database, macOS, app version). A code pointer from the reporter is a hint to check, not a fact.
+   The new tree starts from a fresh `origin/main` and has the untracked libraries and secrets linked, but no generated project yet, so run `generate` (Phase 4) next. From here on, everything runs in the tree, including the tree's own copy of this skill's scripts, which cannot change under the run: `git -C <tree>`, `<tree>/.claude/skills/fix-issue/scripts/verify.sh --root <tree> --no-wait`. The main checkout is left alone, including whatever is uncommitted there.
+3. **Write the problem statement** to `<tree>/.analysis/<slug>/problem.md`, where `<slug>` is the branch name with `/` turned into `-`, the same folder `verify.sh` writes its logs to. It is gitignored and survives a context compaction or a usage limit. The statement says what happens, what should happen, the smallest reproduction, and the environment (database, macOS, app version). A code pointer from the reporter is a hint to check, not a fact.
 4. **Choose the mode.**
 
 ### Mode
@@ -76,17 +76,19 @@ Both modes answer the same three questions. Full mode splits them across lanes.
 
 - **Cause.** Which code path does the reported scenario actually take? When several paths reach the behaviour (buffered or streaming, grid or export, one engine or another), prove which one from the dispatch code. Separate the mechanism from the symptom, then find the blast radius: every input, type, state, engine and sibling surface the same cause reaches. The fix covers all of them.
 - **Correct behaviour.** For UI and interaction, quote the HIG rule and name the documented AppKit or SwiftUI API, checked against the SDK `.swiftinterface` and the macOS 13 deployment target. For a driver or dependency, the source is the vendored header and the library we ship. For a new feature or a changed interaction, also check how comparable clients behave. `references/research-sources.md` says where to look.
-- **Related defects.** What else is broken in the code this fix touches, and where else the same cause or pattern lives: sibling plugins, `TableProMobile`, `scripts/`. Only real defects with a concrete failure scenario count. Naming and taste do not.
+- **Related defects.** What else is broken in the code this change touches, and where else the same cause or pattern lives: sibling plugins, `TableProMobile`, `scripts/`. Only real defects with a concrete failure scenario count. Naming and taste do not.
+
+**The scope boundary.** A verified defect ships in this PR when it sits in code the change touches, or shares its root cause or pattern, anywhere in the repo. A pre-existing defect outside that code, which surfaced only because a lane or a reviewer followed a tangent, does not: it goes under "Known issues" in the PR body with its evidence. That boundary is what keeps one issue from becoming a 278-file PR.
 
 In Full mode, run the lanes `trace` (cause), `research` (correct behaviour, skipped for purely internal logic) and `hunt` (related defects). Their briefs are in `references/lanes.md`. Each lane returns a short digest and leaves its full report where your harness file says, so reports never flood your context. Open the parts your plan depends on.
 
-**Verify every related-defect finding before it enters scope**, because everything verified ships. Read the cited code, check that nothing upstream already prevents the failure, and check that the path is reachable in the shipping app. In Full mode the `verify` lane does this for the whole list at once. Drop what does not survive, and keep the reason.
+**Verify every related-defect finding before it enters scope**, because everything verified inside the boundary ships. Read the cited code, check that nothing upstream already prevents the failure, and check that the path is reachable in the shipping app. In Full mode the `verify` lane does this for the whole list at once. Drop what does not survive, and keep the reason.
 
 **Measure, do not assume.** When the fix rests on how a C library, a binary dependency or a system framework actually behaves, write a probe and run it against what we ship: C compiled against `Libs/*.a` and the vendored header, a `swiftc` harness, or a query through the vendored CLI. An unmeasured claim is a hypothesis, including a lane's confident one and your own. Probes live in the scratchpad. A probe that settles a fact the code then hard-codes by hand gets committed as a `scripts/check-*.sh`, in the shape of `scripts/check-pluginkit-abi.sh`.
 
 ## Phase 2: Plan
 
-Write `<tree>/.analysis/<branch>/plan.md`, aiming for under 80 lines:
+Write `<tree>/.analysis/<slug>/plan.md`, aiming for under 80 lines. Open it with a short progress log (which phase, which lanes have reported) and keep it current from Phase 1 on. Then:
 
 - **Root cause**, stated as a mechanism.
 - **Refactor or patch**, with the reason. Refactor when the current shape cannot express the correct behaviour without a special case, when the bug comes from a wrong model (a boolean where the state has several values, logic in a view that belongs in a model), or when patching the reported case leaves the same class of bug alive. Patch when the design is sound and the mistake is local. Never ship a symptom patch because the refactor is more work.
@@ -103,9 +105,11 @@ In Full mode, have the `critic` lane attack the plan: where it fights existing p
 
 - When the change is visible on screen, build the fresh tree and capture the "before" shots first (see Phase 6). That build also warms the tree's DerivedData for every later one.
 - Follow the plan's order and do the refactor it calls for.
+- **A large change may be implemented in parallel.** When the plan spans areas that share no files (drivers, UI, sync, iOS), split the implementation across up to six subagents. Each one owns a disjoint list of files written into `plan.md`, edits only those, runs no build, and reports the files it changed. You read every diff, integrate, verify, and stage exactly that union. Your harness file says how to launch them. A change inside one area is implemented by you.
 - After adding, moving or deleting a source file, or editing `project.yml`, run `verify.sh generate` before building. Otherwise a file the project never picked up shows as `cannot find 'X' in scope` in its callers.
 - Apply CLAUDE.md's mandatory rules while you write, not as cleanup afterwards. The ones most often missed:
-  - **CHANGELOG**: one fragment per user-visible change under `[Unreleased]`, in the section that already exists, naming the bug and not the fix. Each bundled defect a user could hit gets its own entry. After any edit, `grep -n '^## \[' CHANGELOG.md` must still list every released heading.
+  - **CHANGELOG**: one fragment per thing a user would notice, under `[Unreleased]`, in the section that already exists, naming the bug and not the fix. Defects with the same visible symptom share an entry, so a bundled PR has a handful of entries, not one per defect. After any edit, `grep -n '^## \[' CHANGELOG.md` must still list every released heading.
+  - **Localization**: the catalog is part of the change when the change adds strings. Plugin messages go in with `scripts/localization.py plugins --add`, and `verify.sh l10n` is the check CI runs.
   - **Docs**: read `docs/STYLE.md` before writing a page, write docs last, then run `verify.sh docs`.
   - **Tests**: no top-level `@Suite` without a trait in `TableProTests`. UI suites subclass `UITestCase`.
   - **Competitors are research only.** Never name TablePlus or any other client in code, commits, the PR, CHANGELOG or docs.
@@ -113,34 +117,39 @@ In Full mode, have the `critic` lane attack the plan: where it fights existing p
 
 ## Phase 4: Verify
 
-Build, test and lint it yourself, and run every step through the wrapper. It keeps the full log on disk and prints about thirty lines ending in `PASS`, `FAIL` or `INCONCLUSIVE`, with exit code 0, 1 or 2. Put `--root <tree> --no-wait` before the step.
+Build, test and lint it yourself, and run every step through the wrapper. It keeps the full log on disk, prints about thirty lines ending in `PASS`, `FAIL` or `INCONCLUSIVE` (exit 0, 1 or 2), names the `root:` it verified, and writes the verdict beside the log as `<log>.verdict`. Check that `root:` is your tree.
 
 ```bash
-.claude/skills/fix-issue/scripts/verify.sh generate
-.claude/skills/fix-issue/scripts/verify.sh build
-.claude/skills/fix-issue/scripts/verify.sh test <SuiteType> [SuiteType...]
-.claude/skills/fix-issue/scripts/verify.sh uitest <SuiteType> [SuiteType...]
-.claude/skills/fix-issue/scripts/verify.sh plugins            # Plugins/ changed
-.claude/skills/fix-issue/scripts/verify.sh abi <merge-base>   # TableProPluginKit changed
-.claude/skills/fix-issue/scripts/verify.sh lint <file> [file...]
-.claude/skills/fix-issue/scripts/verify.sh docs               # docs/ changed
+V="<tree>/.claude/skills/fix-issue/scripts/verify.sh --root <tree> --no-wait"
+$V generate                      # new tree, new or moved files, project.yml
+$V build
+$V test <SuiteType> [SuiteType...]
+$V uitest <SuiteType> [SuiteType...]
+$V package <Package> [filter]    # Packages/<Package> changed: swift test
+$V ios <SuiteType> [SuiteType...] # TableProMobile or a file it shares changed
+$V plugins                       # Plugins/ changed
+$V abi <merge-base>              # TableProPluginKit changed; compares commits, so commit first
+$V lint <file> [file...]         # the changed .swift files
+$V l10n                          # user-facing strings or plugin messages changed
+$V docs                          # docs/ changed
+$V agent-docs                    # CLAUDE.md, AGENTS.md or .claude/ changed
 ```
 
 - **Verify in batches.** Finish a coherent set of edits, then build once and run the suites together. After a failure, fix it and re-run only the failed step. Past runs averaged 29 builds and test runs each, most of them after one-line edits.
 - **Pick suites by the types you changed**, not by the test files you edited. `grep -rl <TypeName> TableProTests` names the suites that will judge a shared model you never opened. Pass Swift type names: a filter naming a file or a test function runs nothing and still looks green, so check the executed count is plausible.
-- **`INCONCLUSIVE` is the environment** (a wedged host, a locked build database, the network), never a pass and never a reason to debug your code. Re-run it, and state it if it persists.
+- **`INCONCLUSIVE` is the environment** (a wedged test daemon, a locked build database, the network), never a pass and never a reason to debug your code. `references/verification.md` has the remedy for each; apply it, re-run, and state it if it persists.
 - **Show the new test failing on the old code when that is cheap**: revert just the fix hunk, run that suite, reapply.
 - When a verdict needs interpreting, read `references/verification.md` for the known traps.
 
 ## Phase 5: Review
 
-Have the complete diff reviewed by a model that did not write it: fix, bundled defects, tests and docs together. Your harness file names the reviewer. Add a security pass when the change touches credentials, the keychain, SQL construction, query execution, plugin loading, MCP or AI permissions, or sync. Add the PluginKit ABI pass when the kit changed.
+Have the complete diff reviewed by a model that did not write it: fix, bundled defects, tests and docs together. Your harness file names the reviewer. In Full mode the first round also runs an adversarial pass that attacks the design rather than the lines. Add a security pass when the change touches credentials, the keychain, SQL construction, query execution, plugin loading, MCP or AI permissions, or sync. Add the PluginKit ABI pass when the kit changed.
 
-Act on the findings without asking. Fix what is real, and note why a finding does not apply. Re-run the affected verify steps, then review again. Stop after three review rounds: whatever is still open after the third goes into the PR body under "Known issues" with its evidence, and the PR ships with everything else. Do not cut scope to escape the loop.
+Act on the findings without asking. Fix what is real and inside the scope boundary, note why a finding does not apply, and put a real finding about pre-existing behaviour outside the touched code under "Known issues". Re-run the affected verify steps, then review again. Stop after three review rounds: whatever is still open after the third goes into the PR body under "Known issues" with its evidence, and the PR ships with everything else. Do not cut scope to escape the loop.
 
 ## Phase 6: Ship
 
-1. **Stage explicit file paths**, never `git add -A`, `.` or a directory. Leave `Localizable.xcstrings` and `InfoPlist.xcstrings` out unless your change is what moved them. Compare `git -C <tree> diff --cached --stat` with the files you changed: nothing missing, nothing foreign.
+1. **Stage explicit file paths**, never `git add -A`, `.` or a directory. Stage `Localizable.xcstrings` or `InfoPlist.xcstrings` only for the keys your change added. Compare `git -C <tree> diff --cached --stat` with the files you changed: nothing missing, nothing foreign.
 2. **Style gate**: run CLAUDE.md's banned-word and em-dash grep over the staged diff and over the PR body file. Rewrite every hit on an added line.
 3. **Commit, then push in a separate call.**
    - Run `git -C <tree> branch --show-current` in its own call first. A chained `commit && push` has pushed straight to `main` before.
@@ -153,6 +162,7 @@ Act on the findings without asking. Fix what is real, and note why a finding doe
    - The tests and the verification verdicts, and any flow left without UI automation, with the reason.
    - Before and after screenshots when the change is visible on screen.
    - Known issues, when the review cap left any.
+   - When a registry-only plugin changed: which ones, their `plugin-<slug>-v*` tags, and that each needs its own release after merge (see CLAUDE.md "Plugin CI"). Bundled plugins ride with the next app release.
 
 **Screenshots** only when the change is visible (a pane, dialog, toolbar, menu, cell or empty state):
 
@@ -160,6 +170,7 @@ Act on the findings without asking. Fix what is real, and note why a finding doe
 - Look at every shot before using it: the right state, the right appearance, no stray dialog left open.
 - Upload with `gh pr create --attach './before.png#Before'`, referenced from the body as `![Before](./before.png)`. Never tell the user to add images by hand.
 - Reuse the same shots as `docs/images/<name>.png` and `-dark.png` when a docs page shows that surface.
+- A sandboxed Debug build cannot load a registry-only plugin, so a surface that appears only with one cannot be captured there. Say so instead.
 - When capture is truly impossible, name the pending state in the PR body and move on.
 
 ## Phase 7: Land
@@ -169,6 +180,7 @@ A PR that is red or conflicted is not done, and fixing it later has cost more th
 - **A check this PR broke**: fix it, re-verify locally, and push a new commit.
 - **A merge conflict**: `git -C <tree> fetch origin main && git -C <tree> merge origin/main`, resolve it, re-verify, push. Never rebase or force-push a pushed branch.
 - **A check that is not this PR's** (red on `main` too, a quarantined suite, a runner fault): leave it and say so in the report.
+- **A check still queued after 45 minutes with no job started** is a runner backlog: stop watching and report it.
 
 Stop after two rounds of CI fixes. Whatever is still red then goes into the report with the failing job's link. Never merge the PR: that is the user's call.
 
