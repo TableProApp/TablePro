@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProSQLGrammar
 
 /// A store that describes some part of a connection's catalog and can bring that part up to date.
 @MainActor
@@ -36,14 +37,17 @@ final class CatalogChangeService {
     private let targets: [any CatalogChangeTarget]
     private let adoption: CatalogEditAdoption
     private let isSessionLive: @MainActor (UUID) -> Bool
+    private let startupCommands: @MainActor (UUID) -> String?
 
     private var pendingChanges: [UUID: CatalogChange] = [:]
+    private var nameHazards: [UUID: TableNameHazards] = [:]
     private var drains: [UUID: Task<Void, Never>] = [:]
 
     init(
         targets: [any CatalogChangeTarget]? = nil,
         adoption: CatalogEditAdoption? = nil,
-        isSessionLive: (@MainActor (UUID) -> Bool)? = nil
+        isSessionLive: (@MainActor (UUID) -> Bool)? = nil,
+        startupCommands: (@MainActor (UUID) -> String?)? = nil
     ) {
         self.targets = targets ?? [
             SchemaRefreshService.shared,
@@ -55,6 +59,9 @@ final class CatalogChangeService {
         self.isSessionLive = isSessionLive ?? { connectionId in
             guard let session = DatabaseManager.shared.session(for: connectionId) else { return false }
             return Self.acceptsChanges(from: session)
+        }
+        self.startupCommands = startupCommands ?? { connectionId in
+            DatabaseManager.shared.session(for: connectionId)?.connection.startupCommands
         }
     }
 
@@ -84,6 +91,8 @@ final class CatalogChangeService {
         switch event {
         case .statementsRan(_, let statements, let databaseType):
             recordStatements(statements, databaseType: databaseType, connectionId: connectionId)
+        case .statementsSucceeded(let succeeded):
+            recordCommittedTableEdits(of: succeeded)
         case .transactionEnded:
             schedule(CatalogChange(connectionId: connectionId, kinds: Self.transactionEndKinds))
         case .tablesDropped(let refs, _):
@@ -114,6 +123,7 @@ final class CatalogChangeService {
     }
 
     private func recordStatements(_ statements: [String], databaseType: DatabaseType, connectionId: UUID) {
+        recordNameHazards(of: statements, databaseType: databaseType, connectionId: connectionId)
         let effect = CatalogChangeClassifier.effect(ofStatements: statements, databaseType: databaseType)
         var kinds = effect.kinds
         if effect.endsTransaction {
@@ -121,6 +131,54 @@ final class CatalogChangeService {
         }
         guard !kinds.isEmpty else { return }
         schedule(CatalogChange(connectionId: connectionId, kinds: kinds))
+    }
+
+    /// A table dropped or renamed by SQL the user or an MCP client ran is adopted exactly as the
+    /// sidebar's own Drop and Rename are, one edit at a time in the order they ran, so a rename
+    /// chain and a drop of a name another statement just freed both land on the right table.
+    private func recordCommittedTableEdits(of succeeded: SucceededStatements) {
+        let connectionId = succeeded.scope.connectionId
+        recordNameHazards(
+            of: DatabaseManager.startupStatements(from: startupCommands(connectionId)),
+            databaseType: succeeded.databaseType,
+            connectionId: connectionId
+        )
+        let grammar = SQLLexicalResolver.executionGrammar(for: succeeded.databaseType, connectionId: connectionId)
+        var hazards = nameHazards[connectionId] ?? TableNameHazards()
+        let edits = CommittedTableEdits.edits(in: succeeded, grammar: grammar, hazards: &hazards)
+        nameHazards[connectionId] = hazards
+        guard !edits.isEmpty else { return }
+        Self.logger.debug(
+            "[catalog] adopting \(edits.count) table edit(s) from SQL connId=\(connectionId, privacy: .public)"
+        )
+        for edit in edits {
+            switch edit {
+            case .dropped(let table, let kind):
+                recordDroppedTables(
+                    [adoption.tableRef(for: table, kind: kind, connectionId: connectionId)],
+                    connectionId: connectionId
+                )
+            case .renamed(let table, let newName, let kind):
+                recordRenamedTable(
+                    adoption.tableRef(for: table, kind: kind, connectionId: connectionId),
+                    to: newName,
+                    connectionId: connectionId
+                )
+            }
+        }
+    }
+
+    /// Read from every statement that may have run, failed ones included, because a procedure that
+    /// failed part way can have created a temporary table first. That includes the connection's
+    /// startup commands, which run on every connect before anything here hears of the session.
+    private func recordNameHazards(of statements: [String], databaseType: DatabaseType, connectionId: UUID) {
+        guard let dialect = TableEditDialect.of(databaseType) else { return }
+        let grammar = SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+        var hazards = nameHazards[connectionId] ?? TableNameHazards()
+        for statement in statements {
+            hazards.record(TableEditStatementParser.parse(statement, dialect: dialect, grammar: grammar), dialect: dialect)
+        }
+        nameHazards[connectionId] = hazards
     }
 
     private func recordDroppedTables(_ refs: [DatabaseTreeTableRef], connectionId: UUID) {

@@ -350,6 +350,9 @@
         }
       }
     },
+    "Use Saved Mapping" : {
+
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -3508,6 +3511,9 @@
     "%@ loses its default" : {
 
     },
+    "%@ mapped more than once" : {
+
+    },
     "%@ matches" : {
 
     },
@@ -5968,6 +5974,9 @@
     "%1$@: %2$@ had no column of that name on the destination." : {
 
     },
+    "%1$@: more than one source column is mapped to %2$@." : {
+
+    },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
 
     },
@@ -6589,6 +6598,9 @@
       }
     },
     "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
+    "%@ can only be compared with a whole number." : {
 
     },
     "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
@@ -9857,6 +9869,12 @@
         }
       }
     },
+    "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor." : {
+
+    },
+    "'%@' is not a valid regular expression." : {
+
+    },
     "•" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12718,6 +12736,12 @@
       }
     },
     "A quote or parenthesis in this filter is not closed." : {
+
+    },
+    "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
+
+    },
+    "A record's id cannot be edited." : {
 
     },
     "A row with this key already exists" : {
@@ -19886,6 +19910,9 @@
       }
     },
     "Another profile already has this name." : {
+
+    },
+    "Another source column is mapped to the same destination column." : {
 
     },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
@@ -30322,40 +30349,6 @@
         }
       }
     },
-    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > Linked Folders to see published connections." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > 연결된 폴더에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > Bağlı Klasörler altına ekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > Thư mục liên kết để xem các kết nối đã xuất bản."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > 关联文件夹”中添加此文件夹即可看到已发布的连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > 連結資料夾」中加入此資料夾即可看到已發佈的連線。"
-          }
-        }
-      }
-    },
     "Choose a source and a target first." : {
       "localizations" : {
         "ko" : {
@@ -30945,6 +30938,40 @@
     },
     "Choose Value" : {
 
+    },
+    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > %1$@ > %2$@에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > %1$@ > %2$@ altına ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > %1$@ > %2$@ để xem các kết nối đã xuất bản."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > %1$@ > %2$@”中添加此文件夹即可看到已发布的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > %1$@ > %2$@」中加入此資料夾即可看到已發佈的連線。"
+          }
+        }
+      }
     },
     "Choose what happens to them when the role is dropped." : {
       "localizations" : {
@@ -32678,6 +32705,9 @@
           }
         }
       }
+    },
+    "ClickHouse returned HTTP %lld." : {
+
     },
     "Client" : {
       "localizations" : {
@@ -57284,6 +57314,9 @@
     "Each database is written to its own file." : {
 
     },
+    "Each destination column can be mapped from only one source column." : {
+
+    },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
 
     },
@@ -59494,6 +59527,9 @@
         }
       }
     },
+    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
+
+    },
     "encoding: %@" : {
       "localizations" : {
         "ko" : {
@@ -59989,6 +60025,9 @@
       }
     },
     "Enter a value for the primary key column %@." : {
+
+    },
+    "Enter at least one value to filter with %@." : {
 
     },
     "Enter table name" : {
@@ -85165,6 +85204,9 @@
         }
       }
     },
+    "Lease can only be compared with a lease ID, such as 0x7b." : {
+
+    },
     "Leave blank to connect without authentication. The password is stored in the macOS Keychain." : {
       "localizations" : {
         "ko" : {
@@ -90983,6 +91025,9 @@
         }
       }
     },
+    "Match by Position" : {
+
+    },
     "Match case exactly" : {
       "localizations" : {
         "ko" : {
@@ -91016,6 +91061,9 @@
           }
         }
       }
+    },
+    "Match Columns" : {
+
     },
     "Match System" : {
       "comment" : "Text for a sidebar row size preference that matches the system's sidebar row size.",
@@ -99544,6 +99592,9 @@
         }
       }
     },
+    "No Favorites in This %@" : {
+
+    },
     "No favorites match the selected environment." : {
       "localizations" : {
         "ko" : {
@@ -106583,6 +106634,12 @@
         }
       }
     },
+    "Publish %d connections to your team?" : {
+
+    },
+    "Publish “%@” to your team?" : {
+
+    },
     "SAP HANA did not return the table definition." : {
 
     },
@@ -106593,6 +106650,9 @@
 
     },
     "SAP's in-memory SQL database" : {
+
+    },
+    "SurrealDB cannot filter rows with %@." : {
 
     },
     "TLS Server Name" : {
@@ -108531,6 +108591,9 @@
           }
         }
       }
+    },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -122593,6 +122656,9 @@
     "Reading Tables" : {
 
     },
+    "Reading the file…" : {
+
+    },
     "Reading the source…" : {
 
     },
@@ -128700,6 +128766,9 @@
           }
         }
       }
+    },
+    "Restored the mapping saved for %@." : {
+
     },
     "Restored “%@” from %@" : {
       "localizations" : {
@@ -159115,7 +159184,16 @@
         }
       }
     },
+    "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
+
+    },
+    "The dump is imported into this database, and the change cannot be undone. The import needs an empty database and stops if this one already holds objects." : {
+
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+
+    },
+    "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
 
     },
     "The encrypted file is corrupt or incomplete" : {
@@ -162290,6 +162368,9 @@
     "The table's primary key is not loaded, so the row cannot be written." : {
 
     },
+    "The tables you starred here no longer exist." : {
+
+    },
     "the target" : {
       "localizations" : {
         "ko" : {
@@ -165352,6 +165433,9 @@
           }
         }
       }
+    },
+    "This engine cannot filter that table with those conditions." : {
+
     },
     "This key references a row already shown above" : {
 
@@ -176723,6 +176807,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
 
     },
+    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+
+    },
     "Verify certificate and hostname" : {
       "localizations" : {
         "ko" : {
@@ -181027,6 +181114,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -181854,6 +181944,12 @@
 
     },
     "One row per line (NDJSON)" : {
+
+    },
+    "etcd cannot filter with a raw SQL condition." : {
+
+    },
+    "etcd has no %@ column." : {
 
     },
     "the compressed data is corrupt or was cut short" : {
@@ -183069,6 +183165,15 @@
 
     },
     "Weaviate does not support views." : {
+
+    },
+    "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor." : {
+
+    },
+    "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
+
+    },
+    "Weaviate returned the same page of %@ twice. Reading a whole collection needs Weaviate 1.18 or later." : {
 
     },
     "The first sheet has no header row to map columns from." : {
@@ -184777,6 +184882,9 @@
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
 
     },
+    "This database cannot filter rows with these conditions." : {
+
+    },
     "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {
 
     },
@@ -184793,6 +184901,15 @@
 
     },
     "Next cursor: %@. The scan has not finished." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
+
+    },
+    "etcd cannot filter with %@." : {
 
     }
   },

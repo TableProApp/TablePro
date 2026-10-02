@@ -42,7 +42,8 @@ extension PluginMetadataRegistry {
                     supportsDropSchema: false,
                     defaultSSLMode: .verifyIdentity,
                     supportsOpportunisticTLS: false,
-                    verifiesServerWithSystemTrust: true
+                    verifiesServerWithSystemTrust: true,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",

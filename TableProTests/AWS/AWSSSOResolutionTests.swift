@@ -214,45 +214,79 @@ struct AWSSSOTokenCacheTests {
     }
 }
 
+/// Each session carries its own route header, so cases running in parallel never read each other's
+/// scripted reply or captured request through the shared protocol class.
 private final class AWSSSOStubProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var status: Int = 200
-    nonisolated(unsafe) static var body = Data()
-    nonisolated(unsafe) static var captured: URLRequest?
-    nonisolated(unsafe) static var simulateNetworkError: Bool = false
+    struct Reply {
+        var status = 200
+        var body = Data()
+        var failsWithNetworkError = false
+    }
+
+    final class Route: @unchecked Sendable {
+        let reply: Reply
+        private let lock = NSLock()
+        private var lastRequest: URLRequest?
+
+        init(reply: Reply) {
+            self.reply = reply
+        }
+
+        var captured: URLRequest? {
+            lock.withLock { lastRequest }
+        }
+
+        fileprivate func record(_ request: URLRequest) {
+            lock.withLock { lastRequest = request }
+        }
+    }
+
+    private static let routeHeader = "X-AWSSSO-Test-Route"
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var routes: [String: Route] = [:]
+
+    static func session(for route: Route) -> URLSession {
+        let id = UUID().uuidString
+        lock.withLock { routes[id] = route }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [AWSSSOStubProtocol.self]
+        cfg.httpAdditionalHeaders = [routeHeader: id]
+        return URLSession(configuration: cfg)
+    }
+
+    static func session(replying reply: Reply) -> URLSession {
+        session(for: Route(reply: reply))
+    }
+
+    private static func route(for request: URLRequest) -> Route? {
+        guard let id = request.value(forHTTPHeaderField: routeHeader) else { return nil }
+        return lock.withLock { routes[id] }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.captured = request
-        if Self.simulateNetworkError {
+        guard let route = Self.route(for: request) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
+            return
+        }
+        route.record(request)
+        if route.reply.failsWithNetworkError {
             client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
             return
         }
         guard let url = request.url,
               let resp = HTTPURLResponse(
-                url: url, statusCode: Self.status, httpVersion: "HTTP/1.1",
+                url: url, statusCode: route.reply.status, httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "application/json"]
               )
         else { return }
         client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.body)
+        client?.urlProtocol(self, didLoad: route.reply.body)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
-
-    static func reset() {
-        status = 200
-        body = Data()
-        captured = nil
-        simulateNetworkError = false
-    }
-
-    static func makeSession() -> URLSession {
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.protocolClasses = [AWSSSOStubProtocol.self]
-        return URLSession(configuration: cfg)
-    }
 }
 
 struct AWSSSOFetchTests {
@@ -266,18 +300,17 @@ struct AWSSSOFetchTests {
 
     @Test("200 response: URL host/path/query/header match AWS spec and credentials decode")
     func happyPath() async throws {
-        AWSSSOStubProtocol.reset()
         let exp = Int64(Date().addingTimeInterval(3_600).timeIntervalSince1970 * 1_000)
-        AWSSSOStubProtocol.body = Data(#"""
+        let route = AWSSSOStubProtocol.Route(reply: .init(body: Data(#"""
         {"roleCredentials":{"accessKeyId":"AK","secretAccessKey":"SK","sessionToken":"ST","expiration":\#(exp)}}
-        """#.utf8)
+        """#.utf8)))
 
         let creds = try await AWSSSO.fetchRoleCredentials(
             accessToken: "BEARER", settings: settings, profileName: "p",
-            session: AWSSSOStubProtocol.makeSession()
+            session: AWSSSOStubProtocol.session(for: route)
         )
 
-        let req = try #require(AWSSSOStubProtocol.captured)
+        let req = try #require(route.captured)
         let url = try #require(req.url)
         #expect(req.httpMethod == "GET")
         #expect(url.host == "portal.sso.eu-west-1.amazonaws.com")
@@ -294,77 +327,71 @@ struct AWSSSOFetchTests {
 
     @Test("401 maps to sessionUnauthorized")
     func unauthorized() async throws {
-        AWSSSOStubProtocol.reset()
-        AWSSSOStubProtocol.status = 401
+        let session = AWSSSOStubProtocol.session(replying: .init(status: 401))
         await #expect(throws: AWSSSOError.sessionUnauthorized(profile: "p")) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }
 
     @Test("403 maps to roleNotAccessible carrying role and account")
     func forbidden() async throws {
-        AWSSSOStubProtocol.reset()
-        AWSSSOStubProtocol.status = 403
+        let session = AWSSSOStubProtocol.session(replying: .init(status: 403))
         await #expect(
             throws: AWSSSOError.roleNotAccessible(role: "AWSAdministratorAccess", account: "111111111111")
         ) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }
 
     @Test("5xx maps to portalError with status code")
     func serverError() async throws {
-        AWSSSOStubProtocol.reset()
-        AWSSSOStubProtocol.status = 503
+        let session = AWSSSOStubProtocol.session(replying: .init(status: 503))
         await #expect(throws: AWSSSOError.portalError(profile: "p", status: 503)) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }
 
     @Test("network failure maps to networkFailure")
     func networkFailure() async throws {
-        AWSSSOStubProtocol.reset()
-        AWSSSOStubProtocol.simulateNetworkError = true
+        let session = AWSSSOStubProtocol.session(replying: .init(failsWithNetworkError: true))
         await #expect(throws: AWSSSOError.self) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }
 
     @Test("200 with credentials whose expiration is past throws credentialsAlreadyExpired")
     func credentialsAlreadyExpired() async throws {
-        AWSSSOStubProtocol.reset()
         let pastMs = Int64(Date().addingTimeInterval(-60).timeIntervalSince1970 * 1_000)
-        AWSSSOStubProtocol.body = Data(#"""
+        let session = AWSSSOStubProtocol.session(replying: .init(body: Data(#"""
         {"roleCredentials":{"accessKeyId":"AK","secretAccessKey":"SK","sessionToken":"ST","expiration":\#(pastMs)}}
-        """#.utf8)
+        """#.utf8)))
         await #expect(throws: AWSSSOError.credentialsAlreadyExpired(profile: "p")) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }
 
     @Test("200 with malformed JSON throws responseDecodeFailed")
     func malformedResponse() async throws {
-        AWSSSOStubProtocol.reset()
-        AWSSSOStubProtocol.body = Data("not json".utf8)
+        let session = AWSSSOStubProtocol.session(replying: .init(body: Data("not json".utf8)))
         await #expect(throws: AWSSSOError.responseDecodeFailed(profile: "p")) {
             _ = try await AWSSSO.fetchRoleCredentials(
                 accessToken: "T", settings: settings, profileName: "p",
-                session: AWSSSOStubProtocol.makeSession()
+                session: session
             )
         }
     }

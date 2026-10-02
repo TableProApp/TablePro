@@ -45,6 +45,13 @@ struct EtcdServerTrustTests {
         #expect(refusal(tlsMode: "VerifyCA", caPath: "  ") == .verifyCANeedsCertificate)
     }
 
+    @Test("The Verify CA refusal points at the form section where the CA Certificate field is")
+    func verifyCARefusalNamesTheOptionsTab() throws {
+        let message = try #require(EtcdTLSConfigurationError.verifyCANeedsCertificate.errorDescription)
+        #expect(!message.contains("Advanced"))
+        #expect(message.contains("etcd section of the Options tab"))
+    }
+
     @Test("Verify Identity with no CA certificate checks the system trust store and the hostname")
     func verifyIdentityWithoutCAUsesSystemTrust() throws {
         let trust = try #require(try EtcdServerTrust.make(tlsMode: "VerifyIdentity", caCertificatePath: nil))

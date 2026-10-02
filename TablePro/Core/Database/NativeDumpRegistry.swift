@@ -121,7 +121,8 @@ enum NativeDumpRegistry {
                         A dump of chosen tables may not restore on its own. Sequences, types, schemas \
                         and tables it references are left out.
                         """)
-            )
+            ),
+            restoreSemantics: .addsToExistingObjects
         )
     }
 
@@ -223,7 +224,8 @@ enum NativeDumpRegistry {
                         Views and tables the chosen tables reference are left out. The dump turns \
                         foreign key checks off, so it restores with those references dangling.
                         """)
-            )
+            ),
+            restoreSemantics: .replacesObjects
         )
     }
 
@@ -269,27 +271,22 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install mongodb-database-tools”."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
-                    needsCredentialsFile: true,
                     backupArguments: { request, _ in
-                        mongoConnectionFlags(request) + mongoNamespaceFlags(request) + [
-                            "--gzip",
-                            "--archive=\(request.fileURL.path)"
-                        ]
+                        mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
                     restoreArguments: { request, _ in
-                        mongoConnectionFlags(request) + [
-                            "--nsInclude=\(request.database).*",
-                            "--gzip",
-                            "--archive=\(request.fileURL.path)"
-                        ]
-                    }
+                        NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
+                            + ["--gzip", "--archive=\(request.fileURL.path)"]
+                    },
+                    configurationFileEntries: { request in mongoConfigurationEntries(request) }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
                 fileExtension: "archive",
                 contentDescription: String(localized: "MongoDB gzipped archive")
             ),
-            objectScope: .collections
+            objectScope: .collections,
+            restoreSemantics: .addsToExistingObjects
         )
     }
 
@@ -302,16 +299,19 @@ enum NativeDumpRegistry {
         }
     }
 
-    private static func mongoConnectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        var flags = ["--host=\(request.host)", "--port=\(request.connection.port)"]
-        if !request.connection.username.isEmpty {
-            flags.append("--username=\(request.connection.username)")
-            flags.append("--authenticationDatabase=\(request.connection.database.isEmpty ? "admin" : request.connection.database)")
+    private static func mongoConfigurationEntries(
+        _ request: NativeDumpDescriptor.Request
+    ) -> [NativeDumpDescriptor.ConfigurationEntry] {
+        var entries = [
+            NativeDumpDescriptor.ConfigurationEntry(
+                key: "uri",
+                value: MongoToolsConnectionString.make(for: request.connection, host: request.host)
+            )
+        ]
+        if let password = request.password, !password.isEmpty, !request.connection.username.isEmpty {
+            entries.append(NativeDumpDescriptor.ConfigurationEntry(key: "password", value: password))
         }
-        if request.connection.sslConfig.isEnabled {
-            flags.append("--ssl")
-        }
-        return flags
+        return entries
     }
 
     // MARK: - SQL Server
@@ -356,7 +356,8 @@ enum NativeDumpRegistry {
                         The .bacpac always carries the whole schema. Only the chosen tables' data is \
                         narrowed, and tables they reference by foreign key have to be chosen too.
                         """)
-            )
+            ),
+            restoreSemantics: .requiresEmptyDatabase
         )
     }
 
@@ -420,6 +421,7 @@ enum NativeDumpRegistry {
                 contentDescription: String(localized: "SQL statements")
             ),
             objectScope: .tables(caveat: nil),
+            restoreSemantics: .addsToExistingObjects,
             requiresLocalFile: true
         )
     }
@@ -477,7 +479,8 @@ enum NativeDumpRegistry {
             archiveFormat: duckDBFileFormat,
             objectScope: .unsupported(
                 reason: String(localized: "DuckDB copies the whole database. There is no table filter.")
-            )
+            ),
+            restoreSemantics: .stopsAtExistingObjects
         )
     }
 
@@ -500,7 +503,8 @@ enum NativeDumpRegistry {
             archiveFormat: duckDBParquetFormat,
             objectScope: .unsupported(
                 reason: String(localized: "EXPORT DATABASE writes the whole database. There is no table filter.")
-            )
+            ),
+            restoreSemantics: .stopsAtExistingObjects
         )
     }
 

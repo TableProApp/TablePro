@@ -256,6 +256,16 @@ public extension ExportableConnection {
         return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
     }
 
+    static func shareableAdditionalFields(
+        _ fields: [String: String],
+        excluding excludedKeys: Set<String> = []
+    ) -> [String: String]? {
+        let shareable = fields.filter { key, _ in
+            !excludedKeys.contains(key) && !isImportBlockedAdditionalFieldKey(key)
+        }
+        return shareable.isEmpty ? nil : shareable
+    }
+
     func withoutStartupCommands() -> ExportableConnection {
         guard startupCommands != nil else { return self }
         return ExportableConnection(

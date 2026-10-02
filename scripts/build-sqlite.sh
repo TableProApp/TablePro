@@ -27,7 +27,7 @@ set -euo pipefail
 # symbol, so hiding them costs it nothing.
 #
 # After building, check it and publish it (never regenerate Libs/checksums.sha256 by hand):
-#   scripts/check-sqlite-build.sh
+#   scripts/probes/check-sqlite-build.sh
 #   scripts/publish-libs.sh libsqlite3_vendored_arm64.a libsqlite3_vendored_x86_64.a \
 #       libsqlite3_vendored_universal.a libsqlite3_vendored.a
 
@@ -120,7 +120,7 @@ build_arch() {
     echo "✅ ${LIB_NAME}_$arch.a ($(du -h "$LIBS_DIR/${LIB_NAME}_$arch.a" | cut -f1))"
 }
 
-# sqlite3ext.h is installed beside sqlite3.h for scripts/check-sqlite-build.sh, which builds a
+# sqlite3ext.h is installed beside sqlite3.h for scripts/probes/check-sqlite-build.sh, which builds a
 # test extension against it. The module map names only sqlite3.h, because sqlite3ext.h redefines
 # every sqlite3_ function as a macro through the extension API table.
 install_headers() {
@@ -152,4 +152,4 @@ install_headers
 verify_deployment_target "$LIBS_DIR"/"$LIB_NAME"*.a
 
 echo ""
-echo "🎉 SQLite $SQLITE_VERSION built. Next: scripts/check-sqlite-build.sh"
+echo "🎉 SQLite $SQLITE_VERSION built. Next: scripts/probes/check-sqlite-build.sh"

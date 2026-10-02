@@ -57,16 +57,13 @@ struct SyncChangeTrackerTests {
         #expect(metadata.tombstones(for: .settings).map(\.id).sorted() == ["a", "b"])
     }
 
-    @Test("Marking a deleted record dirty again withdraws its tombstone, so a push never saves and deletes one record")
-    func markDirtyWithdrawsTombstone() {
+    @Test("Marking a deleted record dirty again keeps its tombstone for the push to settle from local truth")
+    func markDirtyKeepsTombstoneForThePush() {
         tracker.markDeleted(.tableFolder, ids: ["restored", "gone"])
         tracker.markDirty(.tableFolder, id: "restored")
 
         #expect(tracker.dirtyRecords(for: .tableFolder) == ["restored"])
-        #expect(metadata.tombstones(for: .tableFolder).map(\.id) == ["gone"])
-
-        tracker.markDirty(.tableFolder, ids: ["gone"])
-        #expect(metadata.tombstones(for: .tableFolder).isEmpty)
+        #expect(Set(metadata.tombstones(for: .tableFolder).map(\.id)) == ["restored", "gone"])
     }
 
     @Test("markDeleted with an empty id list records nothing")

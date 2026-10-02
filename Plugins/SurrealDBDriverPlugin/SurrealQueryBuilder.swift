@@ -28,7 +28,31 @@ public struct SurrealScope: Equatable, Sendable {
     }
 }
 
+public struct SurrealFilterRefusal: Error, Equatable, Sendable {
+    public let message: String
+
+    public static let incompleteRange = SurrealFilterRefusal(
+        message: String(localized: "Enter both bounds to filter with BETWEEN.")
+    )
+
+    public static let rawConditionNotReadOnly = SurrealFilterRefusal(
+        message: String(
+            localized: "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor."
+        )
+    )
+
+    public static func unsupportedOperator(_ op: String) -> SurrealFilterRefusal {
+        SurrealFilterRefusal(message: String(format: String(localized: "SurrealDB cannot filter rows with %@."), op))
+    }
+
+    public var statement: String {
+        "THROW " + SurrealQL.stringLiteral(message) + ";"
+    }
+}
+
 public enum SurrealQueryBuilder {
+    public static let rawFilterColumn = "__RAW__"
+
     public static func browse(
         table: String,
         scope: SurrealScope,
@@ -42,32 +66,40 @@ public enum SurrealQueryBuilder {
     public static func filtered(
         table: String,
         scope: SurrealScope,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(column: String, ascending: Bool)],
         limit: Int,
         offset: Int,
         columnKinds: [String: PluginColumnKind] = [:]
     ) -> String {
-        let clause = whereClause(filters: filters, logicMode: logicMode, columnKinds: columnKinds)
-        return compose(
-            scope: scope,
-            statement: select(table: table, where: clause, sortColumns: sortColumns, limit: limit, offset: offset)
-        )
+        do throws(SurrealFilterRefusal) {
+            let clause = try whereClause(filters: filters, logicMode: logicMode, columnKinds: columnKinds)
+            return compose(
+                scope: scope,
+                statement: select(table: table, where: clause, sortColumns: sortColumns, limit: limit, offset: offset)
+            )
+        } catch {
+            return compose(scope: scope, statement: error.statement)
+        }
     }
 
     public static func count(
         table: String,
         scope: SurrealScope,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String
     ) -> String {
-        var statement = "SELECT count() AS total FROM " + SurrealQL.quoteIdentifier(table)
-        if let clause = whereClause(filters: filters, logicMode: logicMode) {
-            statement += " WHERE " + clause
+        do throws(SurrealFilterRefusal) {
+            var statement = "SELECT count() AS total FROM " + SurrealQL.quoteIdentifier(table)
+            if let clause = try whereClause(filters: filters, logicMode: logicMode) {
+                statement += " WHERE " + clause
+            }
+            statement += " GROUP ALL;"
+            return compose(scope: scope, statement: statement)
+        } catch {
+            return compose(scope: scope, statement: error.statement)
         }
-        statement += " GROUP ALL;"
-        return compose(scope: scope, statement: statement)
     }
 
     public static func sample(table: String, scope: SurrealScope, limit: Int) -> String {
@@ -112,20 +144,27 @@ public enum SurrealQueryBuilder {
     }
 
     public static func whereClause(
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         columnKinds: [String: PluginColumnKind] = [:]
-    ) -> String? {
-        let conditions = filters.compactMap { condition($0, kind: columnKinds[$0.column]) }
+    ) throws(SurrealFilterRefusal) -> String? {
+        var conditions: [String] = []
+        for filter in filters {
+            guard let condition = try condition(filter, kind: columnKinds[filter.column]) else { continue }
+            conditions.append(condition)
+        }
         guard !conditions.isEmpty else { return nil }
         let separator = logicMode.lowercased() == "or" ? " OR " : " AND "
         return conditions.joined(separator: separator)
     }
 
     private static func condition(
-        _ filter: (column: String, op: String, value: String),
+        _ filter: PluginQueryFilter,
         kind: PluginColumnKind?
-    ) -> String? {
+    ) throws(SurrealFilterRefusal) -> String? {
+        if filter.column == rawFilterColumn {
+            return try SurrealRawCondition.parenthesized(filter.value)
+        }
         guard !filter.column.isEmpty else { return nil }
         let column = SurrealQL.quoteIdentifier(filter.column)
         let op = filter.op.uppercased().trimmingCharacters(in: .whitespaces)
@@ -136,6 +175,10 @@ public enum SurrealQueryBuilder {
             return "(\(column) = NONE OR \(column) = NULL)"
         case "IS NOT NULL":
             return "(\(column) != NONE AND \(column) != NULL)"
+        case "IS EMPTY":
+            return "(\(column) = NONE OR \(column) = NULL OR \(column) = '')"
+        case "IS NOT EMPTY":
+            return "(\(column) != NONE AND \(column) != NULL AND \(column) != '')"
         case "CONTAINS":
             return "string::contains(<string> \(column), \(SurrealQL.stringLiteral(value)))"
         case "NOT CONTAINS":
@@ -144,17 +187,56 @@ public enum SurrealQueryBuilder {
             return "string::starts_with(<string> \(column), \(SurrealQL.stringLiteral(value)))"
         case "ENDS WITH":
             return "string::ends_with(<string> \(column), \(SurrealQL.stringLiteral(value)))"
+        case "REGEX":
+            let match = "string::matches(<string> \(column), \(SurrealQL.stringLiteral(value)))"
+            return "(\(column) != NONE AND \(column) != NULL AND \(match))"
         case "IN":
             return "\(column) INSIDE \(listLiteral(value, kind: kind))"
         case "NOT IN":
             return "\(column) NOTINSIDE \(listLiteral(value, kind: kind))"
+        case "BETWEEN":
+            let bounds = try rangeBounds(filter)
+            let lower = literal(bounds.lower, kind: kind)
+            let upper = literal(bounds.upper, kind: kind)
+            return "(\(column) >= \(lower) AND \(column) <= \(upper))"
         case "=", "!=", ">", ">=", "<", "<=":
             return "\(column) \(op) \(literal(value, kind: kind))"
         case "LIKE":
             return "string::contains(<string> \(column), \(SurrealQL.stringLiteral(unwrapWildcards(value))))"
         default:
-            return "\(column) = \(literal(value, kind: kind))"
+            throw SurrealFilterRefusal.unsupportedOperator(filter.op)
         }
+    }
+
+    private static func rangeBounds(
+        _ filter: PluginQueryFilter
+    ) throws(SurrealFilterRefusal) -> (lower: String, upper: String) {
+        if let upper = filter.secondValue {
+            return try completeRange(lower: lowerBound(of: filter.value, upperBound: upper), upper: upper)
+        }
+        let scalars = filter.value.unicodeScalars
+        guard let separator = scalars.firstIndex(of: ",") else { throw .incompleteRange }
+        return try completeRange(
+            lower: String(scalars[..<separator]),
+            upper: String(scalars[scalars.index(after: separator)...])
+        )
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
+    }
+
+    private static func completeRange(
+        lower: String,
+        upper: String
+    ) throws(SurrealFilterRefusal) -> (lower: String, upper: String) {
+        let lowerBound = lower.trimmingCharacters(in: .whitespaces)
+        let upperBound = upper.trimmingCharacters(in: .whitespaces)
+        guard !lowerBound.isEmpty, !upperBound.isEmpty else { throw .incompleteRange }
+        return (lowerBound, upperBound)
     }
 
     private static func listLiteral(_ value: String, kind: PluginColumnKind?) -> String {

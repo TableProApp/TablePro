@@ -8,9 +8,9 @@ import TableProPluginKit
 import Testing
 
 struct JSONImportPluginTests {
-    private func object(_ json: String) throws -> [String: Any] {
+    private func object(_ json: String) throws -> NSDictionary {
         let parsed = try JSONSerialization.jsonObject(with: Data(json.utf8))
-        return try #require(parsed as? [String: Any])
+        return try #require(parsed as? NSDictionary)
     }
 
     private func anyValue(_ json: String) throws -> Any {
@@ -110,7 +110,7 @@ struct JSONImportPluginTests {
 
     @Test("A JSON object line parses to a row")
     func testNdjsonLine() throws {
-        let row = try JSONImportParsing.parseRow(fromLine: #"{"id":1,"name":"x"}"#)
+        let row = try #require(try JSONImportParsing.parseRow(fromLine: Data(#"{"id":1,"name":"x"}"#.utf8)))
         #expect(row["id"] == .text("1"))
         #expect(row["name"] == .text("x"))
     }
@@ -118,7 +118,27 @@ struct JSONImportPluginTests {
     @Test("A non-object line throws")
     func testNdjsonNonObjectThrows() {
         #expect(throws: PluginImportError.self) {
-            _ = try JSONImportParsing.parseRow(fromLine: "[1, 2, 3]")
+            _ = try JSONImportParsing.parseRow(fromLine: Data("[1, 2, 3]".utf8))
+        }
+    }
+
+    @Test("A line of JSON whitespace is blank, not an error")
+    func testNdjsonBlankLine() throws {
+        #expect(try JSONImportParsing.parseRow(fromLine: Data()) == nil)
+        #expect(try JSONImportParsing.parseRow(fromLine: Data(" \t\r".utf8)) == nil)
+    }
+
+    @Test("A line ending in a carriage return parses")
+    func testNdjsonCarriageReturnLine() throws {
+        let row = try #require(try JSONImportParsing.parseRow(fromLine: Data("{\"id\":1}\r".utf8)))
+        #expect(row["id"] == .text("1"))
+    }
+
+    @Test("A line whose bytes are not UTF-8 throws rather than importing replacement characters")
+    func testNdjsonInvalidUTF8Throws() {
+        let line = Data(#"{"name":""#.utf8) + Data([0xFF]) + Data(#""}"#.utf8)
+        #expect(throws: (any Error).self) {
+            _ = try JSONImportParsing.parseRow(fromLine: line)
         }
     }
 
@@ -142,41 +162,54 @@ struct JSONImportPluginTests {
         try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [Any])
     }
 
+    private func inferredType(_ json: String) throws -> PluginImportFieldType {
+        var kinds = JSONValueKinds()
+        for value in try array(json) {
+            kinds.add(JSONValueKind(of: value))
+        }
+        return kinds.inferredType
+    }
+
     @Test("Inference: all integers")
     func testInferInteger() throws {
-        #expect(JSONImportParsing.inferType(from: try array("[1, 2, 3]")) == .integer)
+        #expect(try inferredType("[1, 2, 3]") == .integer)
     }
 
     @Test("Inference: any decimal makes the field real")
     func testInferReal() throws {
-        #expect(JSONImportParsing.inferType(from: try array("[1, 2.5, 3]")) == .real)
+        #expect(try inferredType("[1, 2.5, 3]") == .real)
     }
 
     @Test("Inference: all booleans")
     func testInferBoolean() throws {
-        #expect(JSONImportParsing.inferType(from: try array("[true, false]")) == .boolean)
+        #expect(try inferredType("[true, false]") == .boolean)
     }
 
     @Test("Inference: all-nested values are json")
     func testInferJSON() throws {
-        #expect(JSONImportParsing.inferType(from: try array(#"[{"a":1}, [1,2]]"#)) == .json)
+        #expect(try inferredType(#"[{"a":1}, [1,2]]"#) == .json)
     }
 
     @Test("Inference: mixed types fall back to text")
     func testInferText() throws {
-        #expect(JSONImportParsing.inferType(from: try array(#"["a", 1]"#)) == .text)
+        #expect(try inferredType(#"["a", 1]"#) == .text)
+    }
+
+    @Test("Inference: a value after the type settles on text keeps it text")
+    func testInferTextIsFinal() throws {
+        #expect(try inferredType(#"["a", 1, true, {"k":1}]"#) == .text)
     }
 
     @Test("Inference: empty values are text")
-    func testInferEmpty() {
-        #expect(JSONImportParsing.inferType(from: []) == .text)
+    func testInferEmpty() throws {
+        #expect(try inferredType("[]") == .text)
     }
 
     @Test("detectFields reports sorted fields with inferred types and a sample")
     func testDetectFields() throws {
         let raw = #"[{"id":1,"name":"a","active":true},{"id":2,"name":"b","active":false}]"#
-        let rows = try #require(try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [[String: Any]])
-        let fields = JSONImportParsing.detectFields(in: rows)
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [NSDictionary])
+        let fields = try JSONImportParsing.detectFields(in: rows)
         #expect(fields.map(\.name) == ["active", "id", "name"])
         #expect(fields.first { $0.name == "id" }?.inferredType == .integer)
         #expect(fields.first { $0.name == "active" }?.inferredType == .boolean)
@@ -184,17 +217,18 @@ struct JSONImportPluginTests {
         #expect(fields.first { $0.name == "id" }?.sampleValue == "1")
     }
 
-    // MARK: - JSON Lines sample
+    // MARK: - JSON Lines detection
 
-    @Test("A JSON Lines sample cut inside a Japanese character still lists its fields")
-    func testSampleCutInsideAMultiByteCharacter() throws {
+    @Test("A JSON Lines file whose 256 KB mark falls inside a Japanese character still lists its fields")
+    func testDetectionAcrossACutMultiByteCharacter() throws {
         let line = Data("{\"名前\":\"山田太郎\",\"住所\":\"東京都港区\"}\n".utf8)
+        let mark = 256 * 1_024
         var body = Data()
-        while body.count <= JSONImportParsing.sampleLength {
+        while body.count <= mark {
             body.append(line)
         }
         var file = body
-        while String(data: file.prefix(JSONImportParsing.sampleLength), encoding: .utf8) != nil {
+        while String(data: file.prefix(mark), encoding: .utf8) != nil {
             file.insert(0x0A, at: 0)
         }
 
@@ -202,14 +236,8 @@ struct JSONImportPluginTests {
             .appendingPathComponent("JSONImportPluginTests-\(UUID().uuidString).jsonl")
         try file.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let rows = try JSONImportParsing.sampleRawRows(at: url, targetTable: nil, limit: 5)
-        #expect(rows.count == 5)
-        #expect(rows.first?["名前"] as? String == "山田太郎")
-    }
-
-    @Test("A sample of whole characters decodes unchanged")
-    func testSampleOfWholeCharacters() {
-        #expect(JSONImportParsing.utf8Text(ofSample: Data("{\"a\":\"日本\"}".utf8)) == "{\"a\":\"日本\"}")
-        #expect(JSONImportParsing.utf8Text(ofSample: Data([0x7B, 0xE6, 0x97])) == "{")
+        let fields = try JSONImportParsing.detectFields(at: url, targetTable: nil)
+        #expect(Set(fields.map(\.name)) == ["名前", "住所"])
+        #expect(fields.first { $0.name == "名前" }?.sampleValue == "山田太郎")
     }
 }

@@ -33,9 +33,9 @@ struct TableQueryBuilderImplicitSchemaTests {
     @Test("Filtered queries and counts drop the implicit schema too")
     func filteredQueryAndCountAreUnqualified() throws {
         let builder = try builder(for: .spanner)
-        let filtered = builder.buildFilteredQuery(
+        let filtered = try #require(builder.buildFilteredQuery(
             tableName: "Orders", schemaName: "(default)", filters: [activeFilter], columns: ["status"]
-        )
+        ))
         let count = builder.buildFilteredCountQuery(tableName: "Orders", schemaName: "(default)", filters: [])
         #expect(filtered.hasPrefix("SELECT * FROM `Orders` WHERE "))
         #expect(count == "SELECT COUNT(*) FROM `Orders`")

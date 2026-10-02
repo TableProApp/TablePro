@@ -9,7 +9,7 @@ import Foundation
 /// and `émerge` are; `x$` or `注文` and a `MERGE` after a space or a comment are a name and a statement. `1MERGE` and
 /// `1.MERGE` are a number and a `MERGE`. `RANGE` is not reserved, so `MERGE range AS t ...` is a statement on a table
 /// named `range`, and the `;` kept after `ALTER PARTITION FUNCTION ... MERGE RANGE (2)` for it is one the server
-/// accepts after any statement. `scripts/check-mssql-merge-terminator.sh` measures it again.
+/// accepts after any statement. `scripts/probes/check-mssql-merge-terminator.sh` measures it again.
 struct SQLMergeStatementTracker {
     private static let at = UInt16(UnicodeScalar("@").value)
 

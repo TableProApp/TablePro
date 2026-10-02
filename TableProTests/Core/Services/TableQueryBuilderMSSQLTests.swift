@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -70,19 +70,19 @@ struct TableQueryBuilderMSSQLTests {
     // MARK: - Filtered Query Tests
 
     @Test("Filtered query without filters uses ORDER BY SELECT NULL")
-    func filteredQueryNoFilters() {
-        let query = builder.buildFilteredQuery(tableName: "users", filters: [])
+    func filteredQueryNoFilters() throws {
+        let query = try #require(builder.buildFilteredQuery(tableName: "users", filters: []))
         #expect(query.contains("ORDER BY (SELECT NULL)"))
         #expect(query.contains("OFFSET"))
         #expect(query.contains("FETCH NEXT"))
     }
 
     @Test("Filtered query with filters contains WHERE clause and OFFSET FETCH NEXT")
-    func filteredQueryWithFilters() {
+    func filteredQueryWithFilters() throws {
         let filters = [
             TestFixtures.makeTableFilter(column: "name", op: .equal, value: "Alice")
         ]
-        let query = builder.buildFilteredQuery(tableName: "users", filters: filters)
+        let query = try #require(builder.buildFilteredQuery(tableName: "users", filters: filters))
         #expect(query.contains("WHERE"))
         #expect(query.contains("[name]"))
         #expect(query.contains("OFFSET"))
@@ -90,8 +90,8 @@ struct TableQueryBuilderMSSQLTests {
     }
 
     @Test("Filtered query does not use MySQL-style LIMIT OFFSET syntax")
-    func filteredQueryNoMySQLSyntax() {
-        let query = builder.buildFilteredQuery(tableName: "users", filters: [])
+    func filteredQueryNoMySQLSyntax() throws {
+        let query = try #require(builder.buildFilteredQuery(tableName: "users", filters: []))
         let normalized = query.uppercased()
         #expect(!normalized.contains(" LIMIT "))
     }

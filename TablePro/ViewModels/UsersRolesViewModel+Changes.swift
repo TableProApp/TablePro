@@ -234,8 +234,10 @@ extension UsersRolesViewModel {
         }
 
         do {
-            previewStatements = try PrincipalStatementGenerator(driver: driver)
-                .generate(changes: changeManager.pendingChanges())
+            let generator = PrincipalStatementGenerator(driver: driver)
+            let changes = changeManager.pendingChanges()
+            previewStatements = try generator.generate(changes: changes)
+            editorScript = try generator.editorScript(changes: changes)
         } catch {
             report(error, context: "generate SQL")
             return
@@ -247,6 +249,16 @@ extension UsersRolesViewModel {
 
     var lockoutWarning: String? {
         changeManager.selfImpact(connected: connectedPrincipal)
+    }
+
+    var openInEditorPasswordNotice: String? {
+        guard editorScript.hidesPasswords else { return nil }
+        return String(
+            format: String(
+                localized: "Open in Query Editor puts %@ where each password goes. Replace it before running the script."
+            ),
+            PrincipalStatementGenerator.passwordPlaceholder
+        )
     }
 
     var previewSQL: [String] {
@@ -285,6 +297,7 @@ extension UsersRolesViewModel {
     func discardChanges() {
         changeManager.discardChanges()
         previewStatements = []
+        editorScript = .empty
         applyFailure = nil
     }
 }

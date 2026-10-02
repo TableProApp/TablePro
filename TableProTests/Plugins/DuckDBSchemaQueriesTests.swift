@@ -11,7 +11,7 @@
 //  extensions, so `current_database()`, `current_schema()`,
 //  `information_schema.key_column_usage` and `information_schema.referential_constraints`
 //  only answer once DuckDB has downloaded core_functions from extensions.duckdb.org.
-//  scripts/check-duckdb-offline-metadata.sh runs the same queries against the shipped
+//  scripts/probes/check-duckdb-offline-metadata.sh runs the same queries against the shipped
 //  library with no extensions available.
 //
 

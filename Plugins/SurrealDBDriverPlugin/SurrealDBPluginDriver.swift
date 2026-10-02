@@ -264,23 +264,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func buildFilteredQuery(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        buildFilteredQuery(
-            table: table, schema: schema, filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
-        )
-    }
-
-    func buildFilteredQuery(
-        table: String,
-        schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
@@ -291,7 +275,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         SurrealQueryBuilder.filtered(
             table: table,
             scope: scope(forSchema: schema),
-            filters: filters,
+            filters: queryFilters,
             logicMode: logicMode,
             sortColumns: Self.sorts(sortColumns, columns: columns),
             limit: limit,
@@ -302,16 +286,25 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await count(table: table, schema: nil, filters: filters, logicMode: logicMode)
+        try await count(table: table, schema: nil, filters: queryFilters, logicMode: logicMode)
+    }
+
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String
+    ) async throws -> Int? {
+        try await count(table: table, schema: schema, filters: queryFilters, logicMode: logicMode)
     }
 
     func count(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
         let scope = scope(forSchema: schema)

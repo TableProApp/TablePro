@@ -4,7 +4,7 @@ import Testing
 
 /// The statement count each engine's server produced for texts that hide a statement behind a lexical trick,
 /// measured on 2026-09-19 against PostgreSQL 17.11, MySQL 8.4.11, MariaDB 11.8.9, Azure SQL Edge 15.0, DM8 V8,
-/// Oracle 23.26, DuckDB 1.5.2 and SQLite 3.54 (`scripts/check-sql-lexical-grammar.sh` re-runs them). `executed` is
+/// Oracle 23.26, DuckDB 1.5.2 and SQLite 3.54 (`scripts/probes/check-sql-lexical-grammar.sh` re-runs them). `executed` is
 /// the count the execution grammar splits into, `plausible` the highest count any reading of the engine finds, which
 /// is what a gate counts.
 @Suite("SQL lexical corpus")

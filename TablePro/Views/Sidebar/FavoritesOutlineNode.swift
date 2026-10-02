@@ -15,7 +15,7 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
         case header(String)
         case databaseEnvironment(FavoriteDatabaseGroup)
         case database(FavoriteDatabaseEntry)
-        case table(TableInfo)
+        case table(FavoriteTableRow)
         case query(FavoriteNode)
         case teamQuery(id: String, name: String, publishedBy: String?)
     }
@@ -52,7 +52,7 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
     internal static let teamHeaderId = "favorites\u{1}header\u{1}team"
 
     /// Built from the three plain strings the persisted selection carries, so a selection can be
-    /// restored without a live `TableInfo` to hand.
+    /// restored without a live row to hand.
     internal static func tableId(database: String?, schema: String?, name: String) -> String {
         ["favtable", database ?? "", schema ?? "", name].joined(separator: "\u{1}")
     }

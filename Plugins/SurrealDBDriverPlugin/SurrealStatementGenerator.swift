@@ -24,7 +24,7 @@ public enum SurrealStatementGenerator {
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) throws -> [PluginRowWrite] {
+    ) throws(PluginRowWriteRefusal) -> [PluginRowWrite] {
         var writes: [PluginRowWrite] = []
 
         for change in changes where change.type == .update && !insertedRowIndices.contains(change.rowIndex) {
@@ -58,11 +58,12 @@ public enum SurrealStatementGenerator {
         columns: [String],
         kinds: [String: SurrealFieldKind],
         change: PluginRowChange
-    ) throws -> PluginRowWrite? {
-        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
-        let editable = change.cellChanges.filter {
-            !SurrealInfoParser.isReservedColumn($0.columnName) && !Self.isAutoDefault($0.newValue)
+    ) throws(PluginRowWriteRefusal) -> PluginRowWrite? {
+        if let reserved = change.cellChanges.first(where: { SurrealInfoParser.isReservedColumn($0.columnName) }) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: reservedColumnReason(reserved.columnName))
         }
+        guard let record = recordId(table: table, columns: columns, originalRow: change.originalRow) else { return nil }
+        let editable = change.cellChanges.filter { !Self.isAutoDefault($0.newValue) }
         guard !editable.isEmpty else { return nil }
 
         var parameters: [PluginCellValue] = [SurrealCellCoder.parameter(.recordId(record))]
@@ -93,7 +94,7 @@ public enum SurrealStatementGenerator {
         kinds: [String: SurrealFieldKind],
         values: [PluginCellValue],
         rowIndex: Int
-    ) throws -> PluginRowWrite {
+    ) throws(PluginRowWriteRefusal) -> PluginRowWrite {
         var parameters: [PluginCellValue] = []
         var assignments: [String] = []
         var target = SurrealQL.quoteIdentifier(table)
@@ -146,7 +147,7 @@ public enum SurrealStatementGenerator {
 
     // MARK: - Refusals
 
-    private static func refuseShortened(_ cell: PluginCellValue, in column: String, rowIndex: Int) throws {
+    private static func refuseShortened(_ cell: PluginCellValue, in column: String, rowIndex: Int) throws(PluginRowWriteRefusal) {
         guard case let .text(text) = cell, JSONTruncation.isIncompleteStructure(text) else { return }
         throw PluginRowWriteRefusal(
             rowIndex: rowIndex,
@@ -160,6 +161,16 @@ public enum SurrealStatementGenerator {
     }
 
     // MARK: - Helpers
+
+    private static func reservedColumnReason(_ column: String) -> String {
+        guard column != SurrealInfoParser.recordIdColumn else {
+            return String(localized: "A record's id cannot be edited.")
+        }
+        let format = String(
+            localized: "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor."
+        )
+        return String(format: format, column)
+    }
 
     private static func recordId(
         table: String,

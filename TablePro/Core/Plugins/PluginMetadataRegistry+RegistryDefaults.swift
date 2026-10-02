@@ -144,7 +144,8 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -901,14 +902,15 @@ extension PluginMetadataRegistry {
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
-                    supportsSSL: true,
+                    supportsSSL: false,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -939,8 +941,9 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "etcdTlsMode",
                             label: String(localized: "TLS Mode"),
+                            defaultValue: "Disabled",
                             fieldType: .dropdown(options: [
-                                .init(value: "Disabled", label: "Disabled"),
+                                .init(value: "Disabled", label: String(localized: "Disabled")),
                                 .init(value: "Required", label: String(localized: "Required (skip verify)")),
                                 .init(value: "VerifyCA", label: String(localized: "Verify CA")),
                                 .init(value: "VerifyIdentity", label: String(localized: "Verify Identity")),
