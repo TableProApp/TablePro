@@ -6,6 +6,10 @@
 //  because every test read model state and none of them looked at the cell. These render the cell
 //  and read pixels back.
 //
+//  A free-standing cell is not enough either. A source list restyles a cell's `textField` and pads
+//  its rows on layout, so the container line shipped clipped while every free-standing assertion
+//  passed (#3244). Geometry is read from cells hosted in the strip's own table.
+//
 
 import AppKit
 import Foundation
@@ -17,6 +21,30 @@ import Testing
 struct WorkspaceRailCellRenderingTests {
     private static let layout = WorkspaceRailMetrics.medium
 
+    private static let layouts = [
+        WorkspaceRailMetrics.small,
+        WorkspaceRailMetrics.medium,
+        WorkspaceRailMetrics.large,
+    ]
+
+    private func entry(
+        name: String = "production",
+        container: String = "app",
+        color: ConnectionColor = .none,
+        status: ConnectionStatus = .connected
+    ) -> WorkspaceRailEntry {
+        var connection = TestFixtures.makeConnection(database: container)
+        connection.name = name
+        connection.color = color
+        return WorkspaceRailEntry(
+            workspace: WorkspaceID(connectionId: connection.id, container: container),
+            connection: connection,
+            status: status,
+            containerTarget: .database
+        )
+    }
+
+    /// Pinned to the light appearance so the ink and colour counters read the same on any Mac.
     private func cell(
         name: String = "production",
         container: String = "app",
@@ -24,20 +52,11 @@ struct WorkspaceRailCellRenderingTests {
         status: ConnectionStatus = .connected,
         layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     ) -> WorkspaceRailCellView {
-        var connection = TestFixtures.makeConnection(database: container)
-        connection.name = name
-        connection.color = color
-        let entry = WorkspaceRailEntry(
-            workspace: WorkspaceID(connectionId: connection.id, container: container),
-            connection: connection,
-            status: status,
-            containerTarget: .database
-        )
-
         let view = WorkspaceRailCellView(frame: NSRect(
-            x: 0, y: 0, width: layout.width, height: layout.rowHeight
+            x: 0, y: 0, width: layout.width, height: WorkspaceRailCellView.rowHeight(for: layout)
         ))
-        view.configure(entry: entry, layout: layout)
+        view.appearance = NSAppearance(named: .aqua)
+        view.configure(entry: entry(name: name, container: container, color: color, status: status), layout: layout)
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
         return view
@@ -148,7 +167,7 @@ struct WorkspaceRailCellRenderingTests {
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
         let rep = try #require(render(view))
-        let label = try #require(view.textField)
+        let label = try #require(view.renderedLabel)
         let primaryInView = NSRect(
             x: label.frame.minX,
             y: label.frame.midY,
@@ -191,19 +210,164 @@ struct WorkspaceRailCellRenderingTests {
         )
     }
 
-    @Test("Two label lines fit every rail size without touching the identity dot")
-    func labelFitsEveryLayout() throws {
-        for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
-            let view = cell(
-                name: "podo-stage", container: "gwatop", color: .red,
-                layout: layout
-            )
-            let label = try #require(view.textField)
-            let icon = try #require(view.imageView)
-            let dot = try #require(view.subviews.first { $0 !== label && $0 !== icon })
+    @Test("The identity dot never touches the label, at every rail size")
+    func identityDotClearsTheLabel() throws {
+        for layout in Self.layouts {
+            let rail = HostedRail(entries: [entry(name: "podo-stage", container: "gwatop", color: .red)], layout: layout)
+            let cell = try rail.cell(atRow: 0)
+            let label = try #require(cell.renderedLabel)
+            let icon = try #require(cell.imageView)
+            let dot = try #require(cell.subviews.first { $0 !== label && $0 !== icon })
 
-            #expect(view.bounds.contains(label.frame), "label escaped the \(layout) row")
-            #expect(dot.frame.minY >= label.frame.maxY, "identity dot overlapped the label in \(layout)")
+            #expect(cell.bounds.contains(label.frame), "label escaped the \(layout) row")
+            #expect(cell.bounds.contains(dot.frame), "identity dot escaped the \(layout) row")
+            #expect(!dot.frame.intersects(label.frame), "identity dot overlapped the label in \(layout)")
+        }
+    }
+
+    /// The defect behind "1…": the table rewrote both lines to one 13pt run, which needs more height
+    /// than the row had, so the container line was compressed away.
+    @Test("The strip's table leaves each label line its own font and colour")
+    func hostedLabelKeepsItsOwnRuns() throws {
+        for layout in Self.layouts {
+            for selectedRow in [nil, 0] as [Int?] {
+                let rail = HostedRail(
+                    entries: [entry(name: "podo-stage", container: "gwatop")],
+                    layout: layout,
+                    selectedRow: selectedRow
+                )
+                let value = try #require(try rail.cell(atRow: 0).renderedLabel).attributedStringValue
+                let last = value.length - 1
+                let primary = value.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+                let secondary = value.attribute(.font, at: last, effectiveRange: nil) as? NSFont
+                let secondaryColor = value.attribute(.foregroundColor, at: last, effectiveRange: nil) as? NSColor
+
+                #expect(value.string == "podo-stage\ngwatop")
+                #expect(primary?.pointSize == layout.fontSize, "primary line restyled in \(layout)")
+                #expect(
+                    secondary?.pointSize == WorkspaceRailCellView.secondaryFontSize(for: layout.fontSize),
+                    "container line restyled in \(layout)"
+                )
+                #expect(secondaryColor == .secondaryLabelColor, "container line lost its colour in \(layout)")
+            }
+        }
+    }
+
+    @Test("Two label lines are laid out at their full height in the strip's table")
+    func hostedLabelIsNeverSqueezed() throws {
+        for layout in Self.layouts {
+            for selectedRow in [nil, 0] as [Int?] {
+                let rail = HostedRail(
+                    entries: [entry(name: "a-very-long-production-connection", container: "a_very_long_database")],
+                    layout: layout,
+                    selectedRow: selectedRow
+                )
+                let cell = try rail.cell(atRow: 0)
+                let label = try #require(cell.renderedLabel)
+
+                #expect(
+                    label.frame.height >= label.intrinsicContentSize.height - 0.5,
+                    "label squeezed to \(label.frame.height) of \(label.intrinsicContentSize.height) in \(layout)"
+                )
+                #expect(cell.bounds.contains(label.frame), "label escaped the \(layout) row")
+            }
+        }
+    }
+
+    /// The selection fill covers the whole row, so the cell's own edges are the fill's, and the
+    /// padding inside them is all that separates one tile from the next.
+    @Test("A tile has as much space above its glyph as below its label")
+    func hostedTileIsBalanced() throws {
+        let cases: [(String, ConnectionStatus)] = [
+            ("gwatop", .connected), ("", .connected), ("gwatop", .error("refused")), ("gwatop", .disconnected),
+        ]
+        for layout in Self.layouts {
+            for (container, status) in cases {
+                let rail = HostedRail(
+                    entries: [entry(name: "podo-stage", container: container, status: status)],
+                    layout: layout
+                )
+                let cell = try rail.cell(atRow: 0)
+                let rowView = try #require(rail.table.rowView(atRow: 0, makeIfNecessary: false))
+                let margins = try verticalMargins(of: cell)
+
+                #expect(abs(cell.frame.height - rowView.frame.height) < 0.5, "the fill is taller than the tile")
+                #expect(
+                    abs(margins.top - margins.bottom) <= 0.5,
+                    "\(margins.top)pt above the glyph, \(margins.bottom)pt below the label in \(layout)"
+                )
+                if !container.isEmpty {
+                    #expect(abs(margins.top - layout.padding) <= 0.5, "two-line tile padding in \(layout)")
+                }
+            }
+        }
+    }
+
+    @Test("The glyph and its label sit the same distance apart with or without a colour dot")
+    func hostedGapIgnoresTheDot() throws {
+        for layout in Self.layouts {
+            for color in [ConnectionColor.none, .red] {
+                let rail = HostedRail(entries: [entry(container: "app", color: color)], layout: layout)
+                let cell = try rail.cell(atRow: 0)
+                let glyph = try glyphRect(in: cell)
+                let label = try #require(cell.renderedLabel)
+                let gap = cell.isFlipped ? label.frame.minY - glyph.maxY : glyph.minY - label.frame.maxY
+
+                #expect(abs(gap - WorkspaceRailMetrics.iconLabelGap) <= 0.5, "gap \(gap) in \(layout), \(color)")
+            }
+        }
+    }
+
+    /// The label left the `textField` outlet, which is where the default drag image finds it. Like
+    /// AppKit's own, it is drawn in the normal style from the selected row too, or it would be white
+    /// on a clear image over a light window.
+    @Test("Dragging an entry carries its label, legible whether or not the entry is selected")
+    func dragImageCarriesTheLabel() throws {
+        for style in [NSView.BackgroundStyle.normal, .emphasized] {
+            let view = cell(color: .none)
+            view.backgroundStyle = style
+            let label = try #require(view.renderedLabel)
+            let component = try #require(view.draggingImageComponents.first { $0.key == .label })
+            let image = try #require(component.contents as? NSImage)
+            let data = try #require(image.tiffRepresentation)
+            let rep = try #require(NSBitmapImageRep(data: data))
+
+            #expect(component.frame == view.convert(label.bounds, from: label))
+            #expect(view.draggingImageComponents.contains { $0.key == .icon })
+            #expect(pixelCount(rep, matching: isInk) > 0, "drag label has no dark ink in the \(style) style")
+            #expect(label.cell?.backgroundStyle == style, "drawing the drag image left the row restyled")
+        }
+    }
+
+    /// The glyph as Auto Layout places it. SF Symbols carry alignment insets, so the warning and
+    /// disconnected glyphs' frames reach past the box the layout centres.
+    private func glyphRect(in cell: WorkspaceRailCellView) throws -> NSRect {
+        let icon = try #require(cell.imageView)
+        return icon.alignmentRect(forFrame: icon.frame)
+    }
+
+    private func verticalMargins(of cell: WorkspaceRailCellView) throws -> (top: CGFloat, bottom: CGFloat) {
+        let glyph = try glyphRect(in: cell)
+        let label = try #require(cell.renderedLabel)
+        guard cell.isFlipped else {
+            return (cell.bounds.maxY - glyph.maxY, label.frame.minY - cell.bounds.minY)
+        }
+        return (glyph.minY - cell.bounds.minY, cell.bounds.maxY - label.frame.maxY)
+    }
+
+    @Test("The scroll geometry puts every row where the strip's table puts it")
+    func scrollGeometryMatchesTheTable() throws {
+        for layout in Self.layouts {
+            let entries = (0 ..< 12).map { entry(name: "connection \($0)", container: "db\($0)") }
+            let rail = HostedRail(entries: entries, layout: layout)
+            let geometry = rail.table.scrollGeometry(viewportHeight: 300)
+
+            #expect(geometry.rowCount == 12)
+            for row in 0 ..< 12 {
+                let rect = rail.table.rect(ofRow: row)
+                #expect(abs(geometry.top(ofRow: row) - rect.minY) < 0.001, "row \(row) top in \(layout)")
+                #expect(abs(geometry.top(ofRow: row) + geometry.rowHeight - rect.maxY) < 0.001)
+            }
         }
     }
 
@@ -225,28 +389,77 @@ struct WorkspaceRailCellRenderingTests {
         return nil
     }
 
-    /// A frame inside the row proves nothing about the text inside the frame. The row height, the
-    /// icon's own offset and the two font sizes are four numbers that have to add up, and the way
-    /// they fail is the second line laying out and never being drawn, which `labelFitsEveryLayout`
-    /// reads as a pass. The one-line cell is the control: the container line has to reach below
-    /// where the connection name on its own stops.
+    /// A frame inside the row proves nothing about the text inside the frame. The way this fails is
+    /// the second line laying out and never being drawn. The one-line cell is the control: it is
+    /// centred, so the container line has to reach below where the connection name on its own stops.
     @Test("The container line is painted below the connection line at every rail size")
     func containerLinePaintsBelowConnectionLine() throws {
-        for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
-            let oneLine = try #require(render(cell(
-                name: "podo-stage", container: "", color: .none, layout: layout
-            )))
-            let twoLines = try #require(render(cell(
-                name: "podo-stage", container: "gwatop", color: .none, layout: layout
-            )))
+        for layout in Self.layouts {
+            let oneLineRail = HostedRail(entries: [entry(name: "podo-stage", container: "")], layout: layout)
+            let twoLineRail = HostedRail(entries: [entry(name: "podo-stage", container: "gwatop")], layout: layout)
+            let oneLine = try #require(render(try oneLineRail.cell(atRow: 0)))
+            let twoLines = try #require(render(try twoLineRail.cell(atRow: 0)))
 
             let connectionOnly = try #require(lowestInkRow(oneLine))
             let withContainer = try #require(lowestInkRow(twoLines))
 
             #expect(
                 withContainer > connectionOnly,
-                "the container line was clipped away in the \(layout.rowHeight)pt row"
+                "the container line was clipped away in the \(layout) row"
             )
         }
+    }
+}
+
+/// The strip's own table in a window, holding real cells. Never closed, only released: closing a
+/// window inside the test host can take the host down.
+@MainActor
+private final class HostedRail: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    let table = WorkspaceRailTableView()
+    private let window: NSWindow
+    private let entries: [WorkspaceRailEntry]
+    private let layout: WorkspaceRailMetrics.Layout
+    private let rowHeight: CGFloat
+
+    init(entries: [WorkspaceRailEntry], layout: WorkspaceRailMetrics.Layout, selectedRow: Int? = nil) {
+        self.entries = entries
+        self.layout = layout
+        rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
+        let frame = NSRect(x: 0, y: 0, width: layout.width, height: 600)
+        window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .aqua)
+        super.init()
+
+        let scrollView = NSScrollView(frame: frame)
+        scrollView.documentView = table
+        window.contentView = scrollView
+        table.dataSource = self
+        table.delegate = self
+        table.reloadData()
+        table.sizeLastColumnToFit()
+        if let selectedRow {
+            table.selectRowIndexes(IndexSet(integer: selectedRow), byExtendingSelection: false)
+        }
+        scrollView.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+    }
+
+    func cell(atRow row: Int) throws -> WorkspaceRailCellView {
+        try #require(table.view(atColumn: 0, row: row, makeIfNecessary: false) as? WorkspaceRailCellView)
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        entries.count
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rowHeight
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let cell = WorkspaceRailCellView(frame: .zero)
+        cell.configure(entry: entries[row], layout: layout)
+        return cell
     }
 }
