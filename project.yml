@@ -551,6 +551,7 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
       - Plugins/TrinoDriverPlugin/TrinoConnectionFailure.swift
       - Plugins/TrinoDriverPlugin/TrinoSSLMapping.swift
+      - Plugins/TrinoDriverPlugin/TrinoRowEditValues.swift
       - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
       - Plugins/TypesenseDriverPlugin/TypesenseFilterBuilder.swift
@@ -579,6 +580,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLStatementGenerator.swift
       - Plugins/MQLExportPlugin/MQLCollectionDefinition.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MQLExportPlugin/MQLExportModels.swift
@@ -796,6 +798,7 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaScram.swift
       - Plugins/KafkaDriverPlugin/SnappyDecoder.swift
+      - Plugins/TeradataDriverPlugin/TeradataRowEditSQL.swift
       - Plugins/TeradataDriverPlugin/TeradataSSLMapping.swift
       - Plugins/TeradataDriverPlugin/TeradataVersionProbe.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift

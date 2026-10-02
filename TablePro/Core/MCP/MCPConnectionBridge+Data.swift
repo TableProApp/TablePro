@@ -99,7 +99,7 @@ extension MCPConnectionBridge {
                 dialect: dialect,
                 pagination: pagination
             )
-            let sortState = MCPConnectionBridge.sortState(from: request.sort, columns: names)
+            let sortState = try MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
             let sortColumnNames = sortState?.columns.compactMap(\.columnName) ?? []
             /// A projection that leaves out the sorted column drops the sort with it on any driver
@@ -303,7 +303,8 @@ extension MCPConnectionBridge {
         }
     }
 
-    static func sortState(from sort: [(column: String, descending: Bool)], columns: [String]) -> SortState? {
+    static func sortState(from sort: [(column: String, descending: Bool)], columns: [String]) throws -> SortState? {
+        try rejectUnknownColumns(sort.map(\.column), available: columns)
         let resolved: [SortColumn] = sort.compactMap { entry in
             guard let index = columns.firstIndex(of: entry.column) else { return nil }
             return SortColumn(
@@ -318,8 +319,13 @@ extension MCPConnectionBridge {
 
     static func validatedSelection(_ requested: [String]?, available: [String]) throws -> [String]? {
         guard let requested, !requested.isEmpty else { return nil }
+        try rejectUnknownColumns(requested, available: available)
+        return requested
+    }
+
+    private static func rejectUnknownColumns(_ requested: [String], available: [String]) throws {
         let known = Set(available)
-        let unknown = requested.filter { !known.contains($0) }.sorted()
+        let unknown = Set(requested.filter { !known.contains($0) }).sorted()
         guard unknown.isEmpty else {
             throw DatabaseAccessError.invalidArgument(
                 String(
@@ -328,7 +334,6 @@ extension MCPConnectionBridge {
                 )
             )
         }
-        return requested
     }
 }
 

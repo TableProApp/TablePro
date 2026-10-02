@@ -25,12 +25,6 @@ internal struct DataSyncStatements {
 }
 
 internal struct DataSyncScriptBuilder {
-    private enum IdentityInsertStyle {
-        case plain
-        case overridingSystemValue
-        case identityInsertSession
-    }
-
     private let targetDriver: any PluginDatabaseDriver
     private let targetDatabaseType: DatabaseType
     private let options: DataCompareOptions
@@ -92,9 +86,10 @@ internal struct DataSyncScriptBuilder {
         guard !statements.inserts.isEmpty, identityInsertStyle == .identityInsertSession else { return }
         let table = qualifiedTable
         let scope = "identity-insert|\(plan.targetSchema ?? "")|\(plan.table)"
-        let closingSQL = "SET IDENTITY_INSERT \(table) OFF"
+        let session = ExplicitIdentityInsert.sessionStatements(for: table)
+        let closingSQL = session.close
         let open = SyncStatement(
-            sql: "SET IDENTITY_INSERT \(table) ON",
+            sql: session.open,
             objectName: plan.id,
             summary: String(format: String(localized: "Allow explicit identity values in %@"), plan.table),
             sessionEffect: .opens(scope: scope, closingSQL: closingSQL)
@@ -108,16 +103,9 @@ internal struct DataSyncScriptBuilder {
         statements.inserts = [open] + statements.inserts + [close]
     }
 
-    private var identityInsertStyle: IdentityInsertStyle {
-        guard plan.insertsIntoIdentityColumn else { return .plain }
-        switch targetDatabaseType {
-        case .postgresql, .pglite:
-            return .overridingSystemValue
-        case .mssql:
-            return .identityInsertSession
-        default:
-            return .plain
-        }
+    private var identityInsertStyle: ExplicitIdentityInsert? {
+        guard plan.insertsIntoIdentityColumn else { return nil }
+        return ExplicitIdentityInsert.style(for: targetDatabaseType)
     }
 
     private var qualifiedTable: String {

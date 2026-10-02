@@ -145,13 +145,18 @@ struct DataWritePlan: Sendable {
     /// failure that got there.
     let epilogue: [String]
 
+    /// Whether the steps depend on the prologue having run. Turning foreign keys off is a courtesy a failure can skip;
+    /// SQL Server's `IDENTITY_INSERT` is not, since every restoring INSERT then fails, so the run stops first.
+    let prologueIsRequired: Bool
+
     init(
         scope: DatabaseScope,
         databaseType: DatabaseType,
         steps: [DataWriteStep],
         rowOperations: [RowWriteOperation] = [],
         prologue: [String] = [],
-        epilogue: [String] = []
+        epilogue: [String] = [],
+        prologueIsRequired: Bool = false
     ) {
         self.scope = scope
         self.databaseType = databaseType
@@ -159,6 +164,7 @@ struct DataWritePlan: Sendable {
         self.rowOperations = rowOperations
         self.prologue = prologue
         self.epilogue = epilogue
+        self.prologueIsRequired = prologueIsRequired
     }
 
     var statements: [ParameterizedStatement] {

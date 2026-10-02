@@ -40,6 +40,14 @@ public struct ColumnInfo: Sendable, Identifiable {
     public let ordinalPosition: Int
     public let isAutoIncrement: Bool
     public let isGenerated: Bool
+    /// The server refuses any value written to it, beyond what `isGenerated` says: SQL Server `IDENTITY`, which
+    /// fails an UPDATE with Msg 8102, unlike a MySQL `AUTO_INCREMENT` that takes one.
+    public let rejectsWrittenValues: Bool
+
+    /// Whether the app may send a value for the column at all.
+    public var isServerOwned: Bool {
+        isGenerated || rejectsWrittenValues
+    }
 
     public init(
         name: String,
@@ -51,7 +59,8 @@ public struct ColumnInfo: Sendable, Identifiable {
         characterMaxLength: Int? = nil,
         ordinalPosition: Int = 0,
         isAutoIncrement: Bool = false,
-        isGenerated: Bool = false
+        isGenerated: Bool = false,
+        rejectsWrittenValues: Bool = false
     ) {
         self.name = name
         self.typeName = typeName
@@ -63,6 +72,7 @@ public struct ColumnInfo: Sendable, Identifiable {
         self.ordinalPosition = ordinalPosition
         self.isAutoIncrement = isAutoIncrement
         self.isGenerated = isGenerated
+        self.rejectsWrittenValues = rejectsWrittenValues
     }
 }
 

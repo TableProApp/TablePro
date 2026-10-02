@@ -83,3 +83,46 @@ struct FocusQueryTabToolTests {
         }
     }
 }
+
+@MainActor
+struct FocusQueryTabSelectionTests {
+    private func makeCoordinator(tabTitles: [String]) -> (MainContentCoordinator, [UUID]) {
+        let tabManager = QueryTabManager()
+        let tabs = tabTitles.map { QueryTab(title: $0, query: "SELECT 1", tabType: .query) }
+        tabManager.tabs = tabs
+        tabManager.selectedTabId = tabs.first?.id
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        return (coordinator, tabs.map(\.id))
+    }
+
+    @Test("Focusing a background tab selects it in the coordinator that owns it")
+    func focusSelectsTheRequestedTab() {
+        let (owner, ownerTabs) = makeCoordinator(tabTitles: ["A", "B"])
+        let (other, otherTabs) = makeCoordinator(tabTitles: ["C"])
+
+        _ = FocusQueryTabTool.focus(tabId: ownerTabs[1], among: [other, owner])
+
+        #expect(owner.tabManager.selectedTabId == ownerTabs[1])
+        #expect(other.tabManager.selectedTabId == otherTabs[0])
+    }
+
+    @Test("A tab whose coordinator has no window is not reported focused")
+    func tabWithoutAWindowIsNotFocused() {
+        let (owner, ownerTabs) = makeCoordinator(tabTitles: ["A", "B"])
+
+        #expect(!FocusQueryTabTool.focus(tabId: ownerTabs[1], among: [owner]))
+    }
+
+    @Test("A tab no coordinator owns is not focused")
+    func unknownTabIsNotFocused() {
+        let (owner, ownerTabs) = makeCoordinator(tabTitles: ["A", "B"])
+
+        #expect(!FocusQueryTabTool.focus(tabId: UUID(), among: [owner]))
+        #expect(owner.tabManager.selectedTabId == ownerTabs[0])
+    }
+}

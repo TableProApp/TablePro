@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copy as UPDATE and INSERT including identity, computed and generated columns, which SQL Server refuses with "Cannot update identity column". (#3219)
+- Copy as UPDATE matching a composite primary key on its first column only, and matching unsaved edits instead of the stored row.
+- Copy as UPDATE and INSERT leaving out the table's schema.
+- Edits and pasted rows staged before a table's structure loaded writing identity and computed columns on save.
+- SQL Server `rowversion` and system-versioned period columns offered for editing, and Add Row failing on a table that has one.
+- SQL Server identity and computed columns not recognized in a table or schema whose name contains a dot.
+- Saves failing on a SQL Server table without a primary key that has an `ntext`, `text`, `xml` or `image` column.
+- A value typed into a new SQL Server row dropped when a same-named table in another schema has an identity column of that name.
+- Set Value > Default on SQL Server and Oracle storing the text `__DEFAULT__`.
+- New Snowflake, Teradata and Trino rows storing `__DEFAULT__` in columns left to their default.
+- Oracle identity and virtual columns offered for editing, and Add Row failing on a table that has one.
+- Restore Previous Values bringing a deleted SQL Server or PostgreSQL row back under a new identity key.
+- iOS row editor and Add Row writing SQL Server identity and computed columns.
 - Save disabled for Kafka connections set to Verify Identity without a CA file.
 - Crash on `inf` or `nan`, text like `007` stored as a number, and blobs stored as text on remote libSQL.
 - External Clients level and Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings reset by an iCloud sync.
@@ -144,6 +157,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy To on a foreign table, sequence, system table or external table preselecting every object in the schema.
 - Copy To between two schemas of one DuckDB or PGlite connection refused with a message about comparing databases.
 - iPhone and iPad reading a Safe Mode level they do not recognize from iCloud as Off.
+- MCP `describe_table` results rejected by clients that check them against the tool's output schema.
+- MCP `export_data` writing numbers and booleans as strings in JSON and SQL output, and binary values as base64 text.
+- MCP `focus_query_tab` reporting a tab focused while its window stayed on another tab or connection.
+- MCP `browse_table` ignoring a sort on a column the table does not have and returning unsorted rows.
+- MCP `stop_server_session` blaming the engine for a mistyped process id, or for cancel on SQL Server and ClickHouse.
+- MCP `question_to_sql` prompt promising every table but describing only the first six and telling the model to stop.
+- Compare missing DuckDB rows keyed by a binary column and writing DuckDB binary values as text in sync scripts.
 - Linked Folder and Team Library connections never asking for a password and failing to sign in.
 - Old Team Catalog entry left beside the new one after a renamed connection is published again.
 - Team Catalog folder panel sending teammates to a Settings > Linked Folders pane that does not exist.

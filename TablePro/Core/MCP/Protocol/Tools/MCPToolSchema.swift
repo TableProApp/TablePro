@@ -174,6 +174,17 @@ enum MCPToolSchema {
         allowsAdditional: true
     )
 
+    static let checkConstraintDefinition: JsonValue = object(
+        properties: [
+            "name": string(String(localized: "Constraint name")),
+            "expression": string(String(localized: "CHECK expression as the engine reports it")),
+            "is_validated": boolean(String(localized: "False for a constraint the engine has not checked against existing rows")),
+            "columns": array(String(localized: "Columns the constraint reads, when the engine reports them"), of: stringItem)
+        ],
+        required: ["name", "expression", "is_validated"],
+        allowsAdditional: true
+    )
+
     static let tableSummary: JsonValue = object(
         properties: [
             "name": string(String(localized: "Table name")),

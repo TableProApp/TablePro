@@ -188,7 +188,8 @@ extension MainContentCoordinator {
             primaryKeyColumns: operation?.primaryKeyColumns ?? [],
             generatedColumns: Set(record.generatedColumns),
             databaseType: record.databaseType,
-            pluginDriver: changeManager.pluginDriver
+            pluginDriver: changeManager.pluginDriver,
+            identityColumns: record.identityColumns.map(Set.init)
         )
     }
 }

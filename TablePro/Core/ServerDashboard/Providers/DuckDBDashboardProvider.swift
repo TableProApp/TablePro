@@ -79,6 +79,10 @@ struct DuckDBDashboardProvider: ServerDashboardQueryProvider {
 
         return metrics
     }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        true
+    }
 }
 
 // MARK: - Helpers

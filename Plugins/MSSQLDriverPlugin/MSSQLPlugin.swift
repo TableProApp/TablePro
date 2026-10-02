@@ -276,18 +276,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchemaName: String
     private var _serverVersion: String?
 
-    /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
-    /// `generateMssqlInsert` reads this to skip IDENTITY columns: SQL Server
-    /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
-    /// and the value the user typed is server-allocated anyway.
-    var identityColumnsByTable: [String: Set<String>] = [:]
-
-    /// Computed columns observed during a column fetch, keyed by table name. SQL Server rejects an
-    /// explicit value for one the same way it does for IDENTITY: "The column cannot be modified
-    /// because it is either a computed column or is the result of a UNION operator."
-    var computedColumnsByTable: [String: Set<String>] = [:]
-    let identityCacheLock = NSLock()
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
     private static let kerberosResolveQueue = DispatchQueue(
@@ -564,156 +552,44 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: schema, table: table)
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        var deleteChanges: [PluginRowChange] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateMssqlInsert(
-                        table: table, qualifiedTable: qualifiedTable, columns: columns, values: values
-                    ) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateMssqlUpdate(
-                    qualifiedTable: qualifiedTable, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                deleteChanges.append(change)
-            }
-        }
-
-        if !deleteChanges.isEmpty {
-            for change in deleteChanges {
-                if let stmt = generateMssqlDelete(
-                    qualifiedTable: qualifiedTable, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
+        let generator = MSSQLStatementGenerator(
+            qualifiedTable: MSSQLSchemaQueries.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
+        let statements = generator.statements(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
         return statements.isEmpty ? nil : statements
     }
 
-    private func generateMssqlInsert(
+    func generateRowWrites(
         table: String,
-        qualifiedTable: String,
-        columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var nonDefaultColumns: [String] = []
-        var parameters: [PluginCellValue] = []
-        let identityColumns = cachedIdentityColumns(for: table)
-        let computedColumns = cachedComputedColumns(for: table)
-
-        for (index, value) in values.enumerated() {
-            if value.asText == "__DEFAULT__" { continue }
-            guard index < columns.count else { continue }
-            let columnName = columns[index]
-            // SQL Server IDENTITY columns are server-allocated. INSERTs that include
-            // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
-            // so always omit them and let the server assign the next value.
-            if identityColumns.contains(columnName) { continue }
-            if computedColumns.contains(columnName) { continue }
-            nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
-            parameters.append(value)
-        }
-
-        guard !nonDefaultColumns.isEmpty else { return nil }
-
-        let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(placeholders))"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlUpdate(
-        qualifiedTable: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-        guard let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = "[\(cellChange.columnName.replacingOccurrences(of: "]", with: "]]"))]"
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        var conditions: [String] = []
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "UPDATE \(topClause)\(qualifiedTable) SET \(setClauses) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlDelete(
-        qualifiedTable: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-        var conditions: [String] = []
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        var generator = MSSQLStatementGenerator(
+            qualifiedTable: MSSQLSchemaQueries.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
+        generator.context = context
+        let writes = try generator.rowWrites(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+        return writes.isEmpty ? nil : writes
     }
 
     // MARK: - Streaming

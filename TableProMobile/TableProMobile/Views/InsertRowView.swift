@@ -108,6 +108,11 @@ struct InsertRowView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+            } else if column.rejectsWrittenValues {
+                Text("Assigned by the database")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .italic()
             } else {
                 if fields[column.name] == .null {
                     Text("NULL")
@@ -209,6 +214,9 @@ struct InsertRowView: View {
     private func footer(for column: ColumnInfo) -> some View {
         if column.isGenerated {
             Text("This column is generated, so it is never written.")
+                .font(.caption2)
+        } else if column.rejectsWrittenValues {
+            Text("The database assigns this column, so it is never written.")
                 .font(.caption2)
         } else if let defaultValue = column.defaultValue {
             Text("Default: \(defaultValue)")

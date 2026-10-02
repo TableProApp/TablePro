@@ -225,7 +225,7 @@ struct FieldAbsenceRewindTests {
             record: RewindRecord(
                 id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .mongodb,
                 target: target, capturedAt: Date(timeIntervalSince1970: 0),
-                generatedColumns: [], operations: [operation]
+                generatedColumns: [], identityColumns: [], operations: [operation]
             ),
             factory: RowChangeStatementFactory(
                 tableName: target.table, schemaName: nil, columns: columns,

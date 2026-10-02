@@ -43,12 +43,8 @@ enum ToolQueryExecutor {
         secrets: [String] = [],
         unit: Unit = .statement
     ) async throws -> JsonValue {
-        let connectionId = scope.connectionId
-        let databaseName = scope.database
-        let startTime = Date()
-        let operationStart = ContinuousClock.Instant.now
-        do {
-            let (result, rowCount) = try await run(
+        try await logged(services: services, query: query, scope: scope, principal: principal, secrets: secrets) {
+            try await run(
                 unit,
                 services: services,
                 query: query,
@@ -57,6 +53,51 @@ enum ToolQueryExecutor {
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
             )
+        }
+    }
+
+    static func executeResultAndLog(
+        services: MCPToolServices,
+        query: String,
+        scope: DatabaseScope,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        context: MCPRequestContext,
+        secrets: [String]
+    ) async throws -> QueryResult {
+        try await context.cancellation.throwIfCancelled()
+        return try await logged(
+            services: services,
+            query: query,
+            scope: scope,
+            principal: context.principal,
+            secrets: secrets
+        ) {
+            let outcome = try await services.connectionBridge.runStatement(
+                scope: scope,
+                query: query,
+                maxRows: maxRows,
+                timeoutSeconds: timeoutSeconds,
+                cancellation: context.cancellation
+            )
+            return (outcome.result, outcome.result.rows.count)
+        }
+    }
+
+    private static func logged<Output>(
+        services: MCPToolServices,
+        query: String,
+        scope: DatabaseScope,
+        principal: MCPPrincipal,
+        secrets: [String],
+        operation: () async throws -> (Output, Int)
+    ) async throws -> Output {
+        let connectionId = scope.connectionId
+        let databaseName = scope.database
+        let startTime = Date()
+        let operationStart = ContinuousClock.Instant.now
+        do {
+            let (result, rowCount) = try await operation()
             let elapsed = Date().timeIntervalSince(startTime)
             await services.authPolicy.logQuery(
                 sql: query,

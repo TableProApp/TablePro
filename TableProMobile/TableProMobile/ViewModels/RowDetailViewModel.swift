@@ -117,6 +117,18 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
+    /// A key identifies the row and stays as it is, and a column the server owns cannot be given a value, however
+    /// the cell is drawn.
+    func takesEdits(at index: Int) -> Bool {
+        guard !isPrimaryKey(at: index), !isServerOwned(at: index) else { return false }
+        return isEditableAsText(at: index)
+    }
+
+    func isServerOwned(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return false }
+        return columnDetail(for: columns[index].name)?.isServerOwned ?? false
+    }
+
     func isEditableAsText(at index: Int) -> Bool {
         let rowCells = cells(at: currentIndex)
         guard index >= 0, index < rowCells.count else { return false }
@@ -181,7 +193,7 @@ final class RowDetailViewModel {
     private var editedColumnIndices: [Int] {
         let original = currentRow
         return columns.indices.filter { index in
-            guard index < editedValues.count, !isPrimaryKey(at: index), isEditableAsText(at: index) else {
+            guard index < editedValues.count, takesEdits(at: index) else {
                 return false
             }
             let oldValue = index < original.count ? original[index] : nil

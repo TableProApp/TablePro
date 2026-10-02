@@ -52,9 +52,10 @@ public struct FocusQueryTabTool: MCPToolImplementation {
         }
 
         let raised = await MainActor.run { () -> Bool in
-            guard let window = snapshot.window else { return false }
+            guard Self.focus(tabId: tabId, among: WindowManager.shared.coordinators(for: snapshot.connectionId)) else {
+                return false
+            }
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
             return true
         }
         guard raised else {
@@ -72,5 +73,13 @@ public struct FocusQueryTabTool: MCPToolImplementation {
             fields["window_id"] = .string(windowId.uuidString)
         }
         return .structured(.object(fields))
+    }
+
+    @MainActor
+    static func focus(tabId: UUID, among coordinators: [MainContentCoordinator]) -> Bool {
+        guard let owner = coordinators.first(where: { coordinator in
+            coordinator.tabManager.tabs.contains { $0.id == tabId }
+        }) else { return false }
+        return owner.selectTabAndFocusWindow(tabId)
     }
 }

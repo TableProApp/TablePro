@@ -186,21 +186,16 @@ public enum MSSQLSchemaQueries {
             """
     }
 
+    /// One column per row, in the order `parseColumnRow` reads.
+    ///
+    /// The catalog names are quoted before `OBJECT_ID` sees them: unquoted, a table named `a.b` or a schema named
+    /// `x.y` resolves to nothing and every column reads as neither identity nor computed.
     public static func columns(schema: String, table: String) -> String {
         let s = MSSQLStringLiteral.quoted(schema)
         let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
+            \(columnSelectList)
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
@@ -217,6 +212,54 @@ public enum MSSQLSchemaQueries {
             ORDER BY c.ORDINAL_POSITION
             """
     }
+
+    /// Every column of every table in the schema, each row carrying its table name after the columns
+    /// `parseColumnRow` reads, at `allColumnsTableNameIndex`.
+    public static func allColumns(schema: String) -> String {
+        let s = MSSQLStringLiteral.quoted(schema)
+        return """
+            SELECT
+            \(columnSelectList),
+                c.TABLE_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN (
+                SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                    AND tc.TABLE_SCHEMA = \(s)
+            ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
+            WHERE c.TABLE_SCHEMA = \(s)
+            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
+            """
+    }
+
+    public static let allColumnsTableNameIndex = 11
+
+    /// A `rowversion` column reports its type as `timestamp`, and a system-versioned period or ledger column reports a
+    /// `GeneratedAlwaysType` above zero. Neither is identity or computed, and the server refuses a written value for
+    /// both. Before SQL Server 2016 the property does not exist and reads NULL, which is not above zero.
+    private static let columnSelectList = """
+                c.COLUMN_NAME,
+                c.DATA_TYPE,
+                c.CHARACTER_MAXIMUM_LENGTH,
+                c.NUMERIC_PRECISION,
+                c.NUMERIC_SCALE,
+                c.IS_NULLABLE,
+                c.COLUMN_DEFAULT,
+                COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED,
+                CASE
+                    WHEN c.DATA_TYPE = 'timestamp' THEN 1
+                    WHEN COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'GeneratedAlwaysType') > 0 THEN 1
+                    ELSE 0
+                END AS IS_SERVER_GENERATED
+        """
+
+    private static let columnObjectID = "OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"
 
     public static func indexes(schema: String, table: String) -> String {
         let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
@@ -282,6 +325,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
     public let isIdentity: Bool
     public let isPrimaryKey: Bool
     public let isComputed: Bool
+    public let isServerGenerated: Bool
 
     public init(
         name: String,
@@ -293,7 +337,8 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         defaultValue: String?,
         isIdentity: Bool,
         isPrimaryKey: Bool,
-        isComputed: Bool = false
+        isComputed: Bool = false,
+        isServerGenerated: Bool = false
     ) {
         self.name = name
         self.dataType = dataType
@@ -305,6 +350,12 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         self.isIdentity = isIdentity
         self.isPrimaryKey = isPrimaryKey
         self.isComputed = isComputed
+        self.isServerGenerated = isServerGenerated
+    }
+
+    /// Whether the server refuses any value written to the column, which is what the host treats as generated.
+    public var isGenerated: Bool {
+        isComputed || isServerGenerated
     }
 
     public var displayType: String {
@@ -384,7 +435,8 @@ public extension MSSQLSchemaQueries {
             defaultValue: row[safe: 6] ?? nil,
             isIdentity: (row[safe: 7] ?? nil) == "1",
             isPrimaryKey: (row[safe: 8] ?? nil) == "1",
-            isComputed: (row[safe: 9] ?? nil) == "1"
+            isComputed: (row[safe: 9] ?? nil) == "1",
+            isServerGenerated: (row[safe: 10] ?? nil) == "1"
         )
     }
 

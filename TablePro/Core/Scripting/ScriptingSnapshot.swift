@@ -129,10 +129,6 @@ internal enum ScriptingSnapshot {
         return true
     }
 
-    /// Selecting the editor tab is not enough on its own. Its window can be showing a different
-    /// connection, and it can be a background member of a native tab group, either of which leaves
-    /// the tab hidden while the command reports success. The connection router already does all
-    /// three; this does the same in the same order.
     @discardableResult
     internal static func focus(tab tabId: UUID, connectionId: UUID) -> Bool {
         guard isVisibleToScripts(connectionId: connectionId),
@@ -140,23 +136,7 @@ internal enum ScriptingSnapshot {
         else {
             return false
         }
-
-        coordinator.tabManager.selectedTabId = tabId
-
-        guard let windowId = coordinator.windowId,
-              let window = WindowLifecycleMonitor.shared.window(for: windowId)
-        else {
-            coordinator.focusWindow()
-            return true
-        }
-        if let host = window.contentViewController as? MainSplitViewController,
-           host.workspaces.contains(connectionId) {
-            host.selectHostedConnection(connectionId)
-        }
-        if let group = window.tabGroup, group.selectedWindow !== window {
-            group.selectedWindow = window
-        }
-        window.makeKeyAndOrderFront(nil)
+        coordinator.selectTabAndFocusWindow(tabId)
         return true
     }
 

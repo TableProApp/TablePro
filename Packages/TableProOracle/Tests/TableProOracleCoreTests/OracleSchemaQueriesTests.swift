@@ -157,6 +157,39 @@ final class OracleSchemaQueriesTests: XCTestCase {
         XCTAssertNil(OracleSchemaQueries.parseColumnRow(row)?.defaultValue)
     }
 
+    /// Position 12 is `GENERATION_TYPE` from `ALL_TAB_IDENTITY_COLS`, which only an identity column has.
+    func testParseColumnRowReadsHowAnIdentityIsGeneratedAndWhetherAColumnIsVirtual() {
+        let always: [OracleRawCell] = [
+            .string("ID"), .string("NUMBER"), .string("22"), .null, .null, .string("N"), .string("Y"),
+            .string("\"HR\".\"ISEQ$$_1\".nextval"), .string("NO"), .string("YES"), .string("NO"), .string("NO"),
+            .string("ALWAYS")
+        ]
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(always)?.identityGeneration, .always)
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(always)?.isVirtual, false)
+
+        let byDefault: [OracleRawCell] = [
+            .string("ID"), .string("NUMBER"), .string("22"), .null, .null, .string("N"), .string("Y"),
+            .string("\"HR\".\"ISEQ$$_2\".nextval"), .string("NO"), .string("YES"), .string("NO"), .string("NO"),
+            .string("BY DEFAULT")
+        ]
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(byDefault)?.identityGeneration, .byDefault)
+
+        let virtual: [OracleRawCell] = [
+            .string("V"), .string("NUMBER"), .string("22"), .null, .null, .string("Y"), .string("N"),
+            .string("LENGTH(\"NAME\")"), .string("YES"), .string("NO"), .string("NO"), .string("NO"), .null
+        ]
+        XCTAssertNil(OracleSchemaQueries.parseColumnRow(virtual)?.identityGeneration)
+        XCTAssertEqual(OracleSchemaQueries.parseColumnRow(virtual)?.isVirtual, true)
+    }
+
+    func testColumnsQueryReadsTheIdentityGenerationOnlyWhereTheReleaseHasIdentity() {
+        let modern = OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 23))
+        XCTAssertTrue(modern.contains("i.GENERATION_TYPE FROM SYS.ALL_TAB_IDENTITY_COLS i"))
+        let legacy = OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 11))
+        XCTAssertTrue(legacy.contains("NULL AS GENERATION_TYPE"))
+        XCTAssertFalse(legacy.contains("ALL_TAB_IDENTITY_COLS"))
+    }
+
     /// Positions 8 and 9 are `VIRTUAL_COLUMN` and `IDENTITY_COLUMN`, in the order the projection writes them.
     func testParseColumnRowDropsTheDefaultOfAnIdentityOrVirtualColumn() {
         let identity: [OracleRawCell] = [
@@ -257,12 +290,13 @@ final class OracleSchemaQueriesTests: XCTestCase {
             let bulk = projection(of: OracleSchemaQueries.allColumns(schema: "HR", release: release))
             XCTAssertEqual(bulk.first, "c.TABLE_NAME")
             XCTAssertEqual(Array(bulk.dropFirst()), single, "release \(major)")
-            XCTAssertEqual(single.count, 12, "release \(major)")
+            XCTAssertEqual(single.count, 13, "release \(major)")
         }
     }
 
     private func projection(of sql: String) -> [String] {
-        guard let select = sql.range(of: "SELECT"), let from = sql.range(of: "FROM ") else { return [] }
+        guard let select = sql.range(of: "SELECT"),
+              let from = sql.range(of: "FROM \(OracleDictionary.allTabCols) c") else { return [] }
         return sql[select.upperBound..<from.lowerBound]
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

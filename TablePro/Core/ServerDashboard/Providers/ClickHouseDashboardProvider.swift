@@ -99,12 +99,15 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
     }
 
     func killSessionSQL(processId: String) -> String? {
-        let uuidPattern = #"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"#
-        guard processId.range(of: uuidPattern, options: [.regularExpression, .caseInsensitive]) != nil else {
-            return nil
-        }
+        guard acceptsProcessId(processId) else { return nil }
         return "KILL QUERY WHERE query_id = '\(processId)'"
     }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        processId.range(of: Self.queryIdPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private static let queryIdPattern = #"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"#
 }
 
 // MARK: - Helpers

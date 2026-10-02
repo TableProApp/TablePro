@@ -49,6 +49,7 @@ struct RewindSnapshotStorageTests {
             target: target,
             capturedAt: capturedAt,
             generatedColumns: [],
+            identityColumns: [],
             operations: [
                 RowWriteOperation(
                     kind: .update,

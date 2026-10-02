@@ -24422,9 +24422,6 @@
         }
       }
     },
-    "Connection timed out" : {
-
-    },
     "backtick" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28770,6 +28767,9 @@
           }
         }
       }
+    },
+    "CHECK expression as the engine reports it" : {
+
     },
     "Changed since the save" : {
       "localizations" : {
@@ -36151,6 +36151,9 @@
         }
       }
     },
+    "Columns the constraint reads, when the engine reports them" : {
+
+    },
     "Columns to select. Omit for all." : {
       "localizations" : {
         "ko" : {
@@ -36358,6 +36361,9 @@
           }
         }
       }
+    },
+    "Comma-separated tables whose columns the prompt includes, up to %1$d. The first %1$d by name when omitted" : {
+
     },
     "Comma-separated values. Compatible with Excel and most tools." : {
       "localizations" : {
@@ -39949,6 +39955,9 @@
           }
         }
       }
+    },
+    "Connection timed out" : {
+
     },
     "Connection: %@" : {
       "localizations" : {
@@ -67743,6 +67752,9 @@
           }
         }
       }
+    },
+    "False for a constraint the engine has not checked against existing rows" : {
+
     },
     "false" : {
       "localizations" : {
@@ -106695,7 +106707,10 @@
     "The SAP HANA schema name cannot be empty." : {
 
     },
-    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
+    "The server fills in %@, so it cannot be given a value." : {
+
+    },
+    "This table has no primary key, and %@ cannot be compared to find the row." : {
 
     },
     "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
@@ -154713,6 +154728,9 @@
         }
       }
     },
+    "Table-level CHECK constraints" : {
+
+    },
     "Table Type" : {
 
     },
@@ -163100,6 +163118,9 @@
     "The view's query runs again and replaces its stored rows. A plain refresh stops other sessions from reading the view until it finishes." : {
 
     },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
+
+    },
     "Theme" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -164986,6 +165007,12 @@
       }
     },
     "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost." : {
+
+    },
+    "This engine offers only mode 'cancel' for stopping a session." : {
+
+    },
+    "This engine offers only mode 'kill' for stopping a session." : {
 
     },
     "This file cannot be saved in that format." : {
@@ -168645,7 +168672,7 @@
     "This view can be refreshed concurrently." : {
 
     },
-    "Timed out while connecting to the Dameng server" : {
+    "Timed out while connecting to the Kafka broker" : {
 
     },
     "Timed out while connecting to the Kafka cluster" : {
@@ -184663,6 +184690,9 @@
     "'%@' is document metadata and cannot be edited." : {
 
     },
+    "'%@' is not a process id on this engine. Take one from get_server_dashboard." : {
+
+    },
     "The document's _id is unknown, so it cannot be addressed." : {
 
     },
@@ -184916,7 +184946,7 @@
     "This database cannot filter rows with these conditions." : {
 
     },
-    "Timed out while connecting to the Kafka broker" : {
+    "Timed out while connecting to the Dameng server" : {
 
     },
     "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {

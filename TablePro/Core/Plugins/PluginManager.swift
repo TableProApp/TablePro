@@ -109,6 +109,12 @@ final class PluginManager: ObservableObject {
     /// learned about a table another connection changed. The defaults approve every save, find
     /// every save finished and keep nothing, so an already-built plugin keeps loading and saves as
     /// before.
+    ///
+    /// 34 adds `PluginRowWriteContext` and `generateRowWrites(...context:)`, which hands a driver
+    /// that writes its own statements the columns the server owns and how a keyless row match has to
+    /// compare each column. The default forwards to the requirement without the context, so an
+    /// already-built plugin keeps loading and writes what it wrote before; the minimum stays where it
+    /// is and no bulk re-release is needed.
     nonisolated static let currentPluginKitVersion = 34
 
     /// Still 19, so every plugin already published for the previous release keeps loading.

@@ -91,6 +91,39 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.contains("N'dbo'"))
     }
 
+    func testColumnsQueryQuotesBothNamesBeforeResolvingTheObject() {
+        let sql = MSSQLSchemaQueries.columns(schema: "x.y", table: "a.b")
+        XCTAssertTrue(sql.contains("OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"))
+        XCTAssertFalse(sql.contains("OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME)"))
+    }
+
+    func testColumnsQueryReportsRowversionAndPeriodColumnsAsServerGenerated() {
+        let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
+        XCTAssertTrue(sql.contains("WHEN c.DATA_TYPE = 'timestamp' THEN 1"))
+        XCTAssertTrue(sql.contains("'GeneratedAlwaysType') > 0 THEN 1"))
+        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED"))
+    }
+
+    func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
+        let sql = MSSQLSchemaQueries.allColumns(schema: "dbo")
+        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))
+        XCTAssertTrue(sql.contains("c.TABLE_SCHEMA = N'dbo'"))
+        XCTAssertEqual(MSSQLSchemaQueries.allColumnsTableNameIndex, 11)
+    }
+
+    func testParseColumnRowReadsServerGeneratedColumns() {
+        let rowversion: [String?] = ["RV", "timestamp", nil, nil, nil, "NO", nil, "0", "0", "0", "1"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isServerGenerated, true)
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isGenerated, true)
+
+        let computed: [String?] = ["Doubled", "int", nil, "10", "0", "YES", nil, "0", "0", "1", "0"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isGenerated, true)
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isServerGenerated, false)
+
+        let plain: [String?] = ["Name", "nvarchar", "50", nil, nil, "YES", nil, "0", "0", "0", "0"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(plain)?.isGenerated, false)
+    }
+
     func testIndexesQueryUsesBracketedIdentifier() {
         let sql = MSSQLSchemaQueries.indexes(schema: "dbo", table: "Users")
         XCTAssertTrue(sql.contains("OBJECT_ID(N'[dbo].[Users]')"))

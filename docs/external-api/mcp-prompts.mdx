@@ -54,7 +54,7 @@ Required arguments come first; optional ones follow in parentheses.
 | `write_migration` | `connection`, `change` (`table`, `database`, `schema`) | Current structure with DDL when a table is named, plus the connection's Safe Mode level. Asks for the migration, the rollback and a verifying query. |
 | `summarize_query_history` | `connection` (`period`, `limit`) | The recorded history for that connection, summarized by intent, with every write, every failure and the slowest statements called out. |
 
-`audience` is `newcomer` (default), `analyst` or `engineer`. `period` is `today`, `this_week` (default), `this_month` or `all`, and `limit` runs 1 to 500, default 50. `tables` on `question_to_sql` is comma-separated; the largest few are used when it is omitted, and only the first 6 either way.
+`audience` is `newcomer` (default), `analyst` or `engineer`. `period` is `today`, `this_week` (default), `this_month` or `all`, and `limit` runs 1 to 500, default 50. `tables` on `question_to_sql` is comma-separated. The prompt carries the columns of at most 6 tables: the first 6 you name, or the first 6 by name when `tables` is omitted. When that leaves tables out, the prompt says how many it covers and tells the model to call `describe_table` for the rest.
 
 Statement text is truncated at 8,000 characters where `review_query` and `propose_indexes` echo your `query` and `explain_plan`, and at 600 characters per row in the `summarize_query_history` table.
 

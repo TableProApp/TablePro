@@ -233,6 +233,35 @@ struct DataWriteExecutorTests {
         #expect(counting.trace.last == "PRAGMA foreign_keys = ON")
     }
 
+    @Test
+    func aRequiredPrologueThatFailsStopsTheRunBeforeAnyStep() async throws {
+        let counting = CountingDriver(affectedRows: 1, failOnStatement: 1)
+        let required = DataWritePlan(
+            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
+            databaseType: .mssql,
+            steps: plan(expectedRowCount: 1).steps,
+            prologue: ["SET IDENTITY_INSERT [dbo].[t] ON"],
+            epilogue: ["SET IDENTITY_INSERT [dbo].[t] OFF"],
+            prologueIsRequired: true
+        )
+        await #expect(throws: (any Error).self) {
+            try await DataWriteExecutor.run(required, on: driver(counting))
+        }
+
+        #expect(counting.executed == ["SET IDENTITY_INSERT [dbo].[t] ON", "SET IDENTITY_INSERT [dbo].[t] OFF"])
+        #expect(!counting.didCommit)
+    }
+
+    @Test
+    func anOptionalPrologueThatFailsLetsTheStepsRun() async throws {
+        let counting = CountingDriver(affectedRows: 1, failOnStatement: 1)
+        _ = try await DataWriteExecutor.run(
+            plan(expectedRowCount: 1, prologue: ["PRAGMA foreign_keys = OFF"]), on: driver(counting)
+        )
+
+        #expect(counting.didCommit)
+    }
+
     @Test("The statements the run executed around the transaction are reported back")
     func sideStatementsAreReported() async throws {
         let counting = CountingDriver(affectedRows: 1)

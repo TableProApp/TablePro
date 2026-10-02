@@ -46,6 +46,7 @@ struct RewindPlannerTests {
             target: target,
             capturedAt: Date(timeIntervalSince1970: 0),
             generatedColumns: [],
+            identityColumns: [],
             operations: operations
         )
         return RewindPlanner(
@@ -110,7 +111,7 @@ struct RewindPlannerTests {
         let record = RewindRecord(
             id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .sqlite,
             target: target, capturedAt: Date(timeIntervalSince1970: 0),
-            generatedColumns: [], operations: [stamped]
+            generatedColumns: [], identityColumns: [], operations: [stamped]
         )
         let planner = RewindPlanner(
             record: record,
@@ -188,7 +189,7 @@ struct RewindPlannerTests {
         let record = RewindRecord(
             id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .sqlite,
             target: target, capturedAt: Date(timeIntervalSince1970: 0),
-            generatedColumns: [], operations: [binaryKeyed]
+            generatedColumns: [], identityColumns: [], operations: [binaryKeyed]
         )
         let planner = RewindPlanner(
             record: record,

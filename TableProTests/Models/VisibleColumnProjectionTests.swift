@@ -80,11 +80,11 @@ struct VisibleColumnProjectionTests {
         let converter = try SQLRowToStatementConverter(
             tableName: "users",
             columns: projection.columns(columns),
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .mysql,
             dialect: dialect
         )
-        let result = converter.generateUpdates(rows: [projection.values(values)])
+        let result = converter.generateUpdates(rows: [.init(values: projection.values(values))])
         #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@test.com' WHERE `id` = '1';")
     }
 }

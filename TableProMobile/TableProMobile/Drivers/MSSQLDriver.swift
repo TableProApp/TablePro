@@ -248,7 +248,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                     characterMaxLength: parsed.characterMaxLength,
                     ordinalPosition: idx,
                     isAutoIncrement: parsed.isIdentity,
-                    isGenerated: parsed.isComputed
+                    isGenerated: parsed.isGenerated,
+                    rejectsWrittenValues: parsed.isIdentity
                 )
             }
         }
