@@ -275,7 +275,8 @@ struct WorkspaceRailCellRenderingTests {
     }
 
     /// The selection fill covers the whole row, so the cell's own edges are the fill's, and the
-    /// padding inside them is all that separates one tile from the next.
+    /// padding inside them is all that separates one tile from the next. Centring an odd number of
+    /// points snaps to whole pixels on a 1x display, so the two sides may differ by one pixel there.
     @Test("A tile has as much space above its glyph as below its label")
     func hostedTileIsBalanced() throws {
         let cases: [(String, ConnectionStatus)] = [
@@ -293,11 +294,11 @@ struct WorkspaceRailCellRenderingTests {
 
                 #expect(abs(cell.frame.height - rowView.frame.height) < 0.5, "the fill is taller than the tile")
                 #expect(
-                    abs(margins.top - margins.bottom) <= 0.5,
+                    abs(margins.top - margins.bottom) <= rail.pixel + 0.001,
                     "\(margins.top)pt above the glyph, \(margins.bottom)pt below the label in \(layout)"
                 )
                 if !container.isEmpty {
-                    #expect(abs(margins.top - layout.padding) <= 0.5, "two-line tile padding in \(layout)")
+                    #expect(abs(margins.top - layout.padding) <= rail.pixel + 0.001, "two-line tile padding in \(layout)")
                 }
             }
         }
@@ -443,6 +444,11 @@ private final class HostedRail: NSObject, NSTableViewDataSource, NSTableViewDele
         }
         scrollView.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
+    }
+
+    /// One device pixel in points, the finest step Auto Layout places a frame on.
+    var pixel: CGFloat {
+        1 / max(1, window.backingScaleFactor)
     }
 
     func cell(atRow row: Int) throws -> WorkspaceRailCellView {
