@@ -42,6 +42,8 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     /// truncated list must not also under-report how much of the file was left out.
     private static let maxRecordedErrors = 1_000
 
+    private let lineDelimitedFields = JSONFieldDetectionCache()
+
     func performImport(
         source: any PluginImportSource,
         sink: any PluginImportDataSink,
@@ -60,35 +62,20 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         var unreadableLineCount = 0
         if JSONImportParsing.isLineDelimited(url) {
             progress.setEstimatedTotal(max(1, Int(source.fileSizeBytes() / 256)))
-            var lines = url.lines.makeAsyncIterator()
-            var lineNumber = 0
-            let skipsErrors = settings.errorHandling == .skipAndContinue
+            var batches = JSONLineBatches(
+                lines: try JSONLineReader(url: url, checkCancellation: progress.checkCancellation),
+                linesPerBatch: Self.batchSize,
+                skipsUnreadableLines: settings.errorHandling == .skipAndContinue,
+                maxRecordedErrors: Self.maxRecordedErrors
+            )
+            defer { batches.close() }
             outcome = try await RowImportRunner.run(
                 configuration: configuration, sink: sink, progress: progress
             ) {
-                var batch: [RowImportRunner.Entry] = []
-                while batch.count < Self.batchSize, let line = try await lines.next() {
-                    lineNumber += 1
-                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { continue }
-                    do {
-                        let row = try JSONImportParsing.parseRow(fromLine: trimmed)
-                        guard !row.isEmpty else { continue }
-                        batch.append((lineNumber, row))
-                    } catch {
-                        guard skipsErrors else { throw error }
-                        unreadableLineCount += 1
-                        if unreadableLines.count < Self.maxRecordedErrors {
-                            unreadableLines.append(.init(
-                                statement: "row \(lineNumber)",
-                                line: lineNumber,
-                                errorMessage: error.localizedDescription
-                            ))
-                        }
-                    }
-                }
-                return batch.isEmpty ? nil : batch
+                try batches.next()
             }
+            unreadableLines = batches.unreadableLines
+            unreadableLineCount = batches.unreadableLineCount
         } else {
             let rawRows = try JSONImportParsing.parseRows(at: url, targetTable: sink.targetTable)
             progress.setEstimatedTotal(rawRows.count)
@@ -119,7 +106,11 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     // MARK: - Source introspection
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
-        let rows = try JSONImportParsing.sampleRawRows(at: url, targetTable: targetTable, limit: 200)
-        return JSONImportParsing.detectFields(in: rows)
+        guard JSONImportParsing.isLineDelimited(url) else {
+            return try JSONImportParsing.detectFields(at: url, targetTable: targetTable)
+        }
+        return try lineDelimitedFields.fields(at: url) {
+            try JSONImportParsing.detectFields(inLinesAt: url)
+        }
     }
 }

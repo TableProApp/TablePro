@@ -62,11 +62,10 @@ final class FilterCoordinator: ObservableObject {
             }
         }
         normalizeLogicModeIfNeeded(at: tabIndex)
-        parent.tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
 
         let tab = parent.tabManager.tabs[tabIndex]
         let queryColumns = parent.queryColumns(for: tab)
-        let newQuery = parent.queryBuilder.buildFilteredQuery(
+        guard let newQuery = parent.queryBuilder.buildFilteredQuery(
             tableName: tableName,
             schemaName: tab.tableContext.schemaName,
             filters: filters,
@@ -76,10 +75,16 @@ final class FilterCoordinator: ObservableObject {
             columnTypes: queryColumns.columnTypes,
             selectColumns: parent.selectColumns(for: tab),
             limit: tab.pagination.pageSize,
-            offset: tab.pagination.currentOffset
-        )
+            offset: 0
+        ) else {
+            parent.tabManager.mutate(at: tabIndex) {
+                $0.execution.errorMessage = String(localized: "This database cannot filter rows with these conditions.")
+            }
+            return
+        }
 
         parent.tabManager.mutate(at: tabIndex) {
+            $0.pagination.reset()
             $0.content.query = newQuery
             $0.filterState.executedFilters = filters
         }
@@ -249,6 +254,7 @@ final class FilterCoordinator: ObservableObject {
         let (columns, columnTypes) = parent.queryColumns(for: tab)
 
         let newQuery: String
+        var executed: [TableFilter] = []
         if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
             let search = tab.filterState.browseSearch
             newQuery = parent.queryBuilder.buildKeyPatternBrowseQuery(
@@ -262,19 +268,21 @@ final class FilterCoordinator: ObservableObject {
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
-        } else if hasFilters {
-            newQuery = parent.queryBuilder.buildFilteredQuery(
-                tableName: tableName,
-                schemaName: tab.tableContext.schemaName,
-                filters: tab.filterState.appliedFilters,
-                logicMode: tab.filterState.filterLogicMode,
-                sortState: querySortState(for: tab),
-                columns: columns,
-                columnTypes: columnTypes,
-                selectColumns: parent.selectColumns(for: tab),
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
-            )
+            executed = hasFilters ? tab.filterState.appliedFilters : []
+        } else if hasFilters, let filteredQuery = parent.queryBuilder.buildFilteredQuery(
+            tableName: tableName,
+            schemaName: tab.tableContext.schemaName,
+            filters: tab.filterState.appliedFilters,
+            logicMode: tab.filterState.filterLogicMode,
+            sortState: querySortState(for: tab),
+            columns: columns,
+            columnTypes: columnTypes,
+            selectColumns: parent.selectColumns(for: tab),
+            limit: tab.pagination.pageSize,
+            offset: tab.pagination.currentOffset
+        ) {
+            newQuery = filteredQuery
+            executed = tab.filterState.appliedFilters
         } else {
             newQuery = parent.queryBuilder.buildBaseQuery(
                 tableName: tableName,
@@ -287,7 +295,6 @@ final class FilterCoordinator: ObservableObject {
             )
         }
 
-        let executed = hasFilters ? tab.filterState.appliedFilters : []
         parent.tabManager.mutate(at: tabIndex) {
             $0.content.query = newQuery
             $0.filterState.executedFilters = executed

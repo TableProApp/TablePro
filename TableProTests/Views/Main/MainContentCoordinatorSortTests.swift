@@ -456,6 +456,56 @@ struct MainContentCoordinatorSortTests {
         #expect(sorted == ["a", "b", "c"])
     }
 
+    @Test(
+        "A Redis, etcd or Kafka result is sorted in place, never re-run with an ORDER BY its language lacks",
+        arguments: CommandWithoutOrderBy.all
+    )
+    func commandWithoutOrderBySortsInPlace(command: CommandWithoutOrderBy) async throws {
+        let connection = TestFixtures.makeConnection(type: command.type)
+        let driver = StatementRecordingDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer {
+            coordinator.cancelAllQueryTasks()
+            coordinator.teardown()
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+        var tab = QueryTab(title: "Query", query: command.text, tabType: .query)
+        tab.execution.lastExecutedAt = Date()
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+        let rows = TableRows.from(
+            queryRows: [["b"], ["c"], ["a"]].map { row in row.map(PluginCellValue.fromOptional) },
+            columns: [command.column],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let shown = ResultSet(label: "Result", tableRows: rows)
+        shown.baseQuery = command.text
+        tabManager.mutate(tabId: tab.id) { $0.display.replaceUnpinnedResults(with: [shown]) }
+        coordinator.setActiveTableRows(rows, for: tab.id)
+
+        coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
+        for _ in 0 ..< 500 {
+            if !coordinator.isShowingSafeModePrompt, !coordinator.tabExecution.isExecuting(tab.id) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(driver.sentSQL.isEmpty)
+        let idx = try #require(tabManager.tabs.firstIndex { $0.id == tab.id })
+        #expect(tabManager.tabs[idx].content.query == command.text)
+        #expect(tabManager.tabs[idx].sortState.columns == [SortColumn(columnIndex: 0, direction: .ascending)])
+        let sorted = coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.map { $0[0].asText }
+        #expect(sorted == ["a", "b", "c"])
+    }
+
     @Test("Table tab keeps the rows-per-page LIMIT through ascending, descending, and cleared sort")
     func tableTabSortPreservesPageSize() {
         let (coordinator, tabManager, tabId) = makeTableCoordinator(pageSize: 10)
@@ -507,6 +557,20 @@ enum InFlightRunEnding: Sendable {
             _ = coordinator.tabExecution.settle(claim)
         }
     }
+}
+
+struct CommandWithoutOrderBy: Sendable, CustomTestStringConvertible {
+    let type: DatabaseType
+    let text: String
+    let column: String
+
+    var testDescription: String { type.rawValue }
+
+    static let all = [
+        CommandWithoutOrderBy(type: .redis, text: "LPUSH mylist a", column: "length"),
+        CommandWithoutOrderBy(type: .etcd, text: "put k v", column: "Key"),
+        CommandWithoutOrderBy(type: .kafka, text: "CONSUME \"orders\" FROM NEWEST LIMIT 1", column: "Offset")
+    ]
 }
 
 /// One statement as it reached the driver, with the values bound to it.

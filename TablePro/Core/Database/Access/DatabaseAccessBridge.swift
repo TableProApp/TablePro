@@ -217,23 +217,31 @@ internal actor DatabaseAccessBridge {
         /// A write that timed out or failed may still have committed: a group only returns once
         /// every child has, so by the time the error arrives the driver call has finished one way or
         /// the other, and a catalog that might have changed is refreshed rather than trusted.
+        let grammar = databaseType.lexicalGrammar
         let result: QueryResult
+        let tableEdits: SucceededStatements?
         do {
-            result = try await runRacingTimeout(
+            (result, tableEdits) = try await runRacingTimeout(
                 scope: scope,
                 route: route,
                 policy: policy,
                 owner: owner,
                 timeoutSeconds: timeoutSeconds
             ) { driver in
+                let answer: QueryResult
                 if shouldCap {
-                    return try await driver.executeUserQuery(
+                    answer = try await driver.executeUserQuery(
                         query: statement.sql,
                         rowCap: statement.rowCap ?? maxRows,
                         parameters: nil
                     )
+                } else {
+                    answer = try await driver.execute(query: normalizedQuery)
                 }
-                return try await driver.execute(query: normalizedQuery)
+                let edits = await SucceededStatements.single(
+                    normalizedQuery, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
+                )
+                return (answer, edits)
             }
         } catch {
             if classification.tier != .safe {
@@ -243,6 +251,9 @@ internal actor DatabaseAccessBridge {
         }
 
         CatalogChangeService.post(statementRan)
+        if let tableEdits {
+            CatalogChangeService.post(.statementsSucceeded(tableEdits))
+        }
         return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
     }
 

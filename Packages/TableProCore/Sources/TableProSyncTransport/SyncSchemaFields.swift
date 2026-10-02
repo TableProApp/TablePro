@@ -103,10 +103,6 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     ]
 }
 
-/// Empty until `TableFolder` is deployed to Production, for the reason `FavoriteDatabaseSyncField`
-/// once gave: the gated subscript drops every write, so the type stays inert rather than rejected.
-/// Flip this set and `SyncRecordType.verifiedInProduction` in the commit that carries the refreshed
-/// `production-schema.ckdb`.
 public enum TableFolderSyncField: String, SyncSchemaField {
     case folderId
     case connectionId
@@ -118,7 +114,10 @@ public enum TableFolderSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .folderId, .connectionId, .database, .schema, .name,
+        .createdAt, .updatedAt, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 /// One object filed in a folder. The record is named after the object, not the folder, so moving a
@@ -132,7 +131,9 @@ public enum TableFolderItemSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .schema, .name, .folderId, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 /// Everything except the password, which stays in the Keychain, and except the payload of a

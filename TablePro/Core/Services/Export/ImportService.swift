@@ -57,7 +57,8 @@ final class ImportService: ObservableObject {
         ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil,
         targetTable: String? = nil,
-        columnMapping: [String: String] = [:]
+        columnMapping: [String: String] = [:],
+        sourceFields: Set<String> = []
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -139,7 +140,8 @@ final class ImportService: ObservableObject {
                     source: source,
                     progress: progress,
                     targetTable: targetTable,
-                    columnMapping: columnMapping
+                    columnMapping: columnMapping,
+                    sourceFields: sourceFields
                 )
             }
         } catch {
@@ -157,7 +159,7 @@ final class ImportService: ObservableObject {
                 QueryHistoryRecordRequest(
                     query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
                     connectionId: connection.id,
-                    databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                    databaseName: scope.database,
                     databaseType: connection.type,
                     source: .dataImport,
                     executionTime: Date().timeIntervalSince(startedAt),
@@ -168,7 +170,7 @@ final class ImportService: ObservableObject {
             )
 
             reportImportFinished(
-                .failed(reason: error.localizedDescription), connection: connection, startedAt: operationStart
+                .failed(reason: error.localizedDescription), in: scope, startedAt: operationStart
             )
             throw error
         }
@@ -182,7 +184,7 @@ final class ImportService: ObservableObject {
             QueryHistoryRecordRequest(
                 query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
                 connectionId: connection.id,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseName: scope.database,
                 databaseType: connection.type,
                 source: .dataImport,
                 executionTime: result.executionTime,
@@ -193,7 +195,7 @@ final class ImportService: ObservableObject {
 
         reportImportFinished(
             .succeeded(OperationSummary(statementCount: result.executedStatements)),
-            connection: connection,
+            in: scope,
             startedAt: operationStart
         )
 
@@ -209,23 +211,38 @@ final class ImportService: ObservableObject {
         source: any PluginImportSource,
         progress: PluginImportProgress,
         targetTable: String?,
-        columnMapping: [String: String]
+        columnMapping: [String: String],
+        sourceFields: Set<String>
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,
             databaseType: connection.type,
             targetTable: targetTable,
             columnMapping: columnMapping,
+            sourceFields: sourceFields,
             isCancelled: { progress.isCancelled }
         )
+        defer { reportNameHazards(sink.nameHazardStatements) }
         return try await plugin.performImport(source: source, sink: sink, progress: progress)
+    }
+
+    /// The file ran on the same session as the editor, so a temporary table it made shadows a real one there
+    /// for as long as the connection stays open, and has to reach the catalog like any statement the editor ran.
+    private func reportNameHazards(_ statements: [String]) {
+        guard !statements.isEmpty else { return }
+        CatalogChangeService.post(
+            .statementsRan(connectionId: connection.id, statements: statements, databaseType: connection.type)
+        )
     }
 
     /// An import the user cancelled reports nothing, matching what history already does with one
     /// and for the same reason: they stopped it, so they know.
+    ///
+    /// Named after the scope the import ran in, as its history row is. The browse database read when
+    /// the import ends is wherever another window moved the connection in the meantime.
     private func reportImportFinished(
         _ outcome: OperationOutcome,
-        connection: DatabaseConnection,
+        in scope: DatabaseScope,
         startedAt: ContinuousClock.Instant
     ) {
         OperationCompletionReporter.shared.report(
@@ -234,7 +251,7 @@ final class ImportService: ObservableObject {
                 owner: .connection(connection.id),
                 connectionId: connection.id,
                 connectionName: connection.name,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseName: scope.database,
                 elapsed: startedAt.duration(to: .now),
                 outcome: outcome
             )

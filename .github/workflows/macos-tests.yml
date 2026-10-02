@@ -361,27 +361,19 @@ jobs:
 
       - uses: ./.github/actions/unpack-test-products
 
-      # Quarantined cases are listed one per line in .github/macos-test-quarantine.txt. Burn that
-      # list down. The script enumerates the target first and refuses to run if any entry would
-      # skip nothing, because xcodebuild accepts -skip-testing for a case that does not exist and
-      # says nothing: that left one line inert for 479 commits, and it is also what happens to a
-      # Swift Testing case written without its parentheses.
       - name: Run unit tests
         run: |
           set -o pipefail
-          # To a file on its own line, not through a process substitution. `< <(...)` discards the
-          # producer's exit status, so the script refusing an entry that would skip nothing printed
-          # its diagnostic, exited 1, and the step carried on to run the whole suite unskipped and
-          # report success. The refusal the comment above promises never once failed a job.
+          # To a file, not a process substitution, which would discard the lister's exit status.
           SKIP_FILE="${RUNNER_TEMP:-.}/quarantine-skip-args.txt"
-          scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests "$XCTESTRUN" "$TEST_DESTINATION" > "$SKIP_FILE"
-          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither
-          # mapfile nor readarray, and a `run:` block gets that bash.
+          scripts/ci/list-tests.sh \
+            --xctestrun "$XCTESTRUN" \
+            --target TableProTests \
+            --quarantine .github/macos-test-quarantine.txt \
+            --skip > "$SKIP_FILE"
+          # A read loop, because the runner's /bin/bash 3.2 has no mapfile.
           SKIP_ARGS=()
           while IFS= read -r arg; do
-            # A blank line would become a literal empty argument, and xcodebuild reads that as a
-            # build action and refuses the whole run. An empty array expands to nothing and is
-            # fine; one empty string is not.
             [ -n "$arg" ] || continue
             SKIP_ARGS+=("$arg")
           done < "$SKIP_FILE"
@@ -468,19 +460,14 @@ jobs:
           SHARD_COUNT: ${{ matrix.of }}
         run: |
           set -o pipefail
-          # To a file on its own line, so a failure of the lister fails the step. A process
-          # substitution discards its exit status, which reads here as "the shard selected nothing".
           ONLY_FILE="${RUNNER_TEMP:-.}/shard-only-args.txt"
           scripts/ci/list-tests.sh \
             --xctestrun "$XCTESTRUN" \
             --target TableProUITests \
             --quarantine .github/macos-ui-test-quarantine.txt \
             --shard "$SHARD/$SHARD_COUNT" > "$ONLY_FILE"
-          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither.
           ONLY_ARGS=()
           while IFS= read -r arg; do
-            # The count check below cannot see an empty argument: one blank line makes the count 1
-            # and xcodebuild then reads that empty argument as a build action.
             [ -n "$arg" ] || continue
             ONLY_ARGS+=("$arg")
           done < "$ONLY_FILE"

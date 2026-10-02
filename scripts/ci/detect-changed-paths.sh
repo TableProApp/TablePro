@@ -45,7 +45,7 @@ done
 #
 # The subject goes into a variable instead of a pipe into grep. grep -q exits on the first match,
 # and the SIGPIPE that then kills git log would surface through pipefail as a skipped guard (the
-# same trap scripts/check-freetds-fedauth.sh documents).
+# same trap scripts/probes/check-freetds-fedauth.sh documents).
 if [ "$SKIP_RELEASE_COMMIT" -eq 1 ] && [ "$EVENT" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
     SUBJECT="$(git log -1 --format=%s HEAD)"
     if [[ "$SUBJECT" =~ ^release:\ v[0-9] ]]; then

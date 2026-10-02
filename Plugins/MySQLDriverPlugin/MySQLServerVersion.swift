@@ -38,7 +38,7 @@ nonisolated internal enum MySQLServerVersion {
     /// 5.7.8 and MariaDB `max_statement_time` in 10.1.1; measured, everything below answers
     /// `ERROR 1193 Unknown system variable` to both spellings.
     ///
-    /// This is the floor the tests and `scripts/check-mysql-query-timeout.sh` assert, not the
+    /// This is the floor the tests and `scripts/probes/check-mysql-query-timeout.sh` assert, not the
     /// runtime gate: `applyQueryTimeout` runs the statement and reads the server's own answer,
     /// which is right for a fork, a proxy or a release no image exists for.
     static func hasStatementTimeout(banner: String?, flavor: MySQLServerFlavor) -> Bool {

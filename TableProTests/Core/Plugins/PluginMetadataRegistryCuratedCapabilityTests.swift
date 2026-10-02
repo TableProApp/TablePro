@@ -191,6 +191,13 @@ private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 @Suite("PluginMetadataRegistry curated capabilities", .serialized)
 struct PluginMetadataRegistryCuratedCapabilityTests {
+    @Test("etcd TLS Mode starts on Disabled, the mode the driver uses when none is chosen")
+    func etcdTlsModeDefaultsToDisabled() throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd"))
+        let field = try #require(snapshot.connection.additionalConnectionFields.first { $0.id == "etcdTlsMode" })
+        #expect(field.defaultValue == "Disabled")
+    }
+
     @Test("DuckDB stays unpoolable when its plugin registers")
     func duckDBKeepsItsPoolingOptOut() {
         let registry = PluginMetadataRegistry.shared
@@ -260,6 +267,15 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.supportsColumnSort == false)
         #expect(built.capabilities.supportsMatchAnyFilters == false)
         #expect(built.capabilities.pagination == .leadingRowsOnly(maximumRows: nil))
+    }
+
+    @Test("Redis, etcd and Kafka offer no column sort, since their commands take no ORDER BY", arguments: [
+        "Redis", "etcd", "Kafka"
+    ])
+    func commandLanguagesWithoutOrderByOfferNoColumnSort(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsColumnSort == false)
     }
 
     @Test("ScyllaDB declares the same query limits as Cassandra on its own curated entry")
@@ -420,6 +436,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
 
         #expect(built.capabilities.tlsImpliedPorts == [8_443, 443])
         #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
+    @MainActor
+    func etcdDeclaresNoGenericSSL() {
+        #expect(PluginManager.shared.supportsSSL(for: .etcd) == false)
+        #expect(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd")?.capabilities.supportsSSL == false)
     }
 
     @Test("SQL Server keeps its missing certificate fields when its plugin registers")

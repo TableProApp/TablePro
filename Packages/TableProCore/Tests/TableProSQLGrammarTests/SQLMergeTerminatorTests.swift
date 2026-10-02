@@ -3,7 +3,7 @@ import TableProSQLGrammar
 import Testing
 
 /// SQL Server fails a whole batch whose `MERGE` has no `;` with Msg 10713. Every case was measured on Azure SQL Edge
-/// 15.0, and `scripts/check-mssql-merge-terminator.sh` measures them again.
+/// 15.0, and `scripts/probes/check-mssql-merge-terminator.sh` measures them again.
 @Suite("SQL MERGE terminator")
 struct SQLMergeTerminatorTests {
     private static let sqlServer = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil)

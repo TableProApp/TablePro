@@ -18,6 +18,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     static let acceptedFileExtensions = ["csv", "tsv"]
     static let iconName = "tablecells"
     static let requiresTargetTable = true
+    static let sourceFieldsFollowFileOrder = true
 
     typealias Settings = CSVImportOptions
     static let settingsStorageId = "csv-import"

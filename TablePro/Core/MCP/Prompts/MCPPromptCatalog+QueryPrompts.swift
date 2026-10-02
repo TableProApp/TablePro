@@ -7,7 +7,7 @@ extension MCPPromptCatalog {
         proposeIndexes
     ]
 
-    private static let referencedTableLimit = 6
+    static let referencedTableLimit = 6
     private static let queryInventoryLimit = 150
     private static let queryExcerptLimit = 8_000
 
@@ -29,7 +29,12 @@ extension MCPPromptCatalog {
                 MCPPromptArgument(
                     name: "tables",
                     title: String(localized: "Tables"),
-                    description: String(localized: "Comma-separated tables to use. All loaded tables when omitted"),
+                    description: String(
+                        format: String(
+                            localized: "Comma-separated tables whose columns the prompt includes, up to %1$d. The first %1$d by name when omitted"
+                        ),
+                        referencedTableLimit
+                    ),
                     completion: .table
                 ),
                 .database,
@@ -40,10 +45,9 @@ extension MCPPromptCatalog {
                 let requested = context.list("tables")
                 let target = try await context.resolveTarget()
                 let inventory = try await context.schema.tableInventory(target: target, includeRowCounts: true)
-                let names = requested.isEmpty
-                    ? Array(inventory.prefix(referencedTableLimit).map(\.name))
-                    : Array(requested.prefix(referencedTableLimit))
+                let names = referencedTables(requested: requested, inventory: inventory)
                 let details = await context.schema.tableDetails(target: target, tables: names)
+                let available = requested.isEmpty ? inventory.count : requested.count
 
                 let text = """
                 Answer this question with one query against a live \(target.connection.databaseType) database.
@@ -59,10 +63,10 @@ extension MCPPromptCatalog {
 
                 ## Structure of the tables you can use
                 \(MCPPromptMarkdown.tableSections(details, includeDdl: false))
-
+                \(structureCoverageNote(described: details.count, available: available))
                 Rules:
-                - Use only the tables and columns shown above. If the question needs something that is not \
-                there, say what is missing and stop.
+                - Use only the tables and columns shown above, or ones you read with describe_table. If the \
+                question needs something that is not there, say what is missing and stop.
                 - Qualify every column when more than one table is involved, and state the join key you used.
                 - Prefer explicit JOIN ... ON. Say which joins can multiply rows and how you avoided it.
                 - Add a LIMIT unless the answer is an aggregate.
@@ -81,6 +85,18 @@ extension MCPPromptCatalog {
                 )
             }
         )
+    }
+
+    static func referencedTables(requested: [String], inventory: [MCPPromptTableEntry]) -> [String] {
+        requested.isEmpty
+            ? Array(inventory.prefix(referencedTableLimit).map(\.name))
+            : Array(requested.prefix(referencedTableLimit))
+    }
+
+    static func structureCoverageNote(described: Int, available: Int) -> String {
+        guard available > described else { return "" }
+        return "\nThe structure above covers \(described) of \(available) tables. "
+            + "Call describe_table for any other table before you use it.\n"
     }
 
     private static var reviewQuery: MCPPromptDefinition {

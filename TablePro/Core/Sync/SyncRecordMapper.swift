@@ -381,7 +381,14 @@ struct SyncRecordMapper {
     // MARK: - Table Favorite
 
     static func toCKRecord(favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry, in zone: CKRecordZone.ID) -> CKRecord {
-        let favoriteId = FavoriteTablesStorage.syncId(for: entry)
+        toCKRecord(favoriteEntry: entry, recordId: FavoriteTablesStorage.syncId(for: entry), in: zone)
+    }
+
+    static func toCKRecord(
+        favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry,
+        recordId favoriteId: String,
+        in zone: CKRecordZone.ID
+    ) -> CKRecord {
         let recordID = recordID(type: .tableFavorite, id: favoriteId, in: zone)
         let record = CKRecord(recordType: SyncRecordType.tableFavorite.rawValue, recordID: recordID)
 

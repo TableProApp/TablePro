@@ -109,15 +109,22 @@ extension MainContentCoordinator {
         )
     }
 
-    func selectTabAndFocusWindow(_ tabId: UUID) {
+    @discardableResult
+    func selectTabAndFocusWindow(_ tabId: UUID) -> Bool {
         tabManager.selectedTabId = tabId
-        focusWindow()
+        return focusWindow()
     }
 
-    func focusWindow() {
+    @discardableResult
+    func focusWindow() -> Bool {
         guard let windowId,
-              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return false }
+        (window.contentViewController as? MainSplitViewController)?.selectHostedConnection(connectionId)
+        if let group = window.tabGroup, group.selectedWindow !== window {
+            group.selectedWindow = window
+        }
         window.makeKeyAndOrderFront(nil)
+        return true
     }
 
     // MARK: - Sidebar Sync

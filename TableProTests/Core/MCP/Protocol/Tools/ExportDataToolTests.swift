@@ -328,7 +328,7 @@ struct ExportDataToolStatementTests {
     @Test("Rendering picks the writer for the format and needs a dialect only for SQL")
     func renderingPicksTheWriter() {
         let columns = ["id", "name"]
-        let rows: [JsonValue] = [.array([.int(1), .string("Ada")])]
+        let rows: [[MCPExportValue]] = [[.number("1"), .text("Ada")]]
 
         let csv = ExportDataTool.render(
             format: .csv,
@@ -357,5 +357,140 @@ struct ExportDataToolStatementTests {
             dialect: nil
         )
         #expect(withoutDialect.isEmpty)
+    }
+}
+
+struct ExportDataToolTypedCellTests {
+    private let result = QueryResult(
+        columns: ["n", "payload", "active", "code"],
+        columnTypes: [
+            .integer(rawType: "integer"),
+            .blob(rawType: "bytea"),
+            .boolean(rawType: "boolean"),
+            .text(rawType: "varchar")
+        ],
+        rows: [[.text("1"), .bytes(Data([0x00, 0x01])), .text("true"), .text("007")]],
+        rowsAffected: 0,
+        executionTime: 0,
+        error: nil
+    )
+
+    private func document(
+        _ format: MCPExportFormat,
+        databaseType: DatabaseType = .postgresql,
+        dialect: MCPSqlExportDialect? = nil
+    ) -> String {
+        ExportDataTool.document(
+            for: result, format: format, label: "items", rowLimit: 10, databaseType: databaseType, dialect: dialect
+        )
+    }
+
+    @Test("JSON export writes numbers and booleans as JSON values and keeps numeric-looking text a string")
+    func jsonKeepsColumnTypes() throws {
+        let decoded = try JSONDecoder().decode(JsonValue.self, from: Data(document(.json).utf8))
+        let row = try #require(decoded.arrayValue?.first)
+        #expect(row["n"] == .int(1))
+        #expect(row["active"] == .bool(true))
+        #expect(row["code"] == .string("007"))
+        #expect(row["payload"] == .string("AAE="))
+    }
+
+    @Test("SQL export writes numbers and booleans unquoted and binary as the engine's hex literal")
+    func sqlKeepsColumnTypes() throws {
+        let postgres = try #require(MCPSqlExportDialect.resolve(for: .postgresql))
+        #expect(
+            document(.sql, dialect: postgres)
+                == "INSERT INTO \"items\" (\"n\", \"payload\", \"active\", \"code\") "
+                + "VALUES (1, decode('0001', 'hex'), TRUE, '007');"
+        )
+    }
+
+    @Test("Binary cells use each engine's own literal in SQL export")
+    func sqlBinaryLiteralFollowsTheEngine() throws {
+        let expectations: [(DatabaseType, String)] = [
+            (.mysql, "X'0001'"),
+            (.sqlite, "X'0001'"),
+            (.mssql, "0x0001"),
+            (.oracle, "HEXTORAW('0001')"),
+            (.duckdb, "unhex('0001')")
+        ]
+        for (databaseType, literal) in expectations {
+            let dialect = try #require(MCPSqlExportDialect.resolve(for: databaseType))
+            #expect(
+                document(.sql, databaseType: databaseType, dialect: dialect).contains(literal),
+                "\(databaseType.rawValue)"
+            )
+        }
+    }
+
+    @Test("A PostgreSQL or DuckDB BIT column exports its bit string, not a boolean or a number")
+    func bitStringColumnsKeepTheirBits() throws {
+        let postgresBits = QueryResult(
+            columns: ["b1", "b8"],
+            columnTypes: [.boolean(rawType: "bit"), .boolean(rawType: "bit")],
+            rows: [[.text("1"), .text("00000101")]],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
+        let postgres = try #require(MCPSqlExportDialect.resolve(for: .postgresql))
+        #expect(
+            ExportDataTool.document(
+                for: postgresBits, format: .sql, label: "flags", rowLimit: 10, databaseType: .postgresql,
+                dialect: postgres
+            ) == "INSERT INTO \"flags\" (\"b1\", \"b8\") VALUES ('1', '00000101');"
+        )
+        #expect(
+            ExportDataTool.document(
+                for: postgresBits, format: .json, label: "flags", rowLimit: 10, databaseType: .postgresql,
+                dialect: nil
+            ) == "[{\"b1\":\"1\",\"b8\":\"00000101\"}]"
+        )
+
+        let duckDBBits = QueryResult(
+            columns: ["bits"],
+            columnTypes: [.boolean(rawType: "BIT")],
+            rows: [[.text("0101")]],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
+        let duckDB = try #require(MCPSqlExportDialect.resolve(for: .duckdb))
+        #expect(
+            ExportDataTool.document(
+                for: duckDBBits, format: .sql, label: "flags", rowLimit: 10, databaseType: .duckdb, dialect: duckDB
+            ) == "INSERT INTO \"flags\" (\"bits\") VALUES ('0101');"
+        )
+    }
+
+    @Test("CSV export writes every value as the driver sent it, and binary as base64")
+    func csvKeepsTheDriverText() {
+        let bit = QueryResult(
+            columns: ["flag", "amount"],
+            columnTypes: [.boolean(rawType: "bit"), .decimal(rawType: "decimal(10,2)")],
+            rows: [[.text("1"), .text("0012.50")]],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
+        #expect(document(.csv) == "n,payload,active,code\r\n1,AAE=,true,007")
+        #expect(
+            ExportDataTool.document(
+                for: bit, format: .csv, label: "flags", rowLimit: 10, databaseType: .mssql, dialect: nil
+            ) == "flag,amount\r\n1,0012.50"
+        )
+        #expect(
+            ExportDataTool.document(
+                for: bit, format: .json, label: "flags", rowLimit: 10, databaseType: .mssql, dialect: nil
+            ) == "[{\"flag\":true,\"amount\":12.50}]"
+        )
+    }
+
+    @Test("Only rows inside the limit are exported")
+    func rowLimitIsApplied() {
+        let lines = ExportDataTool.document(
+            for: result, format: .csv, label: "items", rowLimit: 0, databaseType: .postgresql, dialect: nil
+        )
+        #expect(lines == "n,payload,active,code")
     }
 }

@@ -448,6 +448,7 @@ targets:
       - Plugins/CSVImportPlugin/CSVImportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportText.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseConnectFailure.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseHTTPChunks.swift
@@ -522,8 +523,10 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
       - Plugins/EtcdDriverPlugin/EtcdKeyspace.swift
+      - Plugins/EtcdDriverPlugin/EtcdLeaseID.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
+      - Plugins/EtcdDriverPlugin/EtcdRowFilter.swift
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
       - Plugins/EtcdDriverPlugin/EtcdServerTrust.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
@@ -543,10 +546,14 @@ targets:
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetTableFiles.swift
       - Plugins/ParquetExportPlugin/ParquetTypeMapper.swift
+      - Plugins/JSONImportPlugin/JSONFieldDetectionCache.swift
+      - Plugins/JSONImportPlugin/JSONFieldSurvey.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
+      - Plugins/JSONImportPlugin/JSONLineBatches.swift
+      - Plugins/JSONImportPlugin/JSONLineReader.swift
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
@@ -622,6 +629,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteLedger.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldCensus.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptCursorPlan.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
       - Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift
@@ -848,6 +857,7 @@ targets:
       - Plugins/SurrealDBDriverPlugin/SurrealInfoParser.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQL.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQueryBuilder.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealRawCondition.swift
       - Plugins/SurrealDBDriverPlugin/SurrealRowFlattener.swift
       - Plugins/SurrealDBDriverPlugin/SurrealStatementGenerator.swift
       - Plugins/SurrealDBDriverPlugin/SurrealValue+Display.swift
@@ -997,6 +1007,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProTLSClientIdentity
 
   RedisDriver:
     templates: [DriverPlugin]

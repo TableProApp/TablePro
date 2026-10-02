@@ -12,6 +12,11 @@ import Testing
 struct RewindPlannerTests {
     private let columns = ["id", "name"]
     private let target = DataWriteTarget(database: "shop", schema: nil, table: "users")
+    private let sqliteQueryBuilder = TableQueryBuilder(
+        databaseType: .sqlite,
+        dialect: PluginManager.shared.sqlDialect(for: .sqlite),
+        pagination: .offset
+    )
 
     private func operation(
         kind: RowWriteKind,
@@ -54,7 +59,7 @@ struct RewindPlannerTests {
                 databaseType: .sqlite,
                 pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
     }
 
@@ -114,7 +119,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name", "updated_at"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
 
         let plan = try planner.plan(currentRows: [RewindCurrentRow(values: ["7", "Grace", "2026-06-30"])])
@@ -192,7 +197,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
 
         #expect(planner.readQueries().isEmpty)

@@ -2,13 +2,13 @@
 
 ## Setup
 
-Requirements: macOS 14.0+, Xcode 26.0+, [XcodeGen](https://github.com/yonaskolb/XcodeGen). Optional: SwiftLint, SwiftFormat, GitHub CLI (`gh`).
+Requirements: macOS 14.0+, Xcode 26.0+, [XcodeGen](https://github.com/yonaskolb/XcodeGen). Optional: SwiftLint, GitHub CLI (`gh`).
 
 Fork the repo on GitHub, then:
 
 ```bash
 git clone https://github.com/<your-fork>/TablePro.git && cd TablePro
-brew install xcodegen swiftlint swiftformat
+brew install xcodegen swiftlint
 scripts/download-libs.sh
 scripts/generate-project.sh
 ```
@@ -54,7 +54,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 
 ## Code Style
 
-`.swiftlint.yml` and `.swiftformat` are the source of truth. The short version:
+`.swiftlint.yml` is the source of truth, and CI runs it on every pull request. The short version:
 
 - 4-space indent, 120-char lines
 - Explicit access control (`private`, `internal`, `public`)
@@ -65,13 +65,12 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 Before committing:
 
 ```bash
-swiftlint lint --strict
-swiftformat .
+swiftlint lint --strict <changed .swift files>
 ```
 
 ## Commits
 
-[Conventional Commits](https://www.conventionalcommits.org/), single line, no body.
+[Conventional Commits](https://www.conventionalcommits.org/). Pull requests are squash-merged with the PR title as the commit subject, so the title is what lands on `main`: at most 72 characters, checked by CI. Explain the change in the PR description, not in commit bodies.
 
 ```
 feat: add CSV export for query results
@@ -89,15 +88,13 @@ Branch off `main`:
 
 ## Pull Requests
 
-One logical change per PR. Make sure tests pass and lint is clean.
+One logical change per PR, described with the template the PR form opens with. Before you open it:
 
-Checklist:
-
-- [ ] Tests added or updated
-- [ ] `CHANGELOG.md` updated under `[Unreleased]` (skip for unreleased-only fixes). Leave the credit off: the release adds `(#123 by @you)` to every entry from your pull request, so there is no number to guess and no second commit to push
-- [ ] Docs updated in `docs/` if the change affects user-facing behavior
-- [ ] User-facing strings localized
-- [ ] No SwiftLint/SwiftFormat violations
+- Tests added or updated.
+- `CHANGELOG.md` updated under `[Unreleased]` (skip for a fix to something still unreleased). Leave the credit off: the release adds `(#123 by @you)` to every entry from your pull request.
+- Docs updated in `docs/` if the change affects user-facing behavior.
+- User-facing strings localized.
+- SwiftLint clean.
 
 ## Project Layout
 

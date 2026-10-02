@@ -87,7 +87,7 @@ struct SyncRecordTypeTests {
     }
 
     /// The limit CloudKit enforces counts UTF-16 code units, so a name of 128 emoji is over it at
-    /// 128 characters. `scripts/check-cloudkit-record-name-limit.sh` measures that.
+    /// 128 characters. `scripts/probes/check-cloudkit-record-name-limit.sh` measures that.
     @Test("The limit counts UTF-16 code units, not characters")
     func theLimitCountsUTF16CodeUnits() {
         let id = String(repeating: "😀", count: 200)

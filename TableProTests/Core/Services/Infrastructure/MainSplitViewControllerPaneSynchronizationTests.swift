@@ -193,6 +193,26 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(adoptions == 0)
     }
 
+    @Test("Focusing a tab of the background connection selects the tab and switches the window to it")
+    func focusingABackgroundTabSelectsItsConnection() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let coordinator = try #require(harness.background.sessionState?.coordinator)
+        coordinator.tabManager.addTab(initialQuery: "SELECT 1")
+        coordinator.tabManager.addTab(initialQuery: "SELECT 2")
+        let target = try #require(coordinator.tabManager.tabs.first?.id)
+        #expect(coordinator.tabManager.selectedTabId != target)
+        let windowId = harness.registerWindow(for: coordinator)
+        defer { WindowLifecycleMonitor.shared.unregisterWindow(for: windowId) }
+
+        #expect(FocusQueryTabTool.focus(tabId: target, among: [coordinator]))
+        #expect(coordinator.tabManager.selectedTabId == target)
+        #expect(harness.controller.workspaces.selectedConnectionId == harness.background.connectionId)
+    }
+
     /// One window hosting two connections, with the second one in the background. Every case here
     /// asks what that background workspace's panes hold, which is the state the window shows the
     /// moment the user switches to it.
@@ -231,6 +251,17 @@ struct MainSplitViewControllerPaneSynchronizationTests {
             session.status = status
             DatabaseManager.shared.injectSession(session, for: backgroundConnection.id)
             return mock
+        }
+
+        func registerWindow(for coordinator: MainContentCoordinator) -> UUID {
+            let windowId = UUID()
+            coordinator.windowId = windowId
+            WindowLifecycleMonitor.shared.register(
+                window: window,
+                connectionId: coordinator.connectionId,
+                windowId: windowId
+            )
+            return windowId
         }
 
         /// SwiftUI mounts a pane on the next layout pass, so a test that asks whether it mounted has

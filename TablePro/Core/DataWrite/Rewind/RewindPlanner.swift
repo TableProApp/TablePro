@@ -164,18 +164,17 @@ struct RewindPlanner {
                 guard let value = keyValue(of: operation, column: keyColumn) else { return nil }
                 return TableFilter(columnName: keyColumn, filterOperator: .equal, value: value)
             }
-            guard !filters.isEmpty else { return [] }
-            return [
-                queryBuilder.buildFilteredQuery(
-                    tableName: record.target.table,
-                    schemaName: record.target.schema,
-                    filters: filters,
-                    logicMode: .or,
-                    columns: columns,
-                    selectColumns: columns,
-                    limit: filters.count
-                ),
-            ]
+            guard !filters.isEmpty,
+                  let query = queryBuilder.buildFilteredQuery(
+                      tableName: record.target.table,
+                      schemaName: record.target.schema,
+                      filters: filters,
+                      logicMode: .or,
+                      columns: columns,
+                      selectColumns: columns,
+                      limit: filters.count
+                  ) else { return [] }
+            return [query]
         }
 
         return operations.compactMap { operation in

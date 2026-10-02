@@ -27,6 +27,47 @@ struct EtcdCommandParserGetTests {
         #expect(sortTarget == nil)
     }
 
+    @Test("A boolean flag written before the key leaves the key alone")
+    func getWithPrefixBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("get --prefix /app --keys-only")
+        guard case .get(let key, let prefix, _, let keysOnly, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+        #expect(keysOnly == true)
+    }
+
+    @Test("A value flag written before the key still takes its value")
+    func getWithLimitBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("get --limit 5 /app --prefix")
+        guard case .get(let key, let prefix, let limit, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+        #expect(limit == 5)
+    }
+
+    @Test(
+        "A revision or consistency flag written before the key keeps its value off the key",
+        arguments: [
+            "--consistency s", "--max-create-rev 5", "--max-mod-rev 5", "--min-create-rev 5",
+            "--min-mod-rev 5", "--rev 5"
+        ]
+    )
+    func getWithRevisionFlagBeforeKey(flag: String) throws {
+        let op = try EtcdCommandParser.parse("get \(flag) /app --prefix")
+        guard case .get(let key, let prefix, _, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+    }
+
     @Test("Get with --prefix flag")
     func getWithPrefix() throws {
         let op = try EtcdCommandParser.parse("get /app/ --prefix")
@@ -246,6 +287,36 @@ struct EtcdCommandParserDelTests {
         #expect(prefix == true)
     }
 
+    @Test("Del with --prefix written before the key")
+    func delWithPrefixBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("del --prefix /app")
+        guard case .del(let key, let prefix) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+    }
+
+    @Test(
+        "An etcdctl global flag written before the key keeps its value off the key",
+        arguments: [
+            "--cacert ca.pem", "--cert client.pem", "--command-timeout 5s", "--dial-timeout 2s",
+            "--discovery-srv example.com", "--discovery-srv-name etcd", "--endpoints 127.0.0.1:2379",
+            "--keepalive-time 2s", "--keepalive-timeout 6s", "--key client-key.pem", "--password secret",
+            "--user root", "--write-out json"
+        ]
+    )
+    func delWithGlobalValueFlagBeforeKey(flag: String) throws {
+        let op = try EtcdCommandParser.parse("del \(flag) /app")
+        guard case .del(let key, let prefix) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == false)
+    }
+
     @Test("Delete alias works")
     func deleteAlias() throws {
         let op = try EtcdCommandParser.parse("delete mykey")
@@ -380,7 +451,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseRevoke, got \(op)")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
     }
 
     @Test("Lease revoke parses hex ID with 0x prefix")
@@ -417,7 +488,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseTimetolive, got \(op)")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
         #expect(keys == false)
     }
 
@@ -428,7 +499,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseTimetolive")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
         #expect(keys == true)
     }
 
@@ -894,7 +965,7 @@ struct EtcdCommandParserLeaseIdTests {
     @Test("Decimal lease ID")
     func decimalLeaseId() throws {
         let result = try EtcdCommandParser.parseLeaseId("12345")
-        #expect(result == 12345)
+        #expect(result == 12_345)
     }
 
     @Test("Hex lease ID with 0x prefix")

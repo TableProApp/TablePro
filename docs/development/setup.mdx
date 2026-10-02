@@ -173,19 +173,19 @@ the files under `Plugins/` only.
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 ```
 
-Or press `Cmd+U` in Xcode. To narrow the run, pass `-only-testing:TableProTests/TestClassName` or
-`-only-testing:TableProTests/TestClassName/testMethodName`. `-only-testing:TableProUITests` runs the
-UI automation on its own.
+Or press `Cmd+U` in Xcode. To narrow the run, pass `-only-testing:TableProTests/<SuiteType>`, or
+`-only-testing:TableProTests/<SuiteType>/<test>()` for one Swift Testing case. The filter matches the
+suite's Swift type name, and a filter that matches nothing still reports success, so check how many
+tests ran. `-only-testing:TableProUITests` runs the UI automation on its own.
 
-## Linting and formatting
+## Linting
 
 ```bash
 swiftlint lint --strict
-swiftformat .
 ```
 
-`--strict` turns warnings into errors, which is how the release workflow runs it, so a plain
-`swiftlint lint` can pass on a change that later blocks a tag. Full tooling reference:
+`--strict` turns warnings into errors, which is how CI runs it on every pull request, so a plain
+`swiftlint lint` can pass on a change CI rejects. Full tooling reference:
 [Code Style](/development/code-style).
 
 ## Troubleshooting

@@ -82,6 +82,85 @@ struct TeamCatalogPublisherTests {
         #expect(contents.count == 1)
     }
 
+    @Test("Republishing a renamed connection replaces its file and leaves other connections' files alone")
+    func republishRenamedConnectionReplacesItsFile() throws {
+        let folder = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let other = DatabaseConnection(name: "Staging DB")
+        var renamed = DatabaseConnection(name: "A")
+        _ = try TeamCatalogPublisher.publish([other, renamed], to: folder)
+        renamed.name = "B"
+        _ = try TeamCatalogPublisher.publish([renamed], to: folder)
+
+        let contents = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasSuffix(".tablepro") }
+            .sorted()
+        #expect(contents == [TeamCatalogPublisher.filename(for: renamed), TeamCatalogPublisher.filename(for: other)])
+
+        let data = try Data(contentsOf: folder.appendingPathComponent(TeamCatalogPublisher.filename(for: renamed)))
+        #expect(try ConnectionImportDecoder.decodeData(data).connections.map(\.name) == ["B"])
+    }
+
+    @Test("Republishing never removes a folder that matches a connection's file name")
+    func republishLeavesMatchingFolderAlone() throws {
+        let folder = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        var renamed = DatabaseConnection(name: "A")
+        let lookalike = folder.appendingPathComponent("Archive-\(renamed.id.uuidString.prefix(8)).tablepro")
+        try FileManager.default.createDirectory(at: lookalike, withIntermediateDirectories: false)
+        renamed.name = "B"
+        _ = try TeamCatalogPublisher.publish([renamed], to: folder)
+
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: lookalike.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+    }
+
+    @Test("Republishing a connection renamed only in case keeps its file")
+    func republishCaseOnlyRenameKeepsItsFile() throws {
+        let folder = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        var renamed = DatabaseConnection(name: "prod")
+        _ = try TeamCatalogPublisher.publish([renamed], to: folder)
+        renamed.name = "Prod"
+        let written = try TeamCatalogPublisher.publish([renamed], to: folder)
+
+        let contents = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasSuffix(".tablepro") }
+        #expect(contents.count == 1)
+        let data = try Data(contentsOf: try #require(written.first))
+        #expect(try ConnectionImportDecoder.decodeData(data).connections.map(\.name) == ["Prod"])
+    }
+
+    @Test("A publish whose earlier file cannot be removed still writes every connection")
+    func publishSurvivesAnEarlierFileItCannotRemove() throws {
+        let folder = try makeTempDirectory()
+        defer {
+            let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for file in files {
+                try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            }
+            try? FileManager.default.removeItem(at: folder)
+        }
+
+        var renamed = DatabaseConnection(name: "A")
+        let earlierFile = try #require(try TeamCatalogPublisher.publish([renamed], to: folder).first)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: earlierFile.path)
+        renamed.name = "B"
+        let other = DatabaseConnection(name: "Staging DB")
+
+        let written = try TeamCatalogPublisher.publish([renamed, other], to: folder)
+
+        let expectedNames = [TeamCatalogPublisher.filename(for: renamed), TeamCatalogPublisher.filename(for: other)]
+        #expect(written.map(\.lastPathComponent) == expectedNames)
+        for name in expectedNames {
+            #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path))
+        }
+    }
+
     @Test("Throws when there are no connections")
     func throwsOnEmpty() throws {
         let folder = try makeTempDirectory()

@@ -34,7 +34,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let maxKeys = PluginRowLimits.emergencyMax
 
 
-    private static let columns = ["Key", "Value", "Version", "ModRevision", "CreateRevision", "Lease"]
+    private static let columns = EtcdColumn.allCases.map(\.rawValue)
     private static let columnTypeNames = ["String", "String", "Int64", "Int64", "Int64", "String"]
 
     var serverVersion: String? {
@@ -167,9 +167,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try await streamRangeRows(
                 prefix: parsed.prefix,
                 sortAscending: parsed.sortAscending,
-                filterType: parsed.filterType,
-                filterValue: parsed.filterValue,
-                isCaseSensitive: parsed.isCaseSensitive,
+                filter: parsed.filter,
                 client: client,
                 continuation: continuation
             )
@@ -191,12 +189,11 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func streamRangeRows(
         prefix: String,
         sortAscending: Bool,
-        filterType: EtcdFilterType,
-        filterValue: String,
-        isCaseSensitive: Bool,
+        filter: EtcdRowFilter,
         client: EtcdHttpClient,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
+        let matcher = try filter.matcher()
         continuation.yield(.header(PluginStreamHeader(
             columns: Self.columns,
             columnTypeNames: Self.columnTypeNames,
@@ -204,44 +201,18 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )))
 
         let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
-        let needsClientFilter = filterType != .none
-        let fetchLimit = Int64(Self.maxKeys)
-
-        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: fetchLimit)
+        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys))
         req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
         req.sortTarget = "KEY"
 
         let response = try await client.rangeRequest(req)
-        let kvs = response.kvs ?? []
         var rows: [PluginRow] = []
 
-        for kv in kvs {
+        for kv in response.kvs ?? [] {
             try Task.checkCancellation()
-
-            if needsClientFilter {
-                let key = EtcdHttpClient.base64Decode(kv.key)
-                let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-                if !matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive) {
-                    continue
-                }
-            }
-
-            let key = EtcdHttpClient.base64Decode(kv.key)
-            let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-            let version = kv.version ?? "0"
-            let modRevision = kv.modRevision ?? "0"
-            let createRevision = kv.createRevision ?? "0"
-            let lease = kv.lease ?? "0"
-            let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
-
-            rows.append([
-                .text(key),
-                PluginCellValue.fromOptional(value),
-                .text(version),
-                .text(modRevision),
-                .text(createRevision),
-                .text(leaseDisplay)
-            ])
+            let row = Self.filterRow(kv)
+            guard matcher.matches(row) else { continue }
+            rows.append(row.cells)
         }
 
         if !rows.isEmpty {
@@ -317,7 +288,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
         let prefix = keyspace.prefix(forTable: table)
-        return try await countKeys(prefix: prefix, filterType: .none, filterValue: "", client: client)
+        return try await countKeys(prefix: prefix, client: client)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -326,7 +297,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let prefix = keyspace.prefix(forTable: table)
-        let count = try await countKeys(prefix: prefix, filterType: .none, filterValue: "", client: client)
+        let count = try await countKeys(prefix: prefix, client: client)
 
         return """
         // etcd key prefix: \(prefix.isEmpty ? "(all keys)" : prefix)
@@ -668,13 +639,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let response = try await client.leaseGrant(ttl: ttl)
         let leaseIdStr = response.ID ?? "unknown"
         let grantedTtl = response.TTL ?? String(ttl)
-
-        let hexId: String
-        if let idNum = Int64(leaseIdStr) {
-            hexId = String(idNum, radix: 16)
-        } else {
-            hexId = leaseIdStr
-        }
+        let hexId = EtcdLeaseID.hexText(serverValue: leaseIdStr)
 
         return PluginQueryResult(
             columns: ["LeaseID", "LeaseID (hex)", "TTL"],
@@ -689,7 +654,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         leaseId: Int64, client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
         try await client.leaseRevoke(leaseId: leaseId)
-        let hexId = String(leaseId, radix: 16)
+        let hexId = EtcdLeaseID.hexText(leaseId)
         return singleMessageResult("Lease \(hexId) revoked", startTime: startTime)
     }
 
@@ -699,13 +664,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let response = try await client.leaseTimeToLive(leaseId: leaseId, keys: keys)
 
-        let idStr = response.ID ?? String(leaseId)
-        let hexId: String
-        if let idNum = Int64(idStr) {
-            hexId = String(idNum, radix: 16)
-        } else {
-            hexId = idStr
-        }
+        let hexId = EtcdLeaseID.hexText(serverValue: response.ID ?? String(leaseId))
 
         let ttl = response.TTL ?? "unknown"
         let grantedTtl = response.grantedTTL ?? "unknown"
@@ -727,14 +686,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let response = try await client.leaseList()
         let rowsRaw: [[String?]] = (response.leases ?? []).map { lease in
-            let idStr = lease.ID
-            let hexId: String
-            if let idNum = Int64(idStr) {
-                hexId = String(idNum, radix: 16)
-            } else {
-                hexId = idStr
-            }
-            return [idStr, hexId]
+            [lease.ID, EtcdLeaseID.hexText(serverValue: lease.ID)]
         }
 
         return PluginQueryResult(
@@ -753,7 +705,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // Show the current TTL instead so the user can see the lease status.
         let response = try await client.leaseTimeToLive(leaseId: leaseId, keys: false)
         let ttl = response.TTL ?? "unknown"
-        let hexId = String(leaseId, radix: 16)
+        let hexId = EtcdLeaseID.hexText(leaseId)
         return singleMessageResult("Lease \(hexId) current TTL: \(ttl)s (keep-alive requires streaming; use etcdctl CLI for persistent keep-alive)", startTime: startTime)
     }
 
@@ -820,25 +772,24 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func executeTaggedQuery(
         _ query: String, client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
+        if let refusal = EtcdQueryBuilder.parseRefusal(query) {
+            throw refusal
+        }
+
         if let parsed = EtcdQueryBuilder.parseRangeQuery(query) {
             return try await fetchKeysPage(
                 prefix: parsed.prefix,
                 offset: parsed.offset,
                 limit: parsed.limit,
                 sortAscending: parsed.sortAscending,
-                filterType: parsed.filterType,
-                filterValue: parsed.filterValue,
-                isCaseSensitive: parsed.isCaseSensitive,
+                filter: parsed.filter,
                 client: client,
                 startTime: startTime
             )
         }
 
         if let parsed = EtcdQueryBuilder.parseCountQuery(query) {
-            let count = try await countKeys(
-                prefix: parsed.prefix, filterType: parsed.filterType, filterValue: parsed.filterValue,
-                isCaseSensitive: parsed.isCaseSensitive, client: client
-            )
+            let count = try await countKeys(prefix: parsed.prefix, client: client)
             return PluginQueryResult(
                 columns: ["Count"],
                 columnTypeNames: ["Int64"],
@@ -858,72 +809,34 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         limit: Int,
         sortAscending: Bool,
-        filterType: EtcdFilterType,
-        filterValue: String,
-        isCaseSensitive: Bool,
+        filter: EtcdRowFilter,
         client: EtcdHttpClient,
         startTime: Date
     ) async throws -> PluginQueryResult {
+        let matcher = try filter.matcher()
         let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
-
-        let needsClientFilter = filterType != .none
-
-        // Fetch enough keys to cover offset + limit + client filtering
-        let fetchLimit = needsClientFilter ? Int64(Self.maxKeys) : Int64(min(offset + limit, Self.maxKeys))
+        let fetchLimit = filter.isUnfiltered ? Int64(min(offset + limit, Self.maxKeys)) : Int64(Self.maxKeys)
 
         var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: fetchLimit)
         req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
         req.sortTarget = "KEY"
 
         let response = try await client.rangeRequest(req)
-        var kvs = response.kvs ?? []
+        let rows = (response.kvs ?? []).map(Self.filterRow).filter(matcher.matches)
 
-        // Apply client-side filter if needed (checks both key and value)
-        if needsClientFilter {
-            kvs = kvs.filter { kv in
-                let key = EtcdHttpClient.base64Decode(kv.key)
-                let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-                return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive)
-            }
-        }
-
-        let total = kvs.count
-        guard offset < total else {
+        guard offset < rows.count else {
             return emptyResult(startTime: startTime)
         }
-        let pageEnd = min(offset + limit, total)
-        let pageKvs = Array(kvs[offset ..< pageEnd])
-
-        return mapKvsToResult(pageKvs, startTime: startTime)
+        let pageEnd = min(offset + limit, rows.count)
+        return result(of: Array(rows[offset ..< pageEnd]), startTime: startTime)
     }
 
-    private func countKeys(
-        prefix: String,
-        filterType: EtcdFilterType,
-        filterValue: String,
-        isCaseSensitive: Bool = true,
-        client: EtcdHttpClient
-    ) async throws -> Int {
+    private func countKeys(prefix: String, client: EtcdHttpClient) async throws -> Int {
         let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
-
-        if filterType == .none {
-            var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys))
-            req.countOnly = true
-            let response = try await client.rangeRequest(req)
-            return Int(response.count ?? "0") ?? 0
-        }
-
-        // Need to fetch keys (and values for contains/startsWith filters) and filter client-side
-        let needsValues = filterType == .contains || filterType == .startsWith
-        let req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys), keysOnly: !needsValues)
+        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys))
+        req.countOnly = true
         let response = try await client.rangeRequest(req)
-        let kvs = response.kvs ?? []
-
-        return kvs.filter { kv in
-            let key = EtcdHttpClient.base64Decode(kv.key)
-            let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-            return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive)
-        }.count
+        return Int(response.count ?? "0") ?? 0
     }
 
     // MARK: - Helpers
@@ -942,47 +855,26 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return (b64Key, b64RangeEnd)
     }
 
-    private func matchesFilter(
-        key: String,
-        value: String? = nil,
-        filterType: EtcdFilterType,
-        filterValue: String,
-        isCaseSensitive: Bool
-    ) -> Bool {
-        let fold = { (text: String) in isCaseSensitive ? text : text.lowercased() }
-        let needle = fold(filterValue)
-        let foldedKey = fold(key)
-        let foldedValue = value.map(fold)
-        switch filterType {
-        case .none:
-            return true
-        case .contains:
-            return foldedKey.contains(needle) || (foldedValue?.contains(needle) ?? false)
-        case .startsWith:
-            return foldedKey.hasPrefix(needle) || (foldedValue?.hasPrefix(needle) ?? false)
-        case .endsWith:
-            return foldedKey.hasSuffix(needle)
-        case .equals:
-            return foldedKey == needle
-        }
+    private static func filterRow(_ kv: EtcdKeyValue) -> EtcdFilterRow {
+        EtcdFilterRow(
+            key: EtcdHttpClient.base64Decode(kv.key),
+            value: kv.value.map { EtcdHttpClient.base64Decode($0) },
+            version: kv.version ?? "0",
+            modRevision: kv.modRevision ?? "0",
+            createRevision: kv.createRevision ?? "0",
+            lease: kv.lease ?? "0"
+        )
     }
 
     private func mapKvsToResult(_ kvs: [EtcdKeyValue], startTime: Date) -> PluginQueryResult {
-        let rowsRaw: [[String?]] = kvs.map { kv in
-            let key = EtcdHttpClient.base64Decode(kv.key)
-            let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-            let version = kv.version ?? "0"
-            let modRevision = kv.modRevision ?? "0"
-            let createRevision = kv.createRevision ?? "0"
-            let lease = kv.lease ?? "0"
-            let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
-            return [key, value, version, modRevision, createRevision, leaseDisplay]
-        }
+        result(of: kvs.map(Self.filterRow), startTime: startTime)
+    }
 
-        return PluginQueryResult(
+    private func result(of rows: [EtcdFilterRow], startTime: Date) -> PluginQueryResult {
+        PluginQueryResult(
             columns: Self.columns,
             columnTypeNames: Self.columnTypeNames,
-            rows: rowsRaw.map { $0.asCells },
+            rows: rows.map(\.cells),
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )
@@ -1006,12 +898,5 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )
-    }
-
-    private func formatLeaseHex(_ leaseStr: String) -> String {
-        if let leaseNum = Int64(leaseStr) {
-            return String(leaseNum, radix: 16)
-        }
-        return leaseStr
     }
 }
