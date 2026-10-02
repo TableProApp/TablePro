@@ -30,7 +30,12 @@ internal extension MainContentCoordinator {
     }
 
     @discardableResult
-    func presentRowImport(of fileURL: URL, formatId: String, ownsFile: Bool) -> RowImportRefusal? {
+    func presentRowImport(
+        of fileURL: URL,
+        formatId: String,
+        ownsFile: Bool,
+        sourceName: String? = nil
+    ) -> RowImportRefusal? {
         if let refusal = rowImportRefusal(formatId: formatId) {
             if case .importNotSupported = refusal {
                 revealWorkspace()
@@ -40,7 +45,7 @@ internal extension MainContentCoordinator {
         }
         revealWorkspace()
         releaseImportFile()
-        importFile = ImportFileHandoff(url: fileURL, ownsFile: ownsFile)
+        importFile = ImportFileHandoff(url: fileURL, ownsFile: ownsFile, sourceName: sourceName)
         activeSheet = .rowImport(formatId: formatId)
         return nil
     }

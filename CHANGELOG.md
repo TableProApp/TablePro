@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Import into Table from a data file naming the sheet, the proposed table, error reports and history after a temporary copy.
+
 ## [0.77.0] - 2026-10-02
 
 SAP HANA connections, with the driver installed from Settings > Plugins.

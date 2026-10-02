@@ -21,6 +21,9 @@ struct RowImportSheet: View {
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
     let fileURL: URL
+    /// What the sheet, the proposed table name, the error report and history call the source.
+    /// It differs from `fileURL` when the rows arrive through a snapshot the app wrote.
+    let sourceName: String
     let formatId: String
 
     private enum Destination: Hashable {
@@ -118,10 +121,17 @@ struct RowImportSheet: View {
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
 
-    init(isPresented: Binding<Bool>, connection: DatabaseConnection, fileURL: URL, formatId: String) {
+    init(
+        isPresented: Binding<Bool>,
+        connection: DatabaseConnection,
+        fileURL: URL,
+        sourceName: String,
+        formatId: String
+    ) {
         _isPresented = isPresented
         self.connection = connection
         self.fileURL = fileURL
+        self.sourceName = sourceName
         self.formatId = formatId
         _scope = State(initialValue: DatabaseManager.shared.browseScope(for: connection.id))
     }
@@ -217,7 +227,7 @@ struct RowImportSheet: View {
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
                 window: hostWindow,
-                sourceFileName: fileURL.lastPathComponent,
+                sourceFileName: sourceName,
                 targetTable: selectedTargetTable
             ) {
                 showSuccessDialog = false
@@ -243,7 +253,7 @@ struct RowImportSheet: View {
                 .font(.title)
                 .foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
-                Text(fileURL.lastPathComponent)
+                Text(sourceName)
                     .font(.headline)
                 Text("Import rows into a table")
                     .font(.subheadline)
@@ -767,7 +777,7 @@ struct RowImportSheet: View {
         guard newTableName.isEmpty || newTableName == proposedTableName else { return }
         let ours = NewTableNaming.comparisonKeys(for: scope.map(newTablePlanner.createdTableNames(in:)) ?? [])
         let suggestion = NewTableNaming.suggestion(
-            forFileNamed: fileURL.lastPathComponent,
+            forFileNamed: sourceName,
             style: NewTableNameStyle.forDatabaseType(connection.type),
             avoiding: (catalogNameKeys ?? []).subtracting(ours)
         )
@@ -938,6 +948,7 @@ struct RowImportSheet: View {
                 )
                 let result = try await service.importFile(
                     from: fileURL,
+                    sourceName: sourceName,
                     formatId: formatId,
                     encoding: .utf8,
                     scope: scope,

@@ -48,8 +48,11 @@ final class ImportService: ObservableObject {
 
     // MARK: - Public API
 
+    /// `sourceName` names the history row when the file is a copy the app wrote under a generated
+    /// name, so history shows the file the user imported.
     func importFile(
         from url: URL,
+        sourceName: String? = nil,
         formatId: String,
         encoding: String.Encoding,
         scope: DatabaseScope,
@@ -87,6 +90,7 @@ final class ImportService: ObservableObject {
         }
         defer { source.cleanup() }
 
+        let historyName = sourceName ?? url.lastPathComponent
         let initialTotal = Int64(knownStatementCount ?? 0)
         let nsProgress = Progress(totalUnitCount: initialTotal)
         let progress = PluginImportProgress(progress: nsProgress)
@@ -157,7 +161,7 @@ final class ImportService: ObservableObject {
 
             await historyRecorder.record(
                 QueryHistoryRecordRequest(
-                    query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
+                    query: "-- Import from \(historyName) (\(progress.processedStatements) statements before failure)",
                     connectionId: connection.id,
                     databaseName: scope.database,
                     databaseType: connection.type,
@@ -182,7 +186,7 @@ final class ImportService: ObservableObject {
 
         await historyRecorder.record(
             QueryHistoryRecordRequest(
-                query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
+                query: "-- Import from \(historyName) (\(result.executedStatements) statements)",
                 connectionId: connection.id,
                 databaseName: scope.database,
                 databaseType: connection.type,

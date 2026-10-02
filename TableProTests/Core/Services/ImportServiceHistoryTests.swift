@@ -71,4 +71,37 @@ struct ImportServiceHistoryTests {
 
         #expect(await history.requests.map(\.databaseName) == ["archive"])
     }
+
+    @Test("A snapshot imported for a data file is recorded under the data file's name")
+    func historyNamesTheSourceFile() async throws {
+        let formatId = UnusedImportPlugin.formatId
+        PluginManager.shared.importPlugins[formatId] = UnusedImportPlugin()
+        defer { PluginManager.shared.importPlugins[formatId] = nil }
+
+        let connection = TestFixtures.makeConnection(database: "shop")
+        let history = RecordingHistory()
+        let service = ImportService(connection: connection, historyRecorder: history)
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
+        let snapshot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("csv")
+        try Data("id\n1\n".utf8).write(to: snapshot)
+        defer { try? FileManager.default.removeItem(at: snapshot) }
+
+        await #expect(throws: (any Error).self) {
+            try await service.importFile(
+                from: snapshot,
+                sourceName: "customers.csv",
+                formatId: formatId,
+                encoding: .utf8,
+                scope: scope,
+                targetTable: "orders"
+            )
+        }
+
+        let queries = await history.requests.map(\.query)
+        #expect(queries.count == 1)
+        #expect(queries.allSatisfy { $0.hasPrefix("-- Import from customers.csv (") })
+        #expect(queries.allSatisfy { !$0.contains(snapshot.lastPathComponent) })
+    }
 }

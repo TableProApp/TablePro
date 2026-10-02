@@ -140,6 +140,25 @@ struct CoordinatorRowImportTests {
 
         #expect(rowImportFormatId(of: coordinator) == "csv")
         #expect(coordinator.importFile == ImportFileHandoff(url: url, ownsFile: false))
+        #expect(coordinator.importFile?.sourceName == url.lastPathComponent)
+    }
+
+    @Test("A snapshot handed over for a data file keeps the data file's name, not its own")
+    func handedOverSnapshotKeepsTheSourceName() throws {
+        let (coordinator, _) = makeCoordinator()
+        let snapshot = try makeFile()
+        defer { try? FileManager.default.removeItem(at: snapshot) }
+
+        let refusal = coordinator.presentRowImport(
+            of: snapshot,
+            formatId: "csv",
+            ownsFile: true,
+            sourceName: "customers.csv"
+        )
+
+        #expect(refusal == nil)
+        #expect(coordinator.importFile?.url == snapshot)
+        #expect(coordinator.importFile?.sourceName == "customers.csv")
     }
 
     @Test("An owned file is deleted when the sheet closes")
