@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Import into Table from a data file naming the sheet, the proposed table, error reports and history after a temporary copy.
+- Query editor staying put when Cmd+Up, Cmd+Down or a long paste moves the caret out of view. (#3239)
+- Clear Query, a favorite, a history entry or an AI fix sometimes not reaching the editor, and typing then bringing the old query back.
+- Run, Explain and AI actions using the caret from before a find or a jump to a result's statement.
+- Use Selection for Find reverting to the previous search term once the caret moves.
 
 ## [0.77.0] - 2026-10-02
 

@@ -100,10 +100,6 @@ struct SQLEditorView: View {
         }
         .onChange(of: editorState.cursorPositions) { newValue in
             guard let positions = newValue else { return }
-            // Skip cursor propagation when the editor doesn't have focus
-            // (e.g., find panel match highlighting). Propagating triggers
-            // a SwiftUI re-render that disrupts the find panel's focus.
-            guard coordinator.isEditorFirstResponder else { return }
             // Guard against stale propagation during tab switch (.id() recreation):
             // verify the editor's text still matches the binding before propagating.
             // Use O(1) length pre-check to avoid O(n) string comparison on large docs.

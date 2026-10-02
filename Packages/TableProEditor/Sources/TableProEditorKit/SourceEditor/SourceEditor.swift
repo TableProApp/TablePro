@@ -161,10 +161,9 @@ public struct SourceEditor: NSViewControllerRepresentable {
             context.coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
         }
 
-        if !context.coordinator.phase.consumePendingEditorChange() {
-            context.coordinator.phase.applyRepresentableValue {
-                updateControllerWithState(state, controller: controller)
-            }
+        context.coordinator.phase.consumePendingEditorChange()
+        context.coordinator.phase.applyRepresentableValue {
+            updateControllerWithState(state, controller: controller, coordinator: context.coordinator)
         }
 
         // Do manual diffing to reduce the amount of reloads.
@@ -183,27 +182,39 @@ public struct SourceEditor: NSViewControllerRepresentable {
         return
     }
 
-    private func updateControllerWithState(_ state: SourceEditorState, controller: TextViewController) {
-        if let cursorPositions = state.cursorPositions, cursorPositions != controller.cursorPositions {
+    /// Compares against ``Coordinator/lastSyncedState``, never the editor's live state, which runs ahead of the binding
+    /// until the editor's own write-back lands.
+    private func updateControllerWithState(
+        _ state: SourceEditorState,
+        controller: TextViewController,
+        coordinator: Coordinator
+    ) {
+        let synced = coordinator.lastSyncedState
+        coordinator.lastSyncedState = state
+
+        if let cursorPositions = state.cursorPositions, cursorPositions != synced.cursorPositions,
+           cursorPositions != controller.cursorPositions {
             controller.setCursorPositions(cursorPositions)
         }
 
-        if let scrollPosition = state.scrollPosition, controller.scrollView != nil,
-           scrollPosition != controller.scrollPosition {
+        if let scrollPosition = state.scrollPosition, scrollPosition != synced.scrollPosition,
+           controller.scrollView != nil, scrollPosition != controller.scrollPosition {
             controller.scrollPosition = scrollPosition
             controller.gutterView.needsDisplay = true
             NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: controller.textView)
         }
 
-        if let findText = state.findText, findText != controller.findViewController?.viewModel.findText {
+        if let findText = state.findText, findText != synced.findText,
+           findText != controller.findViewController?.viewModel.findText {
             controller.findViewController?.viewModel.findText = findText
         }
 
-        if let replaceText = state.replaceText, replaceText != controller.findViewController?.viewModel.replaceText {
+        if let replaceText = state.replaceText, replaceText != synced.replaceText,
+           replaceText != controller.findViewController?.viewModel.replaceText {
             controller.findViewController?.viewModel.replaceText = replaceText
         }
 
-        if let findPanelVisible = state.findPanelVisible,
+        if let findPanelVisible = state.findPanelVisible, findPanelVisible != synced.findPanelVisible,
            let findController = controller.findViewController,
            findController.viewModel.isShowingFindPanel != findPanelVisible {
             // Needs to be on the next runloop, not many great ways to do this besides a dispatch...

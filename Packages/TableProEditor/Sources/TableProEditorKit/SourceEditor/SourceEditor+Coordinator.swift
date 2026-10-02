@@ -30,6 +30,11 @@ public extension SourceEditor {
 
         private var cancellables: Set<AnyCancellable> = []
 
+        /// The binding's value as of the last update pass, plus every change the editor has written since. The editor
+        /// writes scroll and find state back a run-loop turn late, so an update pass in between still reads the old
+        /// value, and only a difference from this means the binding's owner asked for something.
+        var lastSyncedState = SourceEditorState()
+
         init(
             text: TextAPI,
             editorState: Binding<SourceEditorState>,
@@ -198,10 +203,12 @@ public extension SourceEditor {
             updateState { $0.findPanelVisible = findModel.isShowingFindPanel }
         }
 
+        /// Never sets the text latch. The cursor notification fires on keys that move nothing, an unchanged write runs
+        /// no update pass to clear the latch, and the host's next text change would then be skipped.
         private func updateState(_ modifyCallback: (inout SourceEditorState) -> Void) {
             guard !phase.isApplyingRepresentableValue else { return }
-            phase.markEditorChange()
             modifyCallback(&editorState)
+            modifyCallback(&lastSyncedState)
         }
 
         deinit {
