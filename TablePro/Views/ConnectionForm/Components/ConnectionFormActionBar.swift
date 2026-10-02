@@ -99,6 +99,7 @@ struct ConnectionFormActionBar: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .help(issues.joined(separator: "\n"))
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("connection-form-validation")
         }
     }

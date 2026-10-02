@@ -87,6 +87,7 @@ internal struct ConnectingStateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityStatus)
+        .accessibilityIdentifier("connection-connecting")
     }
 
     /// A bar rather than a spinner, and the description above it rather than beside it.

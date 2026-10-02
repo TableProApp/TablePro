@@ -85,11 +85,14 @@ final class ConnectionFormTimeoutUITests: UITestCase {
 
     private func waitForValidation(_ message: String, in form: XCUIElement) -> Bool {
         let validation = form.descendants(matching: .any)
-            .matching(identifier: "connection-form-validation")
+            .matching(NSPredicate(
+                format: "identifier == %@ AND (label CONTAINS %@ OR value CONTAINS %@)",
+                "connection-form-validation",
+                message,
+                message
+            ))
             .firstMatch
-        return waitForPredicate(timeout: 5) {
-            validation.exists && validation.label.contains(message)
-        }
+        return waitForPredicate(timeout: 5) { validation.exists }
     }
 
     private func hasValidation(in form: XCUIElement) -> Bool {
