@@ -203,12 +203,17 @@ public extension SourceEditor {
             updateState { $0.findPanelVisible = findModel.isShowingFindPanel }
         }
 
-        /// Never sets the text latch. The cursor notification fires on keys that move nothing, an unchanged write runs
-        /// no update pass to clear the latch, and the host's next text change would then be skipped.
+        /// An unchanged value is not written and does not set the latch. The cursor notification fires on keys that move
+        /// nothing, an unchanged write runs no update pass to clear the latch, and the host's next text change would
+        /// then be skipped.
         private func updateState(_ modifyCallback: (inout SourceEditorState) -> Void) {
             guard !phase.isApplyingRepresentableValue else { return }
-            modifyCallback(&editorState)
+            var updated = editorState
+            modifyCallback(&updated)
             modifyCallback(&lastSyncedState)
+            guard updated != editorState else { return }
+            phase.markEditorChange()
+            editorState = updated
         }
 
         deinit {

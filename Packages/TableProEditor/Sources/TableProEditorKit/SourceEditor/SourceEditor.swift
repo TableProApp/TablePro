@@ -161,9 +161,10 @@ public struct SourceEditor: NSViewControllerRepresentable {
             context.coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
         }
 
-        context.coordinator.phase.consumePendingEditorChange()
-        context.coordinator.phase.applyRepresentableValue {
-            updateControllerWithState(state, controller: controller, coordinator: context.coordinator)
+        if !context.coordinator.phase.consumePendingEditorChange() {
+            context.coordinator.phase.applyRepresentableValue {
+                updateControllerWithState(state, controller: controller, coordinator: context.coordinator)
+            }
         }
 
         // Do manual diffing to reduce the amount of reloads.
