@@ -116,7 +116,7 @@
   {
     "id": "oracle-nio",
     "name": "OracleNIO",
-    "version": "rev:ccebdb59fdc8e4b16ba5e42c835973a9c412d44a",
+    "version": "rev:07c12bac65a1ec5e2e3c1d0f47aaca9f8798dae8",
     "spdx": "Apache-2.0",
     "copyrights": [
       "Copyright (c) 2023 Timo Zacherl"

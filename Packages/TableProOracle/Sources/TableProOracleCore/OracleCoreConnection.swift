@@ -1016,6 +1016,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
         if dataType == .json { return "json" }
         if dataType == .vector { return "vector" }
         if dataType == .binaryInteger { return "binary_integer" }
+        if dataType == .object { return "object" }
+        if dataType == .cursor { return "cursor" }
+        /// NCLOB is the only column that arrives as LONG NVARCHAR: the driver fetches LOBs as LONGs.
+        if dataType == .longNVarchar { return "nclob" }
         return "unknown"
     }
 }

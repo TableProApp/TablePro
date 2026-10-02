@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clear Query, a favorite, a history entry or an AI fix sometimes not reaching the editor, and typing then bringing the old query back.
 - Run, Explain and AI actions using the caret from before a find or a jump to a result's statement.
 - Use Selection for Find reverting to the previous search term once the caret moves.
+- Oracle closing TablePro, or resetting with "unexpected message", while loading rows from a table with SDO_GEOMETRY or BLOB columns. (#3241)
+- Oracle closing TablePro when a query is stopped or the connection closed while rows are still loading. (#3241)
+- Oracle object columns such as SDO_GEOMETRY labelled "unknown" and showing a placeholder instead of NULL. (#3241)
 
 ## [0.77.0] - 2026-10-02
 
