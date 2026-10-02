@@ -23,18 +23,7 @@ permissions:
 jobs:
   lint:
     name: SwiftLint
-    runs-on: macos-26
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install SwiftLint
-        run: brew list swiftlint &>/dev/null || brew install swiftlint
-
-      - name: Run SwiftLint
-        run: swiftlint lint --strict
+    uses: ./.github/workflows/swiftlint.yml
 
   # No `secrets: inherit`. That handed the suite CERTIFICATES_P12, CERTIFICATES_PASSWORD,
   # NOTARY_PASSWORD, PROVISIONING_PROFILE, SPARKLE_PRIVATE_KEY, TELEGRAM_BOT_TOKEN and

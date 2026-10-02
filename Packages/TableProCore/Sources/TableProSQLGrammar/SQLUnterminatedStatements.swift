@@ -6,7 +6,7 @@ import Foundation
 /// the next line reaches a gate as one statement, and the server runs it as two. This finds every word inside it that
 /// begins a statement and returns the text from each one to the next at its own depth, less the statements nested in
 /// it, so a gate can tier each of them the way it tiers a statement written first. What it relies on was measured on
-/// Azure SQL Edge 15.0, and `scripts/check-mssql-unterminated-statements.sh` measures it again:
+/// Azure SQL Edge 15.0, and `scripts/probes/check-mssql-unterminated-statements.sh` measures it again:
 ///
 /// - Only a reserved keyword begins a statement without a `;` before it. `DISABLE TRIGGER`, `RECEIVE`, `SEND` and
 ///   `THROW` answer Msg 102 there, and a `WITH` that opens a common table expression answers Msg 319.

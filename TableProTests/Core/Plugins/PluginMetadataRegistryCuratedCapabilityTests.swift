@@ -269,6 +269,15 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.pagination == .leadingRowsOnly(maximumRows: nil))
     }
 
+    @Test("Redis, etcd and Kafka offer no column sort, since their commands take no ORDER BY", arguments: [
+        "Redis", "etcd", "Kafka"
+    ])
+    func commandLanguagesWithoutOrderByOfferNoColumnSort(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsColumnSort == false)
+    }
+
     @Test("ScyllaDB declares the same query limits as Cassandra on its own curated entry")
     func scyllaDBDeclaresTheCassandraQueryLimits() {
         let registry = PluginMetadataRegistry.shared

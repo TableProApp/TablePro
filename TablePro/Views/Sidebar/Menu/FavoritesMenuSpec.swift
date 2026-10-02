@@ -39,8 +39,8 @@ internal enum FavoritesMenuSpec {
             return backgroundSections(context)
         case .database(let entry):
             return databaseSections(entry, context: context)
-        case .table(let table):
-            return tableSections(table)
+        case .table(let row):
+            return tableSections(row, context: context)
         case .query(let node):
             return querySections(node, context: context)
         case .header, .teamQuery:
@@ -83,16 +83,25 @@ internal enum FavoritesMenuSpec {
 
     /// Spelled as the Database menu and the object tree spell it. It read "Show ER Diagram" here
     /// and "View ER Diagram" everywhere else, which is one command reading as two.
-    private static func tableSections(_ table: TableInfo) -> [FavoritesMenuSection] {
-        [
+    private static func tableSections(
+        _ row: FavoriteTableRow,
+        context: FavoritesMenuContext
+    ) -> [FavoritesMenuSection] {
+        var opens: [FavoritesMenuItem] = [.command(String(localized: "Open Table"), .openTable(row))]
+        if canShowDiagram(ofSchema: row.otherSchema, context: context) {
+            opens.append(.command(String(localized: "View ER Diagram"), .showERDiagram(schema: row.otherSchema)))
+        }
+        return [
+            FavoritesMenuSection(opens),
             FavoritesMenuSection([
-                .command(String(localized: "Open Table"), .openTable(table)),
-                .command(String(localized: "View ER Diagram"), .showERDiagram)
-            ]),
-            FavoritesMenuSection([
-                .command(String(localized: "Remove from Favorites"), .removeTableFavorite(table))
+                .command(String(localized: "Remove from Favorites"), .removeTableFavorite(row.entry))
             ])
         ]
+    }
+
+    private static func canShowDiagram(ofSchema schema: String?, context: FavoritesMenuContext) -> Bool {
+        guard let schema else { return true }
+        return ERDiagramViewModel.schemaKeyPreserves(schema, databaseName: context.activeDatabase ?? "")
     }
 
     private static func querySections(

@@ -460,45 +460,6 @@ internal actor SQLFavoriteStorage {
         return result
     }
 
-    func deleteFavorite(id: UUID) -> Bool {
-        let sql = "DELETE FROM favorites WHERE id = ?;"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
-        }
-
-        defer { sqlite3_finalize(statement) }
-
-        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(statement, 1, id.uuidString, -1, SQLITE_TRANSIENT)
-        return sqlite3_step(statement) == SQLITE_DONE
-    }
-
-    func deleteFavorites(ids: [UUID]) -> Bool {
-        guard !ids.isEmpty else { return true }
-
-        let placeholders = ids.map { _ in "?" }.joined(separator: ",")
-        let sql = "DELETE FROM favorites WHERE id IN (\(placeholders));"
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            return false
-        }
-
-        defer { sqlite3_finalize(statement) }
-
-        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        for (index, id) in ids.enumerated() {
-            sqlite3_bind_text(statement, Int32(index + 1), id.uuidString, -1, SQLITE_TRANSIENT)
-        }
-
-        let result = sqlite3_step(statement)
-        if result != SQLITE_DONE {
-            Self.logger.error("Failed to batch delete favorites: \(String(cString: sqlite3_errmsg(self.db)))")
-        }
-        return result == SQLITE_DONE
-    }
-
     /// Both tables point at `folders` by id with no foreign key behind either column, so a delete
     /// that removes a folder leaves whatever named it holding an id nothing answers to.
     ///
@@ -542,8 +503,8 @@ internal actor SQLFavoriteStorage {
     /// each record for sync and cannot ask afterwards: the rows are gone. Reporting a bare `Bool`
     /// is why a deleted connection's favorites and folders lived on in CloudKit and came back on a
     /// fresh install.
-    func deleteFavoritesAndFolders(connectionId: UUID) -> DeletedFavoriteRecords {
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return .none }
+    func deleteFavoritesAndFolders(connectionId: UUID) -> DeletedFavoriteRecords? {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return nil }
 
         let id = connectionId.uuidString
         /// Read inside the same transaction as the delete, so nothing can be added between the two
@@ -555,10 +516,10 @@ internal actor SQLFavoriteStorage {
               run("DELETE FROM folders WHERE connection_id = ?;", bindings: [id]),
               let detached = detachDanglingFolderReferences() else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return .none
+            return nil
         }
 
-        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return .none }
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return nil }
         return DeletedFavoriteRecords(favorites: favorites, folders: folders, detached: detached)
     }
 
@@ -602,7 +563,7 @@ internal actor SQLFavoriteStorage {
         return result
     }
 
-    private func run(_ sql: String, bindings: [String] = []) -> Bool {
+    func run(_ sql: String, bindings: [String] = []) -> Bool {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             Self.logger.error("Failed to prepare statement: \(String(cString: sqlite3_errmsg(self.db)))")
@@ -929,7 +890,7 @@ internal actor SQLFavoriteStorage {
 
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-        let findParentSQL = "SELECT parent_id FROM folders WHERE id = ?;"
+        let findParentSQL = "SELECT parent_id, connection_id FROM folders WHERE id = ?;"
         var findStatement: OpaquePointer?
         guard sqlite3_prepare_v2(db, findParentSQL, -1, &findStatement, nil) == SQLITE_OK else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
@@ -939,8 +900,10 @@ internal actor SQLFavoriteStorage {
         sqlite3_bind_text(findStatement, 1, idString, -1, SQLITE_TRANSIENT)
 
         var parentId: String?
+        var connectionId: UUID?
         if sqlite3_step(findStatement) == SQLITE_ROW {
             parentId = sqlite3_column_text(findStatement, 0).map { String(cString: $0) }
+            connectionId = sqlite3_column_text(findStatement, 1).flatMap { UUID(uuidString: String(cString: $0)) }
         }
         sqlite3_finalize(findStatement)
 
@@ -1003,7 +966,7 @@ internal actor SQLFavoriteStorage {
         }
 
         guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return nil }
-        return FolderDeletion(movedFavorites: movedFavorites, movedFolders: movedFolders)
+        return FolderDeletion(connectionId: connectionId, movedFavorites: movedFavorites, movedFolders: movedFolders)
     }
 
     func fetchFolders(connectionId: UUID? = nil) -> [SQLFavoriteFolder] {
@@ -1264,6 +1227,7 @@ enum FavoriteScopeRead: Equatable {
 
 /// What deleting one folder moved up to its parent, so the caller can mark those records dirty.
 struct FolderDeletion: Equatable {
+    let connectionId: UUID?
     let movedFavorites: [UUID]
     let movedFolders: [UUID]
 }
@@ -1293,8 +1257,6 @@ struct DeletedFavoriteRecords {
         self.folders = folders
         self.detached = detached
     }
-
-    static let none = DeletedFavoriteRecords(favorites: [], folders: [])
 
     var isEmpty: Bool {
         favorites.isEmpty && folders.isEmpty && detached.isEmpty

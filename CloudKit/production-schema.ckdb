@@ -244,6 +244,46 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE TableFolder (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        database        STRING QUERYABLE SEARCHABLE SORTABLE,
+        folderId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        schema          STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        updatedAt       TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE TableFolderItem (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        database        STRING QUERYABLE SEARCHABLE SORTABLE,
+        folderId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        schema          STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE Users (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

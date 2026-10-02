@@ -1,0 +1,29 @@
+name: PR Title
+
+# A squash merge uses the title as the commit subject. synchronize is listed so every new head
+# commit gets the check too, which a required check needs.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/ci
+
+      - name: Check the title is a Conventional Commits subject within 72 characters
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/ci/check-pr-title.py "$TITLE"

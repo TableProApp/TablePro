@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Re-verify, against a live broker, the Kafka wire-format facts Plugins/KafkaDriverPlugin/
-hard-codes. Run through scripts/check-kafka-protocol.sh.
+hard-codes. Run through scripts/probes/check-kafka-protocol.sh.
 
 Every check here corresponds to a decision in the Swift codec that cannot be derived from the
 surrounding format, and that fails silently when it is wrong: a malformed request makes the
@@ -493,7 +493,7 @@ def main():
         broker = Broker(host, port)
     except OSError as error:
         print(f"Could not reach a broker at {host}:{port}: {error}")
-        print("Start one with the docker command in scripts/check-kafka-protocol.sh.")
+        print("Start one with the docker command in scripts/probes/check-kafka-protocol.sh.")
         return 2
 
     try:

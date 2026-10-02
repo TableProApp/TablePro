@@ -22,7 +22,7 @@ final class ERDiagramViewModel: ObservableObject {
         services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
     }
 
-    private static let noSchemaMarker = "default"
+    nonisolated private static let noSchemaMarker = "default"
 
     /// `schemaKey` is the diagram's identity, written as `database.schema` with
     /// `noSchemaMarker` standing in for an engine that has no schemas. It is also the only
@@ -30,12 +30,21 @@ final class ERDiagramViewModel: ObservableObject {
     /// database into the tab's table context but never a schema. Stripping the database
     /// prefix rather than splitting on the separator keeps a database name that contains a
     /// dot intact.
-    static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
+    nonisolated static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
         let prefix = databaseName + "."
         guard !databaseName.isEmpty, schemaKey.hasPrefix(prefix) else { return nil }
         let schema = String(schemaKey.dropFirst(prefix.count))
         guard !schema.isEmpty, schema != noSchemaMarker else { return nil }
         return schema
+    }
+
+    nonisolated static func schemaKey(databaseName: String, schema: String?) -> String {
+        "\(databaseName).\(schema ?? noSchemaMarker)"
+    }
+
+    nonisolated static func schemaKeyPreserves(_ schema: String, databaseName: String) -> Bool {
+        resolveSchemaName(fromSchemaKey: schemaKey(databaseName: databaseName, schema: schema), databaseName: databaseName)
+            == schema
     }
 
     // MARK: - State

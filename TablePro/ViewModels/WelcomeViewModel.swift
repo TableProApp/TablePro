@@ -570,13 +570,7 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     func connectToLinkedConnection(_ linked: LinkedConnection) {
-        let connection = ConnectionExportService.buildDatabaseConnection(
-            id: linked.id,
-            from: linked.connection,
-            name: linked.connection.name,
-            tagIdsByName: [:],
-            groupIdsByName: [:]
-        )
+        let connection = linked.databaseConnection()
         Task {
             do {
                 try await TabRouter.shared.openTransientConnection(connection)

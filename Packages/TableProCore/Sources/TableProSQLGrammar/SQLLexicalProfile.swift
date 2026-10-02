@@ -5,7 +5,7 @@ import Foundation
 /// A fact lands in ``undetermined`` for one of two reasons. Either the server decides it per session, as MySQL's
 /// `NO_BACKSLASH_ESCAPES`, PostgreSQL's `standard_conforming_strings` and Dameng's `BACKSLASH_ESCAPE` do, or nobody has
 /// measured it against a live server. Either way a gate reads both values, which is always the safe direction: an
-/// extra reading can only raise the statement count and the tier. `scripts/check-sql-lexical-grammar.sh` re-measures
+/// extra reading can only raise the statement count and the tier. `scripts/probes/check-sql-lexical-grammar.sh` re-measures
 /// the facts marked measured below.
 public struct SQLLexicalProfile: Sendable, Hashable {
     public let grammar: SQLLexicalGrammar

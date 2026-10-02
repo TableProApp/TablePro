@@ -6,15 +6,10 @@ import Testing
 
 @MainActor
 struct SyncCoordinatorEchoTests {
-    private static let zoneID = CKRecordZone.ID(
-        zoneName: CloudKitSyncEngine.zoneName,
-        ownerName: CKCurrentUserDefaultName
-    )
+    private static let zoneID = SyncTestEnvironment.zoneID
 
-    private let unique = UUID().uuidString
-    private let keychain = InMemoryKeychain()
+    private let environment: SyncTestEnvironment
     private let directory: URL
-    private let defaults: UserDefaults
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
     private let recordCache: SyncRecordCache
@@ -27,48 +22,18 @@ struct SyncCoordinatorEchoTests {
     private let favorites: SQLFavoriteManager
 
     init() throws {
-        directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("sync-echo-\(unique)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.SyncEcho.\(unique)"))
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.SyncEcho.sync.\(unique)"))
-        )
-        tracker = SyncChangeTracker(metadataStorage: metadata)
-        recordCache = SyncRecordCache(
-            directory: directory.appendingPathComponent("SyncRecordCache", isDirectory: true),
-            defaults: nil
-        )
-        let connectionStore = ConnectionStorage(
-            fileURL: directory.appendingPathComponent("connections.json"),
-            userDefaults: defaults,
-            syncTracker: tracker,
-            keychain: keychain,
-            integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
-        )
-        connections = connectionStore
-        groups = GroupStorage(
-            userDefaults: defaults,
-            syncTracker: tracker,
-            connectionStorage: connectionStore,
-            appEvents: AppEvents()
-        )
-        tags = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: AppEvents())
-        favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
-        tableFolders = TableFolderStorage(defaults: defaults, syncTracker: tracker, notificationCenter: NotificationCenter())
-        columnLayouts = FileColumnLayoutPersister(
-            storageDirectory: directory.appendingPathComponent("ColumnLayout", isDirectory: true),
-            defaults: defaults,
-            syncTracker: tracker
-        )
-        favorites = SQLFavoriteManager(
-            storage: SQLFavoriteStorage(
-                databaseURL: directory.appendingPathComponent("sql_favorites.db"),
-                removeDatabaseOnDeinit: true
-            ),
-            syncTracker: tracker
-        )
+        environment = try SyncTestEnvironment(label: "sync-echo")
+        directory = environment.directory
+        metadata = environment.metadata
+        tracker = environment.tracker
+        recordCache = environment.recordCache
+        connections = environment.connections
+        groups = environment.groups
+        tags = environment.tags
+        favoriteDatabases = environment.favoriteDatabases
+        tableFolders = environment.tableFolders
+        columnLayouts = environment.columnLayouts
+        favorites = environment.favorites
     }
 
     @Test("A tag edited while its push is in flight keeps the edit, and a sibling's remote change still lands")
@@ -231,7 +196,7 @@ struct SyncCoordinatorEchoTests {
 
     @Test("A tag and a group deleted elsewhere stay here while Groups and Tags is off")
     func remoteDeletionsWithheldWhileCategoryOff() async throws {
-        AppSettingsStorage(userDefaults: defaults).saveSync(
+        AppSettingsStorage(userDefaults: environment.defaults).saveSync(
             SyncSettings(enabled: true, syncConnections: true, syncGroupsAndTags: false, syncSettings: true)
         )
         let tag = ConnectionTag(name: "staging")
@@ -253,7 +218,7 @@ struct SyncCoordinatorEchoTests {
 
     @Test("A tag changed elsewhere keeps its local name while Groups and Tags is off")
     func remoteChangeWithheldWhileCategoryOff() async throws {
-        AppSettingsStorage(userDefaults: defaults).saveSync(
+        AppSettingsStorage(userDefaults: environment.defaults).saveSync(
             SyncSettings(enabled: true, syncConnections: true, syncGroupsAndTags: false, syncSettings: true)
         )
         let tag = ConnectionTag(name: "staging")
@@ -527,15 +492,15 @@ struct SyncCoordinatorEchoTests {
         )
 
         let batch = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
-            .collectPushBatch(snapshot: snapshot, settings: .default, zoneID: Self.zoneID)
+            .collectPushBatch(snapshot: snapshot, boundary: folderBoundary(), zoneID: Self.zoneID)
 
-        let pushed = Set(batch.records.map(\.recordID.recordName))
+        let pushed = Set(batch.records.map { $0.recordID.recordName })
         #expect(pushed == [SyncRecordType.tableFolder.recordName(for: sharedFolder.id.uuidString)])
         #expect(tracker.dirtyRecords(for: .tableFolder).contains(hiddenFolder.id.uuidString))
     }
 
-    @Test("A folder of a connection this Mac does not hold is held back from the push")
-    func foldersOfUnknownConnectionsAreHeldBack() async {
+    @Test("A folder of a connection this Mac does not hold follows the same owner rule as a favorite and goes up")
+    func foldersOfUnknownConnectionsFollowTheOwnerRule() async {
         let orphan = tableFolders.createFolder(
             named: "Elsewhere",
             in: DatabaseScope(connectionId: UUID(), database: "crm", schema: nil)
@@ -546,22 +511,55 @@ struct SyncCoordinatorEchoTests {
         )
 
         let batch = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
-            .collectPushBatch(snapshot: snapshot, settings: .default, zoneID: Self.zoneID)
+            .collectPushBatch(snapshot: snapshot, boundary: folderBoundary(), zoneID: Self.zoneID)
 
-        #expect(batch.records.isEmpty)
+        #expect(batch.records.map { $0.recordID.recordName } == [
+            SyncRecordType.tableFolder.recordName(for: orphan.id.uuidString)
+        ])
     }
 
-    @Test("Deleting a folder the server never had settles instead of failing every later sync")
+    @Test("Folders stay unpushed and keep their marks while their record types are not deployed")
+    func foldersWaitForTheirSchema() async {
+        let folder = tableFolders.createFolder(
+            named: "Billing",
+            in: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil)
+        )
+        let snapshot = SyncEditSnapshot(
+            dirty: [SyncRecordIdentity(type: .tableFolder, id: folder.id.uuidString)],
+            generations: [:]
+        )
+        let undeployed = SyncBoundary(
+            settings: .default,
+            connections: connections.loadConnections(),
+            writableTypes: Set(SyncRecordType.allCases).subtracting([.tableFolder, .tableFolderItem])
+        )
+
+        let batch = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
+            .collectPushBatch(snapshot: snapshot, boundary: undeployed, zoneID: Self.zoneID)
+
+        #expect(batch.records.isEmpty)
+        #expect(tracker.dirtyRecords(for: .tableFolder).contains(folder.id.uuidString))
+    }
+
+    private func folderBoundary() -> SyncBoundary {
+        SyncBoundary(
+            settings: .default,
+            connections: connections.loadConnections(),
+            writableTypes: Set(SyncRecordType.allCases)
+        )
+    }
+
+    @Test("Deleting a group the server never had settles instead of failing every later sync")
     func deletionOfANeverPushedRecordSettles() async {
         let id = UUID().uuidString
-        tracker.markDeleted(.tableFolder, id: id)
-        let missing = SyncRecordMapper.recordID(type: .tableFolder, id: id, in: Self.zoneID)
+        tracker.markDeleted(.group, id: id)
+        let missing = SyncRecordMapper.recordID(type: .group, id: id, in: Self.zoneID)
 
         let failure = await makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID, missing: [missing]))
             .runSyncCycle()
 
         #expect(failure == nil)
-        #expect(metadata.tombstones(for: .tableFolder).isEmpty)
+        #expect(metadata.tombstones(for: .group).isEmpty)
     }
 
     @Test("A Local only connection takes no folder change from another device")
@@ -727,136 +725,11 @@ struct SyncCoordinatorEchoTests {
         transport: ScriptedSyncTransport,
         favorites: SQLFavoriteManager? = nil
     ) -> SyncCoordinator {
-        let live = AppServices.live
-        let services = AppServices(
-            appEvents: AppEvents(),
-            appSettings: live.appSettings,
-            appSettingsStorage: AppSettingsStorage(userDefaults: defaults),
-            connectionStorage: connections,
-            databaseManager: live.databaseManager,
-            pluginManager: live.pluginManager,
-            schemaService: live.schemaService,
-            schemaRefreshService: live.schemaRefreshService,
-            schemaProviderRegistry: live.schemaProviderRegistry,
-            catalogChangeService: live.catalogChangeService,
-            sqlFavoriteManager: favorites ?? self.favorites,
-            favoriteTablesStorage: FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker),
-            favoriteDatabasesStorage: favoriteDatabases,
-            tableFolderStorage: tableFolders,
-            aiChatStorage: live.aiChatStorage,
-            aiKeyStorage: live.aiKeyStorage,
-            aiAccessApprovals: live.aiAccessApprovals,
-            groupStorage: groups,
-            tagStorage: tags,
-            sshProfileStorage: SSHProfileStorage(
-                userDefaults: defaults,
-                keychain: keychain,
-                syncTracker: tracker,
-                connectionStorage: connections
-            ),
-            credentialProfileStorage: CredentialProfileStorage(
-                fileURL: directory.appendingPathComponent("credentialProfiles.json"),
-                keychain: keychain,
-                syncTracker: tracker,
-                connectionStorage: connections,
-                integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
-            ),
-            licenseManager: live.licenseManager,
-            syncMetadataStorage: metadata,
-            favoritesExpansionState: live.favoritesExpansionState,
-            linkedFolderWatcher: live.linkedFolderWatcher,
-            queryHistoryManager: live.queryHistoryManager,
-            dateFormattingService: live.dateFormattingService,
-            copilotService: live.copilotService,
-            mcpServerManager: live.mcpServerManager,
-            syncTracker: tracker,
-            themeEngine: live.themeEngine,
-            welcomeRouter: live.welcomeRouter
-        )
-        return SyncCoordinator(
-            services: services,
-            recordCache: recordCache,
-            transport: transport,
-            columnLayouts: columnLayouts
-        )
+        environment.makeCoordinator(transport: transport, favorites: favorites)
     }
 }
 
 @MainActor
 private final class CoordinatorBox {
     var coordinator: SyncCoordinator?
-}
-
-private actor ScriptedSyncTransport: SyncTransport {
-    let currentZoneID: CKRecordZone.ID
-    private let rejectedRecordIDs: Set<CKRecord.ID>
-    private let missingRecordIDs: Set<CKRecord.ID>
-    private let interruption: (any Error)?
-    private let duringPush: @MainActor @Sendable () async -> Void
-    private let pulled: @Sendable ([CKRecord]) -> PullResult
-    private(set) var pushedRecords: [CKRecord] = []
-    private(set) var pullCount = 0
-
-    init(
-        zoneID: CKRecordZone.ID,
-        rejecting rejectedRecordIDs: Set<CKRecord.ID> = [],
-        missing missingRecordIDs: Set<CKRecord.ID> = [],
-        interruption: (any Error)? = nil,
-        duringPush: @escaping @MainActor @Sendable () async -> Void = {},
-        pulled: @escaping @Sendable ([CKRecord]) -> PullResult = { _ in
-            PullResult(changedRecords: [], deletedRecordIDs: [], newToken: nil)
-        }
-    ) {
-        self.currentZoneID = zoneID
-        self.rejectedRecordIDs = rejectedRecordIDs
-        self.missingRecordIDs = missingRecordIDs
-        self.interruption = interruption
-        self.duringPush = duringPush
-        self.pulled = pulled
-    }
-
-    func accountStatus() async throws -> CKAccountStatus {
-        .available
-    }
-
-    func currentAccountId() async throws -> String {
-        "tests"
-    }
-
-    func ensureZoneExists() async throws {}
-
-    func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
-        pushedRecords.append(contentsOf: records)
-        await duringPush()
-        var outcome = PushOutcome()
-        for record in records {
-            guard rejectedRecordIDs.contains(record.recordID) else {
-                outcome.recordSave(record)
-                continue
-            }
-            outcome.recordFailure(
-                SyncItemFailure(code: .serverRejectedRequest, serverRecord: nil, clientRecord: record, message: "Rejected"),
-                for: record.recordID
-            )
-        }
-        for recordID in deletions {
-            guard missingRecordIDs.contains(recordID) else {
-                outcome.recordDeletion(recordID)
-                continue
-            }
-            outcome.recordFailure(
-                SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: nil, message: "Record not found"),
-                for: recordID
-            )
-        }
-        if let interruption {
-            throw SyncPushInterruption(completed: outcome, cause: interruption)
-        }
-        return outcome
-    }
-
-    func pull(since token: CKServerChangeToken?) async throws -> PullResult {
-        pullCount += 1
-        return pulled(pushedRecords)
-    }
 }

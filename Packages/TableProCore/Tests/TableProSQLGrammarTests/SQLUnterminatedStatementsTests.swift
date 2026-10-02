@@ -2,7 +2,7 @@ import Foundation
 import TableProSQLGrammar
 import Testing
 
-/// What each case stands for was measured on Azure SQL Edge 15.0, and `scripts/check-mssql-unterminated-statements.sh`
+/// What each case stands for was measured on Azure SQL Edge 15.0, and `scripts/probes/check-mssql-unterminated-statements.sh`
 /// measures it again.
 @Suite("SQL unterminated statements")
 struct SQLUnterminatedStatementsTests {

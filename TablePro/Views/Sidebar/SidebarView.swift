@@ -145,7 +145,6 @@ struct SidebarView: View {
                         connectionId: connectionId,
                         databaseType: viewModel.databaseType,
                         sharedSidebarState: sidebarState,
-                        tables: tables,
                         coordinator: coordinator
                     )
                 } else {

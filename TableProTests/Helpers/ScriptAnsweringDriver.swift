@@ -21,6 +21,7 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
 
     private let sendsBatchesWhole: Bool
     private let transactionState: PluginSessionTransactionState
+    private let transactionStateAfterBatches: PluginSessionTransactionState?
     private let answer: @Sendable (String) -> QueryBatchResult
     private let lock = NSLock()
     private var batches: [SentBatch] = []
@@ -30,11 +31,13 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         connection: DatabaseConnection,
         sendsBatchesWhole: Bool = true,
         transactionState: PluginSessionTransactionState = .idle,
+        transactionStateAfterBatches: PluginSessionTransactionState? = nil,
         answer: @escaping @Sendable (String) -> QueryBatchResult = { _ in .empty }
     ) {
         self.connection = connection
         self.sendsBatchesWhole = sendsBatchesWhole
         self.transactionState = transactionState
+        self.transactionStateAfterBatches = transactionStateAfterBatches
         self.answer = answer
     }
 
@@ -54,8 +57,11 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         return answer(query)
     }
 
+    /// What the session holds, and once a batch has reached it, what it holds after one when a test
+    /// says that differs, the way a SQL Server `DROP` under implicit transactions opens one.
     func sessionTransactionState() async -> PluginSessionTransactionState {
-        transactionState
+        guard let transactionStateAfterBatches, !sentBatches.isEmpty else { return transactionState }
+        return transactionStateAfterBatches
     }
 
     private func record(_ query: String) -> QueryResult {
