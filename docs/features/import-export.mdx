@@ -384,7 +384,7 @@ Every field in the file gets a row with a checkbox and a column menu. A field na
 
 Clicking **Import** saves each choice that differs from Match by Name for that table, whether the import succeeds or not. The next file imported into the same table starts from those choices, and the sheet reads **Restored the mapping saved for** and the table name. A saved column the table no longer has falls back to the name match. Importing into a new table saves any column you renamed, so the same file lands on the renamed columns next time.
 
-Saved mappings stay on this Mac. They follow a table renamed from the sidebar, and are forgotten when the table is dropped from the sidebar or the connection is deleted. A `DROP TABLE` run in the SQL editor leaves them in place, so a table created again under the same name starts from the old mapping.
+Saved mappings stay on this Mac. They follow a renamed table and are forgotten when the table is dropped, from the sidebar or with SQL as [Drop or rename with SQL](/features/table-operations#drop-or-rename-with-sql) describes, and when the connection is deleted.
 
 ### Row imports
 
