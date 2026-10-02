@@ -81,10 +81,13 @@ repair-story tells:
 ```bash
 awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep '^- ' \
   | sed -E 's/ \(#[0-9, #]+( by @[A-Za-z0-9-]+)?\)$//' \
-  | awk '{ t+=length($0); n++; if (length($0)>120) o++ }
+  | awk '{ t+=length; n++; if (length>120) o++ }
          END { if (!n) { print "no entries"; exit } print n" entries, avg "int(t/n)" chars, "o+0" over 120" }'
 awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -nE '^- .*( now | no longer |, so )'
 ```
+
+Bare `length` is the line's length. Never write a dollar sign followed by a digit in this file:
+Claude Code replaces it with a skill argument, so `/release 0.77.0` ran `length(0.77.0)`.
 
 `instead of` alone is fine when it describes the bug. Rewrite what runs long or matches to
 `.claude/rules/changelog.md`, merging entries for one change and keeping every credit as it is. Diff
