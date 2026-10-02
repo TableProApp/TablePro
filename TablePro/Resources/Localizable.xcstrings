@@ -9870,6 +9870,8 @@
       }
     },
     "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor." : {
+
+    },
     "'%@' is not a valid regular expression." : {
 
     },
@@ -59516,7 +59518,6 @@
         }
       }
     },
-    "Enter at least one value to filter with %@." : {
     "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
 
     },
@@ -60015,6 +60016,9 @@
       }
     },
     "Enter a value for the primary key column %@." : {
+
+    },
+    "Enter at least one value to filter with %@." : {
 
     },
     "Enter table name" : {
@@ -106643,12 +106647,6 @@
 
     },
     "The SAP HANA schema name cannot be empty." : {
-
-    },
-    "This database cannot filter rows with these conditions." : {
-
-    },
-    "This engine cannot filter that table with those conditions." : {
 
     },
     "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
@@ -165415,6 +165413,9 @@
         }
       }
     },
+    "This engine cannot filter that table with those conditions." : {
+
+    },
     "This key references a row already shown above" : {
 
     },
@@ -176785,6 +176786,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
 
     },
+    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+
+    },
     "Verify certificate and hostname" : {
       "localizations" : {
         "ko" : {
@@ -181921,7 +181925,7 @@
     "One row per line (NDJSON)" : {
 
     },
-    "etcd cannot filter with %@." : {
+    "etcd cannot filter with a raw SQL condition." : {
 
     },
     "etcd has no %@ column." : {
@@ -184854,6 +184858,9 @@
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
 
     },
+    "This database cannot filter rows with these conditions." : {
+
+    },
     "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {
 
     },
@@ -184878,10 +184885,7 @@
     "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
 
     },
-    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
-
-    },
-    "etcd cannot filter with a raw SQL condition." : {
+    "etcd cannot filter with %@." : {
 
     }
   },
