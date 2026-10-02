@@ -13,11 +13,35 @@ extension FindPanelViewModel {
     /// Performs a find operation on the find target and updates both the ``findMatches`` array and the emphasis
     /// manager's emphases.
     func find() {
-        // Don't find if target isn't ready or the query is empty
-        guard let target = target, !findText.isEmpty else {
-            self.findMatches = []
-            return
+        findMatches = searchResults().map(\.range)
+
+        // Find the nearest match to the current cursor position
+        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches)
+
+        // Only add emphasis layers if the find panel is focused
+        if isFocused {
+            addMatchEmphases(flashCurrent: false)
         }
+    }
+
+    /// Searches the document again after it was replaced wholesale. Replacing the text posts no change notification,
+    /// so the stored matches would otherwise point into text that is gone.
+    func documentDidReplace() {
+        clearMatchEmphases()
+        findMatches = searchResults().map(\.range)
+        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches)
+    }
+
+    /// The find text's matches in the document as it is now. Empty when there is no target, no find text, or a
+    /// regular expression that does not compile.
+    func searchResults() -> [NSTextCheckingResult] {
+        guard let target, let regex = makeRegex() else { return [] }
+        return regex.matches(in: target.textView.string, range: target.textView.documentRange)
+            .filter { !$0.range.isEmpty }
+    }
+
+    private func makeRegex() -> NSRegularExpression? {
+        guard !findText.isEmpty else { return nil }
 
         // Set case sensitivity based on matchCase property
         var findOptions: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
@@ -52,25 +76,7 @@ extension FindPanelViewModel {
             pattern = findText
         }
 
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: findOptions) else {
-            self.findMatches = []
-            self.currentFindMatchIndex = nil
-            return
-        }
-
-        let text = target.textView.string
-        let range = target.textView.documentRange
-        let matches = regex.matches(in: text, range: range).filter { !$0.range.isEmpty }
-
-        self.findMatches = matches.map(\.range)
-
-        // Find the nearest match to the current cursor position
-        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches)
-
-        // Only add emphasis layers if the find panel is focused
-        if isFocused {
-            addMatchEmphases(flashCurrent: false)
-        }
+        return try? NSRegularExpression(pattern: pattern, options: findOptions)
     }
 
     // MARK: - Get Nearest Emphasis Index

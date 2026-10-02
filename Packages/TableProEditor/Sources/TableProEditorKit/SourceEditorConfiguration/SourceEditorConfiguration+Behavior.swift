@@ -31,6 +31,8 @@ public extension SourceEditorConfiguration {
         func didSetOnController(controller: TextViewController, oldConfig: Behavior?) {
             if oldConfig?.isEditable != isEditable {
                 controller.textView.isEditable = isEditable
+                // Replace is offered by editability, which the find panel cannot observe on its own.
+                controller.findViewController?.viewModel.objectWillChange.send()
                 controller.textView.selectionManager.highlightSelectedLine = isEditable
                 controller.gutterView.highlightSelectedLines = isEditable
                 if !isEditable {

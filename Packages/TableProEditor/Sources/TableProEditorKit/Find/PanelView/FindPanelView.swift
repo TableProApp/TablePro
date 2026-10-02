@@ -90,8 +90,11 @@ class MockFindPanelTarget: FindPanelTarget {
     var findPanelTargetView = NSView()
     var cursorPositions: [CursorPosition] = []
 
+    var isFindReplaceEditable: Bool { true }
+
     func setCursorPositions(_ positions: [CursorPosition], scrollToVisible: Bool) {}
     func updateCursorPosition() {}
+    func replaceFindMatches(_ replacements: [TextReplacement]) -> Bool { false }
     func findPanelWillShow(panelHeight: CGFloat) {}
     func findPanelWillHide(panelHeight: CGFloat) {}
     func findPanelModeDidChange(to mode: FindPanelMode) {}

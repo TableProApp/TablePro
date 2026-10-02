@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `$1` in a regular-expression Replace in the SQL editor inserts the capture group, as in data files.
+
 ### Fixed
 
+- Find panel Replace editing the wrong text after the first replacement, and crashing when a match ran past the end.
+- Replace All crashing on a space in an indent or after Clear Query, and wrapping quotes and brackets in pairs.
+- Replace All taking minutes on a few thousand matches, and two Replace clicks undoing as one step.
+- Replace and All offered in read-only editors, clearing the matches without changing the text.
+- A collapsed fold hiding the wrong text after Replace All.
+- Regular-expression Replace in data files inserting the wrong capture text when a replacement changes length.
 - Import into Table from a data file naming the sheet, the proposed table, error reports and history after a temporary copy.
 
 ## [0.77.0] - 2026-10-02

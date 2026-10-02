@@ -20,8 +20,11 @@ struct FindPanelTests {
             textView = TextView(string: text)
         }
 
+        var isFindReplaceEditable: Bool { true }
+
         func setCursorPositions(_ positions: [CursorPosition], scrollToVisible: Bool) { }
         func updateCursorPosition() { }
+        func replaceFindMatches(_ replacements: [TextReplacement]) -> Bool { false }
         func findPanelWillShow(panelHeight: CGFloat) {
             findPanelWillShowCalled = true
         }

@@ -195,4 +195,13 @@ final class TabularEditingTests: XCTestCase {
         XCTAssertEqual(replaced.text, expected)
         XCTAssertEqual(replaced.replacements, 3)
     }
+
+    func testRegularExpressionReplaceThatChangesLengthReadsEachMatchsOwnGroups() throws {
+        let query = TabularFindQuery(text: "(\\w+)_id", isRegularExpression: true, columns: [])
+        let matcher = try TabularFindMatcher(query)
+        let text = "user_id, order_id, item_id"
+        let replaced = matcher.replacing(in: text, with: "$1Id")
+        XCTAssertEqual(replaced.text, "userId, orderId, itemId")
+        XCTAssertEqual(replaced.replacements, 3)
+    }
 }
