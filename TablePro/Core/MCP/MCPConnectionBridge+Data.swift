@@ -121,7 +121,7 @@ extension MCPConnectionBridge {
                     offset: request.offset
                 )
             }
-            return builder.buildFilteredQuery(
+            guard let query = builder.buildFilteredQuery(
                 tableName: request.table,
                 schemaName: schema,
                 filters: request.filters,
@@ -132,7 +132,12 @@ extension MCPConnectionBridge {
                 selectColumns: selected,
                 limit: limit,
                 offset: request.offset
-            )
+            ) else {
+                throw DatabaseAccessError.dataSourceError(
+                    String(localized: "This engine cannot filter that table with those conditions.")
+                )
+            }
+            return query
         }
 
         var payload = try await executeQuery(

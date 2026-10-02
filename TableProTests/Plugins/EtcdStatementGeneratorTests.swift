@@ -522,6 +522,58 @@ struct EtcdStatementGeneratorUpdateTests {
         #expect(results.isEmpty)
     }
 
+    @Test("A Value edit keeps the key's lease")
+    func valueChangeKeepsLease() throws {
+        let gen = EtcdStatementGenerator(
+            prefix: "",
+            columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 1, columnName: "Value", oldValue: "old", newValue: "new")
+            ],
+            originalRow: ["mykey", "old", "1", "1", "1", "0x7b"]
+        )
+
+        let results = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.map(\.statement) == ["put mykey new --lease=0x7b"])
+    }
+
+    @Test("A renamed key keeps the lease of the key it replaces")
+    func keyRenameKeepsLease() throws {
+        let gen = EtcdStatementGenerator(
+            prefix: "",
+            columns: ["Key", "Value", "Version", "CreateRevision", "ModRevision", "Lease"]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 0, columnName: "Key", oldValue: "oldkey", newValue: "newkey")
+            ],
+            originalRow: ["oldkey", "myvalue", "1", "1", "1", "0x10"]
+        )
+
+        let results = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.map(\.statement) == ["put newkey myvalue --lease=0x10", "del oldkey"])
+    }
+
     @Test("Update with lease set to 0 omits --lease flag")
     func updateLeaseToZero() throws {
         let gen = EtcdStatementGenerator(

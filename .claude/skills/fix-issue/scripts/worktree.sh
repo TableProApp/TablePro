@@ -113,7 +113,7 @@ if [ -e "$DIR" ]; then
 fi
 
 mkdir -p "$WORKTREE_HOME"
-git -C "$MAIN_ROOT" worktree add -b "$BRANCH" "$DIR" "$BASE" || exit 1
+git -C "$MAIN_ROOT" worktree add -b "$BRANCH" "$DIR" "$BASE" >&2 || exit 1
 
 link() {
     [ -e "$1" ] || return 0

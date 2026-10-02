@@ -19,7 +19,7 @@ internal enum MySQLVariableScope: String, Hashable, Sendable, CaseIterable {
 ///
 /// This is a hand-written list that has to agree with two servers and that nothing at runtime
 /// checks, which is the shape that let seven MySQL 8.4 variables go missing.
-/// `scripts/check-mysql-autocommit-only-variables.sh` tries every variable the server has against a
+/// `scripts/probes/check-mysql-autocommit-only-variables.sh` tries every variable the server has against a
 /// live server and reports both directions, and it reads this table out of this file, so the
 /// literal below stays one entry per line.
 internal enum MySQLAutocommitOnlyVariables {

@@ -110,10 +110,8 @@ jobs:
       - name: Check plugin sources that log import the module that defines it
         run: python3 scripts/ci/check-plugin-os-import.py
 
-      # SwiftLint runs in CI only on a release tag, and its included: never reaches Plugins/,
-      # where fifteen log lines published an error's text unseen. This applies that one rule to
-      # the app, the packages and the plugins on every pull request, with the regex read from
-      # .swiftlint.yml.
+      # SwiftLint's included: does not reach Plugins/, so this applies its log privacy rule there,
+      # with the regex read from .swiftlint.yml.
       - name: Check no source publishes an error's text to the system log
         run: python3 scripts/ci/check-log-privacy.py
 
@@ -148,12 +146,12 @@ jobs:
       - name: Validate the PluginKit bump cadence check
         run: python3 scripts/ci/test_check_pluginkit_bump_cadence.py
 
-      # The macOS suite cannot catch this one: the script runs before any test does, and when it
-      # gets this wrong no test runs at all. An empty quarantine list made it print a blank line,
-      # which the caller turned into an empty xcodebuild argument, and main went red for three
-      # commits with `Unknown build action ''`.
-      - name: Validate the test quarantine script
-        run: python3 scripts/ci/test_quarantine_args.py
+      # The macOS suite cannot catch a fault here: the lister runs before any test does.
+      - name: Validate the test lister and quarantine
+        run: python3 scripts/ci/test_list_tests.py
+
+      - name: Validate the pull request title check
+        run: python3 scripts/ci/test_check_pr_title.py
 
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py

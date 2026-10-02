@@ -365,18 +365,24 @@ struct RowImportSheet: View {
                 if selectedTargetTable == nil {
                     placeholder("Choose a destination table to map fields.")
                 } else if mapping.rows.isEmpty {
-                    placeholder("No fields found in the file.")
+                    placeholder(currentReadHasLanded ? "No fields found in the file." : readingPlaceholder)
                 } else {
                     mappingTable
                 }
             case .newTable:
                 if newTable.columns.isEmpty {
-                    placeholder("No columns found in the file.")
+                    placeholder(currentReadHasLanded ? "No columns found in the file." : readingPlaceholder)
                 } else {
                     newColumnsTable
                 }
             }
         }
+    }
+
+    /// A read takes seconds on a large file, and until it lands the list is empty, which the other
+    /// placeholders would report as a file with nothing in it.
+    private var readingPlaceholder: String {
+        String(localized: "Reading the file…")
     }
 
     /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
@@ -698,6 +704,11 @@ struct RowImportSheet: View {
     /// table and database, that finished without an error.
     private var currentReadIsReady: Bool {
         guard !isLoadingContext, loadError == nil else { return false }
+        return currentReadHasLanded
+    }
+
+    /// The rows on screen answer the read for the current destination, table, database and options.
+    private var currentReadHasLanded: Bool {
         switch destination {
         case .existingTable:
             return mapping.loadedRead == AnyHashable(sourceRead)
@@ -764,19 +775,6 @@ struct RowImportSheet: View {
         newTableName = suggestion
     }
 
-    /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the
-    /// whole workbook, the CSV one reads a megabyte. Every state write stays on the main actor,
-    /// only the parse leaves it.
-    nonisolated private static func detectFields(
-        plugin: any ImportFormatPlugin,
-        at url: URL,
-        targetTable: String?
-    ) async throws -> [PluginImportField] {
-        try await Task.detached {
-            try plugin.detectSourceFields(at: url, targetTable: targetTable)
-        }.value
-    }
-
     private var sourceRead: SourceRead {
         let isExisting = destination == .existingTable
         return SourceRead(
@@ -826,7 +824,7 @@ struct RowImportSheet: View {
         isLoadingContext = true
         loadError = nil
         do {
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
             guard !Task.isCancelled else { return }
             let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
             newTable.load(fields: fields) { inferredType in
@@ -854,7 +852,7 @@ struct RowImportSheet: View {
                 try await driver.fetchColumns(table: table)
             }.map(\.name)
             guard !Task.isCancelled else { return }
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             guard !Task.isCancelled else { return }
             mapping.load(fields: fields, columns: columns, for: TableScope(table: table, in: scope), read: request)
         } catch {

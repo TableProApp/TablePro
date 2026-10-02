@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL `money` values written as null in Parquet exports.
 - Files left behind when a multi-table Parquet export is stopped between tables.
 - Filter-bar BETWEEN refused on Typesense and Weaviate, and given the wrong lower bound on BigQuery.
+- SurrealDB between, matches regex, is empty and raw filters run as equality, and is not empty showing only empty rows.
+- SurrealDB edits to `in` and `out` dropped without a word when the same row had another edit.
 - Cassandra filter error telling MCP clients to use a Match All control they do not have.
 - Japanese, Chinese and Korean text in CSV, TSV and SQL files opening as garbled characters.
 - Every row of a UTF-16 data file rewritten on save.
@@ -77,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows.
 - Import sheet creating, emptying or filling tables in another database after a database switch in another window.
 - Import sheet discarding a new table's column edits when a CSV or Excel option changes.
+- JSON import leaving out fields first seen after row 200, and typing columns from those rows alone.
+- No fields found in a JSON Lines file with CRLF line endings.
+- JSON Lines rows with U+2028, U+2029 or U+0085 in a string failing to import, and invalid UTF-8 imported as U+FFFD.
+- JSON Lines import stalling while GitHub Copilot is enabled.
 - App pausing while renaming or dropping a database or schema that holds many favorite tables.
 - iCloud sync mixing up two favorite tables whose names contain a vertical bar.
 - iCloud sync sending both a save and a deletion for an item unstarred and starred again, or renamed back, before it ran.
@@ -106,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Use ~/.pgpass` toggle named `Use Password File` on Redshift and CockroachDB.
 - etcd `(root)` Delete and Truncate erasing the whole Key Prefix Root, and a root with no trailing `/` reaching sibling keys.
 - etcd commands and saved edits reaching a different key when the key starts with a combining mark.
+- etcd Value edits and key renames detaching the key's lease.
+- etcd filters failing with "Unknown command: select" on columns other than Key, and Key filters ignored for most operators or OR.
+- etcd Key contains and starts with filters also matching keys whose value holds the text.
+- etcd commands with a flag before the key, such as `del --prefix /app`, failing with "requires a key".
+- Blank etcd TLS Mode on a new connection, its untranslated Disabled option, and a Verify CA error naming Advanced fields.
 - Elasticsearch, Typesense and SurrealDB table exports cutting arrays and objects over 10,000 characters into unreadable JSON.
 - Server dashboard Slow Queries panel failing on every refresh on SQL Server.
 - Server dashboard sessions, slow queries, connection count and active query count failing on Redshift.

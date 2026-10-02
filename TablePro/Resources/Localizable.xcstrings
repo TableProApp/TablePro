@@ -6600,6 +6600,9 @@
     "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
 
     },
+    "%@ can only be compared with a whole number." : {
+
+    },
     "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
 
     },
@@ -9866,6 +9869,12 @@
         }
       }
     },
+    "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor." : {
+
+    },
+    "'%@' is not a valid regular expression." : {
+
+    },
     "•" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12727,6 +12736,12 @@
       }
     },
     "A quote or parenthesis in this filter is not closed." : {
+
+    },
+    "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
+
+    },
+    "A record's id cannot be edited." : {
 
     },
     "A row with this key already exists" : {
@@ -24406,6 +24421,9 @@
           }
         }
       }
+    },
+    "Connection timed out" : {
+
     },
     "backtick" : {
       "extractionState" : "manual",
@@ -39931,9 +39949,6 @@
           }
         }
       }
-    },
-    "Connection timed out" : {
-
     },
     "Connection: %@" : {
       "localizations" : {
@@ -60007,6 +60022,9 @@
       }
     },
     "Enter a value for the primary key column %@." : {
+
+    },
+    "Enter at least one value to filter with %@." : {
 
     },
     "Enter table name" : {
@@ -85186,6 +85204,9 @@
         }
       }
     },
+    "Lease can only be compared with a lease ID, such as 0x7b." : {
+
+    },
     "Leave blank to connect without authentication. The password is stored in the macOS Keychain." : {
       "localizations" : {
         "ko" : {
@@ -106665,16 +106686,16 @@
     "SAP's in-memory SQL database" : {
 
     },
+    "SurrealDB cannot filter rows with %@." : {
+
+    },
     "TLS Server Name" : {
 
     },
     "The SAP HANA schema name cannot be empty." : {
 
     },
-    "Timed out while connecting to the Dameng server" : {
-
-    },
-    "Timed out while connecting to the Kafka cluster" : {
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
 
     },
     "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
@@ -122670,6 +122691,9 @@
       }
     },
     "Reading Tables" : {
+
+    },
+    "Reading the file…" : {
 
     },
     "Reading the source…" : {
@@ -163076,9 +163100,6 @@
     "The view's query runs again and replaces its stored rows. A plain refresh stops other sessions from reading the view until it finishes." : {
 
     },
-    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
-
-    },
     "Theme" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -165440,6 +165461,9 @@
           }
         }
       }
+    },
+    "This engine cannot filter that table with those conditions." : {
+
     },
     "This key references a row already shown above" : {
 
@@ -168619,6 +168643,12 @@
       }
     },
     "This view can be refreshed concurrently." : {
+
+    },
+    "Timed out while connecting to the Dameng server" : {
+
+    },
+    "Timed out while connecting to the Kafka cluster" : {
 
     },
     "to view data" : {
@@ -176811,6 +176841,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
 
     },
+    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+
+    },
     "Verify certificate and hostname" : {
       "localizations" : {
         "ko" : {
@@ -181947,6 +181980,12 @@
     "One row per line (NDJSON)" : {
 
     },
+    "etcd cannot filter with a raw SQL condition." : {
+
+    },
+    "etcd has no %@ column." : {
+
+    },
     "the compressed data is corrupt or was cut short" : {
 
     },
@@ -184874,6 +184913,9 @@
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
 
     },
+    "This database cannot filter rows with these conditions." : {
+
+    },
     "Timed out while connecting to the Kafka broker" : {
 
     },
@@ -184899,6 +184941,9 @@
 
     },
     "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
+
+    },
+    "etcd cannot filter with %@." : {
 
     }
   },

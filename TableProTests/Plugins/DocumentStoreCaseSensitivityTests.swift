@@ -159,21 +159,21 @@ struct EtcdCaseSensitivityTests {
             limit: 100,
             offset: 0
         )
-        return query.flatMap { EtcdQueryBuilder.parseRangeQuery($0) }
+        return EtcdQueryBuilder.parseRangeQuery(query)
     }
 
     @Test("The encoded query carries the row's case setting")
     func testCaseFlagRoundTrips() {
-        #expect(parsed(true)?.isCaseSensitive == true)
-        #expect(parsed(false)?.isCaseSensitive == false)
+        #expect(parsed(true)?.filter.conditions.first?.isCaseSensitive == true)
+        #expect(parsed(false)?.filter.conditions.first?.isCaseSensitive == false)
     }
 
     @Test("The rest of the query survives the extra field")
     func testOtherFieldsSurvive() {
         let range = parsed(false)
         #expect(range?.prefix == "/app")
-        #expect(range?.filterType == .contains)
-        #expect(range?.filterValue == "cfg")
+        #expect(range?.filter.conditions.first?.comparison == .contains)
+        #expect(range?.filter.conditions.first?.value == "cfg")
         #expect(range?.limit == 100)
     }
 }

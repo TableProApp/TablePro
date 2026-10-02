@@ -13,6 +13,7 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 - **`Unable to open base configuration reference file`** means `Configs/Secrets.xcconfig` is missing, which is normal in a worktree that `worktree.sh` did not create.
 - **`cannot find 'X' in scope` for code you just wrote** means the project was not regenerated.
 - **MemberImportVisibility errors** on a new file that uses `Combine` or `TableProPluginKit` members are real: add the `import`.
+- **CI's Swift compiler is older than this machine's.** A compile error that only CI reports is real (a shadowed `let x = x` inside a closure that initializes `x` has been one): fix it, never re-run hoping it passes.
 - **SourceKit diagnostics in the editor are noise here** (`No such module 'TablePro'` and the like). Only an `xcodebuild` run counts.
 - **One plugin's scheme is its target name in `project.yml`**, which is not always `<Name>Driver`: `MSSQLDriver`, but `SnowflakeDriverPlugin` and `TrinoDriverPlugin`. `xcodebuild -list -project <tree>/TablePro.xcodeproj` lists them; `verify.sh build <Scheme>` builds one.
 - **`verify.sh plugins` builds the HANA helper first** when the tree has none and Go is installed, since `AllPlugins` otherwise fails on `tablepro-hana-helper has no arm64 slice`.
@@ -20,7 +21,7 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 
 ## Unit tests
 
-- **A full `TableProTests` run is never a gate.** It is red on an untouched `main`, because CI skips the suites in `.github/macos-test-quarantine.txt` and a local run does not, and a few more fail on this machine for environment reasons (locale `en_VN`, `NSPasteboard.general`, live network, wall-clock timers). The wrapper mutes both groups. Run only the suites that own the types you changed, plus their neighbours.
+- **Run the suites that own the types you changed, plus their neighbors**, not the whole target, which takes far longer and tells you little more. The wrapper mutes cases listed in the quarantine files. A suite that fails only on one machine is a test bug: fix it with a pinned locale, a private pasteboard, a stubbed network or an injected clock.
 - **Filter by Swift type name.** `-only-testing` matches the type, not the file name, not the `@Suite` display name and not a `@Test` function, and a filter that matches nothing still prints `TEST SUCCEEDED`. Resolve each name with `grep -rn "struct <Suite>\|class <Suite>" TableProTests` and compare the executed count with the number of tests those suites hold.
 - **`The test runner hung before establishing connection`**, twice in a row, is a wedged `testmanagerd`, and every later run on the machine hangs the same way for about 14 minutes each. When no `xcodebuild` is running (`pgrep -f Developer/usr/bin/xcodebuild` prints nothing), `kill -9 $(pgrep testmanagerd)` (SIGTERM does not stop it); launchd starts a fresh one on the next run.
 - **Zero cases executed** is a wedged host, an empty filter, or a test target that did not compile. The live run tells the last apart and reports it as `FAIL` with the compile errors; the other two are `INCONCLUSIVE`.
@@ -45,7 +46,6 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 - **`lint` is SwiftLint only.** The check of `CLAUDE.md` and `.claude/` against the tree is its own step, `agent-docs`, because a stale reference already on `main` made every code lint red.
 - **Pass file paths, not directories.** `.swiftlint.yml` limits `included:` to `TablePro` and `Packages`, and a directory argument outside it lints nothing while reporting zero violations. The wrapper names any directory it dropped.
 - **Never remove a `swiftlint:disable force_unwrapping`** to satisfy a local run. The CI toolchain differs, and those disables are needed there.
-- **Local `swiftformat` cannot read the repo's `.swiftformat`**, so rely on SwiftLint and on reading the diff.
 
 ## Worktrees
 

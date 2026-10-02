@@ -6,13 +6,13 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct TableQueryBuilderFilteredQueryTests {
     /// The dialect is what carries the quoting and the operators, so a builder without one emits no
-    /// WHERE at all: that is what `TableQueryBuilderNoSQLTests` asserts for MongoDB. These cases are
+    /// query at all: that is what `TableQueryBuilderDialectlessTests` asserts. These cases are
     /// about the SQL fallback, so they need a dialect the way the count suite below has one. Built
     /// without it, they were asserting behaviour the builder stopped having when the dialect became
     /// the source of SQL syntax.
@@ -25,23 +25,23 @@ struct TableQueryBuilderFilteredQueryTests {
     private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset)
 
     @Test("buildFilteredQuery with enabled filter produces WHERE clause")
-    func filteredQueryWithEnabledFilter() {
+    func filteredQueryWithEnabledFilter() throws {
         var filter = TableFilter()
         filter.columnName = "name"
         filter.filterOperator = .equal
         filter.value = "Alice"
         filter.isEnabled = true
 
-        let query = builder.buildFilteredQuery(
+        let query = try #require(builder.buildFilteredQuery(
             tableName: "users", filters: [filter]
-        )
+        ))
         #expect(query.contains("WHERE"))
         #expect(query.contains("name"))
         #expect(query.contains("Alice"))
     }
 
     @Test("buildFilteredQuery excludes disabled filters")
-    func filteredQueryExcludesDisabledFilter() {
+    func filteredQueryExcludesDisabledFilter() throws {
         var enabledFilter = TableFilter()
         enabledFilter.columnName = "name"
         enabledFilter.filterOperator = .equal
@@ -54,32 +54,32 @@ struct TableQueryBuilderFilteredQueryTests {
         disabledFilter.value = "30"
         disabledFilter.isEnabled = false
 
-        let query = builder.buildFilteredQuery(
+        let query = try #require(builder.buildFilteredQuery(
             tableName: "users", filters: [enabledFilter, disabledFilter]
-        )
+        ))
         #expect(query.contains("name"))
         #expect(!query.contains("age"))
     }
 
     @Test("buildFilteredQuery with no enabled filters produces no WHERE")
-    func filteredQueryNoEnabledFilters() {
+    func filteredQueryNoEnabledFilters() throws {
         var filter = TableFilter()
         filter.columnName = "name"
         filter.filterOperator = .equal
         filter.value = "Alice"
         filter.isEnabled = false
 
-        let query = builder.buildFilteredQuery(
+        let query = try #require(builder.buildFilteredQuery(
             tableName: "users", filters: [filter]
-        )
+        ))
         #expect(!query.contains("WHERE"))
     }
 
     @Test("buildFilteredQuery with empty filters produces no WHERE")
-    func filteredQueryEmptyFilters() {
-        let query = builder.buildFilteredQuery(
+    func filteredQueryEmptyFilters() throws {
+        let query = try #require(builder.buildFilteredQuery(
             tableName: "users", filters: []
-        )
+        ))
         #expect(!query.contains("WHERE"))
         #expect(query.contains("SELECT * FROM"))
     }
@@ -126,10 +126,10 @@ struct TableQueryBuilderFilteredCountTests {
     }
 
     @Test("buildFilteredCountQuery WHERE matches buildFilteredQuery WHERE")
-    func countWhereMatchesDataWhere() {
+    func countWhereMatchesDataWhere() throws {
         let filters = [makeFilter("age", "30", .greaterThan)]
         let countQuery = builder.buildFilteredCountQuery(tableName: "users", filters: filters) ?? ""
-        let dataQuery = builder.buildFilteredQuery(tableName: "users", filters: filters)
+        let dataQuery = try #require(builder.buildFilteredQuery(tableName: "users", filters: filters))
 
         let countWhere = (countQuery.components(separatedBy: "WHERE").last ?? "").trimmingCharacters(in: .whitespaces)
         #expect(!countWhere.isEmpty)
@@ -187,10 +187,10 @@ struct TableQueryBuilderPaginationTests {
     }
 
     @Test("Trino filtered query keeps the WHERE and pages with OFFSET/FETCH FIRST")
-    func trinoFilteredQueryOffsetFetch() {
-        let query = builder(Self.trinoDialect).buildFilteredQuery(
+    func trinoFilteredQueryOffsetFetch() throws {
+        let query = try #require(builder(Self.trinoDialect).buildFilteredQuery(
             tableName: "orders", filters: [enabledFilter("status", "open")], limit: 500, offset: 500
-        )
+        ))
         #expect(query.contains("WHERE"))
         #expect(query.contains("OFFSET 500 ROWS FETCH NEXT 500 ROWS ONLY"))
         #expect(!query.contains("LIMIT"))
@@ -211,21 +211,67 @@ struct TableQueryBuilderPaginationTests {
     }
 }
 
-struct TableQueryBuilderNoSQLTests {
-    // MongoDB has no SQL dialect — should produce bare SELECT without WHERE
-    private let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset)
+private final class UnfilterableDriver: PluginDatabaseDriver, @unchecked Sendable {
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
 
-    @Test("NoSQL type produces no WHERE for filtered query")
-    func noSqlFilteredQueryNoWhere() {
+    func connect() async throws {}
+    func disconnect() {}
+    func ping() async throws {}
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table)
+    }
+
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        PluginDatabaseMetadata(name: database)
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        "browse"
+    }
+}
+
+struct TableQueryBuilderDialectlessTests {
+    @Test("An engine with no SQL dialect gets no SQL when its plugin cannot build the filter")
+    func noSQLFallbackWithoutDialect() {
+        let builder = TableQueryBuilder(databaseType: .etcd, pluginDriver: UnfilterableDriver(), pagination: .offset)
+        var filter = TableFilter()
+        filter.columnName = "Value"
+        filter.filterOperator = .contains
+        filter.value = "on"
+        filter.isEnabled = true
+
+        #expect(builder.buildFilteredQuery(tableName: "(root)", filters: [filter]) == nil)
+    }
+
+    @Test("An engine with no SQL dialect and no plugin gets no SQL for a filter")
+    func noSQLWithoutPlugin() {
+        let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset)
         var filter = TableFilter()
         filter.columnName = "name"
         filter.filterOperator = .equal
         filter.value = "Alice"
         filter.isEnabled = true
 
-        let query = builder.buildFilteredQuery(
-            tableName: "collection", filters: [filter]
-        )
-        #expect(!query.contains("WHERE"))
+        #expect(builder.buildFilteredQuery(tableName: "collection", filters: [filter]) == nil)
     }
 }
