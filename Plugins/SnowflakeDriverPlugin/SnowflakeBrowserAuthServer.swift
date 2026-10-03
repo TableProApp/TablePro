@@ -19,27 +19,46 @@ final class SnowflakeBrowserAuthServer: @unchecked Sendable {
     private var timeoutTask: Task<Void, Never>?
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeBrowserAuthServer")
 
-    func start() async throws -> UInt16 {
+    func start(timeout: TimeInterval = 120) async throws -> UInt16 {
         try await withCheckedThrowingContinuation { cont in
-            lock.withLock { readyContinuation = cont }
+            let task = Task {
+                try? await Task.sleep(for: .seconds(timeout))
+                let continuation = self.lock.withLock { () -> CheckedContinuation<UInt16, Error>? in
+                    let continuation = self.readyContinuation
+                    self.readyContinuation = nil
+                    return continuation
+                }
+                continuation?.resume(throwing: SnowflakeError.timeout("Browser authentication listener timed out"))
+                if continuation != nil { self.stop() }
+            }
+            lock.withLock {
+                readyContinuation = cont
+                timeoutTask = task
+            }
             do {
                 try startListener()
             } catch {
-                lock.withLock { readyContinuation = nil }
-                cont.resume(throwing: error)
+                let continuation = lock.withLock { () -> CheckedContinuation<UInt16, Error>? in
+                    let continuation = readyContinuation
+                    readyContinuation = nil
+                    timeoutTask = nil
+                    return continuation
+                }
+                task.cancel()
+                continuation?.resume(throwing: error)
             }
         }
     }
 
-    func waitForToken() async throws -> String {
+    func waitForToken(timeout: TimeInterval = 120) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
             lock.withLock { continuation = cont }
             let task = Task {
-                try? await Task.sleep(nanoseconds: 120_000_000_000)
+                try? await Task.sleep(for: .seconds(timeout))
                 self.lock.withLock {
                     if let cont = self.continuation {
                         self.continuation = nil
-                        cont.resume(throwing: SnowflakeError.timeout("Browser authentication timed out (2 minutes)"))
+                        cont.resume(throwing: SnowflakeError.timeout("Browser authentication timed out"))
                     }
                 }
                 self.stop()
@@ -72,12 +91,14 @@ final class SnowflakeBrowserAuthServer: @unchecked Sendable {
             switch state {
             case .ready:
                 let port = listener.port?.rawValue ?? 0
-                self?.lock.withLock {
-                    if let cont = self?.readyContinuation {
-                        self?.readyContinuation = nil
-                        cont.resume(returning: port)
-                    }
+                let pending = self?.lock.withLock {
+                    let pending = (self?.readyContinuation, self?.timeoutTask)
+                    self?.readyContinuation = nil
+                    self?.timeoutTask = nil
+                    return pending
                 }
+                pending?.1?.cancel()
+                pending?.0?.resume(returning: port)
             case .failed(let error):
                 Self.logger.error("Browser auth server failed: \(error.localizedDescription)")
                 let authError = SnowflakeError.authFailed("Browser auth server failed: \(error.localizedDescription)")

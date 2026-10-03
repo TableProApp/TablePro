@@ -15,9 +15,9 @@ internal enum FavoritesMenuCommand: Equatable {
     case setDatabaseEnvironment(FavoriteDatabaseEntry, FavoriteDatabaseEnvironment)
     case removeDatabaseFavorite(FavoriteDatabaseEntry)
 
-    case openTable(TableInfo)
-    case showERDiagram
-    case removeTableFavorite(TableInfo)
+    case openTable(FavoriteTableRow)
+    case showERDiagram(schema: String?)
+    case removeTableFavorite(FavoriteTablesStorage.FavoriteEntry)
 
     case insertFavorite(SQLFavorite)
     case runFavoriteInNewTab(SQLFavorite)

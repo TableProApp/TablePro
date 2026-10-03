@@ -31,6 +31,7 @@ struct ConnectionVerificationTests {
     }
 
     private func cleanUp(_ connectionId: UUID) async {
+        FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
         DatabaseManager.shared.removeSession(for: connectionId)
         await SchemaService.shared.invalidate(connectionId: connectionId)
     }
@@ -212,6 +213,46 @@ struct ConnectionVerificationTests {
         await DatabaseManager.shared.verifyBeforeUse(connection.id)
 
         #expect(DatabaseManager.shared.activeSessions[connection.id]?.liveness != .live)
+        #expect(
+            DatabaseManager.shared.activeSessions[connection.id]?.liveness
+                == .unreachable(DatabaseManager.unreachableBeforeUseInfo)
+        )
+        await cleanUp(connection.id)
+    }
+
+    @Test("a check that cannot reconnect past a certificate problem names that problem")
+    func aCertificateFailureIsTheReasonShown() async {
+        let error = SSLHandshakeError.hostnameMismatch(serverMessage: "certificate is not valid for db.example.com")
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: error)
+        driver.pingError = DatabaseError.notConnected
+        DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        #expect(
+            DatabaseManager.shared.activeSessions[connection.id]?.liveness
+                == .unreachable(ConnectionFailureClassifier.info(for: error))
+        )
+        await cleanUp(connection.id)
+    }
+
+    @Test("a check whose reconnect stopped on a TLS setting keeps the reason the reconnect gave")
+    func aStoppedReconnectKeepsItsReason() async {
+        let error = SSLHandshakeError.serverRequiresPlaintext(serverMessage: "server does not support SSL")
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: error)
+        driver.pingError = DatabaseError.notConnected
+        DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        let expected = ConnectionFailureClassifier.info(for: error)
+        let session = DatabaseManager.shared.activeSessions[connection.id]
+        #expect(session?.liveness == .unreachable(expected))
+        #expect(session?.status == .error(expected.message))
         await cleanUp(connection.id)
     }
 
@@ -344,6 +385,35 @@ struct HealthMonitorSchedulingTests {
 
         #expect(DatabaseManager.shared.healthMonitors[connection.id] != nil)
         await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+    }
+
+    @Test("health checks never ping while a tracked operation is running")
+    func trackedOperationSuppressesPingRegardlessOfAge() async {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+
+        await withHealthCheck(.every15Minutes) {
+            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+        }
+        let monitor = DatabaseManager.shared.healthMonitors[connection.id]
+        DatabaseManager.shared.queriesInFlight[connection.id] = 1
+        DatabaseManager.shared.queryStartTimes[connection.id] = .distantPast
+
+        await monitor?.performHealthCheck()
+        #expect(driver.pingCallCount == 0)
+
+        DatabaseManager.shared.queriesInFlight.removeValue(forKey: connection.id)
+        DatabaseManager.shared.queryStartTimes.removeValue(forKey: connection.id)
+        await monitor?.performHealthCheck()
+        #expect(driver.pingCallCount == 1)
+
+        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
     }
 
     /// The monitor is built once, when the connection opens, so switching the setting has to reach

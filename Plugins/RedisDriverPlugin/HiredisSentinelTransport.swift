@@ -20,34 +20,50 @@ struct HiredisSentinelTransport: RedisSentinelTransport {
     let username: String?
     let password: String?
     let sslConfig: SSLConfiguration
-    let connectTimeout: TimeInterval
 
     init(
         username: String? = nil,
         password: String? = nil,
-        sslConfig: SSLConfiguration = SSLConfiguration(),
-        connectTimeout: TimeInterval = 4
+        sslConfig: SSLConfiguration = SSLConfiguration()
     ) {
         self.username = username
         self.password = password
         self.sslConfig = sslConfig
-        self.connectTimeout = connectTimeout
     }
 
-    func primaryAddress(group: String, at sentinel: RedisNodeAddress) async throws -> RedisSentinelReply {
-        let reply = try await run(["SENTINEL", "get-master-addr-by-name", group], at: sentinel)
+    func primaryAddress(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> RedisSentinelReply {
+        let reply = try await run(["SENTINEL", "get-master-addr-by-name", group], at: sentinel, deadline: deadline)
         return try RedisSentinelResolver.parseAddressReply(Self.tokens(from: reply), from: sentinel)
     }
 
-    func peerSentinels(group: String, at sentinel: RedisNodeAddress) async throws -> [RedisNodeAddress] {
-        RedisSentinelResolver.parseNodeMaps(try await run(["SENTINEL", "sentinels", group], at: sentinel))
+    func peerSentinels(
+        group: String,
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> [RedisNodeAddress] {
+        RedisSentinelResolver.parseNodeMaps(
+            try await run(["SENTINEL", "sentinels", group], at: sentinel, deadline: deadline)
+        )
     }
 
-    func monitoredGroups(at sentinel: RedisNodeAddress) async throws -> [String] {
-        RedisSentinelResolver.parseGroupNames(try await run(["SENTINEL", "masters"], at: sentinel))
+    func monitoredGroups(at sentinel: RedisNodeAddress, deadline: RedisConnectDeadline) async throws -> [String] {
+        RedisSentinelResolver.parseGroupNames(
+            try await run(["SENTINEL", "masters"], at: sentinel, deadline: deadline)
+        )
     }
 
-    private func run(_ command: [String], at sentinel: RedisNodeAddress) async throws -> RedisReply {
+    private func run(
+        _ command: [String],
+        at sentinel: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws -> RedisReply {
+        guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+            throw RedisSentinelError.deadlineExceeded(tried: [sentinel])
+        }
         let connection = RedisPluginConnection(
             host: sentinel.host,
             port: sentinel.port,
@@ -55,7 +71,7 @@ struct HiredisSentinelTransport: RedisSentinelTransport {
             password: password,
             database: 0,
             sslConfig: sslConfig,
-            connectTimeout: connectTimeout
+            connectTimeoutMilliseconds: remainingMilliseconds
         )
         do {
             try await connection.connect()

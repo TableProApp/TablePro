@@ -75,6 +75,9 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsUserDefinedTypeBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
+        var tlsImpliedPorts: [Int] = []
+        var verifiesServerWithSystemTrust: Bool = false
+        var supportsPerConnectionCertificatePaths: Bool = true
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
@@ -90,10 +93,16 @@ struct PluginMetadataSnapshot: Sendable {
         /// database, such as ClickHouse's `default`, leaves this false.
         var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
-        /// Whether an exact count reads the whole table and the engine bills that read, while its query language
-        /// has no `COUNT(*)`. DynamoDB is the case: a count is a `Scan` of every item. Such an engine is counted
-        /// only when the user asks, and only by its driver.
-        var exactRowCountIsBilledScan: Bool = false
+        /// Whether an exact count reads the whole table with no estimate to stand in for it, and only the driver
+        /// knows how to count it. DynamoDB bills a `Scan` of every item and has no `COUNT(*)`; Cassandra reads
+        /// every partition, because `LIMIT` does not bound `COUNT(*)`, and a filtered count needs CQL the host
+        /// cannot write. Such an engine is counted only when the user asks, and only by its driver.
+        var exactRowCountIsFullScan: Bool = false
+        /// Whether a table can be ordered by any of its columns. CQL orders rows only by clustering columns inside
+        /// one partition, so a Cassandra table offers no column sort and a query result sorts the rows it holds.
+        var supportsColumnSort: Bool = true
+        /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
+        var supportsMatchAnyFilters: Bool = true
         /// Whether a table's columns are a sample of its rows rather than a declared schema. A
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
@@ -104,6 +113,12 @@ struct PluginMetadataSnapshot: Sendable {
         /// for the types that open one. Nil for every driver that reaches its database over the
         /// network, which is what makes it the test for "can this connection name a remote file".
         var localFilePathField: LocalFilePathField?
+
+        /// The extensions a new database file can be named with, the first one preferred. Empty
+        /// when the driver refuses a path with nothing at it, as Beancount does, so the form offers
+        /// no way to name one. DuckDB lists only its own format: a missing Parquet or CSV path is
+        /// refused rather than created.
+        var newDatabaseFileExtensions: [String] = []
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
@@ -642,6 +657,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
+        let additionalConnectionFields = driverType.additionalConnectionFields.filter {
+            // Kafka releases before the shared timeout setting exposed a second control under
+            // this id. An installed old bundle still registers its metadata over the curated
+            // snapshot, so retire the field here too while its saved value migrates in the model.
+            driverType.databaseTypeId != "Kafka" || $0.id != "kafkaConnectTimeout"
+        }
 
         // A capability with no DriverPlugin static is curated per type, so it has to be carried
         // over from the built-in snapshot or plugin registration silently resets it to the
@@ -710,6 +731,11 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsUserDefinedTypeBrowse: driverType.supportsUserDefinedTypeBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
+                tlsImpliedPorts: existingSnapshot?.capabilities.tlsImpliedPorts ?? [],
+                verifiesServerWithSystemTrust: existingSnapshot?.capabilities
+                    .verifiesServerWithSystemTrust ?? false,
+                supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
+                    .supportsPerConnectionCertificatePaths ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
@@ -720,10 +746,13 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
                     .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
-                exactRowCountIsBilledScan: existingSnapshot?.capabilities.exactRowCountIsBilledScan ?? false,
+                exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
+                supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
+                supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
+                newDatabaseFileExtensions: existingSnapshot?.capabilities.newDatabaseFileExtensions ?? [],
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,
                 supportsRemoteDatabaseSession: existingSnapshot?.capabilities
@@ -755,7 +784,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 columnTypesByCategory: driverType.columnTypesByCategory
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
-                additionalConnectionFields: driverType.additionalConnectionFields,
+                additionalConnectionFields: additionalConnectionFields,
                 category: existingSnapshot?.connection.category
                     ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
                 tagline: existingSnapshot?.connection.tagline

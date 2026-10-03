@@ -22,6 +22,8 @@ let package = Package(
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
+        .library(name: "TableProTLSTestFixtures", targets: ["TableProTLSTestFixtures"]),
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
@@ -123,6 +125,16 @@ let package = Package(
             name: "TableProTrinoCore",
             dependencies: [],
             path: "Sources/TableProTrinoCore"
+        ),
+        .target(
+            name: "TableProTLSClientIdentity",
+            dependencies: [],
+            path: "Sources/TableProTLSClientIdentity"
+        ),
+        .target(
+            name: "TableProTLSTestFixtures",
+            dependencies: [],
+            path: "Tests/TableProTLSTestFixtures"
         ),
         .target(
             name: "TableProGoogleCloud",
@@ -271,8 +283,13 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore"],
+            dependencies: ["TableProTrinoCore", "TableProTLSClientIdentity", "TableProTLSTestFixtures"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProTLSClientIdentityTests",
+            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
+            path: "Tests/TableProTLSClientIdentityTests"
         ),
         .testTarget(
             name: "TableProGoogleCloudTests",

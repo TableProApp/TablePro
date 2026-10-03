@@ -39,4 +39,17 @@ struct ExportServiceTimeoutTests {
         let configured = AppSettingsManager.shared.general.queryTimeoutSeconds
         #expect(driver.applyQueryTimeoutValues == [0, configured])
     }
+
+    @Test("restoreStatementTimeout preserves the connection override")
+    func restoreSendsConnectionOverride() async {
+        var connection = TestFixtures.makeConnection()
+        connection.queryTimeoutSeconds = 17
+        let driver = MockDatabaseDriver(connection: connection)
+        let service = makeService(driver: driver)
+
+        await service.suppressStatementTimeout(on: driver)
+        await service.restoreStatementTimeout(on: driver)
+
+        #expect(driver.applyQueryTimeoutValues == [0, 17])
+    }
 }

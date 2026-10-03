@@ -71,7 +71,9 @@ Substitution happens after the split, so a value carrying a space stays a single
 
 The process is held for the life of the connection and killed with its whole process group on disconnect, which is what takes an `aws ssm` session's helper down with it. If it exits on its own while the connection is still open, the connection reconnects and starts it again, up to ten attempts with a widening delay. That covers an SSM session hitting its idle timeout and a `kubectl port-forward` losing its pod.
 
-The local port gets 30 seconds to answer. Past that the connect fails, and the error carries the last lines the command printed to standard error, which is usually where the real reason is.
+The local port shares the connection's **Connect timeout** under **Options**, which uses 30 seconds
+when empty. Past that deadline the connect fails, and the error carries the last lines the command
+printed to standard error, which is usually where the real reason is.
 
 [SSL/TLS](/connections/ssl) still applies, with one unavoidable adjustment: the driver dials a loopback port that no server certificate names, so **Verify CA** and **Verify Identity** fall back to **Required** and certificate paths are dropped.
 
@@ -100,7 +102,9 @@ The command failed on its own terms and its output follows the message. A wrong 
 
 ### The tunnel command did not open its local port in time
 
-Thirty seconds passed with the process still running and nothing listening. An SSM session waiting on a target that is not registered with Systems Manager behaves this way, as does a `kubectl` context pointing at an unreachable cluster.
+The connection's **Connect timeout** passed with the process still running and nothing listening. An
+SSM session waiting on a target that is not registered with Systems Manager behaves this way, as
+does a `kubectl` context pointing at an unreachable cluster.
 
 ### The connection keeps reconnecting
 

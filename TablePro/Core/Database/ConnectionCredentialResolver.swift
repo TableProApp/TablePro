@@ -19,10 +19,11 @@ enum ConnectionCredentialResolver {
     static func resolvePassword(
         for connection: DatabaseConnection,
         fields: [String: String],
-        override: String? = nil
+        override: String? = nil,
+        deadline: ConnectionDeadline? = nil
     ) async throws -> String {
         if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
-            return try await resolveIAMPassword(for: connection, fields: fields)
+            return try await resolveIAMPassword(for: connection, fields: fields, deadline: deadline)
         }
         if let override { return override }
         if case .profile(let profileId) = connection.credentialMode,
@@ -109,11 +110,12 @@ enum ConnectionCredentialResolver {
     /// profile until a write-through lands.
     static func resolveIAMPassword(
         for connection: DatabaseConnection,
-        fields: [String: String]
+        fields: [String: String],
+        deadline: ConnectionDeadline? = nil
     ) async throws -> String {
         let username = resolveUsername(for: connection)
         let source = fields["awsAuth"] ?? "accessKey"
-        let credentials = try await AWSCredentialResolver.resolve(source: source, fields: fields)
+        let credentials = try await resolveAWSCredentials(source: source, fields: fields, deadline: deadline)
 
         if connection.type == .redis {
             guard let region = fields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
@@ -158,5 +160,29 @@ enum ConnectionCredentialResolver {
             username: username,
             credentials: credentials
         )
+    }
+
+    private static func resolveAWSCredentials(
+        source: String,
+        fields: [String: String],
+        deadline: ConnectionDeadline?
+    ) async throws -> AWSCredentials {
+        guard let deadline else {
+            return try await AWSCredentialResolver.resolve(source: source, fields: fields)
+        }
+        let timeout = credentialRequestTimeout(for: deadline)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        return try await AWSCredentialResolver.resolve(source: source, fields: fields, session: session)
+    }
+
+    static func credentialRequestTimeout(
+        for deadline: ConnectionDeadline,
+        at now: ContinuousClock.Instant = .now
+    ) -> TimeInterval {
+        TimeInterval(max(1, deadline.remainingMilliseconds(at: now))) / 1_000
     }
 }

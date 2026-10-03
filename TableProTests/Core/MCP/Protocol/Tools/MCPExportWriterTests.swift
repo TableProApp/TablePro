@@ -13,7 +13,7 @@ struct MCPCsvExportTests {
     func csvQuotesCarriageReturn() {
         let line = MCPCsvWriter.write(
             columns: ["note"],
-            rows: [.array([.string("first\rsecond")])]
+            rows: [[.text("first\rsecond")]]
         )
         #expect(line.contains("\"first\rsecond\""))
     }
@@ -52,16 +52,17 @@ struct MCPCsvExportTests {
     @Test("Null cells are empty and scalars are written unquoted")
     func csvScalarCells() {
         #expect(MCPCsvWriter.cell(.null).isEmpty)
-        #expect(MCPCsvWriter.cell(.int(7)) == "7")
-        #expect(MCPCsvWriter.cell(.bool(true)) == "true")
-        #expect(MCPCsvWriter.cell(.bool(false)) == "false")
+        #expect(MCPCsvWriter.cell(.number("7")) == "7")
+        #expect(MCPCsvWriter.cell(.boolean("true")) == "true")
+        #expect(MCPCsvWriter.cell(.boolean("0")) == "0")
+        #expect(MCPCsvWriter.cell(.binary(Data([0x00, 0x01]))) == "AAE=")
     }
 
     @Test("Rows are separated by CRLF, as RFC 4180 asks")
     func csvUsesCrlf() {
         let output = MCPCsvWriter.write(
             columns: ["id"],
-            rows: [.array([.int(1)]), .array([.int(2)])]
+            rows: [[.number("1")], [.number("2")]]
         )
         #expect(output == "id\r\n1\r\n2")
     }
@@ -71,17 +72,20 @@ struct MCPSqlExportDialectTests {
     private let postgres = MCPSqlExportDialect(
         identifierQuote: "\"",
         booleanStyle: .truefalse,
-        usesBackslashEscaping: false
+        usesBackslashEscaping: false,
+        binaryStyle: .postgresBytea
     )
     private let mysql = MCPSqlExportDialect(
         identifierQuote: "`",
         booleanStyle: .numeric,
-        usesBackslashEscaping: true
+        usesBackslashEscaping: true,
+        binaryStyle: .bitString
     )
     private let mssql = MCPSqlExportDialect(
         identifierQuote: "[",
         booleanStyle: .numeric,
-        usesBackslashEscaping: false
+        usesBackslashEscaping: false,
+        binaryStyle: .zeroX
     )
 
     @Test("The dialect is resolved from the connection type, not assumed to be MySQL")
@@ -109,7 +113,7 @@ struct MCPSqlExportDialectTests {
         let sql = MCPSqlExportWriter.write(
             table: "public.users",
             columns: ["id", "name", "active"],
-            rows: [.array([.int(1), .string("O'Brien"), .bool(true)])],
+            rows: [[.number("1"), .text("O'Brien"), .boolean("true")]],
             dialect: postgres
         )
         #expect(sql.contains("INSERT INTO \"public\".\"users\" (\"id\", \"name\", \"active\")"))
@@ -129,7 +133,7 @@ struct MCPSqlExportDialectTests {
         let sql = MCPSqlExportWriter.write(
             table: "users",
             columns: ["name", "active"],
-            rows: [.array([.string("a\\b'c"), .bool(false)])],
+            rows: [[.text("a\\b'c"), .boolean("false")]],
             dialect: mysql
         )
         #expect(sql.contains("INSERT INTO `users` (`name`, `active`)"))
@@ -152,16 +156,34 @@ struct MCPSqlExportDialectTests {
         #expect(mysql.boolean(false) == "0")
     }
 
-    @Test("Null and structured cells become valid literals")
+    @Test("Every cell kind becomes a valid literal")
     func literalsCoverEveryCellKind() {
         #expect(MCPSqlExportWriter.literal(.null, dialect: postgres) == "NULL")
-        #expect(MCPSqlExportWriter.literal(.int(4), dialect: postgres) == "4")
-        let structured = MCPSqlExportWriter.literal(
-            .object(["a": .string("it's")]),
-            dialect: postgres
+        #expect(MCPSqlExportWriter.literal(.number("4"), dialect: postgres) == "4")
+        #expect(MCPSqlExportWriter.literal(.text("it's"), dialect: postgres) == "'it''s'")
+        #expect(MCPSqlExportWriter.literal(.boolean("t"), dialect: mysql) == "'t'")
+        #expect(MCPSqlExportWriter.literal(.boolean("yes"), dialect: mysql) == "1")
+        #expect(MCPSqlExportWriter.literal(.number("+5"), dialect: postgres) == "5")
+    }
+
+    @Test("Binary cells are written as the engine's hex literal, never as base64 text")
+    func binaryLiteralsFollowTheEngine() {
+        let bytes = Data([0xDE, 0xAD])
+        #expect(MCPSqlExportWriter.literal(.binary(bytes), dialect: postgres) == "decode('dead', 'hex')")
+        #expect(MCPSqlExportWriter.literal(.binary(bytes), dialect: mysql) == "X'dead'")
+        #expect(MCPSqlExportWriter.literal(.binary(bytes), dialect: mssql) == "0xdead")
+    }
+
+    @Test("An Oracle binary cell uses HEXTORAW, and an empty one EMPTY_BLOB")
+    func oracleBinaryLiterals() {
+        let oracle = MCPSqlExportDialect(
+            identifierQuote: "\"",
+            booleanStyle: .numeric,
+            usesBackslashEscaping: false,
+            binaryStyle: .hexToRaw
         )
-        #expect(structured.hasPrefix("'"))
-        #expect(structured.contains("''"))
+        #expect(oracle.binary(Data([0x01])) == "HEXTORAW('01')")
+        #expect(oracle.binary(Data()) == "EMPTY_BLOB()")
     }
 
     @Test("A table with no columns produces nothing rather than broken SQL")
@@ -169,7 +191,7 @@ struct MCPSqlExportDialectTests {
         let sql = MCPSqlExportWriter.write(
             table: "users",
             columns: [],
-            rows: [.array([.int(1)])],
+            rows: [[.number("1")]],
             dialect: postgres
         )
         #expect(sql.isEmpty)
@@ -181,7 +203,7 @@ struct MCPJsonExportTests {
     func rowsBecomeObjects() throws {
         let output = MCPJsonExportWriter.write(
             columns: ["id", "name"],
-            rows: [.array([.int(1), .string("Ada")])]
+            rows: [[.number("1"), .text("Ada")]]
         )
         let decoded = try JSONDecoder().decode(JsonValue.self, from: Data(output.utf8))
         #expect(decoded.arrayValue?.count == 1)
@@ -193,10 +215,71 @@ struct MCPJsonExportTests {
     func shortRowsAreNotPadded() throws {
         let output = MCPJsonExportWriter.write(
             columns: ["id", "name", "email"],
-            rows: [.array([.int(1), .string("Ada")])]
+            rows: [[.number("1"), .text("Ada")]]
         )
         let decoded = try JSONDecoder().decode(JsonValue.self, from: Data(output.utf8))
         #expect(decoded.arrayValue?.first?["email"] == nil)
+    }
+}
+
+struct MCPJsonExportTypedValueTests {
+    @Test("Strings are escaped and every value keeps its JSON type")
+    func valuesKeepTheirJsonType() throws {
+        let output = MCPJsonExportWriter.write(
+            columns: ["say \"hi\"", "amount", "ok", "blob", "none"],
+            rows: [[.text("line\nbreak"), .number("-3.25"), .boolean("0"), .binary(Data([0x00, 0x01])), .null]]
+        )
+        let decoded = try JSONDecoder().decode(JsonValue.self, from: Data(output.utf8))
+        let row = try #require(decoded.arrayValue?.first)
+        #expect(row["say \"hi\""] == .string("line\nbreak"))
+        #expect(row["amount"]?.doubleValue == -3.25)
+        #expect(row["ok"] == .bool(false))
+        #expect(row["blob"] == .string("AAE="))
+        #expect(row["none"] == .null)
+    }
+}
+
+struct MCPExportValueTests {
+    private func value(_ cell: PluginCellValue, _ columnType: ColumnType?, on family: SQLTypeFamily) -> MCPExportValue {
+        MCPExportValue(cell: cell, columnType: columnType, family: family)
+    }
+
+    @Test("A number column's text becomes a number only when it is one")
+    func numbersAreCheckedNotAssumed() {
+        #expect(value(.text("42"), .integer(rawType: "int"), on: .mysql) == .number("42"))
+        #expect(value(.text("-3.25"), .decimal(rawType: "numeric"), on: .postgres) == .number("-3.25"))
+        #expect(value(.text("NaN"), .decimal(rawType: "float8"), on: .postgres) == .text("NaN"))
+        #expect(value(.text("$1.00"), .decimal(rawType: "money"), on: .postgres) == .text("$1.00"))
+    }
+
+    @Test("A boolean column's text becomes a boolean only for a spelling it recognizes")
+    func booleansAreCheckedNotAssumed() {
+        #expect(value(.text("true"), .boolean(rawType: "bool"), on: .postgres) == .boolean("true"))
+        #expect(value(.text("0"), .boolean(rawType: "tinyint(1)"), on: .mysql) == .boolean("0"))
+        #expect(value(.text("maybe"), .boolean(rawType: "bool"), on: .postgres) == .text("maybe"))
+    }
+
+    @Test("A boolean column holding a number other than 0 or 1 keeps it as a number")
+    func booleanColumnKeepsOtherNumbers() {
+        #expect(value(.text("5"), .boolean(rawType: "tinyint(1)"), on: .mysql) == .number("5"))
+        #expect(value(.text("-128"), .boolean(rawType: "tinyint(1)"), on: .mysql) == .number("-128"))
+    }
+
+    @Test("A BIT column is a bit string on PostgreSQL and DuckDB, a number on MySQL and a boolean on SQL Server")
+    func bitColumnsFollowTheEngine() {
+        #expect(value(.text("1"), .boolean(rawType: "bit"), on: .postgres) == .text("1"))
+        #expect(value(.text("00000101"), .boolean(rawType: "bit"), on: .postgres) == .text("00000101"))
+        #expect(value(.text("0101"), .boolean(rawType: "BIT"), on: .duckdb) == .text("0101"))
+        #expect(value(.text("5"), .boolean(rawType: "BIT"), on: .mysql) == .number("5"))
+        #expect(value(.text("1"), .boolean(rawType: "bit"), on: .mssql) == .boolean("1"))
+    }
+
+    @Test("Text, unknown columns, nulls and bytes keep what they are")
+    func otherCellsKeepTheirKind() {
+        #expect(value(.text("007"), .text(rawType: "varchar"), on: .postgres) == .text("007"))
+        #expect(value(.text("1"), nil, on: .generic) == .text("1"))
+        #expect(value(.null, .integer(rawType: "int"), on: .mysql) == .null)
+        #expect(value(.bytes(Data([0x01])), .blob(rawType: "blob"), on: .sqlite) == .binary(Data([0x01])))
     }
 }
 

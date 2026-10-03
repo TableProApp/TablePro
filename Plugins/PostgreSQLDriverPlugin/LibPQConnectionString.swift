@@ -6,6 +6,66 @@
 import Foundation
 import TableProPluginKit
 
+internal struct LibPQConnectTimeout: Equatable, Sendable {
+    static let defaultMilliseconds = 10_000
+    static let maximumMilliseconds = 3_600_000
+
+    let milliseconds: Int
+
+    init(additionalFields: [String: String]) {
+        milliseconds = Self.resolve(additionalFields: additionalFields)
+    }
+
+    init(milliseconds: Int) {
+        self.milliseconds = min(max(milliseconds, 1), Self.maximumMilliseconds)
+    }
+
+    var nativeSeconds: Int {
+        (milliseconds + 999) / 1_000
+    }
+
+    private static func resolve(additionalFields: [String: String]) -> Int {
+        if let rawMilliseconds = additionalFields["connectTimeoutMilliseconds"],
+           let parsedMilliseconds = Int64(rawMilliseconds.trimmingCharacters(in: .whitespaces)) {
+            return clamp(parsedMilliseconds)
+        }
+        if let rawSeconds = additionalFields["connectTimeoutSeconds"],
+           let parsedSeconds = Int64(rawSeconds.trimmingCharacters(in: .whitespaces)) {
+            let multiplied = parsedSeconds.multipliedReportingOverflow(by: 1_000)
+            let milliseconds = multiplied.overflow
+                ? (parsedSeconds < 0 ? Int64.min : Int64.max)
+                : multiplied.partialValue
+            return clamp(milliseconds)
+        }
+        return defaultMilliseconds
+    }
+
+    private static func clamp(_ milliseconds: Int64) -> Int {
+        Int(min(max(milliseconds, 1), Int64(maximumMilliseconds)))
+    }
+}
+
+/// One monotonic wall-clock budget for libpq's TCP/TLS/authentication and the bootstrap queries
+/// that make the session usable. Keeping the absolute instant here prevents every catalog probe
+/// from receiving the full timeout again.
+internal struct LibPQConnectDeadline: Equatable, Sendable {
+    private let expiresAtMicroseconds: Int64
+
+    init(timeout: LibPQConnectTimeout, nowMicroseconds: Int64) {
+        expiresAtMicroseconds = nowMicroseconds + Int64(timeout.milliseconds) * 1_000
+    }
+
+    func remainingMicroseconds(nowMicroseconds: Int64) -> Int64? {
+        let remaining = expiresAtMicroseconds - nowMicroseconds
+        return remaining > 0 ? remaining : nil
+    }
+
+    func nextPollDeadline(nowMicroseconds: Int64, maximumSliceMicroseconds: Int64) -> Int64? {
+        guard remainingMicroseconds(nowMicroseconds: nowMicroseconds) != nil else { return nil }
+        return min(expiresAtMicroseconds, nowMicroseconds + maximumSliceMicroseconds)
+    }
+}
+
 internal enum LibPQConnectionString {
     static let clientEncoding = "UTF8"
 
@@ -22,7 +82,8 @@ internal enum LibPQConnectionString {
         database: String,
         sslConfig: SSLConfiguration,
         options: String?,
-        applicationName: String? = nil
+        applicationName: String? = nil,
+        connectTimeoutSeconds: Int? = nil
     ) -> String {
         var parameters: [(String, String)] = [
             ("host", host),
@@ -35,6 +96,9 @@ internal enum LibPQConnectionString {
         }
         if let password, !password.isEmpty {
             parameters.append(("password", password))
+        }
+        if let connectTimeoutSeconds {
+            parameters.append(("connect_timeout", String(max(connectTimeoutSeconds, 1))))
         }
 
         parameters.append(("sslmode", LibPQSSLMapping.sslmode(for: sslConfig.mode)))

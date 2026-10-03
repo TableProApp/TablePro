@@ -53,34 +53,43 @@ struct RemoteFileFingerprint: Codable, Sendable, Equatable {
 }
 
 struct RemoteFetchResult: Sendable {
-    let workingCopy: URL
+    let generation: RemoteFileGeneration
     let manifest: RemoteFileManifest
     let plan: RemoteFetchPlan
+    let fetchedSidecars: Set<String>
+
+    var workingCopy: URL { generation.workingCopy }
 }
 
 internal protocol RemoteFileSource {
-    func exists(_ path: String) -> Bool
+    func exists(_ path: String, deadline: ConnectionDeadline) throws -> Bool
 
     @discardableResult
     func download(
         remotePath: String,
         to localURL: URL,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)?,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> (bytes: UInt64, sha256: String)
 }
 
-extension LibSSH2SFTPSession: RemoteFileSource {}
+internal protocol RemoteSnapshotSession: RemoteFileSource {
+    func runRemoteCommand(_ command: String, deadline: ConnectionDeadline) throws -> RemoteCommandResult
+    func remove(_ path: String, deadline: ConnectionDeadline)
+}
+
+extension LibSSH2SFTPSession: RemoteSnapshotSession {}
 
 /// Copies a database file from a server into a local working copy.
 ///
 /// Every rule here comes from something that was measured rather than assumed. The three that
 /// decide whether this is safe:
 ///
-/// - A download is written to a staging name and only moved into place once its byte count matches
-///   what the server reported and the file parses as the database it claims to be. SFTP writes a
-///   file front to back, so a transfer cut short by a dropped session or a cancelled connect leaves
-///   an intact header and a plausible prefix; `sqlite3_open` on that will happily report success.
+/// - A download and every data-carrying sidecar are written into one hidden generation and promoted
+///   together only after the main file's byte count and integrity pass. SFTP writes a file front to
+///   back, so a transfer cut short by a dropped session or a cancelled connect leaves an intact
+///   header and a plausible prefix; `sqlite3_open` on that will happily report success.
 /// - A fetch takes the `-wal` sidecar too. Measured: opening only the main file of a WAL-mode
 ///   database returned the checkpointed row and silently omitted the committed one.
 /// - Nothing is ever written back. A remote-file connection is read-only, so the only direction
@@ -96,17 +105,23 @@ enum RemoteDatabaseFileTransfer {
     /// write-back builds beside it.
     private static let localFreeSpaceMultiplier: UInt64 = 3
 
+    /// Past the longest supported connection budget, so the fallback cannot delete a snapshot from
+    /// under a valid download, but still finite when the caller disappears.
+    static let snapshotCleanupDelaySeconds = ConnectionTimeoutPolicy.connectTimeoutRange.upperBound + 300
+
     // MARK: - Planning
 
     static func plan(
         session: LibSSH2SFTPSession,
         remotePath: String,
-        layout: DatabaseFileLayout
-    ) -> RemoteFetchPlan {
-        let presentSidecars = layout.dataCarryingSidecarSuffixes
-            .filter { session.exists(remotePath + $0) }
+        layout: DatabaseFileLayout,
+        deadline: ConnectionDeadline
+    ) throws -> RemoteFetchPlan {
+        let presentSidecars = try layout.dataCarryingSidecarSuffixes
+            .filter { try session.exists(remotePath + $0, deadline: deadline) }
 
-        guard layout.supportsRemoteSnapshot, let executable = snapshotExecutable(on: session) else {
+        guard layout.supportsRemoteSnapshot,
+              let executable = try snapshotExecutable(on: session, deadline: deadline) else {
             return .directCopy(sidecars: presentSidecars)
         }
         return .remoteSnapshot(executable: executable)
@@ -116,10 +131,23 @@ enum RemoteDatabaseFileTransfer {
     ///
     /// A server may refuse exec entirely, which a chrooted SFTP-only account does by design. That is
     /// an ordinary answer, not a failure: the caller copies directly and says so.
-    private static func snapshotExecutable(on session: LibSSH2SFTPSession) -> String? {
-        guard let result = try? session.runRemoteCommand("sqlite3 --version"), result.succeeded else {
+    private static func snapshotExecutable(
+        on session: LibSSH2SFTPSession,
+        deadline: ConnectionDeadline
+    ) throws -> String? {
+        let result: RemoteCommandResult
+        do {
+            result = try session.runRemoteCommand("sqlite3 --version", deadline: deadline)
+        } catch let timeout as ConnectionTimeoutError {
+            throw timeout
+        } catch SFTPError.cancelled {
+            throw SFTPError.cancelled
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             return nil
         }
+        guard result.succeeded else { return nil }
         let version = result.trimmedOutput.split(separator: " ").first.map(String.init) ?? ""
         let parts = version.split(separator: ".").compactMap { Int($0) }
         guard parts.count >= 2 else { return nil }
@@ -135,11 +163,23 @@ enum RemoteDatabaseFileTransfer {
 
     static func fingerprint(
         session: LibSSH2SFTPSession,
-        remotePath: String
+        remotePath: String,
+        deadline: ConnectionDeadline
     ) throws -> RemoteFileFingerprint {
-        let main = try session.stat(remotePath)
+        let main = try session.stat(remotePath, deadline: deadline)
         let walPath = remotePath + "-wal"
-        let wal = try? session.stat(walPath)
+        let wal: SFTPFileStat?
+        do {
+            wal = try session.stat(walPath, deadline: deadline)
+        } catch let timeout as ConnectionTimeoutError {
+            throw timeout
+        } catch SFTPError.cancelled {
+            throw SFTPError.cancelled
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            wal = nil
+        }
         return RemoteFileFingerprint(
             mainSize: main.size,
             mainModified: main.modified,
@@ -157,134 +197,129 @@ enum RemoteDatabaseFileTransfer {
         layout: DatabaseFileLayout,
         destinationDirectory: URL,
         fileName: String,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)? = nil,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) throws -> RemoteFetchResult {
         let remotePath = identity.path
-        let stat = try session.stat(remotePath)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.remoteFile("\(identity.host):\(identity.port)")
+        try deadline.check(endpoint: timeoutEndpoint)
+        let stat = try session.stat(remotePath, deadline: deadline)
         guard !stat.isDirectory else { throw SFTPError.notAFile(path: remotePath) }
         try requireLocalSpace(for: stat.size, at: destinationDirectory)
 
-        let before = try fingerprint(session: session, remotePath: remotePath)
-        let staging = destinationDirectory.appendingPathComponent(".\(fileName).incoming")
-        try? FileManager.default.removeItem(at: staging)
-
-        let downloaded: (bytes: UInt64, sha256: String)
-        let fetchedSidecars: Set<String>
-        switch plan {
-        case .remoteSnapshot(let executable):
-            downloaded = try fetchViaRemoteSnapshot(
-                session: session,
-                executable: executable,
-                remotePath: remotePath,
-                staging: staging,
-                progress: progress,
-                isCancelled: isCancelled
-            )
-            fetchedSidecars = []
-        case .directCopy(let sidecars):
-            downloaded = try session.download(
-                remotePath: remotePath, to: staging, progress: progress, isCancelled: isCancelled
-            )
-            fetchedSidecars = try fetchSidecars(
-                from: session,
-                remotePath: remotePath,
-                sidecars: sidecars,
-                destinationDirectory: destinationDirectory,
-                fileName: fileName,
-                isCancelled: isCancelled
-            )
-        }
-
-        let expectedBytes = plan.method == .remoteSnapshot ? downloaded.bytes : stat.size
-        let verdict = DatabaseFileIntegrity.verifyDownload(
-            at: staging,
-            expectedBytes: expectedBytes,
-            runsIntegrityCheck: layout.acceptsSQLiteIntegrityCheck
-        )
-        guard verdict.isOK else {
-            try? FileManager.default.removeItem(at: staging)
-            throw transferError(for: verdict, path: remotePath)
-        }
-
-        let workingCopy = destinationDirectory.appendingPathComponent(fileName)
-        try replaceLocalItem(at: workingCopy, with: staging)
-        clearStaleSidecars(
-            layout: layout,
-            keeping: fetchedSidecars,
-            destinationDirectory: destinationDirectory,
+        let before = try fingerprint(session: session, remotePath: remotePath, deadline: deadline)
+        let generation = try RemoteDatabaseFileStore.prepareGeneration(
+            in: destinationDirectory,
             fileName: fileName
         )
+        do {
+            let downloaded: (bytes: UInt64, sha256: String)
+            let fetchedSidecars: Set<String>
+            switch plan {
+            case .remoteSnapshot(let executable):
+                downloaded = try fetchViaRemoteSnapshot(
+                    session: session,
+                    executable: executable,
+                    remotePath: remotePath,
+                    staging: generation.workingCopy,
+                    deadline: deadline,
+                    progress: progress,
+                    isCancelled: isCancelled
+                )
+                fetchedSidecars = []
+            case .directCopy(let sidecars):
+                downloaded = try session.download(
+                    remotePath: remotePath,
+                    to: generation.workingCopy,
+                    deadline: deadline,
+                    progress: progress,
+                    isCancelled: isCancelled
+                )
+                fetchedSidecars = try fetchSidecars(
+                    from: session,
+                    remotePath: remotePath,
+                    sidecars: sidecars,
+                    stagingDirectory: generation.directory,
+                    fileName: fileName,
+                    deadline: deadline,
+                    isCancelled: isCancelled
+                )
+            }
+            try deadline.check(endpoint: timeoutEndpoint)
 
-        let manifest = RemoteFileManifest(
-            origin: identity.displayOrigin,
-            username: identity.username,
-            host: identity.host,
-            port: identity.port,
-            remotePath: remotePath,
-            fetchedAt: Date(),
-            remoteSize: before.mainSize,
-            remoteModified: before.mainModified,
-            remoteWriteAheadLogSize: before.writeAheadLogSize,
-            remoteWriteAheadLogModified: before.writeAheadLogModified,
-            downloadedSHA256: downloaded.sha256,
-            snapshotMethod: plan.method
-        )
-
-        Self.logger.info(
-            """
-            Fetched \(identity.displayOrigin, privacy: .public) \
-            via \(plan.method.rawValue, privacy: .public), \(downloaded.bytes) bytes
-            """
-        )
-        return RemoteFetchResult(workingCopy: workingCopy, manifest: manifest, plan: plan)
-    }
-
-    /// A reader that opens a working copy must not find a `-journal`, `-wal` or `-shm` left over from
-    /// a previous copy of a different file, because SQLite would roll it back or replay it against
-    /// bytes it no longer matches.
-    ///
-    /// Only a sidecar this fetch downloaded is kept, never one its plan merely listed. A snapshot is
-    /// fully checkpointed and downloads none. A `-wal` the server checkpoints away, or a `-journal`
-    /// whose transaction ends, between planning and fetching is never downloaded, and the local file
-    /// of that name still belongs to the previous copy.
-    static func clearStaleSidecars(
-        layout: DatabaseFileLayout,
-        keeping fetchedSidecars: Set<String>,
-        destinationDirectory: URL,
-        fileName: String
-    ) {
-        for suffix in layout.staleAfterReplaceSuffixes where !fetchedSidecars.contains(suffix) {
-            try? FileManager.default.removeItem(
-                at: destinationDirectory.appendingPathComponent(fileName + suffix)
+            let expectedBytes = plan.method == .remoteSnapshot ? downloaded.bytes : stat.size
+            let verdict = try DatabaseFileIntegrity.verifyDownload(
+                at: generation.workingCopy,
+                expectedBytes: expectedBytes,
+                runsIntegrityCheck: layout.acceptsSQLiteIntegrityCheck,
+                deadline: deadline,
+                timeoutEndpoint: timeoutEndpoint,
+                isCancelled: isCancelled
             )
+            guard verdict.isOK else {
+                throw transferError(for: verdict, path: remotePath)
+            }
+            if isCancelled() { throw SFTPError.cancelled }
+            try deadline.check(endpoint: timeoutEndpoint)
+
+            let manifest = RemoteFileManifest(
+                origin: identity.displayOrigin,
+                username: identity.username,
+                host: identity.host,
+                port: identity.port,
+                remotePath: remotePath,
+                fetchedAt: Date(),
+                remoteSize: before.mainSize,
+                remoteModified: before.mainModified,
+                remoteWriteAheadLogSize: before.writeAheadLogSize,
+                remoteWriteAheadLogModified: before.writeAheadLogModified,
+                downloadedSHA256: downloaded.sha256,
+                snapshotMethod: plan.method
+            )
+            try RemoteDatabaseFileStore.writeManifest(manifest, to: generation.directory)
+
+            Self.logger.info(
+                """
+                Fetched \(identity.displayOrigin, privacy: .public) \
+                via \(plan.method.rawValue, privacy: .public), \(downloaded.bytes) bytes
+                """
+            )
+            return RemoteFetchResult(
+                generation: generation,
+                manifest: manifest,
+                plan: plan,
+                fetchedSidecars: fetchedSidecars
+            )
+        } catch {
+            RemoteDatabaseFileStore.discardUnpublishedGeneration(generation)
+            throw error
         }
     }
 
     /// Asks the server to write a consistent snapshot beside the database, fetches that, and removes
     /// it. The temp name carries a UUID so two windows fetching the same file never collide.
-    private static func fetchViaRemoteSnapshot(
-        session: LibSSH2SFTPSession,
+    static func fetchViaRemoteSnapshot(
+        session: some RemoteSnapshotSession,
         executable: String,
         remotePath: String,
         staging: URL,
+        deadline: ConnectionDeadline,
         progress: (@Sendable (UInt64, UInt64) -> Void)?,
-        isCancelled: @escaping @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool,
+        cleanupDelaySeconds: Int = snapshotCleanupDelaySeconds
     ) throws -> (bytes: UInt64, sha256: String) {
         if isCancelled() { throw SFTPError.cancelled }
         let snapshotPath = "\(remotePath).tablepro-snapshot-\(UUID().uuidString)"
-        defer { session.remove(snapshotPath) }
+        defer { session.remove(snapshotPath, deadline: deadline) }
 
-        /// `umask 077` makes `VACUUM INTO` create the snapshot `0600` from the start, so a full copy
-        /// of a private database is never briefly world-readable beside it. The leading `rm` clears
-        /// any snapshot a previous fetch left behind when its session died before the `defer` above
-        /// could run; the glob is unquoted on purpose so the shell expands it, and errors are
-        /// swallowed because a first run has nothing to remove.
-        let quotedPath = LibSSH2ExecChannel.shellQuoted(remotePath)
-        let vacuum = "\(executable) \(quotedPath) "
-            + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(sqlStringLiteral(snapshotPath))")
-        let command = "umask 077; rm -f \(quotedPath).tablepro-snapshot-* 2>/dev/null; \(vacuum)"
-        let result = try session.runRemoteCommand(command)
+        let command = remoteSnapshotCommand(
+            executable: executable,
+            remotePath: remotePath,
+            snapshotPath: snapshotPath,
+            cleanupDelaySeconds: cleanupDelaySeconds
+        )
+        let result = try session.runRemoteCommand(command, deadline: deadline)
         guard result.succeeded else {
             throw SFTPError.remoteCommandFailed(
                 command: "VACUUM INTO",
@@ -294,28 +329,66 @@ enum RemoteDatabaseFileTransfer {
         }
 
         return try session.download(
-            remotePath: snapshotPath, to: staging, progress: progress, isCancelled: isCancelled
+            remotePath: snapshotPath,
+            to: staging,
+            deadline: deadline,
+            progress: progress,
+            isCancelled: isCancelled
         )
+    }
+
+    /// Schedules deletion on the server while the connection deadline is still live. The immediate
+    /// `defer` above remains the common path; this detached fallback owns no SSH channel descriptors
+    /// and survives the session being interrupted after a timed-out download.
+    static func remoteSnapshotCommand(
+        executable: String,
+        remotePath: String,
+        snapshotPath: String,
+        cleanupDelaySeconds: Int = snapshotCleanupDelaySeconds
+    ) -> String {
+        let quotedPath = LibSSH2ExecChannel.shellQuoted(remotePath)
+        let vacuum = "\(executable) \(quotedPath) "
+            + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(sqlStringLiteral(snapshotPath))")
+        let delayedCleanup = "trap '' HUP; sleep \(cleanupDelaySeconds); rm -f -- "
+            + LibSSH2ExecChannel.shellQuoted(snapshotPath)
+        let quotedCleanup = LibSSH2ExecChannel.shellQuoted(delayedCleanup)
+        return """
+        umask 077
+        if command -v nohup >/dev/null 2>&1; then
+            nohup sh -c \(quotedCleanup) </dev/null >/dev/null 2>&1 &
+        else
+            (\(delayedCleanup)) </dev/null >/dev/null 2>&1 &
+        fi
+        :
+        \(vacuum)
+        """
     }
 
     static func fetchSidecars(
         from source: some RemoteFileSource,
         remotePath: String,
         sidecars: [String],
-        destinationDirectory: URL,
+        stagingDirectory: URL,
         fileName: String,
+        deadline: ConnectionDeadline,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> Set<String> {
         var fetched: Set<String> = []
         for suffix in sidecars {
             if isCancelled() { throw SFTPError.cancelled }
             let remoteSidecar = remotePath + suffix
-            guard source.exists(remoteSidecar) else {
+            guard try source.exists(remoteSidecar, deadline: deadline) else {
                 Self.logger.info("The \(suffix, privacy: .public) sidecar was gone before it was fetched")
                 continue
             }
-            let target = destinationDirectory.appendingPathComponent(fileName + suffix)
-            try source.download(remotePath: remoteSidecar, to: target, progress: nil, isCancelled: isCancelled)
+            let target = stagingDirectory.appendingPathComponent(fileName + suffix)
+            try source.download(
+                remotePath: remoteSidecar,
+                to: target,
+                deadline: deadline,
+                progress: nil,
+                isCancelled: isCancelled
+            )
             fetched.insert(suffix)
             Self.logger.info("Fetched the \(suffix, privacy: .public) sidecar")
         }
@@ -342,16 +415,6 @@ enum RemoteDatabaseFileTransfer {
                 ByteCountFormatter.string(fromByteCount: Int64(needed), countStyle: .file)
             )
         )
-    }
-
-    /// Moves the staged download onto the working copy through `replaceItemAt`, which is a rename
-    /// when both sit on one volume, and they do: the staging file is created in the same directory.
-    private static func replaceLocalItem(at destination: URL, with staging: URL) throws {
-        guard FileManager.default.fileExists(atPath: destination.path) else {
-            try FileManager.default.moveItem(at: staging, to: destination)
-            return
-        }
-        _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
     }
 
     private static func transferError(

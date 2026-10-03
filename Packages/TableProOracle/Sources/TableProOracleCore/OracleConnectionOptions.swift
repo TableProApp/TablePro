@@ -36,6 +36,8 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         public static let sid = "oracleSID"
         public static let role = "oracleRole"
         public static let networkEncryption = "oracleNetworkEncryption"
+        public static let connectTimeoutMilliseconds = "connectTimeoutMilliseconds"
+        public static let connectTimeoutSeconds = "connectTimeoutSeconds"
     }
 
     public static let defaultPort = 1_521
@@ -97,5 +99,25 @@ public struct OracleConnectionOptions: Sendable, Equatable {
 
     public static func networkEncryption(from additionalFields: [String: String]) -> NetworkEncryption {
         NetworkEncryption(rawValue: additionalFields[AdditionalFieldKey.networkEncryption] ?? "") ?? .accepted
+    }
+
+    public static func loginTimeoutSeconds(from additionalFields: [String: String]) -> Double {
+        if let milliseconds = positiveNumber(
+            additionalFields[AdditionalFieldKey.connectTimeoutMilliseconds]
+        ) {
+            return max(0.001, milliseconds / 1_000)
+        }
+        if let seconds = positiveNumber(additionalFields[AdditionalFieldKey.connectTimeoutSeconds]) {
+            return seconds
+        }
+        return defaultLoginTimeoutSeconds
+    }
+
+    private static func positiveNumber(_ value: String?) -> Double? {
+        guard let value,
+              let number = Double(value),
+              number > 0,
+              number.isFinite else { return nil }
+        return min(number, Double(Int32.max))
     }
 }

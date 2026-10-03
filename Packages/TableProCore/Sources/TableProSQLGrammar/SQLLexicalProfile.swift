@@ -5,7 +5,7 @@ import Foundation
 /// A fact lands in ``undetermined`` for one of two reasons. Either the server decides it per session, as MySQL's
 /// `NO_BACKSLASH_ESCAPES`, PostgreSQL's `standard_conforming_strings` and Dameng's `BACKSLASH_ESCAPE` do, or nobody has
 /// measured it against a live server. Either way a gate reads both values, which is always the safe direction: an
-/// extra reading can only raise the statement count and the tier. `scripts/check-sql-lexical-grammar.sh` re-measures
+/// extra reading can only raise the statement count and the tier. `scripts/probes/check-sql-lexical-grammar.sh` re-measures
 /// the facts marked measured below.
 public struct SQLLexicalProfile: Sendable, Hashable {
     public let grammar: SQLLexicalGrammar
@@ -66,7 +66,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// engine keeps the routine-body boundaries every non-Oracle engine has. So is T-SQL's statement that needs no
     /// terminator, which would make every `open`, `close` or `return` column an unknown engine names a statement of its
     /// own; an engine that runs statements without one says so through its plugin. A `MERGE` that keeps its `;` is left
-    /// out for the same reason: an engine that refuses one without it says so through its plugin.
+    /// out for the same reason: an engine that refuses one without it says so through its plugin. So is a CQL batch,
+    /// which would read one statement where an unknown engine may run several.
     public static let everyKnownReading: [SQLLexicalGrammar] = {
         var seen: Set<SQLLexicalGrammar> = []
         var result: [SQLLexicalGrammar] = []
@@ -75,6 +76,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             for reading in profile.readings {
                 let unitless = reading.subtracting([
                     .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
+                    .sqlScriptBlocks,
+                    .cqlBatches,
                 ])
                 if seen.insert(unitless).inserted {
                     result.append(unitless)
@@ -167,9 +170,9 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
     ]
 
-    /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals and `//` is a comment. Not
-    /// measured.
-    static let cql: SQLLexicalGrammar = [.untaggedDollarQuotes, .doubleSlashLineComments]
+    /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals, `//` is a comment, and a
+    /// `BEGIN BATCH ... APPLY BATCH` holds the `;` after each statement inside it. Not measured.
+    static let cql: SQLLexicalGrammar = [.untaggedDollarQuotes, .doubleSlashLineComments, .cqlBatches]
 
     /// SurrealQL, from its reference: a backslash escapes in both quotes, and `#`, `//` and `--` are comments. Not
     /// measured.
@@ -182,6 +185,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
     /// and a gate reads both. Not measured.
     static let dynamoDB: SQLLexicalGrammar = [.backslashEscapesInDoubleQuotes]
+
+    static let sapHana: SQLLexicalGrammar = [.dollarAndHashInIdentifiers, .sqlScriptBlocks]
 
     /// Engines whose statements are commands or JSON documents rather than SQL. Their splitting is what it has always
     /// been: a backslash escapes inside any quote, as it does in JSON and in `redis-cli`.
@@ -259,6 +264,10 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "Trino": SQLLexicalProfile(grammar: .ansi, undetermined: [.carriageReturnEndsLineComments]),
             "Teradata": SQLLexicalProfile(
                 grammar: .ansi,
+                undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]
+            ),
+            "SAP HANA": SQLLexicalProfile(
+                grammar: sapHana,
                 undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]
             ),
             "Cassandra": cqlFamily,

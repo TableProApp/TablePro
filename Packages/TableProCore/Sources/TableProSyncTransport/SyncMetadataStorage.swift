@@ -2,13 +2,15 @@ import CloudKit
 import Foundation
 import os
 
-public struct Tombstone: Codable, Sendable {
+public struct Tombstone: Codable, Equatable, Sendable {
     public let id: String
     public let deletedAt: Date
+    public let owner: UUID?
 
-    public init(id: String, deletedAt: Date = Date()) {
+    public init(id: String, deletedAt: Date = Date(), owner: UUID? = nil) {
         self.id = id
         self.deletedAt = deletedAt
+        self.owner = owner
     }
 }
 
@@ -108,11 +110,24 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         addTombstones([id], type: type)
     }
 
-    public func addTombstones(_ ids: [String], type: SyncRecordType) {
-        guard !ids.isEmpty else { return }
-        var current = tombstones(for: type)
-        current.append(contentsOf: ids.map { Tombstone(id: $0) })
-        saveTombstones(current, for: type)
+    public func addTombstones(_ ids: [String], type: SyncRecordType, owner: UUID? = nil) {
+        addTombstones(ids.map { Tombstone(id: $0, owner: owner) }, type: type)
+    }
+
+    public func addTombstones(_ added: [Tombstone], type: SyncRecordType) {
+        guard !added.isEmpty else { return }
+        saveTombstones(tombstones(for: type) + added, for: type)
+    }
+
+    /// Records the record types the running build reads and reports whether that set grew. A set
+    /// never recorded counts as grown, because the build that wrote nothing cannot say what it
+    /// read.
+    public func adoptReadableRecordTypes(_ types: Set<String>) -> Bool {
+        let known = userDefaults.stringArray(forKey: key("readableRecordTypes")).map(Set.init)
+        guard known != types else { return false }
+        userDefaults.set(types.sorted(), forKey: key("readableRecordTypes"))
+        guard let known else { return true }
+        return !types.isSubset(of: known)
     }
 
     public func removeTombstone(_ id: String, type: SyncRecordType) {
@@ -121,19 +136,63 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         saveTombstones(current, for: type)
     }
 
+    /// Writes only when one of the ids was actually tombstoned, because a record marked dirty is
+    /// checked here on every edit and nearly always has no deletion waiting.
+    public func removeTombstones(_ ids: [String], type: SyncRecordType) {
+        guard !ids.isEmpty, userDefaults.object(forKey: tombstoneKey(type)) != nil else { return }
+        let removing = Set(ids)
+        let current = tombstones(for: type)
+        let kept = current.filter { !removing.contains($0.id) }
+        guard kept.count != current.count else { return }
+        saveTombstones(kept, for: type)
+    }
+
     public func clearTombstones(type: SyncRecordType) {
         userDefaults.removeObject(forKey: tombstoneKey(type))
     }
 
-    public func pruneTombstones(olderThan days: Int) {
+    public func pruneTombstones(
+        olderThan days: Int,
+        where isPushable: (SyncRecordType, Tombstone) -> Bool
+    ) {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        removeTombstones { type, tombstone in
+            tombstone.deletedAt < cutoff && isPushable(type, tombstone)
+        }
+    }
+
+    public func removeTombstones(where shouldRemove: (SyncRecordType, Tombstone) -> Bool) {
         for type in SyncRecordType.allCases {
             var current = tombstones(for: type)
             let before = current.count
-            current.removeAll { $0.deletedAt < cutoff }
+            current.removeAll { shouldRemove(type, $0) }
             guard current.count != before else { continue }
             saveTombstones(current, for: type)
         }
+    }
+
+    // MARK: - Owners Kept Off Sync
+
+    public func ownersKeptOffSync() -> Set<UUID> {
+        Set((userDefaults.stringArray(forKey: key("ownersKeptOffSync")) ?? []).compactMap(UUID.init(uuidString:)))
+    }
+
+    public func keepOffSync(owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        saveOwnersKeptOffSync(ownersKeptOffSync().union(owners))
+    }
+
+    public func releaseOwnersKeptOffSync(_ owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        saveOwnersKeptOffSync(ownersKeptOffSync().subtracting(owners))
+    }
+
+    private func saveOwnersKeptOffSync(_ owners: Set<UUID>) {
+        guard !owners.isEmpty else {
+            userDefaults.removeObject(forKey: key("ownersKeptOffSync"))
+            return
+        }
+        userDefaults.set(owners.map(\.uuidString).sorted(), forKey: key("ownersKeptOffSync"))
     }
 
     // MARK: - Last Sync Date

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Foundation
 import Testing
 
 @testable import TablePro
@@ -26,5 +27,37 @@ struct RemoteSQLiteWireParityTests {
     @Test func admissionLinesMatchOnBothSides() {
         let token = "abc123"
         #expect(RemoteSQLiteWire.admissionLine(token: token) == SQLiteAgentProtocol.admissionPreamble(token: token))
+    }
+
+    @Test func agentHelloKeepsTheInjectedAbsoluteBudget() throws {
+        let startedAt = ContinuousClock.now
+        let sixtySeconds = try #require(SQLiteAgentHelloBudget.forAgent(
+            additionalFields: [
+                SQLiteAgentProtocol.backendFieldKey: SQLiteAgentProtocol.agentBackendValue,
+                "connectTimeoutMilliseconds": "60000"
+            ],
+            now: startedAt
+        ))
+        let tenMinutes = try #require(SQLiteAgentHelloBudget.forAgent(
+            additionalFields: [
+                SQLiteAgentProtocol.backendFieldKey: SQLiteAgentProtocol.agentBackendValue,
+                "connectTimeoutSeconds": "600"
+            ],
+            now: startedAt
+        ))
+
+        #expect(
+            sixtySeconds.remainingMilliseconds(
+                at: startedAt.advanced(by: .seconds(20))
+            ) == 40_000
+        )
+        #expect(tenMinutes.remainingMilliseconds(at: startedAt) == 600_000)
+    }
+
+    @Test func localSQLiteFieldsDoNotCreateAnAgentHelloBudget() {
+        let budget = SQLiteAgentHelloBudget.forAgent(
+            additionalFields: ["connectTimeoutMilliseconds": "600000"]
+        )
+        #expect(budget == nil)
     }
 }

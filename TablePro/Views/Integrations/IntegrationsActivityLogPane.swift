@@ -123,15 +123,12 @@ struct IntegrationsActivityLogPane: View {
                 }
             }
         } label: {
-            Label(String(localized: "Filters"), systemImage: filterIcon)
+            Label(String(localized: "Filters"), systemImage: ToolbarSymbols.filter(isActive: hasActiveFilters))
         }
+        /// Named here for the reason `WelcomeViewOptionsMenu` gives: a toolbar-hosted `Menu`
+        /// publishes "chevron.pulldown" from its label alone.
+        .accessibilityLabel(String(localized: "Filters"))
         .help(String(localized: "Filter activity"))
-    }
-
-    private var filterIcon: String {
-        hasActiveFilters
-            ? "line.3.horizontal.decrease.circle.fill"
-            : "line.3.horizontal.decrease.circle"
     }
 
     private var exportButton: some View {

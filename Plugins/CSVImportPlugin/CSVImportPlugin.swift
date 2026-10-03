@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
+import TableProTabularIO
 
 final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "CSV Import"
@@ -17,6 +18,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     static let acceptedFileExtensions = ["csv", "tsv"]
     static let iconName = "tablecells"
     static let requiresTargetTable = true
+    static let sourceFieldsFollowFileOrder = true
 
     typealias Settings = CSVImportOptions
     static let settingsStorageId = "csv-import"
@@ -45,12 +47,26 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         let startTime = Date()
         let url = source.fileURL()
 
-        let data: Data
+        let text: CSVImportText
         do {
-            data = try Data(contentsOf: url, options: .mappedIfSafe)
+            text = try CSVImportText.contents(of: url, encoding: settings.encoding, isCancelled: { progress.isCancelled })
+        } catch is TabularCancellation {
+            throw PluginImportCancellationError()
         } catch {
             throw PluginImportError.importFailed(error.localizedDescription)
         }
+        defer { text.removeTemporaryFile() }
+        if let line = text.firstUndecodableLine {
+            throw PluginImportError.importFailed(String(
+                format: String(
+                    localized: "Line %@ is not valid %@ text. Choose the file's encoding in the import options, then import again.",
+                    bundle: .main
+                ),
+                line.formatted(),
+                text.encoding.displayName
+            ))
+        }
+        let data = text.data
 
         let dialect = CSVImportParsing.resolveDialect(in: data, options: settings)
         let parser = CSVStreamingParser(dialect: dialect)
@@ -145,13 +161,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     }
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
-        let data = try readDetectionPrefix(of: url)
-        return CSVImportParsing.detectFields(in: data, options: settings)
-    }
-
-    private func readDetectionPrefix(of url: URL) throws -> Data {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        return handle.readData(ofLength: Self.detectionPrefixBytes)
+        let text = try CSVImportText.prefix(of: url, length: Self.detectionPrefixBytes, encoding: settings.encoding)
+        return CSVImportParsing.detectFields(in: text.data, options: settings)
     }
 }

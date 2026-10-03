@@ -45,13 +45,36 @@ final class NetworkPaneViewModel: ObservableObject {
         return port == 0 ? "" : String(port)
     }
 
-    var firstHostListValue: String {
-        let fieldId = connectionFields.first { field in
+    private var firstVisibleHostListFieldId: String? {
+        connectionFields.first { field in
             guard case .hostList = field.fieldType else { return false }
             return isFieldVisible(field)
         }?.id
-        guard let fieldId else { return "" }
-        return additionalFieldValues[fieldId] ?? ""
+    }
+
+    internal var tunnelHostListCaption: String? {
+        guard let fieldId = firstVisibleHostListFieldId else { return nil }
+        if fieldId == "redisSentinelHosts" {
+            return String(
+                localized: "Sentinel mode cannot run through a tunnel. Set Connection Mode to Standalone and enter a data node, or turn the tunnel off."
+            )
+        }
+        if fieldId == "redisClusterHosts" {
+            return String(
+                localized: "TablePro connects to the first node over a tunnel, as a single server. Keys on other nodes cannot be reached."
+            )
+        }
+        guard (additionalFieldValues[fieldId] ?? "").contains(",") else { return nil }
+        switch fieldId {
+        case "mongoHosts":
+            return String(localized: "TablePro connects to the first host over a tunnel. Replica set failover is not available.")
+        case "kafkaBootstrapServers":
+            return String(
+                localized: "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read."
+            )
+        default:
+            return String(localized: "TablePro connects to the first host over a tunnel. The other hosts are not used.")
+        }
     }
 
     var socketPathPrompt: String {
@@ -114,6 +137,12 @@ final class NetworkPaneViewModel: ObservableObject {
         guard newType != type else { return }
         type = newType
         coordinator?.value?.didChangeType(newType)
+    }
+
+    func setPort(_ newPort: String) {
+        guard newPort != port else { return }
+        port = newPort
+        coordinator?.value?.didChangePort()
     }
 
     func applyTypeDefaults(forNewType newType: DatabaseType) {

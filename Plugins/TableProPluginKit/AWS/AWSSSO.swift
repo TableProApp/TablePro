@@ -277,6 +277,7 @@ public enum AWSSSO {
         request.httpMethod = "GET"
         request.setValue(accessToken, forHTTPHeaderField: "x-amz-sso_bearer_token")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        try AWSHTTP.applyConnectDeadline(to: &request, session: session)
 
         let data: Data
         let response: URLResponse

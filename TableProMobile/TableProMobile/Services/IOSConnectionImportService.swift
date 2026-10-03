@@ -138,7 +138,8 @@ enum IOSConnectionImportService {
         do {
             try secureStore.store(value, forKey: kind.account(for: connectionId))
         } catch {
-            logger.error("Restoring an imported secret failed: \(error.localizedDescription, privacy: .public)")
+            let privateDescription = String(reflecting: error)
+            logger.error("Restoring an imported secret failed: \(privateDescription, privacy: .private)")
         }
     }
 
@@ -192,9 +193,16 @@ enum IOSConnectionImportService {
             }
         }
 
-        let safeMode = exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .off
+        let safeModeLevel = SafeModeLevel(wireValue: exportable.safeModeLevel, isReadOnly: false)
+        var additionalFields = exportable.additionalFields ?? [:]
+        let legacyConnectTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+            .flatMap(Int.init)
+        let legacyQueryTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+            .flatMap(Int.init)
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             id: id,
             name: name,
             type: DatabaseType(rawValue: exportable.type),
@@ -203,8 +211,10 @@ enum IOSConnectionImportService {
             username: exportable.username,
             database: exportable.database,
             color: exportable.color.map { ConnectionColor(storedValue: $0) } ?? .none,
-            safeModeLevel: safeMode,
-            additionalFields: exportable.additionalFields ?? [:],
+            isReadOnly: safeModeLevel.blocksWrites,
+            safeModeLevel: safeModeLevel,
+            queryTimeoutSeconds: validQueryTimeout(exportable.queryTimeoutSeconds ?? legacyQueryTimeout),
+            additionalFields: additionalFields,
             sshEnabled: sshEnabled,
             sshConfiguration: sshConfiguration,
             sslEnabled: sslEnabled,
@@ -214,6 +224,10 @@ enum IOSConnectionImportService {
                 .compactMap { tagIdsByName[normalizedKey($0)] },
             sortOrder: sortOrder
         )
+        if let connectTimeoutSeconds = validConnectTimeout(exportable.connectTimeoutSeconds ?? legacyConnectTimeout) {
+            connection.connectTimeoutSeconds = connectTimeoutSeconds
+        }
+        return connection
     }
 
     private static func createMissingGroupsAndTags(from envelope: ConnectionExportEnvelope, appState: AppState) {
@@ -259,6 +273,14 @@ enum IOSConnectionImportService {
     private static func expandedPath(_ path: String?) -> String? {
         guard let path, !path.isEmpty else { return nil }
         return PathPortability.expandHome(path)
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.connectTimeoutSecondsRange.contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
     }
 
     private static func uniqueCopyName(for baseName: String, taken: Set<String>) -> String {

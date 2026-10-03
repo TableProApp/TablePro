@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProTabularIO
 import UniformTypeIdentifiers
 
 nonisolated enum RowPayload {
@@ -27,16 +28,31 @@ nonisolated enum RowPayload {
 
     private static func rawContent(data: String?, file: IntentFile?) async throws -> String {
         if let file {
-            let fileData = try await file.data(contentType: .data)
-            guard let text = String(data: fileData, encoding: .utf8) else {
-                throw IntentDataError.fileIsNotUTF8
-            }
-            return text
+            return try text(of: try await file.data(contentType: .data))
         }
         if let data, !data.isEmpty {
             return data
         }
         throw IntentDataError.emptyPayload
+    }
+
+    static func text(of fileData: Data) throws -> String {
+        let sniff = TabularEncodingDetector.sniff(fileData)
+        guard sniff.encoding != .utf8 else {
+            if let line = TabularTextTranscoder.firstInvalidUTF8Line(in: fileData, skippingPrefix: sniff.byteOrderMarkLength) {
+                throw IntentDataError.unreadableText(line: line, encoding: sniff.encoding.displayName)
+            }
+            return TabularTextCodec.utf8String(fileData.dropFirst(sniff.byteOrderMarkLength))
+        }
+        let decoded = try TabularTextTranscoder.utf8Data(
+            from: fileData,
+            encoding: sniff.encoding,
+            skippingPrefix: sniff.byteOrderMarkLength
+        )
+        if let line = decoded.firstUndecodableLine {
+            throw IntentDataError.unreadableText(line: line, encoding: sniff.encoding.displayName)
+        }
+        return TabularTextCodec.utf8String(decoded.data)
     }
 
     static func parseJSON(_ text: String) throws -> [PayloadRow] {
@@ -64,7 +80,7 @@ nonisolated enum RowPayload {
     }
 
     static func parseCSV(_ text: String) throws -> [PayloadRow] {
-        let records = CSVRecordParser.parse(text)
+        let records = try csvRecords(in: text)
         guard let header = records.first, !header.allSatisfy(\.isEmpty) else {
             throw IntentDataError.csvMissingHeader
         }
@@ -76,6 +92,16 @@ nonisolated enum RowPayload {
                 values[column] = .text(field)
             }
             return PayloadRow(values: values)
+        }
+    }
+
+    private static func csvRecords(in text: String) throws -> [[String]] {
+        let dialect = DelimitedDialect()
+        let reader = DelimitedFieldReader(dialect: dialect)
+        return try Array(text.utf8).withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return [] }
+            let index = try DelimitedRowIndexer.index(buffer, dialect: dialect, contentStart: 0)
+            return (0..<index.rowCount).map { reader.fields(in: base, range: index.range(ofRow: $0)) }
         }
     }
 
@@ -109,54 +135,5 @@ nonisolated enum RowPayload {
             return number.boolValue ? "true" : "false"
         }
         return number.stringValue
-    }
-}
-
-nonisolated enum CSVRecordParser {
-    static func parse(_ text: String) -> [[String]] {
-        var records: [[String]] = []
-        var record: [String] = []
-        var field = ""
-        var inQuotes = false
-        let characters = Array(text)
-        var index = 0
-
-        while index < characters.count {
-            let character = characters[index]
-            if inQuotes {
-                if character == "\"" {
-                    if index + 1 < characters.count, characters[index + 1] == "\"" {
-                        field.append("\"")
-                        index += 1
-                    } else {
-                        inQuotes = false
-                    }
-                } else {
-                    field.append(character)
-                }
-            } else {
-                switch character {
-                case "\"":
-                    inQuotes = true
-                case ",":
-                    record.append(field)
-                    field = ""
-                case "\n":
-                    record.append(field)
-                    field = ""
-                    records.append(record)
-                    record = []
-                case "\r":
-                    break
-                default:
-                    field.append(character)
-                }
-            }
-            index += 1
-        }
-
-        record.append(field)
-        records.append(record)
-        return records
     }
 }

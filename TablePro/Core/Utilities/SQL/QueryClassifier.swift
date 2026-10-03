@@ -142,11 +142,19 @@ enum QueryClassifier {
         if let request = dynamoDBClassification(statement, databaseType: databaseType) {
             return request
         }
-        if runsPLSQL(statement, grammar: grammar) {
-            return plsqlBlockClassification(statement, grammar: grammar, databaseType: databaseType)
+        if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
+            return batch.reduce(cqlBatchWrites) { worst, inner in
+                worst.escalated(with: statementClassification(inner, grammar: grammar, databaseType: databaseType))
+            }
+        }
+        if runsProceduralBlock(statement, grammar: grammar) {
+            return proceduralBlockClassification(statement, grammar: grammar, databaseType: databaseType)
         }
         return sqlClassification(statement, grammar: grammar, databaseType: databaseType)
     }
+
+    /// A CQL batch writes whatever it holds, so it is never below a write and is otherwise the worst statement in it.
+    private static let cqlBatchWrites = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
 
     private static func statementDeletesEverything(
         _ statement: String,
@@ -156,8 +164,11 @@ enum QueryClassifier {
         if let request = dynamoDBDeletesEverything(statement, databaseType: databaseType) {
             return request
         }
-        if runsPLSQL(statement, grammar: grammar) {
-            return plsqlBlockDeletesEverything(statement, grammar: grammar)
+        if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
+            return batch.contains { statementDeletesEverything($0, grammar: grammar, databaseType: databaseType) }
+        }
+        if runsProceduralBlock(statement, grammar: grammar) {
+            return proceduralBlockDeletesEverything(statement, grammar: grammar)
         }
         let code = SQLCodeProjection.code(of: statement, grammar: grammar).uppercased()
         guard leadingCodeKeyword(code) == "DELETE" else { return false }
@@ -220,6 +231,12 @@ enum QueryClassifier {
 
 private extension QueryClassifier {
     static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
+
+    static let executingExplainOptions: [String] = ["ANALYZE", "ANALYSE"]
+
+    static func explainExecutesStatement(_ options: String) -> Bool {
+        executingExplainOptions.contains { options.contains($0) }
+    }
 
     static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
@@ -284,7 +301,10 @@ private extension QueryClassifier {
         let projection = StatementProjection(statement: statement, grammar: grammar)
         let body = projection.body
         let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
-        let base = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
+        let base = keywordTier.tier == .safe
+            ? keywordTier.escalated(to: stateChangingCallTier(projection))
+            : keywordTier
         var classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
         if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType) {
             classification = classification.escalated(with: dynamic)
@@ -357,6 +377,19 @@ private extension QueryClassifier {
         }
 
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    static func stateChangingCallTier(_ projection: StatementProjection) -> QueryTier {
+        guard !explainPrefixes.contains(leadingCodeKeyword(projection.body)) else { return .safe }
+        let calls = SQLFunctionCallScanner.calls(
+            in: projection.statement as NSString,
+            code: projection.code as NSString
+        )
+        let changesState = calls.contains { call in
+            guard case .named(let name, _) = call.callee else { return true }
+            return SQLStateChangingFunctions.contains(name)
+        }
+        return changesState ? .write : .safe
     }
 
     private static let routineDefinitionKinds: Set<String> = [
@@ -502,7 +535,7 @@ private extension QueryClassifier {
             let word = code.substring(with: NSRange(location: cursor, length: wordEnd - cursor)).uppercased()
             if statementStartKeywords.contains(word) {
                 let statement = (projection.statement as NSString).substring(from: cursor)
-                return (statement, options.contains("ANALYZE"))
+                return (statement, explainExecutesStatement(options))
             }
             options += " " + word
             cursor = skipBlanks(in: code, from: wordEnd)
@@ -640,7 +673,7 @@ private extension QueryClassifier {
             let upperToken = token.uppercased()
             if statementStartKeywords.contains(upperToken) {
                 let statement = statementTriviaStart.map { trimmed[$0...] } ?? remainder
-                return (String(statement), options.contains("ANALYZE"))
+                return (String(statement), explainExecutesStatement(options))
             }
             options += " " + upperToken
             statementTriviaStart = nil
@@ -898,22 +931,6 @@ private extension QueryClassifier {
             index = cursor < lowered.endIndex ? lowered.index(after: cursor) : lowered.endIndex
         }
         return names
-    }
-
-    static let etcdReadCommands: Set<String> = ["GET", "RANGE", "WATCH", "LIST", "STATUS", "VERSION", "ENDPOINT"]
-
-    static func etcdClassification(_ trimmed: String) -> QueryClassification {
-        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
-        if command == "SNAPSHOT" || command == "DEFRAG" {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
-        }
-        if command == "DEL" || command == "DELETE" || command == "COMPACT" || command == "COMPACTION" {
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        }
-        if etcdReadCommands.contains(command) {
-            return .safe
-        }
-        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
     }
 
     static let elasticsearchReadPaths: [String] = [

@@ -72,9 +72,11 @@ struct RowCountPlanTests {
         #expect(plan == .approximate)
     }
 
-    @Test("An engine whose count is a billed scan is never counted automatically")
-    func billedScanEngineIsCountedOnlyOnRequest() {
-        let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: .dynamodb)
+    @Test("An engine whose count is a full scan is never counted automatically", arguments: [
+        DatabaseType.dynamodb, .cassandra, .scylladb
+    ])
+    func fullScanEngineIsCountedOnlyOnRequest(databaseType: DatabaseType) {
+        let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: databaseType)
 
         let unfiltered = QueryExecutionCoordinator.rowCountPlan(
             isNonSQL: false, filterState: TabFilterState(), approximateRowCount: 100, threshold: 100_000,
@@ -93,8 +95,10 @@ struct RowCountPlanTests {
     @Test("An engine that can seek and counts cheaply is still counted automatically")
     func ordinaryEngineIsCountedAutomatically() {
         #expect(PluginManager.shared.countsRowsAutomatically(for: .postgresql))
-        #expect(!PluginManager.shared.exactRowCountIsBilledScan(for: .postgresql))
-        #expect(PluginManager.shared.exactRowCountIsBilledScan(for: .dynamodb))
+        #expect(!PluginManager.shared.exactRowCountIsFullScan(for: .postgresql))
+        #expect(PluginManager.shared.exactRowCountIsFullScan(for: .dynamodb))
+        #expect(PluginManager.shared.exactRowCountIsFullScan(for: .cassandra))
+        #expect(PluginManager.shared.exactRowCountIsFullScan(for: .scylladb))
     }
 
     @Test("Non-SQL filtered defers to the driver filtered count")

@@ -20,6 +20,23 @@ struct RedisKeyspacePage: Sendable {
     let isIncomplete: Bool
 
     var isFinished: Bool { cursor == RedisClusterCursor.start }
+
+    var nextCursorNotice: String? {
+        guard !isFinished else { return nil }
+        return String(format: String(localized: "Next cursor: %@. The scan has not finished."), cursor)
+    }
+}
+
+struct RedisScanPageOutcome: Equatable, Sendable {
+    let keys: [String]
+    let isTruncated: Bool
+    let statusMessage: String?
+
+    init(page: RedisKeyspacePage, rowLimit: Int) {
+        keys = Array(page.keys.prefix(rowLimit))
+        isTruncated = page.isIncomplete || page.keys.count > rowLimit
+        statusMessage = page.nextCursorNotice
+    }
 }
 
 protocol RedisCommandChannel: AnyObject, Sendable {
@@ -31,6 +48,9 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     var partitionsKeyspace: Bool { get }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
+    /// Adopts the provisionally opened channel after all required bootstrap probes have consumed
+    /// the same absolute deadline. Normal query/session timeouts begin only after this returns.
+    func finishConnecting() async throws
     func disconnect()
     func cancelCurrentQuery()
 
@@ -82,6 +102,8 @@ extension RedisCommandChannel {
     func connect() async throws {
         try await connect(reportingStage: { _ in })
     }
+
+    func finishConnecting() async throws {}
 
     func executeCommand(_ args: [Data]) async throws -> RedisReply {
         try await executeCommand(args, scope: .session)

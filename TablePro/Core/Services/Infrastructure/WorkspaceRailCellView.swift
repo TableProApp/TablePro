@@ -34,13 +34,13 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("WorkspaceRailCell")
 
     private let icon = NSImageView()
-    private let label = NSTextField(labelWithString: "")
+    private let label = WorkspaceRailCellView.makeLabel()
     private let identityDot = NSView()
+    private let content = NSLayoutGuide()
     private var iconWidthConstraint: NSLayoutConstraint?
     private var iconHeightConstraint: NSLayoutConstraint?
     private var dotWidthConstraint: NSLayoutConstraint?
     private var dotHeightConstraint: NSLayoutConstraint?
-    private var labelTopConstraint: NSLayoutConstraint?
     private var appliedTint: NSColor?
     /// Held as the palette entry rather than a resolved colour, because `systemRed` and the rest
     /// differ between light and dark: resolving at configure time would freeze the dot at the
@@ -58,12 +58,8 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         fatalError("WorkspaceRailCellView does not support NSCoder init")
     }
 
-    private func buildHierarchy() {
-        identifier = Self.reuseIdentifier
-
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.imageScaling = .scaleProportionallyUpOrDown
-
+    private static func makeLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
         label.translatesAutoresizingMaskIntoConstraints = false
         label.alignment = .center
         label.usesSingleLineMode = false
@@ -71,6 +67,14 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         label.maximumNumberOfLines = 2
         label.allowsExpansionToolTips = true
         label.cell?.truncatesLastVisibleLine = true
+        return label
+    }
+
+    private func buildHierarchy() {
+        identifier = Self.reuseIdentifier
+
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.imageScaling = .scaleProportionallyUpOrDown
 
         identityDot.translatesAutoresizingMaskIntoConstraints = false
         identityDot.wantsLayer = true
@@ -79,8 +83,13 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         addSubview(icon)
         addSubview(label)
         addSubview(identityDot)
+        addLayoutGuide(content)
+        /// Not `textField`. In a source list AppKit rewrites that outlet's value on every layout pass
+        /// to one 13pt run, which drops the per-size fonts and the secondary colour and needs 32pt for
+        /// two lines, so the container line was laid out and never drawn ("1…", #3244). NSTableView.h
+        /// says to leave the outlets alone to control the metrics yourself; the selected-row colour
+        /// still arrives, because the cell forwards `backgroundStyle` to every control it contains.
         imageView = icon
-        textField = label
 
         let width = icon.widthAnchor.constraint(equalToConstant: 24)
         let height = icon.heightAnchor.constraint(equalToConstant: 24)
@@ -92,27 +101,25 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         dotWidthConstraint = dotWidth
         dotHeightConstraint = dotHeight
 
-        let labelTop = label.topAnchor.constraint(
-            equalTo: icon.bottomAnchor,
-            constant: Self.labelTopSpacing(forIcon: 24)
-        )
-        labelTopConstraint = labelTop
-
         NSLayoutConstraint.activate([
-            icon.centerXAnchor.constraint(equalTo: centerXAnchor),
-            icon.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            icon.topAnchor.constraint(equalTo: content.topAnchor),
+            icon.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             width,
             height,
 
-            labelTop,
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+            label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: WorkspaceRailMetrics.iconLabelGap),
+            label.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
+            label.bottomAnchor.constraint(equalTo: content.bottomAnchor),
 
             dotWidth,
             dotHeight,
             identityDot.centerXAnchor.constraint(equalTo: icon.trailingAnchor),
-            identityDot.centerYAnchor.constraint(equalTo: icon.bottomAnchor),
+            identityDot.bottomAnchor.constraint(equalTo: icon.bottomAnchor),
         ])
     }
 
@@ -123,12 +130,20 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         (iconSize * 0.375).rounded()
     }
 
-    internal static func labelTopSpacing(forIcon iconSize: CGFloat) -> CGFloat {
-        ceil(identityDotSize(forIcon: iconSize) / 2) + 1
-    }
-
     internal static func secondaryFontSize(for primaryFontSize: CGFloat) -> CGFloat {
         max(10, primaryFontSize - 1)
+    }
+
+    /// Every row is as tall as a two-line entry, so the pitch the scroll geometry works in stays
+    /// uniform and a connection that gains or loses its container does not move the rows below it.
+    /// The label height is measured from a label built exactly like the row's, because the line
+    /// heights NSTextField lays out differ from the font's metrics by up to a point, and a row
+    /// declared as a sum of constants left no slack for that.
+    internal static func rowHeight(for layout: WorkspaceRailMetrics.Layout) -> CGFloat {
+        let label = makeLabel()
+        label.attributedStringValue = labelValue(lines: ["Ag", "Ag"], layout: layout)
+        return 2 * layout.padding + layout.iconSize + WorkspaceRailMetrics.iconLabelGap
+            + ceil(label.intrinsicContentSize.height)
     }
 
     private static let identityDotRimWidth: CGFloat = 1.5
@@ -141,9 +156,8 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         dotWidthConstraint?.constant = dotSize
         dotHeightConstraint?.constant = dotSize
         identityDot.layer?.cornerRadius = dotSize / 2
-        labelTopConstraint?.constant = Self.labelTopSpacing(forIcon: layout.iconSize)
 
-        label.attributedStringValue = Self.labelValue(for: entry, layout: layout)
+        label.attributedStringValue = Self.labelValue(lines: Self.labelLines(for: entry), layout: layout)
 
         appliedTint = Self.glyphTint(for: entry)
         identityColor = entry.connection.identityColor
@@ -155,11 +169,31 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         setAccessibilityLabel(Self.voiceOverLabel(for: entry))
     }
 
+    /// The outlet the default implementation takes the label from is the one this cell leaves
+    /// empty, so without this the drag image would be a bare glyph. It is drawn in the normal style
+    /// even from the selected row, as AppKit draws its own: the image floats over the window, not
+    /// over the accent fill, and selected-row white would vanish against a light window.
+    override var draggingImageComponents: [NSDraggingImageComponent] {
+        var components = super.draggingImageComponents
+        guard let cell = label.cell,
+              let rep = label.bitmapImageRepForCachingDisplay(in: label.bounds) else { return components }
+        let style = cell.backgroundStyle
+        cell.backgroundStyle = .normal
+        label.cacheDisplay(in: label.bounds, to: rep)
+        cell.backgroundStyle = style
+        let image = NSImage(size: label.bounds.size)
+        image.addRepresentation(rep)
+        let component = NSDraggingImageComponent(key: .label)
+        component.contents = image
+        component.frame = convert(label.bounds, from: label)
+        components.append(component)
+        return components
+    }
+
     private static func labelValue(
-        for entry: WorkspaceRailEntry,
+        lines: [String],
         layout: WorkspaceRailMetrics.Layout
     ) -> NSAttributedString {
-        let lines = labelLines(for: entry)
         guard let primary = lines.first else { return NSAttributedString() }
 
         let paragraph = NSMutableParagraphStyle()

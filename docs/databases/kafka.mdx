@@ -29,9 +29,9 @@ record format every message has used since.
 | **SASL Mechanism** | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, for the two SASL protocols |
 | **Username** / **Password** | The SASL credentials |
 | **Broker Addresses** | Whether to dial the addresses the cluster advertises, or stay on the bootstrap. Leave this on **Use the addresses the cluster advertises** unless those addresses are unreachable from this Mac |
-| **Connect Timeout** | Seconds to wait for a broker. Default `10` |
 
 There is no Database field. A connection is one cluster, and the sidebar shows its topics directly.
+Set the whole attempt's **Connect timeout** under **Options**; an empty field uses 30 seconds.
 
 ## Connection URL
 
@@ -124,6 +124,9 @@ selects them: each batch declares its own codec and brokers hand back whatever t
 strictly the certificate is checked. Setting the protocol to `SSL` or `SASL_SSL` with no mode chosen
 verifies the chain and the hostname. A private CA goes in the **CA Certificate** field; mutual TLS
 also needs the client certificate and key.
+
+**Verify CA** checks the chain against the certificate in **CA Certificate** and skips the hostname,
+so it needs that certificate: without one, the connection is refused before any broker is contacted.
 
 Setting the protocol to `PLAINTEXT` or `SASL_PLAINTEXT` turns encryption off whatever the SSL mode
 says, so a mode left over from an earlier edit cannot silently encrypt a plaintext listener.

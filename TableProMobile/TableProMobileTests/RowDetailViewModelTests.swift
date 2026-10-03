@@ -124,6 +124,47 @@ struct RowDetailViewModelTests {
         #expect(query.contains("WHERE"))
     }
 
+    @Test("A column the server owns is not offered for editing and is never written")
+    func serverOwnedColumnsTakeNoEdits() async {
+        let columns = [
+            ColumnInfo(name: "code", typeName: "VARCHAR(8)", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(
+                name: "ID", typeName: "INT", isNullable: false, ordinalPosition: 1,
+                isAutoIncrement: true, rejectsWrittenValues: true
+            ),
+            ColumnInfo(name: "doubled", typeName: "INT", ordinalPosition: 2, isGenerated: true),
+            ColumnInfo(name: "name", typeName: "VARCHAR(64)", ordinalPosition: 3)
+        ]
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("a"), .text("1761"), .text("3522"), .text("Alice")])],
+            initialIndex: 0,
+            table: TableInfo(name: "approved"),
+            session: makeSession(driver: driver),
+            columnDetails: columns
+        )
+
+        #expect(vm.takesEdits(at: 1) == false)
+        #expect(vm.takesEdits(at: 2) == false)
+        #expect(vm.takesEdits(at: 3) == true)
+
+        vm.startEditing()
+        vm.setEditedValue("1890", at: 1)
+        vm.setEditedValue("0", at: 2)
+        vm.setEditedValue("Bea", at: 3)
+        let success = await vm.saveChanges()
+
+        #expect(success == true)
+        let query = driver.executedQueries.first ?? ""
+        #expect(query.contains("Bea"))
+        #expect(!query.contains("1890"))
+        #expect(!query.contains("doubled"))
+    }
+
     @Test("saveChanges on an idle session opens a read-write transaction and commits it")
     func saveWrapsIdleSession() async {
         let driver = MockDatabaseDriver()
@@ -275,7 +316,7 @@ struct RowDetailViewModelTests {
         )
         let ref = CellRef(table: "users", column: "name", primaryKey: [.init(column: "id", value: "1")])
 
-        await vm.loadFullValue(ref: ref, cellIndex: 1)
+        await vm.loadFullValue(ref: ref, forRow: 0, cellIndex: 1)
         #expect(vm.loadingCell == nil)
         #expect(vm.hasOverride(forRow: 0, cellIndex: 1) == true)
     }
@@ -416,5 +457,209 @@ struct RowDetailViewModelTests {
 
         #expect(await vm.executePendingSave() == false)
         #expect(driver.executedQueries.isEmpty)
+    }
+
+    private func makeColumns(lastTypeName: String) -> [ColumnInfo] {
+        makeColumns() + [ColumnInfo(name: "body", typeName: lastTypeName, ordinalPosition: 2)]
+    }
+
+    private func bodyRef(id: String) -> CellRef {
+        CellRef(table: "users", column: "body", primaryKey: [.init(column: "id", value: id)])
+    }
+
+    private func makeViewModel(
+        lastCell: Cell,
+        lastTypeName: String = "TEXT",
+        driver: MockDatabaseDriver = MockDatabaseDriver(),
+        loadFullValue: ((CellRef) async throws -> String?)? = nil
+    ) -> RowDetailViewModel {
+        let columns = makeColumns(lastTypeName: lastTypeName)
+        return RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("Alice"), lastCell])],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            session: makeSession(driver: driver),
+            columnDetails: columns,
+            loadFullValue: loadFullValue
+        )
+    }
+
+    @Test("Typing into a truncated value's placeholder is not an edit and Save writes nothing")
+    func truncatedPlaceholderTakesNoEdit() async {
+        let driver = MockDatabaseDriver()
+        let vm = makeViewModel(lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: nil), driver: driver)
+        vm.startEditing()
+        let placeholder = vm.editedValues[2]
+
+        vm.setEditedValue("abcd", at: 2)
+        #expect(vm.editedValues[2] == placeholder)
+        #expect(vm.hasUnsavedEdits == false)
+
+        vm.toggleNull(at: 2)
+        #expect(vm.editedValues[2] == placeholder)
+        #expect(vm.hasUnsavedEdits == false)
+
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("Typing into a binary value's placeholder is not an edit and Save writes nothing")
+    func binaryPlaceholderTakesNoEdit() async {
+        let driver = MockDatabaseDriver()
+        let vm = makeViewModel(lastCell: .binary(byteCount: 12, ref: nil), lastTypeName: "BLOB", driver: driver)
+        vm.startEditing()
+        let placeholder = vm.editedValues[2]
+
+        vm.setEditedValue("[BLOB 13 bytes]", at: 2)
+        #expect(vm.editedValues[2] == placeholder)
+        #expect(vm.hasUnsavedEdits == false)
+
+        vm.toggleNull(at: 2)
+        #expect(vm.editedValues[2] == placeholder)
+        #expect(vm.hasUnsavedEdits == false)
+
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("Saving another field keeps a truncated value truncated, so a later edit cannot type over it")
+    func saveKeepsUnloadedValueTruncated() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = makeViewModel(lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: nil), driver: driver)
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+        #expect(await vm.saveChanges())
+        #expect(vm.currentRow[1] == "Charlie")
+
+        guard case .truncatedText = vm.cells(at: 0)[2] else {
+            Issue.record("the unsaved truncated value became \(vm.cells(at: 0)[2])")
+            return
+        }
+        vm.startEditing()
+        vm.setEditedValue("abcd", at: 2)
+        #expect(vm.hasUnsavedEdits == false)
+    }
+
+    @Test("Only a value the row holds in full can be edited as text, and loading makes long text editable")
+    func textEditabilityFollowsWhatTheCellHolds() async {
+        let truncated = makeViewModel(
+            lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: bodyRef(id: "1")),
+            loadFullValue: { _ in "abc and the rest" }
+        )
+        #expect(truncated.isEditableAsText(at: 1))
+        #expect(truncated.isEditableAsText(at: 2) == false)
+        await truncated.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        #expect(truncated.isEditableAsText(at: 2))
+
+        let binary = makeViewModel(
+            lastCell: .binary(byteCount: 12, ref: bodyRef(id: "1")),
+            lastTypeName: "BLOB",
+            loadFullValue: { _ in "loaded bytes" }
+        )
+        #expect(binary.isEditableAsText(at: 2) == false)
+        await binary.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        #expect(binary.isEditableAsText(at: 2) == false)
+
+        let null = makeViewModel(lastCell: .null)
+        #expect(null.isEditableAsText(at: 2))
+        #expect(null.isEditableAsText(at: 3) == false)
+    }
+
+    @Test("A long text value loaded before editing saves the edited full value")
+    func loadedLongTextSavesItsEdit() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = makeViewModel(
+            lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: bodyRef(id: "1")),
+            driver: driver,
+            loadFullValue: { _ in "abc and the rest" }
+        )
+        await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        vm.startEditing()
+        #expect(vm.editedValues[2] == "abc and the rest")
+
+        vm.setEditedValue("abc and the rest, edited", at: 2)
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.count == 1)
+        #expect(driver.executedQueries.first?.contains("abc and the rest, edited") == true)
+        #expect(vm.currentRow[2] == "abc and the rest, edited")
+    }
+
+    @Test("A full value that arrives while editing becomes the field's value, not an unsaved edit")
+    func fullValueLoadedWhileEditingIsNotAnEdit() async {
+        let fullValue = String(repeating: "a", count: 5_000)
+        let vm = makeViewModel(
+            lastCell: .truncatedText(prefix: "aaa", totalBytes: 5_000, ref: bodyRef(id: "1")),
+            loadFullValue: { _ in fullValue }
+        )
+        vm.startEditing()
+
+        await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        #expect(vm.editedValues[2] == fullValue)
+        #expect(vm.hasUnsavedEdits == false)
+
+        vm.setEditedValue(fullValue + "b", at: 2)
+        #expect(vm.hasUnsavedEdits)
+    }
+
+    @Test("A full value that arrives after swiping to another row is kept for the row that asked for it")
+    func lateFullValueLandsOnItsOwnRow() async {
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (release, releaseContinuation) = AsyncStream<Void>.makeStream()
+        let columns = makeColumns(lastTypeName: "TEXT")
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [
+                Row(cells: [.text("1"), .text("Alice"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: bodyRef(id: "1"))]),
+                Row(cells: [.text("2"), .text("Bob"), .truncatedText(prefix: "b", totalBytes: 5_000, ref: bodyRef(id: "2"))])
+            ],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            columnDetails: columns,
+            loadFullValue: { _ in
+                startedContinuation.yield()
+                for await _ in release { break }
+                return "the first row's body"
+            }
+        )
+
+        let load = Task { await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2) }
+        for await _ in started { break }
+        vm.goToNextRow()
+        releaseContinuation.yield()
+        await load.value
+
+        #expect(vm.hasOverride(forRow: 0, cellIndex: 2))
+        #expect(vm.hasOverride(forRow: 1, cellIndex: 2) == false)
+        #expect(vm.row(at: 0)[2] == "the first row's body")
+    }
+
+    @Test("A full value asked for from a row that is not the selected one is kept for that row")
+    func fullValueLandsOnTheRowThatAsked() async {
+        let columns = makeColumns(lastTypeName: "TEXT")
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [
+                Row(cells: [.text("1"), .text("Alice"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: bodyRef(id: "1"))]),
+                Row(cells: [.text("2"), .text("Bob"), .truncatedText(prefix: "b", totalBytes: 5_000, ref: bodyRef(id: "2"))])
+            ],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            columnDetails: columns,
+            loadFullValue: { _ in "the second row's body" }
+        )
+
+        await vm.loadFullValue(ref: bodyRef(id: "2"), forRow: 1, cellIndex: 2)
+
+        #expect(vm.hasOverride(forRow: 1, cellIndex: 2))
+        #expect(vm.hasOverride(forRow: 0, cellIndex: 2) == false)
+        #expect(vm.row(at: 1)[2] == "the second row's body")
+        #expect(vm.isEditableAsText(at: 2) == false)
     }
 }

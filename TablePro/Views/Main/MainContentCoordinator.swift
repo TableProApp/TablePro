@@ -166,6 +166,7 @@ final class MainContentCoordinator: ObservableObject {
     let toolbarState: ConnectionToolbarState
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
+    internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
     let windowSidebarState: WindowSidebarState
     /// Which tab each of this connection's containers was last on, so the connections strip lands
     /// on that container's work instead of leaving a tab from another database on screen.
@@ -1175,7 +1176,7 @@ final class MainContentCoordinator: ObservableObject {
             isShowingSafeModePrompt = true
             Task {
                 defer { isShowingSafeModePrompt = false }
-                let decision = await ExecutionGateProvider.shared.authorize(
+                let decision = await executionGate.authorize(
                     OperationRequest(
                         connectionId: connectionId,
                         databaseType: connection.type,
@@ -1306,45 +1307,39 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
+        let grammar = lexicalGrammar
 
         let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
             guard let self else { return }
 
-            if isAutoLoad {
-                do {
-                    try await services.databaseManager.ensureConnected(conn)
-                } catch {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        traceConnectUnavailable(traceToken)
-                        guard tabExecution.settle(claim) else { return }
-                        retireQueryTask(.claim(claim))
-                        pendingLoadTrigger = trigger
-                    }
-                    return
-                }
+            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) {
+                return
             }
 
             let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now
             do {
-                let fetchResult = try await withExecutionDriver(
+                let (fetchResult, tableEdits) = try await withExecutionDriver(
                     scope: scope,
                     isTableTab: isTableTab,
                     lease: lease
                 ) { [queryExecutor] driver in
-                    try await queryExecutor.executeQuery(
+                    let fetched = try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: statement.sql,
                         parameters: nil,
                         rowCap: rowCap,
                         capturingOutputInto: isTableTab ? nil : failureOutput
                     )
+                    let edits = isAutoLoad ? nil : await SucceededStatements.single(
+                        statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
+                    )
+                    return (fetched, edits)
                 }
                 let fetchEndedAt = ContinuousClock.now
-                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }
+                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -1462,11 +1457,17 @@ final class MainContentCoordinator: ObservableObject {
         if tab.tabType != .table, QueryClassifier.isExplainStatement(sql) {
             return (nil, false)
         }
-        let usesNoSQLBrowsing = services.pluginManager.editorLanguage(for: connection.type) != .sql
-            || (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
-                .queryBuildingPluginDriver != nil
+        let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
+        let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
+            .queryBuildingPluginDriver != nil
+        /// A SQL engine whose plugin writes its own browse gets no table from a query's text, and the name a
+        /// query tab carries came from an earlier result or an older build, so it can name another table.
+        if tab.tabType != .table, editorLanguage == .sql, pluginBuildsBrowse {
+            return (nil, false)
+        }
+        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if usesNoSQLBrowsing {
-            let name = tabManager.selectedTab?.tableContext.tableName
+            let name = tab.tableContext.tableName
             return (name, name != nil)
         } else if tab.tabType == .table, let existingName = tab.tableContext.tableName {
             return (existingName, true)
@@ -1528,7 +1529,7 @@ final class MainContentCoordinator: ObservableObject {
         if tab.tabType == .query {
             let tabId = tab.id
             let capturedSort = newState
-            guard let rerun = tab.sortRerun else {
+            guard supportsColumnSort, let rerun = tab.sortRerun else {
                 sortHeldRows(by: newState, tabId: tabId)
                 return
             }
@@ -1568,6 +1569,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
 
+        guard supportsColumnSort else { return }
         let tabId = tab.id
         let capturedSort = newState
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in

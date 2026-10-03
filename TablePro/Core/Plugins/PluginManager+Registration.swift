@@ -79,6 +79,9 @@ extension PluginManager {
         if registeredAny {
             pluginInstances[pluginId] = instance
         }
+        if instance is any DriverPlugin {
+            queryBuildingDriverCache.removeAll()
+        }
     }
 
     func validateCapabilityDeclarations(_ pluginType: any TableProPlugin.Type, pluginId: String) {
@@ -464,17 +467,25 @@ extension PluginManager {
     }
 
     func paginationCapability(for databaseType: DatabaseType) -> PaginationCapability {
-        PaginationCapability.of(databaseType)
+        PaginationCapability.of(databaseType).resolved(pluginBuildsBrowse: queryBuildingDriver(for: databaseType) != nil)
     }
 
-    func exactRowCountIsBilledScan(for databaseType: DatabaseType) -> Bool {
-        databaseType.exactRowCountIsBilledScan
+    func exactRowCountIsFullScan(for databaseType: DatabaseType) -> Bool {
+        databaseType.exactRowCountIsFullScan
     }
 
-    /// An engine that cannot skip rows has no pages for a total to bound, and one whose count is a billed scan
-    /// would charge for every table it opens, so neither is counted until the user asks.
+    /// An engine that cannot skip rows has no pages for a total to bound, and one whose count is a full scan
+    /// would read every table it opens end to end, so neither is counted until the user asks.
     func countsRowsAutomatically(for databaseType: DatabaseType) -> Bool {
-        paginationCapability(for: databaseType).allowsSeeking && !exactRowCountIsBilledScan(for: databaseType)
+        paginationCapability(for: databaseType).allowsSeeking && !exactRowCountIsFullScan(for: databaseType)
+    }
+
+    func supportsColumnSort(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsColumnSort ?? true
+    }
+
+    func supportsMatchAnyFilters(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsMatchAnyFilters ?? true
     }
 
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
@@ -533,6 +544,13 @@ extension PluginManager {
     func localFilePathField(for databaseType: DatabaseType) -> LocalFilePathField? {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.localFilePathField
+    }
+
+    /// The extensions a new database file of this type can be named with, or empty when its driver
+    /// opens only a file that already exists.
+    func newDatabaseFileExtensions(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.newDatabaseFileExtensions ?? []
     }
 
     /// Whether this type can point at a database file on an SSH server instead of a local one.

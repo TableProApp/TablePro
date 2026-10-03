@@ -41,6 +41,7 @@ struct RewindCipherTests {
             target: DataWriteTarget(database: "shop", schema: "public", table: "users"),
             capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
             generatedColumns: ["search_vector"],
+            identityColumns: [],
             operations: [
                 RowWriteOperation(
                     kind: .update,

@@ -89,7 +89,7 @@ struct ExactRowCounterTests {
     func routesQueryBuildingDriversThroughTheDriverFirst() {
         #expect(
             ExactRowCounter.route(
-                countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: false
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: false
             ) == .driverCountThenHostSQL(Self.countSQL)
         )
     }
@@ -98,7 +98,7 @@ struct ExactRowCounterTests {
     func keepsHostSQLForOtherEngines() {
         #expect(
             ExactRowCounter.route(
-                countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: false
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: false
             ) == .hostCountSQL(Self.countSQL)
         )
     }
@@ -106,25 +106,51 @@ struct ExactRowCounterTests {
     @Test("Without host SQL the driver is the only source, whoever builds the queries")
     func withoutHostSQLTheDriverCounts() {
         #expect(
-            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: false)
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: false)
                 == .driverCount
         )
         #expect(
-            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: false)
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: false)
                 == .driverCount
         )
     }
 
-    @Test("An engine whose count is a billed scan is counted by its driver alone, whatever host SQL exists")
-    func billedScanEnginesCountThroughTheDriverOnly() {
+    @Test("A driver that writes a full-scan engine's queries is its only count, whatever host SQL exists")
+    func fullScanEnginesCountThroughTheDriverOnly() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsBilledScan: true)
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: true)
                 == .driverCount
         )
+    }
+
+    /// An older Cassandra plugin leaves every query to the app and has no count of its own, so the host's
+    /// `COUNT(*)` is the only count it can give. Routing it to the driver answered Count Exactly with nothing.
+    @Test("A driver that leaves the queries to the app is counted by the host, full scan or not")
+    func driverWithoutQueryBuildingCountsThroughTheHost() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsBilledScan: true)
-                == .driverCount
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: true)
+                == .hostCountSQL(Self.countSQL)
         )
+    }
+
+    @Test("A Cassandra plugin that builds its browse counts in CQL, and a failure never runs a second scan")
+    func cassandraCountsThroughItsDriver() async throws {
+        let counting = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(7))
+        #expect(try await count(counting, type: .cassandra) == 7)
+        #expect(counting.executedQueries.isEmpty)
+
+        let failing = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
+        await #expect(throws: CountStubError.self) { _ = try await count(failing, type: .cassandra) }
+        #expect(failing.executedQueries.isEmpty)
+    }
+
+    @Test("An older Cassandra plugin is still counted, through the host COUNT")
+    func olderCassandraPluginCountsThroughTheHost() async throws {
+        let older = CountStubDriver(ownsQueryBuilding: false, driverCount: .success(nil))
+
+        _ = try await count(older, type: .cassandra)
+
+        #expect(older.executedQueries == [Self.countSQL])
     }
 
     @Test("DynamoDB's driver count is the only count, and the host COUNT never runs")

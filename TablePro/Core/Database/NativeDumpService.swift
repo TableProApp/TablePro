@@ -499,10 +499,9 @@ final class NativeDumpService: ObservableObject {
         }
 
         var credentialsFileURL: URL?
-        if tool.needsCredentialsFile,
-           let password = request.password, !password.isEmpty,
-           !request.connection.username.isEmpty {
-            let file = try writeMongoCredentialsFile(password: password)
+        let configurationEntries = tool.configurationFileEntries(request)
+        if !configurationEntries.isEmpty {
+            let file = try writeMongoConfigurationFile(configurationEntries)
             credentialsFileURL = file
             arguments.append("--config=\(file.path)")
         }
@@ -524,10 +523,12 @@ final class NativeDumpService: ObservableObject {
     /// `mongodump` and `mongorestore` read a password from neither the environment nor standard
     /// input, and one in `argv` is readable by every process on the machine. Their `--config` file
     /// is the remaining channel, so it is written owner-only and removed when the process exits.
-    nonisolated static func writeMongoCredentialsFile(password: String) throws -> URL {
+    nonisolated static func writeMongoConfigurationFile(
+        _ entries: [NativeDumpDescriptor.ConfigurationEntry]
+    ) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-mongo-\(UUID().uuidString).yaml")
-        let contents = "password: \(mongoYAMLQuoted(password))\n"
+        let contents = entries.map { "\($0.key): \(mongoYAMLQuoted($0.value))\n" }.joined()
         guard let data = contents.data(using: .utf8) else {
             throw NativeDumpError.sourceUnreadable
         }

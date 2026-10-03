@@ -121,6 +121,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     let config: DriverConnectionConfig
     let connection = DamengConnection()
+    let connectTimeout: DamengConnectTimeout
     private let cancellationGate = PluginQueryCancellationGate()
     private var detectedServerVersion: String?
 
@@ -162,6 +163,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        connectTimeout = DamengConnectTimeout(additionalFields: config.additionalFields)
     }
 
     func connect() async throws {
@@ -169,7 +171,8 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host,
             port: config.port,
             username: config.username,
-            password: config.password
+            password: config.password,
+            timeoutMilliseconds: connectTimeout.milliseconds
         )
         textEscaping = await detectTextEscaping()
         do {

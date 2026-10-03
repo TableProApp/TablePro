@@ -112,7 +112,7 @@ extension MainContentCoordinator {
     /// statement, and for MongoDB and SQL Server there is no statement to show. The two names are
     /// what the user is being asked to approve, and the description carries both.
     private func authorizeRename(describing description: String) async -> Bool {
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await executionGate.authorize(
             OperationRequest(
                 connectionId: connectionId,
                 databaseType: connection.type,

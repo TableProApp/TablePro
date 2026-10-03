@@ -4,6 +4,30 @@ import Testing
 
 @testable import TablePro
 
+private final class LegacyKafkaMetadataPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Legacy Kafka metadata"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Test fixture"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+    static let databaseTypeId = "Kafka"
+    static let databaseDisplayName = "Kafka"
+    static let iconName = "kafka-icon"
+    static let defaultPort = 9_092
+    static let additionalConnectionFields = [
+        ConnectionField(
+            id: "kafkaConnectTimeout",
+            label: "Connect Timeout (seconds)",
+            defaultValue: "10",
+            fieldType: .stepper(range: ConnectionField.IntRange(1 ... 120)),
+            section: .advanced
+        )
+    ]
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 /// Kafka names encryption and authentication in one setting; TablePro carries them in two.
 /// These pin the resolution, because getting it wrong sends a password in the clear.
 struct KafkaConnectionFieldTests {
@@ -93,6 +117,47 @@ struct KafkaConnectionFieldTests {
     }
 
     // MARK: - Field declarations
+
+    @Test("The common connect timeout wins over the saved Kafka field")
+    func commonConnectTimeoutWins() {
+        let timeout = KafkaConnectTimeout(additionalFields: [
+            "connectTimeoutMilliseconds": "4250",
+            "connectTimeoutSeconds": "8",
+            "kafkaConnectTimeout": "11"
+        ])
+
+        #expect(timeout.milliseconds == 4_250)
+        #expect(timeout.reconnectMilliseconds == 8_000)
+    }
+
+    @Test("Saved Kafka timeouts migrate through the compatibility fallback")
+    func savedConnectTimeoutFallback() {
+        #expect(KafkaConnectTimeout(additionalFields: ["kafkaConnectTimeout": "12"]).milliseconds == 12_000)
+        #expect(KafkaConnectTimeout(additionalFields: [:]).milliseconds == 30_000)
+        #expect(
+            KafkaConnectTimeout(additionalFields: ["connectTimeoutSeconds": String(Int64.min)]).milliseconds == 1
+        )
+    }
+
+    @Test("Bootstrap attempts consume one monotonic deadline")
+    func bootstrapDeadlineShrinks() {
+        let deadline = KafkaConnectDeadline(timeout: KafkaConnectTimeout(milliseconds: 4_250), now: 100)
+
+        #expect(deadline.remainingMilliseconds(now: 101.25) == 3_000)
+        #expect(deadline.remainingMilliseconds(now: 104.25) == nil)
+    }
+
+    @Test("The plugin no longer declares its old timeout control")
+    func oldTimeoutControlIsRemoved() {
+        #expect(!KafkaConnectionField.fields().contains { $0.id == KafkaConnectionField.connectTimeout })
+    }
+
+    @Test("An installed older Kafka bundle cannot restore the retired timeout control")
+    func oldPluginMetadataIsNormalized() {
+        let snapshot = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: LegacyKafkaMetadataPlugin.self)
+
+        #expect(snapshot.connection.additionalConnectionFields.isEmpty)
+    }
 
     /// The plugin's list and the app's curated copy cannot share code, because the picker has
     /// to show these before the bundle that owns them is downloaded. Nothing but this keeps

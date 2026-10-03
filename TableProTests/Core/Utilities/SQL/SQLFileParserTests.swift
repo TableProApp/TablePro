@@ -393,4 +393,43 @@ struct SQLFileParserTests {
         #expect(body.count > 65_536)
         #expect(try await Self.parse(body, encoding: .shiftJIS) == lines.map { String($0.dropLast()) })
     }
+
+    private static let cqlScript = """
+        BEGIN UNLOGGED BATCH USING TIMESTAMP 1481124356754405
+          INSERT INTO ks.t (id, v) VALUES (1, 'a; APPLY BATCH; b');
+          UPDATE ks.t SET v = $$ APPLY BATCH; $$ WHERE id = 2;
+        apply batch;
+        CREATE TABLE ks.cases (id int PRIMARY KEY, case text);
+        SELECT * FROM ks.t;
+        """
+
+    private static let cqlStatements = [
+        """
+        BEGIN UNLOGGED BATCH USING TIMESTAMP 1481124356754405
+          INSERT INTO ks.t (id, v) VALUES (1, 'a; APPLY BATCH; b');
+          UPDATE ks.t SET v = $$ APPLY BATCH; $$ WHERE id = 2;
+        apply batch
+        """,
+        "CREATE TABLE ks.cases (id int PRIMARY KEY, case text)",
+        "SELECT * FROM ks.t",
+    ]
+
+    @Test("An imported CQL batch arrives whole, as the editor sends it")
+    func cqlBatchImportsWhole() async throws {
+        let grammar = DatabaseType.cassandra.lexicalGrammar
+        #expect(try await Self.parse(Self.cqlScript, grammar: grammar) == Self.cqlStatements)
+        let edited = SQLStatementScanner.executableStatements(in: Self.cqlScript, grammar: grammar).map { $0.sql }
+        #expect(edited == Self.cqlStatements)
+    }
+
+    @Test("A chunk boundary anywhere in a CQL batch changes nothing")
+    func cqlBatchChunkBoundaryAnywhere() async throws {
+        let grammar = DatabaseType.cassandra.lexicalGrammar
+        let chunkSize = 65_536
+        for boundary in 0..<(Self.cqlScript as NSString).length {
+            let padding = "--" + String(repeating: "x", count: chunkSize - boundary - 3) + "\n"
+            let statements = try await Self.parse(padding + Self.cqlScript, grammar: grammar)
+            #expect(statements == Self.cqlStatements, "boundary at \(boundary)")
+        }
+    }
 }

@@ -9,7 +9,7 @@ struct SQLLexicalReadingsTests {
         let shipped = [
             "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "PostgreSQL", "Redshift", "CockroachDB", "PGlite",
             "SQLite", "libSQL", "Turso", "Cloudflare D1", "DuckDB", "Oracle", "Dameng", "SQL Server", "ClickHouse",
-            "Snowflake", "BigQuery", "Spanner", "Trino", "Teradata", "Cassandra", "ScyllaDB", "DynamoDB",
+            "Snowflake", "BigQuery", "Spanner", "Trino", "Teradata", "SAP HANA", "Cassandra", "ScyllaDB", "DynamoDB",
             "SurrealDB", "Redis", "MongoDB", "etcd", "Elasticsearch", "Typesense", "Weaviate", "Kafka",
         ]
         let missing = shipped.filter { SQLLexicalProfile.curated(forDatabaseTypeId: $0) == nil }

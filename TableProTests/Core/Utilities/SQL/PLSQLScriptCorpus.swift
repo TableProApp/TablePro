@@ -4,7 +4,7 @@
 //
 //  Oracle scripts and the exact text each statement reaches the driver as. Every unit here was sent to Oracle 23ai
 //  in that form and compiled VALID or ran, which is what makes the expected text the right answer rather than a
-//  transcription of what the scanner happens to do. scripts/check-oracle-plsql-terminators.sh re-measures the rules
+//  transcription of what the scanner happens to do. scripts/probes/check-oracle-plsql-terminators.sh re-measures the rules
 //  the corpus rests on.
 //
 

@@ -97,6 +97,7 @@ public struct ExportableCredentialProfile: Codable, Sendable {
 // MARK: - Exportable Connection
 
 public struct ExportableConnection: Codable, Sendable {
+    private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
     public let name: String
     public let host: String
     public let port: Int
@@ -114,6 +115,8 @@ public struct ExportableConnection: Codable, Sendable {
     public let credentialProfileName: String?
     public let safeModeLevel: String?
     public let aiPolicy: String?
+    public let connectTimeoutSeconds: Int?
+    public let queryTimeoutSeconds: Int?
     public let additionalFields: [String: String]?
     public let redisDatabase: Int?
     public let startupCommands: String?
@@ -138,6 +141,8 @@ public struct ExportableConnection: Codable, Sendable {
         credentialProfileName: String? = nil,
         safeModeLevel: String?,
         aiPolicy: String?,
+        connectTimeoutSeconds: Int? = nil,
+        queryTimeoutSeconds: Int? = nil,
         additionalFields: [String: String]?,
         redisDatabase: Int?,
         startupCommands: String?,
@@ -161,6 +166,8 @@ public struct ExportableConnection: Codable, Sendable {
         self.credentialProfileName = credentialProfileName
         self.safeModeLevel = safeModeLevel
         self.aiPolicy = aiPolicy
+        self.connectTimeoutSeconds = connectTimeoutSeconds
+        self.queryTimeoutSeconds = queryTimeoutSeconds
         self.additionalFields = additionalFields
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
@@ -176,6 +183,7 @@ public struct ExportableConnection: Codable, Sendable {
             groupName: groupName, sshProfileId: sshProfileId,
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
             tunnelCommand: tunnelCommand
@@ -190,6 +198,7 @@ public struct ExportableConnection: Codable, Sendable {
             groupName: groupName, sshProfileId: sshProfileId,
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
             tunnelCommand: tunnelCommand
@@ -238,6 +247,9 @@ public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
 }
 
 public extension ExportableConnection {
+    private static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    private static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+
     static let importBlockedAdditionalFieldKeys: Set<String> = [
         "preconnectscript",
         "pretunnelhost",
@@ -256,6 +268,16 @@ public extension ExportableConnection {
         return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
     }
 
+    static func shareableAdditionalFields(
+        _ fields: [String: String],
+        excluding excludedKeys: Set<String> = []
+    ) -> [String: String]? {
+        let shareable = fields.filter { key, _ in
+            !excludedKeys.contains(key) && !isImportBlockedAdditionalFieldKey(key)
+        }
+        return shareable.isEmpty ? nil : shareable
+    }
+
     func withoutStartupCommands() -> ExportableConnection {
         guard startupCommands != nil else { return self }
         return ExportableConnection(
@@ -265,6 +287,7 @@ public extension ExportableConnection {
             groupName: groupName, sshProfileId: sshProfileId,
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: nil, localOnly: localOnly,
             tunnelCommand: tunnelCommand
@@ -282,6 +305,7 @@ public extension ExportableConnection {
             groupName: groupName, sshProfileId: sshProfileId,
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
             tunnelCommand: nil
@@ -289,9 +313,11 @@ public extension ExportableConnection {
     }
 
     func sanitizedForImport() -> ExportableConnection {
-        guard let additionalFields else { return self }
-        let allowed = additionalFields.filter { !Self.isImportBlockedAdditionalFieldKey($0.key) }
-        guard allowed.count != additionalFields.count else { return self }
+        var allowed = (additionalFields ?? [:]).filter { !Self.isImportBlockedAdditionalFieldKey($0.key) }
+        let legacyConnectTimeout = allowed.removeValue(forKey: Self.connectTimeoutSecondsKey).flatMap(Int.init)
+        let legacyQueryTimeout = allowed.removeValue(forKey: Self.queryTimeoutSecondsKey).flatMap(Int.init)
+        let importedConnectTimeout = connectTimeoutSeconds ?? legacyConnectTimeout
+        let importedQueryTimeout = queryTimeoutSeconds ?? legacyQueryTimeout
         return ExportableConnection(
             name: name, host: host, port: port, database: database,
             username: username, type: type, sshConfig: sshConfig,
@@ -299,6 +325,10 @@ public extension ExportableConnection {
             groupName: groupName, sshProfileId: sshProfileId,
             sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            connectTimeoutSeconds: importedConnectTimeout.flatMap { (1 ... 600).contains($0) ? $0 : nil },
+            queryTimeoutSeconds: importedQueryTimeout.flatMap {
+                Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
+            },
             additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
             tunnelCommand: tunnelCommand

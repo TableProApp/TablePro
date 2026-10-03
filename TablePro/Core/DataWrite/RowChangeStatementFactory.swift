@@ -14,6 +14,20 @@
 import Foundation
 import TableProPluginKit
 
+/// The statements that put deleted rows back, with what has to run around them outside the transaction.
+struct RestoreStatements {
+    let statements: [ParameterizedStatement]
+    /// Run before the transaction opens and after it ends, on the same session: SQL Server's `IDENTITY_INSERT`.
+    let prologue: [String]
+    let epilogue: [String]
+
+    init(statements: [ParameterizedStatement], prologue: [String] = [], epilogue: [String] = []) {
+        self.statements = statements
+        self.prologue = prologue
+        self.epilogue = epilogue
+    }
+}
+
 /// The statements for a set of row changes, by who wrote them.
 enum RowWriteStatements {
     /// The host's, each carrying the rows it should touch.
@@ -32,6 +46,9 @@ struct RowChangeStatementFactory {
     let rowMatchPolicy: RowMatchPolicy
     let databaseType: DatabaseType
     let pluginDriver: (any PluginDatabaseDriver)?
+    /// The `GENERATED ALWAYS` and SQL Server `IDENTITY` columns among `generatedColumns`, which a restore writes back
+    /// rather than leaving to the server. Nil when the source never said, as a record saved before it was kept.
+    let identityColumns: Set<String>?
 
     init(
         tableName: String,
@@ -41,7 +58,8 @@ struct RowChangeStatementFactory {
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         databaseType: DatabaseType,
-        pluginDriver: (any PluginDatabaseDriver)?
+        pluginDriver: (any PluginDatabaseDriver)?,
+        identityColumns: Set<String>? = []
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -51,6 +69,7 @@ struct RowChangeStatementFactory {
         self.rowMatchPolicy = rowMatchPolicy
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
+        self.identityColumns = identityColumns
     }
 
     func statements(
@@ -82,6 +101,8 @@ struct RowChangeStatementFactory {
         deletedRowIDs: Set<RowID> = [],
         insertedRowIDs: Set<RowID> = []
     ) throws -> RowWriteStatements {
+        try refuseServerOwnedEdits(in: changes)
+        let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
         if let driverStatements = try pluginRowWrites(
             for: changes,
             insertedRowData: insertedRowData,
@@ -98,6 +119,46 @@ struct RowChangeStatementFactory {
                 insertedRowIDs: insertedRowIDs
             )
         )
+    }
+
+    /// A value staged for a column the server owns can never be written, however it got staged: the grid offers no
+    /// editor for one, but the set of such columns is empty until the table's schema arrives, and an edit made in
+    /// that window survives its arrival. Sending it fails on the server (SQL Server Msg 8102 for an `IDENTITY`), and a
+    /// generator that quietly drops it saves less than the user asked for, so the save is refused with the column
+    /// named instead.
+    private func refuseServerOwnedEdits(in changes: [RowChange]) throws {
+        for change in changes where change.type == .update {
+            guard let owned = change.cellChanges.first(where: { generatedColumns.contains($0.columnName) }) else {
+                continue
+            }
+            throw DataWriteError.changeRefused(
+                table: tableName,
+                kind: .update,
+                reason: String(
+                    format: String(localized: "The server fills in %@, so it cannot be given a value."),
+                    owned.columnName
+                )
+            )
+        }
+    }
+
+    /// A new row leaves every column the server owns to the server, whatever the row was staged with.
+    private func leavingServerOwnedColumnsToTheServer(_ values: [PluginCellValue]) -> [PluginCellValue] {
+        guard !generatedColumns.isEmpty else { return values }
+        return values.enumerated().map { index, value in
+            guard columns.indices.contains(index), generatedColumns.contains(columns[index]) else { return value }
+            return Self.defaultMarker
+        }
+    }
+
+    private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
+
+    private var rowWriteContext: PluginRowWriteContext {
+        var context = PluginRowWriteContext()
+        context.serverOwnedColumns = generatedColumns
+        context.rowMatchExcludedColumns = rowMatchPolicy.excludedColumns
+        context.rowMatchTextColumns = rowMatchPolicy.textColumns
+        return context
     }
 
     private func hostStatements(
@@ -135,26 +196,39 @@ struct RowChangeStatementFactory {
     func restoreStatements(
         rows: [[PluginCellValue]],
         absentCells: [Int: Set<Int>] = [:]
-    ) throws -> [ParameterizedStatement] {
+    ) throws -> RestoreStatements {
+        let restoredIdentity = try identityColumnsToRestore()
         if let pluginDriver {
+            let restorable = restorableColumnIndices(keeping: restoredIdentity)
             if let restored = pluginDriver.generateIdentityPreservingInsert(
                 table: tableName,
                 schema: schemaName,
-                columns: columns,
+                columns: restorable.map { columns[$0] },
                 primaryKeyColumns: primaryKeyColumns,
-                rows: rows,
-                absentCells: absentCells
-            ) {
-                return restored.map {
-                    ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
+                rows: rows.map { row in restorable.map { row.indices.contains($0) ? row[$0] : .null } },
+                absentCells: absentCells.mapValues { absent in
+                    Set(restorable.indices.filter { absent.contains(restorable[$0]) })
                 }
+            ) {
+                return RestoreStatements(statements: restored.map {
+                    ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
+                })
             }
             if pluginOwnsStatementGeneration {
                 throw DataWriteError.identityNotPreservable(databaseType.rawValue)
             }
         }
 
-        let generator = try hostGenerator()
+        let style = restoredIdentity.isEmpty ? nil : ExplicitIdentityInsert.style(for: databaseType)
+        if !restoredIdentity.isEmpty, style == nil {
+            throw DataWriteError.identityNotPreservable(databaseType.rawValue)
+        }
+
+        let generator = try hostGenerator(
+            schemaName: schemaName,
+            generatedColumns: generatedColumns.subtracting(restoredIdentity),
+            insertOverridesSystemValue: style == .overridingSystemValue
+        )
         var statements: [ParameterizedStatement] = []
         for (offset, row) in rows.enumerated() {
             let rowID = RowID.existing(offset)
@@ -170,7 +244,30 @@ struct RowChangeStatementFactory {
             }
             statements.append(statement)
         }
-        return statements
+
+        guard style == .identityInsertSession else { return RestoreStatements(statements: statements) }
+        let session = ExplicitIdentityInsert.sessionStatements(for: generator.qualifiedTableName)
+        return RestoreStatements(statements: statements, prologue: [session.open], epilogue: [session.close])
+    }
+
+    /// The columns a restored row is written with: every one but those the server computes, which refuse a value and
+    /// come back on their own. An identity column stays, because leaving it to the server re-keys the row.
+    private func restorableColumnIndices(keeping identity: Set<String>) -> [Int] {
+        columns.indices.filter { !generatedColumns.contains(columns[$0]) || identity.contains(columns[$0]) }
+    }
+
+    /// The identity columns a restored row carries its old value for. A value the server allocated cannot be left to
+    /// the server, because the row then comes back under a different one. When the source never said which
+    /// generated columns are identity, an allocated value cannot be told from a computed one, key or not, so a row
+    /// with any generated column is refused rather than guessed at.
+    private func identityColumnsToRestore() throws -> Set<String> {
+        guard let identityColumns else {
+            guard generatedColumns.isEmpty else {
+                throw DataWriteError.identityNotPreservable(databaseType.rawValue)
+            }
+            return []
+        }
+        return identityColumns.intersection(generatedColumns).intersection(columns)
     }
 
     /// True when the engine's statements come from the plugin rather than from
@@ -189,7 +286,8 @@ struct RowChangeStatementFactory {
                 changes: [probe],
                 insertedRowData: [:],
                 deletedRowIndices: [],
-                insertedRowIndices: []
+                insertedRowIndices: [],
+                context: PluginRowWriteContext()
             ) != nil
         } catch {
             return true
@@ -219,7 +317,8 @@ struct RowChangeStatementFactory {
                 changes: keyed.changes,
                 insertedRowData: keyed.insertedRowData,
                 deletedRowIndices: keyed.deletedRowIndices,
-                insertedRowIndices: keyed.insertedRowIndices
+                insertedRowIndices: keyed.insertedRowIndices,
+                context: rowWriteContext
             ) else { return nil }
             writes = generated
         } catch let refusal as PluginRowWriteRefusal {
@@ -244,17 +343,25 @@ struct RowChangeStatementFactory {
         }
     }
 
-    private func hostGenerator() throws -> SQLStatementGenerator {
+    /// A save leaves the table unqualified, as it always has. A restore names the schema the record was saved
+    /// against, because the connection may be pointed at another one by the time the rows are asked for back.
+    private func hostGenerator(
+        schemaName: String? = nil,
+        generatedColumns: Set<String>? = nil,
+        insertOverridesSystemValue: Bool = false
+    ) throws -> SQLStatementGenerator {
         guard PluginManager.shared.editorLanguage(for: databaseType) == .sql else {
             throw DataWriteError.statementGenerationUnavailable(databaseType.rawValue)
         }
         return try SQLStatementGenerator(
             tableName: tableName,
+            schemaName: schemaName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
-            generatedColumns: generatedColumns,
+            generatedColumns: generatedColumns ?? self.generatedColumns,
             rowMatchPolicy: rowMatchPolicy,
+            insertOverridesSystemValue: insertOverridesSystemValue,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )
@@ -275,14 +382,15 @@ struct PluginKeyedChanges {
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
     ) {
+        let ordered = changes.sorted { $0.sequence < $1.sequence }
         var keys: [RowID: Int] = [:]
         var rowIDs: [RowID] = []
-        for change in changes where keys[change.rowID] == nil {
+        for change in ordered where keys[change.rowID] == nil {
             keys[change.rowID] = rowIDs.count
             rowIDs.append(change.rowID)
         }
         self.rowIDs = rowIDs
-        self.changes = changes.compactMap { change in
+        self.changes = ordered.compactMap { change in
             keys[change.rowID].map { PluginRowChange(change, key: $0) }
         }
         self.insertedRowData = Dictionary(

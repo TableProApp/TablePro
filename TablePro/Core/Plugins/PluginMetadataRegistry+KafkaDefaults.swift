@@ -41,7 +41,9 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsDropSchema: false,
                     defaultSSLMode: .verifyIdentity,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    verifiesServerWithSystemTrust: true,
+                    supportsColumnSort: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -138,14 +140,6 @@ private func kafkaConnectionFields() -> [ConnectionField] {
                 .init(value: "advertised", label: String(localized: "Use the addresses the cluster advertises")),
                 .init(value: "bootstrapOnly", label: String(localized: "Only use the bootstrap address"))
             ]),
-            section: .advanced
-        ),
-        ConnectionField(
-            id: "kafkaConnectTimeout",
-            label: String(localized: "Connect Timeout (seconds)"),
-            required: false,
-            defaultValue: "10",
-            fieldType: .stepper(range: ConnectionField.IntRange(1 ... 120)),
             section: .advanced
         )
     ]

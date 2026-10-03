@@ -264,6 +264,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var dbproc: UnsafeMutablePointer<DBPROCESS>?
     private let queue: DispatchQueue
     private let options: MSSQLConnectionOptions
+    private let connectTimeoutMilliseconds: Int
     private let lock = NSLock()
     private var _isConnected = false
 
@@ -272,8 +273,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private let requestGate = MSSQLRequestGate()
 
     private static let kerberosEnvLock = NSLock()
+    private static let loginStartLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
-    private static let connectDeadlineMarginSeconds = 5
 
     var isConnected: Bool {
         lock.lock()
@@ -281,21 +282,25 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         return _isConnected
     }
 
-    init(options: MSSQLConnectionOptions) {
+    init(options: MSSQLConnectionOptions, connectTimeoutMilliseconds: Int? = nil) {
         self.options = options
+        let fallbackSeconds = max(1, min(options.loginTimeoutSeconds, Int(Int32.max)))
+        self.connectTimeoutMilliseconds = connectTimeoutMilliseconds ?? fallbackSeconds * 1_000
         self.queue = DispatchQueue(label: "com.TablePro.freetds.\(options.host).\(options.port)", qos: .userInitiated)
         _ = freetdsInitOnce
     }
 
     func connect() async throws {
         let attempt = SingleResumeGate<Void>()
+        let deadline = MSSQLConnectDeadline(timeoutMilliseconds: connectTimeoutMilliseconds)
+        armDeadline(for: attempt, milliseconds: deadline.remainingMilliseconds)
 
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 attempt.install(continuation, alreadyCancelled: Task.isCancelled)
                 queue.async { [self] in
                     do {
-                        let proc = try openConnection(for: attempt)
+                        let proc = try openConnection(for: attempt, deadline: deadline)
                         if attempt.win(()) {
                             adopt(proc)
                         } else {
@@ -312,14 +317,10 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
     }
 
-    /// db-lib reads the encryption level, the certificate checks and the service principal from freetds.conf and from
-    /// nowhere else, so the server is described there rather than on the login. Waiting for the entry and logging in
-    /// are bounded apart, each by the login timeout: the wait is for another connection's dbopen to the same server
-    /// name, and a single deadline over both would fail this one as a timeout without ever trying it.
-    ///
-    /// The Kerberos ticket cache handed over for this connect is deleted here, however the connect ends, because this
-    /// is the one place that runs to the end of the attempt: the caller can give up while dbopen still reads the cache.
-    private func openConnection(for attempt: SingleResumeGate<Void>) throws -> UnsafeMutablePointer<DBPROCESS> {
+    private func openConnection(
+        for attempt: SingleResumeGate<Void>,
+        deadline: MSSQLConnectDeadline
+    ) throws -> UnsafeMutablePointer<DBPROCESS> {
         defer { discardKerberosCache() }
         let entry: MSSQLFreeTDSServerEntry
         do {
@@ -337,14 +338,15 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         do {
             opened = try freetdsConfigFile.withEntry(
                 entry,
-                waitingAtMost: TimeInterval(connectDeadlineSeconds),
+                waitingAtMost: TimeInterval(deadline.remainingMilliseconds) / 1_000,
                 givingUpWhen: { attempt.isSettled }
             ) {
                 guard !attempt.isSettled else { throw CancellationError() }
-                armDeadline(for: attempt)
                 freetdsClearError(for: nil)
-                return withKerberosEnvironmentIfNeeded { dbopen(login, entry.name) }
+                return try open(login, serverName: entry.name, deadline: deadline)
             }
+        } catch MSSQLFreeTDSConfigError.nameInUse {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
         } catch let error as MSSQLFreeTDSConfigError {
             throw MSSQLCoreError.connectionFailed(error.localizedDescription)
         }
@@ -354,15 +356,29 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         return proc
     }
 
-    private var connectDeadlineSeconds: Int {
-        options.loginTimeoutSeconds + Self.connectDeadlineMarginSeconds
+    private func armDeadline(for attempt: SingleResumeGate<Void>, milliseconds: Int) {
+        let isKerberos = options.authMethod == .windows
+        Self.deadlineQueue.asyncAfter(deadline: .now() + .milliseconds(milliseconds)) {
+            if attempt.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos)) {
+                freetdsConfigFile.interruptWaits()
+            }
+        }
     }
 
-    private func armDeadline(for attempt: SingleResumeGate<Void>) {
-        let isKerberos = options.authMethod == .windows
-        Self.deadlineQueue.asyncAfter(deadline: .now() + .seconds(connectDeadlineSeconds)) {
-            attempt.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos))
+    private func open(
+        _ login: UnsafeMutablePointer<LOGINREC>,
+        serverName: String,
+        deadline: MSSQLConnectDeadline
+    ) throws -> UnsafeMutablePointer<DBPROCESS>? {
+        Self.loginStartLock.lock()
+        defer { Self.loginStartLock.unlock() }
+        let timeoutMilliseconds = deadline.remainingMilliseconds
+        guard timeoutMilliseconds > 0 else {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
         }
+        let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
+        _ = dbsetlogintime(seconds)
+        return withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
     }
 
     private func discardKerberosCache() {
@@ -384,8 +400,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         guard dbsetlversion(login, UInt8(DBVERSION_74)) == SUCCEED else {
             throw MSSQLCoreError.connectionFailed(String(localized: "FreeTDS could not set up the login."))
         }
-        _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
-
         // Entra ID replaces the user name and password with an access token in the LOGIN7
         // FEDAUTH feature extension. Not macOS-only: iOS links the same patched FreeTDS.
         if options.authMethod == .entra {

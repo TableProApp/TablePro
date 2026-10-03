@@ -13,6 +13,7 @@ import Foundation
 @MainActor
 final class CopilotIdleStopController {
     private let timeout: Duration
+    private let clock: any Clock<Duration>
     private let isAuthenticated: () -> Bool
     private let isRunning: () -> Bool
     private let onStopRequest: () async -> Void
@@ -20,11 +21,13 @@ final class CopilotIdleStopController {
 
     init(
         timeout: Duration,
+        clock: any Clock<Duration> = ContinuousClock(),
         isAuthenticated: @escaping () -> Bool,
         isRunning: @escaping () -> Bool,
         onStopRequest: @escaping () async -> Void
     ) {
         self.timeout = timeout
+        self.clock = clock
         self.isAuthenticated = isAuthenticated
         self.isRunning = isRunning
         self.onStopRequest = onStopRequest
@@ -34,20 +37,21 @@ final class CopilotIdleStopController {
         task?.cancel()
     }
 
-    /// Cancel any prior schedule and start a new one. No-op when already authenticated.
-    func schedule() {
+    @discardableResult
+    func schedule() -> Task<Void, Never>? {
         task?.cancel()
         guard !isAuthenticated() else {
             task = nil
-            return
+            return nil
         }
         let timeout = self.timeout
+        let clock = self.clock
         let isAuthenticated = self.isAuthenticated
         let isRunning = self.isRunning
         let onStopRequest = self.onStopRequest
-        task = Task {
+        let scheduled = Task {
             do {
-                try await Task.sleep(for: timeout)
+                try await clock.sleep(for: timeout)
             } catch {
                 return
             }
@@ -55,6 +59,8 @@ final class CopilotIdleStopController {
             guard !isAuthenticated(), isRunning() else { return }
             await onStopRequest()
         }
+        task = scheduled
+        return scheduled
     }
 
     /// Cancel any pending stop without triggering it.

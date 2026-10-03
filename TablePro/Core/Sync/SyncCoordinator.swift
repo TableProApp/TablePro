@@ -86,6 +86,16 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.info("No local connections — cleared sync token for full fetch")
         }
 
+        /// A pull returns only what changed since the token, so records of a type an earlier build
+        /// did not sync were passed over for good. The first run of a build that syncs more types
+        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
+        /// upgrades later. Counted over the types verified in Production, because an unverified type
+        /// has no records on the server to fetch.
+        if metadataStorage.adoptReadableRecordTypes(Set(SyncRecordType.verifiedInProduction.map(\.rawValue))) {
+            metadataStorage.saveToken(nil)
+            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
+        }
+
         Task {
             await checkAccountStatus()
             evaluateStatus()
@@ -127,7 +137,6 @@ final class SyncCoordinator: ObservableObject {
         lastSyncDate = Date()
         metadataStorage.lastSyncDate = lastSyncDate
         settle(.idle, from: generation)
-        metadataStorage.pruneTombstones(olderThan: 30)
 
         Self.logger.info("Sync completed successfully")
     }
@@ -249,7 +258,7 @@ final class SyncCoordinator: ObservableObject {
         let connections = services.connectionStorage.loadConnections()
         changeTracker.markDirty(
             .connection,
-            ids: connections.filter { !$0.localOnly }.map { $0.id.uuidString }
+            ids: connections.filter(\.participatesInSync).map { $0.id.uuidString }
         )
 
         let groups = services.groupStorage.loadGroups()
@@ -276,6 +285,10 @@ final class SyncCoordinator: ObservableObject {
             ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
         )
 
+        let tableFolderIds = tableFolderSyncIds()
+        changeTracker.markDirty(.tableFolder, ids: tableFolderIds.folders)
+        changeTracker.markDirty(.tableFolderItem, ids: tableFolderIds.items)
+
         let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
         let columnLayoutCategories = columnLayouts().customizedStorageKeys()
             .map { FileColumnLayoutPersister.syncCategory(for: $0) }
@@ -287,6 +300,7 @@ final class SyncCoordinator: ObservableObject {
             "tags=\(tags.count)",
             "sshProfiles=\(sshProfiles.count)",
             "favoriteTables=\(favoriteTables.count)",
+            "tableFolders=\(tableFolderIds.folders.count)",
             "settings=\(AppSettingsCategory.synced.count + 1)"
         ].joined(separator: ", ")
         Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
@@ -382,15 +396,18 @@ final class SyncCoordinator: ObservableObject {
 
     private func performPush() async -> PushReport {
         let snapshot = changeTracker.editSnapshot()
-        let settings = services.appSettingsStorage.loadSync()
+        let boundary = syncBoundary(settings: services.appSettingsStorage.loadSync())
         let zoneID = await transport.currentZoneID
-        let batch = await collectPushBatch(snapshot: snapshot, settings: settings, zoneID: zoneID)
+        let batch = await collectPushBatch(snapshot: snapshot, boundary: boundary, zoneID: zoneID)
         let deletions = batch.uniqueDeletions
 
-        guard !batch.records.isEmpty || !deletions.isEmpty else { return PushReport() }
+        guard !batch.records.isEmpty || !deletions.isEmpty else {
+            pruneTombstones(within: boundary)
+            return PushReport()
+        }
 
         let identities = SyncRecordMapper.identities(for: pushedLocalIds(snapshot), in: zoneID)
-        let outcome: PushOutcome
+        var outcome: PushOutcome
         var interruption: Error?
         do {
             outcome = try await transport.push(records: batch.records, deletions: deletions)
@@ -401,14 +418,17 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.error("Push failed: \(error.localizedDescription)")
             return PushReport(error: error)
         }
+        outcome.acceptMissingDeletions(of: deletions)
 
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         let savedRecords = settleSavedRecords(outcome, batch: batch, identities: identities, snapshot: snapshot)
 
+        var deletedRecords: [CKRecord.ID: SyncRecordIdentity] = [:]
         for recordID in outcome.deletedRecordIDs {
             guard let identity = identities[recordID] else { continue }
+            deletedRecords[recordID] = identity
             metadataStorage.removeTombstone(identity.id, type: identity.type)
         }
 
@@ -417,12 +437,13 @@ final class SyncCoordinator: ObservableObject {
         let rejectedCount = outcome.failures.count
         Self.logger.info("Push completed: \(savedCount) saved, \(deletedCount) deleted, \(rejectedCount) rejected")
 
-        let echoGuard = SyncEchoGuard(snapshot: snapshot, savedRecords: savedRecords)
+        let echoGuard = SyncEchoGuard(snapshot: snapshot, savedRecords: savedRecords, deletedRecords: deletedRecords)
         if let interruption {
             Self.logger.error("Push stopped part way: \(interruption.localizedDescription)")
             return PushReport(echoGuard: echoGuard, error: interruption)
         }
         guard outcome.hasFailures, let firstFailure = outcome.failures.values.first else {
+            pruneTombstones(within: boundary)
             return PushReport(echoGuard: echoGuard)
         }
         let rejection = SyncError.pushRejected(count: outcome.failures.count, detail: firstFailure.message)
@@ -440,7 +461,11 @@ final class SyncCoordinator: ObservableObject {
         for recordID in outcome.savedRecords.keys {
             guard let identity = identities[recordID] else { continue }
             savedRecords[recordID] = identity
-            changeTracker.clearDirty(identity, unlessEditedSince: snapshot)
+            guard !changeTracker.hasEdit(identity, since: snapshot) else { continue }
+            if batch.supersededTombstones.contains(identity) {
+                metadataStorage.removeTombstone(identity.id, type: identity.type)
+            }
+            changeTracker.clearDirty(identity.type, id: identity.id)
         }
         return savedRecords
     }
@@ -490,9 +515,17 @@ final class SyncCoordinator: ObservableObject {
     @discardableResult
     internal func applyPullResult(_ result: PullResult, echoGuard: SyncEchoGuard? = nil) async -> Bool {
         let settings = services.appSettingsStorage.loadSync()
-        let storesPersisted = applyRemoteChanges(result, settings: settings, echoGuard: echoGuard)
+        let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
+            echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
+        }
+        let storesPersisted = applyRemoteChanges(
+            result,
+            deletedRecordIDs: deletedRecordIDs,
+            settings: settings,
+            echoGuard: echoGuard
+        )
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
-            remoteSQLFavoriteBatch(from: result, settings: settings),
+            remoteSQLFavoriteBatch(from: result, deletedRecordIDs: deletedRecordIDs, settings: settings),
             echoGuard: echoGuard
         )
 
@@ -526,14 +559,33 @@ final class SyncCoordinator: ObservableObject {
     // for large payloads.
     /// Reports whether every record that can say so was persisted. A pull that answers false must
     /// not commit its token: the batch has to arrive again.
-    private func applyRemoteChanges(_ result: PullResult, settings: SyncSettings, echoGuard: SyncEchoGuard?) -> Bool {
+    private func applyRemoteChanges(
+        _ result: PullResult,
+        deletedRecordIDs: [CKRecord.ID],
+        settings: SyncSettings,
+        echoGuard: SyncEchoGuard?
+    ) -> Bool {
         services.connectionStorage.invalidateCache()
 
         changeTracker.isSuppressed = true
-        defer {
-            changeTracker.isSuppressed = false
-        }
+        let effects = applyRemoteRecords(
+            result.changedRecords,
+            deletedRecordIDs: deletedRecordIDs,
+            settings: settings,
+            echoGuard: echoGuard
+        )
+        changeTracker.isSuppressed = false
 
+        changeTracker.markDeleted(.tableFavorite, idsByOwner: effects.tableFavoriteIdsToRetire)
+        return !effects.persistenceFailed
+    }
+
+    private func applyRemoteRecords(
+        _ changedRecords: [CKRecord],
+        deletedRecordIDs: [CKRecord.ID],
+        settings: SyncSettings,
+        echoGuard: SyncEchoGuard?
+    ) -> SyncRemoteDeletionEffects {
         var actualConnectionChanges = false
         var groupsOrTagsChanged = false
         var persistenceFailed = false
@@ -543,54 +595,66 @@ final class SyncCoordinator: ObservableObject {
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
+        let settingsTombstoneIds = Set(metadataStorage.tombstones(for: .settings).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
+        var tableFavorites: [FavoriteTablesStorage.FavoriteEntry] = []
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
+        var tableFolderRecords: [CKRecord] = []
 
-        for record in result.changedRecords {
+        for record in changedRecords {
             if let echoGuard, echoGuard.withholds(record.recordID, tracker: changeTracker) {
                 Self.logger.info("Kept a local edit made while its record was being pushed")
                 continue
             }
-            switch record.recordType {
-            case SyncRecordType.connection.rawValue where settings.syncConnections:
+            guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            switch type {
+            case .connection:
                 switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
                 case .applied: actualConnectionChanges = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
+            case .group:
                 switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
+            case .tag:
                 switch applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
                 case .applied: groupsOrTagsChanged = true
                 case .failed: persistenceFailed = true
                 case .skipped: break
                 }
-            case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
+            case .sshProfile:
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
-            case SyncRecordType.credentialProfile.rawValue where settings.syncCredentialProfiles:
+            case .credentialProfile:
                 if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
                     persistenceFailed = true
                 }
-            case SyncRecordType.settings.rawValue where settings.syncSettings:
-                applyRemoteSettings(record)
-            case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
-                applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
-            case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
+            case .settings:
+                applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds)
+            case .tableFavorite:
+                if let favorite = remoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds) {
+                    tableFavorites.append(favorite)
+                }
+            case .favoriteDatabase:
                 applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
-            default:
+            case .tableFolder, .tableFolderItem:
+                tableFolderRecords.append(record)
+            case .favorite, .favoriteFolder:
                 break
             }
         }
+        applyRemoteTableFolderRecords(tableFolderRecords)
 
-        let deletions = applyRemoteDeletions(SyncPendingDeletions.parse(result.deletedRecordIDs, settings: settings))
-        actualConnectionChanges = actualConnectionChanges || deletions.connectionsChanged
-        groupsOrTagsChanged = groupsOrTagsChanged || deletions.groupsOrTagsChanged
-        persistenceFailed = persistenceFailed || deletions.persistenceFailed
+        var effects = applyRemoteDeletions(
+            SyncPendingDeletions.parse(deletedRecordIDs, settings: settings),
+            alongside: tableFavorites
+        )
+        actualConnectionChanges = actualConnectionChanges || effects.connectionsChanged
+        groupsOrTagsChanged = groupsOrTagsChanged || effects.groupsOrTagsChanged
+        effects.persistenceFailed = persistenceFailed || effects.persistenceFailed
 
         /// After the batch, never per record: a pull carries no dependency order, so a legal
         /// hierarchy change spread over two records passes through a state that reads as a cycle
@@ -603,13 +667,17 @@ final class SyncCoordinator: ObservableObject {
             services.appEvents.connectionUpdated.send(nil)
         }
 
-        return !persistenceFailed
+        return effects
     }
 
-    private func remoteSQLFavoriteBatch(from result: PullResult, settings: SyncSettings) -> RemoteSQLFavoriteBatch {
+    private func remoteSQLFavoriteBatch(
+        from result: PullResult,
+        deletedRecordIDs: [CKRecord.ID],
+        settings: SyncSettings
+    ) -> RemoteSQLFavoriteBatch {
         guard settings.syncSQLFavorites else { return RemoteSQLFavoriteBatch() }
 
-        let deletions = SyncPendingDeletions.parse(result.deletedRecordIDs, settings: settings)
+        let deletions = SyncPendingDeletions.parse(deletedRecordIDs, settings: settings)
         var batch = RemoteSQLFavoriteBatch(
             deletedFavoriteIds: deletions.sqlFavorites,
             deletedFolderIds: deletions.sqlFolders
@@ -668,6 +736,7 @@ final class SyncCoordinator: ObservableObject {
 
         var connections = services.connectionStorage.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
+            guard !connections[index].localOnly else { return .skipped }
             var incoming = remoteConnection
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 guard let reconciled = mergeLocalEdits(
@@ -678,15 +747,7 @@ final class SyncCoordinator: ObservableObject {
                 }
                 incoming = reconciled
             }
-            var merged = incoming
-            merged.localOnly = connections[index].localOnly
-            merged.passwordSource = connections[index].passwordSource
-            /// `credentialMode` has no field on the connection record yet, so a remote update
-            /// decodes as `.inline`. Adopting that would unlink the connection from its credential
-            /// profile, and linking has already deleted the password it used to hold, so the next
-            /// connect would go out with nothing.
-            merged.credentialMode = connections[index].credentialMode
-            connections[index] = merged
+            connections[index] = incoming.adoptingDeviceLocalState(from: connections[index])
         } else {
             connections.append(remoteConnection)
         }
@@ -786,8 +847,9 @@ final class SyncCoordinator: ObservableObject {
         services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
     }
 
-    private func applyRemoteSettings(_ record: CKRecord) {
+    private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
+              !tombstoneIds.contains(category),
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
         do {
@@ -800,20 +862,24 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    @discardableResult
-    private func applyRemoteTableFavorite(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+    private func remoteTableFavorite(
+        _ record: CKRecord,
+        tombstoneIds: Set<String>
+    ) -> FavoriteTablesStorage.FavoriteEntry? {
+        let recordName = record.recordID.recordName
         let entry: FavoriteTablesStorage.FavoriteEntry
         do {
             entry = try SyncRecordMapper.favoriteEntry(from: record)
         } catch {
-            let recordName = record.recordID.recordName
             Self.logger.error(
                 "Skipping remote favorite table \(recordName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
-            return false
+            return nil
         }
-        if tombstoneIds.contains(FavoriteTablesStorage.syncId(for: entry)) { return false }
-        return services.favoriteTablesStorage.addFavoriteWithoutSync(entry)
+        guard let recordId = SyncRecordType.parse(recordName: recordName)?.id,
+              !tombstoneIds.contains(recordId),
+              !tombstoneIds.contains(FavoriteTablesStorage.syncId(for: entry)) else { return nil }
+        return entry
     }
 
     /// Upserts rather than inserts. A database favorite carries a mutable payload, the environment

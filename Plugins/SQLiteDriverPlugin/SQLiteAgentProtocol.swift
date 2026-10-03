@@ -5,6 +5,37 @@
 
 import Foundation
 
+struct SQLiteAgentHelloBudget: Sendable {
+    private static let defaultMilliseconds = 30_000
+    private let deadline: PluginConnectDeadline
+
+    private init(
+        additionalFields: [String: String],
+        now: ContinuousClock.Instant
+    ) {
+        deadline = PluginConnectDeadline(
+            milliseconds: PluginConnectTimeout.milliseconds(
+                in: additionalFields,
+                default: Self.defaultMilliseconds
+            ),
+            now: now
+        )
+    }
+
+    static func forAgent(
+        additionalFields: [String: String],
+        now: ContinuousClock.Instant = .now
+    ) -> Self? {
+        guard additionalFields[SQLiteAgentProtocol.backendFieldKey]
+            == SQLiteAgentProtocol.agentBackendValue else { return nil }
+        return Self(additionalFields: additionalFields, now: now)
+    }
+
+    func remainingMilliseconds(at now: ContinuousClock.Instant = .now) -> Int {
+        deadline.remainingMilliseconds(at: now)
+    }
+}
+
 enum SQLiteAgentProtocol {
     static let version: UInt32 = 1
     static let maxFrameLength = 64 * 1_024 * 1_024

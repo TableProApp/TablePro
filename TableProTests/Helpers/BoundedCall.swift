@@ -25,13 +25,14 @@ internal enum BoundedCall {
     static let deadline = Duration.seconds(10)
 
     static func result<Value: Sendable>(
+        within timeout: Duration = deadline,
         onDeadline: @escaping @Sendable () -> Void = {},
         of work: @escaping @Sendable () async -> Value
     ) async -> Value? {
         await withCheckedContinuation { continuation in
             let arrival = FirstArrival(continuation)
             let timer = Task {
-                try? await Task.sleep(for: deadline)
+                try? await Task.sleep(for: timeout)
                 guard let pending = arrival.claim() else { return }
                 onDeadline()
                 pending.resume(returning: nil)
@@ -45,10 +46,11 @@ internal enum BoundedCall {
     }
 
     static func resultOnItsOwnThread<Value: Sendable>(
+        within timeout: Duration = deadline,
         onDeadline: @escaping @Sendable () -> Void = {},
         of work: @escaping @Sendable () -> Value
     ) async -> Value? {
-        await result(onDeadline: onDeadline) {
+        await result(within: timeout, onDeadline: onDeadline) {
             await withCheckedContinuation { continuation in
                 Thread.detachNewThread { continuation.resume(returning: work()) }
             }

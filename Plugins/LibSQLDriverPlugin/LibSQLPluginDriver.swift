@@ -8,16 +8,6 @@ import Foundation
 import os
 import TableProPluginKit
 
-// MARK: - Error
-
-struct LibSQLError: Error, PluginDriverError {
-    let message: String
-
-    var pluginErrorMessage: String { message }
-
-    static let notConnected = LibSQLError(message: String(localized: "Not connected to database"))
-}
-
 // MARK: - Plugin Driver
 
 final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -27,6 +17,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private let config: DriverConnectionConfig
+    private let localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
     private var backend: Backend?
     private var _serverVersion: String?
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
@@ -61,8 +52,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return base
     }
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
+    ) {
         self.config = config
+        self.localDatabaseRuntime = localDatabaseRuntime
     }
 
     private var isLocalMode: Bool {
@@ -91,7 +86,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
-        let localBackend = SQLiteLocalBackend()
+        let localBackend = SQLiteLocalBackend(runtime: localDatabaseRuntime)
         try await localBackend.open(path: path, loading: extensions)
         let rawHandle = await localBackend.dbHandleForInterrupt
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
@@ -119,12 +114,23 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let token = config.password
         let authToken: String? = token.isEmpty ? nil : token
 
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         let client = HranaHttpClient(baseUrl: baseUrl, authToken: authToken)
-        client.createSession()
+        client.createSession(connectTimeout: TimeInterval(connectTimeoutMilliseconds) / 1_000)
 
         do {
-            let libsqlVersion = try? await client.execute(sql: "SELECT libsql_version()")
-            let sqliteVersion = try await client.execute(sql: "SELECT sqlite_version()")
+            let libsqlVersion = try? await client.execute(
+                sql: "SELECT libsql_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
+            let sqliteVersion = try await client.execute(
+                sql: "SELECT sqlite_version()",
+                requestTimeout: deadline.remainingSeconds()
+            )
             let version = libsqlVersion?.rows.first?.first?.stringValue
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"
@@ -191,14 +197,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let stringArgs: [String?] = parameters.map { param -> String? in
-                switch param {
-                case .null: return nil
-                case .text(let s): return s
-                case .bytes(let d): return "X'" + d.map { String(format: "%02X", $0) }.joined() + "'"
-                }
-            }
-            let result = try await client.execute(sql: trimmed, args: stringArgs)
+            let result = try await client.execute(sql: trimmed, args: parameters)
             let executionTime = Date().timeIntervalSince(startTime)
             return mapExecuteResult(result, executionTime: executionTime)
         case .local(let localBackend):
@@ -213,7 +212,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch getBackend() {
         case .remote(let client):
             let startTime = Date()
-            let statements = queries.map { (sql: $0, args: [] as [String?]) }
+            let statements = queries.map { HranaStatement(sql: $0) }
             let results = try await client.executeBatch(statements: statements)
             let elapsed = Date().timeIntervalSince(startTime)
 
@@ -235,8 +234,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func cancelQuery() throws {
         lock.lock()
         let current = backend
-        if let interruptHandle = _dbHandleForInterrupt {
-            sqlite3_interrupt(interruptHandle)
+        if case .local(let localBackend) = current {
+            localBackend.cancelBusyWait()
+            if let interruptHandle = _dbHandleForInterrupt {
+                sqlite3_interrupt(interruptHandle)
+            }
         }
         lock.unlock()
 
@@ -245,13 +247,18 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var hasRetriedLocalBusyWait: Bool {
+        guard case .local(let localBackend) = getBackend() else { return false }
+        return localBackend.hasRetriedBusyWait
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(seconds)
         switch getBackend() {
         case .remote(let client):
-            client.setQueryTimeout(seconds)
+            client.setQueryTimeout(boundedSeconds)
         case .local(let localBackend):
-            guard seconds > 0 else { return }
-            await localBackend.applyBusyTimeout(Int32(seconds * 1_000))
+            await localBackend.applyBusyTimeout(PluginQueryTimeout.int32Milliseconds(boundedSeconds))
         case nil:
             break
         }

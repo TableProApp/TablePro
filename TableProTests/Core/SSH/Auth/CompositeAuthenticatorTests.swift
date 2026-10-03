@@ -28,7 +28,6 @@ struct CompositeAuthenticatorCancellationTests {
 
     @Test("Non-authentication tunnel errors are not user cancellations")
     func nonAuthErrorsAreNotUserCancelled() {
-        #expect(!SSHTunnelError.connectionTimeout.isUserCancelledAuthentication)
         #expect(!SSHTunnelError.channelOpenFailed.isUserCancelledAuthentication)
     }
 }

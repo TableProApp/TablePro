@@ -21,7 +21,7 @@ import Foundation
 ///
 /// The final `;` of a unit belongs to it, except after a trigger whose body is a `CALL`: measured on Oracle 23ai,
 /// `CREATE TRIGGER ... CALL p(:NEW.a);` is stored INVALID and the same text without the `;` compiles.
-/// `scripts/check-oracle-plsql-terminators.sh` re-measures both rules against a live server.
+/// `scripts/probes/check-oracle-plsql-terminators.sh` re-measures both rules against a live server.
 public struct PLSQLUnitTracker: SQLStatementBoundaryTracking {
     private enum Lead {
         case start

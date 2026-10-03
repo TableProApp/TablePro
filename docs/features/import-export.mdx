@@ -247,11 +247,17 @@ Right-click tables in the sidebar and choose **Transfer To…** to copy their ro
   </Step>
 </Steps>
 
-Rows only. The destination table has to exist and its column names have to match, because inventing DDL that crosses from one engine to another would create tables whose types quietly disagree with the data landing in them. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
+Rows only, into a destination table that already exists. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
 
 <Warning>
 **Delete existing rows first** empties each destination table before writing. There is no undo.
 </Warning>
+
+### Column mapping
+
+Each ticked table shows how many of its columns map. Columns match by name, the same spelling first and then the same name in another case. Click the count to point a column at a different destination column, or pick **Skip** to leave it out. **Match by Name** puts every column back.
+
+A destination column takes one source column. Map a second column onto it and **Transfer** stays off until one of the two moves or is skipped.
 
 ## Clipboard paste (CSV/TSV)
 
@@ -287,7 +293,7 @@ The extension picks the format, so one command covers all of them. A file no for
 | Option | What it does | Default |
 |--------|-------------|---------|
 | On error | Stop and Rollback, Stop and Commit, or Skip and Continue | Stop and Rollback |
-| Encoding | UTF-8, UTF-16, UTF-16 LE, UTF-16 BE, Latin-1, Windows-1252, or ASCII | UTF-8 |
+| Encoding | UTF-8, UTF-16, UTF-16 LE, UTF-16 BE, Latin-1, Windows-1252, ASCII, Shift JIS, EUC-JP, GB 18030, Big5, or EUC-KR | UTF-8 |
 | Wrap in transaction | Runs every statement inside one transaction. Dimmed in Skip and Continue | Yes |
 | Disable foreign key checks | Suspends constraint checks for the import | Yes |
 
@@ -298,6 +304,8 @@ The extension picks the format, so one command covers all of them. A file no for
 | **Skip and Continue** | Logs it and carries on, including a line the parser cannot read. No transaction |
 
 **UTF-16** reads the byte order from the mark at the start of the file and falls back to big-endian, which is what a file with no mark means. Pick **UTF-16 LE** or **UTF-16 BE** for a file that has no mark and is not big-endian. Latin-1 and Windows-1252 differ over the bytes `0x80` to `0x9F`: a dump written by MySQL keeps its curly quotes, en dashes and euro sign there, so Windows-1252 is the one to pick for it.
+
+When the preview cannot read the file in the chosen encoding, the dialog switches to the encoding the dump declares in its `SET NAMES` or `SET client_encoding`, or else to the encoding the text matches. It picks Shift JIS, GB 18030 or Big5 only when the dump declares it, because a byte in those encodings can hide a quote's escaping backslash; choose one by hand for a script that declares nothing. A switch the dialog made is not remembered for the next import. A dump read in any encoding but UTF-8 or ASCII reaches the server as UTF-8, so its `SET NAMES cp932` or `SET client_encoding = 'SJIS'` does not run as written: MySQL and MariaDB keep the connection's own character set, and PostgreSQL gets `SET client_encoding = 'UTF8'`. On MySQL and MariaDB, a `_binary` value in a Latin-1 or Windows-1252 dump is sent as the bytes it held. Any other non-UTF-8 dump stops at a `_binary` value holding non-ASCII bytes, since those cannot be read back exactly; export it with `--hex-blob` instead.
 
 On SQL Server a file that holds a `GO` line runs a batch at a time, cut at its `GO` lines the way `sqlcmd` cuts it, so every count and failure here is a batch rather than a statement. A file with no `GO` line runs a statement at a time. See [Scripts and batches](/databases/mssql#scripts-and-batches).
 
@@ -320,10 +328,14 @@ A server that rejects the statement stops the import with that error, so clear t
 
 The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON streamed a line at a time, and TablePro's own export shape `{ "table": [ {…} ] }`, so an export round-trips. Then choose a destination:
 
-- **Existing table**: map each JSON field to a column. Fields auto-match by name; switch one off to skip it. A column with no matching field keeps its default or NULL. The list holds tables and partitioned tables, and the server routes each row to the right partition.
+- **Existing table**: map each JSON field to a column, as [Map fields to columns](#map-fields-to-columns) describes. A column with no field mapped to it keeps its default or NULL. The list holds tables and partitioned tables, and the server routes each row to the right partition.
 - **New table**: the name field opens on a name derived from the file, already selected, so one keystroke replaces it. Review the inferred columns underneath. Name, type, primary key, nullable flag, and default are all editable before the table is created.
 
+Both lists come from every row in the file. A key that only the last rows carry is still offered, and an inferred type fits every value the field holds, so a field that is a number in all rows but one is typed as text.
+
 The proposed name drops the extension, turns spaces and punctuation into underscores, and lowercases the result. Letters from any script are kept as they are. On Oracle the name comes through in upper case instead, and is cut to 30 bytes rather than 63. A name an existing table or view already holds gains a numeric suffix, so re-importing `users.csv` next to a `users` table proposes `users_2`. Whatever you type over it is held to the same rules: a name already taken, one longer than the engine allows, or one starting with a prefix the engine keeps for itself is reported in the sheet, with **Import** off until it changes.
+
+The table list, the new table and the rows all belong to the database and schema the connection was on when the sheet opened. Switching database in another window while the sheet is open leaves the import where it was.
 
 Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text. In a new PostgreSQL table their column is `jsonb`, or `json` on 9.2 and 9.3, and `text` on 9.1, which has no JSON type.
 
@@ -344,19 +356,35 @@ The workbook is read whole rather than streamed, because a sheet's rows refer ba
 
 ### Import CSV
 
-CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file; change any option and the mapping re-reads it.
+CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file. Changing any option reads the file again. A field that is still there keeps the column it was mapped to. In a new table each column setting you changed stays with its field, even through a read that misses the field, such as one with the wrong delimiter. Settings you left alone follow the new read, such as a type inferred again from trimmed values.
 
 | Option | What it does | Default |
 |--------|-------------|---------|
 | Delimiter | Comma, semicolon, tab, or pipe | Auto-detect |
 | Quote character | Double or single quote | Double quote (`"`) |
-| Encoding | UTF-8, ISO Latin 1, or Windows-1252 | Auto-detect |
+| Encoding | UTF-8, UTF-16 LE, UTF-16 BE, ISO Latin 1, Windows-1252, Shift JIS, EUC-JP, GB 18030, Big5, or EUC-KR | Auto-detect |
 | First row is a header | Row 1 becomes the column names; off imports it as data | Yes |
 | Trim leading and trailing spaces | Trims each field before import | No |
 | Treat empty values as NULL | Inserts NULL instead of empty text | Yes |
 | NULL text | One more value to import as NULL, `\N` for instance | None |
 
-Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one.
+Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one. A line the encoding cannot read stops the import before any row is deleted or inserted, and the error names the line.
+
+### Map fields to columns
+
+Every field in the file gets a row with a checkbox and a column menu. A field named like a column, ignoring case, starts mapped to it. The rest start on **Skip**.
+
+**Match Columns** above the rows fills them all at once:
+
+| Item | Result |
+|---|---|
+| **Match by Name** | Each field goes to the column of the same name, ignoring case. Fields with no such column are skipped |
+| **Match by Position** | The first field goes to the first column, the second to the second, and so on. Dimmed for JSON, whose fields are listed alphabetically |
+| **Use Saved Mapping** | Puts back the mapping saved for this table |
+
+Clicking **Import** saves each choice that differs from Match by Name for that table, whether the import succeeds or not. The next file imported into the same table starts from those choices, and the sheet reads **Restored the mapping saved for** and the table name. A saved column the table no longer has falls back to the name match. Importing into a new table saves any column you renamed, so the same file lands on the renamed columns next time.
+
+Saved mappings stay on this Mac. They follow a renamed table and are forgotten when the table is dropped, from the sidebar or with SQL as [Drop or rename with SQL](/features/table-operations#drop-or-rename-with-sql) describes, and when the connection is deleted.
 
 ### Row imports
 

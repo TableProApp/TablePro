@@ -68,8 +68,8 @@ struct PluginDriverAdapterSystemDatabaseTests {
         let result = try await adapter.fetchAllDatabaseMetadata()
 
         #expect(result.filter(\.isSystemDatabase).map(\.name) == ["master", "tempdb"])
-        #expect(result.first { $0.name == "master" }?.icon == "gearshape.fill")
-        #expect(result.first { $0.name == "sales" }?.icon == "cylinder.fill")
+        #expect(result.first { $0.name == "master" }?.icon == "gearshape")
+        #expect(result.first { $0.name == "sales" }?.icon == "cylinder")
     }
 
     @Test("A database the driver flags stays a system database even when the type's list omits it")

@@ -44,7 +44,7 @@ struct EtcdStatementGenerator {
                 guard let key = extractKey(from: change) else {
                     throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
                 }
-                commands = ["del \(escapeArgument(key))"]
+                commands = ["del \(EtcdCommandArgument.quoted(key))"]
             }
             writes += commands.map { PluginRowWrite(statement: $0, rowIndices: [change.rowIndex]) }
         }
@@ -90,13 +90,7 @@ struct EtcdStatementGenerator {
         } else {
             fullKey = k
         }
-        let v = value ?? ""
-        var cmd = "put \(escapeArgument(fullKey)) \(escapeArgument(v))"
-        if let lease = leaseId, !lease.isEmpty, lease != "0" {
-            cmd += " --lease=\(lease)"
-        }
-
-        return [cmd]
+        return [Self.putCommand(key: fullKey, value: value ?? "", lease: leaseId)]
     }
 
     private func updateCommands(for change: PluginRowChange) throws -> [String] {
@@ -120,28 +114,27 @@ struct EtcdStatementGenerator {
         }
 
         let shouldDeleteOriginalKey = newKey != originalKey
-        let lease = leaseChange.map { $0.newValue.asText ?? "" }
+        let editedLease = leaseChange.map { $0.newValue.asText ?? "" }
+        let lease = editedLease ?? originalText(at: leaseColumnIndex, of: change)
 
         if valueChange != nil || newKey != originalKey {
-            let newValue = valueChange.map { $0.newValue.asText ?? "" } ?? extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(newValue))"
-            if let lease, !lease.isEmpty, lease != "0" {
-                cmd += " --lease=\(lease)"
-            }
-            commands.append(cmd)
+            let newValue = valueChange.map { $0.newValue.asText ?? "" } ?? originalText(at: valueColumnIndex, of: change) ?? ""
+            commands.append(Self.putCommand(key: newKey, value: newValue, lease: lease))
             if shouldDeleteOriginalKey {
-                commands.append("del \(escapeArgument(originalKey))")
+                commands.append("del \(EtcdCommandArgument.quoted(originalKey))")
             }
-        } else if let lease {
-            let currentValue = extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(currentValue))"
-            if !lease.isEmpty && lease != "0" {
-                cmd += " --lease=\(lease)"
-            }
-            commands.append(cmd)
+        } else if editedLease != nil {
+            let currentValue = originalText(at: valueColumnIndex, of: change) ?? ""
+            commands.append(Self.putCommand(key: newKey, value: currentValue, lease: lease))
         }
 
         return commands
+    }
+
+    private static func putCommand(key: String, value: String, lease: String?) -> String {
+        let put = "put \(EtcdCommandArgument.quoted(key)) \(EtcdCommandArgument.quoted(value))"
+        guard let lease, !lease.isEmpty, lease != "0" else { return put }
+        return put + " --lease=\(lease)"
     }
 
     /// An edit to a column no `put` can set, which the save would otherwise drop. A new row's NULL
@@ -167,29 +160,13 @@ struct EtcdStatementGenerator {
     // MARK: - Helpers
 
     private func extractKey(from change: PluginRowChange) -> String? {
-        guard let keyIndex = keyColumnIndex,
-              let originalRow = change.originalRow,
-              keyIndex < originalRow.count else { return nil }
-        return originalRow[keyIndex].asText
+        originalText(at: keyColumnIndex, of: change)
     }
 
-    private func extractOriginalValue(from change: PluginRowChange) -> String? {
-        guard let valueIndex = valueColumnIndex,
+    private func originalText(at columnIndex: Int?, of change: PluginRowChange) -> String? {
+        guard let columnIndex,
               let originalRow = change.originalRow,
-              valueIndex < originalRow.count else { return nil }
-        return originalRow[valueIndex].asText
-    }
-
-    private func escapeArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
-        if needsQuoting {
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-            return "\"\(escaped)\""
-        }
-        return value
+              columnIndex < originalRow.count else { return nil }
+        return originalRow[columnIndex].asText
     }
 }

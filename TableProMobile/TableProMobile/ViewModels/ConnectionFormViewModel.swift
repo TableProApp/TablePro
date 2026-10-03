@@ -166,7 +166,7 @@ final class ConnectionFormViewModel {
     }
 
     private func hydrateDatabaseFile(from connection: DatabaseConnection) {
-        guard connection.type == .sqlite || connection.type == .duckdb else { return }
+        guard connection.type.isLocalFile else { return }
         let location = localFiles.location(forStoredPath: connection.database)
         guard location != .inMemory else {
             if connection.type == .duckdb {
@@ -191,7 +191,7 @@ final class ConnectionFormViewModel {
     }
 
     var isFileBased: Bool {
-        type == .sqlite || type == .duckdb
+        type.isLocalFile
     }
 
     var isEditing: Bool { existingConnection != nil }
@@ -217,6 +217,15 @@ final class ConnectionFormViewModel {
             sshTunnel: sshTunnel,
             oracle: oracleOptions
         )
+    }
+
+    var offersOracleVerifyCa: Bool {
+        existingConnection?.sslConfiguration?.mode == .verifyCa
+    }
+
+    var oracleSSLModeNote: String? {
+        guard type == .oracle, oracleSSLMode == .verifyCa else { return nil }
+        return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
     }
 
     private var effectiveSSLMode: SSLConfiguration.SSLMode? {

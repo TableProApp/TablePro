@@ -63,8 +63,9 @@ env:
 jobs:
   # Reproduces the paths filter this workflow used to carry on `on: pull_request`. Keep this
   # list and the `push:` paths above identical, so a pull request and a push to main run the
-  # same suites. `Native/` is on both because the Dameng steps below build and test the Rust
-  # bridge that lives there, and a bridge-only change would otherwise compile nowhere.
+  # same suites. `Native/` is on both because the Dameng and SAP HANA steps below build and test
+  # the Rust and Go bridges that live there, and a bridge-only change would otherwise compile
+  # nowhere.
   changes:
     name: Detect relevant changes
     runs-on: ubuntu-latest
@@ -194,6 +195,17 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
+      - name: Set up Go for the SAP HANA helper
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: Native/HanaBridge/go.mod
+          cache-dependency-path: Native/HanaBridge/go.sum
+
+      # Xcode copies tablepro-hana-helper into HanaDriver and HanaDriverTests and never builds
+      # it, so both targets fail with "Build input file cannot be found" until this has run.
+      - name: Build the SAP HANA helper
+        run: scripts/build-hana.sh arm64
+
       # Only the bridge's own FFI tests live here. The DM8 protocol crates are a pinned
       # revision of TableProApp/rust-dameng and carry their own suite in that repository.
       # Run from the bridge directory so rustup reads its rust-toolchain.toml: rustup resolves
@@ -202,6 +214,26 @@ jobs:
       - name: Test Dameng native bridge
         working-directory: Native/DamengBridge
         run: cargo test --locked
+
+      # Only the helper's own tests, none of which needs a HANA server. Run from the bridge
+      # directory so the go command reads its go.mod and builds with the toolchain it pins.
+      # staticcheck and govulncheck are pinned here and fetched by `go run`, so they never
+      # enter the helper's go.mod.
+      - name: Test the SAP HANA helper
+        working-directory: Native/HanaBridge
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite: $unformatted"
+            exit 1
+          fi
+          go mod verify
+          go mod tidy -diff
+          go vet ./...
+          go test -race ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, and the project only
       # needs the variable to resolve, so an empty value is enough and no secret is read here.
@@ -267,15 +299,30 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
-      # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
-      # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
-      # step nothing runs them and they rot silently.
+      # DamengDriverTests and HanaDriverTests are the plugin-owned unit bundles, so they cannot
+      # move into TableProTests the way pure-logic plugin tests do: the Dameng suites import the
+      # plugin's C bridge module (CDameng), and HanaDriverTests compiles the whole plugin and
+      # carries tablepro-hana-helper in its own Contents/MacOS, where the plugin looks for it.
+      # Without these steps nothing runs them and they rot silently.
       - name: Build the Dameng driver tests
         run: |
           set -o pipefail
           xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme DamengDriverTests \
+            -destination "$TEST_DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Build the SAP HANA driver tests
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme HanaDriverTests \
             -destination "$TEST_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
             -clonedSourcePackagesDirPath ~/.spm-cache \
@@ -314,27 +361,19 @@ jobs:
 
       - uses: ./.github/actions/unpack-test-products
 
-      # Quarantined cases are listed one per line in .github/macos-test-quarantine.txt. Burn that
-      # list down. The script enumerates the target first and refuses to run if any entry would
-      # skip nothing, because xcodebuild accepts -skip-testing for a case that does not exist and
-      # says nothing: that left one line inert for 479 commits, and it is also what happens to a
-      # Swift Testing case written without its parentheses.
       - name: Run unit tests
         run: |
           set -o pipefail
-          # To a file on its own line, not through a process substitution. `< <(...)` discards the
-          # producer's exit status, so the script refusing an entry that would skip nothing printed
-          # its diagnostic, exited 1, and the step carried on to run the whole suite unskipped and
-          # report success. The refusal the comment above promises never once failed a job.
+          # To a file, not a process substitution, which would discard the lister's exit status.
           SKIP_FILE="${RUNNER_TEMP:-.}/quarantine-skip-args.txt"
-          scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests "$XCTESTRUN" "$TEST_DESTINATION" > "$SKIP_FILE"
-          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither
-          # mapfile nor readarray, and a `run:` block gets that bash.
+          scripts/ci/list-tests.sh \
+            --xctestrun "$XCTESTRUN" \
+            --target TableProTests \
+            --quarantine .github/macos-test-quarantine.txt \
+            --skip > "$SKIP_FILE"
+          # A read loop, because the runner's /bin/bash 3.2 has no mapfile.
           SKIP_ARGS=()
           while IFS= read -r arg; do
-            # A blank line would become a literal empty argument, and xcodebuild reads that as a
-            # build action and refuses the whole run. An empty array expands to nothing and is
-            # fine; one empty string is not.
             [ -n "$arg" ] || continue
             SKIP_ARGS+=("$arg")
           done < "$SKIP_FILE"
@@ -352,6 +391,15 @@ jobs:
           set -o pipefail
           xcodebuild test-without-building \
             -xctestrun "$DAMENG_XCTESTRUN" \
+            -destination "$TEST_DESTINATION" \
+            -parallel-testing-enabled NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Run SAP HANA driver tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -xctestrun "$HANA_XCTESTRUN" \
             -destination "$TEST_DESTINATION" \
             -parallel-testing-enabled NO \
             | xcbeautify --renderer github-actions
@@ -412,19 +460,14 @@ jobs:
           SHARD_COUNT: ${{ matrix.of }}
         run: |
           set -o pipefail
-          # To a file on its own line, so a failure of the lister fails the step. A process
-          # substitution discards its exit status, which reads here as "the shard selected nothing".
           ONLY_FILE="${RUNNER_TEMP:-.}/shard-only-args.txt"
           scripts/ci/list-tests.sh \
             --xctestrun "$XCTESTRUN" \
             --target TableProUITests \
             --quarantine .github/macos-ui-test-quarantine.txt \
             --shard "$SHARD/$SHARD_COUNT" > "$ONLY_FILE"
-          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither.
           ONLY_ARGS=()
           while IFS= read -r arg; do
-            # The count check below cannot see an empty argument: one blank line makes the count 1
-            # and xcodebuild then reads that empty argument as a build action.
             [ -n "$arg" ] || continue
             ONLY_ARGS+=("$arg")
           done < "$ONLY_FILE"

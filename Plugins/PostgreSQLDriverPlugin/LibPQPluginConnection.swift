@@ -13,6 +13,20 @@ import os
 import OSLog
 import TableProPluginKit
 
+private final class LibPQCancelRequest: @unchecked Sendable {
+    private let cancelObject: OpaquePointer
+
+    init(_ cancelObject: OpaquePointer) {
+        self.cancelObject = cancelObject
+    }
+
+    func perform() {
+        defer { PQfreeCancel(cancelObject) }
+        var errorBuffer = [CChar](repeating: 0, count: 256)
+        PQcancel(cancelObject, &errorBuffer, Int32(errorBuffer.count))
+    }
+}
+
 // MARK: - Connection Class
 
 /// libpq allows one thread at a time on a `PGconn`, so every libpq call on `conn` runs on `queue`,
@@ -23,8 +37,12 @@ import TableProPluginKit
 final class LibPQPluginConnection: @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
-    private static let connectTimeoutMicroseconds: pg_usec_time_t = 10_000_000
     private static let pollSliceMicroseconds: pg_usec_time_t = 100_000
+    private static let cancellationQueue = DispatchQueue(
+        label: "com.TablePro.libpq.plugin.cancel",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
 
     private var conn: OpaquePointer?
     private let queue = DispatchQueue(label: "com.TablePro.libpq.plugin", qos: .userInitiated)
@@ -38,6 +56,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let options: String?
     private let applicationName: String?
     private let suppressServerSideCancel: Bool
+    private let connectTimeout: LibPQConnectTimeout
 
     private let stateLock = NSLock()
     let cancellationGate = PluginQueryCancellationGate()
@@ -51,6 +70,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _hasLostConnection = false
     private var serverMessages: Unmanaged<LibPQServerMessageSink>?
     private var _standardConformingStrings = true
+    /// Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
+    private var activeConnectDeadline: LibPQConnectDeadline?
+    private var bootstrapTransportFailed = false
 
     var isConnected: Bool {
         stateLock.lock()
@@ -93,7 +115,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
         sslConfig: SSLConfiguration = SSLConfiguration(),
         options: String? = nil,
         applicationName: String? = nil,
-        suppressServerSideCancel: Bool = false
+        suppressServerSideCancel: Bool = false,
+        connectTimeout: LibPQConnectTimeout = LibPQConnectTimeout(
+            milliseconds: LibPQConnectTimeout.defaultMilliseconds
+        )
     ) {
         self.host = host
         self.port = port
@@ -104,6 +129,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.options = options
         self.applicationName = applicationName
         self.suppressServerSideCancel = suppressServerSideCancel
+        self.connectTimeout = connectTimeout
     }
 
     deinit {
@@ -140,7 +166,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
     func cancelConnect() {
         stateLock.lock()
         _isConnectCancelled = true
+        let currentConnection = conn
         stateLock.unlock()
+        if let currentConnection { requestServerCancel(on: currentConnection, evenWhenSuppressed: true) }
     }
 
     private var isConnectCancelled: Bool {
@@ -150,9 +178,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     private func performConnect(reportingStage report: @escaping ConnectionStageReporter) throws {
+        let deadline = LibPQConnectDeadline(
+            timeout: connectTimeout,
+            nowMicroseconds: Int64(PQgetCurrentTimeUSec())
+        )
         guard let connection = connectionString.withCString({ PQconnectStart($0) }) else {
             throw LibPQPluginError.connectionFailed
         }
+        bootstrapTransportFailed = false
 
         var adopted = false
         defer {
@@ -163,8 +196,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw connectionError(from: connection)
         }
 
-        try pollUntilConnected(connection, reportingStage: report)
-        configureEstablishedConnection(connection)
+        try pollUntilConnected(connection, deadline: deadline, reportingStage: report)
+        guard PQsetnonblocking(connection, 1) == 0 else { throw connectionError(from: connection) }
+        try configureEstablishedConnection(connection, deadline: deadline)
         let sink = LibPQServerMessageSink.install(on: connection)
 
         stateLock.lock()
@@ -172,16 +206,40 @@ final class LibPQPluginConnection: @unchecked Sendable {
         serverMessages = sink
         _lastTransactionState = .idle
         _hasLostConnection = false
-        _isConnected = true
+        _isConnected = false
         stateLock.unlock()
+        activeConnectDeadline = deadline
         adopted = true
+    }
+
+    /// The core calls this only after schema and flavor-specific catalog probes. Until then every
+    /// statement uses libpq's nonblocking API and the original absolute connect deadline.
+    func finishConnecting() async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            try checkConnectCancellation()
+            guard let deadline = activeConnectDeadline else { return }
+            guard deadline.remainingMicroseconds(nowMicroseconds: Int64(PQgetCurrentTimeUSec())) != nil else {
+                throw LibPQPluginError.connectionTimedOut
+            }
+            guard let connection = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard !bootstrapTransportFailed, PQstatus(connection) == CONNECTION_OK else {
+                throw connectionError(from: connection)
+            }
+            guard PQsetnonblocking(connection, 0) == 0 else { throw connectionError(from: connection) }
+            try checkConnectCancellation()
+            guard deadline.remainingMicroseconds(nowMicroseconds: Int64(PQgetCurrentTimeUSec())) != nil else {
+                throw LibPQPluginError.connectionTimedOut
+            }
+            activeConnectDeadline = nil
+            stateLock.withLock { _isConnected = true }
+        }
     }
 
     private func pollUntilConnected(
         _ connection: OpaquePointer,
+        deadline: LibPQConnectDeadline,
         reportingStage report: @escaping ConnectionStageReporter
     ) throws {
-        let deadline = PQgetCurrentTimeUSec() + Self.connectTimeoutMicroseconds
         var status = PGRES_POLLING_WRITING
         var lastHandshakeStatus: ConnStatusType?
 
@@ -198,14 +256,19 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 let socket = PQsocket(connection)
                 guard socket >= 0 else { throw connectionError(from: connection) }
 
-                let now = PQgetCurrentTimeUSec()
-                guard now < deadline else { throw LibPQPluginError.connectionTimedOut }
+                let now = Int64(PQgetCurrentTimeUSec())
+                guard let pollDeadline = deadline.nextPollDeadline(
+                    nowMicroseconds: now,
+                    maximumSliceMicroseconds: Int64(Self.pollSliceMicroseconds)
+                ) else {
+                    throw LibPQPluginError.connectionTimedOut
+                }
 
                 let ready = PQsocketPoll(
                     socket,
                     status == PGRES_POLLING_READING ? 1 : 0,
                     status == PGRES_POLLING_WRITING ? 1 : 0,
-                    min(deadline, now + Self.pollSliceMicroseconds)
+                    pg_usec_time_t(pollDeadline)
                 )
                 guard ready >= 0 else { throw LibPQPluginError.connectionFailed }
                 guard ready > 0 else { continue }
@@ -252,14 +315,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return error
     }
 
-    private func configureEstablishedConnection(_ connection: OpaquePointer) {
+    private func configureEstablishedConnection(
+        _ connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws {
         logUnexpectedClientEncoding(of: connection)
-        runSessionSetupStatement(LibPQStringConformance.enableStatement, on: connection)
-        storeStandardConformingStrings(
-            reportedStandardConformingStrings(on: connection)
-                ?? queriedStandardConformingStrings(on: connection)
-                ?? true
+        try runSessionSetupStatement(
+            LibPQStringConformance.enableStatement,
+            on: connection,
+            deadline: deadline
         )
+        let standardConformingStrings = try (
+            reportedStandardConformingStrings(on: connection)
+                ?? queriedStandardConformingStrings(on: connection, deadline: deadline)
+        )
+        storeStandardConformingStrings(standardConformingStrings ?? true)
 
         let version = PQserverVersion(connection)
         guard version > 0 else { return }
@@ -289,11 +359,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
         )
     }
 
-    private func runSessionSetupStatement(_ statement: String, on connection: OpaquePointer) {
-        let result = statement.withCString { PQexec(connection, $0) }
+    private func runSessionSetupStatement(
+        _ statement: String,
+        on connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws {
+        let result = try bootstrapResult(for: statement, on: connection, deadline: deadline)
         defer { PQclear(result) }
         guard PQresultStatus(result) != PGRES_COMMAND_OK else { return }
-        let message = result.flatMap { PQresultErrorMessage($0) }.map { String(cString: $0) } ?? ""
+        let message = PQresultErrorMessage(result).map { String(cString: $0) } ?? ""
         Self.logger.warning(
             "Session setup statement failed: \(statement, privacy: .public) \(message, privacy: .private)"
         )
@@ -306,8 +380,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return LibPQStringConformance.isOn(String(cString: value))
     }
 
-    private func queriedStandardConformingStrings(on connection: OpaquePointer) -> Bool? {
-        let result = LibPQStringConformance.showQuery.withCString { PQexec(connection, $0) }
+    private func queriedStandardConformingStrings(
+        on connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws -> Bool? {
+        let result = try bootstrapResult(
+            for: LibPQStringConformance.showQuery,
+            on: connection,
+            deadline: deadline
+        )
         defer { PQclear(result) }
         guard PQresultStatus(result) == PGRES_TUPLES_OK,
               PQntuples(result) > 0,
@@ -315,6 +396,112 @@ final class LibPQPluginConnection: @unchecked Sendable {
             return nil
         }
         return LibPQStringConformance.isOn(String(cString: value))
+    }
+
+    /// Executes a bootstrap statement without ever entering libpq's blocking `PQexec` path. A
+    /// statement can produce more than one result, so this mirrors `PQexec` by returning the last
+    /// one while still polling every byte under the same connect deadline.
+    private func bootstrapResult(
+        for statement: String,
+        on connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws -> OpaquePointer {
+        do {
+            return try uncheckedBootstrapResult(for: statement, on: connection, deadline: deadline)
+        } catch {
+            bootstrapTransportFailed = true
+            throw error
+        }
+    }
+
+    private func uncheckedBootstrapResult(
+        for statement: String,
+        on connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws -> OpaquePointer {
+        try checkBootstrapState(connection, deadline: deadline)
+        let sent = statement.withCString { PQsendQuery(connection, $0) }
+        guard sent != 0 else { throw connectionError(from: connection) }
+
+        while true {
+            try checkBootstrapState(connection, deadline: deadline)
+            let flush = PQflush(connection)
+            guard flush >= 0 else { throw connectionError(from: connection) }
+            guard flush != 0 else { break }
+            try pollBootstrapSocket(connection, reads: false, writes: true, deadline: deadline)
+        }
+
+        var finalResult: OpaquePointer?
+        var returnsFinalResult = false
+        defer {
+            if !returnsFinalResult, let finalResult { PQclear(finalResult) }
+        }
+        while true {
+            while PQisBusy(connection) != 0 {
+                try checkBootstrapState(connection, deadline: deadline)
+                guard PQconsumeInput(connection) != 0 else { throw connectionError(from: connection) }
+                guard PQisBusy(connection) != 0 else { break }
+                try pollBootstrapSocket(connection, reads: true, writes: false, deadline: deadline)
+            }
+
+            guard let result = PQgetResult(connection) else { break }
+            if let finalResult { PQclear(finalResult) }
+            finalResult = result
+        }
+
+        guard let finalResult else { throw connectionError(from: connection) }
+        returnsFinalResult = true
+        return finalResult
+    }
+
+    private func pollBootstrapSocket(
+        _ connection: OpaquePointer,
+        reads: Bool,
+        writes: Bool,
+        deadline: LibPQConnectDeadline
+    ) throws {
+        try checkBootstrapState(connection, deadline: deadline)
+        let now = Int64(PQgetCurrentTimeUSec())
+        guard let pollDeadline = deadline.nextPollDeadline(
+            nowMicroseconds: now,
+            maximumSliceMicroseconds: Int64(Self.pollSliceMicroseconds)
+        ) else {
+            requestServerCancel(on: connection, evenWhenSuppressed: true)
+            throw LibPQPluginError.connectionTimedOut
+        }
+        let socket = PQsocket(connection)
+        guard socket >= 0 else { throw connectionError(from: connection) }
+        let ready = PQsocketPoll(
+            socket,
+            reads ? 1 : 0,
+            writes ? 1 : 0,
+            pg_usec_time_t(pollDeadline)
+        )
+        guard ready >= 0 else { throw connectionError(from: connection) }
+    }
+
+    private func checkBootstrapState(
+        _ connection: OpaquePointer,
+        deadline: LibPQConnectDeadline
+    ) throws {
+        if isConnectCancelled {
+            requestServerCancel(on: connection, evenWhenSuppressed: true)
+            throw CancellationError()
+        }
+        guard deadline.remainingMicroseconds(nowMicroseconds: Int64(PQgetCurrentTimeUSec())) != nil else {
+            requestServerCancel(on: connection, evenWhenSuppressed: true)
+            throw LibPQPluginError.connectionTimedOut
+        }
+    }
+
+    private func requestServerCancel(on connection: OpaquePointer, evenWhenSuppressed: Bool = false) {
+        guard evenWhenSuppressed || !suppressServerSideCancel,
+              let cancelObject = PQgetCancel(connection) else { return }
+        // PGcancel owns a snapshot of the backend identity, independent of PGconn. Running the
+        // potentially blocking cancellation exchange here would let it overrun the very deadline
+        // it is enforcing; the connection can be closed safely once this object has been created.
+        let request = LibPQCancelRequest(cancelObject)
+        Self.cancellationQueue.async { request.perform() }
     }
 
     private func refreshStandardConformingStrings(from connection: OpaquePointer) {
@@ -340,7 +527,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             database: database,
             sslConfig: sslConfig,
             options: options,
-            applicationName: applicationName
+            applicationName: applicationName,
+            connectTimeoutSeconds: connectTimeout.nativeSeconds
         )
     }
 
@@ -357,9 +545,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _cachedServerVersion = nil
         _cachedServerVersionNumber = 0
         stateLock.unlock()
-
-        if let handle {
-            queue.async {
+        queue.async { [self] in
+            activeConnectDeadline = nil
+            if let handle {
                 PQfinish(handle)
                 sink?.release()
             }
@@ -385,13 +573,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let currentConn = conn
         stateLock.unlock()
 
-        guard let currentConn, !suppressServerSideCancel else { return }
-        let cancelObj = PQgetCancel(currentConn)
-        guard let cancelObj else { return }
-        defer { PQfreeCancel(cancelObj) }
-
-        var errbuf = [CChar](repeating: 0, count: 256)
-        PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
+        guard let currentConn else { return }
+        requestServerCancel(on: currentConn)
     }
 
     // MARK: - Query Execution
@@ -401,6 +584,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            if let deadline = activeConnectDeadline {
+                return try executeConnectQuerySync(queryToRun, deadline: deadline)
+            }
             return try executeQuerySync(queryToRun)
         }
     }
@@ -508,6 +694,33 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Synchronous Query Execution
 
+    private func executeConnectQuerySync(
+        _ query: String,
+        deadline: LibPQConnectDeadline
+    ) throws -> LibPQPluginQueryResult {
+        guard !isShuttingDown, let connection = connectionHandle else {
+            throw LibPQPluginError.notConnected
+        }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: connection) }
+
+        let cancelsOutput = cancelsAbandonedOutput(connection)
+        if let ended = sessionEndedBeforeSending(connection) { throw ended }
+        let result = try bootstrapResult(for: query, on: connection, deadline: deadline)
+        recordTransactionState(of: connection)
+        let decoded = try queryResult(
+            from: result,
+            connection: connection,
+            generation: generation,
+            cancelsOutput: cancelsOutput,
+            allowsSideQueries: false
+        )
+        try checkBootstrapState(connection, deadline: deadline)
+        return decoded
+    }
+
     private func executeQuerySync(_ query: String) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
@@ -532,6 +745,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
         recordTransactionState(of: conn)
 
+        return try queryResult(
+            from: result,
+            connection: conn,
+            generation: generation,
+            cancelsOutput: cancelsOutput,
+            allowsSideQueries: true
+        )
+    }
+
+    private func queryResult(
+        from result: OpaquePointer,
+        connection conn: OpaquePointer,
+        generation: Int,
+        cancelsOutput: Bool,
+        allowsSideQueries: Bool
+    ) throws -> LibPQPluginQueryResult {
         let status = PQresultStatus(result)
 
         switch status {
@@ -539,7 +768,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let affected = getAffectedRows(from: result)
             let cmdTag = getCommandTag(from: result)
             PQclear(result)
-            noteCommandTag(cmdTag, conn: conn)
+            if allowsSideQueries { noteCommandTag(cmdTag, conn: conn) }
             return LibPQPluginQueryResult(
                 columns: [],
                 columnOids: [],
@@ -552,7 +781,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, conn: conn, generation: generation)
+            return try fetchResults(
+                from: result,
+                conn: conn,
+                generation: generation,
+                allowsSideQueries: allowsSideQueries
+            )
 
         default:
             if let copy = LibPQCopyState.copy(of: result) {

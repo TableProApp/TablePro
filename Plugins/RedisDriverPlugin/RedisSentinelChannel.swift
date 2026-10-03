@@ -25,11 +25,13 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
     private let password: String?
     private let database: Int
     private let sslConfig: SSLConfiguration
+    private let connectTimeout: RedisConnectTimeout
 
     private let lock = NSLock()
     private var connection: RedisPluginConnection?
     private var primary: RedisNodeAddress?
     private var isShuttingDown = false
+    private var awaitingConnectFinish = false
 
     init(
         resolver: RedisSentinelResolver,
@@ -37,7 +39,10 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         username: String?,
         password: String?,
         database: Int,
-        sslConfig: SSLConfiguration
+        sslConfig: SSLConfiguration,
+        connectTimeout: RedisConnectTimeout = RedisConnectTimeout(
+            milliseconds: RedisConnectTimeout.defaultMilliseconds
+        )
     ) {
         self.resolver = resolver
         self.group = group
@@ -45,6 +50,7 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.connectTimeout = connectTimeout
     }
 
     var isConnected: Bool { current?.isConnected ?? false }
@@ -56,17 +62,31 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
     }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        lock.withLock { awaitingConnectFinish = true }
+        let deadline = RedisConnectDeadline(timeout: connectTimeout)
         report(.custom(String(localized: "Asking Sentinel for the primary")))
-        let resolution = try await resolvePrimary()
-        try await open(resolution.primary, reportingStage: report)
+        let resolution = try await resolvePrimary(deadline: deadline)
+        try await open(
+            resolution.primary,
+            deadline: deadline,
+            deferFinish: true,
+            reportingStage: report
+        )
         logger.info(
             "Sentinel group \(self.group, privacy: .public) resolved to \(resolution.primary.identifier, privacy: .public)"
         )
     }
 
+    func finishConnecting() async throws {
+        guard let connection = current else { throw RedisPluginError.notConnected }
+        try await connection.finishConnecting()
+        lock.withLock { awaitingConnectFinish = false }
+    }
+
     func disconnect() {
         lock.lock()
         isShuttingDown = true
+        awaitingConnectFinish = false
         let existing = connection
         connection = nil
         primary = nil
@@ -113,12 +133,18 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
     /// Re-asks the quorum and re-points the connection when the primary has moved. Called from the
     /// driver's ping, which the health monitor runs every 30 seconds.
     func verifyStillPrimary() async throws {
-        let resolution = try await resolvePrimary()
+        let deadline = RedisConnectDeadline(timeout: connectTimeout)
+        let resolution = try await resolvePrimary(deadline: deadline)
         guard !isPointing(at: resolution.primary) else { return }
         logger.warning(
             "Sentinel moved primary for \(self.group, privacy: .public) to \(resolution.primary.identifier, privacy: .public)"
         )
-        try await open(resolution.primary, reportingStage: { _ in })
+        try await open(
+            resolution.primary,
+            deadline: deadline,
+            deferFinish: false,
+            reportingStage: { _ in }
+        )
     }
 
     private func isPointing(at address: RedisNodeAddress) -> Bool {
@@ -137,30 +163,34 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         return .some(previous)
     }
 
-    private var isTearingDown: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return isShuttingDown
-    }
-
-    private func resolvePrimary() async throws -> RedisSentinelResolution {
+    private func resolvePrimary(deadline: RedisConnectDeadline) async throws -> RedisSentinelResolution {
         do {
-            return try await resolver.resolvePrimary()
+            return try await resolver.resolvePrimary(deadline: deadline)
         } catch let error as RedisSentinelError {
             throw RedisSentinelErrorPresenter.pluginError(error)
         }
     }
 
-    private func open(_ address: RedisNodeAddress, reportingStage report: @escaping ConnectionStageReporter) async throws {
+    private func open(
+        _ address: RedisNodeAddress,
+        deadline: RedisConnectDeadline,
+        deferFinish: Bool,
+        reportingStage report: @escaping ConnectionStageReporter
+    ) async throws {
+        guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+            throw RedisPluginError(code: 0, message: String(localized: "Timed out while connecting to the server"))
+        }
         let opened = RedisPluginConnection(
             host: address.host,
             port: address.port,
             username: username,
             password: password,
             database: database,
-            sslConfig: sslConfig
+            sslConfig: sslConfig,
+            connectTimeoutMilliseconds: remainingMilliseconds
         )
         try await opened.connect(reportingStage: report)
+        if !deferFinish { try await opened.finishConnecting() }
 
         opened.adoptLostSessionState(current?.sessionStateForHandOver())
         guard let previous = adopt(opened, at: address) else {
@@ -184,9 +214,16 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         do {
             return try await work(connection)
         } catch let failure as RedisTransportFailure {
-            guard !isTearingDown, isReplayable(failure) else { throw failure }
-            let resolution = try await resolvePrimary()
-            try await open(resolution.primary, reportingStage: { _ in })
+            let canReconnect = lock.withLock { !isShuttingDown && !awaitingConnectFinish }
+            guard canReconnect, isReplayable(failure) else { throw failure }
+            let deadline = RedisConnectDeadline(timeout: connectTimeout)
+            let resolution = try await resolvePrimary(deadline: deadline)
+            try await open(
+                resolution.primary,
+                deadline: deadline,
+                deferFinish: false,
+                reportingStage: { _ in }
+            )
             guard let reconnected = current else { throw failure }
             return try await work(reconnected)
         }

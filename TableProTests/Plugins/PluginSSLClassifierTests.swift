@@ -198,8 +198,50 @@ struct ClickHouseClassifierTests {
 
     @Test("Non-SSL error returns nil")
     func testNonSSL() {
-        let error = URLError(.notConnectedToInternet)
+        let error = URLError(
+            .notConnectedToInternet,
+            userInfo: [NSLocalizedDescriptionKey: "The Internet connection appears to be offline."]
+        )
         #expect(ClickHouseSSLClassifier.classifySSLError(error) == nil)
+    }
+
+    @Test("A host lookup failure is not a TLS hostname mismatch")
+    func testHostLookupFailureIsNotTLS() {
+        let error = URLError(
+            .cannotFindHost,
+            userInfo: [NSLocalizedDescriptionKey: "A server with the specified hostname could not be found."]
+        )
+        #expect(ClickHouseSSLClassifier.classifySSLError(error) == nil)
+    }
+
+    @Test("A host lookup failure wrapped by the driver is not a TLS hostname mismatch")
+    func testWrappedHostLookupFailureIsNotTLS() {
+        let lookup = URLError(
+            .cannotFindHost,
+            userInfo: [NSLocalizedDescriptionKey: "A server with the specified hostname could not be found."]
+        )
+        let wrapped = NSError(
+            domain: "ClickHouse",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "A server with the specified hostname could not be found.",
+                NSUnderlyingErrorKey: lookup
+            ]
+        )
+        #expect(ClickHouseSSLClassifier.classifySSLError(wrapped) == nil)
+    }
+
+    @Test("A hostname complaint that is not a URL error still reads as a hostname mismatch")
+    func testHostnameMessageOutsideURLError() {
+        let error = NSError(
+            domain: "ClickHouse",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "certificate hostname does not match"]
+        )
+        guard case .hostnameMismatch = ClickHouseSSLClassifier.classifySSLError(error) else {
+            Issue.record("Expected hostnameMismatch")
+            return
+        }
     }
 }
 

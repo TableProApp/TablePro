@@ -69,6 +69,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .dameng: return "cylinder"
         case .duckdb: return "duckdb-icon"
         case .cassandra: return "cassandra-icon"
+        case .scylladb: return "scylladb-icon"
         case .etcd: return "etcd-icon"
         case .cloudflareD1: return "cloudflare-d1-icon"
         case .dynamodb: return "dynamodb-icon"

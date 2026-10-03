@@ -203,5 +203,5 @@ echo
 echo "DuckDB static library built successfully."
 ls -lh "$LIBS_DIR"/libduckdb*.a
 echo
-echo "Verify with: scripts/check-duckdb-offline-metadata.sh"
+echo "Verify with: scripts/probes/check-duckdb-offline-metadata.sh"
 echo "Publish with: scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a"

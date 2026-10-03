@@ -11,6 +11,8 @@ import Testing
 
 struct ConnectionFormEditsTests {
     private func edits(
+        connectTimeoutSeconds: Int? = nil,
+        queryTimeoutSeconds: Int? = nil,
         additionalFields: [String: String] = [:],
         ownedAdditionalFieldIDs: Set<String> = []
     ) -> ConnectionFormEdits {
@@ -37,6 +39,8 @@ struct ConnectionFormEditsTests {
             aiPolicy: nil,
             aiRules: nil,
             externalAccess: .readOnly,
+            connectTimeoutSeconds: connectTimeoutSeconds,
+            queryTimeoutSeconds: queryTimeoutSeconds,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: false,
@@ -88,6 +92,31 @@ struct ConnectionFormEditsTests {
         #expect(result.username == "edited_user")
         #expect(result.type == .postgresql)
         #expect(result.color == .blue)
+    }
+
+    @Test("Applying edits stores both connection timeout overrides")
+    func storesTimeoutOverrides() {
+        let result = edits(connectTimeoutSeconds: 45, queryTimeoutSeconds: 0)
+            .applied(to: populatedConnection())
+
+        #expect(result.connectTimeoutSeconds == 45)
+        #expect(result.queryTimeoutSeconds == 0)
+        #expect(result.additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == "45")
+        #expect(result.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == "0")
+    }
+
+    @Test("Clearing timeout overrides removes their reserved fields")
+    func removesClearedTimeoutOverrides() {
+        var original = populatedConnection()
+        original.connectTimeoutSeconds = 45
+        original.queryTimeoutSeconds = 120
+
+        let result = edits().applied(to: original)
+
+        #expect(result.connectTimeoutSeconds == nil)
+        #expect(result.queryTimeoutSeconds == nil)
+        #expect(result.additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == nil)
+        #expect(result.additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
     }
 
     @Test("An additional field the form does not own is carried over")
@@ -145,6 +174,14 @@ struct ConnectionFormEditsTests {
     func appManagedFieldSet() {
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains("preConnectScript"))
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains("promptForPassword"))
+        #expect(
+            ConnectionFormEdits.appManagedAdditionalFieldIDs
+                .contains(DatabaseConnection.connectTimeoutSecondsKey)
+        )
+        #expect(
+            ConnectionFormEdits.appManagedAdditionalFieldIDs
+                .contains(DatabaseConnection.queryTimeoutSecondsKey)
+        )
         #expect(
             ConnectionFormEdits.appManagedAdditionalFieldIDs
                 .contains(DatabaseConnection.sshForwardUnixSocketPathKey)

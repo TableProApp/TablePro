@@ -41,10 +41,12 @@ internal extension LibPQPluginConnection {
     func fetchResults(
         from result: OpaquePointer,
         conn: OpaquePointer,
-        generation: Int
+        generation: Int,
+        allowsSideQueries: Bool = true
     ) throws -> LibPQPluginQueryResult {
         preconditionOnQueue()
-        let metadata = resolvingUnknownTypes(readColumnMetadata(from: result), conn: conn)
+        let rawMetadata = readColumnMetadata(from: result)
+        let metadata = allowsSideQueries ? resolvingUnknownTypes(rawMetadata, conn: conn) : rawMetadata
         let parsed = try parseRows(
             from: result,
             columns: metadata.columns,
@@ -53,7 +55,7 @@ internal extension LibPQPluginConnection {
             generation: generation
         )
 
-        return applySpatialRendering(to: parsed)
+        return allowsSideQueries ? applySpatialRendering(to: parsed) : parsed
     }
 
     static func decodeCell(

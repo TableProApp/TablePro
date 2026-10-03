@@ -42,13 +42,36 @@ extension DatabaseManager {
             resolvedConnection = connection
         }
 
-        if activeSessions[connection.id] == nil {
-            var session = ConnectionSession(connection: connection)
-            session.status = .connecting
-            setSession(session, for: connection.id)
-        }
+        let effectiveQueryTimeoutSeconds = prepareConnectingSession(for: connection)
         lastActiveSessionId = connection.id
 
+        do {
+            try await runPreConnectScriptIfNeeded(resolvedConnection, attempt: attempt)
+        } catch {
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error,
+                attempt: attempt
+            )
+            throw error
+        }
+
+        let (passwordOverride, promptsForPassword, promptCacheKey) = try await resolvePasswordOverride(
+            for: connection,
+            incoming: incomingPasswordOverride,
+            attempt: attempt
+        )
+
+        let preparedConfiguration = try await prepareDriverConfiguration(
+            for: resolvedConnection,
+            attempt: attempt
+        )
+
+        let deadline = ConnectionDeadline(configuredSeconds: resolvedConnection.connectTimeoutSeconds)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
+            resolvedConnection.host.nilIfEmpty ?? resolvedConnection.name
+        )
         let effectiveConnection: DatabaseConnection
         do {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
@@ -56,7 +79,8 @@ extension DatabaseManager {
             }
             effectiveConnection = try await buildEffectiveConnection(
                 for: resolvedConnection,
-                sshPasswordOverride: sshPasswordOverride
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline
             )
         } catch {
             finalizeConnectionFailure(
@@ -68,56 +92,16 @@ extension DatabaseManager {
             throw error
         }
 
-        if let script = resolvedConnection.preConnectScript,
-           !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        {
-            do {
-                reportStage(.runningPreConnectScript, attempt: attempt, for: connection.id)
-                try await PreConnectHookRunner.run(script: script)
-            } catch {
-                finalizeConnectionFailure(
-                    for: connection.id,
-                    cancelled: isAttemptCancelled(attempt, for: connection.id),
-                    error: error,
-                    attempt: attempt
-                )
-                throw error
-            }
-        }
-
-        var passwordOverride: String? = incomingPasswordOverride
-        let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
-        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
-        if passwordOverride == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) {
-            /// Keyed by the credential profile when there is one, so a profile set to ask every
-            /// time asks once rather than once per connection using it.
-            if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
-                passwordOverride = cached
-            } else {
-                let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
-                reportStage(.awaitingCredentials, attempt: attempt, for: connection.id)
-                guard let prompted = await PasswordPromptHelper.prompt(
-                    connectionName: connection.name,
-                    isAPIToken: isApiOnly,
-                    window: NSApp.keyWindow
-                ) else {
-                    finalizeConnectionFailure(
-                        for: connection.id,
-                        cancelled: isAttemptCancelled(attempt, for: connection.id),
-                        attempt: attempt
-                    )
-                    throw CancellationError()
-                }
-                passwordOverride = prompted
-            }
-        }
-
         let driver: DatabaseDriver
         do {
             driver = try await DatabaseDriverFactory.createDriver(
                 for: effectiveConnection,
                 passwordOverride: passwordOverride,
-                awaitPlugins: true
+                awaitPlugins: true,
+                deadline: deadline,
+                timeoutEndpoint: timeoutEndpoint,
+                effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
+                preparedConfiguration: preparedConfiguration
             )
         } catch {
             let cancelled = isAttemptCancelled(attempt, for: connection.id)
@@ -141,6 +125,7 @@ extension DatabaseManager {
             )
             await applyTimeoutAndStartupCommands(
                 on: driver,
+                queryTimeoutSeconds: effectiveQueryTimeoutSeconds,
                 startupCommands: resolvedConnection.startupCommands,
                 connectionName: connection.name
             )
@@ -162,6 +147,10 @@ extension DatabaseManager {
 
             // Batch all session mutations into a single write to fire objectWillChange once.
             if var session = activeSessions[connection.id] {
+                session.connection = successfulConnectionRecord(
+                    from: connection,
+                    preservingSessionFieldsFrom: session.connection
+                )
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
@@ -211,6 +200,89 @@ extension DatabaseManager {
             )
             throw reportedError
         }
+    }
+
+    private func resolvePasswordOverride(
+        for connection: DatabaseConnection,
+        incoming: String?,
+        attempt: Int
+    ) async throws -> (String?, Bool, UUID) {
+        let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
+        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
+        guard incoming == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) else {
+            return (incoming, promptsForPassword, promptCacheKey)
+        }
+        /// Keyed by the credential profile when there is one, so a profile set to ask every
+        /// time asks once rather than once per connection using it.
+        if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
+            return (cached, promptsForPassword, promptCacheKey)
+        }
+
+        let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
+        reportStage(.awaitingCredentials, attempt: attempt, for: connection.id)
+        guard let prompted = await PasswordPromptHelper.prompt(
+            connectionName: connection.name,
+            isAPIToken: isApiOnly,
+            window: NSApp.keyWindow
+        ) else {
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                attempt: attempt
+            )
+            throw CancellationError()
+        }
+        return (prompted, promptsForPassword, promptCacheKey)
+    }
+
+    private func prepareDriverConfiguration(
+        for connection: DatabaseConnection,
+        attempt: Int
+    ) async throws -> DatabaseDriverFactory.PreparedDriverConfiguration {
+        do {
+            return try await DatabaseDriverFactory.prepareConfiguration(
+                for: connection
+            )
+        } catch {
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error,
+                attempt: attempt
+            )
+            throw error
+        }
+    }
+
+    private func prepareConnectingSession(for connection: DatabaseConnection) -> Int {
+        let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: connection.queryTimeoutSeconds,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+        if activeSessions[connection.id] == nil {
+            var session = ConnectionSession(
+                connection: connection,
+                effectiveQueryTimeoutSeconds: queryTimeoutSeconds
+            )
+            session.status = .connecting
+            setSession(session, for: connection.id)
+        } else {
+            activeSessions[connection.id]?.effectiveQueryTimeoutSeconds = queryTimeoutSeconds
+        }
+        return queryTimeoutSeconds
+    }
+
+    private func runPreConnectScriptIfNeeded(
+        _ connection: DatabaseConnection,
+        attempt: Int
+    ) async throws {
+        guard let script = connection.preConnectScript,
+              !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return
+        }
+        reportStage(.runningPreConnectScript, attempt: attempt, for: connection.id)
+        try await PreConnectHookRunner.run(script: script)
     }
 
     private func isAttemptCancelled(_ attempt: Int, for connectionId: UUID) -> Bool {
@@ -629,15 +701,32 @@ extension DatabaseManager {
         into session: ConnectionSession,
         for connectionId: UUID
     ) {
-        var reconciled = session.connection
-        reconciled.name = stored.name
-        reconciled.color = stored.color
-        reconciled.tagIds = stored.tagIds
+        let reconciled = connection(session.connection, adoptingDisplayFieldsFrom: stored)
         guard reconciled != session.connection else { return }
 
         var updated = session
         updated.connection = reconciled
         setSession(updated, for: connectionId)
+    }
+
+    private func successfulConnectionRecord(
+        from attempted: DatabaseConnection,
+        preservingSessionFieldsFrom current: DatabaseConnection
+    ) -> DatabaseConnection {
+        var adopted = connection(attempted, adoptingDisplayFieldsFrom: current)
+        adopted.preferredSafeModeLevel = current.preferredSafeModeLevel
+        return adopted
+    }
+
+    private func connection(
+        _ base: DatabaseConnection,
+        adoptingDisplayFieldsFrom source: DatabaseConnection
+    ) -> DatabaseConnection {
+        var adopted = base
+        adopted.name = source.name
+        adopted.color = source.color
+        adopted.tagIds = source.tagIds
+        return adopted
     }
 
     /// The user picking a level from the toolbar or the Database menu.
@@ -701,7 +790,14 @@ extension DatabaseManager {
     /// what it is connecting to.
     internal func registerPendingSession(_ connection: DatabaseConnection) {
         guard activeSessions[connection.id] == nil else { return }
-        var session = ConnectionSession(connection: connection)
+        let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: connection.queryTimeoutSeconds,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+        var session = ConnectionSession(
+            connection: connection,
+            effectiveQueryTimeoutSeconds: queryTimeoutSeconds
+        )
         session.status = .connecting
         setSession(session, for: connection.id)
     }

@@ -74,6 +74,8 @@ internal enum CompareSQLLiteral {
             return "0x\(hex)"
         case .hexToRaw:
             return "HEXTORAW('\(hex)')"
+        case .unhexFunction:
+            return "unhex('\(hex)')"
         case .unknown:
             return nil
         }
@@ -84,6 +86,7 @@ internal enum CompareSQLLiteral {
         case postgresBytea
         case zeroX
         case hexToRaw
+        case unhexFunction
         case unknown
     }
 
@@ -91,9 +94,11 @@ internal enum CompareSQLLiteral {
     /// name falls back to the driver's own spelling rather than guessing at one.
     internal static func binaryStyle(for databaseType: DatabaseType) -> BinaryStyle {
         switch databaseType {
-        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .duckdb, .libsql,
-             .turso, .cloudflareD1:
+        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso,
+             .cloudflareD1:
             return .bitString
+        case .duckdb:
+            return .unhexFunction
         case .postgresql, .cockroachdb, .redshift, .pglite:
             return .postgresBytea
         case .mssql:

@@ -6,19 +6,18 @@ import Foundation
 /// ``SqlBlockStructure/opensRoutineDefinition(_:)``. The `;` belongs to the statement only after a T-SQL `MERGE`, which
 /// ``SQLLexicalGrammar/terminatedMergeStatements`` asks for: these engines accept every other statement without it.
 public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
+    private let grammar: SQLLexicalGrammar
     private var sawStatementKeyword = false
     private var definesRoutine = false
+    private var openedBlockBody = false
     private var depth = 0
     private var pendingBegin = false
     private var pendingEnd = false
     private var merge: SQLMergeStatementTracker?
 
     public init(grammar: SQLLexicalGrammar) {
-        self.init(merge: grammar.contains(.terminatedMergeStatements) ? SQLMergeStatementTracker() : nil)
-    }
-
-    private init(merge: SQLMergeStatementTracker?) {
-        self.merge = merge
+        self.grammar = grammar
+        self.merge = grammar.contains(.terminatedMergeStatements) ? SQLMergeStatementTracker() : nil
     }
 
     public var needsWords: Bool {
@@ -30,7 +29,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     }
 
     public var acceptsBindParameters: Bool {
-        true
+        !(openedBlockBody && grammar.contains(.sqlScriptBlocks))
     }
 
     public mutating func observeWord(_ word: String) {
@@ -38,7 +37,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         if settlePending(before: word) { return }
         if !sawStatementKeyword {
             sawStatementKeyword = true
-            definesRoutine = SqlBlockStructure.opensRoutineDefinition(word)
+            definesRoutine = SqlBlockStructure.opensBlockBody(word, grammar: grammar)
         }
         guard definesRoutine else { return }
         switch word {
@@ -79,7 +78,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     }
 
     public mutating func reset() {
-        self = SQLRoutineBodyTracker(merge: merge.map { _ in SQLMergeStatementTracker() })
+        self = SQLRoutineBodyTracker(grammar: grammar)
     }
 
     // MARK: - Private
@@ -89,7 +88,7 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
         if pendingBegin {
             pendingBegin = false
             if !SqlBlockStructure.beginStartsTransaction(followedBy: word) {
-                depth += 1
+                openBlockBody()
             }
         }
         guard pendingEnd else { return false }
@@ -111,12 +110,17 @@ public struct SQLRoutineBodyTracker: SQLStatementBoundaryTracking {
     private mutating func settlePendingBeforeNonWord() {
         if pendingBegin {
             pendingBegin = false
-            depth += 1
+            openBlockBody()
         }
         if pendingEnd {
             pendingEnd = false
             closeBlock()
         }
+    }
+
+    private mutating func openBlockBody() {
+        depth += 1
+        openedBlockBody = true
     }
 
     private mutating func closeBlock() {

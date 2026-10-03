@@ -65,9 +65,10 @@ final class ConnectionWindowChromeUITests: UITestCase {
         /// Each of these belongs to exactly one of the two panes that may legitimately be on
         /// screen. Asserting on buttons instead let the test pass over the blank pane it exists to
         /// catch, because a Cancel button elsewhere in the app satisfied it.
+        let connectingCard = app.descendants(matching: .any)["connection-connecting"]
         XCTAssertTrue(
             waitForPredicate(timeout: 20) {
-                app.staticTexts["Opening the connection"].exists
+                connectingCard.exists
                     || app.staticTexts["Could not connect to Probe"].exists
                     || app.staticTexts["Not connected to Probe"].exists
             },

@@ -15,6 +15,22 @@ internal enum SafeModeLevel: String, Codable, CaseIterable, Identifiable {
 }
 
 internal extension SafeModeLevel {
+    init(wireValue: String?, isReadOnly: Bool) {
+        guard let wireValue else {
+            self = isReadOnly ? .readOnly : .silent
+            return
+        }
+        if let level = SafeModeLevel(rawValue: wireValue) {
+            self = level
+            return
+        }
+        switch wireValue {
+        case "off": self = .silent
+        case "confirmWrites": self = .alert
+        default: self = isReadOnly ? .readOnly : .alert
+        }
+    }
+
     var id: String { rawValue }
 
     var displayName: String {
@@ -65,14 +81,16 @@ internal extension SafeModeLevel {
         }
     }
 
+    /// Filled exactly when `appliesToAllQueries`, so the fill says one thing: this level gates
+    /// reads as well as writes. Silent and Read-Only differ by the padlock's shape instead.
     var iconName: String {
         switch self {
-        case .silent: return "lock.open.fill"
+        case .silent: return "lock.open"
         case .alert: return "exclamationmark.triangle"
         case .alertFull: return "exclamationmark.triangle.fill"
         case .safeMode: return "lock.shield"
         case .safeModeFull: return "lock.shield.fill"
-        case .readOnly: return "lock.fill"
+        case .readOnly: return "lock"
         }
     }
 

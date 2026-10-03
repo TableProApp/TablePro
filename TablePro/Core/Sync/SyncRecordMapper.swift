@@ -108,6 +108,7 @@ struct SyncRecordMapper {
         fields[.schemaVersion] = schemaVersion
         fields[.sortOrder] = Int64(connection.sortOrder)
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0)
+        fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) }
 
         if !connection.tagIds.isEmpty {
             let tagIdStrings = connection.tagIds.map { $0.uuidString }
@@ -159,13 +160,16 @@ struct SyncRecordMapper {
         } catch {
             logger.warning("Failed to encode SSL config for sync: \(error.localizedDescription)")
         }
-        if !connection.additionalFields.isEmpty {
+        let syncedAdditionalFields = syncedAdditionalFields(for: connection)
+        if !syncedAdditionalFields.isEmpty {
             do {
-                let fieldsData = try encoder.encode(connection.additionalFields)
+                let fieldsData = try encoder.encode(syncedAdditionalFields)
                 fields[.additionalFieldsJson] = fieldsData
             } catch {
                 logger.warning("Failed to encode additional fields for sync: \(error.localizedDescription)")
             }
+        } else {
+            fields[.additionalFieldsJson] = nil
         }
 
         return record
@@ -195,7 +199,7 @@ struct SyncRecordMapper {
             ?? fields[.colorTag] as? String
             ?? ConnectionColor.none.rawValue
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = Self.safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = SafeModeLevel(wireValue: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let tagIds: [UUID]
         if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
             tagIds = rawIds.compactMap { UUID(uuidString: $0) }
@@ -213,6 +217,7 @@ struct SyncRecordMapper {
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        let queryTimeoutSeconds = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
 
         var sshConfig = SSHConfiguration()
         if let sshData = fields[.sshConfigJson] as? Data {
@@ -243,8 +248,15 @@ struct SyncRecordMapper {
                 throw SyncDecodeError.decodeFailure(field: "additionalFieldsJson", underlying: error)
             }
         }
+        var normalizedAdditionalFields = additionalFields ?? [:]
+        let legacyConnectTimeout = normalizedAdditionalFields
+            .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+            .flatMap(Int.init)
+        let legacyQueryTimeout = normalizedAdditionalFields
+            .removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+            .flatMap(Int.init)
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             id: connectionId,
             name: name,
             host: host,
@@ -266,18 +278,33 @@ struct SyncRecordMapper {
             startupCommands: startupCommands,
             sortOrder: sortOrder,
             isFavorite: isFavorite,
-            additionalFields: additionalFields
+            additionalFields: normalizedAdditionalFields
         )
+        if let connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout) {
+            connection.connectTimeoutSeconds = connectTimeoutSeconds
+        }
+        if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
+            connection.queryTimeoutSeconds = queryTimeoutSeconds
+        }
+        return connection
     }
 
-    static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .silent }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "off": return .silent
-        case "confirmWrites": return .alert
-        default: return isReadOnly ? .readOnly : .alert
+    private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
+        var fields = connection.additionalFields
+        fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+        fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+        if let connectTimeoutSeconds = validConnectTimeout(connection.connectTimeoutSeconds) {
+            fields[DatabaseConnection.connectTimeoutSecondsKey] = String(connectTimeoutSeconds)
         }
+        return fields
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { (1 ... 600).contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
     }
 
     // MARK: - Connection Group
@@ -391,7 +418,14 @@ struct SyncRecordMapper {
     // MARK: - Table Favorite
 
     static func toCKRecord(favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry, in zone: CKRecordZone.ID) -> CKRecord {
-        let favoriteId = FavoriteTablesStorage.syncId(for: entry)
+        toCKRecord(favoriteEntry: entry, recordId: FavoriteTablesStorage.syncId(for: entry), in: zone)
+    }
+
+    static func toCKRecord(
+        favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry,
+        recordId favoriteId: String,
+        in zone: CKRecordZone.ID
+    ) -> CKRecord {
         let recordID = recordID(type: .tableFavorite, id: favoriteId, in: zone)
         let record = CKRecord(recordType: SyncRecordType.tableFavorite.rawValue, recordID: recordID)
 
@@ -557,6 +591,93 @@ struct SyncRecordMapper {
             createdAt: fields[.createdAt] as? Date,
             updatedAt: fields[.updatedAt] as? Date
         )
+    }
+
+    // MARK: - Table Folder
+
+    /// Writes `schema` whether or not it holds anything, for the reason `toCKRecord(sqlFavorite:in:)`
+    /// gives: a folder moved to a database with no schema must clear the one it had.
+    static func toCKRecord(tableFolder folder: TableFolder, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .tableFolder, id: folder.id.uuidString, in: zone, base: nil)
+
+        let fields = record.fields(TableFolderSyncField.self, absentValues: .clear)
+        fields[.folderId] = folder.id.uuidString
+        fields[.connectionId] = folder.scope.connectionId.uuidString
+        fields[.database] = folder.scope.database
+        fields[.schema] = folder.scope.schema
+        fields[.name] = folder.name
+        fields[.createdAt] = folder.createdAt
+        fields[.updatedAt] = folder.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    static func tableFolder(from record: CKRecord) throws -> TableFolder {
+        let fields = record.fields(TableFolderSyncField.self)
+        guard let idString = fields[.folderId] as? String, let id = UUID(uuidString: idString) else {
+            throw SyncDecodeError.missingRequiredField("folderId")
+        }
+        guard let name = fields[.name] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        let scope = try tableFolderScope(
+            connectionId: fields[.connectionId] as? String,
+            database: fields[.database] as? String,
+            schema: fields[.schema] as? String
+        )
+        let createdAt = fields[.createdAt] as? Date ?? Date()
+        return TableFolder(
+            id: id,
+            scope: scope,
+            name: name,
+            createdAt: createdAt,
+            updatedAt: fields[.updatedAt] as? Date ?? createdAt
+        )
+    }
+
+    static func toCKRecord(tableFolderItem item: TableFolderItem, in zone: CKRecordZone.ID) -> CKRecord {
+        let record = record(type: .tableFolderItem, id: item.syncId, in: zone, base: nil)
+
+        let fields = record.fields(TableFolderItemSyncField.self, absentValues: .clear)
+        fields[.connectionId] = item.scope.connectionId.uuidString
+        fields[.database] = item.scope.database
+        fields[.schema] = item.scope.schema
+        fields[.name] = item.name
+        fields[.folderId] = item.folderId.uuidString
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    static func tableFolderItem(from record: CKRecord) throws -> TableFolderItem {
+        let fields = record.fields(TableFolderItemSyncField.self)
+        guard let name = fields[.name] as? String, !name.isEmpty else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+        guard let folderIdString = fields[.folderId] as? String,
+              let folderId = UUID(uuidString: folderIdString) else {
+            throw SyncDecodeError.missingRequiredField("folderId")
+        }
+        let scope = try tableFolderScope(
+            connectionId: fields[.connectionId] as? String,
+            database: fields[.database] as? String,
+            schema: fields[.schema] as? String
+        )
+        return TableFolderItem(scope: scope, name: name, folderId: folderId)
+    }
+
+    private static func tableFolderScope(
+        connectionId: String?,
+        database: String?,
+        schema: String?
+    ) throws -> DatabaseScope {
+        guard let connectionId = connectionId.flatMap(UUID.init(uuidString:)) else {
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        return DatabaseScope(connectionId: connectionId, database: database ?? "", schema: schema)
     }
 
     // MARK: - SSH Profile

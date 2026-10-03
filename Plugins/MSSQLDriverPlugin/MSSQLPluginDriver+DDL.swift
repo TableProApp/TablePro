@@ -12,13 +12,13 @@ extension MSSQLPluginDriver {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        MSSQLTableDefinitionSQL.createTable(definition, schema: _currentSchema)
+        MSSQLTableDefinitionSQL.createTable(definition, schema: currentSchemaName)
     }
 
     // MARK: - ALTER TABLE DDL
 
     private func mssqlQualifiedTable(_ table: String) -> String {
-        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: _currentSchema)
+        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: currentSchemaName)
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
@@ -33,7 +33,7 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let path = MSSQLStringLiteral.quoted("\(_currentSchema).\(table).\(oldColumn.name)")
+            let path = MSSQLStringLiteral.quoted("\(currentSchemaName).\(table).\(oldColumn.name)")
             let renamed = MSSQLStringLiteral.quoted(newColumn.name)
             stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
         }
@@ -83,7 +83,7 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: _currentSchema))"
+        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName))"
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
@@ -151,5 +151,4 @@ extension MSSQLPluginDriver {
         }
         return stmts.isEmpty ? nil : stmts
     }
-
 }

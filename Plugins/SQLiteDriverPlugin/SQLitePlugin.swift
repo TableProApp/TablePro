@@ -160,14 +160,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// session runs on the server's SQLite through the agent. The mark and the token are set by the
     /// app's transport when it rewrites the effective connection, never by the user.
     private static func makeBackend(config: DriverConnectionConfig) -> any SQLiteExecutionBackend {
-        guard config.additionalFields[SQLiteAgentProtocol.backendFieldKey] == SQLiteAgentProtocol.agentBackendValue else {
+        guard let helloBudget = SQLiteAgentHelloBudget.forAgent(
+            additionalFields: config.additionalFields
+        ) else {
             return SQLiteLocalBackend(path: config.database)
         }
         return SQLiteAgentBackend(
             host: config.host.isEmpty ? "127.0.0.1" : config.host,
             port: config.port,
             path: config.database,
-            token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? ""
+            token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? "",
+            helloBudget: helloBudget
         )
     }
 
@@ -192,7 +195,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        await backend.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
+        await backend.applyBusyTimeout(SQLiteQueryTimeout.milliseconds(seconds: seconds))
     }
 
     // MARK: - Query Execution

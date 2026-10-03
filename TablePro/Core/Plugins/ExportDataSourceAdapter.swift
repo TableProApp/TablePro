@@ -24,6 +24,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     let lexicalFeatures: SQLLexicalFeatures
     private let implicitSchemaName: String?
     private let pagination: PaginationCapability
+    private let appliesRowScope: Bool
     private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
@@ -32,9 +33,14 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
+        self.appliesRowScope = Self.canApplyRowScope(on: databaseType)
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
+    }
+
+    static func canApplyRowScope(on databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect != nil
     }
 
     private var pluginDriver: (any PluginDatabaseDriver)? {
@@ -61,15 +67,33 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         if let customQuery = pluginDriver.defaultExportQuery(table: table, schema: exportSchema(for: databaseName)) {
             return pluginDriver.streamRows(query: customQuery)
         }
-        let query = "SELECT * FROM \(qualifiedTableRef(table: table, databaseName: databaseName))"
-        return streamLeadingRows(query: limitedToLeadingRows(query, limit: nil, driver: pluginDriver), table: table)
+        let query = leadingRowsQuery(
+            columns: "*",
+            from: qualifiedTableRef(table: table, databaseName: databaseName),
+            where: nil,
+            limit: nil,
+            driver: pluginDriver
+        )
+        return streamLeadingRows(query: query, table: table)
     }
 
     /// An engine that caps its rows answers a statement with no LIMIT with a smaller default of its
     /// own, so every read here states a limit, and a limit past the ceiling is lowered to it.
-    private func limitedToLeadingRows(_ query: String, limit: Int?, driver: any PluginDatabaseDriver) -> String {
-        guard let rowLimit = Self.rowLimit(requested: limit, pagination: pagination) else { return query }
-        return driver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
+    private func leadingRowsQuery(
+        columns: String,
+        from source: String,
+        where condition: String?,
+        limit: Int?,
+        driver: any PluginDatabaseDriver
+    ) -> String {
+        SQLRowLimitClause.select(
+            columns: columns,
+            from: source,
+            where: condition,
+            limit: Self.rowLimit(requested: limit, pagination: pagination),
+            driver: driver,
+            databaseType: dbType
+        )
     }
 
     static func rowLimit(requested: Int?, pagination: PaginationCapability) -> Int? {
@@ -108,12 +132,17 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         }
     }
 
-    /// The row limit goes through the driver's own `injectRowLimit`, because `LIMIT` is not the
-    /// spelling on SQL Server or on Oracle before 12c.
     func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let scope = object.rowScope
         guard !scope.isUnrestricted else {
             return streamRows(table: object.name, databaseName: object.databaseName)
+        }
+        guard appliesRowScope else {
+            let reason = String(
+                format: String(localized: "%@ cannot be narrowed to some rows or columns, because this database has no SQL."),
+                object.name
+            )
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed(reason)) }
         }
         guard let pluginDriver else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
@@ -121,13 +150,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         let projection = scope.columns.isEmpty
             ? "*"
             : scope.columns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
-        let reference = qualifiedTableRef(table: object.name, databaseName: object.databaseName)
-        var query = "SELECT \(projection) FROM \(reference)"
-        let filter = scope.sanitizedFilter
-        if !filter.isEmpty {
-            query += " WHERE \(filter)"
-        }
-        query = limitedToLeadingRows(query, limit: scope.rowLimit, driver: pluginDriver)
+        let query = leadingRowsQuery(
+            columns: projection,
+            from: qualifiedTableRef(table: object.name, databaseName: object.databaseName),
+            where: scope.sanitizedFilter.nilIfEmpty,
+            limit: scope.rowLimit,
+            driver: pluginDriver
+        )
         return streamLeadingRows(query: query, table: object.name)
     }
 

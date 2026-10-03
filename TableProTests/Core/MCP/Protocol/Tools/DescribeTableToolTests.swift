@@ -34,6 +34,47 @@ struct DescribeTableToolTests {
         #expect(required.contains("foreign_keys"))
     }
 
+    private func description(checkConstraints: [CheckConstraintInfo]) -> MCPConnectionBridge.TableDescription {
+        MCPConnectionBridge.TableDescription(
+            table: "orders",
+            database: "shop",
+            schema: "public",
+            columns: [
+                ColumnInfo(name: "id", dataType: "integer", isNullable: false, isPrimaryKey: true),
+                ColumnInfo(name: "quantity", dataType: "integer", isNullable: false, isPrimaryKey: false)
+            ],
+            indexes: [
+                IndexInfo(name: "orders_pkey", columns: ["id"], isUnique: true, isPrimary: true, type: "BTREE")
+            ],
+            foreignKeys: [
+                ForeignKeyInfo(name: "orders_customer_fk", column: "customer_id", referencedTable: "customers", referencedColumn: "id")
+            ],
+            checkConstraints: checkConstraints,
+            ddl: "CREATE TABLE orders (id integer PRIMARY KEY, quantity integer NOT NULL)",
+            approximateRowCount: 12
+        )
+    }
+
+    @Test("A described table with a check constraint conforms to the published output schema")
+    func payloadWithCheckConstraintConformsToOutputSchema() throws {
+        let schema = try #require(DescribeTableTool.outputSchema)
+        let payload = MCPConnectionBridge.encode(description: description(checkConstraints: [
+            CheckConstraintInfo(name: "orders_quantity_check", expression: "quantity > 0", columns: ["quantity"])
+        ]))
+
+        let violations = MCPOutputSchemaConformance.violations(of: payload, against: schema)
+        #expect(violations.isEmpty, "\(violations)")
+    }
+
+    @Test("A described table without check constraints conforms to the published output schema")
+    func payloadWithoutCheckConstraintsConformsToOutputSchema() throws {
+        let schema = try #require(DescribeTableTool.outputSchema)
+        let payload = MCPConnectionBridge.encode(description: description(checkConstraints: []))
+
+        let violations = MCPOutputSchemaConformance.violations(of: payload, against: schema)
+        #expect(violations.isEmpty, "\(violations)")
+    }
+
     @Test("Missing table or connection_id is a protocol error")
     func missingRequiredParameters() async throws {
         await #expect(throws: MCPProtocolError.self) {

@@ -100,13 +100,33 @@ struct WeaviateFilterOperatorTests {
 
     @Test("BETWEEN becomes a bounded And and needs its upper bound")
     func betweenBounds() throws {
-        let clause = try operand("wordCount", "BETWEEN", "5", second: "10")
+        let clause = try operand("wordCount", "BETWEEN", "5,10", second: "10")
         #expect(clause.hasPrefix("{ operator: And operands: ["))
         #expect(clause.contains("operator: GreaterThanEqual valueInt: 5"))
         #expect(clause.contains("operator: LessThanEqual valueInt: 10"))
 
         #expect(throws: WeaviateFilterError.missingUpperBound(column: "wordCount")) {
             _ = try operand("wordCount", "BETWEEN", "5")
+        }
+    }
+
+    @Test("BETWEEN takes its lower bound off the value the app joins with the upper bound")
+    func betweenReadsLowerBoundOffJoinedValue() throws {
+        let numbers = try operand("ratio", "BETWEEN", "0.25,0.75", second: "0.75")
+        #expect(numbers.contains("operator: GreaterThanEqual valueNumber: 0.25"))
+        #expect(numbers.contains("operator: LessThanEqual valueNumber: 0.75"))
+
+        let dates = try operand(
+            "published", "BETWEEN", "2024-01-01T00:00:00Z,2024-12-31T00:00:00Z", second: "2024-12-31T00:00:00Z"
+        )
+        #expect(dates.contains("operator: GreaterThanEqual valueDate: \"2024-01-01T00:00:00Z\""))
+        #expect(dates.contains("operator: LessThanEqual valueDate: \"2024-12-31T00:00:00Z\""))
+    }
+
+    @Test("BETWEEN refuses a lower bound whose last scalar joins the comma, naming that bound alone")
+    func betweenRefusesPrependScalarLowerBoundAlone() {
+        #expect(throws: WeaviateFilterError.notANumber(column: "wordCount", value: "5\u{0600}")) {
+            _ = try operand("wordCount", "BETWEEN", "5\u{0600},10", second: "10")
         }
     }
 
@@ -149,6 +169,31 @@ struct WeaviateFilterOperatorTests {
         #expect(throws: WeaviateFilterError.vectorNotFilterable(column: "vector")) {
             _ = try operand(WeaviateSchema.vectorColumn, "=", "[1,2]")
         }
+    }
+
+    @Test("The raw filter row is refused instead of filtering a property named __RAW__")
+    func rawFilterRowIsRefused() {
+        #expect(throws: WeaviateFilterError.rawFilterUnsupported) {
+            _ = try operand("__RAW__", "=", "wordCount > 10")
+        }
+        #expect(throws: WeaviateFilterError.rawFilterUnsupported) {
+            _ = try WeaviateFilterBuilder.graphQLWhere(
+                filters: [
+                    WeaviateFilterSpec(column: "title", op: "=", value: "a"),
+                    WeaviateFilterSpec(column: "__RAW__", op: "=", value: "{ path: [\"title\"] }")
+                ],
+                logicMode: "AND",
+                types: articleTypes
+            )
+        }
+    }
+
+    @Test("The raw filter refusal points at the GraphQL editor")
+    func rawFilterRefusalNamesTheEditor() {
+        #expect(
+            WeaviateFilterError.rawFilterUnsupported.errorDescription
+                == "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor."
+        )
     }
 
     @Test("A quote in a value cannot break out of the GraphQL string")
@@ -224,12 +269,16 @@ struct WeaviateSortTests {
             offset: 0,
             limit: 25,
             sorts: [],
-            filters: [WeaviateFilterSpec(column: "wordCount", op: "BETWEEN", value: "5", secondValue: "10")],
+            filters: [WeaviateFilterSpec(column: "wordCount", op: "BETWEEN", value: "5,10", secondValue: "10")],
             logicMode: "AND",
             propertyNames: ["uuid"]
         )
         let parsed = try #require(WeaviateBrowseQuery.parse(encoded))
-        #expect(parsed.filters.first?.secondValue == "10")
+        let filter = try #require(parsed.filters.first)
+        #expect(filter.secondValue == "10")
+        let clause = try WeaviateFilterBuilder.operand(for: filter, types: articleTypes)
+        #expect(clause.contains("operator: GreaterThanEqual valueInt: 5"))
+        #expect(clause.contains("operator: LessThanEqual valueInt: 10"))
     }
 }
 

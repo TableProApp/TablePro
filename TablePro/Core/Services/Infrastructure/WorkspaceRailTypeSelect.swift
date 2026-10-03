@@ -6,9 +6,9 @@
 import Foundation
 
 /// The keyboard's own answer to "which row does this typing mean", which the rail has to give
-/// itself: a row now shows two semantic values, and AppKit's default matcher reads one string per
-/// row from the cell's text field. Left to that default, typing would match the connection name and
-/// the container only in the order they happen to be concatenated.
+/// itself: a row shows two semantic values, and AppKit's default matcher reads one string per row
+/// from the cell's `textField`, an outlet the rail's cell leaves empty so a source list cannot
+/// restyle its label.
 ///
 /// The range AppKit passes is circular: `startRow` is included, `endRow` is excluded, and the range
 /// may wrap past the last row. `startRow == endRow` therefore means one complete scan rather than an

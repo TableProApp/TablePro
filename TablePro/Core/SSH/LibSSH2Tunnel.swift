@@ -54,6 +54,9 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     var onDeath: ((UUID) -> Void)?
 
     private let forwardFailure = SSHForwardFailureRecorder()
+    private let connectionTimeoutFailure = OSAllocatedUnfairLock<ConnectionTimeoutError?>(initialState: nil)
+    private let relayDeadlines: ConnectionRelayDeadlineProvider
+    private let timeoutEndpoint: ConnectionTimeoutEndpoint
 
     /// Shared by every client relay this tunnel serves, so the readout describes the tunnel rather
     /// than whichever socket the driver happens to be using. Owned here and registered weakly, so
@@ -64,34 +67,32 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         let session: OpaquePointer    // LIBSSH2_SESSION*
         let socket: Int32             // TCP or socketpair fd
         let channel: OpaquePointer    // LIBSSH2_CHANNEL* (direct-tcpip to next hop)
-        let relayTask: Task<Void, Never>?  // socketpair relay task (nil for first hop)
+        let relay: SSHJumpRelayFence  // owns the socketpair relay's handle-lifetime fence
     }
 
     private static let relayBufferSize = 32_768 // 32KB
 
-    /// Bounds a forwarding channel open for a client that has already been accepted. libssh2
-    /// retries EAGAIN forever on its own, so without this a stuck open outlives the database
-    /// driver's connect timeout and the client waits on a socket nothing will ever write to.
-    /// Held strictly below every bundled driver's connect timeout (10s for MySQL, PostgreSQL,
-    /// Redis, MongoDB, and Cassandra) so the failure recorded here reaches the user before the
-    /// driver reports its own timeout, which names no cause. An equal budget loses that race:
-    /// the driver's clock starts when it dials, this one only once the accept has been noticed.
-    /// A registry plugin with a shorter connect timeout is not covered, because a plugin's
-    /// C-level timeout cannot be read from here.
-    internal static let channelOpenDeadlineSeconds: TimeInterval = 6
-    private static let channelOpenPollTimeoutMs: Int32 = 5_000
-
     /// How long the accept loop waits per poll before rechecking `isRunning`. Small enough that
-    /// noticing a client the kernel already accepted costs a slim part of the margin above.
+    /// noticing a client the kernel already accepted costs a slim part of its connect budget.
     internal static let acceptPollTimeoutMs: Int32 = 200
 
-    init(connectionId: UUID, localPort: Int, session: OpaquePointer,
-         socketFD: Int32, listenFD: Int32, jumpChain: [JumpHop] = []) {
+    init(
+        connectionId: UUID,
+        localPort: Int,
+        session: OpaquePointer,
+        socketFD: Int32,
+        listenFD: Int32,
+        connectionDeadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        jumpChain: [JumpHop] = []
+    ) {
         self.connectionId = connectionId
         self.localPort = localPort
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD
+        self.relayDeadlines = ConnectionRelayDeadlineProvider(initialDeadline: connectionDeadline)
+        self.timeoutEndpoint = timeoutEndpoint
         self.jumpChain = jumpChain
         self.createdAt = Date()
         self.sessionQueue = DispatchQueue(
@@ -142,8 +143,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                         }
 
                         self.spawnClient(
-                            clientFD: client.fd,
-                            acceptedAt: client.acceptedAt,
+                            clientFD: client,
+                            budget: self.relayDeadlines.next(),
                             destination: destination
                         )
                     }
@@ -239,7 +240,13 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             }
 
             for hop in jumpChain.reversed() {
-                hop.relayTask?.cancel()
+                hop.relay.stop()
+                shutdown(hop.socket, SHUT_RDWR)
+            }
+            for hop in jumpChain.reversed() {
+                await hop.relay.waitForCompletion()
+            }
+            for hop in jumpChain.reversed() {
                 libssh2_channel_free(hop.channel)
                 tablepro_libssh2_session_disconnect(hop.session, "Closing")
                 libssh2_session_free(hop.session)
@@ -262,7 +269,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         shutdown(socketFD, SHUT_RDWR)
 
         for hop in jumpChain.reversed() {
-            hop.relayTask?.cancel()
+            hop.relay.stop()
+            shutdown(hop.socket, SHUT_RDWR)
         }
     }
 
@@ -274,10 +282,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         onDeath?(connectionId)
     }
 
-    /// Accepts a client on the listening socket. The accept timestamp is taken here, not once
-    /// the open reaches `openAndRelay`, because the client's own connect timeout is already
-    /// running by then and the scheduling hops in between would push the deadline past it.
-    private func acceptClient() -> (fd: Int32, acceptedAt: Date)? {
+    private func acceptClient() -> Int32? {
         var pollFD = pollfd(fd: listenFD, events: Int16(POLLIN), revents: 0)
         let pollResult = poll(&pollFD, 1, Self.acceptPollTimeoutMs)
 
@@ -295,13 +300,18 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
 
         guard clientFD >= 0 else { return nil }
-        return (clientFD, Date())
+        return clientFD
     }
 
     /// Open the channel and relay the client, off the accept loop so a slow open cannot
     /// stall the next accept, and off `sessionQueue` between attempts so it cannot stall
     /// the relays and keep-alive that share the session.
-    private func openAndRelay(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
+    private func openAndRelay(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget,
+        destination: SSHForwardDestination
+    ) {
+        let connectionDeadline = budget.deadline
         let pump = SSHForwardChannelOpenPump(
             opener: LibSSH2ForwardChannelOpener(
                 session: session,
@@ -309,35 +319,75 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                 originPort: localPort,
                 sessionQueue: sessionQueue
             ),
-            isActive: { [weak self] in self?.isRunning ?? false },
-            deadline: acceptedAt.addingTimeInterval(Self.channelOpenDeadlineSeconds),
+            isActive: { [weak self] in
+                guard self?.isRunning == true else { return false }
+                return !connectionDeadline.isExpired
+            },
+            deadline: .distantFuture,
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
                 return pollReady(
                     fd: self.socketFD,
                     directions: directions,
-                    timeoutMs: Self.channelOpenPollTimeoutMs
+                    timeoutMs: Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
                 )
             }
         )
 
         let outcome = pump.run()
-        logChannelOpenOutcome(outcome, destination: destination)
+        let relayTimedOut: Bool
+        switch outcome {
+        case .timedOut:
+            relayTimedOut = true
+        case .opened, .cancelled, .failed:
+            relayTimedOut = connectionDeadline.isExpired
+        }
+        if relayTimedOut {
+            if budget.isInitial {
+                connectionTimeoutFailure.withLock {
+                    $0 = connectionDeadline.timeoutError(for: timeoutEndpoint)
+                }
+            }
+            if case .opened(let channel) = outcome {
+                sessionQueue.sync {
+                    libssh2_channel_close(channel)
+                    libssh2_channel_free(channel)
+                }
+                Darwin.close(clientFD)
+                return
+            }
+        }
+        let deadlineSeconds = connectionDeadline.configuredSeconds
+        logChannelOpenOutcome(
+            outcome,
+            destination: destination,
+            deadlineSeconds: deadlineSeconds
+        )
         forwardFailure.record(
             outcome,
             destination: destination,
-            deadlineSeconds: Int(Self.channelOpenDeadlineSeconds)
+            deadlineSeconds: deadlineSeconds
         )
         handleChannelOpenOutcome(outcome, clientFD: clientFD) { channel in
             runRelay(clientFD: clientFD, channel: channel, destination: destination)
         }
     }
 
-    func consumeLastForwardFailure() -> SSHTunnelError? {
-        forwardFailure.consume()?.tunnelError
+    func consumeLastForwardFailure() -> (any Error)? {
+        if let timeout = connectionTimeoutFailure.withLock({ failure -> ConnectionTimeoutError? in
+            defer { failure = nil }
+            return failure
+        }) {
+            return timeout
+        }
+        return forwardFailure.consume()?.tunnelError
     }
 
-    private func logChannelOpenOutcome(_ outcome: ChannelOpenOutcome, destination: SSHForwardDestination) {
+    private func logChannelOpenOutcome(
+        _ outcome: ChannelOpenOutcome,
+        destination: SSHForwardDestination,
+        deadlineSeconds: Int
+    ) {
         let target = destination.logDescription
         switch outcome {
         case .opened:
@@ -348,7 +398,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             )
         case .timedOut:
             Self.logger.error(
-                "Forwarding channel to \(target) did not open within \(Int(Self.channelOpenDeadlineSeconds))s, closing local socket"
+                "Forwarding channel to \(target) did not open within \(deadlineSeconds)s, closing local socket"
             )
         case .cancelled:
             break
@@ -358,7 +408,11 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// Opens the channel and relays one accepted client, off the accept loop so a slow
     /// open cannot delay the next accept. The loop runs on `relayQueue` (concurrent);
     /// individual libssh2 calls are dispatched to `sessionQueue` (serial) for thread safety.
-    private func spawnClient(clientFD: Int32, acceptedAt: Date, destination: SSHForwardDestination) {
+    private func spawnClient(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget,
+        destination: SSHForwardDestination
+    ) {
         let clientRelays = self.clientRelays
         clientRelays.enter()
         relayQueue.async { [weak self] in
@@ -367,7 +421,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                 Darwin.close(clientFD)
                 return
             }
-            self.openAndRelay(clientFD: clientFD, acceptedAt: acceptedAt, destination: destination)
+            self.openAndRelay(clientFD: clientFD, budget: budget, destination: destination)
         }
     }
 

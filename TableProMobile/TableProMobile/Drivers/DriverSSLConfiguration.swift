@@ -11,6 +11,11 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
 
     static let disabled = DriverSSLConfiguration(mode: .disable)
 
+    static let oracleVerifyCaUnavailableMessage = String(localized: """
+        Verify CA needs a CA certificate, and an Oracle connection on this device cannot use one. Set SSL \
+        Mode to Verify Identity to check the server's certificate and hostname against the system trust store.
+        """)
+
     init(
         mode: SSLConfiguration.SSLMode,
         caCertificatePath: String? = nil,

@@ -595,7 +595,7 @@ struct ElasticsearchMappingFlattenerTests {
             "address": ["city": "NYC"],
             "tags": ["a", "b"],
         ]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["name"] == .text("Alice"))
         #expect(flat["address.city"] == .text("NYC"))
         #expect(flat["tags"]?.asText?.contains("a") == true)
@@ -608,7 +608,7 @@ struct ElasticsearchMappingFlattenerTests {
             "total": 1_847.27,
             "counts": ["rate": 0.1, "qty": 3.0],
         ]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["score"] == .text("-3.9192320754595876e-07"))
         #expect(flat["total"] == .text("1847.27"))
         #expect(flat["counts.rate"] == .text("0.1"))
@@ -618,7 +618,7 @@ struct ElasticsearchMappingFlattenerTests {
     @Test("An array of doubles serializes without binary floating point noise")
     func arrayOfDoublesHasNoExcessDigits() {
         let source: [String: Any] = ["samples": [0.1, 1_847.27]]
-        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        let flat = ElasticsearchMappingFlattener.flattenSource(source, length: .display)
         #expect(flat["samples"] == .text("[0.1,1847.27]"))
     }
 
@@ -629,7 +629,7 @@ struct ElasticsearchMappingFlattenerTests {
             "_source": ["msg": "hello"],
         ]]
         let columns = ["_id", "_index", "_score", "msg"]
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns)
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns, length: .display)
         #expect(rows.first?[0] == .text("1"))
         #expect(rows.first?[1] == .text("logs"))
         #expect(rows.first?[3] == .text("hello"))
@@ -646,7 +646,7 @@ struct ElasticsearchMappingFlattenerTests {
     @Test("Object-valued parent column renders as JSON, not null")
     func parentObjectColumnRendersJSON() {
         let hits: [[String: Any]] = [["_source": ["labels": ["env": "prod", "tier": "1"]]]]
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"])
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"], length: .display)
         #expect(rows.first?[0].asText?.contains("env") == true)
     }
 
@@ -666,7 +666,7 @@ struct ElasticsearchMappingFlattenerTests {
             "identifiers", "identifiers.issuer", "identifiers.system",
             "identifiers.type", "identifiers.value", "personId",
         ]
-        let row = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns).first
+        let row = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns, length: .display).first
         #expect(row?[0].asText?.contains("8930") == true)
         #expect(row?[0].asText?.contains("identifiers.issuer") == false)
         #expect(row?[1].asText?.contains("EPACS") == true)
@@ -692,7 +692,8 @@ struct ElasticsearchMappingFlattenerTests {
         let hits: [[String: Any]] = [["_source": source]]
         let row = ElasticsearchMappingFlattener.rows(
             forHits: hits,
-            columns: ["identifiers", "identifiers.type", "identifiers.value", "identifiers.issuer"]
+            columns: ["identifiers", "identifiers.type", "identifiers.value", "identifiers.issuer"],
+            length: .display
         ).first
         #expect(row?[0].asText?.contains("318.578.388-31") == true)
         #expect(row?[0].asText?.contains("3533") == true)
@@ -708,7 +709,8 @@ struct ElasticsearchMappingFlattenerTests {
         let hits: [[String: Any]] = [["_source": ["personId": "1"]]]
         let rows = ElasticsearchMappingFlattener.rows(
             forHits: hits,
-            columns: ["identifiers", "identifiers.value", "personId"]
+            columns: ["identifiers", "identifiers.value", "personId"],
+            length: .display
         )
         #expect(rows.first?[0] == .null)
         #expect(rows.first?[1] == .null)
@@ -718,7 +720,7 @@ struct ElasticsearchMappingFlattenerTests {
     @Test("An object array still fills dotted leaves")
     func objectArrayFillsDottedLeaves() {
         let hits: [[String: Any]] = [["_source": ["labels": [["env": "prod"], ["env": "dev"]]]]]
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels.env"])
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels.env"], length: .display)
         let text = rows.first?[0].asText
         #expect(text?.contains("prod") == true)
         #expect(text?.contains("dev") == true)
@@ -735,7 +737,8 @@ struct ElasticsearchMappingFlattenerTests {
         let hits: [[String: Any]] = [["_source": source]]
         let row = ElasticsearchMappingFlattener.rows(
             forHits: hits,
-            columns: ["identifiers.issuer", "identifiers.type"]
+            columns: ["identifiers.issuer", "identifiers.type"],
+            length: .display
         ).first
         #expect(row?[0].asText == "[null,\"EPACS\"]")
         #expect(row?[1].asText == "[\"CPF\",\"PATIENT_ID\"]")
@@ -747,10 +750,46 @@ struct ElasticsearchMappingFlattenerTests {
         let row = ElasticsearchMappingFlattener.rows(
             forHits: hits,
             columns: ["identifiers", "identifiers.type"],
-            nestedParents: ["identifiers"]
+            nestedParents: ["identifiers"],
+            length: .display
         ).first
         #expect(row?[0].asText?.hasPrefix("[") == true)
         #expect(row?[1].asText == "[\"CPF\"]")
+    }
+
+    @Test("An export row keeps arrays and objects longer than the grid's cap whole")
+    func exportRowKeepsLongStructuresWhole() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let chunks = (0..<4).map { _ in ["vector": embedding] }
+        let hits: [[String: Any]] = [["_id": "1", "_source": ["embedding": embedding, "chunks": chunks]]]
+        let row = try #require(ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["embedding", "chunks", "chunks.vector"],
+            nestedParents: ["chunks"],
+            length: .whole
+        ).first)
+
+        #expect(try parsedJSON(row[0]) as? [Double] == embedding)
+        #expect(try parsedJSON(row[1]) as? [[String: [Double]]] == chunks)
+        #expect(try parsedJSON(row[2]) as? [[Double]] == chunks.map { _ in embedding })
+    }
+
+    @Test("A grid row still cuts an array longer than the cap")
+    func gridRowCutsLongStructures() throws {
+        let embedding = (0..<1_536).map { Double($0) / 1_024 }
+        let hits: [[String: Any]] = [["_source": ["embedding": embedding]]]
+        let row = try #require(ElasticsearchMappingFlattener.rows(
+            forHits: hits, columns: ["embedding"], length: .display
+        ).first)
+        let text = try #require(row[0].asText)
+
+        #expect(text.hasSuffix("..."))
+        #expect((text as NSString).length == 10_003)
+    }
+
+    private func parsedJSON(_ cell: PluginCellValue) throws -> Any {
+        let text = try #require(cell.asText)
+        return try JSONSerialization.jsonObject(with: Data(text.utf8))
     }
 
     @Test("An alias mapping keyed by real index names unions their fields")
@@ -1152,5 +1191,113 @@ struct ElasticsearchStatementGeneratorTests {
         )
         let decoded = ElasticsearchStatementGenerator.decode(statements[0].statement)
         #expect(decoded?.body?.contains("\"name\":\"{\\\"a\\\":1}\"") == true)
+    }
+
+    private func documentGenerator() -> ElasticsearchStatementGenerator {
+        ElasticsearchStatementGenerator(
+            index: "users",
+            columns: ["_id", "tags", "labels", "name"],
+            columnTypeNames: ["keyword", "keyword", "object", "text"]
+        )
+    }
+
+    private func displayed(_ value: Any) -> String {
+        ElasticsearchMappingFlattener.cell(value, length: .display).asText ?? ""
+    }
+
+    private func shortenedRefusal(_ column: String) -> PluginRowWriteRefusal {
+        PluginRowWriteRefusal(
+            rowIndex: 0,
+            reason: "The value in \(column) is shortened for display, so saving it would store only the part shown. "
+                + "Change this field with a query."
+        )
+    }
+
+    private func shortenedTags() -> String {
+        displayed((0..<1_500).map { "tag-\($0)" })
+    }
+
+    private func tagEdit(from old: String, to new: PluginCellValue) -> PluginRowChange {
+        PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "tags", oldValue: .text(old), newValue: new)],
+            originalRow: [.text("doc1"), .text(old), .null, .text("Bob")]
+        )
+    }
+
+    private func updateBody(_ change: PluginRowChange) throws -> String? {
+        let writes = try documentGenerator().generateRowWrites(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        let write = try #require(writes.first)
+        return ElasticsearchStatementGenerator.decode(write.statement)?.body
+    }
+
+    @Test("An edit to an array shortened for display is refused rather than saved as the fragment")
+    func updateRefusesAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let edited = shortened.replacingOccurrences(of: "\"tag-0\"", with: "\"tag-Z\"")
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(edited)))
+        }
+    }
+
+    @Test("Text appended to an array shortened for display is refused")
+    func updateRefusesTextAppendedToAShortenedArray() throws {
+        let shortened = shortenedTags()
+        try #require(shortened.hasSuffix("..."))
+        let appended = String(shortened.dropLast(3)) + #","new"]"#
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortened, to: .text(appended)))
+        }
+    }
+
+    @Test("A new row carrying a value shortened right after an object is refused")
+    func insertRefusesAValueShortenedAfterAnObject() throws {
+        let shortened = displayed(Array(repeating: ["k": "v"], count: 1_500))
+        try #require(shortened.hasSuffix("}..."))
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        #expect(throws: shortenedRefusal("labels")) {
+            try documentGenerator().generateRowWrites(
+                from: [change],
+                insertedRowData: [0: [.null, .null, .text(shortened), .text("Eve")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("A complete array written over one shortened for display is refused, since it may be the shown part closed")
+    func updateRefusesACompleteArrayWrittenOverAShortenedOne() throws {
+        let shownPart = displayed((0..<800).map { "tag-\($0)" })
+        try #require(!shownPart.hasSuffix("..."))
+        #expect(throws: shortenedRefusal("tags")) {
+            try updateBody(tagEdit(from: shortenedTags(), to: .text(shownPart)))
+        }
+    }
+
+    @Test("NULL written over a value shortened for display clears the field")
+    func updateWritesNullOverAShortenedValue() throws {
+        let body = try updateBody(tagEdit(from: shortenedTags(), to: .null))
+        #expect(body == #"{"doc":{"tags":null}}"#)
+    }
+
+    @Test("An edit to another field of a row holding a shortened value is written")
+    func updateWritesAnotherFieldBesideAShortenedValue() throws {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 3, columnName: "name", oldValue: .text("Bob"), newValue: .text("Rob"))],
+            originalRow: [.text("doc1"), .text(shortenedTags()), .null, .text("Bob")]
+        )
+        #expect(try updateBody(change) == #"{"doc":{"name":"Rob"}}"#)
+    }
+
+    @Test("Text that opens with a bracket and trails off is written as typed")
+    func updateWritesBracketedProse() throws {
+        let body = try updateBody(tagEdit(from: "draft", to: .text("[DRAFT] Chapter one...")))
+        #expect(body == #"{"doc":{"tags":"[DRAFT] Chapter one..."}}"#)
     }
 }

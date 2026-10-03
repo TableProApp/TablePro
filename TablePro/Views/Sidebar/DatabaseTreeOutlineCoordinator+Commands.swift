@@ -99,6 +99,8 @@ extension DatabaseTreeOutlineCoordinator {
             beginRename(.container(ref))
         case .toggleFavorite(let ref):
             toggleFavorite(ref)
+        case .tableFolder(let folderCommand):
+            perform(folderCommand)
         case .removeRecent(let ref):
             sidebarState?.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
         case .clearRecents:
@@ -106,17 +108,9 @@ extension DatabaseTreeOutlineCoordinator {
         case .useAsActive(let container):
             useAsActive(container)
         case .setFavoriteDatabases(let databases, let environment):
-            for database in databases {
-                favoriteDatabasesStorage.setFavorite(
-                    database: database,
-                    environment: environment,
-                    connectionId: connectionId
-                )
-            }
+            setFavoriteDatabases(databases, environment: environment)
         case .removeFavoriteDatabases(let databases):
-            for database in databases {
-                favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
-            }
+            removeFavoriteDatabases(databases)
         case .refreshContainers(let targets):
             refreshContainers(targets)
         case .copyContainerNames(let targets):
@@ -132,21 +126,21 @@ extension DatabaseTreeOutlineCoordinator {
                 mode: .copyTo,
                 database: ref?.database,
                 schema: ref?.qualifyingSchema,
-                objects: objects
+                preselection: .objects(objects)
             )
         case .copyContainerTo(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .copyTo,
                 database: container.database,
                 schema: container.kind == .schema ? container.schema : nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .duplicateDatabase(let container):
             mainCoordinator?.openCopyObjects(
                 mode: .duplicateDatabase,
                 database: container.database,
                 schema: nil,
-                objects: []
+                preselection: .wholeScope
             )
         case .showAllTablesMetadata:
             mainCoordinator?.showAllTablesMetadata()
@@ -171,6 +165,18 @@ extension DatabaseTreeOutlineCoordinator {
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
              .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
+        }
+    }
+
+    private func setFavoriteDatabases(_ databases: [String], environment: FavoriteDatabaseEnvironment) {
+        for database in databases {
+            favoriteDatabasesStorage.setFavorite(database: database, environment: environment, connectionId: connectionId)
+        }
+    }
+
+    private func removeFavoriteDatabases(_ databases: [String]) {
+        for database in databases {
+            favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
         }
     }
 

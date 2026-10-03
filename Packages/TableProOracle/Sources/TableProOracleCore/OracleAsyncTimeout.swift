@@ -1,5 +1,19 @@
 import Foundation
 
+internal enum OracleQueryTimeout {
+    internal static let maximumSeconds = Int(Int32.max) / 1_000
+
+    internal static func boundedSeconds(_ seconds: Int) -> Int {
+        min(max(seconds, 0), maximumSeconds)
+    }
+
+    internal static func nanoseconds(_ seconds: Double) -> UInt64 {
+        guard !seconds.isNaN else { return 0 }
+        let boundedSeconds = min(max(seconds, 0), Double(maximumSeconds))
+        return UInt64(boundedSeconds * 1_000_000_000)
+    }
+}
+
 public struct OracleTimeoutError: Error, Sendable, Equatable {
     public let seconds: Double
 
@@ -26,7 +40,7 @@ public func withOracleTimeout<T: Sendable>(
     try await withThrowingTaskGroup(of: T.self) { group in
         group.addTask { try await operation() }
         group.addTask {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            try await Task.sleep(nanoseconds: OracleQueryTimeout.nanoseconds(seconds))
             onTimeout()
             throw OracleTimeoutError(seconds: seconds)
         }

@@ -60,6 +60,74 @@ class CreditEntryTests(unittest.TestCase):
             "- Stale grid. (#100, #101 by @filipac)",
         )
 
+    def test_a_maintainer_entry_gains_the_pull_request_alone(self):
+        self.assertEqual(
+            credits.credit_entry("- Two chevrons on the Tags row.", "2919", None),
+            "- Two chevrons on the Tags row. (#2919)",
+        )
+
+    def test_a_maintainer_entry_keeps_its_issue_reference_first(self):
+        self.assertEqual(
+            credits.credit_entry("- OceanBase connection type. (#1748)", "2741", None),
+            "- OceanBase connection type. (#1748, #2741)",
+        )
+
+    def test_crediting_a_maintainer_entry_twice_changes_nothing(self):
+        once = credits.credit_entry("- Crash on launch.", "2930", None)
+        self.assertEqual(credits.credit_entry(once, "2930", None), once)
+
+
+class FakeCompleted:
+    def __init__(self, returncode, stdout=""):
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+class FakeGitHub:
+    def __init__(self, roles):
+        self.roles = roles
+        self.asked = []
+
+    def __call__(self, command, **_):
+        login = command[2].split("/")[-2]
+        self.asked.append(login)
+        if login not in self.roles:
+            return FakeCompleted(1)
+        return FakeCompleted(0, self.roles[login] + "\n")
+
+
+class MaintainerTests(unittest.TestCase):
+    def test_admin_and_maintain_roles_are_maintainers(self):
+        maintainers = credits.Maintainers(run=FakeGitHub({"owner": "admin", "helper": "maintain"}))
+        self.assertTrue(maintainers.includes("owner"))
+        self.assertTrue(maintainers.includes("helper"))
+
+    def test_write_triage_and_read_roles_are_contributors(self):
+        github = FakeGitHub({"committer": "write", "triager": "triage", "digows": "read"})
+        maintainers = credits.Maintainers(run=github)
+        self.assertFalse(maintainers.includes("committer"))
+        self.assertFalse(maintainers.includes("triager"))
+        self.assertFalse(maintainers.includes("digows"))
+
+    def test_each_login_is_asked_once(self):
+        github = FakeGitHub({"owner": "admin"})
+        maintainers = credits.Maintainers(run=github)
+        maintainers.includes("owner")
+        maintainers.includes("owner")
+        self.assertEqual(github.asked, ["owner"])
+
+    def test_an_unreadable_role_keeps_the_handle_and_is_reported(self):
+        maintainers = credits.Maintainers(run=FakeGitHub({}))
+        self.assertFalse(maintainers.includes("J2TeamNNL"))
+        self.assertEqual(maintainers.unknown, {"J2TeamNNL"})
+
+    def test_a_github_app_is_never_a_maintainer_and_is_not_looked_up(self):
+        github = FakeGitHub({})
+        maintainers = credits.Maintainers(run=github)
+        self.assertFalse(maintainers.includes("app/dependabot"))
+        self.assertEqual(github.asked, [])
+        self.assertEqual(maintainers.unknown, set())
+
 
 class SectionTests(unittest.TestCase):
     CHANGELOG = [

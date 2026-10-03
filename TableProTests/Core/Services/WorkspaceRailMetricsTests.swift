@@ -33,19 +33,37 @@ struct WorkspaceRailMetricsTests {
         }
     }
 
-    @Test("A row clears the accessibility minimum target size and fits icon plus label")
-    func rowFitsItsContent() {
+    @MainActor
+    @Test("A row clears the macOS default control size")
+    func rowClearsTheDefaultControlSize() {
         for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
-            #expect(layout.rowHeight >= 20)
-            #expect(layout.width >= 20)
-            #expect(layout.rowHeight >= layout.iconSize + layout.fontSize)
+            #expect(WorkspaceRailCellView.rowHeight(for: layout) >= 28)
+            #expect(layout.width >= 28)
         }
     }
 
+    /// The HIG's grouping rule: a glyph and its own label are one item only while the space between
+    /// them is clearly smaller than the space between one tile's label and the next tile's glyph.
+    @Test("The space between tiles is at least three times the gap inside one")
+    func glyphAndLabelReadAsOneGroup() {
+        for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
+            #expect(2 * layout.padding >= 3 * WorkspaceRailMetrics.iconLabelGap)
+        }
+    }
+
+    @MainActor
     @Test("Larger sidebar icon sizes produce larger rails")
     func layoutsScaleMonotonically() {
         #expect(WorkspaceRailMetrics.small.width < WorkspaceRailMetrics.medium.width)
         #expect(WorkspaceRailMetrics.medium.width < WorkspaceRailMetrics.large.width)
         #expect(WorkspaceRailMetrics.small.iconSize < WorkspaceRailMetrics.large.iconSize)
+        #expect(
+            WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.small)
+                < WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
+        )
+        #expect(
+            WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
+                < WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.large)
+        )
     }
 }

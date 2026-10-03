@@ -52,7 +52,12 @@ extension DataFileSplitViewController {
             presentImportFailure(String(localized: "That connection is no longer open."))
             return
         }
-        guard let refusal = coordinator.presentRowImport(of: snapshot.url, formatId: snapshot.formatId, ownsFile: true) else {
+        guard let refusal = coordinator.presentRowImport(
+            of: snapshot.url,
+            formatId: snapshot.formatId,
+            ownsFile: true,
+            sourceName: importSourceName
+        ) else {
             return
         }
         ImportFileHandoff(url: snapshot.url, ownsFile: true).discard()
@@ -67,6 +72,14 @@ extension DataFileSplitViewController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: String(localized: "OK"))
         AlertHelper.present(alert, in: view.window) { _ in }
+    }
+
+    /// The rows reach the sheet through a snapshot with a generated name, so the sheet is told the
+    /// name of the file the user opened.
+    private var importSourceName: String {
+        dataFileDocument?.fileURL?.lastPathComponent
+            ?? dataFileDocument?.displayName
+            ?? String(localized: "Data File")
     }
 
     private var exportTitle: String {

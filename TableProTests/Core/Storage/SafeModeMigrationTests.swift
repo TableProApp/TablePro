@@ -9,8 +9,8 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
-import Testing
 import TableProSyncTransport
+import Testing
 
 @MainActor
 struct SafeModeMigrationTests {
@@ -218,11 +218,15 @@ struct SafeModeMigrationTests {
 
         var inSession = stored
         inSession.database = "switched"
+        inSession.connectTimeoutSeconds = 12
+        inSession.queryTimeoutSeconds = 0
 
         let resolved = manager.resolvedConnectionDefinition(for: inSession)
 
         #expect(resolved.database == "switched")
         #expect(resolved.safeModeLevel == .alertFull)
+        #expect(resolved.connectTimeoutSeconds == 12)
+        #expect(resolved.queryTimeoutSeconds == 0)
     }
 
     @Test("A fresh session seeds from the persisted safe mode after disconnect")

@@ -233,4 +233,19 @@ struct BigQueryJobPollingTests {
         let deadline = BigQueryJobPolling.deadline(queryTimeoutSeconds: 5, from: start)
         #expect(deadline == start.addingTimeInterval(TimeInterval(5 + BigQueryJobPolling.deadlineGraceSeconds)))
     }
+
+    @Test("An unsafe timeout is clamped before deadline and millisecond conversion")
+    func unsafeTimeoutIsClamped() {
+        let start = Date(timeIntervalSince1970: 0)
+        let maximum = PluginQueryTimeout.maximumSeconds
+
+        #expect(
+            BigQueryJobPolling.jobTimeoutMilliseconds(queryTimeoutSeconds: Int.max)
+                == String(maximum * 1_000)
+        )
+        #expect(
+            BigQueryJobPolling.deadline(queryTimeoutSeconds: Int.max, from: start)
+                == start.addingTimeInterval(TimeInterval(maximum + BigQueryJobPolling.deadlineGraceSeconds))
+        )
+    }
 }

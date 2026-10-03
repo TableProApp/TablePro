@@ -81,12 +81,53 @@ final class SyncChangeTracker: Sendable {
 
     @MainActor
     func markDeleted(_ type: SyncRecordType, ids: [String]) {
+        markDeleted(type, ids: ids, owner: nil)
+    }
+
+    @MainActor
+    func markDeleted(_ type: SyncRecordType, ids: [String], owner: UUID?) {
         guard !isSuppressed, !ids.isEmpty else { return }
         metadataStorage.removeDirty(ids, type: type)
-        metadataStorage.addTombstones(ids, type: type)
+        metadataStorage.addTombstones(ids, type: type, owner: owner)
         recordEdits(type, ids: ids)
         Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
+    }
+
+    @MainActor
+    func markDeleted(_ type: SyncRecordType, idsByOwner: [UUID: Set<String>]) {
+        let ids = idsByOwner.values.flatMap { $0 }
+        guard !isSuppressed, !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+        metadataStorage.addTombstones(
+            idsByOwner.flatMap { owner, ownedIds in ownedIds.map { Tombstone(id: $0, owner: owner) } },
+            type: type
+        )
+        recordEdits(type, ids: ids)
+        Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
+        postChangeNotification()
+    }
+
+    @MainActor
+    func discardTombstones(ownedBy owners: Set<UUID>) {
+        guard !owners.isEmpty else { return }
+        metadataStorage.removeTombstones { type, tombstone in
+            SyncBoundary.owner(of: tombstone, type: type).map(owners.contains) ?? false
+        }
+    }
+
+    var ownersKeptOffSync: Set<UUID> {
+        metadataStorage.ownersKeptOffSync()
+    }
+
+    @MainActor
+    func keepOffSync(owners: Set<UUID>) {
+        metadataStorage.keepOffSync(owners: owners)
+    }
+
+    @MainActor
+    func releaseOwnersKeptOffSync(_ owners: Set<UUID>) {
+        metadataStorage.releaseOwnersKeptOffSync(owners)
     }
 
     // MARK: - Query
@@ -103,10 +144,15 @@ final class SyncChangeTracker: Sendable {
         let dirty = Set(SyncRecordType.allCases.flatMap { type in
             metadataStorage.dirtyIds(for: type).map { SyncRecordIdentity(type: type, id: $0) }
         })
+        let tombstoned = Set(SyncRecordType.allCases.flatMap { type in
+            metadataStorage.tombstones(for: type).map { SyncRecordIdentity(type: type, id: $0.id) }
+        })
         return editGenerations.withLock { state in
             SyncEditSnapshot(
                 dirty: dirty,
-                generations: Dictionary(uniqueKeysWithValues: dirty.map { ($0, state.generation(of: $0)) })
+                generations: Dictionary(
+                    uniqueKeysWithValues: dirty.union(tombstoned).map { ($0, state.generation(of: $0)) }
+                )
             )
         }
     }

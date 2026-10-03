@@ -21,6 +21,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case connectionClosed
     case protocolError
     case loginTimedOut
+    case connectTimedOut
     case queryTimedOut
     case transactionLost
     case authVerifierUnsupported(flag: String)
@@ -31,6 +32,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case nativeEncryptionRequired
     case tlsHandshakeFailed(kind: OracleTLSFailureKind, serverMessage: String)
     case certificateUnavailable(field: OracleCertificateField, path: String)
+    case certificateAuthorityRequired
 
     public var errorDescription: String? {
         switch self {
@@ -48,6 +50,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(localized: "The server sent an unexpected message and the connection was reset. Run the query again.")
         case .loginTimedOut:
             return String(localized: "Timed out during the Oracle login handshake. The server accepted the network connection but did not finish logging in.")
+        case .connectTimedOut:
+            return String(localized: "The Oracle connection did not finish setup within the configured connection timeout.")
         case .queryTimedOut:
             return String(localized: "The query did not finish within the configured timeout, so the connection was reset. Run the query again.")
         case .transactionLost:
@@ -81,6 +85,8 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: String(localized: "TLS handshake failed: %@"), serverMessage)
         case .certificateUnavailable(let field, let path):
             return String(format: Self.certificateUnavailableFormat(for: field), path)
+        case .certificateAuthorityRequired:
+            return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
         }
     }
 

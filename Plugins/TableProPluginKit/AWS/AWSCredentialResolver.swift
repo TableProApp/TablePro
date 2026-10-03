@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+@_implementationOnly import Darwin
+#endif
 
 public enum AWSProfileKind: String, Sendable, Equatable {
     case singleSignOn
@@ -163,7 +166,7 @@ public enum AWSCredentialResolver {
             return credentials
 
         case .credentialProcess(let command):
-            return try await runCredentialProcess(command, profileName: profileName)
+            return try await runCredentialProcess(command, profileName: profileName, session: session)
 
         case .undeclared:
             throw AWSAuthError.profileIncomplete(profileName)
@@ -259,23 +262,23 @@ public enum AWSCredentialResolver {
         )
     }
 
-    private static func runCredentialProcess(_ command: String, profileName: String) async throws -> AWSCredentials {
+    private static func runCredentialProcess(
+        _ command: String,
+        profileName: String,
+        session: URLSession
+    ) async throws -> AWSCredentials {
         #if os(macOS)
         let arguments = tokenizeCommand(command)
         guard !arguments.isEmpty else {
             throw AWSAuthError.credentialProcessInvalid(profileName)
         }
 
-        let output = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    continuation.resume(returning: try executeCredentialProcess(arguments, profileName: profileName))
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-
+        let output = try await executeCredentialProcess(
+            arguments,
+            profileName: profileName,
+            deadline: AWSHTTP.connectDeadline(for: session)
+        )
+        try Task.checkCancellation()
         return try parseCredentialProcessOutput(output, profileName: profileName)
         #else
         throw AWSAuthError.credentialProcessUnsupportedOnPlatform(profileName)
@@ -283,40 +286,19 @@ public enum AWSCredentialResolver {
     }
 
     #if os(macOS)
-    private static func executeCredentialProcess(_ arguments: [String], profileName: String) throws -> Data {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = arguments
-        process.environment = processEnvironment()
-
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-        } catch {
-            throw AWSAuthError.credentialProcessLaunchFailed(
-                profile: profileName,
-                underlying: error.localizedDescription
-            )
-        }
-
-        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorOutput = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let message = String(data: errorOutput, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw AWSAuthError.credentialProcessFailed(
-                profile: profileName,
-                status: Int(process.terminationStatus),
-                message: message
-            )
-        }
-
+    static func executeCredentialProcess(
+        _ arguments: [String],
+        profileName: String,
+        deadline: AWSConnectDeadline?
+    ) async throws -> Data {
+        let execution = AWSCredentialProcessExecution(
+            arguments: arguments,
+            profileName: profileName,
+            environment: processEnvironment(),
+            deadline: deadline
+        )
+        let output = try await execution.run()
+        try Task.checkCancellation()
         return output
     }
 
@@ -426,3 +408,242 @@ public enum AWSCredentialResolver {
         )
     }
 }
+
+#if os(macOS)
+private final class AWSCredentialProcessCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var output = Data()
+    private var errorOutput = Data()
+
+    func setOutput(_ data: Data) {
+        lock.withLock { output = data }
+    }
+
+    func setErrorOutput(_ data: Data) {
+        lock.withLock { errorOutput = data }
+    }
+
+    func values() -> (output: Data, errorOutput: Data) {
+        lock.withLock { (output, errorOutput) }
+    }
+}
+
+/// Owns one credential_process from launch through waitpid. Cancellation first asks the process to
+/// terminate, then closes both read pipes and sends SIGKILL if it does not leave promptly. The
+/// continuation resumes only after `waitUntilExit`, so a timed-out connect cannot leak a zombie.
+private final class AWSCredentialProcessExecution: @unchecked Sendable {
+    private enum StopReason {
+        case cancelled
+        case timedOut
+    }
+
+    private let arguments: [String]
+    private let profileName: String
+    private let environment: [String: String]
+    private let deadline: AWSConnectDeadline?
+    private let lock = NSLock()
+    private var process: Process?
+    private var outputReadHandle: FileHandle?
+    private var errorReadHandle: FileHandle?
+    private var stopReason: StopReason?
+    private var timeoutWorkItem: DispatchWorkItem?
+    private var forceStopWorkItem: DispatchWorkItem?
+
+    init(
+        arguments: [String],
+        profileName: String,
+        environment: [String: String],
+        deadline: AWSConnectDeadline?
+    ) {
+        self.arguments = arguments
+        self.profileName = profileName
+        self.environment = environment
+        self.deadline = deadline
+    }
+
+    func run() async throws -> Data {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    do {
+                        continuation.resume(returning: try execute())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+        } onCancel: { [self] in
+            stop(because: .cancelled)
+        }
+    }
+
+    private func execute() throws -> Data {
+        if let deadline, deadline.remainingSeconds() == nil {
+            stop(because: .timedOut)
+        }
+        if let reason = lock.withLock({ stopReason }) {
+            throw stopError(for: reason)
+        }
+
+        let launchedProcess = Process()
+        launchedProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        launchedProcess.arguments = arguments
+        launchedProcess.environment = environment
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        launchedProcess.standardOutput = outputPipe
+        launchedProcess.standardError = errorPipe
+
+        do {
+            try lock.withLock {
+                if let reason = stopReason {
+                    throw stopError(for: reason)
+                }
+                process = launchedProcess
+                outputReadHandle = outputPipe.fileHandleForReading
+                errorReadHandle = errorPipe.fileHandleForReading
+                try launchedProcess.run()
+            }
+        } catch {
+            closeAllHandles(outputPipe: outputPipe, errorPipe: errorPipe)
+            clearProcessState()
+            if let reason = lock.withLock({ stopReason }) {
+                throw stopError(for: reason)
+            }
+            throw AWSAuthError.credentialProcessLaunchFailed(
+                profile: profileName,
+                underlying: error.localizedDescription
+            )
+        }
+
+        try? outputPipe.fileHandleForWriting.close()
+        try? errorPipe.fileHandleForWriting.close()
+        armDeadline()
+
+        let capture = AWSCredentialProcessCapture()
+        let reads = DispatchGroup()
+        reads.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            capture.setOutput((try? outputPipe.fileHandleForReading.readToEnd()) ?? Data())
+            reads.leave()
+        }
+        reads.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            capture.setErrorOutput((try? errorPipe.fileHandleForReading.readToEnd()) ?? Data())
+            reads.leave()
+        }
+
+        launchedProcess.waitUntilExit()
+        reads.wait()
+        try? outputPipe.fileHandleForReading.close()
+        try? errorPipe.fileHandleForReading.close()
+        let terminationStatus = launchedProcess.terminationStatus
+        let result = capture.values()
+        let reason = clearProcessState()
+
+        if let reason {
+            throw stopError(for: reason)
+        }
+        guard terminationStatus == 0 else {
+            let message = String(data: result.errorOutput, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw AWSAuthError.credentialProcessFailed(
+                profile: profileName,
+                status: Int(terminationStatus),
+                message: message
+            )
+        }
+        return result.output
+    }
+
+    private func armDeadline() {
+        guard let deadline else { return }
+        guard let remaining = deadline.remainingSeconds() else {
+            stop(because: .timedOut)
+            return
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.stop(because: .timedOut)
+        }
+        let shouldSchedule = lock.withLock { () -> Bool in
+            guard process != nil, stopReason == nil else { return false }
+            timeoutWorkItem = workItem
+            return true
+        }
+        if shouldSchedule {
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + remaining, execute: workItem)
+        }
+    }
+
+    private func stop(because reason: StopReason) {
+        let action = lock.withLock { () -> (
+            process: Process,
+            isRunning: Bool,
+            output: FileHandle?,
+            error: FileHandle?
+        )? in
+            if stopReason == nil {
+                stopReason = reason
+            }
+            guard let process else { return nil }
+            return (process, process.isRunning, outputReadHandle, errorReadHandle)
+        }
+        guard let action else { return }
+
+        if action.isRunning {
+            action.process.terminate()
+        }
+        try? action.output?.close()
+        try? action.error?.close()
+
+        let forceStop = DispatchWorkItem { [weak self, weak launchedProcess = action.process] in
+            guard let self, let launchedProcess else { return }
+            let shouldKill = lock.withLock { () -> Bool in
+                process === launchedProcess && launchedProcess.isRunning
+            }
+            guard shouldKill else { return }
+            Darwin.kill(launchedProcess.processIdentifier, SIGKILL)
+        }
+        let shouldSchedule = lock.withLock { () -> Bool in
+            guard process === action.process else { return false }
+            forceStopWorkItem?.cancel()
+            forceStopWorkItem = forceStop
+            return true
+        }
+        if shouldSchedule {
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1, execute: forceStop)
+        }
+    }
+
+    @discardableResult
+    private func clearProcessState() -> StopReason? {
+        lock.withLock {
+            timeoutWorkItem?.cancel()
+            forceStopWorkItem?.cancel()
+            timeoutWorkItem = nil
+            forceStopWorkItem = nil
+            process = nil
+            outputReadHandle = nil
+            errorReadHandle = nil
+            return stopReason
+        }
+    }
+
+    private func closeAllHandles(outputPipe: Pipe, errorPipe: Pipe) {
+        try? outputPipe.fileHandleForReading.close()
+        try? outputPipe.fileHandleForWriting.close()
+        try? errorPipe.fileHandleForReading.close()
+        try? errorPipe.fileHandleForWriting.close()
+    }
+
+    private func stopError(for reason: StopReason) -> Error {
+        switch reason {
+        case .cancelled:
+            CancellationError()
+        case .timedOut:
+            URLError(.timedOut)
+        }
+    }
+}
+#endif

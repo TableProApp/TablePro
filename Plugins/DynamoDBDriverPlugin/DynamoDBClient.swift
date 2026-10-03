@@ -13,14 +13,23 @@ protocol DynamoDBTransport: Sendable {
 /// `X-Amz-Security-Token` along, which would carry a request past the rule that plain HTTP goes
 /// only to this Mac. DynamoDB never redirects, so a redirect is an error.
 final class DynamoDBURLSessionTransport: NSObject, DynamoDBTransport, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var connectRequestTimeout: TimeInterval?
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        configuration.timeoutIntervalForRequest = max(
+            HttpQueryTimeout.sessionBootstrapRequestTimeout,
+            lock.withLock { connectRequestTimeout ?? 0 }
+        )
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
+
+    func configureConnectTimeout(_ timeout: TimeInterval) {
+        lock.withLock { connectRequestTimeout = timeout }
+    }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await session.data(for: request)
@@ -53,6 +62,7 @@ final class DynamoDBCredentialsProvider: @unchecked Sendable {
     private let method: DynamoDBAuthMethod
     private let lock = NSLock()
     private var cached: AWSCredentials?
+    private var connectSession: URLSession?
 
     init(fields: [String: String], username: String, password: String) {
         var resolved = fields
@@ -74,6 +84,22 @@ final class DynamoDBCredentialsProvider: @unchecked Sendable {
         }
     }
 
+    func beginConnecting(deadline: PluginConnectDeadline) {
+        let session = PluginAWSConnectSessionBudget(deadline: deadline).makeSession()
+        lock.withLock {
+            connectSession?.invalidateAndCancel()
+            connectSession = session
+        }
+    }
+
+    func finishConnecting() {
+        let session = lock.withLock { () -> URLSession? in
+            defer { connectSession = nil }
+            return connectSession
+        }
+        session?.invalidateAndCancel()
+    }
+
     /// `AWSSSOError` and `AWSAuthError` leave here unwrapped: the app offers its SSO sign-in
     /// prompt only when it can see an `AWSSSOError`.
     func credentials(forceRefresh: Bool = false) async throws -> AWSCredentials {
@@ -83,7 +109,17 @@ final class DynamoDBCredentialsProvider: @unchecked Sendable {
         if !forceRefresh, let current = lock.withLock({ cached }), !current.isExpired() {
             return current
         }
-        let fresh = try await AWSCredentialResolver.resolve(source: method.credentialSource, fields: fields)
+        let session = lock.withLock { connectSession }
+        let fresh: AWSCredentials
+        if let session {
+            fresh = try await AWSCredentialResolver.resolve(
+                source: method.credentialSource,
+                fields: fields,
+                session: session
+            )
+        } else {
+            fresh = try await AWSCredentialResolver.resolve(source: method.credentialSource, fields: fields)
+        }
         lock.withLock { cached = fresh }
         return fresh
     }
@@ -101,6 +137,7 @@ final class DynamoDBClient: @unchecked Sendable {
     private let sleep: @Sendable (TimeInterval) async throws -> Void
     private let lock = NSLock()
     private var clockOffset: TimeInterval = 0
+    private var connectRequestTimeout: (@Sendable () -> TimeInterval)?
     private let timeout = HttpQueryTimeoutBox()
 
     init(
@@ -123,6 +160,18 @@ final class DynamoDBClient: @unchecked Sendable {
 
     func setQueryTimeout(_ seconds: Int) {
         timeout.set(serverTimeoutSeconds: seconds)
+    }
+
+    func beginConnecting(deadline: PluginConnectDeadline) {
+        let requestTimeout: @Sendable () -> TimeInterval = { deadline.remainingSeconds() }
+        lock.withLock { connectRequestTimeout = requestTimeout }
+        credentials.beginConnecting(deadline: deadline)
+        (transport as? DynamoDBURLSessionTransport)?.configureConnectTimeout(requestTimeout())
+    }
+
+    func finishConnecting() {
+        lock.withLock { connectRequestTimeout = nil }
+        credentials.finishConnecting()
     }
 
     var queryTimeoutSeconds: Int {
@@ -194,7 +243,7 @@ final class DynamoDBClient: @unchecked Sendable {
         var request = URLRequest(url: endpoint.url)
         request.httpMethod = "POST"
         request.httpBody = payload
-        request.timeoutInterval = timeout.requestTimeoutInterval
+        request.timeoutInterval = lock.withLock { connectRequestTimeout }?() ?? timeout.requestTimeoutInterval
         request.setValue("application/x-amz-json-1.0", forHTTPHeaderField: "Content-Type")
         request.setValue(operation.target, forHTTPHeaderField: "X-Amz-Target")
         let signingDate = now().addingTimeInterval(lock.withLock { clockOffset })

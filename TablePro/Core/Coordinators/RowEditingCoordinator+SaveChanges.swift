@@ -114,7 +114,7 @@ extension RowEditingCoordinator {
             /// The gate and the confirmation alert show the plan with its values written in.
             /// Approving `UPDATE "users" SET "email" = ? WHERE "id" = ?` is approving nothing:
             /// it names no row and no value.
-            let decision = await ExecutionGateProvider.shared.authorize(
+            let decision = await parent.executionGate.authorize(
                 OperationRequest(
                     connectionId: connId,
                     databaseType: parent.connection.type,
@@ -191,6 +191,7 @@ extension RowEditingCoordinator {
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
         let savingTabId = parent.tabManager.selectedTabId
+        let serverOwned = serverOwnedColumns(of: savingTabId)
 
         Task { [weak self, parent] in
             guard let self else { return }
@@ -210,7 +211,7 @@ extension RowEditingCoordinator {
                     steps: validSteps, results: run.results, connection: conn, scope: scope
                 )
                 recordSideStatementHistory(run.sideStatements, connection: conn, scope: scope)
-                captureRewindRecord(plan: plan, history: history, connection: conn)
+                captureRewindRecord(plan: plan, history: history, connection: conn, serverOwned: serverOwned)
 
                 finishSuccessfulSave(
                     plan: plan,
@@ -519,10 +520,23 @@ extension RowEditingCoordinator {
     /// `history_id` is a foreign key, so the snapshot waits for the history row to be confirmed
     /// written and carries nil when it was not. History capture can be paused, in which case there
     /// is no row to point at and every snapshot would otherwise be rejected outright.
+    /// Read before the save is sent, because by the time it commits the user may be on another tab, and the record
+    /// has to describe the table the save wrote.
+    private func serverOwnedColumns(of tabId: UUID?) -> (generated: [String], identity: [String]) {
+        let generated = Array(parent.changeManager.generatedColumns)
+        guard let tabId else { return (generated, []) }
+        let identity = parent.tabSessionRegistry.tableRows(for: tabId).columnIdentity
+            .filter { $0.value == .always }
+            .map(\.key)
+            .sorted()
+        return (generated, identity)
+    }
+
     private func captureRewindRecord(
         plan: DataWritePlan,
         history: (id: UUID, stored: Task<Bool, Never>)?,
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        serverOwned: (generated: [String], identity: [String])
     ) {
         guard parent.services.licenseManager.isFeatureAvailable(.dataRewind) else { return }
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
@@ -530,7 +544,8 @@ extension RowEditingCoordinator {
         guard !operations.isEmpty, let target = operations.first?.target else { return }
 
         let storage = parent.services.queryHistoryManager
-        let generatedColumns = Array(parent.changeManager.generatedColumns)
+        let generatedColumns = serverOwned.generated
+        let identityColumns = serverOwned.identity
         let databaseType = connection.type
         let connectionId = connection.id
         let capturedAt = Date()
@@ -549,6 +564,7 @@ extension RowEditingCoordinator {
                     target: target,
                     capturedAt: capturedAt,
                     generatedColumns: generatedColumns,
+                    identityColumns: identityColumns,
                     operations: operations
                 )
             )

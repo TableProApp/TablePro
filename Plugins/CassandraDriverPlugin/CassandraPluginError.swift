@@ -13,6 +13,15 @@ internal enum CassandraPluginError: Error {
     case unsupportedOperation
 }
 
+extension CassandraPluginError {
+    /// The server refuses to page a read that restricts the partition key with `IN` and orders by a clustering
+    /// column, so that read has to be sent unpaged.
+    var refusesPaging: Bool {
+        guard case .queryFailed(let message) = self else { return false }
+        return message.contains("Cannot page queries")
+    }
+}
+
 extension CassandraPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {

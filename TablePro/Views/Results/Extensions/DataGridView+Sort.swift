@@ -72,7 +72,7 @@ extension TableViewCoordinator {
             return column.title
         }()
 
-        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+        if supportsColumnSort, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let sortAscItem = NSMenuItem(
                 title: String(localized: "Sort Ascending"),
                 action: #selector(sortAscending(_:)),

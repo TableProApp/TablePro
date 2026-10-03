@@ -16,6 +16,8 @@ public enum OracleDisconnectReason: Sendable, Equatable {
     case fatalProtocolError
     case transportError
     case abandonedLoginAttempt
+    case connectTimedOut
+    case connectCancelled
 
     /// Whether a statement the close killed may be sent again on a replacement connection.
     ///
@@ -26,7 +28,7 @@ public enum OracleDisconnectReason: Sendable, Equatable {
     /// that is still wanted.
     public var allowsReplay: Bool {
         switch self {
-        case .userRequested, .queryCancelled, .abandonedLoginAttempt:
+        case .userRequested, .queryCancelled, .abandonedLoginAttempt, .connectTimedOut, .connectCancelled:
             return false
         case .queryTimedOut, .pingTimedOut, .wedgedStatement, .channelAlreadyClosed,
              .fatalProtocolError, .transportError:
@@ -37,13 +39,19 @@ public enum OracleDisconnectReason: Sendable, Equatable {
     /// Whether this close ends the connection for good, rather than taking a channel away from a
     /// session that still wants one.
     ///
-    /// The plugin drops its `OracleCoreConnection` when the app disconnects and builds a new one to
-    /// reconnect, so a connection closed this way is never reached again by anything the app owns.
+    /// The plugin drops its `OracleCoreConnection` when the app disconnects or abandons a connect
+    /// attempt, so a connection closed this way is never reached again by anything the app owns.
     /// Anything that still holds it, a statement queued behind the gate or a retry dial already in
     /// flight, must find it finished rather than quietly opening a second socket on the server.
     /// Cancelling a query is not this: it ends one statement, and the session goes on.
     public var endsConnection: Bool {
-        self == .userRequested
+        switch self {
+        case .userRequested, .connectTimedOut, .connectCancelled:
+            return true
+        case .queryCancelled, .queryTimedOut, .pingTimedOut, .wedgedStatement,
+             .channelAlreadyClosed, .fatalProtocolError, .transportError, .abandonedLoginAttempt:
+            return false
+        }
     }
 
     public var logDescription: String {
@@ -57,6 +65,8 @@ public enum OracleDisconnectReason: Sendable, Equatable {
         case .fatalProtocolError: return "the server sent an unexpected message"
         case .transportError: return "the transport failed"
         case .abandonedLoginAttempt: return "the login attempt had already been given up on"
+        case .connectTimedOut: return "the connection setup deadline fired"
+        case .connectCancelled: return "the connection attempt was cancelled"
         }
     }
 }

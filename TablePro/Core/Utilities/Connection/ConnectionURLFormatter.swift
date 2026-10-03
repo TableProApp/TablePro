@@ -216,7 +216,7 @@ struct ConnectionURLFormatter {
             params.append("sshNoAuth=true")
         }
 
-        if let sslParam = sslModeParam(connection.sslConfig.mode) {
+        if let sslParam = sslModeParam(for: connection) {
             params.append("sslmode=\(sslParam)")
         }
 
@@ -269,9 +269,20 @@ struct ConnectionURLFormatter {
         }
     }
 
-    private static func sslModeParam(_ mode: SSLMode) -> String? {
+    private static func sslModeParam(for connection: DatabaseConnection) -> String? {
+        guard connection.type != .etcd else {
+            return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
+                .map(sslModeParamValue)
+        }
+        let mode = connection.sslConfig.mode
+        let portImpliesTLS = connection.type.impliedSSLMode(forPort: connection.port) != nil
+        guard mode != connection.type.defaultSSLMode || portImpliesTLS else { return nil }
+        return sslModeParamValue(mode)
+    }
+
+    private static func sslModeParamValue(_ mode: SSLMode) -> String {
         switch mode {
-        case .disabled: return nil
+        case .disabled: return "disable"
         case .preferred: return "prefer"
         case .required: return "require"
         case .verifyCa: return "verify-ca"

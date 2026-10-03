@@ -10,8 +10,12 @@ struct SyncPendingDeletions: Equatable {
     var sshProfiles: Set<UUID> = []
     var credentialProfiles: Set<UUID> = []
     var tableFavorites: Set<String> = []
+    var databaseFavorites: Set<String> = []
+    var settingsRecordNames: Set<String> = []
     var sqlFavorites: Set<UUID> = []
     var sqlFolders: Set<UUID> = []
+    var tableFolders: Set<UUID> = []
+    var tableFolderItems: Set<String> = []
 
     static func parse(_ recordIDs: [CKRecord.ID], settings: SyncSettings) -> SyncPendingDeletions {
         var pending = SyncPendingDeletions()
@@ -23,6 +27,7 @@ struct SyncPendingDeletions: Equatable {
     }
 
     private mutating func insert(_ id: String, of type: SyncRecordType, settings: SyncSettings) {
+        guard settings.syncs(type) else { return }
         let uuid = UUID(uuidString: id)
         switch type {
         case .connection:
@@ -34,15 +39,21 @@ struct SyncPendingDeletions: Equatable {
         case .sshProfile:
             if let uuid { sshProfiles.insert(uuid) }
         case .credentialProfile:
-            if settings.syncCredentialProfiles, let uuid { credentialProfiles.insert(uuid) }
+            if let uuid { credentialProfiles.insert(uuid) }
         case .tableFavorite:
             tableFavorites.insert(id)
-        case .favoriteDatabase, .settings:
-            return
+        case .favoriteDatabase:
+            databaseFavorites.insert(id)
+        case .settings:
+            settingsRecordNames.insert(type.recordNamePrefix + id)
         case .favorite:
-            if settings.syncSQLFavorites, let uuid { sqlFavorites.insert(uuid) }
+            if let uuid { sqlFavorites.insert(uuid) }
         case .favoriteFolder:
-            if settings.syncSQLFavorites, let uuid { sqlFolders.insert(uuid) }
+            if let uuid { sqlFolders.insert(uuid) }
+        case .tableFolder:
+            if let uuid { tableFolders.insert(uuid) }
+        case .tableFolderItem:
+            tableFolderItems.insert(id)
         }
     }
 }
@@ -51,45 +62,62 @@ struct SyncRemoteDeletionEffects {
     var connectionsChanged = false
     var groupsOrTagsChanged = false
     var persistenceFailed = false
+    var tableFavoriteIdsToRetire: [UUID: Set<String>] = [:]
 }
 
 extension SyncCoordinator {
-    func applyRemoteDeletions(_ pending: SyncPendingDeletions) -> SyncRemoteDeletionEffects {
+    func applyRemoteDeletions(
+        _ pending: SyncPendingDeletions,
+        alongside tableFavorites: [FavoriteTablesStorage.FavoriteEntry]
+    ) -> SyncRemoteDeletionEffects {
         var effects = SyncRemoteDeletionEffects()
         effects.connectionsChanged = !pending.connections.isEmpty
         effects.groupsOrTagsChanged = !pending.groups.isEmpty || !pending.tags.isEmpty
+        effects.tableFavoriteIdsToRetire = services.favoriteTablesStorage.applyRemote(
+            saved: tableFavorites,
+            deletedIds: pending.tableFavorites
+        )
+        services.favoriteDatabasesStorage.removeFavoritesWithoutSync(ids: pending.databaseFavorites)
 
         let persisted = [
             applyRemoteConnectionDeletions(pending.connections),
             applyRemoteGroupDeletions(pending.groups),
             applyRemoteTagDeletions(pending.tags),
             applyRemoteSSHProfileDeletions(pending.sshProfiles),
-            applyRemoteCredentialProfileDeletions(pending.credentialProfiles)
+            applyRemoteCredentialProfileDeletions(pending.credentialProfiles),
+            applyRemoteColumnLayoutDeletions(pending.settingsRecordNames)
         ]
         effects.persistenceFailed = persisted.contains(false)
-
-        for id in pending.tableFavorites {
-            services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
-        }
+        applyRemoteTableFolderDeletions(folderIds: pending.tableFolders, itemSyncIds: pending.tableFolderItems)
         return effects
     }
 
     private func applyRemoteConnectionDeletions(_ ids: Set<UUID>) -> Bool {
         guard !ids.isEmpty else { return true }
         var connections = services.connectionStorage.loadConnections()
-        connections.removeAll { ids.contains($0.id) }
+        let deletedIds = ids.subtracting(connections.filter(\.localOnly).map(\.id))
+        guard !deletedIds.isEmpty else { return true }
+        connections.removeAll { deletedIds.contains($0.id) }
         guard services.connectionStorage.saveConnections(connections) else {
             Self.logger.error("Failed to apply remote connection deletions: persistence error")
             return false
         }
-        changeTracker.discardDirty(.connection, ids: ids.map(\.uuidString))
+        changeTracker.discardDirty(.connection, ids: deletedIds.map(\.uuidString))
         ConnectionLocalState.purge(
-            connectionIds: ids,
+            connectionIds: deletedIds,
             origin: .remote,
+            favoriteTables: services.favoriteTablesStorage,
+            favoriteDatabases: services.favoriteDatabasesStorage,
             sqlFavorites: services.sqlFavoriteManager,
             queryHistory: services.queryHistoryManager
         )
         return true
+    }
+
+    private func applyRemoteColumnLayoutDeletions(_ recordNames: Set<String>) -> Bool {
+        guard !recordNames.isEmpty else { return true }
+        let persister = columnLayouts()
+        return persister.removeWithoutSync(storageKeys: persister.storageKeys(forSyncRecordNames: recordNames))
     }
 
     private func applyRemoteGroupDeletions(_ ids: Set<UUID>) -> Bool {

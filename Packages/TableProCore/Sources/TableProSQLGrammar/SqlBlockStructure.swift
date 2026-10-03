@@ -63,6 +63,15 @@ public enum SqlBlockStructure {
         routineDefinitionOpeners.contains(keyword)
     }
 
+    public static func opensBlockBody(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
+        if grammar.contains(.sqlScriptBlocks), keyword == sqlScriptAnonymousBlockOpener {
+            return true
+        }
+        return opensRoutineDefinition(keyword)
+    }
+
+    private static let sqlScriptAnonymousBlockOpener = "DO"
+
     public static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
         guard let keyword else { return true }
         return transactionFollowers.contains(keyword)
@@ -138,12 +147,29 @@ public enum SqlBlockStructure {
             return .opensBlock
         case "END":
             return endEffect(after: wordEnd, in: text, length: length, grammar: grammar)
+        case CQLBatch.closer where grammar.contains(.cqlBatches):
+            return batchCloserEffect(after: wordEnd, in: text, length: length, grammar: grammar)
         default:
             return .none
         }
     }
 
     // MARK: - Private
+
+    /// `APPLY BATCH` closes the block its `BEGIN BATCH` opened. The `BATCH` is left to be read on its own, because
+    /// ``CQLBatchTracker`` has to see it to end the statement at the `;` that follows.
+    private static func batchCloserEffect(
+        after offset: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Effect {
+        let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
+        guard cursor < length, readKeyword(text, at: cursor, length: length).text == CQLBatch.keyword else {
+            return .none
+        }
+        return .closesBlock(resumeAt: offset)
+    }
 
     private static func startsTransaction(
         after offset: Int,

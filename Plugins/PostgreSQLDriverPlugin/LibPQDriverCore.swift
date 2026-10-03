@@ -81,33 +81,52 @@ final class LibPQDriverCore: @unchecked Sendable {
             applicationName: LibPQConnectionString.applicationName(
                 forPurpose: config.additionalFields["connectionPurpose"]
             ),
-            suppressServerSideCancel: singleConnectionMode
+            suppressServerSideCancel: singleConnectionMode,
+            connectTimeout: LibPQConnectTimeout(additionalFields: config.additionalFields)
         )
 
-        try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
-        connectionLock.withLock {
-            _libpqConnection = pqConn
-            _lostConnection = false
-        }
+        do {
+            try await withTaskCancellationHandler {
+                try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
+                // Provisional only: bootstrap callers can reach the handle, but the connection does
+                // not become usable until finishConnecting clears the absolute connect deadline.
+                connectionLock.withLock {
+                    _libpqConnection = pqConn
+                    _lostConnection = false
+                }
 
-        switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
-        case .schema(let schema):
-            currentSchema = schema
-        case .empty:
-            if let fallback = await firstFallbackSchema(pqConn) {
-                currentSchema = fallback
-                _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+                case .schema(let schema):
+                    currentSchema = schema
+                case .empty:
+                    if let fallback = await firstFallbackSchema(pqConn) {
+                        currentSchema = fallback
+                        _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                    }
+                case .failed:
+                    break
+                }
+
+                if let selectedSchema,
+                   (try? await pqConn.executeQuery(
+                       PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
+                   )) != nil {
+                    currentSchema = selectedSchema
+                }
+
+                await onPostConnect?()
+                try await pqConn.finishConnecting()
+                try Task.checkCancellation()
+            } onCancel: {
+                pqConn.cancelConnect()
             }
-        case .failed:
-            break
+        } catch {
+            connectionLock.withLock {
+                if _libpqConnection === pqConn { _libpqConnection = nil }
+            }
+            pqConn.disconnect()
+            throw error
         }
-
-        if let selectedSchema,
-           (try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema))) != nil {
-            currentSchema = selectedSchema
-        }
-
-        await onPostConnect?()
     }
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
@@ -229,7 +248,7 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
+        let ms = PluginQueryTimeout.milliseconds(seconds)
         _ = try await execute(query: "SET statement_timeout = \(ms)")
     }
 
@@ -288,6 +307,24 @@ extension LibPQBackedDriver {
         _ = try await execute(
             query: "ALTER SCHEMA \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
         )
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
+            schema: schema ?? core.currentSchema,
+            table: table
+        )
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { return nil }
+            return PluginCheckConstraintInfo(
+                name: name,
+                expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),
+                columns: PostgreSQLTextArray.values(row[safe: 3]?.asText),
+                isValidated: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
+            )
+        }
     }
 
     func connect() async throws {

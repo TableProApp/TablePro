@@ -62,6 +62,23 @@ struct LeadingRowsStatementTests {
             == LeadingRowsStatement(sql: "SELECT * FROM t", rowCap: 100))
     }
 
+    @Test("An engine that caps nothing leaves the user's statement alone, ALLOW FILTERING and COUNT included")
+    func noCeilingLeavesStatementsAlone() {
+        for sql in ["SELECT * FROM t WHERE v = 1 ALLOW FILTERING", "SELECT COUNT(*) FROM t"] {
+            #expect(LeadingRowsStatement.resolve(sql, rowCap: 1_000, databaseType: .cassandra)
+                == LeadingRowsStatement(sql: sql, rowCap: 1_000))
+        }
+    }
+
+    @Test("An export from an engine that caps nothing states no limit and names nothing partial")
+    func noCeilingExportIsUnbounded() {
+        let noCeiling = PaginationCapability.leadingRowsOnly(maximumRows: nil)
+
+        #expect(ExportDataSourceAdapter.rowLimit(requested: nil, pagination: noCeiling) == nil)
+        #expect(ExportDataSourceAdapter.rowLimit(requested: 250_000, pagination: noCeiling) == 250_000)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 100_000, pagination: noCeiling) == nil)
+    }
+
     @Test("A leading-rows engine is only counted on request")
     func rowCountPlan() {
         let unfiltered = QueryExecutionCoordinator.rowCountPlan(

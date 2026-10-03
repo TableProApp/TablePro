@@ -28,6 +28,8 @@ struct ConnectionFormEdits: Equatable {
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
     var externalAccess: ExternalAccessLevel
+    var connectTimeoutSeconds: Int?
+    var queryTimeoutSeconds: Int?
     var redisDatabase: Int?
     var startupCommands: String?
     var localOnly: Bool
@@ -37,6 +39,8 @@ struct ConnectionFormEdits: Equatable {
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
         "promptForPassword",
+        DatabaseConnection.connectTimeoutSecondsKey,
+        DatabaseConnection.queryTimeoutSecondsKey,
         DatabaseConnection.sshForwardUnixSocketPathKey
     ]
 
@@ -68,6 +72,8 @@ struct ConnectionFormEdits: Equatable {
         result.startupCommands = startupCommands
         result.localOnly = localOnly
         result.additionalFields = mergedAdditionalFields(onto: base.additionalFields)
+        result.connectTimeoutSeconds = connectTimeoutSeconds
+        result.queryTimeoutSeconds = queryTimeoutSeconds
         return result
     }
 

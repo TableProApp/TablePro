@@ -10,6 +10,7 @@
 #if canImport(CRedis)
 import CRedis
 #endif
+import Darwin
 import Foundation
 import os
 import OSLog
@@ -29,9 +30,13 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             logger.warning("redisInitOpenSSL failed with code \(result)")
         }
     }()
+    private static let connectWatchdogQueue = DispatchQueue(
+        label: "com.TablePro.redis.plugin.connect-watchdog",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
 
     private var context: UnsafeMutablePointer<redisContext>?
-    private var sslContext: OpaquePointer?
     #endif
 
     private let queue = DispatchQueue(label: "com.TablePro.redis.plugin", qos: .userInitiated)
@@ -43,7 +48,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private let password: String?
     private let database: Int
     private let sslConfig: SSLConfiguration
-    private let connectTimeout: TimeInterval
+    private let connectTimeout: RedisConnectTimeout
 
     private let routingLock = NSLock()
     private var _routing = RedisCommandRouting()
@@ -75,6 +80,10 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _database: RedisSessionDatabase
     private var _footprint = RedisSessionFootprint()
+    private var connectWatchdogGeneration = 0
+    /// Queue-confined until `finishConnecting`; every bootstrap command reapplies its remainder.
+    private var activeConnectDeadline: RedisConnectDeadline?
+    private var connectTransportFailed = false
 
     var isConnected: Bool {
         stateLock.lock()
@@ -104,7 +113,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         password: String?,
         database: Int = 0,
         sslConfig: SSLConfiguration = SSLConfiguration(),
-        connectTimeout: TimeInterval = 10
+        connectTimeoutMilliseconds: Int = RedisConnectTimeout.defaultMilliseconds
     ) {
         self.host = host
         self.port = port
@@ -112,7 +121,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
-        self.connectTimeout = connectTimeout
+        self.connectTimeout = RedisConnectTimeout(milliseconds: connectTimeoutMilliseconds)
         self._database = RedisSessionDatabase(database)
     }
 
@@ -120,18 +129,13 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #if canImport(CRedis)
         stateLock.lock()
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
+        connectWatchdogGeneration &+= 1
         stateLock.unlock()
 
         // Dispatch cleanup to the serial queue to ensure in-flight commands complete first
-        if handle != nil || ssl != nil {
-            let cleanupQueue = queue
-            cleanupQueue.async {
-                if let handle { redisFree(handle) }
-                if let ssl { redisFreeSSLContext(ssl) }
-            }
+        if let handle {
+            queue.async { redisFree(handle) }
         }
         #endif
     }
@@ -143,18 +147,36 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         _ = Self.initOnce
         try await pluginDispatchAsync(on: queue) { [self] in
             logger.debug("Connecting to Redis at \(self.host):\(self.port)")
+            let deadline = RedisConnectDeadline(timeout: connectTimeout)
+            do {
+                try openContextSync(
+                    selectDatabase: database,
+                    deadline: deadline,
+                    reportingStage: report
+                )
+                let versionString = try fetchServerVersionSync()
 
-            try openContextSync(selectDatabase: database, reportingStage: report)
+                stateLock.lock()
+                _cachedServerVersion = versionString
+                _isConnected = true
+                _database = RedisSessionDatabase(database)
+                stateLock.unlock()
 
-            let versionString = fetchServerVersionSync()
+                logger.info("Provisionally connected to Redis \(versionString ?? "unknown")")
+            } catch {
+                freeContextSync()
+                throw error
+            }
+        }
+        #else
+        throw RedisPluginError.hiredisUnavailable
+        #endif
+    }
 
-            stateLock.lock()
-            _cachedServerVersion = versionString
-            _isConnected = true
-            _database = RedisSessionDatabase(database)
-            stateLock.unlock()
-
-            logger.info("Connected to Redis \(versionString ?? "unknown")")
+    func finishConnecting() async throws {
+        #if canImport(CRedis)
+        try await pluginDispatchAsync(on: queue) { [self] in
+            try finishConnectingSync()
         }
         #else
         throw RedisPluginError.hiredisUnavailable
@@ -167,9 +189,8 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.lock()
         #if canImport(CRedis)
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
+        connectWatchdogGeneration &+= 1
         #endif
         _isConnected = false
         _cachedServerVersion = nil
@@ -178,16 +199,13 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CRedis)
-        let cleanupQueue = queue
-        if handle != nil || ssl != nil {
-            cleanupQueue.async {
-                if let handle = handle {
-                    redisFree(handle)
-                }
-                if let ssl = ssl {
-                    redisFreeSSLContext(ssl)
-                }
+        if let handle {
+            queue.async { [self] in
+                activeConnectDeadline = nil
+                redisFree(handle)
             }
+        } else {
+            queue.async { [self] in activeConnectDeadline = nil }
         }
         #endif
     }
@@ -397,52 +415,12 @@ extension RedisPluginConnection: RedisClusterNodeConnection {}
 
 #if canImport(CRedis)
 private extension RedisPluginConnection {
-    func connectSSL(_ ctx: UnsafeMutablePointer<redisContext>) throws {
-        var sslError = redisSSLContextError(0)
-
-        let useCaCert = sslConfig.verifiesCertificate && !sslConfig.caCertificatePath.isEmpty
-        let caCert: UnsafePointer<CChar>? = useCaCert
-            ? (sslConfig.caCertificatePath as NSString).utf8String
-            : nil
-        let clientCert: UnsafePointer<CChar>? = sslConfig.clientCertificatePath.isEmpty
-            ? nil
-            : (sslConfig.clientCertificatePath as NSString).utf8String
-        let clientKey: UnsafePointer<CChar>? = sslConfig.clientKeyPath.isEmpty
-            ? nil
-            : (sslConfig.clientKeyPath as NSString).utf8String
-        let sniHostname: UnsafePointer<CChar>? = sslConfig.isEnabled
-            ? (host as NSString).utf8String
-            : nil
-
-        var options = redisSSLOptions()
-        options.cacert_filename = caCert
-        options.capath = nil
-        options.cert_filename = clientCert
-        options.private_key_filename = clientKey
-        options.server_name = sniHostname
-        options.verify_mode = sslConfig.verifiesCertificate
-            ? REDIS_SSL_VERIFY_PEER
-            : REDIS_SSL_VERIFY_NONE
-
-        guard let ssl = redisCreateSSLContextWithOptions(&options, &sslError) else {
-            let errCode = Int(sslError.rawValue)
-            throw RedisPluginError(
-                code: errCode,
-                message: "Failed to create SSL context (error \(errCode))"
-            )
+    func connectSSL(_ ctx: UnsafeMutablePointer<redisContext>, options: RedisTLSOptions) throws {
+        do throws(RedisTLSFailure) {
+            try RedisTLSSession.initiate(on: ctx, options: options)
+        } catch {
+            throw error.connectError
         }
-
-        let result = redisInitiateSSLWithContext(ctx, ssl)
-        if result != REDIS_OK {
-            redisFreeSSLContext(ssl)
-            let errMsg = Self.contextErrorMessage(ctx)
-            if let sslError = RedisSSLClassifier.classifySSLError(errMsg) {
-                throw sslError
-            }
-            throw RedisPluginError(code: Int(result), message: "SSL handshake failed: \(errMsg)")
-        }
-
-        self.sslContext = ssl
         logger.debug("SSL connection established")
     }
 
@@ -454,13 +432,20 @@ private extension RedisPluginConnection {
 
     func openContextSync(
         selectDatabase dbIndex: Int,
+        deadline: RedisConnectDeadline,
         reportingStage report: ConnectionStageReporter = { _ in }
     ) throws {
-        let budget = timeval(
-            tv_sec: Int(connectTimeout),
-            tv_usec: Int32((connectTimeout - connectTimeout.rounded(.down)) * 1_000_000)
-        )
+        activeConnectDeadline = deadline
+        connectTransportFailed = false
+        let budget: timeval
+        do {
+            budget = try remainingConnectTimeval(deadline)
+        } catch {
+            activeConnectDeadline = nil
+            throw error
+        }
         guard let ctx = redisConnectWithTimeout(host, Int32(port), budget) else {
+            activeConnectDeadline = nil
             logger.error("Failed to create Redis context")
             throw RedisPluginError.connectionFailed
         }
@@ -470,27 +455,31 @@ private extension RedisPluginConnection {
             logger.error("Redis connection error: \(errMsg)")
             let errCode = Int(ctx.pointee.err)
             redisFree(ctx)
+            activeConnectDeadline = nil
             throw RedisPluginError(code: errCode, message: errMsg)
         }
-
-        let commandTimeout = timeval(tv_sec: 30, tv_usec: 0)
-        redisSetTimeout(ctx, commandTimeout)
-        redisEnableKeepAliveWithInterval(ctx, 60)
 
         stateLock.lock()
         self.context = ctx
         stateLock.unlock()
 
         do {
-            if sslConfig.isEnabled {
+            try armConnectWatchdog(deadline: deadline)
+            try applyConnectDeadline(deadline, to: ctx)
+            redisEnableKeepAliveWithInterval(ctx, 60)
+            if let tlsOptions = RedisTLSOptions.make(sslConfig: sslConfig, host: host) {
                 report(.negotiatingEncryption)
-                try connectSSL(ctx)
+                try applyConnectDeadline(deadline, to: ctx)
+                try connectSSL(ctx, options: tlsOptions)
             }
+            try applyConnectDeadline(deadline, to: ctx)
             if !(try authenticateSync(reportingStage: report)) {
                 report(.preparingSession)
+                try applyConnectDeadline(deadline, to: ctx)
                 try probeSessionSync()
             }
             if dbIndex != 0 {
+                try applyConnectDeadline(deadline, to: ctx)
                 let reply = try executeCommandSync(["SELECT", String(dbIndex)])
                 if case .error(let msg) = reply {
                     throw RedisPluginError(code: 2, message: "SELECT \(dbIndex) failed: \(msg)")
@@ -500,6 +489,71 @@ private extension RedisPluginConnection {
             freeContextSync()
             throw error
         }
+    }
+
+    func finishConnectingSync() throws {
+        stateLock.lock()
+        guard let context else {
+            stateLock.unlock()
+            throw RedisPluginError.notConnected
+        }
+        stateLock.unlock()
+        guard let deadline = activeConnectDeadline else { return }
+        try applyConnectDeadline(deadline, to: context)
+        disarmConnectWatchdog()
+        guard deadline.remainingMilliseconds() != nil else {
+            throw RedisPluginError(code: 0, message: String(localized: "Timed out while connecting to the server"))
+        }
+        guard !connectTransportFailed else { throw RedisPluginError.connectionFailed }
+        guard redisSetTimeout(context, timeval(tv_sec: 30, tv_usec: 0)) == REDIS_OK else {
+            throw transportFailure(context, delivered: false)
+        }
+        activeConnectDeadline = nil
+        logger.info("Redis bootstrap probes completed; session timeout is active")
+    }
+
+    private func applyConnectDeadline(
+        _ deadline: RedisConnectDeadline,
+        to context: UnsafeMutablePointer<redisContext>
+    ) throws {
+        guard redisSetTimeout(context, try remainingConnectTimeval(deadline)) == REDIS_OK else {
+            throw transportFailure(context, delivered: false)
+        }
+    }
+
+    private func remainingConnectTimeval(_ deadline: RedisConnectDeadline) throws -> timeval {
+        guard let timeout = deadline.socketTimeout() else {
+            throw RedisPluginError(code: 0, message: String(localized: "Timed out while connecting to the server"))
+        }
+        return timeval(tv_sec: timeout.seconds, tv_usec: Int32(timeout.microseconds))
+    }
+
+    /// SO_RCVTIMEO is a per-read timeout. A server that drips one byte before each read timeout can
+    /// therefore keep hiredis inside one INFO reply forever unless the absolute deadline also owns
+    /// a watchdog. `shutdown` interrupts the blocking read without freeing the context concurrently;
+    /// cleanup remains serialized on `queue`.
+    private func armConnectWatchdog(deadline: RedisConnectDeadline) throws {
+        guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+            throw RedisPluginError(code: 0, message: String(localized: "Timed out while connecting to the server"))
+        }
+        stateLock.lock()
+        connectWatchdogGeneration &+= 1
+        let generation = connectWatchdogGeneration
+        stateLock.unlock()
+
+        Self.connectWatchdogQueue.asyncAfter(deadline: .now() + .milliseconds(remainingMilliseconds)) { [weak self] in
+            guard let self else { return }
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            guard connectWatchdogGeneration == generation, let context = self.context else { return }
+            _ = Darwin.shutdown(context.pointee.fd, SHUT_RDWR)
+        }
+    }
+
+    private func disarmConnectWatchdog() {
+        stateLock.lock()
+        connectWatchdogGeneration &+= 1
+        stateLock.unlock()
     }
 
     /// Reports whether credentials were sent, which decides whether the session still needs
@@ -547,14 +601,13 @@ private extension RedisPluginConnection {
     func freeContextSync() {
         stateLock.lock()
         let handle = context
-        let ssl = sslContext
         context = nil
-        sslContext = nil
+        connectWatchdogGeneration &+= 1
         _isConnected = false
         _footprint.sessionEnded()
         stateLock.unlock()
+        activeConnectDeadline = nil
         if let handle { redisFree(handle) }
-        if let ssl { redisFreeSSLContext(ssl) }
     }
 
     func reconnectSync() throws {
@@ -562,7 +615,11 @@ private extension RedisPluginConnection {
         let targetDatabase = currentDatabase()
         logger.warning("Redis connection lost; reconnecting to \(self.host):\(self.port), database \(targetDatabase)")
         freeContextSync()
-        try openContextSync(selectDatabase: targetDatabase)
+        try openContextSync(
+            selectDatabase: targetDatabase,
+            deadline: RedisConnectDeadline(timeout: connectTimeout)
+        )
+        try finishConnectingSync()
         stateLock.lock()
         _isConnected = true
         stateLock.unlock()
@@ -589,6 +646,9 @@ private extension RedisPluginConnection {
         do {
             return try executeCommandSync(args)
         } catch let failure as RedisTransportFailure where !isShuttingDown {
+            // A bootstrap retry would create a fresh deadline and turn one connect attempt into
+            // an unbounded series. The owner tears the provisional channel down instead.
+            guard activeConnectDeadline == nil else { throw failure }
             try reportLostSessionState(for: args.first, scope: scope, after: failure)
             guard canReplay(args, after: failure) else { throw failure }
             try reconnectSync()
@@ -645,6 +705,7 @@ private extension RedisPluginConnection {
         do {
             replies = try executePipelineSync(commands)
         } catch let failure as RedisTransportFailure where !isShuttingDown {
+            guard activeConnectDeadline == nil else { throw failure }
             try reportLostSessionState(for: commands.first?.first, scope: scope, after: failure)
             guard !failure.wasDelivered || commands.allSatisfy({ routing.isReadOnly($0) }) else { throw failure }
             try reconnectSync()
@@ -670,6 +731,9 @@ private extension RedisPluginConnection {
             throw RedisPluginError.notConnected
         }
         stateLock.unlock()
+        if let deadline = activeConnectDeadline {
+            try applyConnectDeadline(deadline, to: ctx)
+        }
 
         let argc = Int32(args.count)
 
@@ -698,6 +762,7 @@ private extension RedisPluginConnection {
     }
 
     func transportFailure(_ ctx: UnsafeMutablePointer<redisContext>, delivered: Bool) -> RedisTransportFailure {
+        if activeConnectDeadline != nil { connectTransportFailed = true }
         let code = Int(ctx.pointee.err)
         let message = code == 0 ? "No reply from Redis" : Self.contextErrorMessage(ctx)
         return RedisTransportFailure(code: code == 0 ? -1 : code, message: message, wasDelivered: delivered)
@@ -710,6 +775,9 @@ private extension RedisPluginConnection {
             throw RedisPluginError.notConnected
         }
         stateLock.unlock()
+        if let deadline = activeConnectDeadline {
+            try applyConnectDeadline(deadline, to: ctx)
+        }
         guard !commands.isEmpty else { return [] }
 
         var appendedCount = 0
@@ -920,20 +988,16 @@ private extension RedisPluginConnection {
         }
     }
 
-    func fetchServerVersionSync() -> String? {
+    func fetchServerVersionSync() throws -> String? {
         stateLock.lock()
         guard context != nil else {
             stateLock.unlock()
             return nil
         }
         stateLock.unlock()
-        do {
-            let reply = try executeCommandSync(["INFO", "server"])
-            if case .string(let info) = reply {
-                return RedisServerInfo.version(from: info)
-            }
-        } catch {
-            logger.debug("Failed to fetch server version: \(error.localizedDescription)")
+        let reply = try executeCommandSync(["INFO", "server"])
+        if case .string(let info) = reply {
+            return RedisServerInfo.version(from: info)
         }
         return nil
     }

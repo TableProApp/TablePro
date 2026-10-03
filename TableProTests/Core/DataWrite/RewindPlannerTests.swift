@@ -12,6 +12,11 @@ import Testing
 struct RewindPlannerTests {
     private let columns = ["id", "name"]
     private let target = DataWriteTarget(database: "shop", schema: nil, table: "users")
+    private let sqliteQueryBuilder = TableQueryBuilder(
+        databaseType: .sqlite,
+        dialect: PluginManager.shared.sqlDialect(for: .sqlite),
+        pagination: .offset
+    )
 
     private func operation(
         kind: RowWriteKind,
@@ -41,6 +46,7 @@ struct RewindPlannerTests {
             target: target,
             capturedAt: Date(timeIntervalSince1970: 0),
             generatedColumns: [],
+            identityColumns: [],
             operations: operations
         )
         return RewindPlanner(
@@ -53,7 +59,7 @@ struct RewindPlannerTests {
                 databaseType: .sqlite,
                 pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
     }
 
@@ -105,7 +111,7 @@ struct RewindPlannerTests {
         let record = RewindRecord(
             id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .sqlite,
             target: target, capturedAt: Date(timeIntervalSince1970: 0),
-            generatedColumns: [], operations: [stamped]
+            generatedColumns: [], identityColumns: [], operations: [stamped]
         )
         let planner = RewindPlanner(
             record: record,
@@ -113,7 +119,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name", "updated_at"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
 
         let plan = try planner.plan(currentRows: [RewindCurrentRow(values: ["7", "Grace", "2026-06-30"])])
@@ -183,7 +189,7 @@ struct RewindPlannerTests {
         let record = RewindRecord(
             id: UUID(), historyId: nil, connectionId: UUID(), databaseType: .sqlite,
             target: target, capturedAt: Date(timeIntervalSince1970: 0),
-            generatedColumns: [], operations: [binaryKeyed]
+            generatedColumns: [], identityColumns: [], operations: [binaryKeyed]
         )
         let planner = RewindPlanner(
             record: record,
@@ -191,7 +197,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
+            queryBuilder: sqliteQueryBuilder
         )
 
         #expect(planner.readQueries().isEmpty)

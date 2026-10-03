@@ -57,11 +57,12 @@ extension MainContentView {
                 initialFormatId: formatId
             )
         case .rowImport(let formatId):
-            if let url = coordinator.importFile?.url {
+            if let handoff = coordinator.importFile {
                 RowImportSheet(
                     isPresented: dismissBinding,
                     connection: connection,
-                    fileURL: url,
+                    fileURL: handoff.url,
+                    sourceName: handoff.sourceName,
                     formatId: formatId
                 )
             }

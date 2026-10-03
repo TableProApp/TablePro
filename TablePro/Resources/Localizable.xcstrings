@@ -350,6 +350,9 @@
         }
       }
     },
+    "Use Saved Mapping" : {
+
+    },
     "Use Selection for Find" : {
       "localizations" : {
         "ko" : {
@@ -452,6 +455,9 @@
           }
         }
       }
+    },
+    "\"%1$@\" is not a valid %2$@ value." : {
+
     },
     "--" : {
       "extractionState" : "stale",
@@ -1174,6 +1180,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法寫入「%1$@」。%2$@"
+          }
+        }
+      }
+    },
+    "“%1$@” exited with status %2$d on the server: %3$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에서 “%1$@”이(가) 상태 %2$d(으)로 종료되었습니다: %3$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” sunucuda %2$d durumuyla sonlandı: %3$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” kết thúc với mã trạng thái %2$d trên máy chủ: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” 在服务器上以状态 %2$d 退出：%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” 在伺服器上以狀態 %2$d 結束：%3$@"
           }
         }
       }
@@ -2742,6 +2782,9 @@
         }
       }
     },
+    "%@ cannot be narrowed to some rows or columns, because this database has no SQL." : {
+
+    },
     "%@ cannot be negative" : {
       "localizations" : {
         "ko" : {
@@ -3466,6 +3509,9 @@
 
     },
     "%@ loses its default" : {
+
+    },
+    "%@ mapped more than once" : {
 
     },
     "%@ matches" : {
@@ -5928,6 +5974,9 @@
     "%1$@: %2$@ had no column of that name on the destination." : {
 
     },
+    "%1$@: more than one source column is mapped to %2$@." : {
+
+    },
     "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
 
     },
@@ -6549,6 +6598,9 @@
       }
     },
     "%@ are invalid, so queries skip them and exports leave them out. Drop them, or rebuild them with REINDEX." : {
+
+    },
+    "%@ can only be compared with a whole number." : {
 
     },
     "%@ cannot be scripted with its indexes, because the target's index statements would name a different schema than its definition." : {
@@ -8232,6 +8284,12 @@
     "%lld ^[table](inflect: true) to export" : {
 
     },
+    "%lld items" : {
+
+    },
+    "%lld large object values were longer than 64 MiB and were cut short." : {
+
+    },
     "%lld × %lld" : {
       "localizations" : {
         "en" : {
@@ -9811,6 +9869,12 @@
         }
       }
     },
+    "'%@' cannot be saved from the grid. SurrealDB ignores it on a relation, so delete the relation and RELATE it again. Otherwise, UPDATE it in the editor." : {
+
+    },
+    "'%@' is not a valid regular expression." : {
+
+    },
     "•" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9877,66 +9941,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "••••••••"
-          }
-        }
-      }
-    },
-    "`%@` in ~/.ssh/config does not accept the token %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "`%1$@` in ~/.ssh/config does not accept the token %2$@."
-          }
-        }
-      }
-    },
-    "`%@` in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign." : {
-
-    },
-    "`%@` in ~/.ssh/config has a ${ with no closing brace." : {
-
-    },
-    "`%@` in ~/.ssh/config uses ${%@}, which is not set in the environment." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "`%1$@` in ~/.ssh/config uses ${%2$@}, which is not set in the environment."
-          }
-        }
-      }
-    },
-    "`%1$@` exited with status %2$d on the server: %3$@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "서버에서 `%1$@`이(가) 상태 %2$d(으)로 종료되었습니다: %3$@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` sunucuda %2$d durumuyla sonlandı: %3$@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` kết thúc với mã trạng thái %2$d trên máy chủ: %3$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` 在服务器上以状态 %2$d 退出：%3$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "`%1$@` 在伺服器上以狀態 %2$d 結束：%3$@"
           }
         }
       }
@@ -11929,6 +11933,9 @@
     "A %@ index has no equivalent on this engine." : {
 
     },
+    "A %@ value cannot be written from the grid. Use the CQL editor." : {
+
+    },
     "A built-in plugin \"%@\" already provides this bundle ID" : {
       "localizations" : {
         "ko" : {
@@ -11996,6 +12003,9 @@
           }
         }
       }
+    },
+    "A column added to a Cassandra table cannot join its primary key." : {
+
     },
     "A column left out of the comparison is still written on insert and update. A filter and a row limit read only the rows they select, on both sides." : {
 
@@ -12728,6 +12738,12 @@
     "A quote or parenthesis in this filter is not closed." : {
 
     },
+    "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
+
+    },
+    "A record's id cannot be edited." : {
+
+    },
     "A row with this key already exists" : {
       "localizations" : {
         "ko" : {
@@ -12761,6 +12777,9 @@
           }
         }
       }
+    },
+    "A row with this primary key already exists. Edit that row instead." : {
+
     },
     "A run is already in progress." : {
       "localizations" : {
@@ -19893,6 +19912,9 @@
     "Another profile already has this name." : {
 
     },
+    "Another source column is mapped to the same destination column." : {
+
+    },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
       "localizations" : {
         "ko" : {
@@ -24322,6 +24344,15 @@
         }
       }
     },
+    "Cassandra cannot change the primary key column %@. Delete the row and add it again with the new key." : {
+
+    },
+    "Cassandra columns have no comment." : {
+
+    },
+    "Cassandra has no NOT NULL constraint." : {
+
+    },
     "backslash" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27809,6 +27840,18 @@
         }
       }
     },
+    "Cassandra cannot filter rows with %@." : {
+
+    },
+    "Cassandra columns have no default value." : {
+
+    },
+    "Cassandra filters can only require every condition to match." : {
+
+    },
+    "Cassandra orders rows only by clustering columns within one partition, so a table cannot be sorted by a column." : {
+
+    },
     "caret" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28645,6 +28688,9 @@
         }
       }
     },
+    "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type." : {
+
+    },
     "Change…" : {
 
     },
@@ -28721,6 +28767,9 @@
           }
         }
       }
+    },
+    "CHECK expression as the engine reports it" : {
+
     },
     "Changed since the save" : {
       "localizations" : {
@@ -30157,6 +30206,9 @@
         }
       }
     },
+    "Choose a name and location for the new database. TablePro creates it when you connect, and opens a file that already exists as it is." : {
+
+    },
     "Choose a name the source does not already have." : {
 
     },
@@ -30296,40 +30348,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從側邊欄選擇一個區段。"
-          }
-        }
-      }
-    },
-    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > Linked Folders to see published connections." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > 연결된 폴더에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > Bağlı Klasörler altına ekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > Thư mục liên kết để xem các kết nối đã xuất bản."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > 关联文件夹”中添加此文件夹即可看到已发布的连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > 連結資料夾」中加入此資料夾即可看到已發佈的連線。"
           }
         }
       }
@@ -30816,6 +30834,9 @@
         }
       }
     },
+    "Choose a SAP HANA schema first." : {
+
+    },
     "Choose port automatically" : {
       "localizations" : {
         "ko" : {
@@ -30920,6 +30941,40 @@
     },
     "Choose Value" : {
 
+    },
+    "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀의 연결 카탈로그를 위한 공유 폴더를 선택하십시오. 팀원은 설정 > %1$@ > %2$@에서 이 폴더를 추가하여 게시된 연결을 볼 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takımınızın bağlantı kataloğu için paylaşılan bir klasör seçin. Takım arkadaşlarınız yayınlanan bağlantıları görmek için bu klasörü Ayarlar > %1$@ > %2$@ altına ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn một thư mục dùng chung cho danh mục kết nối của nhóm. Đồng đội thêm thư mục này trong Cài đặt > %1$@ > %2$@ để xem các kết nối đã xuất bản."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为团队的连接目录选择一个共享文件夹。队友在“设置 > %1$@ > %2$@”中添加此文件夹即可看到已发布的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > %1$@ > %2$@」中加入此資料夾即可看到已發佈的連線。"
+          }
+        }
+      }
     },
     "Choose what happens to them when the role is dropped." : {
       "localizations" : {
@@ -32654,6 +32709,9 @@
         }
       }
     },
+    "ClickHouse returned HTTP %lld." : {
+
+    },
     "Client" : {
       "localizations" : {
         "ko" : {
@@ -34142,70 +34200,70 @@
     "Cloud Storage URI" : {
 
     },
-    "cloud-sql-proxy not found. Install it with `brew install cloud-sql-proxy`, download it above, or choose the binary." : {
+    "cloud-sql-proxy not found. Install it with “brew install cloud-sql-proxy”, download it above, or choose the binary." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy를 찾을 수 없습니다. `brew install cloud-sql-proxy`로 설치하거나 위에서 다운로드하거나 바이너리를 선택하십시오."
+            "value" : "cloud-sql-proxy를 찾을 수 없습니다. “brew install cloud-sql-proxy”로 설치하거나 위에서 다운로드하거나 바이너리를 선택하십시오."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy bulunamadı. `brew install cloud-sql-proxy` ile yükleyin, yukarıdan indirin veya çalıştırılabilir dosyayı seçin."
+            "value" : "cloud-sql-proxy bulunamadı. “brew install cloud-sql-proxy” ile yükleyin, yukarıdan indirin veya çalıştırılabilir dosyayı seçin."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng `brew install cloud-sql-proxy`, tải xuống ở trên, hoặc chọn tệp thực thi."
+            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng “brew install cloud-sql-proxy”, tải xuống ở trên, hoặc chọn tệp thực thi."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未找到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安装、在上方下载，或直接选择可执行文件。"
+            "value" : "未找到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安装、在上方下载，或直接选择可执行文件。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找不到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安裝、在上方下載，或直接選擇執行檔。"
+            "value" : "找不到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安裝、在上方下載，或直接選擇執行檔。"
           }
         }
       }
     },
-    "cloud-sql-proxy was not found. Install it with `brew install cloud-sql-proxy`, or download it in the Cloud SQL Auth Proxy settings." : {
+    "cloud-sql-proxy was not found. Install it with “brew install cloud-sql-proxy”, or download it in the Cloud SQL Auth Proxy settings." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy를 찾을 수 없습니다. `brew install cloud-sql-proxy`로 설치하거나 Cloud SQL Auth Proxy 설정에서 다운로드하십시오."
+            "value" : "cloud-sql-proxy를 찾을 수 없습니다. “brew install cloud-sql-proxy”로 설치하거나 Cloud SQL Auth Proxy 설정에서 다운로드하십시오."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "cloud-sql-proxy bulunamadı. `brew install cloud-sql-proxy` ile yükleyin veya Cloud SQL Auth Proxy ayarlarından indirin."
+            "value" : "cloud-sql-proxy bulunamadı. “brew install cloud-sql-proxy” ile yükleyin veya Cloud SQL Auth Proxy ayarlarından indirin."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng `brew install cloud-sql-proxy`, hoặc tải xuống trong cài đặt Cloud SQL Auth Proxy."
+            "value" : "Không tìm thấy cloud-sql-proxy. Cài bằng “brew install cloud-sql-proxy”, hoặc tải xuống trong cài đặt Cloud SQL Auth Proxy."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未找到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安装，或在 Cloud SQL Auth Proxy 设置中下载。"
+            "value" : "未找到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安装，或在 Cloud SQL Auth Proxy 设置中下载。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找不到 cloud-sql-proxy。可用 `brew install cloud-sql-proxy` 安裝，或在 Cloud SQL Auth Proxy 設定中下載。"
+            "value" : "找不到 cloud-sql-proxy。可用 “brew install cloud-sql-proxy” 安裝，或在 Cloud SQL Auth Proxy 設定中下載。"
           }
         }
       }
@@ -34380,6 +34438,74 @@
         }
       }
     },
+    "cloudflared not found. Install it with “brew install cloudflared”, or choose the binary above." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared를 찾을 수 없습니다. “brew install cloudflared”로 설치하거나 위에서 바이너리를 선택하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared bulunamadı. “brew install cloudflared” ile yükleyin veya yukarıdan ikili dosyayı seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy cloudflared. Cài đặt bằng “brew install cloudflared”, hoặc chọn tệp thực thi ở trên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到cloudflared。请使用“brew install cloudflared”安装，或在上方选择其二进制文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 cloudflared。請使用 “brew install cloudflared” 安裝，或在上方選擇其二進位檔。"
+          }
+        }
+      }
+    },
+    "cloudflared was not found. Install it with “brew install cloudflared”, or set its path in the connection's Cloudflare Tunnel settings." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared를 찾을 수 없습니다. “brew install cloudflared”로 설치하거나 연결의 Cloudflare Tunnel 설정에서 경로를 지정하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cloudflared bulunamadı. “brew install cloudflared” ile yükleyin veya bağlantının Cloudflare Tüneli ayarlarında yolunu belirtin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy cloudflared. Cài đặt bằng “brew install cloudflared”, hoặc đặt đường dẫn trong cài đặt Cloudflare Tunnel của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到cloudflared。请使用“brew install cloudflared”安装，或在该连接的Cloudflare隧道设置中设置其路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 cloudflared。請使用 “brew install cloudflared” 安裝，或在該連線的 Cloudflare 隧道設定中設定其路徑。"
+          }
+        }
+      }
+    },
     "cloudflared failed to start." : {
       "localizations" : {
         "ko" : {
@@ -34410,74 +34536,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "cloudflared 啟動失敗。"
-          }
-        }
-      }
-    },
-    "cloudflared not found. Install it with `brew install cloudflared`, or choose the binary above." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared를 찾을 수 없습니다. `brew install cloudflared`로 설치하거나 위에서 바이너리를 선택하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared bulunamadı. `brew install cloudflared` ile yükleyin veya yukarıdan ikili dosyayı seçin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy cloudflared. Cài đặt bằng `brew install cloudflared`, hoặc chọn tệp thực thi ở trên."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到cloudflared。请使用`brew install cloudflared`安装，或在上方选择其二进制文件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到 cloudflared。請使用 `brew install cloudflared` 安裝，或在上方選擇其二進位檔。"
-          }
-        }
-      }
-    },
-    "cloudflared was not found. Install it with `brew install cloudflared`, or set its path in the connection's Cloudflare Tunnel settings." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared를 찾을 수 없습니다. `brew install cloudflared`로 설치하거나 연결의 Cloudflare Tunnel 설정에서 경로를 지정하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "cloudflared bulunamadı. `brew install cloudflared` ile yükleyin veya bağlantının Cloudflare Tüneli ayarlarında yolunu belirtin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy cloudflared. Cài đặt bằng `brew install cloudflared`, hoặc đặt đường dẫn trong cài đặt Cloudflare Tunnel của kết nối."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到cloudflared。请使用`brew install cloudflared`安装，或在该连接的Cloudflare隧道设置中设置其路径。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到 cloudflared。請使用 `brew install cloudflared` 安裝，或在該連線的 Cloudflare 隧道設定中設定其路徑。"
           }
         }
       }
@@ -36096,6 +36154,9 @@
         }
       }
     },
+    "Columns the constraint reads, when the engine reports them" : {
+
+    },
     "Columns to select. Omit for all." : {
       "localizations" : {
         "ko" : {
@@ -36303,6 +36364,9 @@
           }
         }
       }
+    },
+    "Comma-separated tables whose columns the prompt includes, up to %1$d. The first %1$d by name when omitted" : {
+
     },
     "Comma-separated values. Compatible with Excel and most tools." : {
       "localizations" : {
@@ -38614,6 +38678,9 @@
         }
       }
     },
+    "Connecting to the remote DuckDB database timed out." : {
+
+    },
     "Connecting…" : {
       "localizations" : {
         "ko" : {
@@ -39891,6 +39958,9 @@
           }
         }
       }
+    },
+    "Connection timed out" : {
+
     },
     "Connection: %@" : {
       "localizations" : {
@@ -44821,6 +44891,9 @@
           }
         }
       }
+    },
+    "Create and drop Cassandra indexes in the CQL editor." : {
+
     },
     "Create connection..." : {
       "extractionState" : "stale",
@@ -57250,6 +57323,9 @@
     "Each database is written to its own file." : {
 
     },
+    "Each destination column can be mapped from only one source column." : {
+
+    },
     "Each value is split at every match. Rows with fewer pieces get empty cells." : {
 
     },
@@ -59460,6 +59536,9 @@
         }
       }
     },
+    "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
+
+    },
     "encoding: %@" : {
       "localizations" : {
         "ko" : {
@@ -59879,6 +59958,12 @@
     "Enter Credentials Here" : {
 
     },
+    "Enter at least one value to filter with IN." : {
+
+    },
+    "Enter both bounds to filter with BETWEEN." : {
+
+    },
     "Enter database name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -59947,6 +60032,12 @@
           }
         }
       }
+    },
+    "Enter a value for the primary key column %@." : {
+
+    },
+    "Enter at least one value to filter with %@." : {
+
     },
     "Enter table name" : {
       "localizations" : {
@@ -60091,6 +60182,12 @@
       }
     },
     "Enter the OAuth client ID and client secret for this connection, then sign in again." : {
+
+    },
+    "Enter the SAP HANA host name." : {
+
+    },
+    "Enter the SAP HANA user name." : {
 
     },
     "Enter the passphrase for SSH key \"%@\":" : {
@@ -66058,6 +66155,9 @@
         }
       }
     },
+    "Failed to configure the connection timeout" : {
+
+    },
     "Failed to create terminal process (errno: %d)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -67655,6 +67755,9 @@
           }
         }
       }
+    },
+    "False for a constraint the engine has not checked against existing rows" : {
+
     },
     "false" : {
       "localizations" : {
@@ -71067,6 +71170,9 @@
       }
     },
     "Folder of Parquet files" : {
+
+    },
+    "Folders" : {
 
     },
     "Follow-up on step %d \"%@\" (%@): %@" : {
@@ -75983,6 +76089,9 @@
         }
       }
     },
+    "If the query legitimately needs more time, raise this connection's query timeout in Options." : {
+
+    },
     "Its indexes are left out, because the target's index statements would name a different schema than its definition." : {
 
     },
@@ -80519,25 +80628,25 @@
         }
       }
     },
-    "Install it with `brew install libpq` and link it." : {
+    "Install it with “brew install libpq” and link it." : {
 
     },
-    "Install it with `brew install libpq`." : {
+    "Install it with “brew install libpq”." : {
 
     },
-    "Install it with `brew install mongodb-database-tools`." : {
+    "Install it with “brew install mongodb-database-tools”." : {
 
     },
-    "Install it with `brew install mysql-client` and link it." : {
+    "Install it with “brew install mysql-client” and link it." : {
 
     },
-    "Install it with `brew install sqlite` and link it." : {
+    "Install it with “brew install sqlite” and link it." : {
 
     },
     "Install one from PostgreSQL %@ or earlier." : {
 
     },
-    "Install one with `brew install postgresql@%@`." : {
+    "Install one with “brew install postgresql@%@”." : {
 
     },
     "Install Plugin" : {
@@ -85110,6 +85219,9 @@
         }
       }
     },
+    "Lease can only be compared with a lease ID, such as 0x7b." : {
+
+    },
     "Leave blank to connect without authentication. The password is stored in the macOS Keychain." : {
       "localizations" : {
         "ko" : {
@@ -85145,6 +85257,9 @@
       }
     },
     "Leave blank to find it on your PATH. Apps launched from the Dock do not inherit your shell's PATH, so a tool installed somewhere unusual needs its full path here." : {
+
+    },
+    "Leave empty unless the certificate names another host" : {
 
     },
     "Leave the comment empty to remove it." : {
@@ -90148,6 +90263,9 @@
         }
       }
     },
+    "Lost connection to the SAP HANA server." : {
+
+    },
     "macOS will ask for your login password" : {
       "localizations" : {
         "ko" : {
@@ -90922,6 +91040,9 @@
         }
       }
     },
+    "Match by Position" : {
+
+    },
     "Match case exactly" : {
       "localizations" : {
         "ko" : {
@@ -90955,6 +91076,9 @@
           }
         }
       }
+    },
+    "Match Columns" : {
+
     },
     "Match System" : {
       "comment" : "Text for a sidebar row size preference that matches the system's sidebar row size.",
@@ -94742,6 +94866,9 @@
         }
       }
     },
+    "Move to Folder" : {
+
+    },
     "Move to Group" : {
       "localizations" : {
         "ko" : {
@@ -95473,6 +95600,9 @@
       }
     },
     "Name a connection to run this on." : {
+
+    },
+    "Name a new database file, created when you connect" : {
 
     },
     "Name as supplied" : {
@@ -96764,6 +96894,9 @@
         }
       }
     },
+    "New Folder %lld" : {
+
+    },
     "New Group" : {
       "localizations" : {
         "ko" : {
@@ -97315,6 +97448,9 @@
           }
         }
       }
+    },
+    "New…" : {
+
     },
     "New Table…" : {
       "localizations" : {
@@ -99476,6 +99612,9 @@
           }
         }
       }
+    },
+    "No Favorites in This %@" : {
+
     },
     "No favorites match the selected environment." : {
       "localizations" : {
@@ -102725,6 +102864,9 @@
     "No SSH agent answered on the socket from %@. Check that agent is running." : {
 
     },
+    "No SSH password was found for this connection. Enter it in the SSH settings and try again." : {
+
+    },
     "No SSH servers yet." : {
 
     },
@@ -105944,6 +106086,9 @@
         }
       }
     },
+    "Parameter %lld is an OUT parameter, which TablePro cannot bind." : {
+
+    },
     "number sign" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -106509,6 +106654,94 @@
           }
         }
       }
+    },
+    "Publish %d connections to your team?" : {
+
+    },
+    "Publish “%@” to your team?" : {
+
+    },
+    "Query timeout must be between 0 and 2,147,483 seconds." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리 제한 시간은 0초에서 2,147,483초 사이여야 합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorgu zaman aşımı 0 ile 2.147.483 saniye arasında olmalıdır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thời gian chờ truy vấn phải từ 0 đến 2.147.483 giây."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询超时必须介于 0 到 2,147,483 秒之间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢逾時必須介於 0 到 2,147,483 秒之間。"
+          }
+        }
+      }
+    },
+    "SAP HANA did not return the table definition." : {
+
+    },
+    "SAP HANA reported an error." : {
+
+    },
+    "SAP HANA returned no definition for this view." : {
+
+    },
+    "SAP's in-memory SQL database" : {
+
+    },
+    "SurrealDB cannot filter rows with %@." : {
+
+    },
+    "TLS Server Name" : {
+
+    },
+    "The SAP HANA schema name cannot be empty." : {
+
+    },
+    "The server fills in %@, so it cannot be given a value." : {
+
+    },
+    "This table has no primary key, and %@ cannot be compared to find the row." : {
+
+    },
+    "Value %1$lld, \"%2$@\", could not be converted for SAP HANA." : {
+
+    },
+    "Value %1$lld, \"%2$@\", has more decimal places than the column allows." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a boolean. SAP HANA expects TRUE or FALSE." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a date and time. SAP HANA expects YYYY-MM-DD HH:MM:SS." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a decimal number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a time. SAP HANA expects HH:MM:SS." : {
+
     },
     "on %@" : {
       "comment" : "A sentence fragment describing the table on which the operation is performed.",
@@ -108419,6 +108652,9 @@
           }
         }
       }
+    },
+    "Open in Query Editor puts %@ where each password goes. Replace it before running the script." : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -120987,6 +121223,9 @@
         }
       }
     },
+    "SAP HANA returned a result TablePro could not read." : {
+
+    },
     "quotation mark" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -122476,6 +122715,9 @@
       }
     },
     "Reading Tables" : {
+
+    },
+    "Reading the file…" : {
 
     },
     "Reading the source…" : {
@@ -125515,6 +125757,9 @@
         }
       }
     },
+    "Remove from Folder" : {
+
+    },
     "Remove from Group" : {
       "localizations" : {
         "ko" : {
@@ -126284,6 +126529,9 @@
           }
         }
       }
+    },
+    "Rename Folder" : {
+
     },
     "Rename Group" : {
       "extractionState" : "stale",
@@ -128580,6 +128828,9 @@
         }
       }
     },
+    "Restored the mapping saved for %@." : {
+
+    },
     "Restored “%@” from %@" : {
       "localizations" : {
         "en" : {
@@ -130379,15 +130630,14 @@
         }
       }
     },
-    "Row %@, column %@ contains “%@”, which %@ cannot store. Choose Save As and pick UTF-8." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Row %1$@, column %2$@ contains “%3$@”, which %4$@ cannot store. Choose Save As and pick UTF-8."
-          }
-        }
-      }
+    "Row %@, column “%@” contains %@, which %@ cannot store. Choose Save As and pick UTF-8." : {
+
+    },
+    "A row the filter hides holds %@ in column “%@”, which %@ cannot store. Clear the filter to find it, or choose Save As and pick UTF-8." : {
+
+    },
+    "The column name “%@” contains %@, which %@ cannot store. Rename the column, or choose Save As and pick UTF-8." : {
+
     },
     "Row %@, column %@ is not valid JSON. Fix the value or clear it, then save again." : {
       "localizations" : {
@@ -147582,6 +147832,9 @@
         }
       }
     },
+    "SSH username not set. Add it to the form, or add a User line for %@ in ~/.ssh/config." : {
+
+    },
     "SSH Verification Rejected" : {
       "localizations" : {
         "ko" : {
@@ -147823,6 +148076,9 @@
           }
         }
       }
+    },
+    "Set both a client certificate and a client key, or neither." : {
+
     },
     "Stage" : {
 
@@ -150926,6 +151182,9 @@
         }
       }
     },
+    "TablePro could not reach the SAP HANA server." : {
+
+    },
     "The procedures and functions in %1$@ could not be listed: %2$@" : {
 
     },
@@ -153519,6 +153778,9 @@
         }
       }
     },
+    "Table Folders" : {
+
+    },
     "Table Info" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -154475,7 +154737,25 @@
         }
       }
     },
+    "Table-level CHECK constraints" : {
+
+    },
     "Table Type" : {
+
+    },
+    "TablePro could not reach the SAP HANA server within %lld seconds." : {
+
+    },
+    "The SAP HANA connection is closed." : {
+
+    },
+    "The SAP HANA connection settings are not valid." : {
+
+    },
+    "The SAP HANA driver failed unexpectedly." : {
+
+    },
+    "The SAP HANA port must be between 1 and 65535." : {
 
     },
     "The source's definition could not be read: %@" : {
@@ -154619,7 +154899,16 @@
         }
       }
     },
+    "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
+
+    },
     "TablePro connects to the first host over a tunnel. Replica set failover is not available." : {
+
+    },
+    "TablePro connects to the first host over a tunnel. The other hosts are not used." : {
+
+    },
+    "TablePro connects to the first node over a tunnel, as a single server. Keys on other nodes cannot be reached." : {
 
     },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
@@ -157509,6 +157798,32 @@
         }
       }
     },
+    "The %@ line in ~/.ssh/config does not accept the token %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ line in ~/.ssh/config does not accept the token %2$@."
+          }
+        }
+      }
+    },
+    "The %@ line in ~/.ssh/config ends in a lone %%. Write %%%% for a literal percent sign." : {
+
+    },
+    "The %@ line in ~/.ssh/config has a ${ with no closing brace." : {
+
+    },
+    "The %@ line in ~/.ssh/config uses ${%@}, which is not set in the environment." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$@ line in ~/.ssh/config uses ${%2$@}, which is not set in the environment."
+          }
+        }
+      }
+    },
     "The %@ plugin could not be loaded." : {
 
     },
@@ -158165,6 +158480,9 @@
           }
         }
       }
+    },
+    "The SAP HANA statement was cancelled." : {
+
     },
     "The code expires in 15 minutes." : {
       "localizations" : {
@@ -158927,7 +159245,16 @@
         }
       }
     },
+    "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
+
+    },
+    "The dump is imported into this database, and the change cannot be undone. The import needs an empty database and stops if this one already holds objects." : {
+
+    },
     "The dump is replayed into this database. Objects it names are overwritten and the change cannot be undone." : {
+
+    },
+    "The dump is replayed into this database. Objects that already exist are kept, not replaced, and the dump's data is added to them. The change cannot be undone." : {
 
     },
     "The encrypted file is corrupt or incomplete" : {
@@ -161877,6 +162204,9 @@
     "The statement before it stays applied." : {
 
     },
+    "The statement ran longer than the query timeout and was stopped." : {
+
+    },
     "The statements may or may not be saved. Check the table before running them again." : {
 
     },
@@ -162094,6 +162424,12 @@
 
     },
     "The table needs at least one column with a name and a type." : {
+
+    },
+    "The table's primary key is not loaded, so the row cannot be written." : {
+
+    },
+    "The tables you starred here no longer exist." : {
 
     },
     "the target" : {
@@ -162483,40 +162819,6 @@
         }
       }
     },
-    "The text doesn't look like a connection URL." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "텍스트가 연결 URL 형식이 아닙니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Metin bir bağlantı URL'sine benzemiyor."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Văn bản này không giống một URL kết nối."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "该文本看起来不是连接 URL。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這段文字看起來不像連線 URL。"
-          }
-        }
-      }
-    },
     "The text is not valid JSON. Save anyway?" : {
       "localizations" : {
         "ko" : {
@@ -162823,6 +163125,9 @@
       }
     },
     "The view's query runs again and replaces its stored rows. A plain refresh stops other sessions from reading the view until it finishes." : {
+
+    },
+    "The write did not finish within %d seconds, so MongoDB stopped it. Raise this connection's query timeout in Options if it needs longer." : {
 
     },
     "Theme" : {
@@ -164713,6 +165018,12 @@
     "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost." : {
 
     },
+    "This engine offers only mode 'cancel' for stopping a session." : {
+
+    },
+    "This engine offers only mode 'kill' for stopping a session." : {
+
+    },
     "This file cannot be saved in that format." : {
 
     },
@@ -165186,6 +165497,9 @@
           }
         }
       }
+    },
+    "This engine cannot filter that table with those conditions." : {
+
     },
     "This key references a row already shown above" : {
 
@@ -168365,6 +168679,12 @@
       }
     },
     "This view can be refreshed concurrently." : {
+
+    },
+    "Timed out while connecting to the Kafka broker" : {
+
+    },
+    "Timed out while connecting to the Kafka cluster" : {
 
     },
     "to view data" : {
@@ -172979,40 +173299,6 @@
         }
       }
     },
-    "Unsupported connection scheme: %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지원되지 않는 연결 스킴: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desteklenmeyen bağlantı şeması: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scheme kết nối không được hỗ trợ: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支持的连接协议：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不支援的連線協定：%@"
-          }
-        }
-      }
-    },
     "Unsupported database scheme: %@" : {
       "localizations" : {
         "ko" : {
@@ -174333,7 +174619,6 @@
       }
     },
     "Use ~/.pgpass" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174675,40 +174960,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 IAM 資料庫驗證"
-          }
-        }
-      }
-    },
-    "Use Password File" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호 파일 사용"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parola Dosyası Kullan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng file mật khẩu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密码文件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用密碼檔案"
           }
         }
       }
@@ -176622,6 +176873,12 @@
           }
         }
       }
+    },
+    "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
+
+    },
+    "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+
     },
     "Verify certificate and hostname" : {
       "localizations" : {
@@ -180927,6 +181184,9 @@
         }
       }
     },
+    "Your favorite tables are in other %@. Switch to one to see them here." : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "ko" : {
@@ -181492,6 +181752,9 @@
     "Choose an auth method for this connection." : {
 
     },
+    "Choose an existing database file" : {
+
+    },
     "Value %lld is not a JSON array." : {
 
     },
@@ -181754,6 +182017,12 @@
 
     },
     "One row per line (NDJSON)" : {
+
+    },
+    "etcd cannot filter with a raw SQL condition." : {
+
+    },
+    "etcd has no %@ column." : {
 
     },
     "the compressed data is corrupt or was cut short" : {
@@ -182497,6 +182766,9 @@
     "Sentinel %@ sent a reply TablePro could not read (%@)." : {
 
     },
+    "Sentinel mode cannot run through a tunnel. Set Connection Mode to Standalone and enter a data node, or turn the tunnel off." : {
+
+    },
     "Sentinel %@ refused the request: %@" : {
 
     },
@@ -182588,6 +182860,21 @@
 
     },
     "1 row has a different number of fields" : {
+
+    },
+    "1 line has unreadable characters" : {
+
+    },
+    "Line %@ holds binary data that cannot be read back exactly from a %@ file. Export the dump with --hex-blob, then import it again." : {
+
+    },
+    "Line %@ is not valid %@ text. Choose the file's encoding in the import options, then import again." : {
+
+    },
+    "%@ lines have unreadable characters" : {
+
+    },
+    "Bytes on those lines are not valid %@ and show as �. Pick another encoding in File Properties." : {
 
     },
     "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size." : {
@@ -182881,24 +183168,6 @@
     "Server response: %@" : {
 
     },
-    "Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter)." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and set Mode to Disabled." : {
-
-    },
-    "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate." : {
-
-    },
-    "Provide the client certificate and key paths in the SSL tab." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and enter the Key Passphrase." : {
-
-    },
-    "Open the connection editor, switch to the SSL tab, and correct the Key Passphrase." : {
-
-    },
     "Check that the Client Key path points to a valid PEM private key." : {
 
     },
@@ -182969,6 +183238,15 @@
 
     },
     "Weaviate does not support views." : {
+
+    },
+    "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor." : {
+
+    },
+    "Weaviate returned an object of %@ without an id, so the rest of the collection cannot be read." : {
+
+    },
+    "Weaviate returned the same page of %@ twice. Reading a whole collection needs Weaviate 1.18 or later." : {
 
     },
     "The first sheet has no header row to map columns from." : {
@@ -183137,6 +183415,9 @@
           }
         }
       }
+    },
+    "%@ used" : {
+
     },
     "%@ visible rows" : {
 
@@ -184184,9 +184465,6 @@
     "The FreeTDS configuration could not be written: %@" : {
 
     },
-    "Verify CA and Verify Identity check the server certificate against the system trust store. A custom CA and client certificates are not available for SQL Server." : {
-
-    },
     "MongoDB refused the write (error %u)." : {
 
     },
@@ -184424,6 +184702,9 @@
     "'%@' is document metadata and cannot be edited." : {
 
     },
+    "'%@' is not a process id on this engine. Take one from get_server_dashboard." : {
+
+    },
     "The document's _id is unknown, so it cannot be addressed." : {
 
     },
@@ -184565,6 +184846,9 @@
     "Editing a document needs MongoDB 4.0 or later." : {
 
     },
+    "The row's primary key is not loaded, so the row cannot be found." : {
+
+    },
     "This is a view, so its documents cannot be edited. Edit them in the collection the view reads." : {
 
     },
@@ -184584,6 +184868,124 @@
 
     },
     "This document holds JavaScript code with a scope. MongoDB compares a scope by value, so a save could not tell whether someone else changed it." : {
+
+    },
+    "On the connection's Network tab, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
+
+    },
+    "On the connection's Network tab, set SSL Mode to Disabled." : {
+
+    },
+    "Choose the client certificate and key on the connection's Network tab." : {
+
+    },
+    "Enter the Key Passphrase on the connection's Network tab." : {
+
+    },
+    "Correct the Key Passphrase on the connection's Network tab." : {
+
+    },
+    "The CA certificate at %@ could not be read as a PEM or DER certificate." : {
+
+    },
+    "Leave empty to use the system trust store." : {
+
+    },
+    "On the connection's Network tab, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
+
+    },
+    "Port %lld uses TLS, so SSL Mode is %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Port %1$lld uses TLS, so SSL Mode is %2$@."
+          }
+        }
+      }
+    },
+    "Port %lld usually requires TLS, and SSL Mode is Disabled." : {
+
+    },
+    "Use %@" : {
+
+    },
+    "Verify CA and Verify Identity check the server certificate against the system trust store. This driver takes no custom CA or client certificate." : {
+
+    },
+    "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
+
+    },
+    "A password is sent only over TLS, and SSL Mode is Disabled. Set SSL Mode to Verify Identity, or clear the password if the cluster has no authentication." : {
+
+    },
+    "An access token is sent only over TLS, and SSL Mode is Disabled. Set SSL Mode to Verify Identity, or clear the Access Token if the cluster has no authentication." : {
+
+    },
+    "Change Host to a name the certificate covers." : {
+
+    },
+    "The client certificate at %@ could not be read as a PEM or DER certificate." : {
+
+    },
+    "The client certificate at %@ could not be read." : {
+
+    },
+    "The client key at %1$@ does not belong to the certificate at %2$@." : {
+
+    },
+    "The client key at %@ could not be read." : {
+
+    },
+    "The client key at %@ is encrypted. This connection needs an unencrypted key." : {
+
+    },
+    "The client key at %@ is not an RSA or EC private key in PEM or DER form." : {
+
+    },
+    "The server answered with HTTP %lld and no address. Trino never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode." : {
+
+    },
+    "The server did not accept the client certificate. %@" : {
+
+    },
+    "The server redirected the request to %1$@, which needs HTTPS. Set Port to %2$lld and SSL Mode to Verify Identity." : {
+
+    },
+    "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
+
+    },
+    "This database cannot filter rows with these conditions." : {
+
+    },
+    "Timed out while connecting to the Dameng server" : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a date. SAP HANA expects YYYY-MM-DD." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a timestamp. SAP HANA expects YYYY-MM-DD HH:MM:SS.FFFFFFF." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not a whole number." : {
+
+    },
+    "Value %1$lld, \"%2$@\", is not hex-encoded well-known binary, the form SAP HANA takes for a spatial value." : {
+
+    },
+    "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
+    "Next cursor: %@. The scan has not finished." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target." : {
+
+    },
+    "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target." : {
+
+    },
+    "etcd cannot filter with %@." : {
 
     }
   },

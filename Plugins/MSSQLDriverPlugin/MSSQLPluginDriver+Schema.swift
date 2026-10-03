@@ -37,123 +37,11 @@ extension MSSQLPluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let tableLiteral = MSSQLStringLiteral.quoted(table)
-        let schemaLiteral = effectiveSchemaQuoted(schema)
-        let sql = """
-            SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            LEFT JOIN (
-                SELECT kcu.COLUMN_NAME
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = \(schemaLiteral)
-                    AND tc.TABLE_NAME = \(tableLiteral)
-            ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_NAME = \(tableLiteral)
-              AND c.TABLE_SCHEMA = \(schemaLiteral)
-            ORDER BY c.ORDINAL_POSITION
-            """
+        let sql = MSSQLSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
-        var identityColumns: Set<String> = []
-        var computedColumns: Set<String> = []
-        let columns: [PluginColumnInfo] = result.rows.compactMap { row -> PluginColumnInfo? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let dataType = row[safe: 1]?.asText
-            let charLen = row[safe: 2]?.asText
-            let numPrecision = row[safe: 3]?.asText
-            let numScale = row[safe: 4]?.asText
-            let isNullable = (row[safe: 5]?.asText) == "YES"
-            let defaultValue = row[safe: 6]?.asText
-            let isIdentity = (row[safe: 7]?.asText) == "1"
-            let isComputed = (row[safe: 9]?.asText) == "1"
-            let isPk = (row[safe: 8]?.asText) == "1"
-
-            if isIdentity {
-                identityColumns.insert(name)
-            }
-            if isComputed {
-                computedColumns.insert(name)
-            }
-
-            let baseType = (dataType ?? "nvarchar").lowercased()
-            let fixedSizeTypes: Set<String> = [
-                "int", "bigint", "smallint", "tinyint", "bit",
-                "money", "smallmoney", "float", "real",
-                "datetime", "datetime2", "smalldatetime", "date", "time",
-                "uniqueidentifier", "text", "ntext", "image", "xml",
-                "timestamp", "rowversion"
-            ]
-            var fullType = baseType
-            if fixedSizeTypes.contains(baseType) {
-                // No suffix
-            } else if let charLen, let len = Int(charLen), len > 0 {
-                fullType += "(\(len))"
-            } else if charLen == "-1" {
-                fullType += "(max)"
-            } else if let prec = numPrecision, let scale = numScale,
-                      let p = Int(prec), let s = Int(scale) {
-                fullType += "(\(p),\(s))"
-            }
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: fullType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil,
-                identityKind: isIdentity ? .always : nil,
-                isGenerated: isComputed
-            )
+        return result.rows.compactMap { row in
+            MSSQLSchemaQueries.parseColumnRow(row.map(\.asText)).map(\.pluginColumnInfo)
         }
-        identityCacheLock.withLock {
-            identityColumnsByTable[table] = identityColumns
-            computedColumnsByTable[table] = computedColumns
-        }
-        return columns
-    }
-
-    /// Snapshot of IDENTITY columns observed by the most recent `fetchColumns` for the table.
-    /// Returns an empty set when `fetchColumns` hasn't run for this table yet, so callers
-    /// fall through to including every typed value (matching pre-cache behavior).
-    internal func cachedIdentityColumns(for table: String) -> Set<String> {
-        identityCacheLock.lock()
-        defer { identityCacheLock.unlock() }
-        return identityColumnsByTable[table] ?? []
-    }
-
-    /// Snapshot of computed columns observed by the most recent column fetch for the table.
-    internal func cachedComputedColumns(for table: String) -> Set<String> {
-        identityCacheLock.lock()
-        defer { identityCacheLock.unlock() }
-        return computedColumnsByTable[table] ?? []
-    }
-
-    /// Test seam: pre-populate the cache so generateMssqlInsert can be exercised
-    /// without going through a live `fetchColumns` round-trip.
-    internal func setIdentityColumnsForTesting(_ columns: Set<String>, table: String) {
-        identityCacheLock.lock()
-        identityColumnsByTable[table] = columns
-        identityCacheLock.unlock()
-    }
-
-    internal func setComputedColumnsForTesting(_ columns: Set<String>, table: String) {
-        identityCacheLock.lock()
-        computedColumnsByTable[table] = columns
-        identityCacheLock.unlock()
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -292,89 +180,13 @@ extension MSSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let schemaLiteral = effectiveSchemaQuoted(schema)
-        let sql = """
-            SELECT
-                c.TABLE_NAME,
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            LEFT JOIN (
-                SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
-                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = \(schemaLiteral)
-            ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_SCHEMA = \(schemaLiteral)
-            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
-            """
-        let result = try await execute(query: sql)
+        let result = try await execute(query: MSSQLSchemaQueries.allColumns(schema: effectiveSchema(schema)))
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        var identityByTable: [String: Set<String>] = [:]
-        var computedByTable: [String: Set<String>] = [:]
         for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText else { continue }
-            let dataType = row[safe: 2]?.asText
-            let charLen = row[safe: 3]?.asText
-            let numPrecision = row[safe: 4]?.asText
-            let numScale = row[safe: 5]?.asText
-            let isNullable = (row[safe: 6]?.asText) == "YES"
-            let defaultValue = row[safe: 7]?.asText
-            let isIdentity = (row[safe: 8]?.asText) == "1"
-            let isComputed = (row[safe: 10]?.asText) == "1"
-            let isPk = (row[safe: 9]?.asText) == "1"
-
-            let baseType = (dataType ?? "nvarchar").lowercased()
-            let fixedSizeTypes: Set<String> = [
-                "int", "bigint", "smallint", "tinyint", "bit",
-                "money", "smallmoney", "float", "real",
-                "datetime", "datetime2", "smalldatetime", "date", "time",
-                "uniqueidentifier", "text", "ntext", "image", "xml",
-                "timestamp", "rowversion"
-            ]
-            var fullType = baseType
-            if fixedSizeTypes.contains(baseType) {
-                // No suffix
-            } else if let charLen, let len = Int(charLen), len > 0 {
-                fullType += "(\(len))"
-            } else if charLen == "-1" {
-                fullType += "(max)"
-            } else if let prec = numPrecision, let scale = numScale,
-                      let p = Int(prec), let s = Int(scale) {
-                fullType += "(\(p),\(s))"
-            }
-
-            let col = PluginColumnInfo(
-                name: name,
-                dataType: fullType,
-                isNullable: isNullable,
-                isPrimaryKey: isPk,
-                defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil,
-                identityKind: isIdentity ? .always : nil,
-                isGenerated: isComputed
-            )
-            columnsByTable[tableName, default: []].append(col)
-            if isIdentity { identityByTable[tableName, default: []].insert(name) }
-            if isComputed { computedByTable[tableName, default: []].insert(name) }
-        }
-        identityCacheLock.withLock {
-            for table in columnsByTable.keys {
-                identityColumnsByTable[table] = identityByTable[table] ?? []
-                computedColumnsByTable[table] = computedByTable[table] ?? []
-            }
+            let cells = row.map(\.asText)
+            guard let tableName = cells[safe: MSSQLSchemaQueries.allColumnsTableNameIndex] ?? nil,
+                  let column = MSSQLSchemaQueries.parseColumnRow(cells) else { continue }
+            columnsByTable[tableName, default: []].append(column.pluginColumnInfo)
         }
         return columnsByTable
     }
@@ -555,7 +367,7 @@ extension MSSQLPluginDriver {
     }
 
     func switchSchema(to schema: String) async throws {
-        _currentSchema = schema
+        currentSchemaName = schema
     }
 
     func switchDatabase(to database: String) async throws {
@@ -613,5 +425,20 @@ extension MSSQLPluginDriver {
         GROUP BY s.name, t.name, p.rows, v.object_id
         ORDER BY t.name
         """
+    }
+}
+
+extension MSSQLColumnRow {
+    var pluginColumnInfo: PluginColumnInfo {
+        PluginColumnInfo(
+            name: name,
+            dataType: displayType,
+            isNullable: isNullable,
+            isPrimaryKey: isPrimaryKey,
+            defaultValue: defaultValue,
+            extra: isIdentity ? "IDENTITY" : nil,
+            identityKind: isIdentity ? .always : nil,
+            isGenerated: isGenerated
+        )
     }
 }

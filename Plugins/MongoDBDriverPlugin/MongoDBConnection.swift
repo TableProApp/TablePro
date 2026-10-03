@@ -75,6 +75,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let replicaSet: String?
     private let extraUriParams: [String: String]
     let uuidRepresentation: MongoDBUuidRepresentation
+    private let connectTimeout: MongoDBConnectTimeout
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -123,7 +124,7 @@ final class MongoDBConnection: @unchecked Sendable {
 
     func setQueryTimeout(_ seconds: Int) {
         stateLock.lock()
-        _queryTimeoutMS = Int32(seconds * 1_000)
+        _queryTimeoutMS = MongoDBTimeoutPolicy.queryTimeoutMilliseconds(seconds: seconds)
         stateLock.unlock()
     }
 
@@ -148,7 +149,10 @@ final class MongoDBConnection: @unchecked Sendable {
         authMechanism: String? = nil,
         replicaSet: String? = nil,
         extraUriParams: [String: String] = [:],
-        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified,
+        connectTimeout: MongoDBConnectTimeout = MongoDBConnectTimeout(
+            milliseconds: MongoDBConnectTimeout.defaultMilliseconds
+        )
     ) {
         self.host = host
         self.port = port
@@ -168,6 +172,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
         self.uuidRepresentation = uuidRepresentation
+        self.connectTimeout = connectTimeout
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
@@ -271,11 +276,8 @@ final class MongoDBConnection: @unchecked Sendable {
 
         let encodedAuthSource = resolvedAuthSource
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
-        var params: [String] = [
-            "connectTimeoutMS=10000",
-            "serverSelectionTimeoutMS=10000",
-            "authSource=\(encodedAuthSource)"
-        ]
+        var params = connectTimeout.uriParameters
+        params.append("authSource=\(encodedAuthSource)")
 
         params.append(contentsOf: MongoDBSSLMapping.uriParameters(for: ssl))
 
@@ -795,7 +797,8 @@ final class MongoDBConnection: @unchecked Sendable {
         database: String,
         collection: String,
         filter: String,
-        optionsJson: String
+        optionsJson: String,
+        census: MongoFieldCensus.Request?
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -844,7 +847,11 @@ final class MongoDBConnection: @unchecked Sendable {
                     streamState.collection = col
                     streamState.lock.unlock()
 
-                    iterateCursorStreaming(cursor: cursor, continuation: continuation, streamState: streamState)
+                    iterateCursorStreaming(
+                        cursor: cursor, continuation: continuation, streamState: streamState
+                    ) {
+                        try self.fieldCensus(census, client: client, database: database, collection: collection)
+                    }
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -859,7 +866,8 @@ final class MongoDBConnection: @unchecked Sendable {
         database: String,
         collection: String,
         pipeline: String,
-        optionsJson: String? = nil
+        optionsJson: String?,
+        census: MongoFieldCensus.Request?
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -919,7 +927,11 @@ final class MongoDBConnection: @unchecked Sendable {
                     streamState.collection = col
                     streamState.lock.unlock()
 
-                    iterateCursorStreaming(cursor: cursor, continuation: continuation, streamState: streamState)
+                    iterateCursorStreaming(
+                        cursor: cursor, continuation: continuation, streamState: streamState
+                    ) {
+                        try self.fieldCensus(census, client: client, database: database, collection: collection)
+                    }
                 } catch {
                     continuation.finish(throwing: error)
                 }

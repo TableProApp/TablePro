@@ -20,7 +20,7 @@ extension RowEditingCoordinator {
 
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
         let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await parent.executionGate.authorize(
             OperationRequest(
                 connectionId: parent.connectionId,
                 databaseType: parent.connection.type,

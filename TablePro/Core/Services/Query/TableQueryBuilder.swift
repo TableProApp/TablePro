@@ -103,7 +103,7 @@ struct TableQueryBuilder {
         selectColumns: [String]? = nil,
         limit: Int = 200,
         offset: Int = 0
-    ) -> String {
+    ) -> String? {
         if let pluginDriver {
             let targetColumns = selectColumns ?? columns
             let sortCols = SortColumnResolver.resolvedIndices(
@@ -122,19 +122,18 @@ struct TableQueryBuilder {
             }
         }
 
+        guard let dialect else { return nil }
+
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
 
-        if let dialect {
-            let activeFilters = filters.filter { $0.isEnabled }
-            let filterGen = FilterSQLGenerator(
-                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-                stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
-            )
-            let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
-            if !whereClause.isEmpty {
-                query += " \(whereClause)"
-            }
+        let filterGen = FilterSQLGenerator(
+            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+        )
+        let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
+        if !whereClause.isEmpty {
+            query += " \(whereClause)"
         }
 
         if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {

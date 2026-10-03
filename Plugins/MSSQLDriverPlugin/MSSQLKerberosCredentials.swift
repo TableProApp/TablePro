@@ -9,12 +9,12 @@ enum MSSQLKerberosCredentials {
         qos: .userInitiated
     )
 
-    static func acquireTicket(principal: String, password: String, timeoutSeconds: Int) async throws -> String {
+    static func acquireTicket(principal: String, password: String, timeoutMilliseconds: Int) async throws -> String {
         let cachePath = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("tablepro-krb5-\(UUID().uuidString)")
         return try await runCancellableBlocking(
             on: acquisitionQueue,
-            deadline: .seconds(timeoutSeconds),
+            deadline: .milliseconds(timeoutMilliseconds),
             timeoutError: { MSSQLCoreError.connectionTimedOut(isKerberos: true) },
             work: {
                 try acquireTicketSync(principal: principal, password: password, cachePath: cachePath)

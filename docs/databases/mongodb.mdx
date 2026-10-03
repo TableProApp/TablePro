@@ -198,7 +198,15 @@ The save is refused before anything is written when:
 | A longer name would take a document past MongoDB's 16 MB limit | Choose a shorter name, or shrink that document. The message gives its `_id` |
 | The collection's validator or options changed after the save was prepared, or while its documents were checked | Check the new `collMod` in **Preview SQL**, then choose **Save Changes** again |
 
-The checks for a document holding both names and for a document the validator would reject run on **Save Changes** only, never in **Preview SQL**. Under a `moderate` validator, a document the validator already rejected before the save is left alone. Each reads every document that holds a changed field and stops at the query timeout in **Settings > General**, or after 10 minutes when the timeout is **No limit**. A check that times out changes nothing. Every check reads the primary, whatever the connection's **Read Preference**. Once they pass, the save reads the collection's options, indexes and views again, and stops if the options changed or an index, search index or view now uses the field.
+The checks for a document holding both names and for a document the validator would reject run on
+**Save Changes** only, never in **Preview SQL**. Under a `moderate` validator, a document the
+validator already rejected before the save is left alone. Each reads every document that holds a
+changed field and stops at this connection's effective query timeout, or after 10 minutes when the
+timeout is **No limit**. Set an override under **Options**, or leave it empty to inherit **Settings >
+General**. A check that times out changes nothing. Every check reads the primary, whatever the
+connection's **Read Preference**. Once they pass, the save reads the collection's options, indexes
+and views again, and stops if the options changed or an index, search index or view now uses the
+field.
 
 An `updateMany` that stops partway, at the query timeout or on a duplicate key, keeps the documents it already changed. Another client can also write the old name while the save runs, so after the last statement the save counts the documents that still hold it, and reports how many when any do. It also reads the indexes, search indexes and views again, and reports one another client made on either name while the save ran. A `collMod` whose write concern was not met stops the save with the server's reason, after the validator was already changed. Either way the change stays queued in the Structure tab: choose **Save Changes** again and it finishes the rest, because each statement skips the documents already done. A document left holding both names stops that second save instead, with the message for that case. Removing a field asks for confirmation, as a dropped column does.
 

@@ -50,7 +50,7 @@ enum CatalogChangeClassifier {
             return request
         }
         let grammar = databaseType.lexicalGrammar
-        if QueryClassifier.runsPLSQL(trimmed, grammar: grammar) {
+        if QueryClassifier.runsProceduralBlock(trimmed, grammar: grammar) {
             return opaque
         }
         return sqlEffect(trimmed, grammar: grammar)

@@ -57,6 +57,12 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             fields: config.additionalFields, username: config.username, password: config.password
         )
         let client = clientFactory(endpoint, credentials)
+        let connectTimeout = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+        )
+        client.beginConnecting(deadline: PluginConnectDeadline(milliseconds: connectTimeout))
+        defer { client.finishConnecting() }
         do {
             _ = try await client.send(.listTables, ["Limit": .number("1")])
         } catch {

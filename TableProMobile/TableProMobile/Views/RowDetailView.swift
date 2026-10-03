@@ -214,8 +214,9 @@ struct RowDetailView: View {
                 let column = viewModel.columns[index]
                 let value = values[index]
                 let isPK = viewModel.isPrimaryKey(at: index)
+                let takesEdits = viewModel.isEditing && viewModel.takesEdits(at: index)
                 Section {
-                    if viewModel.isEditing && !isPK {
+                    if takesEdits {
                         editableField(index: index, value: value)
                     } else {
                         fieldContent(value: value)
@@ -234,8 +235,8 @@ struct RowDetailView: View {
                                 }
                             }
                         if index < cells.count, cells[index].isLoadable,
-                           !viewModel.hasOverride(forRow: viewModel.currentIndex, cellIndex: index) {
-                            lazyLoadButton(cell: cells[index], cellIndex: index)
+                           !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
+                            lazyLoadButton(cell: cells[index], rowIndex: rowIndex, cellIndex: index)
                         }
                         if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }), let value {
                             Button {
@@ -261,7 +262,7 @@ struct RowDetailView: View {
                         }
                         Text(column.name)
 
-                        if viewModel.isEditing && isPK {
+                        if viewModel.isEditing && !takesEdits {
                             Text("read-only")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -279,10 +280,10 @@ struct RowDetailView: View {
     }
 
     @ViewBuilder
-    private func lazyLoadButton(cell: Cell, cellIndex: Int) -> some View {
+    private func lazyLoadButton(cell: Cell, rowIndex: Int, cellIndex: Int) -> some View {
         if let ref = cell.fullValueRef, viewModel.supportsLazyLoading {
             Button {
-                Task { await viewModel.loadFullValue(ref: ref, cellIndex: cellIndex) }
+                Task { await viewModel.loadFullValue(ref: ref, forRow: rowIndex, cellIndex: cellIndex) }
             } label: {
                 HStack(spacing: 4) {
                     if viewModel.loadingCell == cellIndex {

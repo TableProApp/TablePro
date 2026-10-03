@@ -114,6 +114,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Inspector grids, which list columns rather than rows and have nothing to do with a Data Grid
     /// setting, so the grid says whether the preference is its own.
     var appliesRowSortPreferences: Bool = false
+    var supportsColumnSort: Bool = true
 
     var firstClickSortDirection: SortDirection {
         guard appliesRowSortPreferences else { return .ascending }
@@ -269,6 +270,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         primaryKeyColumns = configuration.primaryKeyColumns
         tabType = configuration.tabType
         appliesRowSortPreferences = configuration.appliesRowSortPreferences
+        supportsColumnSort = configuration.supportsColumnSort
     }
 
     /// A grid with no table behind it keeps a saved column order only while its columns are still the

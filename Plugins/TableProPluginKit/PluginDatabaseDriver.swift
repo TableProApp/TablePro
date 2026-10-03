@@ -326,6 +326,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// writes implements this requirement and refuses that change instead.
     func generateRowWrites(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) throws -> [PluginRowWrite]?
 
+    /// The same question with what the host knows about the table: the columns the server owns and how a keyless row
+    /// match has to compare each column. This is what the host calls. The default ignores the context and asks the
+    /// requirement above, so a driver built before it writes exactly what it wrote before.
+    func generateRowWrites(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>, context: PluginRowWriteContext) throws -> [PluginRowWrite]?
+
     /// Writes a row back exactly as it was, key included, to undo a delete.
     ///
     /// `generateStatements` writes an insert for a row the user just added, so it is free to let
@@ -1068,6 +1073,12 @@ public extension PluginDatabaseDriver {
                 rowIndices: offset == 0 ? writtenRows : []
             )
         }
+    }
+    func generateRowWrites(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>, context: PluginRowWriteContext) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
     }
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]? {

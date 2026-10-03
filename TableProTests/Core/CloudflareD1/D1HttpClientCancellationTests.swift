@@ -78,6 +78,30 @@ struct D1HttpClientCancellationTests {
         #expect(client.inFlightCount == 0)
     }
 
+    @Test("Connection requests use the remaining deadline then restore the query timeout")
+    func connectionDeadlineDoesNotLeakIntoQueries() async throws {
+        let client = D1HttpClient(accountId: "account", apiToken: "token", databaseId: "database")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [D1StubProtocol.self]
+        client.createSession(
+            configuration: configuration,
+            connectDeadline: PluginConnectDeadline(milliseconds: 45_000)
+        )
+
+        _ = try await client.executeRaw(sql: "SELECT 1")
+        let connectTimeout = try #require(D1StubProtocol.recorded?.timeoutInterval)
+        #expect(connectTimeout > 44)
+        #expect(connectTimeout <= 45)
+
+        client.finishConnecting()
+        client.setQueryTimeout(300)
+        _ = try await client.executeRaw(sql: "SELECT 1")
+        #expect(
+            D1StubProtocol.recorded?.timeoutInterval
+                == HttpQueryTimeout(serverTimeoutSeconds: 300).requestTimeoutInterval
+        )
+    }
+
     @Test("Cancelling everything stops every request in flight, not just the latest")
     func cancelAllStopsEveryRequest() async throws {
         let client = connectedClient()

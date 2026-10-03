@@ -52,7 +52,8 @@ extension DatabaseType {
 
 extension SQLLexicalGrammar {
     /// The kit's feature for each grammar fact. The two sets carry the same bits by design; this table is what says
-    /// which is which, and `SQLLexicalFeatureMappingTests` holds every fact to a partner.
+    /// which is which, and `SQLLexicalFeatureMappingTests` holds every fact to a partner. A fact only the curated
+    /// table sets, such as `cqlBatches`, has none: no plugin can declare it, and it never reaches one.
     static let pluginFeaturePairs: [(SQLLexicalFeatures, SQLLexicalGrammar)] = [
         (.backslashEscapesInSingleQuotes, .backslashEscapesInSingleQuotes),
         (.backslashEscapesInDoubleQuotes, .backslashEscapesInDoubleQuotes),

@@ -61,6 +61,7 @@ internal struct QueryTabFilterPanel: View {
             rawFilterLabel: rawFilterLabel,
             rawSQLCompletionProvider: rawSQLCompletionProvider,
             caseMatching: .engine(PluginManager.shared.caseSensitivityStyle(for: databaseType)),
+            offersMatchAny: PluginManager.shared.supportsMatchAnyFilters(for: databaseType),
             sqlPreview: coordinator.filterCoordinator,
             presetStore: FilterPresetStorage.shared
         )

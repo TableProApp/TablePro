@@ -10,6 +10,37 @@ import Testing
 
 @MainActor
 struct DatabaseManagerTunnelTests {
+    private struct TestTunnelFailure: Error, Equatable {
+        let value: Int
+    }
+
+    private func tunnelFixtures() -> [(ConnectionTunnelKind, DatabaseConnection)] {
+        var ssh = DatabaseConnection(name: "SSH", type: .postgresql)
+        ssh.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "ssh.example.com"))
+
+        var cloudflare = DatabaseConnection(name: "Cloudflare", type: .postgresql)
+        cloudflare.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
+
+        var cloudSQL = DatabaseConnection(name: "Cloud SQL", type: .postgresql)
+        cloudSQL.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
+
+        var socks = DatabaseConnection(name: "SOCKS", type: .postgresql)
+        socks.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com"))
+
+        var command = DatabaseConnection(name: "Command", type: .postgresql)
+        command.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(method: .kubectl, kubernetesResource: "service/pg")
+        )
+
+        return [
+            (.ssh, ssh),
+            (.cloudflare, cloudflare),
+            (.cloudSQLProxy, cloudSQL),
+            (.socksProxy, socks),
+            (.tunnelCommand, command)
+        ]
+    }
+
     @Test("Tunneled connection rewrites the endpoint and keeps the password source")
     func tunnelPreservesPasswordSource() {
         var connection = DatabaseConnection(
@@ -25,6 +56,84 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.host == "127.0.0.1")
         #expect(tunneled.port == 61_234)
         #expect(tunneled.passwordSource == .env(variable: "DB_PASS"))
+    }
+
+    @Test("Every tunnel rewrite preserves inherited disabled and finite timeout states")
+    func tunnelPreservesTimeoutOverrides() {
+        let overrides: [(connect: Int?, query: Int?)] = [
+            (nil, nil),
+            (12, 0),
+            (600, 45)
+        ]
+
+        for (kind, template) in tunnelFixtures() {
+            #expect(template.activeTunnelKind == kind)
+            for override in overrides {
+                var connection = template
+                connection.connectTimeoutSeconds = override.connect
+                connection.queryTimeoutSeconds = override.query
+
+                let tunneled = DatabaseManager.shared.tunneledConnection(
+                    from: connection,
+                    localPort: 61_234
+                )
+
+                #expect(tunneled.connectTimeoutSeconds == override.connect)
+                #expect(tunneled.queryTimeoutSeconds == override.query)
+            }
+        }
+    }
+
+    @Test("Tunnel attribution replaces a driver symptom before teardown")
+    func tunnelAttributionPrecedesTeardown() async {
+        var events: [String] = []
+        let reported = await DatabaseManager.preferredTunnelFailure(
+            replacing: TestTunnelFailure(value: 1)
+        ) {
+            events.append("attribution")
+            return TestTunnelFailure(value: 2)
+        }
+        events.append("teardown")
+
+        #expect((reported as? TestTunnelFailure) == TestTunnelFailure(value: 2))
+        #expect(events == ["attribution", "teardown"])
+    }
+
+    @Test("Tunnel attribution never replaces cancellation")
+    func tunnelAttributionPreservesCancellation() async {
+        var consumed = false
+        let reported = await DatabaseManager.preferredTunnelFailure(replacing: CancellationError()) {
+            consumed = true
+            return TestTunnelFailure(value: 2)
+        }
+
+        #expect(reported is CancellationError)
+        #expect(!consumed)
+    }
+
+    @Test("Every first-forward transport has an attributed failure manager")
+    func firstForwardTransportManagers() {
+        var ssh = DatabaseConnection(name: "SSH", type: .postgresql)
+        ssh.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "ssh.example.com"))
+
+        var socks = DatabaseConnection(name: "SOCKS", type: .postgresql)
+        socks.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com"))
+
+        var remoteConfiguration = SSHConfiguration()
+        remoteConfiguration.enabled = true
+        remoteConfiguration.host = "ssh.example.com"
+        remoteConfiguration.username = "deploy"
+        remoteConfiguration.remoteFilePath = "/srv/app.db"
+        remoteConfiguration.remoteFileAccess = .onServer
+        let remoteSQLite = DatabaseConnection(
+            name: "Remote SQLite",
+            type: .sqlite,
+            sshTunnelMode: .inline(remoteConfiguration)
+        )
+
+        #expect(DatabaseManager.shared.activeTunnelManager(for: ssh) is SSHTunnelManager)
+        #expect(DatabaseManager.shared.activeTunnelManager(for: socks) is SOCKSProxyManager)
+        #expect(DatabaseManager.shared.activeTunnelManager(for: remoteSQLite) is RemoteSQLiteTransportManager)
     }
 
     @Test("Tunneled Redis keeps the database index the connection names")
@@ -141,6 +250,75 @@ struct DatabaseManagerTunnelTests {
         let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
 
         #expect(tunneled.sslConfig.mode == .required)
+    }
+
+    @Test("A TCP forward keeps the client certificate and key")
+    func tcpForwardKeepsClientIdentity() {
+        let connection = DatabaseConnection(
+            name: "pg",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(
+                mode: .required,
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.clientCertificatePath == "/certs/client.pem")
+        #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
+    }
+
+    @Test("A TCP forward relaxes Verify Identity and still keeps the client certificate and key")
+    func tcpForwardRelaxesVerificationAndKeepsClientIdentity() {
+        let connection = DatabaseConnection(
+            name: "mysql",
+            host: "db.internal",
+            port: 3_306,
+            type: .mysql,
+            sslConfig: SSLConfiguration(
+                mode: .verifyIdentity,
+                caCertificatePath: "/certs/ca.pem",
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.clientCertificatePath == "/certs/client.pem")
+        #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
+    }
+
+    @Test("A socket forward clears the client certificate and key along with TLS")
+    func socketForwardClearsClientIdentity() {
+        var connection = DatabaseConnection(
+            name: "socket",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(
+                mode: .required,
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+        connection.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(
+            from: connection,
+            localPort: 62_000,
+            forwardsToUnixSocket: true
+        )
+
+        #expect(tunneled.sslConfig.mode == .disabled)
+        #expect(tunneled.sslConfig.clientCertificatePath.isEmpty)
+        #expect(tunneled.sslConfig.clientKeyPath.isEmpty)
     }
 
     @Test("The pre-tunnel endpoint is recorded for every tunneled connection")

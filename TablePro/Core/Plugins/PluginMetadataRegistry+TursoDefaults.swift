@@ -60,7 +60,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsModifyColumn: false,
                     supportsRenameColumn: true,
-                    localFilePathField: .additionalField("libsqlFilePath")
+                    localFilePathField: .additionalField("libsqlFilePath"),
+                    newDatabaseFileExtensions: Self.sqliteFileExtensions
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

@@ -90,6 +90,194 @@ struct DatabaseManagerSessionTests {
     }
 }
 
+@Suite("Interactive connection query timeout handoff", .serialized)
+@MainActor
+struct DatabaseManagerQueryTimeoutHandoffTests {
+    @Test("Connection overrides reach the connected driver", arguments: [0, 17])
+    func connectionOverrideReachesDriver(queryTimeoutSeconds: Int) async {
+        await expectAppliedTimeout(configured: queryTimeoutSeconds, expected: queryTimeoutSeconds)
+    }
+
+    @Test("An inherited timeout reaches the connected driver")
+    func inheritedTimeoutReachesDriver() async {
+        let settings = AppSettingsManager.shared
+        let previous = settings.general.queryTimeoutSeconds
+        settings.general.queryTimeoutSeconds = 29
+        defer { settings.general.queryTimeoutSeconds = previous }
+
+        await expectAppliedTimeout(configured: nil, expected: 29)
+    }
+
+    @Test("A successful retry adopts the edited connection for later reconnects")
+    func successfulRetryAdoptsEditedConnection() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var oldConnection = TestFixtures.makeConnection(name: "Edited retry", type: .mssql)
+        oldConnection.host = "old.example.com"
+        oldConnection.username = "old-user"
+        oldConnection.connectTimeoutSeconds = 1
+
+        let failedDriver = MockDatabaseDriver(connection: oldConnection)
+        var failedSession = ConnectionSession(connection: oldConnection, driver: failedDriver)
+        failedSession.status = .error("Connection failed")
+        failedSession.liveness = .unreachable(ConnectionFailureInfo(message: "Connection failed"))
+        DatabaseManager.shared.injectSession(failedSession, for: oldConnection.id)
+
+        var editedConnection = oldConnection
+        editedConnection.host = "new.example.com"
+        editedConnection.username = "new-user"
+        editedConnection.connectTimeoutSeconds = 60
+        FakeMSSQLPlugin.recordConfigurations(for: editedConnection.id)
+
+        do {
+            try await DatabaseManager.shared.ensureConnected(editedConnection)
+
+            let adopted = try #require(DatabaseManager.shared.session(for: editedConnection.id)?.connection)
+            #expect(adopted.host == "new.example.com")
+            #expect(adopted.username == "new-user")
+            #expect(adopted.connectTimeoutSeconds == 60)
+
+            let reconnect = await DatabaseManager.shared.performHealthMonitorReconnect(
+                connectionId: editedConnection.id
+            )
+            #expect(reconnect == .success)
+
+            let configurations = FakeMSSQLPlugin.configurations(for: editedConnection.id)
+            #expect(configurations.count == 2)
+            if configurations.count == 2 {
+                let retry = configurations[0]
+                let laterReconnect = configurations[1]
+                #expect(retry.host == "new.example.com")
+                #expect(retry.username == "new-user")
+                #expect(retry.connectTimeoutSeconds.map { 1...60 ~= $0 } == true)
+                #expect(laterReconnect.host == "new.example.com")
+                #expect(laterReconnect.username == "new-user")
+                #expect(laterReconnect.connectTimeoutSeconds.map { 2...60 ~= $0 } == true)
+            }
+        } catch {
+            await cleanUp(editedConnection.id)
+            throw error
+        }
+
+        await cleanUp(editedConnection.id)
+    }
+
+    @Test("Connect success preserves fields reconciled while the driver was opening")
+    func connectSuccessPreservesReconciledFields() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        let unique = UUID().uuidString
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-session-adoption-\(unique).json")
+        let suiteName = "com.TablePro.tests.SessionAdoption.\(unique)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let storage = ConnectionStorage(
+            fileURL: fileURL,
+            userDefaults: defaults,
+            keychain: InMemoryKeychain()
+        )
+        let manager = DatabaseManager(connectionStorage: storage)
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        let originalTag = UUID()
+        let reconciledTag = UUID()
+        var attempted = TestFixtures.makeConnection(name: "Before rename", type: .mssql)
+        attempted.host = "attempted.example.com"
+        attempted.color = .red
+        attempted.tagIds = [originalTag]
+        attempted.preferredSafeModeLevel = .silent
+        attempted.localOnly = true
+        storage.addConnection(attempted)
+
+        let connectHold = FakeMSSQLPlugin.holdConnect(for: attempted.id)
+        let connectTask = Task { @MainActor in
+            try await manager.ensureConnected(attempted)
+        }
+
+        do {
+            let didReachDriver = try #require(await BoundedCall.result(within: .seconds(2)) {
+                await connectHold.waitUntilReached()
+                return true
+            })
+            try #require(didReachDriver)
+
+            var edited = try #require(storage.loadConnection(id: attempted.id))
+            edited.name = "Renamed while connecting"
+            edited.host = "stored-edit.example.com"
+            edited.color = .purple
+            edited.tagIds = [reconciledTag]
+            edited.preferredSafeModeLevel = .alert
+            storage.updateConnection(edited)
+            manager.reconcileStoredRecord(for: attempted.id)
+
+            let whileConnecting = try #require(manager.session(for: attempted.id))
+            #expect(whileConnecting.connection.name == "Renamed while connecting")
+            #expect(whileConnecting.connection.host == "attempted.example.com")
+            #expect(whileConnecting.connection.color == .purple)
+            #expect(whileConnecting.connection.tagIds == [reconciledTag])
+            #expect(whileConnecting.connection.preferredSafeModeLevel == .alert)
+            #expect(whileConnecting.safeModeLevel == .alert)
+
+            await connectHold.release()
+            let didConnect = try #require(await BoundedCall.result(within: .seconds(2)) {
+                do {
+                    try await connectTask.value
+                    return true
+                } catch {
+                    return false
+                }
+            })
+            try #require(didConnect)
+
+            let connected = try #require(manager.session(for: attempted.id))
+            #expect(connected.connection.name == "Renamed while connecting")
+            #expect(connected.connection.host == "attempted.example.com")
+            #expect(connected.connection.color == .purple)
+            #expect(connected.connection.tagIds == [reconciledTag])
+            #expect(connected.connection.preferredSafeModeLevel == .alert)
+            #expect(connected.safeModeLevel == .alert)
+        } catch {
+            await connectHold.release()
+            connectTask.cancel()
+            await cleanUp(attempted.id, manager: manager)
+            throw error
+        }
+
+        await cleanUp(attempted.id, manager: manager)
+    }
+
+    private func expectAppliedTimeout(configured: Int?, expected: Int) async {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var connection = TestFixtures.makeConnection(name: "Timeout handoff", type: .mssql)
+        connection.queryTimeoutSeconds = configured
+
+        do {
+            try await DatabaseManager.shared.ensureConnected(connection)
+            if let adapter = DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter,
+               let pluginDriver = adapter.schemaPluginDriver as? FakeMSSQLPluginDriver {
+                #expect(pluginDriver.applyQueryTimeoutValues == [expected])
+                #expect(DatabaseManager.shared.session(for: connection.id)?.effectiveQueryTimeoutSeconds == expected)
+            } else {
+                Issue.record("The interactive connection did not install the expected plugin driver")
+            }
+        } catch {
+            Issue.record("The interactive connection failed: \(error.localizedDescription)")
+        }
+
+        await cleanUp(connection.id)
+    }
+
+    private func cleanUp(_ connectionId: UUID, manager: DatabaseManager = .shared) async {
+        await manager.stopHealthMonitor(for: connectionId)
+        manager.driver(for: connectionId)?.disconnect()
+        manager.removeSession(for: connectionId)
+        FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
+        FakeMSSQLPlugin.clearConnectHold(for: connectionId)
+        FakeMSSQLPlugin.clearConfigurations(for: connectionId)
+    }
+}
+
 private class DatabaseSwitchBaseDriver {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { false }

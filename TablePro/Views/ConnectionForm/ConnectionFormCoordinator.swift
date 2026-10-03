@@ -53,7 +53,7 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     @Published var saveError: String?
 
-    @Published var clipboardCandidate: ParsedConnection?
+    @Published var clipboardCandidate: ClipboardConnectionCandidate?
     @Published var clipboardBannerDismissed: Bool = false
 
     @Published var isChoosingType: Bool = false
@@ -272,6 +272,11 @@ final class ConnectionFormCoordinator: ObservableObject {
         pluginInstallError = nil
     }
 
+    func didChangePort() {
+        guard hasLoadedData else { return }
+        ssl.reconcile(port: network.resolvedPort, type: network.type)
+    }
+
     private func applyTypeDefaults(_ newType: DatabaseType, includeNetwork: Bool) {
         if includeNetwork {
             network.applyTypeDefaults(forNewType: newType)
@@ -340,6 +345,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
+            connectTimeoutSeconds: customization.connectTimeoutSeconds,
+            queryTimeoutSeconds: customization.queryTimeoutSeconds,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0
             },
@@ -880,11 +887,11 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
 
         network.host = parsed.host
-        network.port = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
+        network.port = String(parsed.resolvedPort)
         network.database = parsed.database
         auth.username = parsed.username
         auth.password = parsed.password
-        ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
+        ssl.applyImported(parsed.sslModeResolution)
 
         if let sshHostValue = parsed.sshHost {
             /// Through the transport setter rather than the flag, so a URL naming an SSH server
@@ -933,9 +940,6 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
         if parsed.useSrv {
             writeFieldByRegistry("mongoUseSrv", value: "true")
-            if ssl.mode == .disabled {
-                ssl.mode = .required
-            }
         }
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
             switch key {
@@ -954,6 +958,9 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
         if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
             writeFieldByRegistry("oracleServiceName", value: svcName)
+        }
+        for (fieldId, value) in parsed.additionalFields {
+            writeFieldByRegistry(fieldId, value: value)
         }
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
@@ -1021,66 +1028,17 @@ final class ConnectionFormCoordinator: ObservableObject {
         pasteboard: NSPasteboard = .general
     ) {
         guard isNew, !clipboardBannerDismissed, clipboardCandidate == nil else { return }
-        guard let raw = pasteboard.string(forType: .string) else { return }
-        let firstLine = raw
-            .components(separatedBy: .newlines)
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !firstLine.isEmpty else { return }
-
-        let parsed: ParsedConnection
-        do {
-            parsed = try ConnectionStringParser.parse(firstLine)
-        } catch {
-            return
-        }
-
-        if matchesExistingConnection(parsed: parsed, connectionStorage: connectionStorage) {
-            return
-        }
-
-        clipboardCandidate = parsed
+        guard let raw = pasteboard.string(forType: .string),
+              let candidate = ClipboardConnectionCandidate(clipboardText: raw),
+              !matchesExistingConnection(candidate.parsed, connectionStorage: connectionStorage)
+        else { return }
+        clipboardCandidate = candidate
     }
 
-    func applyClipboardCandidate(_ parsed: ParsedConnection) {
-        let oldType = network.type
-        network.type = parsed.type
-        if oldType != parsed.type {
-            applyTypeDefaults(parsed.type, includeNetwork: false)
-            auth.resetForType(parsed.type)
-            advanced.resetForType(parsed.type)
-        }
-
-        network.host = parsed.host
-        if parsed.port > 0 {
-            network.port = String(parsed.port)
-        } else {
-            network.port = String(parsed.type.defaultPort)
-        }
-        auth.username = parsed.username ?? ""
-        auth.password = parsed.password ?? ""
-        network.database = parsed.database ?? ""
+    func applyClipboardCandidate(_ candidate: ClipboardConnectionCandidate) {
+        applyParsed(candidate.parsed)
         auth.promptForPassword = false
-
-        if network.name.isEmpty {
-            let suggestion = parsed.database.map { "\(parsed.type.rawValue) \(parsed.host)/\($0)" }
-                ?? "\(parsed.type.rawValue) \(parsed.host)"
-            network.name = suggestion
-        }
-
-        if parsed.useSSL {
-            ssl.mode = .required
-        }
-
-        if parsed.type == .mongodb {
-            if let authSource = parsed.queryParameters["authSource"], !authSource.isEmpty {
-                writeFieldByRegistry("mongoAuthSource", value: authSource)
-            }
-            if parsed.rawScheme == "mongodb+srv" {
-                writeFieldByRegistry("mongoUseSrv", value: "true")
-            }
-        }
-
+        normalizeTransport()
         clipboardCandidate = nil
     }
 
@@ -1090,13 +1048,13 @@ final class ConnectionFormCoordinator: ObservableObject {
     }
 
     private func matchesExistingConnection(
-        parsed: ParsedConnection,
+        _ parsed: ParsedConnectionURL,
         connectionStorage: ConnectionStorage
     ) -> Bool {
         connectionStorage.loadConnections().contains { saved in
             saved.host == parsed.host
-                && saved.port == parsed.port
-                && saved.username == (parsed.username ?? "")
+                && saved.port == parsed.resolvedPort
+                && saved.username == parsed.username
         }
     }
 

@@ -11,6 +11,15 @@ internal struct ImportFileHandoff: Equatable, Sendable {
 
     internal let url: URL
     internal let ownsFile: Bool
+    /// The name the user knows the file by. A file the app wrote for the handoff has a generated
+    /// name of its own, which must never reach the sheet, a proposed table name or history.
+    internal let sourceName: String
+
+    internal init(url: URL, ownsFile: Bool, sourceName: String? = nil) {
+        self.url = url
+        self.ownsFile = ownsFile
+        self.sourceName = sourceName ?? url.lastPathComponent
+    }
 
     internal func discard() {
         guard ownsFile else { return }

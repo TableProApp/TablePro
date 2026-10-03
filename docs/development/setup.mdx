@@ -18,6 +18,8 @@ runs on, not what you build on.
 | SwiftLint | any | `brew install swiftlint`. The release workflow runs `swiftlint lint --strict` |
 | SwiftFormat | any | `brew install swiftformat`. Not run in CI |
 | GitHub CLI | any | `brew install gh`. Optional: `scripts/download-libs.sh` falls back to `curl` |
+| Go | 1.27.1 | `brew install go`. Only for the SAP HANA plugin: run `scripts/build-hana.sh` with no argument, which builds the helper for both architectures, before building `HanaDriver` or `AllPlugins`. A thin `arm64` or `x86_64` helper only works in a build of that one architecture. The script builds with exactly 1.27.1 and fetches it when the installed `go` is another release |
+| Rust | 1.91.1 | Install [rustup](https://rustup.rs). Only for the Dameng plugin: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins`. The script installs 1.91.1 through rustup |
 
 The Swift language mode comes from `SWIFT_VERSION = 6.0` in `Configs/Base.xcconfig`, and each
 package under `Packages/` sets its own through `swift-tools-version: 6.0`. Never pass
@@ -171,19 +173,19 @@ the files under `Plugins/` only.
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 ```
 
-Or press `Cmd+U` in Xcode. To narrow the run, pass `-only-testing:TableProTests/TestClassName` or
-`-only-testing:TableProTests/TestClassName/testMethodName`. `-only-testing:TableProUITests` runs the
-UI automation on its own.
+Or press `Cmd+U` in Xcode. To narrow the run, pass `-only-testing:TableProTests/<SuiteType>`, or
+`-only-testing:TableProTests/<SuiteType>/<test>()` for one Swift Testing case. The filter matches the
+suite's Swift type name, and a filter that matches nothing still reports success, so check how many
+tests ran. `-only-testing:TableProUITests` runs the UI automation on its own.
 
-## Linting and formatting
+## Linting
 
 ```bash
 swiftlint lint --strict
-swiftformat .
 ```
 
-`--strict` turns warnings into errors, which is how the release workflow runs it, so a plain
-`swiftlint lint` can pass on a change that later blocks a tag. Full tooling reference:
+`--strict` turns warnings into errors, which is how CI runs it on every pull request, so a plain
+`swiftlint lint` can pass on a change CI rejects. Full tooling reference:
 [Code Style](/development/code-style).
 
 ## Troubleshooting
@@ -201,6 +203,16 @@ It is generated, not committed. Run `scripts/generate-project.sh`.
 
 `Libs/` is empty or stale. Run `scripts/download-libs.sh`, or `scripts/download-libs.sh --force` to
 overwrite what is already there.
+
+### `Build input file cannot be found: '…/tablepro-hana-helper'`
+
+`HanaDriver` and `HanaDriverTests` copy the SAP HANA helper into their bundle, and Xcode does not
+build it. Run `scripts/build-hana.sh` with no argument, then build again.
+
+### `…/tablepro-hana-helper has no … slice`
+
+The helper was built thin for the other architecture, and every architecture Xcode builds needs a
+slice. Run `scripts/build-hana.sh` with no argument, which builds both, then build again.
 
 ### `Libs does not match the checksums committed in git.`
 

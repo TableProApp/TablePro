@@ -7,7 +7,8 @@ import Foundation
 
 extension DatabaseManager {
     func buildSOCKSProxyEffectiveConnection(
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         guard let config = connection.resolvedSOCKSProxyConfig else { return connection }
 
@@ -15,12 +16,14 @@ extension DatabaseManager {
             ? nil
             : connectionStorage.loadSOCKSProxyPassword(for: connection.id)
 
+        let endpoint = connection.tunnelForwardEndpoint
         let tunnelPort = try await SOCKSProxyManager.shared.createTunnel(
             connectionId: connection.id,
             config: config,
             password: password,
-            targetHost: connection.host,
-            targetPort: connection.port
+            targetHost: endpoint.host,
+            targetPort: endpoint.port,
+            deadline: deadline
         )
 
         return tunneledConnection(from: connection, localPort: tunnelPort)

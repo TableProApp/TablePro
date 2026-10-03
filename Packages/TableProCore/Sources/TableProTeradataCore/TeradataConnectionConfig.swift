@@ -65,7 +65,12 @@ public struct TeradataConnectionConfig: Sendable {
     public var logMech: TeradataLogMech
     public var transactionMode: TeradataTransactionMode
     public var tls: TeradataTLSOptions
-    public var connectTimeoutSeconds: Int
+    public var connectTimeoutMilliseconds: Int
+
+    public var connectTimeoutSeconds: Int {
+        get { (connectTimeoutMilliseconds + 999) / 1_000 }
+        set { connectTimeoutMilliseconds = Self.milliseconds(fromSeconds: newValue) }
+    }
 
     public init(
         host: String,
@@ -88,7 +93,41 @@ public struct TeradataConnectionConfig: Sendable {
         self.logMech = logMech
         self.transactionMode = transactionMode
         self.tls = tls
-        self.connectTimeoutSeconds = connectTimeoutSeconds
+        connectTimeoutMilliseconds = Self.milliseconds(fromSeconds: connectTimeoutSeconds)
+    }
+
+    public init(
+        host: String,
+        port: UInt16 = 1_025,
+        username: String,
+        password: String,
+        database: String? = nil,
+        account: String? = nil,
+        logMech: TeradataLogMech = .td2,
+        transactionMode: TeradataTransactionMode = .default,
+        tls: TeradataTLSOptions = .disabled,
+        connectTimeoutMilliseconds: Int
+    ) {
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+        self.account = account
+        self.logMech = logMech
+        self.transactionMode = transactionMode
+        self.tls = tls
+        self.connectTimeoutMilliseconds = Self.clampMilliseconds(Int64(connectTimeoutMilliseconds))
+    }
+
+    private static func clampMilliseconds(_ value: Int64) -> Int {
+        Int(min(max(value, 1), 3_600_000))
+    }
+
+    private static func milliseconds(fromSeconds seconds: Int) -> Int {
+        let multiplied = Int64(seconds).multipliedReportingOverflow(by: 1_000)
+        let milliseconds = multiplied.overflow ? (seconds > 0 ? Int64.max : Int64.min) : multiplied.partialValue
+        return clampMilliseconds(milliseconds)
     }
 }
 

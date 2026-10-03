@@ -35,13 +35,18 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.core = LibPQDriverCore(config: config)
+        core.onPostConnect = { [weak self] in
+            await self?.probeServerVersion()
+        }
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         try await core.connect()
+    }
 
+    private func probeServerVersion() async {
         if let result = try? await core.execute(query: "SELECT version()"),
            let version = result.rows.first?.first?.asText {
             cachedServerVersion = version

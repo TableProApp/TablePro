@@ -124,6 +124,10 @@ struct TypesenseDashboardProvider: ServerDashboardQueryProvider {
         return result
     }
 
+    func acceptsProcessId(_ processId: String) -> Bool {
+        true
+    }
+
     // MARK: - Reading the response
 
     /// The console renders a JSON object that is not a search result as one `response` cell of
@@ -150,6 +154,7 @@ struct TypesenseDashboardProvider: ServerDashboardQueryProvider {
     }
 
     private func percent(_ used: Int, of total: Int) -> String {
-        String(format: "%.0f%% used", Double(used) / Double(total) * 100)
+        let share = (Double(used) / Double(total)).formatted(.percent.precision(.fractionLength(0)))
+        return String(format: String(localized: "%@ used"), share)
     }
 }

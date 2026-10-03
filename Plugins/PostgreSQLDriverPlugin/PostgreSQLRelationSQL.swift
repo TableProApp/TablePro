@@ -73,7 +73,7 @@ public enum PostgreSQLRelationSQL {
     /// A concurrent refresh diffs the new result against the stored rows through a unique index,
     /// so it needs one the server can use for every row: valid, immediate, on plain columns and
     /// without a predicate. It also needs rows to diff against, which an unpopulated view lacks.
-    /// Measured on PostgreSQL 17 against every index shape `scripts/check-postgres-matview-refresh.sh`
+    /// Measured on PostgreSQL 17 against every index shape `scripts/probes/check-postgres-matview-refresh.sh`
     /// builds; that script re-checks the predicate against a live server.
     public static func concurrentRefreshQuery(name: String, schema: String) -> String {
         """

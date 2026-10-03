@@ -221,6 +221,21 @@ struct SSHConfigTokensTests {
         _ = gethostname(&buffer, buffer.count)
         #expect(SSHTokenContext.systemHostname() == String(cString: buffer))
     }
+
+    @Test("Every expansion failure is plain text that names the keyword")
+    func expansionFailuresArePlainText() {
+        let failures: [SSHTokenExpansionError] = [
+            .unsupportedToken(keyword: "IdentityAgent", token: "%r"),
+            .danglingPercent(keyword: "IdentityAgent"),
+            .undefinedEnvironmentVariable(keyword: "IdentityAgent", name: "NOPE"),
+            .malformedEnvironmentReference(keyword: "IdentityAgent")
+        ]
+
+        for failure in failures {
+            #expect(!failure.explanation.contains("`"), "\(failure)")
+            #expect(failure.explanation.contains("IdentityAgent"), "\(failure)")
+        }
+    }
 }
 
 struct SSHPathExpansionTests {

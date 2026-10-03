@@ -9,6 +9,8 @@ final class OracleDisconnectReasonTests: XCTestCase {
         XCTAssertFalse(OracleDisconnectReason.userRequested.allowsReplay)
         XCTAssertFalse(OracleDisconnectReason.queryCancelled.allowsReplay)
         XCTAssertFalse(OracleDisconnectReason.abandonedLoginAttempt.allowsReplay)
+        XCTAssertFalse(OracleDisconnectReason.connectTimedOut.allowsReplay)
+        XCTAssertFalse(OracleDisconnectReason.connectCancelled.allowsReplay)
     }
 
     func testAChannelTakenFromALiveSessionMayBeReplayedAcross() {
@@ -20,10 +22,12 @@ final class OracleDisconnectReasonTests: XCTestCase {
         XCTAssertTrue(OracleDisconnectReason.fatalProtocolError.allowsReplay)
     }
 
-    /// Only the app's own disconnect ends the connection. Cancelling a query ends one statement,
-    /// and an abandoned login attempt closes its own handle without touching the one installed.
-    func testOnlyTheAppsOwnDisconnectEndsTheConnection() {
+    /// A connection attempt that never completed is also finished for good. Cancelling a query
+    /// ends one statement, and an abandoned login attempt closes only its own late handle.
+    func testAConnectAttemptTeardownEndsTheConnection() {
         XCTAssertTrue(OracleDisconnectReason.userRequested.endsConnection)
+        XCTAssertTrue(OracleDisconnectReason.connectTimedOut.endsConnection)
+        XCTAssertTrue(OracleDisconnectReason.connectCancelled.endsConnection)
         for reason in [
             OracleDisconnectReason.queryCancelled, .queryTimedOut, .pingTimedOut, .wedgedStatement,
             .channelAlreadyClosed, .fatalProtocolError, .transportError, .abandonedLoginAttempt
@@ -35,7 +39,8 @@ final class OracleDisconnectReasonTests: XCTestCase {
     func testEveryReasonSaysSomethingTheLogCanUse() {
         let reasons: [OracleDisconnectReason] = [
             .userRequested, .queryCancelled, .queryTimedOut, .pingTimedOut, .wedgedStatement,
-            .channelAlreadyClosed, .fatalProtocolError, .transportError, .abandonedLoginAttempt
+            .channelAlreadyClosed, .fatalProtocolError, .transportError, .abandonedLoginAttempt,
+            .connectTimedOut, .connectCancelled
         ]
         for reason in reasons {
             XCTAssertFalse(reason.logDescription.isEmpty, String(describing: reason))

@@ -170,14 +170,19 @@ public final class TextAttachmentManager {
 
     /// Updates the text attachments to stay in the same relative spot after the edit, and removes any attachments that
     /// were in the updated range.
+    ///
+    /// The text storage reports every edit made inside one `beginEditing` as a single replaced range, so an attachment
+    /// inside that range may stand for text that changed. It is removed rather than shifted by the whole edit's delta,
+    /// which left it over the wrong text.
     /// - Parameters:
-    ///   - atOffset: The offset text was updated at.
+    ///   - replacedRange: The range of text the edit replaced, in the coordinates before the edit.
     ///   - delta: The change delta, positive is an insertion.
-    package func textUpdated(atOffset: Int, delta: Int) {
+    package func textUpdated(replacing replacedRange: NSRange, delta: Int) {
         for (idx, attachment) in orderedAttachments.enumerated().reversed() {
-            if attachment.range.contains(atOffset) {
+            if attachment.range.contains(replacedRange.location)
+                || (attachment.range.intersection(replacedRange)?.length ?? 0) > 0 {
                 orderedAttachments.remove(at: idx)
-            } else if attachment.range.location > atOffset {
+            } else if attachment.range.location >= NSMaxRange(replacedRange) {
                 orderedAttachments[idx].range.location += delta
             }
         }

@@ -72,7 +72,7 @@ On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's co
 
 ## Combining conditions
 
-**Match all** and **Match any** in the header join every row with AND or OR. There is no per-row choice and no grouping, so a mixed expression cannot be built out of rows. Put the parentheses in a raw SQL row instead, which enters the WHERE clause as a single parenthesized condition:
+**Match all** and **Match any** in the header join every row with AND or OR. Cassandra and ScyllaDB have no OR, so their filter bar offers **Match all** only. There is no per-row choice and no grouping, so a mixed expression cannot be built out of rows. Put the parentheses in a raw SQL row instead, which enters the WHERE clause as a single parenthesized condition:
 
 ```sql
 (status = 'open' AND priority > 3) OR escalated

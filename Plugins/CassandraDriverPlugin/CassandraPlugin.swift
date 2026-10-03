@@ -15,7 +15,7 @@ import TableProPluginKit
 
 // MARK: - Plugin Entry Point
 
-internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
+internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, PluginDefaultSortProvider {
     static let pluginName = "Cassandra Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Apache Cassandra and ScyllaDB support via DataStax C driver"
@@ -51,10 +51,13 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsForeignKeyDisable = false
     static let supportsSSH = true
     static let supportsSSL = true
-    /// CQL has neither. Its column definition is `column_name cql_type [STATIC] [column_mask]
-    /// [PRIMARY KEY]`, with no DEFAULT clause and no auto-increment, so the two cells the
-    /// `DriverPlugin` fallback would give this driver are cells nothing can be written into.
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
+    /// A CQL column definition is `column_name cql_type [STATIC] [column_mask] [PRIMARY KEY]`: no DEFAULT, no
+    /// auto-increment, no NOT NULL and no column comment, so a cell for any of them is one nothing can be written into.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type]
+    static let supportsModifyColumn = false
+    static let supportsAddIndex = false
+    static let supportsDropIndex = false
+    static let supportsModifyPrimaryKey = false
     static let columnTypesByCategory: [String: [String]] = [
         "Numeric": ["TINYINT", "SMALLINT", "INT", "BIGINT", "VARINT", "FLOAT", "DOUBLE", "DECIMAL", "COUNTER"],
         "String": ["TEXT", "VARCHAR", "ASCII"],
@@ -110,13 +113,18 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         CassandraPluginDriver(config: config)
     }
+
+    func defaultSortHint(forTable table: String) -> DefaultSortHint {
+        .suppress
+    }
 }
 
 // MARK: - Plugin Driver
 
 internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let connectionActor = CassandraConnectionActor()
+    let connectionActor = CassandraConnectionActor()
+    let activeBrowse = CassandraActiveBrowse()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentKeyspace: String?
 
@@ -156,6 +164,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Connection
 
     func connect() async throws {
+        let connectDeadline = CassandraConnectDeadline(
+            timeout: CassandraConnectTimeout(additionalFields: config.additionalFields)
+        )
         let keyspace = config.database.isEmpty ? nil : config.database
         let legacyCaPath = config.additionalFields["sslCaCertPath"]
         let resolvedCaPath = config.ssl.caCertificatePath.isEmpty ? legacyCaPath : config.ssl.caCertificatePath
@@ -175,8 +186,21 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                     String(localized: "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
                 )
             }
+            guard let awsBudget = connectDeadline.awsSessionBudget() else {
+                throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
+            }
+            let awsSession = awsBudget.makeSession()
+            defer { awsSession.invalidateAndCancel() }
             awsRegion = region
-            awsCredentials = try await AWSCredentialResolver.resolve(source: awsAuth, fields: config.additionalFields)
+            awsCredentials = try await AWSCredentialResolver.resolve(
+                source: awsAuth,
+                fields: config.additionalFields,
+                session: awsSession
+            )
+        }
+
+        guard let remainingConnectMilliseconds = connectDeadline.remainingMilliseconds() else {
+            throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
         }
 
         try await connectionActor.connect(
@@ -191,21 +215,37 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslClientKeyPath: clientKeyPath,
             sslClientKeyPassphrase: clientKeyPassphrase,
             awsCredentials: awsCredentials,
-            awsRegion: awsRegion
+            awsRegion: awsRegion,
+            connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))
         )
 
         if let keyspace {
             stateLock.withLock { _currentKeyspace = keyspace }
         }
 
-        if let version = try? await connectionActor.serverVersion() {
-            stateLock.withLock { _cachedVersion = version }
+        guard let versionProbeMilliseconds = connectDeadline.remainingMilliseconds() else {
+            await connectionActor.close()
+            clearConnectedState()
+            throw CassandraPluginError.connectionFailed(String(localized: "Timed out while connecting to the server"))
+        }
+        do {
+            if let version = try await connectionActor.serverVersion(
+                requestTimeoutMilliseconds: versionProbeMilliseconds
+            ) {
+                stateLock.withLock { _cachedVersion = version }
+            }
+        } catch {
+            await connectionActor.close()
+            clearConnectedState()
+            throw CassandraPluginError.connectionFailed(error.localizedDescription)
         }
 
         let caps = CassandraCapabilities(
             releaseVersionMajor: CassandraCapabilities.parseMajorVersion(serverVersion)
         )
         guard caps.hasSystemSchemaKeyspace else {
+            await connectionActor.close()
+            clearConnectedState()
             throw CassandraPluginError.connectionFailed(String(
                 format: String(localized: "Cassandra %@ is not supported. TablePro requires Cassandra 3.0 or later (the system_schema keyspace was introduced in 3.0)."),
                 serverVersion ?? "<unknown>"
@@ -213,7 +253,15 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
+    private func clearConnectedState() {
+        stateLock.withLock {
+            _currentKeyspace = nil
+            _cachedVersion = nil
+        }
+    }
+
     func disconnect() {
+        activeBrowse.cancel()
         Task.detached(priority: .utility) { [connectionActor] in
             await connectionActor.close()
         }
@@ -235,7 +283,17 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeQuery(query)
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse)
+        }
+        let cancellation = activeBrowse.begin()
+        defer { activeBrowse.end(cancellation) }
+        let rawResult = try await connectionActor.executeQuery(query, cancellation: cancellation)
+        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+            statement: query, columns: rawResult.columns, rows: rawResult.rows
+        ) {
+            throw CassandraPluginError.queryFailed(refusal)
+        }
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -249,7 +307,15 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         query: String,
         parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse)
+        }
         let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
+        if let refusal = CassandraRowWriter.unappliedInsertRefusal(
+            statement: query, columns: rawResult.columns, rows: rawResult.rows
+        ) {
+            throw CassandraPluginError.queryFailed(refusal)
+        }
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -259,12 +325,47 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         )
     }
 
+    /// A capped read streams and stops at the cap, rather than reading every row the statement matches and
+    /// trimming them afterwards, which is what the protocol's default does with a cap.
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        if let parameters {
+            let whole = try await executeParameterized(query: query, parameters: parameters)
+            guard let rowCap, rowCap > 0, whole.rows.count > rowCap else { return whole }
+            return PluginQueryResult(
+                columns: whole.columns,
+                columnTypeNames: whole.columnTypeNames,
+                rows: Array(whole.rows.prefix(rowCap)),
+                rowsAffected: rowCap,
+                executionTime: whole.executionTime,
+                isTruncated: true
+            )
+        }
+        guard let rowCap, rowCap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: rowCap) else {
+            return try await execute(query: query)
+        }
+        return bounded
+    }
+
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        guard let bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap) as PluginQueryResult?
-        else {
-            return nil
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse.cappedAt(rowCap: rowCap), rowCap: rowCap)
+        }
+        let bounded: PluginQueryResult
+        do {
+            bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        } catch let error as CassandraPluginError where error.refusesPaging {
+            let whole = try await execute(query: query)
+            let isTruncated = whole.rows.count > rowCap
+            return PluginQueryResult(
+                columns: whole.columns,
+                columnTypeNames: whole.columnTypeNames,
+                rows: isTruncated ? Array(whole.rows.prefix(rowCap)) : whole.rows,
+                rowsAffected: min(whole.rows.count, rowCap),
+                executionTime: whole.executionTime,
+                isTruncated: isTruncated
+            )
         }
         /// The buffered path reports a read's row count here, so a bounded read reports the same
         /// rather than the collector's neutral zero.
@@ -280,6 +381,9 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return streamBrowse(browse)
+        }
         let cql = stripTrailingSemicolon(query)
         return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
@@ -510,20 +614,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let ks = resolveKeyspace(schema)
-        // Cassandra doesn't have a cheap row count — use a bounded count
-        let countQuery = "SELECT COUNT(*) FROM \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(table))\" LIMIT 100001"
-        let countResult = try? await execute(query: countQuery)
-        let rowCount: Int64? = {
-            guard let row = countResult?.rows.first, let countStr = row.first?.asText else { return nil }
-            return Int64(countStr)
-        }()
-
-        return PluginTableMetadata(
-            tableName: table,
-            rowCount: rowCount,
-            engine: "Cassandra"
-        )
+        PluginTableMetadata(tableName: table, engine: "Cassandra")
     }
 
     // MARK: - Database (Keyspace) Operations
@@ -587,6 +678,30 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         "ALTER TABLE \(qualifiedTableName(table)) ADD \(quoteIdentifier(column.name)) \(column.dataType)"
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            if column.isPrimaryKey {
+                return String(localized: "A column added to a Cassandra table cannot join its primary key.")
+            }
+            if !column.isNullable {
+                return String(localized: "Cassandra has no NOT NULL constraint.")
+            }
+            if let comment = column.comment, !comment.isEmpty {
+                return String(localized: "Cassandra columns have no comment.")
+            }
+            return nil
+        case .modifyColumn:
+            return String(localized: "Change a Cassandra column's name or type in the CQL editor. CQL renames only primary key columns and changes no column's type.")
+        case .addIndex, .modifyIndex, .dropIndex:
+            return String(localized: "Create and drop Cassandra indexes in the CQL editor.")
+        case .dropColumn, .renameCheckConstraint:
+            return nil
+        @unknown default:
+            return nil
+        }
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {

@@ -23,7 +23,7 @@ Click **New Connection…**, select **Trino**, enter the coordinator host and po
 | Field | Description |
 | --- | --- |
 | **Host** | Trino coordinator hostname |
-| **Port** | Default `8080`, or `8443` when the coordinator serves HTTPS |
+| **Port** | Default `8080`, or `8443` when the coordinator serves HTTPS. Port `443` sets **SSL Mode** to **Verify Identity** |
 | **Username** | The user the query runs as |
 | **Catalog** | Default catalog for unqualified table names. Optional; empty browses every catalog |
 | **Schema** | Default schema. Optional |
@@ -41,13 +41,13 @@ trino://user@host:8080/catalog
 
 ## Authentication
 
-Trino refuses password and JWT credentials over plain HTTP, so both need an SSL mode set.
+A password or an access token goes only over TLS, as with the Trino JDBC driver. With **SSL Mode** Disabled, a connection that has either is refused before anything is sent. Leave both empty to connect to a cluster without authentication.
 
 | Method | What is sent |
 | --- | --- |
 | **Username & Password** | HTTP Basic auth, for LDAP or password-file authentication |
 | **JWT Access Token** | The token as a bearer credential |
-| Client certificate | The **Client Certificate** and **Client Key** from the SSL pane, for mutual TLS. Works with any SSL mode, and nothing is presented with SSL off |
+| Client certificate | The **Client Certificate** and **Client Key** from the SSL pane, for mutual TLS. PEM or DER, with an unencrypted RSA or EC (P-256, P-384, P-521) key, and the certificate file may carry its chain. Works with any SSL mode other than Disabled. A key with no certificate is ignored |
 
 ## Catalogs, schemas, and tables
 
@@ -96,32 +96,74 @@ Click the Explain dropdown in the query editor to choose:
 
 ## SSL/TLS
 
-**Disabled** is the default and speaks plain HTTP. There is no plaintext fallback, so every other mode forces TLS.
+**Disabled** is the default and speaks plain HTTP. There is no plaintext fallback, so every other mode forces TLS. Port `443` turns on **Verify Identity**. See [Ports that mean TLS](/connections/ssl#ports-that-mean-tls).
 
 | Mode | Certificate check |
 | --- | --- |
 | **Preferred** | None |
 | **Required (skip verify)** | None |
-| **Verify CA** | Certificate chain. Point **CA Certificate** at your CA file for a private authority |
-| **Verify Identity** | Chain and hostname |
+| **Verify CA** | Certificate chain, against the file under **CA Certificate**. Without that file the connection is refused |
+| **Verify Identity** | Chain and hostname, against the CA file or, with none set, the system trust store |
 
 ## Limitations
 
 - No primary keys, indexes, or foreign keys are reported. The Structure tab's Indexes view is always empty.
 - Import is not available. Export works; see [Import and Export](/features/import-export).
 - Kerberos and OAuth 2.0 authentication are not supported.
-- The **Query timeout** in [settings](/customization/general-settings#query-timeout) does not reach Trino. A long query runs until you cancel it or the cluster ends it.
+- Neither a connection's **Query timeout** override nor the inherited [global
+  setting](/customization/general-settings#query-timeout) reaches Trino. A long query runs until you
+  cancel it or the cluster ends it.
 - Presto is not supported. It speaks the same protocol under an `X-Presto-` header prefix, and this driver always sends `X-Trino-`.
 
 ## Troubleshooting
 
 ### Cannot reach the coordinator
 
-Confirm the host and that the coordinator port is open. Trino serves HTTP on `8080` and HTTPS on `8443` by default.
+Confirm the host and that the coordinator port is open. Trino serves HTTP on `8080` and HTTPS on `8443` by default, and a load balancer in front of it usually serves HTTPS on `443`.
+
+### "The server requires an encrypted connection"
+
+The port serves HTTPS, usually `443` behind a load balancer, and **SSL Mode** is Disabled. The server's reply, often `400 The plain HTTP request was sent to HTTPS port` or `301 redirect to https://…`, is printed underneath. Set **Verify Identity**. A cluster whose certificate comes from a private authority also needs its CA file under **CA Certificate**, or **Required (skip verify)**.
+
+### "The network connection was lost"
+
+A coordinator that serves HTTPS itself, on `8443`, drops a plain HTTP request without answering. Set an SSL mode. A server that demands a client certificate can drop the connection the same way when **Client Certificate** is empty.
 
 ### Authentication failed
 
-Password and JWT auth need TLS. Set an SSL mode, then confirm the credentials.
+The coordinator rejected the user, password or access token it was sent, and its reply is printed. Check **Username** and the credential for the chosen **Auth Method**, or ask the cluster's administrator which method it accepts.
+
+### "A password is sent only over TLS"
+
+**SSL Mode** is Disabled and the connection has a password, so it was not sent over plain HTTP. Set **SSL Mode** to **Verify Identity**, or clear the password if the cluster has no authentication.
+
+### "An access token is sent only over TLS"
+
+**SSL Mode** is Disabled and the connection has an **Access Token**, so it was not sent over plain HTTP. A coordinator on plain HTTP ignores the token and trusts the user name alone. Set **SSL Mode** to **Verify Identity**, or clear the **Access Token** if the cluster has no authentication.
+
+### "Verify CA needs a CA certificate"
+
+**SSL Mode** is Verify CA and **CA Certificate** is empty, as on a connection imported from a URL or synced from another Mac. Choose the CA certificate that signed the server's certificate, or set **Verify Identity** to check it against the system trust store.
+
+### "The server redirected the request to …"
+
+Trino never redirects, so a proxy or load balancer in front of it sent this, and the redirect is not followed. A redirect to `https://` on the same host means the proxy serves HTTPS: set **Port** to the one named, usually `443`, and **SSL Mode** to **Verify Identity**. Any other address, often a sign-in page, means the host and port reach the proxy instead of Trino.
+
+### "The server requires a client certificate for TLS mutual authentication"
+
+The server asked for a client certificate and **Client Certificate** is empty. A proxy that demands one fails the TLS handshake, and a coordinator with certificate authentication answers `Unauthorized`, printed underneath. Choose **Client Certificate** and **Client Key** on the SSL pane.
+
+### "The server did not accept the client certificate"
+
+The server asked for a client certificate and refused the one sent. Check that **Client Certificate** chains to the CA the server trusts and has not expired.
+
+### "The client key at … is encrypted"
+
+The key needs a passphrase, and Trino connections have no **Key Passphrase**. A first line of `BEGIN ENCRYPTED PRIVATE KEY`, or a `Proc-Type: 4,ENCRYPTED` line, marks an encrypted key. Write a decrypted copy with `openssl pkey -in encrypted.key -out client.key` and choose that file.
+
+### "The client key at … does not belong to the certificate at …"
+
+**Client Key** is not the private key of **Client Certificate**. Choose the key the certificate was issued for.
 
 ### NOT_SUPPORTED
 

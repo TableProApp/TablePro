@@ -35,6 +35,24 @@ struct SyncMetadataStorageTests {
         #expect(storage.dirtyIds(for: .connection).isEmpty)
     }
 
+    @Test("A build that reads a record type the last one did not reports the set as grown")
+    func readableRecordTypesReportGrowth() {
+        let storage = makeStorage()
+        #expect(storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(!storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
+        #expect(!storage.adoptReadableRecordTypes(["Connection"]))
+        #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
+    }
+
+    @Test("Removing tombstones in a batch keeps the others")
+    func removeTombstonesKeepsOthers() {
+        let storage = makeStorage()
+        storage.addTombstones(["a", "b", "c"], type: .tableFolder)
+        storage.removeTombstones(["a", "c", "missing"], type: .tableFolder)
+        #expect(storage.tombstones(for: .tableFolder).map(\.id) == ["b"])
+    }
+
     @Test("Clearing dirty removes every identifier for the type")
     func clearDirtyRemovesEverything() {
         let storage = makeStorage()
@@ -68,9 +86,80 @@ struct SyncMetadataStorageTests {
         defaults.set(data, forKey: "com.TablePro.sync.tombstones.\(SyncRecordType.connection.rawValue)")
 
         let storage = SyncMetadataStorage(userDefaults: defaults)
-        storage.pruneTombstones(olderThan: 30)
+        storage.pruneTombstones(olderThan: 30) { _, _ in true }
 
         #expect(storage.tombstones(for: .connection).map(\.id) == ["fresh"])
+    }
+
+    @Test("Pruning keeps an old tombstone that cannot be pushed yet")
+    func pruningKeepsUnpushableTombstones() throws {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let heldOwner = UUID()
+        let fortyDaysAgo = Date(timeIntervalSinceNow: -60 * 60 * 24 * 40)
+        let held = Tombstone(id: "held", deletedAt: fortyDaysAgo, owner: heldOwner)
+        let released = Tombstone(id: "released", deletedAt: fortyDaysAgo, owner: UUID())
+        let data = try JSONEncoder().encode([held, released])
+        defaults.set(data, forKey: "com.TablePro.sync.tombstones.\(SyncRecordType.tableFavorite.rawValue)")
+
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.pruneTombstones(olderThan: 30) { _, tombstone in tombstone.owner != heldOwner }
+
+        #expect(storage.tombstones(for: .tableFavorite).map(\.id) == ["held"])
+    }
+
+    @Test("A tombstone keeps the owner it was recorded with")
+    func tombstoneOwnerRoundTrips() {
+        let storage = makeStorage()
+        let owner = UUID()
+        storage.addTombstones(["a", "b"], type: .tableFavorite, owner: owner)
+        storage.addTombstone("c", type: .tableFavorite)
+
+        #expect(storage.tombstones(for: .tableFavorite).map(\.owner) == [owner, owner, nil])
+    }
+
+    @Test("A tombstone written before owners existed still decodes, with no owner")
+    func legacyTombstoneDecodesWithoutOwner() throws {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let legacy = Data(#"[{"id":"a","deletedAt":780000000}]"#.utf8)
+        defaults.set(legacy, forKey: "com.TablePro.sync.tombstones.\(SyncRecordType.favoriteDatabase.rawValue)")
+
+        let tombstones = SyncMetadataStorage(userDefaults: defaults).tombstones(for: .favoriteDatabase)
+
+        #expect(tombstones.map(\.id) == ["a"])
+        #expect(tombstones.map(\.owner) == [nil])
+    }
+
+    @Test("Owners kept off sync survive a new storage instance and can be released one by one")
+    func ownersKeptOffSyncPersist() {
+        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let first = UUID()
+        let second = UUID()
+        SyncMetadataStorage(userDefaults: defaults).keepOffSync(owners: [first, second])
+
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        #expect(storage.ownersKeptOffSync() == [first, second])
+
+        storage.releaseOwnersKeptOffSync([first])
+        #expect(storage.ownersKeptOffSync() == [second])
+        storage.clearAll()
+        #expect(storage.ownersKeptOffSync() == [second])
+    }
+
+    @Test("Removing tombstones by a predicate reaches every type and leaves the rest")
+    func removingOwnedTombstonesKeepsTheRest() {
+        let storage = makeStorage()
+        let removed = UUID()
+        let kept = UUID()
+        storage.addTombstones(["a"], type: .tableFavorite, owner: removed)
+        storage.addTombstones(["b"], type: .favorite, owner: removed)
+        storage.addTombstones(["c"], type: .tableFavorite, owner: kept)
+        storage.addTombstone("d", type: .tag)
+
+        storage.removeTombstones { _, tombstone in tombstone.owner == removed }
+
+        #expect(storage.tombstones(for: .tableFavorite).map(\.id) == ["c"])
+        #expect(storage.tombstones(for: .favorite).isEmpty)
+        #expect(storage.tombstones(for: .tag).map(\.id) == ["d"])
     }
 
     @Test("The last sync date round-trips")

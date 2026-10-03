@@ -325,13 +325,15 @@ internal enum BigQueryJobPolling {
     }
 
     static func deadline(queryTimeoutSeconds: Int, from start: Date) -> Date? {
-        guard queryTimeoutSeconds > 0 else { return nil }
-        return start.addingTimeInterval(TimeInterval(queryTimeoutSeconds + deadlineGraceSeconds))
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(queryTimeoutSeconds)
+        guard boundedSeconds > 0 else { return nil }
+        return start.addingTimeInterval(TimeInterval(boundedSeconds + deadlineGraceSeconds))
     }
 
     static func jobTimeoutMilliseconds(queryTimeoutSeconds: Int) -> String? {
-        guard queryTimeoutSeconds > 0 else { return nil }
-        return String(Int64(queryTimeoutSeconds) * 1_000)
+        let boundedSeconds = PluginQueryTimeout.boundedSeconds(queryTimeoutSeconds)
+        guard boundedSeconds > 0 else { return nil }
+        return String(PluginQueryTimeout.milliseconds(boundedSeconds))
     }
 
     static func failure(of job: BQJobResponse) -> BigQueryError? {
@@ -376,6 +378,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private let requestTimeout = HttpQueryTimeoutBox()
     private let lock = NSLock()
     private var session: URLSession?
+    private var connectDeadline: PluginConnectDeadline?
     private var queryTimeoutSeconds = HttpQueryTimeout.bootstrapSeconds
 
     init(credentials: BigQueryCredentials, location: String?, maximumBytesBilled: String?) {
@@ -390,16 +393,23 @@ internal final class BigQueryConnection: @unchecked Sendable {
         requestTimeout.set(serverTimeoutSeconds: seconds)
     }
 
-    func connect() async throws {
+    func connect(deadline: PluginConnectDeadline? = nil) async throws {
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        configuration.timeoutIntervalForRequest = max(
+            HttpQueryTimeout.sessionBootstrapRequestTimeout,
+            deadline?.remainingSeconds() ?? 0
+        )
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let urlSession = URLSession(
             configuration: configuration,
             delegate: BigQueryRedirectRefusingDelegate(),
             delegateQueue: nil
         )
-        lock.withLock { session = urlSession }
+        lock.withLock {
+            session = urlSession
+            connectDeadline = deadline
+        }
+        defer { lock.withLock { connectDeadline = nil } }
 
         do {
             _ = try await executeQuery("SELECT 1")
@@ -585,7 +595,9 @@ internal final class BigQueryConnection: @unchecked Sendable {
         defaultDataset: String?,
         queryParameters: [BigQueryQueryParameter]?
     ) async throws -> BQJobResponse {
-        let timeoutSeconds = lock.withLock { queryTimeoutSeconds }
+        let timeoutSeconds = lock.withLock {
+            connectDeadline.map { max(1, Int($0.remainingSeconds().rounded(.up))) } ?? queryTimeoutSeconds
+        }
         let hasParameters = queryParameters?.isEmpty == false
         let request = BQJobRequest(
             jobReference: jobReference(),
@@ -775,7 +787,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
         let session = try currentSession()
         let token = try await accessToken()
         var authorized = request
-        authorized.timeoutInterval = requestTimeout.requestTimeoutInterval
+        authorized.timeoutInterval = lock.withLock { connectDeadline }?.remainingSeconds()
+            ?? requestTimeout.requestTimeoutInterval
         authorized.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
             let (data, response) = try await session.data(for: authorized)

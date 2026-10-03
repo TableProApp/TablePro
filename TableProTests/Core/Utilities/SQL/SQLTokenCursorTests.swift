@@ -143,4 +143,16 @@ struct SQLTokenCursorTests {
         #expect(commas == [11])
         #expect(cursor.location == 14)
     }
+
+    @Test("The last token's text is the word as written, not the uppercased word")
+    func lastTokenTextKeepsTheSpelling() {
+        var cursor = SQLTokenCursor("DROP TABLE Sales.\"Order Items\"", grammar: TestGrammar.postgres)
+        _ = cursor.next()
+        _ = cursor.next()
+        #expect(cursor.next() == .word("SALES"))
+        #expect(cursor.lastTokenText == "Sales")
+        _ = cursor.next()
+        #expect(cursor.next() == .quotedIdentifier("Order Items"))
+        #expect(cursor.lastTokenText == "\"Order Items\"")
+    }
 }

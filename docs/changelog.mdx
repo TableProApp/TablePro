@@ -4,6 +4,151 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="v0.77.1" description="October 3, 2026">
+  ### New Features
+
+  - **New database file**: **New…** beside **Browse…** for SQLite, DuckDB and libSQL names a database file that does not exist yet. TablePro creates the file when the connection opens
+
+  ### Improvements
+
+  - `$1` in a regular-expression **Replace** in the SQL editor inserts the capture group, as it does in data files
+
+  ### Bug Fixes
+
+  - **Replace** in the find panel editing the wrong text after the first replacement, and crashing when a match ran past the end
+  - **Replace All** crashing on a space in an indent or after **Clear Query**, wrapping quotes and brackets in pairs, and taking minutes on a few thousand matches
+  - Two **Replace** clicks undoing as one step, and a collapsed fold hiding the wrong text after **Replace All**
+  - **Replace** and **All** offered in read-only editors, clearing the matches without changing the text
+  - Regular-expression **Replace** in data files inserting the wrong capture text when a replacement changes length
+  - **Import into Table** from a data file naming the sheet, table, error reports and history after a temporary copy
+  - The query editor staying put when Cmd+Up, Cmd+Down or a long paste moves the caret out of view ([#3239](https://github.com/TableProApp/TablePro/issues/3239))
+  - **Clear Query**, a favorite, a history entry or an AI fix sometimes not reaching the editor, or typing bringing the old query back
+  - **Run**, **Explain** and AI actions using the caret from before a find or a jump to a result's statement
+  - **Use Selection for Find** reverting to the previous search term once the caret moves
+  - Connections strip entries cutting off the database or schema line and crowding the icon against the highlight, and the strip resting partway through an entry after the sidebar was resized ([#3244](https://github.com/TableProApp/TablePro/issues/3244))
+  - Oracle closing TablePro, or failing with "unexpected message", while loading rows with `SDO_GEOMETRY` or `BLOB` columns, or when a query is stopped or the connection closed while rows load. Update the Oracle driver in **Settings > Plugins** ([#3241](https://github.com/TableProApp/TablePro/issues/3241))
+  - Oracle object columns such as `SDO_GEOMETRY` labelled "unknown" and showing a placeholder instead of NULL ([#3241](https://github.com/TableProApp/TablePro/issues/3241))
+  - DuckDB **Browse…** offering any file, and SQLite **Browse…** dimming databases saved without a known extension
+  - **File > Open File…** dimming folders reached through a symlink or a Finder alias
+</Update>
+
+<Update label="v0.77.0" description="October 2, 2026">
+  ### New Features
+
+  - **SAP HANA**: Connect to SAP HANA Cloud and on-premises HANA 2.0, with TLS on by default, schema browsing, catalog DDL and query plans. Install the driver from **Settings > Plugins** ([#1966](https://github.com/TableProApp/TablePro/issues/1966)), by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - **Sidebar folders**: Group the tables and views of a database or schema into folders, kept in step between Macs over iCloud. Right-click a table and choose **Move to > New Folder**, or drag tables onto a folder. Folders live in TablePro only and change nothing on the server ([#3167](https://github.com/TableProApp/TablePro/issues/3167))
+  - **Saved import mappings**: CSV, JSON and Excel imports remember each table's column mapping, and **Match by Name** and **Match by Position** fill every row at once ([#3172](https://github.com/TableProApp/TablePro/issues/3172))
+  - **More import encodings**: Shift JIS, EUC-JP, GB 18030, Big5, EUC-KR and UTF-16 for CSV and SQL import
+  - **Timeouts per connection**: **Connect timeout** and a query timeout override under a connection's **Options**. Leave a field empty to use the default ([#2525](https://github.com/TableProApp/TablePro/issues/2525))
+
+  ### Improvements
+
+  - The clipboard URL banner appears for every scheme **Import from URL** accepts, `+ssh` URLs included
+
+  ### Security
+
+  - A query tab opened from **Users & Roles** with **Open in Query Editor** saved its script with the passwords in plain text
+  - Redis **Verify Identity** accepted a server certificate issued for another host
+  - TablePro links, connection exports and the Team Library carried the pre-connect script and other settings meant to stay on one Mac
+
+  ### Bug Fixes
+
+  - **Copy as UPDATE** and **Copy as INSERT** writing identity, computed and generated columns, which SQL Server refuses, leaving out the table's schema, and matching a composite key on its first column only or on unsaved edits ([#3219](https://github.com/TableProApp/TablePro/issues/3219))
+  - SQL Server and Oracle identity, computed, virtual, `rowversion` and system-versioned period columns offered for editing and written on save, including edits staged before the table's structure loaded, and **Add Row** failing on a table that has one
+  - SQL Server saves failing on a table without a primary key that has an `ntext`, `text`, `xml` or `image` column, identity columns missed when a table or schema name contains a dot, and a new row's value dropped when a same-named table in another schema has an identity column of that name
+  - **Set Value > Default** storing the text `__DEFAULT__` on SQL Server and Oracle, and new Snowflake, Teradata and Trino rows storing it in columns left to their default
+  - **Restore Previous Values** bringing a deleted SQL Server or PostgreSQL row back under a new identity key
+  - Undo and Redo in a tab with unsaved edits replaying another tab's changes against the wrong rows
+  - Column header sort on Redis, etcd and Kafka running the last command again with `ORDER BY` appended
+  - **Explain Analyze** running a write on Read-Only connections and skipping the Alert and Safe Mode confirmation, `EXPLAIN ANALYSE` treated as a plain `EXPLAIN`, and `pg_terminate_backend`, `nextval` and other state-changing calls treated as reads by Safe Mode and external clients
+  - Safe Mode levels: **Alert (Full)**, **Safe Mode** and **Safe Mode (Full)** dropped to **Alert** by an edit on iPhone or iPad, a level lost when a connection file moves between Mac and iOS, and an unknown level from iCloud read as **Off** on iPhone and iPad
+  - iCloud sync resetting a connection's **External Clients** level and its Cloudflare, Cloud SQL, SOCKS and Tunnel Command settings, and applying remote deletions of connections, groups, tags, SSH profiles and table favorites with their sync category off
+  - **Local only** connections taking edits and deletions made on another device, and syncing their table favorites, saved queries and column layouts to iCloud
+  - Favorite tables: two whose names contain `|` mixed up by iCloud sync, one starred again during a sync disappearing when it finished, a save and a deletion both sent for one starred again or renamed back before a sync ran, database favorites and column layouts removed on another Mac staying on this one, and the app pausing while renaming or dropping a database or schema that holds many of them
+  - The **Favorites** tab missing tables starred in other schemas, and all of them on Oracle, Snowflake, BigQuery and Trino
+  - A table dropped or renamed with SQL from a query tab or an MCP client keeping its saved filters, column layout, favorite and Recent entry
+  - Import sheet: an option change ignored until the next edit and then resetting the column mapping, another table's columns shown after switching tables while the first was loading, new-table column edits lost on an option change or **Try Again**, and rows written to another database after a database switch in another window
+  - CSV and Excel imports reading a column under the wrong header when headers repeat or a blank one comes first, and CSV and JSON imports failing on every row, or writing a skipped field, when two fields differ only by case
+  - CSV import writing bytes it could not read as Latin-1 text, and merging rows at a double quote inside a field when the quote character is a single quote
+  - JSON import leaving out fields first seen after row 200, JSON Lines files with CRLF line endings, `U+2028`, `U+2029` or `U+0085` in a string failing to import, invalid UTF-8 imported as `U+FFFD`, and JSON Lines import stalling while GitHub Copilot is on
+  - **Table Transfer** emptying a destination table and then failing when two source columns map to one column
+  - Japanese, Chinese and Korean text in CSV, TSV and SQL files opening garbled, and Latin-1 and Windows-1252 SQL dumps importing double-encoded text through their own `SET NAMES` and changing the bytes of binary values
+  - Data Files window: every row of a UTF-16 file rewritten on save, an error that stayed after reloading in the wrong encoding, the encoding chosen in **File Properties** lost when another app changes the file, and another app's in-place writes missed on HFS+ and exFAT volumes
+  - Data Files window: no columns found for a JSON Lines file over 256 KB with non-ASCII text, a wrong row number and blank-looking characters in the save error for text the encoding cannot store, the Yen sign failing to save in Shift JIS and EUC-JP, and VoiceOver reading the status bar's delimiter and encoding as only "File format"
+  - Shortcuts rejecting CSV and JSON files that are not UTF-8, and **Add Row** and **Add Rows** rejecting CSV with CRLF or CR line endings
+  - CSV, XLSX and MQL exports ignoring a table's row filter, row limit and column choice, the export dialog offering a SQL row scope on MongoDB, Redis and other engines without SQL, and a row limit on **Copy To** and scoped exports failing with a syntax error on SQL Server, Oracle and Teradata
+  - MQL exports rounding 64-bit integers past 2^53 and restoring whole doubles and small 64-bit integers as 32-bit ones, and XLSX exports writing duplicate sheet names that Excel opens only after a repair
+  - Parquet exports rounding or emptying Oracle, Snowflake and Dameng `NUMBER`, losing `DECIMAL` digits, writing Oracle `BINARY_FLOAT` and `BINARY_DOUBLE` as text and PostgreSQL `money` as null, and leaving files behind when a multi-table export is stopped
+  - MongoDB exports dropping fields first seen after document 200, Elasticsearch, Typesense and SurrealDB exports cutting arrays and objects over 10,000 characters into broken JSON, and Weaviate exports failing after 10,000 objects
+  - **Copy To** on a foreign table, sequence, system table or external table preselecting every object in the schema, and refusing to copy between two schemas of one DuckDB or PGlite connection
+  - MongoDB, Elasticsearch, Typesense and SurrealDB saving a long array or object shortened for display as the cut text, and MongoDB refusing text such as `[DRAFT] Chapter one...` as a shortened value
+  - Filter-bar **between** refused on Typesense and Weaviate and given the wrong lower bound on BigQuery, SurrealDB **between**, **matches regex**, **is empty** and raw filters run as equality checks with **is not empty** showing only empty rows, and the Weaviate raw filter row sent as a property named `__RAW__`
+  - SurrealDB edits to `in` and `out` dropped when the same row had another edit
+  - etcd **Delete** and **Truncate** on `(root)` erasing the whole Key Prefix Root, or sibling keys when it has no trailing `/`, Value edits and key renames detaching the key's lease, and commands and saved edits reaching a different key when the key starts with a combining mark
+  - etcd `lease revoke`, `auth disable` and user or role deletes running without confirmation, list commands gated as writes, and commands with a flag before the key, such as `del --prefix /app`, failing with "requires a key"
+  - etcd filters failing with "Unknown command: select" on columns other than Key, Key filters ignoring most operators and OR, and **contains** and **starts with** on Key also matching values
+  - etcd TLS: an **SSL Mode** the driver ignored, URLs that lost or faked TLS on import and **Copy as URL**, a blank **TLS Mode** on new connections, an untranslated **Disabled** option, and a Verify CA error naming Advanced fields
+  - Redis Cluster through a tunnel failing to connect with advice to set **Connection Mode** to Cluster, and a `SCAN` typed in a query tab showing one page of keys with no cursor to continue from
+  - ClickHouse: the query timeout never reaching the server, capped `SELECT` queries failing at 60 seconds, **Stop** leaving the query running, connect errors such as a wrong password shown as "Failed to establish connection", and the client certificate never sent to servers that require mutual TLS
+  - PostgreSQL 18 virtual generated columns written without their expression in **Show DDL**, **Copy DDL** and SQL export, and **REINDEX VERBOSE** offered on PostgreSQL 9.1 to 9.4, where it fails, and ignored when reindexing a whole database
+  - CockroachDB showing an empty **Check Constraints** tab and no check constraints in MCP `describe_table`, and **Use ~/.pgpass** named **Use Password File** on Redshift and CockroachDB
+  - PGlite reporting server errors such as a missing database as an unreachable socket server, and saying it cannot change the order of a table's columns
+  - Remote libSQL crashing on `inf` or `nan`, storing text like `007` as a number and blobs as text, and local libSQL writes reporting success after a lock wait reached the query timeout
+  - Remote SQLite refreshes mixing a new WAL or journal with the previous cached database, and snapshots left on the server after a connection timeout
+  - Connection checks interrupting a query, import or export still running after five minutes, timeout errors naming the database when an SSH bastion stalled, connection attempts in flight restoring an edited connection's previous server, name, tags or Safe Mode, and query timeout overrides dropped by Mac sync and connection exports ([#2525](https://github.com/TableProApp/TablePro/issues/2525))
+  - Save disabled for Kafka connections set to **Verify Identity** without a CA file
+  - SSH, Cloudflare, SOCKS, Tunnel Command and Cloud SQL tunnels dropping the client certificate and key, so mutual TLS never worked through one
+  - The SOCKS proxy dialing the hidden Host instead of the first host-list entry, the tunnel command preview showing port 0 or the wrong host, "SSH password rejected" for a Password-auth tunnel with no saved password, and a host-list warning naming replica set failover for Redis and Kafka and implying Sentinel works through a tunnel
+  - Literal backticks in cloudflared, cloud-sql-proxy, SSH config, remote command and dump tool install messages
+  - The clipboard URL banner turning `sslmode=verify-full` or `verify-ca` into **Required** and ignoring `sslmode=disable`, and **Import from URL** ignoring `ssl=1`, `ssl=require` and `ssl=0`
+  - MongoDB restore into a database with a different name restoring nothing and reporting success, **Backup Dump** and **Restore** ignoring the connection's Auth Database, Hosts list, SRV and TLS options, and the restore confirmation claiming existing objects are overwritten on PostgreSQL, MongoDB, SQLite, SQL Server and DuckDB
+  - Server dashboard: **Slow Queries** failing on SQL Server, sessions, slow queries and query counts failing on Redshift, no **Terminate** button on ClickHouse sessions, SQL Server and ClickHouse listing their own monitoring session, SQLite **Cache Size** shown as "-2000 pages", and an untranslatable "% used" on Typesense
+  - MCP `describe_table` results failing the tool's own output schema, `export_data` writing numbers and booleans as strings and binary values as base64 text, `focus_query_tab` reporting a tab focused while the window stayed elsewhere, and `browse_table` ignoring a sort on a column the table does not have
+  - MCP `stop_server_session` blaming the engine for a mistyped process id or for cancel on SQL Server and ClickHouse, the `question_to_sql` prompt describing only the first six tables, and a Cassandra filter error pointing MCP clients to a **Match All** control they do not have
+  - Compare missing DuckDB rows keyed by a binary column and writing DuckDB binary values as text in sync scripts
+  - Linked Folder and Team Library connections never asking for a password, **Publish to Team Library…** sharing connections with the whole team without asking, an empty Team Library after joining a team until the next relaunch, an old Team Catalog entry left beside a renamed connection, and a folder panel pointing to a Settings pane that does not exist
+  - iPhone and iPad: the row editor saving a long text or binary value's placeholder over the full value and writing SQL Server identity and computed columns, a DuckDB connection's Info tab showing a server at 127.0.0.1:3306, and the `SELECT * FROM` template writing `LIMIT 100` on SQL Server, Oracle and Redis without the selected schema
+  - iPhone and iPad keeping the query history of deleted connections and the passwords of connections deleted on another device, and listing a repeated query twice until the connection is reopened
+  - Registry plugins refused as needing a newer TablePro on releases the registry still publishes binaries for
+  - Release highlights in the update dialog run together into one paragraph, and Removed and Deprecated listed after Fixed in GitHub release notes
+</Update>
+
+<Update label="v0.76.1" description="September 29, 2026">
+  ### Improvements
+
+  - Cassandra and ScyllaDB tables open without header sorting, **Match any** or an automatic row count, and CQL editor results are read-only, by [@yordis](https://github.com/yordis)
+
+  ### Removed
+
+  - **Verify CA** in the SSL mode picker for new Oracle connections on iPhone and iPad, which have no field for a CA certificate. Choose **Verify Identity** instead
+
+  ### Security
+
+  - Trino sent the password or access token in plain text when **SSL Mode** was **Disabled**, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - **Verify CA** without a CA certificate accepted a certificate issued for any host on Trino, ClickHouse and etcd, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - **Verify CA** without a CA certificate accepted a certificate issued for any host on Kafka, Oracle and Teradata. Choose the CA certificate that signed the server's certificate, or use **Verify Identity**
+
+  ### Bug Fixes
+
+  - Cassandra and ScyllaDB: syntax errors opening, paging or filtering a table, Save dropping edited numbers, dates, UUIDs and booleans while reporting success, **Add Row** replacing a row with the same primary key, and multi-row or composite-key deletes failing, by [@yordis](https://github.com/yordis)
+  - Cassandra and ScyllaDB values: `decimal` and `varint` shown as hex, `time` cut to milliseconds, and user-defined types, tuples, `duration` and `vector` shown garbled or empty, by [@yordis](https://github.com/yordis)
+  - Cassandra and ScyllaDB: query results stopping at 100,000 rows without saying so, Structure edits that failed at Save, missing functions, aggregates and triggers on ScyllaDB, trigger and function source that failed when run, and an SSL/TLS hint recommending settings for DataStax Astra, which does not connect, by [@yordis](https://github.com/yordis)
+  - CQL `BATCH` statements split at their inner semicolons, and a column named `case` running the next statement with its `CREATE TABLE`, by [@yordis](https://github.com/yordis)
+  - Endless reconnect attempts after a server started requiring TLS, stopped accepting it, or rejected the client certificate, with the certificate error shown in place of "The connection stopped responding", and ClickHouse host lookup failures reported as a TLS hostname mismatch
+  - Trino and ClickHouse on port 443, and ClickHouse on 8443, sending plain HTTP to an HTTPS port ([#3166](https://github.com/TableProApp/TablePro/issues/3166)), by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - Trino certificate failures shown as "Query was cancelled", raw HTML error pages in connection errors, PEM CA files rejected, proxy redirects followed to another address or over plain HTTP, and no warning under **Preferred** that Trino does not fall back to plain connections, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - Trino and etcd mutual TLS crashing on an `RSA PRIVATE KEY` file, rejecting other keys, and copying them to the login keychain, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - ClickHouse **Verify Identity** ignoring the chosen CA certificate, and certificate failures reported as a generic connection failure, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - Verify modes refusing to save without a CA file on SQL Server, and **Verify Identity** on Trino and ClickHouse, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - etcd rejecting a PEM CA certificate, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - Teradata falling back to the system trust store when the CA file could not be read
+  - **Import from URL** rejecting `jdbc:` URLs and ignoring their `user` and `password`, and imported Trino and ClickHouse URLs with `SSL=true` skipping certificate checks, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - Links opened from a browser or `open` ignoring the driver's default SSL mode, and copied connection URLs losing **SSL Disabled**, by [@J2TeamNNL](https://github.com/J2TeamNNL)
+  - A result on a plugin-browsed engine taking the selected tab's table when it finished in another tab, and plugin saves running changes out of order after an undo, by [@yordis](https://github.com/yordis)
+  - The welcome window toolbar growing and captioning its search field after choosing **Icon and Text**, by [@shuvroroy](https://github.com/shuvroroy)
+  - Generic icons for ScyllaDB, libSQL, Teradata, Trino and Cloudflare R2 SQL in the iOS widget, and for ScyllaDB in the iOS app, by [@yordis](https://github.com/yordis)
+</Update>
+
 <Update label="v0.76.0" description="September 28, 2026">
   ### New Features
 

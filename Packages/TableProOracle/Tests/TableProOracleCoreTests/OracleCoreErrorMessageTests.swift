@@ -13,6 +13,7 @@ final class OracleCoreErrorMessageTests: XCTestCase {
         .connectionClosed,
         .protocolError,
         .loginTimedOut,
+        .connectTimedOut,
         .queryTimedOut,
         .transactionLost,
         .authVerifierUnsupported(flag: "unsupportedVerifierType(0x939)"),
@@ -22,7 +23,8 @@ final class OracleCoreErrorMessageTests: XCTestCase {
         .nativeEncryptionFailed(detail: "checksum mismatch"),
         .nativeEncryptionRequired,
         .tlsHandshakeFailed(kind: .cipherMismatch, serverMessage: "ORA-29024"),
-        .certificateUnavailable(field: .clientKey, path: "/tmp/key.pem")
+        .certificateUnavailable(field: .clientKey, path: "/tmp/key.pem"),
+        .certificateAuthorityRequired
     ]
 
     func testNoMessageLeaksTheDriversOwnErrorStruct() {
@@ -38,6 +40,12 @@ final class OracleCoreErrorMessageTests: XCTestCase {
         let message = OracleCoreError.connectionClosed.errorDescription ?? ""
         XCTAssertTrue(message.contains("closed"), message)
         XCTAssertTrue(message.contains("again"), message)
+    }
+
+    func testTheMissingCARefusalNamesNoScreenOnlyOnePlatformHas() {
+        let message = OracleCoreError.certificateAuthorityRequired.errorDescription ?? ""
+        XCTAssertTrue(message.contains("CA certificate"), message)
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("tab"), message)
     }
 
     func testADriverErrorWithNoServerMessageNamesItsCode() {

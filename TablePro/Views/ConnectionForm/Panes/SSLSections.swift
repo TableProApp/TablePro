@@ -20,7 +20,15 @@ struct SSLSections: View {
     @Binding var sslClientKeyPath: String
     @Binding var sslClientKeyPassphrase: String
 
-    private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
+    private var supportsPerConnectionCertPaths: Bool { databaseType.supportsPerConnectionCertificatePaths }
+
+    private var caCertificateIsOptional: Bool {
+        !databaseType.requiresCACertificate(for: sslMode)
+    }
+
+    private var caCertificatePrompt: String {
+        caCertificateIsOptional ? String(localized: "Optional") : "/path/to/ca-cert.pem"
+    }
 
     private var noOpportunisticTLSWarning: String {
         if databaseType == .oracle {
@@ -37,6 +45,7 @@ struct SSLSections: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
+                .accessibilityIdentifier("connection-form-ssl-mode")
                 if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
                     Label(noOpportunisticTLSWarning, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(databaseType == .oracle ? .red : .orange)
@@ -60,7 +69,7 @@ struct SSLSections: View {
                     Section {
                         Text(String(localized: """
                             Verify CA and Verify Identity check the server certificate against the system trust \
-                            store. A custom CA and client certificates are not available for SQL Server.
+                            store. This driver takes no custom CA or client certificate.
                             """))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -68,16 +77,23 @@ struct SSLSections: View {
                         Text(String(localized: "Certificate Trust"))
                     }
                 } else if sslMode == .verifyCa || sslMode == .verifyIdentity {
-                    Section(String(localized: "CA Certificate")) {
+                    Section {
                         LabeledContent(String(localized: "Certificate")) {
                             HStack {
-                                TextField(
-                                    "", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
+                                TextField("", text: $sslCaCertPath, prompt: Text(caCertificatePrompt))
                                 Button(String(localized: "Browse")) {
                                     browseForCertificate(binding: $sslCaCertPath)
                                 }
                                 .controlSize(.small)
                             }
+                        }
+                    } header: {
+                        Text(String(localized: "CA Certificate"))
+                    } footer: {
+                        if caCertificateIsOptional {
+                            Text(String(localized: "Leave empty to use the system trust store."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }

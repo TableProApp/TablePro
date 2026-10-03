@@ -10,6 +10,7 @@ public final class URLSessionR2SQLTransport: R2SQLTransport, @unchecked Sendable
     private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
 
     public init(configuration: URLSessionConfiguration = .ephemeral, resourceTimeout: TimeInterval) {
+        configuration.timeoutIntervalForRequest = resourceTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
         session = URLSession(configuration: configuration)
     }

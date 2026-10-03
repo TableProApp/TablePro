@@ -22,19 +22,22 @@ extension DatabaseManager {
         return !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// The statements `executeStartupCommands` sends, one per line or `;`. Also read by the catalog,
+    /// because a temporary table a startup command creates shadows a real one for the whole session.
+    nonisolated internal static func startupStatements(from commands: String?) -> [String] {
+        guard hasStartupCommands(commands), let commands else { return [] }
+        return commands
+            .components(separatedBy: CharacterSet(charactersIn: ";\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     @discardableResult
     nonisolated internal func executeStartupCommands(
         _ commands: String?, on driver: DatabaseDriver, connectionName: String
     ) async -> [(statement: String, error: String)] {
-        guard Self.hasStartupCommands(commands), let commands else { return [] }
-
-        let statements = commands
-            .components(separatedBy: CharacterSet(charactersIn: ";\n"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
         var failures: [(statement: String, error: String)] = []
-        for statement in statements {
+        for statement in Self.startupStatements(from: commands) {
             do {
                 _ = try await driver.execute(query: statement)
                 Self.startupLogger.info(

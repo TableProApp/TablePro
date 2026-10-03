@@ -3,10 +3,17 @@ import Network
 import os
 import Security
 
+internal enum TeradataTrustPolicy {
+    case acceptAny
+    case systemTrust(hostname: String)
+    case anchors([SecCertificate], hostname: String?)
+}
+
 final class TeradataTLSTransport: TeradataTransport {
     private let connection: NWConnection
     private let condition = NSCondition()
-    private let timeoutSeconds: Int
+    private let deadlineLock = NSLock()
+    private var connectDeadline: TeradataConnectDeadline?
     private var rawBuffer: [UInt8] = []
     private var messageBuffer: [UInt8] = []
     private var receiveError: Error?
@@ -14,30 +21,20 @@ final class TeradataTLSTransport: TeradataTransport {
     private var cancelled = false
     private var handshakeComplete = false
 
-    init(host: String, options: TeradataTLSOptions, timeoutSeconds: Int) throws {
-        self.timeoutSeconds = timeoutSeconds
+    init(host: String, options: TeradataTLSOptions, deadline: TeradataConnectDeadline) throws {
+        connectDeadline = deadline
         guard let endpointPort = NWEndpoint.Port(rawValue: options.httpsPort) else {
             throw TeradataWireError.connectionFailed("invalid TLS port \(options.httpsPort)")
         }
         let queue = DispatchQueue(label: "com.TablePro.teradata.tls")
         let verifyQueue = DispatchQueue(label: "com.TablePro.teradata.tls.verify")
 
+        let trustPolicy = try Self.trustPolicy(for: options, host: host)
         let tlsOptions = NWProtocolTLS.Options()
-        let anchors = Self.loadAnchors(options.caCertificatePath)
-        let verifiesCertificate = options.verifiesCertificate
-        let verifiesHostname = options.verifiesHostname
         sec_protocol_options_set_verify_block(
             tlsOptions.securityProtocolOptions,
             { _, trustRef, complete in
-                guard verifiesCertificate else { complete(true); return }
-                let trust = sec_trust_copy_ref(trustRef).takeRetainedValue()
-                let policy = SecPolicyCreateSSL(true, verifiesHostname ? (host as CFString) : nil)
-                SecTrustSetPolicies(trust, policy)
-                if let anchors, !anchors.isEmpty {
-                    SecTrustSetAnchorCertificates(trust, anchors as CFArray)
-                    SecTrustSetAnchorCertificatesOnly(trust, true)
-                }
-                complete(SecTrustEvaluateWithError(trust, nil))
+                complete(Self.evaluate(sec_trust_copy_ref(trustRef).takeRetainedValue(), under: trustPolicy))
             },
             verifyQueue)
 
@@ -56,8 +53,9 @@ final class TeradataTLSTransport: TeradataTransport {
             default: break
             }
         }
+        let remainingMilliseconds = try deadline.remainingMilliseconds()
         connection.start(queue: queue)
-        if ready.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+        if ready.wait(timeout: .now() + .milliseconds(remainingMilliseconds)) == .timedOut {
             connection.cancel()
             throw TeradataWireError.connectionFailed("TLS handshake to \(host):\(options.httpsPort) timed out")
         }
@@ -78,7 +76,7 @@ final class TeradataTLSTransport: TeradataTransport {
         guard count > 0 else { return [] }
         condition.lock()
         defer { condition.unlock() }
-        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        let deadline = try waitDeadline()
         while messageBuffer.count < count {
             try drainFramesLocked()
             if messageBuffer.count >= count { break }
@@ -94,6 +92,10 @@ final class TeradataTLSTransport: TeradataTransport {
 
     func cancel() { stop() }
     func close() { stop() }
+
+    func finishConnecting() {
+        deadlineLock.withLock { connectDeadline = nil }
+    }
 
     private func stop() {
         condition.lock()
@@ -130,7 +132,7 @@ final class TeradataTLSTransport: TeradataTransport {
     private func readRawUntilHeaderEnd() throws -> [UInt8] {
         condition.lock()
         defer { condition.unlock() }
-        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        let deadline = try waitDeadline()
         let terminator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A]
         while true {
             if let range = Self.range(of: terminator, in: rawBuffer) {
@@ -173,16 +175,26 @@ final class TeradataTLSTransport: TeradataTransport {
         condition.unlock()
         if stopped { throw TeradataWireError.cancelled }
 
+        let remainingMilliseconds = try operationTimeoutMilliseconds()
         let semaphore = DispatchSemaphore(value: 0)
         var sendError: Error?
         connection.send(content: Data(bytes), completion: .contentProcessed { error in
             sendError = error
             semaphore.signal()
         })
-        if semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+        if semaphore.wait(timeout: .now() + .milliseconds(remainingMilliseconds)) == .timedOut {
             throw TeradataWireError.truncated("TLS send timed out")
         }
         if let sendError { throw TeradataWireError.truncated("TLS send: \(sendError)") }
+    }
+
+    private func operationTimeoutMilliseconds() throws -> Int {
+        let deadline = deadlineLock.withLock { connectDeadline }
+        return try deadline?.remainingMilliseconds() ?? 20_000
+    }
+
+    private func waitDeadline() throws -> Date {
+        Date().addingTimeInterval(TimeInterval(try operationTimeoutMilliseconds()) / 1_000)
     }
 
     private func startReceiveLoop() {
@@ -205,6 +217,36 @@ final class TeradataTLSTransport: TeradataTransport {
             return start..<(start + needle.count)
         }
         return nil
+    }
+
+    static func trustPolicy(for options: TeradataTLSOptions, host: String) throws -> TeradataTrustPolicy {
+        guard options.verifiesCertificate else { return .acceptAny }
+        let hostname = options.verifiesHostname ? host : nil
+        if !options.caCertificatePath.trimmingCharacters(in: .whitespaces).isEmpty {
+            guard let anchors = loadAnchors(options.caCertificatePath) else {
+                throw TeradataWireError.connectionFailed(
+                    "the CA certificate file \(options.caCertificatePath) could not be read as a certificate")
+            }
+            return .anchors(anchors, hostname: hostname)
+        }
+        guard let hostname else {
+            throw TeradataWireError.connectionFailed("Verify CA has no CA certificate to check the server against")
+        }
+        return .systemTrust(hostname: hostname)
+    }
+
+    private static func evaluate(_ trust: SecTrust, under policy: TeradataTrustPolicy) -> Bool {
+        switch policy {
+        case .acceptAny:
+            return true
+        case .systemTrust(let hostname):
+            SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, hostname as CFString))
+        case .anchors(let anchors, let hostname):
+            SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, hostname as CFString?))
+            SecTrustSetAnchorCertificates(trust, anchors as CFArray)
+            SecTrustSetAnchorCertificatesOnly(trust, true)
+        }
+        return SecTrustEvaluateWithError(trust, nil)
     }
 
     private static func loadAnchors(_ path: String) -> [SecCertificate]? {

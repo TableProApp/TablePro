@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProEditorKit
+import TableProTextEngine
 
 /// The Edit menu's Find items are nil-targeted, so AppKit resolves them through the responder chain.
 /// `SourceEditor` is an `NSViewControllerRepresentable`, which makes `TextViewController` a child view
@@ -47,6 +48,8 @@ extension TextViewController: @retroactive NSMenuItemValidation {
         switch menuItem.action {
         case #selector(useSelectionForFind(_:)):
             return hasSelectionForFind
+        case #selector(performFindAndReplace(_:)):
+            return textView.isEditable
         default:
             return true
         }

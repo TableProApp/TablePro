@@ -55,18 +55,21 @@ struct SQLiteDashboardProvider: ServerDashboardQueryProvider {
         }
 
         let cacheResult = try await execute("PRAGMA cache_size")
-        if let row = cacheResult.rows.first {
-            let cacheSize = value(row, at: 0)
+        if let row = cacheResult.rows.first, let cacheSize = Int32(value(row, at: 0)) {
             metrics.append(DashboardMetric(
                 id: "cache_size",
                 label: String(localized: "Cache Size"),
-                value: cacheSize,
-                unit: String(localized: "pages"),
+                value: formatBytes(cacheBytes(cacheSize: Int(cacheSize), pageSize: pageSize)),
+                unit: "",
                 icon: "memorychip"
             ))
         }
 
         return metrics
+    }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        true
     }
 }
 
@@ -80,5 +83,9 @@ private extension SQLiteDashboardProvider {
 
     func formatBytes(_ bytes: Int) -> String {
         ByteSizeFormatting.string(bytes: bytes)
+    }
+
+    func cacheBytes(cacheSize: Int, pageSize: Int) -> Int {
+        cacheSize < 0 ? -cacheSize * 1_024 : cacheSize * pageSize
     }
 }

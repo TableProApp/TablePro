@@ -3,19 +3,19 @@ title: SQLite
 description: Open and query SQLite database files directly, no server needed
 ---
 
-Point the connection at a file that does not exist yet and it is created on connect, so a scratch database costs one filename and one click.
+To start a new database, click **New…** beside the file path, name the file, and click **Create**. The file is made when you connect, so a scratch database costs one filename and one click. Choosing a file that already exists there opens it as it is.
 
 ## Quick setup
 
-Click **New Connection…**, select **SQLite**, pick the file with **Browse…**, and click **Save & Connect**. There is no host, port, or credential to fill in. The driver ships inside TablePro with its own SQLite 3.53.4, whatever macOS version you run, so there is no server version to match.
+Click **New Connection…**, select **SQLite**, pick the file with **Browse…** or name a new one with **New…**, and click **Save & Connect**. There is no host, port, or credential to fill in. The driver ships inside TablePro with its own SQLite 3.53.4, whatever macOS version you run, so there is no server version to match.
 
 `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` files list TablePro under Finder's **Open With**, as an alternate handler rather than the default one. To make a double-click open them here, select one in Finder, press `Cmd+I`, set **Open with** to TablePro, and click **Change All…**.
 
 A database saved under some other name still opens. Drag it onto a TablePro window, pick it in **File > Open File…**, or drop it on the Dock icon, and the first sixteen bytes decide the driver: a file that starts `SQLite format 3` opens here whether it is called `store.bin`, `export`, or `data.csv`. Finder's double-click is the one route that still needs a name it knows.
 
 <Frame caption="SQLite connection form">
-  <img className="block dark:hidden" src="/images/sqlite-connection-form.png" alt="SQLite connection form with file path field" />
-  <img className="hidden dark:block" src="/images/sqlite-connection-form-dark.png" alt="SQLite connection form with file path field" />
+  <img className="block dark:hidden" src="/images/sqlite-connection-form.png" alt="SQLite connection form with a file path, Browse and New buttons" />
+  <img className="hidden dark:block" src="/images/sqlite-connection-form-dark.png" alt="SQLite connection form with a file path, Browse and New buttons" />
 </Frame>
 
 ## Common locations

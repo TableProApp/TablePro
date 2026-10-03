@@ -1,0 +1,23 @@
+# One term per line, matched case-insensitively at the start of a word. A term that
+# starts with punctuation, like the em dash, matches anywhere. Read by
+# scripts/check-banned-words.sh, docs/scripts/check-writing-style.sh and
+# .claude/skills/release/scripts/lint-draft.py.
+—
+comprehensive
+delve
+dive into
+effortless
+elevate
+empower
+facilitate
+game-changer
+game-changing
+intuitive
+leverage
+powerful
+robust
+seamless
+streamlined
+supercharge
+unleash
+utilize

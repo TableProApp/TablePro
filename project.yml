@@ -79,6 +79,9 @@ targetTemplates:
         excludes:
           - Info.plist
           - README.md
+      - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginQueryTimeout.swift
+      - Plugins/Shared/PluginURLSessionTaskBox.swift
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -104,6 +107,36 @@ targetTemplates:
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         WRAPPER_EXTENSION: tableplugin
+
+  # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds
+  # and this phase copies into Contents/MacOS, where the plugin looks it up. A missing helper
+  # stops the build with "Build input file cannot be found" naming its path. The copy is signed
+  # in a directory from mktemp: the user-script sandbox lets the phase write its declared output
+  # and nothing beside it, codesign writes a temporary file next to whatever it signs, and it
+  # reads every parent of that file, which the sandbox refuses inside the build folders.
+  HanaHelperEmbedding:
+    postBuildScripts:
+      - name: Embed tablepro-hana-helper
+        inputFiles:
+          - $(SRCROOT)/Native/HanaBridge/bin/tablepro-hana-helper
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/tablepro-hana-helper
+        script: |
+          set -eu
+          helper="$SCRIPT_INPUT_FILE_0"
+          for arch in $ARCHS; do
+              if ! /usr/bin/lipo "$helper" -verify_arch "$arch"; then
+                  echo "error: $helper has no $arch slice. Run scripts/build-hana.sh $arch, or both." >&2
+                  exit 1
+              fi
+          done
+          staging="$(mktemp -d)"
+          trap 'rm -rf "$staging"' EXIT
+          cp "$helper" "$staging/tablepro-hana-helper"
+          if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
+              /usr/bin/codesign --force --options runtime --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$staging/tablepro-hana-helper"
+          fi
+          cp -f "$staging/tablepro-hana-helper" "$SCRIPT_OUTPUT_FILE_0"
 
 targets:
 
@@ -131,6 +164,9 @@ targets:
       # app classifies, quotes and resolves a Redis statement exactly as the driver will.
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
+      # The etcd plugin's own command parser, so the app tiers an etcd statement by the operation
+      # the driver parses it into.
+      - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -389,18 +425,28 @@ targets:
     platform: macOS
     sources:
       - TableProTests
+      - Plugins/Shared/PluginConnectTimeout.swift
+      - Plugins/Shared/PluginQueryTimeout.swift
+      - Plugins/Shared/PluginURLSessionTaskBox.swift
       # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
       # compiles the pure-logic files its suites cover.
       - Plugins/BeancountDriverPlugin/BeancountIncludeResolver.swift
       - Plugins/BeancountDriverPlugin/BeancountDirectiveDetails.swift
       - Plugins/BeancountDriverPlugin/BeancountDirectiveProjection.swift
       - Plugins/BeancountDriverPlugin/BeancountSourceScanner.swift
+      - Plugins/BeancountDriverPlugin/BeancountConnectRuntime.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Backend.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift
       - Plugins/BigQueryDriverPlugin/BigQueryConnection.swift
       - Plugins/BigQueryDriverPlugin/BigQueryCredentialFactory.swift
       - Plugins/BigQueryDriverPlugin/BigQueryError.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Execution.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+QueryBuilding.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Rename.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver+Routines.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryPluginDriver.swift
       - Plugins/BigQueryDriverPlugin/BigQueryQueryBuilder.swift
       - Plugins/BigQueryDriverPlugin/BigQueryQueryParameters.swift
       - Plugins/BigQueryDriverPlugin/BigQueryStatementGenerator.swift
@@ -410,8 +456,12 @@ targets:
       - Plugins/CSVExportPlugin/CSVExportOptionsView.swift
       - Plugins/CSVExportPlugin/CSVExportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportOptions.swift
+      - Plugins/CSVImportPlugin/CSVImportOptionsView.swift
       - Plugins/CSVImportPlugin/CSVImportParsing.swift
+      - Plugins/CSVImportPlugin/CSVImportPlugin.swift
+      - Plugins/CSVImportPlugin/CSVImportText.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseConnectFailure.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseHTTPChunks.swift
@@ -422,7 +472,19 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver+Query.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver+Schema.swift
+      - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLPluginDriver.swift
+      - Plugins/CassandraDriverPlugin/CassandraBoundValue.swift
+      - Plugins/CassandraDriverPlugin/CassandraBrowseStatement.swift
+      - Plugins/CassandraDriverPlugin/CassandraCellText.swift
+      - Plugins/CassandraDriverPlugin/CassandraConnectTimeout.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
+      - Plugins/CassandraDriverPlugin/CassandraObjectQueries.swift
+      - Plugins/CassandraDriverPlugin/CassandraResumePoints.swift
+      - Plugins/CassandraDriverPlugin/CassandraRowWriter.swift
+      - Plugins/CassandraDriverPlugin/CassandraVarint.swift
+      - Plugins/DamengDriverPlugin/DamengConnectTimeout.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
@@ -431,6 +493,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBConnectAttempt.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
@@ -475,12 +538,20 @@ targets:
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
+      - Plugins/EtcdDriverPlugin/EtcdCommandArgument.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdGatewayRoute.swift
+      - Plugins/EtcdDriverPlugin/EtcdKeyspace.swift
+      - Plugins/EtcdDriverPlugin/EtcdLeaseID.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdRequestRecovery.swift
+      - Plugins/EtcdDriverPlugin/EtcdRowFilter.swift
       - Plugins/EtcdDriverPlugin/EtcdServerFault.swift
+      - Plugins/EtcdDriverPlugin/EtcdServerTrust.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/TrinoDriverPlugin/TrinoConnectionFailure.swift
+      - Plugins/TrinoDriverPlugin/TrinoSSLMapping.swift
+      - Plugins/TrinoDriverPlugin/TrinoRowEditValues.swift
       - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
       - Plugins/TypesenseDriverPlugin/TypesenseFilterBuilder.swift
@@ -492,19 +563,29 @@ targets:
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
       - Plugins/ParquetExportPlugin/ParquetExportModels.swift
+      - Plugins/ParquetExportPlugin/ParquetTableFiles.swift
       - Plugins/ParquetExportPlugin/ParquetTypeMapper.swift
+      - Plugins/JSONImportPlugin/JSONFieldDetectionCache.swift
+      - Plugins/JSONImportPlugin/JSONFieldSurvey.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
+      - Plugins/JSONImportPlugin/JSONLineBatches.swift
+      - Plugins/JSONImportPlugin/JSONLineReader.swift
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLEntraConnectSession.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSessionTransaction.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLStatementGenerator.swift
       - Plugins/MQLExportPlugin/MQLCollectionDefinition.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MQLExportPlugin/MQLExportModels.swift
+      - Plugins/MQLExportPlugin/MQLExportOptionsView.swift
+      - Plugins/MQLExportPlugin/MQLExportPlugin.swift
       - Plugins/MQLExportPlugin/MQLScriptLexer.swift
       - Plugins/MQLExportPlugin/MQLScriptValue.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
@@ -568,6 +649,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoWriteFailure.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteLedger.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/MongoDBDriverPlugin/MongoFieldCensus.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptCursorPlan.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
       - Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift
@@ -619,9 +702,16 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteForeignKeyParents.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
       - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteQueryTimeout.swift
       # The rest of TableProSQLiteCore needs `sqlite3_load_extension`, which macOS's SQLite, the one
       # this bundle links, does not export.
       - Packages/TableProCore/Sources/TableProSQLiteCore/SQLiteResultColumns.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLBusyTimeout.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLError.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver+Rename.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver+Triggers.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLPluginDriver.swift
+      - Plugins/LibSQLDriverPlugin/SQLiteLocalBackend.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
@@ -640,6 +730,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQTypeNameRegistry.swift
+      - Plugins/PostgreSQLDriverPlugin/PGliteConnectFailure.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
@@ -707,6 +798,9 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaScram.swift
       - Plugins/KafkaDriverPlugin/SnappyDecoder.swift
+      - Plugins/TeradataDriverPlugin/TeradataRowEditSQL.swift
+      - Plugins/TeradataDriverPlugin/TeradataSSLMapping.swift
+      - Plugins/TeradataDriverPlugin/TeradataVersionProbe.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
@@ -736,6 +830,9 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisSessionFootprint.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - Plugins/RedisDriverPlugin/RedisTLSFailure+ConnectError.swift
+      - Plugins/RedisDriverPlugin/RedisTLSOptions.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/RedisDriverPlugin/RedisTransactionOutcome.swift
       - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
@@ -756,6 +853,10 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXExportModels.swift
+      - Plugins/XLSXExportPlugin/XLSXExportOptionsView.swift
+      - Plugins/XLSXExportPlugin/XLSXExportPlugin.swift
+      - Plugins/XLSXExportPlugin/XLSXWriter.swift
       - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
       - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
       - Plugins/XMLExportPlugin/XMLExportModels.swift
@@ -784,6 +885,7 @@ targets:
       - Plugins/SurrealDBDriverPlugin/SurrealInfoParser.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQL.swift
       - Plugins/SurrealDBDriverPlugin/SurrealQueryBuilder.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealRawCondition.swift
       - Plugins/SurrealDBDriverPlugin/SurrealRowFlattener.swift
       - Plugins/SurrealDBDriverPlugin/SurrealStatementGenerator.swift
       - Plugins/SurrealDBDriverPlugin/SurrealValue+Display.swift
@@ -791,7 +893,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProWeaviateCore]
+        products: [CSQLite, TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProJavaScriptText, TableProLogRedaction, TableProMSSQLCore, TableProNumberFormatting, TableProR2SQLCore, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO, TableProTLSClientIdentity, TableProTrinoCore, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -802,6 +904,8 @@ targets:
         product: NIOPosix
       - package: swift-nio-ssl
         product: NIOSSL
+      - package: TableProCore
+        product: TableProTeradataCore
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
@@ -918,6 +1022,9 @@ targets:
         product: TableProSQLiteCore
     settings:
       base:
+        # Above plugin-sqlite-v1.0.1, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.2"
         OTHER_LDFLAGS:
           - $(inherited)
           - -force_load
@@ -931,6 +1038,13 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProTLSClientIdentity
+    settings:
+      base:
+        # Above plugin-clickhouse-v1.0.19, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.20"
 
   RedisDriver:
     templates: [DriverPlugin]
@@ -939,6 +1053,9 @@ targets:
       principalClass: RedisPlugin
     settings:
       base:
+        # Above plugin-redis-v1.0.19, the newest copy published to the registry. `selectWinners`
+        # compares versions numerically, so the fixed built-in must replace a retained user copy.
+        MARKETING_VERSION: "1.0.20"
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Plugins/RedisDriverPlugin/CRedis/include
@@ -1107,6 +1224,9 @@ targets:
     templateAttributes:
       folder: CSVImportPlugin
       principalClass: CSVImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTabularIO
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVImportPlugin
@@ -1256,6 +1376,7 @@ targets:
         excludes:
           - Info.plist
           - README.md
+      - Plugins/Shared/PluginQueryTimeout.swift
       - Plugins/DamengDriverPluginTests
     dependencies:
       - target: TableProPluginKit
@@ -1279,6 +1400,28 @@ targets:
           - -liconv
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
 
+  HanaDriver:
+    templates: [DriverPlugin, HanaHelperEmbedding]
+    templateAttributes:
+      folder: HanaDriverPlugin
+      principalClass: HanaPlugin
+
+  HanaDriverTests:
+    type: bundle.unit-test
+    platform: macOS
+    templates: [HanaHelperEmbedding]
+    sources:
+      - path: Plugins/HanaDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+      - Plugins/HanaDriverPluginTests
+    dependencies:
+      - target: TableProPluginKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
   ElasticsearchDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1295,6 +1438,9 @@ targets:
     templateAttributes:
       folder: EtcdDriverPlugin
       principalClass: EtcdPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTLSClientIdentity
 
   KafkaDriverPlugin:
     templates: [DriverPlugin]
@@ -1423,6 +1569,9 @@ targets:
     templateAttributes:
       folder: SurrealDBDriverPlugin
       principalClass: SurrealDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   TeradataDriver:
     templates: [DriverPlugin]
@@ -1439,6 +1588,8 @@ targets:
       folder: TrinoDriverPlugin
       principalClass: TrinoPlugin
     dependencies:
+      - package: TableProCore
+        product: TableProTLSClientIdentity
       - package: TableProCore
         product: TableProTrinoCore
 
@@ -1480,6 +1631,7 @@ aggregateTargets:
       - DynamoDBDriverPlugin
       - ElasticsearchDriverPlugin
       - EtcdDriverPlugin
+      - HanaDriver
       - JSONExport
       - JSONImport
       - KafkaDriverPlugin
@@ -1519,6 +1671,16 @@ schemes:
       config: Debug
       targets:
         - name: DamengDriverTests
+
+  HanaDriverTests:
+    build:
+      targets:
+        HanaDriverTests: test
+      buildImplicitDependencies: true
+    test:
+      config: Debug
+      targets:
+        - name: HanaDriverTests
 
   TablePro:
     build:

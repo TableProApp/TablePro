@@ -17,6 +17,15 @@ enum StatusBarChrome {
     static let height: CGFloat = 28
     static let horizontalPadding: CGFloat = 10
     static let clusterSpacing: CGFloat = 8
+
+    /// The layout height a control's glyph is given. A small bordered button takes its height from
+    /// its glyph, measured at 18pt for `eye`, 19pt for the circled filter and 20pt for `eye.slash`
+    /// when the glyph stands alone, and 20 or 21pt beside a title, so the controls in one bar stood
+    /// at three heights. One box makes each the height of a text-only control: 12pt beside a title,
+    /// whose own line sets the height, and 14pt alone.
+    static func controlIconHeight(besideTitle: Bool) -> CGFloat {
+        besideTitle ? 12 : 14
+    }
 }
 
 struct StatusBarSeparator: View {
@@ -59,5 +68,10 @@ extension View {
     /// Fixed height, one material, one separator. Applied by every bottom bar in the app.
     func statusBarChrome() -> some View {
         modifier(StatusBarChromeModifier())
+    }
+
+    /// Height only: the glyph keeps its size and its width, so no control gets wider or narrower.
+    func statusBarControlIcon(besideTitle: Bool) -> some View {
+        frame(height: StatusBarChrome.controlIconHeight(besideTitle: besideTitle))
     }
 }

@@ -2,7 +2,7 @@
 import XCTest
 
 /// The stored texts here are the ones `USER_TAB_COLS.DATA_DEFAULT` returned on Oracle 23ai for the DDL named beside
-/// each, read through OracleNIO. `scripts/check-oracle-column-defaults.sh` checks the same shapes against a live server.
+/// each, read through OracleNIO. `scripts/probes/check-oracle-column-defaults.sh` checks the same shapes against a live server.
 final class OracleColumnDefaultTests: XCTestCase {
     private func clause(
         _ storedText: String?,

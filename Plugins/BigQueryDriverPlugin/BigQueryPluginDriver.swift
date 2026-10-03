@@ -25,6 +25,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     let parameterTypes = BigQueryParameterTypeCache()
     let runningStatements = BigQueryRunningStatements()
 
+    private let credentialHTTPClient: any GoogleHTTPClient
+    private let refreshTokenStore: any GoogleRefreshTokenStore
     private let lock = NSLock()
     private var _connection: BigQueryConnection?
     private var _projectId: String?
@@ -34,8 +36,14 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _queryTimeoutSeconds: Int?
     private var _lastJobElapsed: TimeInterval?
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        credentialHTTPClient: any GoogleHTTPClient = URLSessionGoogleHTTPClient(),
+        refreshTokenStore: any GoogleRefreshTokenStore = GoogleKeychainRefreshTokenStore()
+    ) {
         self.config = config
+        self.credentialHTTPClient = credentialHTTPClient
+        self.refreshTokenStore = refreshTokenStore
     }
 
     var connection: BigQueryConnection? {
@@ -171,15 +179,27 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     func connect() async throws {
         let conn: BigQueryConnection
         do {
+            let connectTimeout = PluginConnectTimeout.milliseconds(
+                in: config.additionalFields,
+                default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+            )
+            let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
+            let connectTimeoutPhase = PluginConnectTimeoutPhase(deadline: deadline)
+            defer { connectTimeoutPhase.finish() }
             conn = BigQueryConnection(
-                credentials: try BigQueryCredentialFactory.credentials(config: config),
+                credentials: try BigQueryCredentialFactory.credentials(
+                    config: config,
+                    http: credentialHTTPClient,
+                    refreshTokenStore: refreshTokenStore,
+                    connectTimeoutPhase: connectTimeoutPhase
+                ),
                 location: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.location]),
                 maximumBytesBilled: Self.nonEmpty(config.additionalFields[BigQueryConnectionFields.maximumBytesBilled])
             )
             if let timeout = lock.withLock({ _queryTimeoutSeconds }) {
                 conn.setQueryTimeout(timeout)
             }
-            try await conn.connect()
+            try await conn.connect(deadline: deadline)
         } catch {
             throw BigQueryError.wrap(error)
         }
@@ -473,7 +493,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     func storeQueryTimeout(_ seconds: Int) -> BigQueryConnection? {
         lock.withLock {
-            _queryTimeoutSeconds = seconds
+            _queryTimeoutSeconds = PluginQueryTimeout.boundedSeconds(seconds)
             return _connection
         }
     }

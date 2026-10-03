@@ -3,7 +3,7 @@ import TableProSQLGrammar
 import Testing
 
 /// SQL Server fails a whole batch whose `MERGE` has no `;` with Msg 10713. Every case was measured on Azure SQL Edge
-/// 15.0, and `scripts/check-mssql-merge-terminator.sh` measures them again.
+/// 15.0, and `scripts/probes/check-mssql-merge-terminator.sh` measures them again.
 @Suite("SQL MERGE terminator")
 struct SQLMergeTerminatorTests {
     private static let sqlServer = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil)
@@ -114,12 +114,12 @@ struct SQLMergeTerminatorTests {
     }
 
     @Test("A reader that drops every ; tracks only the grammars whose statements can own one")
-    func statementsCanOwnTerminator() {
+    func statementsCanOwnSemicolons() {
         let owning = SQLLexicalProfile.curatedDatabaseTypeIds.filter { typeId in
             let grammar = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil).execution
-            return SQLStatementBoundaries.statementsCanOwnTerminator(in: grammar)
+            return SQLStatementBoundaries.statementsCanOwnSemicolons(in: grammar)
         }
-        #expect(Set(owning) == ["SQL Server", "Oracle"])
+        #expect(Set(owning) == ["SQL Server", "Oracle", "Cassandra", "ScyllaDB"])
     }
 
     @Test("In a script only the MERGE keeps its ;")

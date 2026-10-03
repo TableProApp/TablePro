@@ -69,6 +69,8 @@ public extension MSSQLConnectionOptions {
     enum AdditionalFieldKey {
         public static let schema = "mssqlSchema"
         public static let authMethod = "mssqlAuthMethod"
+        public static let connectTimeoutMilliseconds = "connectTimeoutMilliseconds"
+        public static let connectTimeoutSeconds = "connectTimeoutSeconds"
     }
 
     static func schema(from additionalFields: [String: String]) -> String {
@@ -78,5 +80,28 @@ public extension MSSQLConnectionOptions {
 
     static func authMethod(from additionalFields: [String: String]) -> MSSQLAuthMethod {
         MSSQLAuthMethod(rawValue: additionalFields[AdditionalFieldKey.authMethod] ?? "") ?? .sqlServer
+    }
+
+    static func connectTimeoutMilliseconds(from additionalFields: [String: String]) -> Int {
+        if let milliseconds = positiveMilliseconds(
+            additionalFields[AdditionalFieldKey.connectTimeoutMilliseconds]
+        ) {
+            return milliseconds
+        }
+        if let seconds = Double(additionalFields[AdditionalFieldKey.connectTimeoutSeconds] ?? ""),
+           seconds > 0,
+           seconds.isFinite {
+            return positiveMilliseconds(String(seconds * 1_000)) ?? defaultLoginTimeoutSeconds * 1_000
+        }
+        return defaultLoginTimeoutSeconds * 1_000
+    }
+
+    private static func positiveMilliseconds(_ value: String?) -> Int? {
+        let maximum = Double(Int32.max) * 1_000
+        guard let value,
+              let milliseconds = Double(value),
+              milliseconds > 0,
+              milliseconds.isFinite else { return nil }
+        return max(1, Int(min(milliseconds.rounded(.up), maximum)))
     }
 }

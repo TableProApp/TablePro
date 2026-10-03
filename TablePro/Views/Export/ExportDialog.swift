@@ -59,6 +59,10 @@ struct ExportDialog: View {
         mode.connection
     }
 
+    private var databaseType: DatabaseType {
+        DatabaseType(rawValue: mode.formatDatabaseTypeId)
+    }
+
     private var exportsSingleResult: Bool {
         !mode.listsDatabaseObjects
     }
@@ -283,6 +287,7 @@ struct ExportDialog: View {
                 ExportObjectTreeView(
                     databaseItems: $databaseItems,
                     formatId: config.formatId,
+                    databaseType: databaseType,
                     loadColumns: { await columnNames(for: $0) }
                 )
                 .frame(minHeight: 300, maxHeight: .infinity)
@@ -358,7 +363,8 @@ struct ExportDialog: View {
     private func applyProfile(_ profile: ExportProfile) {
         config.formatId = profile.formatId
         databaseItems = normalizedForCurrentFormat(
-            ExportProfileStorage.apply(profile, to: databaseItems))
+            ExportProfileStorage.apply(profile, to: databaseItems)
+                .clearingRowScopes(unavailableOn: databaseType))
     }
 
     private func saveProfile() {

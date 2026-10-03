@@ -27,11 +27,11 @@ struct GeneralPaneView: View {
 
     var body: some View {
         Form {
-            if let parsed = coordinator.clipboardCandidate {
+            if let candidate = coordinator.clipboardCandidate {
                 Section {
                     ClipboardConnectionBanner(
-                        parsed: parsed,
-                        onUse: { coordinator.applyClipboardCandidate(parsed) },
+                        candidate: candidate,
+                        onUse: { coordinator.applyClipboardCandidate(candidate) },
                         onDismiss: { coordinator.dismissClipboardCandidate() }
                     )
                     .listRowInsets(EdgeInsets())
@@ -91,10 +91,7 @@ struct GeneralPaneView: View {
                         prompt: Text(filePathPrompt)
                     )
                     .accessibilityIdentifier("connection-form-file-path")
-                    Button(String(localized: "Browse…")) {
-                        browseForFile()
-                    }
-                    .controlSize(.small)
+                    DatabaseFileButtons(type: type, path: $coordinator.network.database)
                 }
             }
         case .apiOnly:
@@ -165,11 +162,12 @@ struct GeneralPaneView: View {
             .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
-                text: $coordinator.network.port,
+                text: portBinding,
                 prompt: Text(defaultPortString)
             )
             .accessibilityIdentifier("connection-form-port")
             .disabled(usesForwardSocket)
+            portTLSNotice
         }
         ForEach(connectionFields, id: \.id) { field in
             if !isHostListField(field) && coordinator.network.isFieldVisible(field) {
@@ -183,6 +181,45 @@ struct GeneralPaneView: View {
 
     private var usesForwardSocket: Bool {
         coordinator.ssh.state.enabled && coordinator.network.forwardsToUnixSocket
+    }
+
+    private var portBinding: Binding<String> {
+        Binding(
+            get: { coordinator.network.port },
+            set: { coordinator.network.setPort($0) }
+        )
+    }
+
+    @ViewBuilder
+    private var portTLSNotice: some View {
+        let port = coordinator.network.resolvedPort
+        if coordinator.supportsSSL, let impliedMode = type.impliedSSLMode(forPort: port) {
+            if coordinator.ssl.mode == impliedMode {
+                Text(String(
+                    format: String(localized: "Port %lld uses TLS, so SSL Mode is %@."),
+                    port,
+                    impliedMode.displayLabel
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("connection-form-port-tls-note")
+            } else if coordinator.ssl.mode == .disabled {
+                HStack {
+                    Label(
+                        String(format: String(localized: "Port %lld usually requires TLS, and SSL Mode is Disabled."), port),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    Spacer()
+                    Button(String(format: String(localized: "Use %@"), impliedMode.displayLabel)) {
+                        coordinator.ssl.select(impliedMode)
+                    }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("connection-form-port-tls-use")
+                }
+            }
+        }
     }
 
     // MARK: - Authentication
@@ -237,7 +274,12 @@ struct GeneralPaneView: View {
     @ViewBuilder
     private func authFieldRow(_ field: ConnectionField) -> some View {
         if coordinator.auth.isFieldVisible(field) {
-            if FilePathConnectionFieldRow.isFilePathField(field) {
+            if isLocalDatabaseFileField(field) {
+                HStack {
+                    ConnectionFieldRow(field: field, value: authFieldBinding(for: field))
+                    DatabaseFileButtons(type: type, path: authFieldBinding(for: field))
+                }
+            } else if FilePathConnectionFieldRow.isFilePathField(field) {
                 FilePathConnectionFieldRow(
                     field: field,
                     value: authFieldBinding(for: field),
@@ -353,17 +395,14 @@ struct GeneralPaneView: View {
         return "/path/to/database.\(ext)"
     }
 
-    private func browseForFile() {
-        let types = DatabaseFileTypes.contentTypes(
-            forExtensions: PluginManager.shared.fileExtensions(for: type)
-        )
-        presentFilePanel(contentTypes: types) { path in
-            coordinator.network.database = path
-        }
+    /// DuckDB and libSQL keep their database path in a field of their own rather than in
+    /// `database`, and it gets the same Browse… and New… as the built-in Database File.
+    private func isLocalDatabaseFileField(_ field: ConnectionField) -> Bool {
+        PluginManager.shared.localFilePathField(for: type) == .additionalField(field.id)
     }
 
-    /// Certificates, keys and identity files are not the driver's own file kinds, so this
-    /// panel stays open to any file.
+    /// A plugin field that names some other file is not one of the driver's database kinds, so
+    /// this panel stays open to any file.
     private func browseForAuthFile(field: ConnectionField) {
         presentFilePanel(contentTypes: [.data]) { path in
             coordinator.auth.additionalFieldValues[field.id] = path

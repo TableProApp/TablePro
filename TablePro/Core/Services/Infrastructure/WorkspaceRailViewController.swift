@@ -25,9 +25,46 @@ internal protocol WorkspaceRailHost: AnyObject {
 /// everywhere it exists: browser tabs, and every database client surveyed. `NSTableView` routes no
 /// action for the tertiary button, so the row is resolved from the click point the same way
 /// `menu(for:)` resolves one.
+///
+/// The table owns its own look, so a test hosting it gets the configuration the strip really ships
+/// with: a source list rewrites cells and pads rows in ways a free-standing cell never shows.
 @MainActor
 internal final class WorkspaceRailTableView: NSTableView {
     internal var onMiddleClick: ((Int) -> Void)?
+
+    override internal init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("workspace"))
+        column.resizingMask = .autoresizingMask
+        addTableColumn(column)
+        headerView = nil
+        style = .sourceList
+        rowSizeStyle = .custom
+        backgroundColor = .clear
+        allowsMultipleSelection = false
+        allowsEmptySelection = true
+        /// A source list draws the selection over the spacing too, so spacing would only pad the
+        /// inside of the fill. The tile's own padding is what separates one entry from the next.
+        intercellSpacing = NSSize(width: 0, height: 0)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("WorkspaceRailTableView does not support NSCoder init")
+    }
+
+    /// Read from the rows themselves, because where they start is the source list's to decide: it
+    /// pads the first one down from the document's top, and a model that assumed otherwise is what
+    /// left a slice of the previous tile showing.
+    internal func scrollGeometry(viewportHeight: CGFloat) -> WorkspaceRailScrollGeometry {
+        let first = numberOfRows > 0 ? rect(ofRow: 0) : .zero
+        return WorkspaceRailScrollGeometry(
+            rowCount: numberOfRows,
+            rowHeight: first.height,
+            firstRowTop: first.minY,
+            viewportHeight: viewportHeight
+        )
+    }
 
     override internal func otherMouseUp(with event: NSEvent) {
         guard event.isMiddleButton else {
@@ -59,10 +96,12 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// `heightOfRow`, which the rail's stacked cell needs. This unattached table lets AppKit
     /// resolve the preference so the rail itself can stay `.custom`.
     private let rowSizeProbe = NSTableView()
-    private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("workspace"))
 
     private var entries: [WorkspaceRailEntry] = []
-    private var layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
+    private var layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium {
+        didSet { rowHeight = WorkspaceRailCellView.rowHeight(for: layout) }
+    }
+    private lazy var rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
     private var changeCancellable: AnyCancellable?
     private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
@@ -102,16 +141,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     override func loadView() {
         view = NSView()
 
-        column.resizingMask = .autoresizingMask
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
-        tableView.style = .sourceList
-        tableView.rowSizeStyle = .custom
         rowSizeProbe.rowSizeStyle = .default
-        tableView.backgroundColor = .clear
-        tableView.allowsMultipleSelection = false
-        tableView.allowsEmptySelection = true
-        tableView.intercellSpacing = NSSize(width: 0, height: layout.rowSpacing)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -205,13 +235,9 @@ internal final class WorkspaceRailViewController: NSViewController {
     private func settleScrollPosition() {
         guard !isReordering else { return }
         let clipView = scrollView.contentView
-        let settled = WorkspaceRailScrollGeometry.settledOrigin(
+        let settled = scrollGeometry.settledOrigin(
             proposed: clipView.bounds.origin.y,
-            selectedRow: entries.indices.contains(tableView.selectedRow) ? tableView.selectedRow : nil,
-            rowCount: entries.count,
-            rowPitch: layout.rowPitch,
-            rowHeight: layout.rowHeight,
-            viewportHeight: clipView.bounds.height
+            selectedRow: entries.indices.contains(tableView.selectedRow) ? tableView.selectedRow : nil
         )
         guard abs(settled - clipView.bounds.origin.y) > 0.5 else { return }
         NSAnimationContext.runAnimationGroup { context in
@@ -225,15 +251,12 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     /// Recomputed rather than set once, because the row count, the row height and the viewport all
     /// move: an entry opens or closes, the sidebar icon size changes, the window resizes.
+    private var scrollGeometry: WorkspaceRailScrollGeometry {
+        tableView.scrollGeometry(viewportHeight: scrollView.contentView.bounds.height)
+    }
+
     private func applyBottomInset() {
-        let clipView = scrollView.contentView
-        let inset = WorkspaceRailScrollGeometry.bottomInset(
-            rowCount: entries.count,
-            rowPitch: layout.rowPitch,
-            rowHeight: layout.rowHeight,
-            documentHeight: tableView.frame.height,
-            viewportHeight: clipView.bounds.height
-        )
+        let inset = scrollGeometry.bottomInset(documentHeight: tableView.frame.height)
         guard abs(scrollView.contentInsets.bottom - inset) > 0.5 else { return }
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
     }
@@ -260,12 +283,8 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// actually moved, so a strip whose own entry did not change stays where its window left it.
     private func revealSelectedRow() {
         let clipView = scrollView.contentView
-        guard let origin = WorkspaceRailScrollGeometry.revealOrigin(
+        guard let origin = scrollGeometry.revealOrigin(
             row: tableView.selectedRow,
-            rowCount: entries.count,
-            rowPitch: layout.rowPitch,
-            rowHeight: layout.rowHeight,
-            viewportHeight: clipView.bounds.height,
             currentOrigin: clipView.bounds.origin.y
         ) else { return }
         clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: origin))
@@ -349,11 +368,14 @@ internal final class WorkspaceRailViewController: NSViewController {
         let resolved = WorkspaceRailMetrics.layout(for: resolvedRowSizeStyle)
         guard resolved != layout else { return }
         layout = resolved
-        tableView.intercellSpacing = NSSize(width: 0, height: layout.rowSpacing)
         tableView.sizeLastColumnToFit()
         tableView.reloadData()
         applyBottomInset()
         applySelection()
+        /// Every tile edge moved, and a scroll offset that moves nothing posts no bounds change, so
+        /// neither the settle nor the reveal would run on its own: the strip stayed mid-tile.
+        requestSelectionReveal()
+        scheduleScrollSettle()
         onLayoutChange?(resolved)
     }
 
@@ -840,7 +862,7 @@ extension WorkspaceRailViewController: NSTableViewDataSource {
 
 extension WorkspaceRailViewController: NSTableViewDelegate {
     internal func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        layout.rowHeight
+        rowHeight
     }
 
     internal func tableView(

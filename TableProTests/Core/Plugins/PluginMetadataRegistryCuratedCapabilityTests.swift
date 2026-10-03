@@ -28,6 +28,22 @@ private final class MockDuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockSQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock SQLite"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled SQLite plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SQLite"
+    static let databaseDisplayName = "SQLite"
+    static let iconName = "sqlite-icon"
+    static let defaultPort = 0
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockMongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock MongoDB"
     static let pluginVersion = "1.0.0"
@@ -77,6 +93,22 @@ private final class MockMySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockCassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock Cassandra"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed Cassandra plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "Cassandra"
+    static let databaseDisplayName = "Cassandra / ScyllaDB"
+    static let iconName = "cassandra-icon"
+    static let defaultPort = 9_042
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockDynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock DynamoDB"
     static let pluginVersion = "1.0.0"
@@ -87,6 +119,70 @@ private final class MockDynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Amazon DynamoDB"
     static let iconName = "dynamodb-icon"
     static let defaultPort = 0
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockHanaPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock SAP HANA"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed SAP HANA plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SAP HANA"
+    static let databaseDisplayName = "SAP HANA"
+    static let iconName = "cylinder"
+    static let defaultPort = 443
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockTrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock Trino"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed Trino plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "Trino"
+    static let databaseDisplayName = "Trino"
+    static let iconName = "trino-icon"
+    static let defaultPort = 8_080
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock ClickHouse"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled ClickHouse plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "ClickHouse"
+    static let databaseDisplayName = "ClickHouse"
+    static let iconName = "clickhouse-icon"
+    static let defaultPort = 8_123
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
+private final class MockMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock MSSQL"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the registry-distributed SQL Server plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SQL Server"
+    static let databaseDisplayName = "SQL Server"
+    static let iconName = "mssql-icon"
+    static let defaultPort = 1_433
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         fatalError("Not used in tests")
@@ -111,6 +207,13 @@ private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 @Suite("PluginMetadataRegistry curated capabilities", .serialized)
 struct PluginMetadataRegistryCuratedCapabilityTests {
+    @Test("etcd TLS Mode starts on Disabled, the mode the driver uses when none is chosen")
+    func etcdTlsModeDefaultsToDisabled() throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd"))
+        let field = try #require(snapshot.connection.additionalConnectionFields.first { $0.id == "etcdTlsMode" })
+        #expect(field.defaultValue == "Disabled")
+    }
+
     @Test("DuckDB stays unpoolable when its plugin registers")
     func duckDBKeepsItsPoolingOptOut() {
         let registry = PluginMetadataRegistry.shared
@@ -133,6 +236,46 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.schema.fileSignatures == [.magic("DUCK", at: 8).andZeroes(at: 14, count: 6)],
             "No DriverPlugin declares a signature, so loading the plugin would otherwise erase it"
         )
+    }
+
+    @Test("DuckDB keeps the file kinds a new database can be named with when its plugin registers")
+    func duckDBKeepsItsNewDatabaseFileExtensions() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.capabilities.newDatabaseFileExtensions == DuckDBFileKinds.database,
+            "A missing Parquet or CSV path is refused, so New… must offer only DuckDB's own format"
+        )
+    }
+
+    @Test("SQLite keeps the file kinds a new database can be named with when its plugin registers")
+    func sqliteKeepsItsNewDatabaseFileExtensions() throws {
+        let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SQLite"))
+
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockSQLitePlugin.self)
+
+        #expect(built.capabilities.newDatabaseFileExtensions == curated.schema.fileExtensions)
+        #expect(built.capabilities.newDatabaseFileExtensions.first == "db")
+    }
+
+    @Test("Only a driver that creates a missing file offers a new one")
+    func newDatabaseFilePerEngine() throws {
+        let cases: [(typeId: String, createsMissingFile: Bool)] = [
+            ("SQLite", true),
+            ("libSQL", true),
+            ("Turso", true),
+            ("DuckDB", true),
+            ("Beancount", false),
+            ("MySQL", false),
+            ("PostgreSQL", false),
+        ]
+        for entry in cases {
+            let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: entry.typeId))
+            #expect(
+                snapshot.capabilities.newDatabaseFileExtensions.isEmpty == !entry.createsMissingFile,
+                "\(entry.typeId)"
+            )
+        }
     }
 
     @Test("MongoDB keeps its database-scoped authentication when its plugin registers")
@@ -158,16 +301,77 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: built.structureEditing.structureEdits))
     }
 
-    @Test("DynamoDB keeps its billed-scan count when its plugin registers")
-    func dynamoDBKeepsItsBilledScanCount() {
+    @Test("DynamoDB keeps its full-scan count when its plugin registers")
+    func dynamoDBKeepsItsFullScanCount() {
         let registry = PluginMetadataRegistry.shared
 
         let built = registry.buildMetadataSnapshot(from: MockDynamoDBPlugin.self)
 
         #expect(
-            built.capabilities.exactRowCountIsBilledScan == true,
+            built.capabilities.exactRowCountIsFullScan == true,
             "Every automatic count would be a Scan of the whole table that AWS bills for"
         )
+    }
+
+    /// None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
+    /// defaults: counts on every open that read every partition, a header sort CQL refuses, and Match Any.
+    @Test("Cassandra keeps its count, sort and filter limits when its plugin registers")
+    func cassandraKeepsItsCuratedQueryLimits() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)
+
+        #expect(built.capabilities.exactRowCountIsFullScan == true)
+        #expect(built.capabilities.supportsColumnSort == false)
+        #expect(built.capabilities.supportsMatchAnyFilters == false)
+        #expect(built.capabilities.pagination == .leadingRowsOnly(maximumRows: nil))
+    }
+
+    @Test("Redis, etcd and Kafka offer no column sort, since their commands take no ORDER BY", arguments: [
+        "Redis", "etcd", "Kafka"
+    ])
+    func commandLanguagesWithoutOrderByOfferNoColumnSort(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsColumnSort == false)
+    }
+
+    @Test("ScyllaDB declares the same query limits as Cassandra on its own curated entry")
+    func scyllaDBDeclaresTheCassandraQueryLimits() {
+        let registry = PluginMetadataRegistry.shared
+        let cassandra = registry.snapshot(forRegisteredTypeId: "Cassandra")?.capabilities
+        let scylla = registry.snapshot(forRegisteredTypeId: "ScyllaDB")?.capabilities
+
+        #expect(scylla?.exactRowCountIsFullScan == true)
+        #expect(scylla?.supportsColumnSort == false)
+        #expect(scylla?.supportsMatchAnyFilters == false)
+        #expect(scylla?.pagination == .leadingRowsOnly(maximumRows: nil))
+        #expect(scylla?.exactRowCountIsFullScan == cassandra?.exactRowCountIsFullScan)
+        #expect(scylla?.supportsColumnSort == cassandra?.supportsColumnSort)
+        #expect(scylla?.supportsMatchAnyFilters == cassandra?.supportsMatchAnyFilters)
+    }
+
+    /// Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
+    /// primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
+    @Test("Cassandra and ScyllaDB offer only the column edits CQL can run", arguments: ["Cassandra", "ScyllaDB"])
+    func cassandraStructureEdits(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+        let matrix = snapshot.structureEditing.structureEdits
+
+        #expect(StructureEditEligibility.allows(.addColumn, on: .table, matrix: matrix))
+        #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: matrix))
+        for operation in [StructureEditOperation.renameColumn, .changeColumnType, .setNotNull, .commentOnColumn,
+                          .addIndex, .dropIndex] {
+            #expect(!StructureEditEligibility.allows(operation, on: .table, matrix: matrix), "\(operation)")
+        }
+        #expect(snapshot.schema.structureColumnFields == [.name, .type])
+        #expect(snapshot.capabilities.supportsAddIndex == false)
+        #expect(snapshot.capabilities.supportsRoutines)
+        #expect(snapshot.capabilities.supportsDatabaseTriggerBrowse)
+    }
+
+    @Test("Cassandra keeps its structure edits when its plugin registers")
+    func cassandraKeepsStructureEdits() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)
+        #expect(!StructureEditEligibility.allows(.renameColumn, on: .table, matrix: built.structureEditing.structureEdits))
     }
 
     @Test("MySQL keeps browsing only inside a selected database when its plugin registers")
@@ -219,6 +423,91 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.schema.implicitSchemaName == nil)
     }
 
+    @Test("SAP HANA keeps Verify Identity and forced TLS when its plugin registers")
+    func hanaKeepsItsTLSDefaults() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockHanaPlugin.self)
+
+        #expect(built.capabilities.defaultSSLMode == .verifyIdentity)
+        #expect(built.capabilities.supportsOpportunisticTLS == false)
+        #expect(built.capabilities.tlsImpliedPorts == [443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("SAP HANA keeps LOB and spatial columns out of a keyless row match when its plugin registers")
+    @MainActor
+    func hanaKeepsItsRowMatchExclusions() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockHanaPlugin.self)
+        let prefixes = built.schema.rowMatchExcludedTypePrefixes
+        let columns = [
+            "ID": "INTEGER", "NAME": "NVARCHAR(100)", "RAW": "VARBINARY(16)", "AT": "TIMESTAMP",
+            "PHOTO": "BLOB", "NOTES": "CLOB", "BODY": "NCLOB", "SEARCHABLE": "TEXT", "BYTES": "BINTEXT",
+            "SHAPE": "ST_GEOMETRY(4326)", "SPOT": "ST_POINT"
+        ].map { name, type in
+            ColumnInfo(name: name, dataType: type, isNullable: true, isPrimaryKey: false)
+        }
+
+        #expect(
+            QueryExecutor.columns(in: columns, typedAnyOf: prefixes)
+                == ["PHOTO", "NOTES", "BODY", "SEARCHABLE", "BYTES", "SHAPE", "SPOT"]
+        )
+    }
+
+    @Test("The curated SAP HANA entry declares what its plugin declares")
+    func hanaCuratedEntryMatchesThePlugin() throws {
+        let curated = try #require(
+            PluginMetadataRegistry.shared.builtInDefaults().first { $0.typeId == "SAP HANA" }?.snapshot
+        )
+        let dialect = try #require(curated.editor.sqlDialect)
+        let plan = try #require(curated.explainVariants.first)
+
+        #expect(curated.defaultPort == 443)
+        #expect(curated.supportsForeignKeys == true)
+        #expect(curated.explainVariants.count == 1)
+        #expect(plan.sqlPrefix == "EXPLAIN PLAN FOR")
+        #expect(plan.format == .indentedText)
+        #expect(dialect.regexSyntax == .unsupported)
+        #expect(dialect.autoLimitStyle == .limit)
+        #expect(dialect.caseSensitivityStyle == .caseFoldFunction)
+        #expect(dialect.lexicalFeatures == SQLLexicalFeatures.dollarAndHashInIdentifiers)
+        #expect(curated.capabilities.defaultSSLMode == .verifyIdentity)
+        #expect(curated.capabilities.supportsOpportunisticTLS == false)
+    }
+
+    @Test("Trino keeps its TLS port, system trust and no plaintext fallback when its plugin registers")
+    func trinoKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockTrinoPlugin.self)
+
+        #expect(built.capabilities.tlsImpliedPorts == [443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+        #expect(built.capabilities.supportsOpportunisticTLS == false)
+    }
+
+    @Test("ClickHouse keeps its TLS ports and system trust when its plugin registers")
+    func clickHouseKeepsItsTLSCapabilities() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockClickHousePlugin.self)
+
+        #expect(built.capabilities.tlsImpliedPorts == [8_443, 443])
+        #expect(built.capabilities.verifiesServerWithSystemTrust == true)
+    }
+
+    @Test("etcd offers no generic SSL Mode, since its driver reads only its own TLS Mode field")
+    @MainActor
+    func etcdDeclaresNoGenericSSL() {
+        #expect(PluginManager.shared.supportsSSL(for: .etcd) == false)
+        #expect(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "etcd")?.capabilities.supportsSSL == false)
+    }
+
+    @Test("SQL Server keeps its missing certificate fields when its plugin registers")
+    func mssqlKeepsItsCertificateFieldOptOut() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMSSQLPlugin.self)
+
+        #expect(built.capabilities.supportsPerConnectionCertificatePaths == false)
+    }
+
     @Test("A plugin with no curated entry falls back to the defaults")
     func unknownPluginUsesTheStructDefaults() {
         let registry = PluginMetadataRegistry.shared
@@ -229,8 +518,14 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.supportsConnectionPooling == true)
         #expect(built.capabilities.authenticationIsDatabaseScoped == false)
         #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
-        #expect(built.capabilities.exactRowCountIsBilledScan == false)
+        #expect(built.capabilities.exactRowCountIsFullScan == false)
+        #expect(built.capabilities.supportsColumnSort == true)
+        #expect(built.capabilities.supportsMatchAnyFilters == true)
         #expect(built.capabilities.columnsAreSampled == false)
+        #expect(built.capabilities.tlsImpliedPorts.isEmpty)
+        #expect(built.capabilities.verifiesServerWithSystemTrust == false)
+        #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)
+        #expect(built.capabilities.newDatabaseFileExtensions.isEmpty)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

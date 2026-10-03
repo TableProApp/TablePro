@@ -10,6 +10,7 @@ public enum WeaviateFilterError: Error, LocalizedError, Equatable {
     case comparisonNeedsNumberOrDate(column: String, op: String)
     case textMatchNeedsText(column: String, op: String)
     case vectorNotFilterable(column: String)
+    case rawFilterUnsupported
 
     public var errorDescription: String? {
         switch self {
@@ -46,6 +47,10 @@ public enum WeaviateFilterError: Error, LocalizedError, Equatable {
             )
         case .vectorNotFilterable(let column):
             return String(format: String(localized: "Weaviate cannot filter on %@."), column)
+        case .rawFilterUnsupported:
+            return String(
+                localized: "Raw filters aren't available for Weaviate. Write the where filter in a GraphQL query in the editor."
+            )
         }
     }
 }
@@ -96,6 +101,8 @@ public enum WeaviateValueKind: String, Sendable, Equatable {
 }
 
 public enum WeaviateFilterBuilder {
+    private static let rawFilterColumn = "__RAW__"
+
     public static func graphQLWhere(
         filters: [WeaviateFilterSpec],
         logicMode: String,
@@ -110,6 +117,9 @@ public enum WeaviateFilterBuilder {
 
     public static func operand(for filter: WeaviateFilterSpec, types: [String: String]) throws -> String {
         let column = filter.column
+        guard column != rawFilterColumn else {
+            throw WeaviateFilterError.rawFilterUnsupported
+        }
         guard column != WeaviateSchema.vectorColumn else {
             throw WeaviateFilterError.vectorNotFilterable(column: column)
         }
@@ -238,12 +248,23 @@ public enum WeaviateFilterBuilder {
             throw WeaviateFilterError.missingUpperBound(column: column)
         }
         let lower = try comparison(
-            "GreaterThanEqual", path: path, column: column, value: filter.value, kind: kind
+            "GreaterThanEqual",
+            path: path,
+            column: column,
+            value: lowerBound(of: filter.value, upperBound: upperBound),
+            kind: kind
         )
         let upper = try comparison(
             "LessThanEqual", path: path, column: column, value: upperBound, kind: kind
         )
         return "{ operator: And operands: [\(lower) \(upper)] }"
+    }
+
+    private static func lowerBound(of joinedValue: String, upperBound: String) -> String {
+        let joinedSuffix = ("," + upperBound).unicodeScalars
+        let scalars = joinedValue.unicodeScalars
+        guard scalars.reversed().starts(with: joinedSuffix.reversed()) else { return joinedValue }
+        return String(scalars.dropLast(joinedSuffix.count))
     }
 
     private static func negated(_ operand: String) -> String {

@@ -439,7 +439,7 @@ struct WorkspaceRailCellTextTests {
             x: 0,
             y: 0,
             width: WorkspaceRailMetrics.medium.width,
-            height: WorkspaceRailMetrics.medium.rowHeight
+            height: WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
         ))
         cell.configure(
             entry: makeEntry(name: name, container: container, containerTarget: containerTarget),
@@ -454,9 +454,9 @@ struct WorkspaceRailCellTextTests {
         let production = configuredCell(name: "Production", container: "app")
         let staging = configuredCell(name: "Staging", container: "app")
 
-        #expect(try #require(production.textField).stringValue == "Production\napp")
-        #expect(try #require(staging.textField).stringValue == "Staging\napp")
-        #expect(production.textField?.stringValue != staging.textField?.stringValue)
+        #expect(try #require(production.renderedLabel).stringValue == "Production\napp")
+        #expect(try #require(staging.renderedLabel).stringValue == "Staging\napp")
+        #expect(production.renderedLabel?.stringValue != staging.renderedLabel?.stringValue)
     }
 
     @Test("One connection keeps distinct second lines for its containers")
@@ -464,21 +464,21 @@ struct WorkspaceRailCellTextTests {
         let app = configuredCell(name: "Production", container: "app")
         let analytics = configuredCell(name: "Production", container: "analytics")
 
-        #expect(try #require(app.textField).stringValue == "Production\napp")
-        #expect(try #require(analytics.textField).stringValue == "Production\nanalytics")
+        #expect(try #require(app.renderedLabel).stringValue == "Production\napp")
+        #expect(try #require(analytics.renderedLabel).stringValue == "Production\nanalytics")
     }
 
     @Test("A schema uses the same connection-first hierarchy")
     func schemaUsesConnectionFirstHierarchy() throws {
         let cell = configuredCell(name: "Warehouse", container: "reporting", containerTarget: .schema)
 
-        #expect(try #require(cell.textField).stringValue == "Warehouse\nreporting")
+        #expect(try #require(cell.renderedLabel).stringValue == "Warehouse\nreporting")
     }
 
     @Test("An unnamed container leaves the connection on one line")
     func emptyContainerUsesConnectionOnly() throws {
         let cell = configuredCell(name: "Local SQLite", container: "", containerTarget: nil)
-        let label = try #require(cell.textField)
+        let label = try #require(cell.renderedLabel)
 
         #expect(label.stringValue == "Local SQLite")
         #expect(!label.stringValue.contains("\n"))
@@ -488,14 +488,14 @@ struct WorkspaceRailCellTextTests {
     func embeddedLineSeparatorsAreFlattened() throws {
         let cell = configuredCell(name: "Pro\nduction", container: "app\u{2028}archive")
 
-        #expect(try #require(cell.textField).stringValue == "Pro duction\napp archive")
-        #expect(cell.textField?.stringValue.components(separatedBy: "\n").count == 2)
+        #expect(try #require(cell.renderedLabel).stringValue == "Pro duction\napp archive")
+        #expect(cell.renderedLabel?.stringValue.components(separatedBy: "\n").count == 2)
     }
 
     @Test("A blank connection name falls back without an empty first line")
     func blankConnectionFallsBackToContainer() throws {
         let cell = configuredCell(name: " \n ", container: "app")
-        let label = try #require(cell.textField)
+        let label = try #require(cell.renderedLabel)
 
         #expect(label.stringValue == "app")
         #expect(!label.stringValue.contains("\n"))
@@ -504,7 +504,7 @@ struct WorkspaceRailCellTextTests {
     @Test("A blank container leaves no empty second line")
     func blankContainerLeavesNoEmptySecondLine() throws {
         let cell = configuredCell(name: "Production", container: " \u{2028} ")
-        let label = try #require(cell.textField)
+        let label = try #require(cell.renderedLabel)
 
         #expect(label.stringValue == "Production")
         #expect(!label.stringValue.contains("\n"))
@@ -514,7 +514,7 @@ struct WorkspaceRailCellTextTests {
     func twoBlankIdentitiesLeaveTheLabelEmpty() throws {
         let cell = configuredCell(name: "  ", container: " ")
 
-        #expect(try #require(cell.textField).stringValue.isEmpty)
+        #expect(try #require(cell.renderedLabel).stringValue.isEmpty)
     }
 
     @Test("Long labels keep AppKit's independent middle truncation contract")
@@ -523,7 +523,7 @@ struct WorkspaceRailCellTextTests {
             name: "a-very-long-production-connection",
             container: "a_very_long_database_name"
         )
-        let label = try #require(cell.textField)
+        let label = try #require(cell.renderedLabel)
 
         #expect(label.stringValue == "a-very-long-production-connection\na_very_long_database_name")
         #expect(label.lineBreakMode == .byTruncatingMiddle)

@@ -46,7 +46,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 password: config.password
             ),
             routing: KafkaBrokerRouting.resolve(config.additionalFields[KafkaConnectionField.brokerRouting]),
-            connectTimeoutSeconds: Int(config.additionalFields[KafkaConnectionField.connectTimeout] ?? "") ?? 10
+            connectTimeout: KafkaConnectTimeout(additionalFields: config.additionalFields)
         )
     }
 

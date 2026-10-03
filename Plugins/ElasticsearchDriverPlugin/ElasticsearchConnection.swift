@@ -58,6 +58,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     private let baseURL: URL
     private let authHeader: String?
     private let skipTLSVerify: Bool
+    private let connectTimeoutMilliseconds: Int
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ElasticsearchConnection")
 
@@ -68,7 +69,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
 
         let scheme = config.ssl.isEnabled ? "https" : "http"
         let host = config.host.isEmpty ? "localhost" : config.host
-        let port = config.port > 0 ? config.port : 9200
+        let port = config.port > 0 ? config.port : 9_200
         guard let url = URL(string: "\(scheme)://\(host):\(port)") else {
             throw ElasticsearchError.connectionFailed("Invalid host: \(host):\(port)")
         }
@@ -76,6 +77,10 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         self.authHeader = Self.resolveAuthHeader(config: config)
         self.skipTLSVerify = (config.additionalFields["esSkipTLSVerify"] == "true")
             || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
+        self.connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
+        )
     }
 
     func setQueryTimeout(_ seconds: Int) {
@@ -85,13 +90,20 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     // MARK: - Lifecycle
 
     func connect() async throws {
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
+        let connectTimeout = TimeInterval(connectTimeoutMilliseconds) / 1_000
         let sessionConfig = URLSessionConfiguration.default
-        sessionConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        sessionConfig.timeoutIntervalForRequest = connectTimeout
         sessionConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
         let session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
         lock.withLock { _session = session }
 
-        let info = try await request(method: "GET", path: "/")
+        let info = try await request(
+            method: "GET",
+            path: "/",
+            timeoutInterval: deadline.remainingSeconds(),
+            cancelsWithTask: true
+        )
         guard info.statusCode == 200 else {
             throw mapError(info, fallback: "Connection check failed")
         }
@@ -203,7 +215,13 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     // MARK: - Raw Request
 
     @discardableResult
-    func request(method: String, path: String, body: String? = nil) async throws -> ElasticsearchResponse {
+    func request(
+        method: String,
+        path: String,
+        body: String? = nil,
+        timeoutInterval: TimeInterval? = nil,
+        cancelsWithTask: Bool = false
+    ) async throws -> ElasticsearchResponse {
         let session: URLSession = try lock.withLock {
             guard let session = _session else { throw ElasticsearchError.notConnected }
             return session
@@ -223,11 +241,38 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         if let body {
             urlRequest.httpBody = Data(body.utf8)
         }
-        urlRequest.timeoutInterval = queryTimeout.requestTimeoutInterval
+        urlRequest.timeoutInterval = timeoutInterval ?? queryTimeout.requestTimeoutInterval
 
-        let (data, response) = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            let task = session.dataTask(with: urlRequest) { [weak self] data, response, error in
+        let taskBox = cancelsWithTask ? PluginURLSessionTaskBox() : nil
+        let dataAndResponse: (Data, URLResponse)
+        if let taskBox {
+            dataAndResponse = try await withTaskCancellationHandler {
+                try await send(urlRequest, through: session, taskBox: taskBox)
+            } onCancel: {
+                taskBox.cancel()
+            }
+        } else {
+            dataAndResponse = try await send(urlRequest, through: session, taskBox: nil)
+        }
+        let (data, response) = dataAndResponse
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ElasticsearchError.invalidResponse("Not an HTTP response")
+        }
+
+        let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        let rawText = String(data: data, encoding: .utf8) ?? ""
+        return ElasticsearchResponse(statusCode: httpResponse.statusCode, json: json, rawText: rawText)
+    }
+
+    private func send(
+        _ request: URLRequest,
+        through session: URLSession,
+        taskBox: PluginURLSessionTaskBox?
+    ) async throws -> (Data, URLResponse) {
+        try await withCheckedThrowingContinuation { continuation in
+            let task = session.dataTask(with: request) { [weak self] data, response, error in
+                taskBox?.finish()
                 self?.lock.withLock { self?._currentTask = nil }
                 if let error {
                     if (error as? URLError)?.code == .cancelled {
@@ -244,16 +289,9 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
                 continuation.resume(returning: (data, response))
             }
             self.lock.withLock { self._currentTask = task }
+            taskBox?.set(task)
             task.resume()
         }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ElasticsearchError.invalidResponse("Not an HTTP response")
-        }
-
-        let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-        let rawText = String(data: data, encoding: .utf8) ?? ""
-        return ElasticsearchResponse(statusCode: httpResponse.statusCode, json: json, rawText: rawText)
     }
 
     // MARK: - Helpers

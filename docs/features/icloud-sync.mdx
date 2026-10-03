@@ -22,6 +22,7 @@ Each synced category has its own toggle under **Sync Categories**.
 | **SSH Profiles** | Yes | Named [SSH profiles](/connections/ssh-profiles) |
 | **Credential Profiles** | Not yet | Named [credential profiles](/connections/credential-profiles) stay on the Mac that created them until their CloudKit schema ships |
 | **Table Favorites** | Yes | The names shown in the Favorites tab and pinned in table lists |
+| **Table Folders** | Yes | Between Macs only. The sidebar's [folders](/features/connection-window#folders) and the tables and views filed in them |
 | **Database Favorites** | Yes | Favorited databases and their Development / Testing / Production tags |
 | **Saved Queries** | Yes | Saved SQL and their folders |
 | **Settings** | Yes | Between Macs only. General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, and AI settings, plus custom AI slash commands and saved per-table column widths and order |
@@ -33,7 +34,9 @@ A sync runs at launch, when you switch back to the app, and 2 seconds after you 
 
 ## Keeping a connection off iCloud
 
-A localhost or throwaway database is rarely worth a round trip. Mark it **Local only** in the connection form's **Advanced** pane, or right-click it and choose **Exclude from iCloud Sync**. They show a struck-through cloud icon in the connection list, and the flag survives duplicating and exporting.
+A localhost or throwaway database is rarely worth a round trip. Mark it **Local only** in the connection form's **Advanced** pane, or right-click it and choose **Exclude from iCloud Sync**. It shows a struck-through cloud icon in the connection list, and the flag survives duplicating and exporting.
+
+What belongs to the connection stays on this Mac with it: its table and database favorites, the saved queries and folders scoped to it, and its column widths, order, and hidden columns. Edits and removals you make to them wait here while the connection is Local only, and the first sync after you turn it off sends them. Deleting a Local only connection removes those items from this Mac and from nowhere else.
 
 ## Checking that it worked
 

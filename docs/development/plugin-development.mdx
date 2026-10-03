@@ -13,7 +13,7 @@ A plugin is a macOS loadable bundle target with `WRAPPER_EXTENSION = tableplugin
 
 | Key | Type | Required | Purpose |
 |-----|------|----------|---------|
-| `TableProPluginKitVersion` | integer | Yes | The PluginKit ABI the plugin was built against. Current value: 33 |
+| `TableProPluginKitVersion` | integer | Yes | The PluginKit ABI the plugin was built against. Current value: 34 |
 | `TableProProvidesDatabaseTypeIds` | array of strings | Recommended | Database type IDs the plugin serves, which is what makes lazy loading possible |
 | `CFBundleShortVersionString` | string | Yes | Plugin version, read by registry update checks |
 | `TableProMinAppVersion` | string | No | The loader rejects the plugin on an older app |
@@ -43,6 +43,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 ```
 
 `DriverConnectionConfig` carries host, port, username, password, database, SSL settings, and an `additionalFields` dictionary filled from whatever `additionalConnectionFields` you declared.
+
+The host also injects three reserved `additionalFields` keys before it creates a driver: `connectTimeoutSeconds`, `connectTimeoutMilliseconds`, and `queryTimeoutSeconds`. Their values are base-10 integer strings containing the effective connection policy, including the remaining shared connection budget and the resolved query timeout (`0` means no query limit). Read the unit your transport needs, but do not declare or reuse these names for plugin-specific fields.
 
 A `.number` field takes a whole number of 0 or more. The form keeps ASCII digits only and will not save anything else. Use `.stepper(range:)` for a bounded or signed integer, and `.text` for a value with a decimal point.
 

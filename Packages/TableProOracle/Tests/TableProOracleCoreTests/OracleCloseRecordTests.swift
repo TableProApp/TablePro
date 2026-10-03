@@ -35,6 +35,16 @@ final class OracleCloseRecordTests: XCTestCase {
         XCTAssertFalse(record.allowsReconnect)
     }
 
+    func testADyingProbeCannotOverwriteAConnectDeadlineTeardown() {
+        var record = OracleCloseRecord()
+        record.record(.connectTimedOut)
+        record.record(.channelAlreadyClosed)
+
+        XCTAssertEqual(record.reason, .connectTimedOut)
+        XCTAssertFalse(record.allowsSessionSetupReplay)
+        XCTAssertFalse(record.allowsReconnect)
+    }
+
     func testCancellingAQueryDoesNotFinishTheConnection() {
         var record = OracleCloseRecord()
         record.record(.queryCancelled)

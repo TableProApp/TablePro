@@ -11,6 +11,7 @@ final class DynamoDBScriptedTransport: DynamoDBTransport, @unchecked Sendable {
     struct Call: Sendable {
         let action: String
         let body: DynamoDBJSON
+        let timeoutInterval: TimeInterval
     }
 
     enum Reply: Sendable {
@@ -47,7 +48,7 @@ final class DynamoDBScriptedTransport: DynamoDBTransport, @unchecked Sendable {
         let action = target.split(separator: ".").last.map(String.init) ?? target
         let body = try DynamoDBJSON.parse(request.httpBody ?? Data())
         let attempt = lock.withLock { () -> Int in
-            recorded.append(Call(action: action, body: body))
+            recorded.append(Call(action: action, body: body, timeoutInterval: request.timeoutInterval))
             attempts[action, default: 0] += 1
             return attempts[action] ?? 1
         }
@@ -135,6 +136,44 @@ enum DynamoDBDriverFixture {
 
 struct DynamoDBDriverTests {
     private typealias Fixture = DynamoDBDriverFixture
+
+    @Test("Connection probe uses the configured connect timeout")
+    func connectUsesConfiguredTimeout() async throws {
+        let transport = DynamoDBScriptedTransport { _, _, _ in
+            .json(#"{"TableNames":[]}"#)
+        }
+        let config = DriverConnectionConfig(
+            host: "", port: 0, username: "", password: "", database: "",
+            additionalFields: [
+                "awsAuthMethod": "local",
+                "awsRegion": "us-east-1",
+                "connectTimeoutMilliseconds": "45000"
+            ]
+        )
+        let driver = DynamoDBPluginDriver(config: config, catalog: DynamoDBCatalog()) { endpoint, credentials in
+            DynamoDBClient(endpoint: endpoint, credentials: credentials, transport: transport)
+        }
+
+        try await driver.connect()
+
+        let timeout = try #require(transport.calls.first?.timeoutInterval)
+        #expect(timeout > 44)
+        #expect(timeout <= 45)
+    }
+
+    @Test("AWS credential resolution uses one monotonic connect deadline")
+    func credentialsUseOneConnectDeadline() throws {
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { root.deleteLastPathComponent() }
+        let source = try String(
+            contentsOf: root.appendingPathComponent("Plugins/DynamoDBDriverPlugin/DynamoDBClient.swift"),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("PluginAWSConnectSessionBudget(deadline: deadline).makeSession()"))
+        #expect(!source.contains("max(AWSHTTP.requestTimeout, remaining)"))
+        #expect(!source.contains("max(AWSHTTP.resourceTimeout, remaining)"))
+    }
 
     // MARK: - Streaming
 

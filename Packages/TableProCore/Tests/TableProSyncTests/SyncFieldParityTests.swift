@@ -41,6 +41,8 @@ struct SyncFieldParityTests {
         "SQLFavoriteFolderSyncField",
         "SSHProfileSyncField",
         "CredentialProfileSyncField",
+        "TableFolderSyncField",
+        "TableFolderItemSyncField",
     ]
 
     /// Connection fields only one platform has a model property for. Each is a feature the other
@@ -52,7 +54,7 @@ struct SyncFieldParityTests {
     ]
 
     private static let connectionIosOnly: Set<String> = [
-        "queryTimeoutSeconds", "sshEnabled", "sslEnabled",
+        "sshEnabled", "sslEnabled",
     ]
 
     /// Written by whichever mapper owns the value and never read back by it.

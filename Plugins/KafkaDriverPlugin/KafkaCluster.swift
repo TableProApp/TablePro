@@ -25,7 +25,7 @@ actor KafkaCluster {
     private let ssl: SSLConfiguration
     private let credentials: KafkaCredentials
     let routing: KafkaBrokerRouting
-    private let connectTimeout: TimeAmount
+    private let connectTimeout: KafkaConnectTimeout
     private let group: EventLoopGroup
 
     private var connections: [KafkaEndpoint: KafkaConnection] = [:]
@@ -52,19 +52,20 @@ actor KafkaCluster {
     /// DESCRIBE TOPIC and the sidebar counts, and caching that call would change all of them.
     var leadersByTopic: [String: [Int32: Int32]] = [:]
     var coordinatorsByGroup: [String: Int32] = [:]
+    private var hasConnectedBefore = false
 
     init(
         bootstrap: [KafkaEndpoint],
         ssl: SSLConfiguration,
         credentials: KafkaCredentials,
         routing: KafkaBrokerRouting,
-        connectTimeoutSeconds: Int
+        connectTimeout: KafkaConnectTimeout
     ) {
         self.bootstrap = bootstrap
         self.ssl = ssl
         self.credentials = credentials
         self.routing = routing
-        connectTimeout = .seconds(Int64(max(1, connectTimeoutSeconds)))
+        self.connectTimeout = connectTimeout
         // The process-wide group rather than a private one. A private group is released only
         // by disconnect(), and the app calls that on a cancelled connect but not on a failed
         // one, so every rejected credential leaked a thread.
@@ -79,16 +80,30 @@ actor KafkaCluster {
     /// (`send`'s cancellation handler does) and every later call threw `notConnected` for the
     /// life of the session with nothing able to heal it.
     func connect() async throws {
+        if let error = KafkaConnection.tlsConfigurationError(for: ssl) { throw error }
         if let bootstrapConnection, await bootstrapConnection.isOpen { return }
         bootstrapConnection = nil
+        let budgetMilliseconds = hasConnectedBefore
+            ? connectTimeout.reconnectMilliseconds
+            : connectTimeout.milliseconds
+        let deadline = KafkaConnectDeadline(milliseconds: budgetMilliseconds)
         var failures: [String] = []
         for endpoint in bootstrap {
             try Task.checkCancellation()
+            guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+                throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka cluster"))
+            }
             let connection = KafkaConnection(endpoint: endpoint, clientId: KafkaClientInfo.clientId)
             do {
-                try await connection.open(ssl: ssl, credentials: credentials, group: group, timeout: connectTimeout)
+                try await connection.open(
+                    ssl: ssl,
+                    credentials: credentials,
+                    group: group,
+                    timeout: .milliseconds(Int64(remainingMilliseconds))
+                )
                 bootstrapConnection = connection
                 connections[endpoint] = connection
+                hasConnectedBefore = true
                 return
             } catch {
                 await connection.close()
@@ -211,11 +226,16 @@ actor KafkaCluster {
         let ssl = ssl
         let credentials = credentials
         let group = group
-        let timeout = connectTimeout
+        let timeoutMilliseconds = connectTimeout.reconnectMilliseconds
         let dial = Task { () async throws -> KafkaConnection in
             let connection = KafkaConnection(endpoint: endpoint, clientId: KafkaClientInfo.clientId)
             do {
-                try await connection.open(ssl: ssl, credentials: credentials, group: group, timeout: timeout)
+                try await connection.open(
+                    ssl: ssl,
+                    credentials: credentials,
+                    group: group,
+                    timeout: .milliseconds(Int64(timeoutMilliseconds))
+                )
             } catch {
                 await connection.close()
                 throw error

@@ -1,6 +1,71 @@
 import Foundation
 import TableProPluginKit
 
+struct KafkaConnectTimeout: Equatable, Sendable {
+    static let defaultMilliseconds = 30_000
+    static let maximumMilliseconds = 3_600_000
+
+    let milliseconds: Int
+    let reconnectMilliseconds: Int
+
+    init(additionalFields: [String: String]) {
+        let fullMilliseconds: Int
+        if let raw = additionalFields["connectTimeoutSeconds"] {
+            fullMilliseconds = Self.parseSeconds(raw) ?? Self.defaultMilliseconds
+        } else if let raw = additionalFields[KafkaConnectionField.connectTimeout] {
+            fullMilliseconds = Self.parseSeconds(raw) ?? Self.defaultMilliseconds
+        } else {
+            fullMilliseconds = Self.defaultMilliseconds
+        }
+
+        if let raw = additionalFields["connectTimeoutMilliseconds"] {
+            milliseconds = Self.parseMilliseconds(raw) ?? Self.defaultMilliseconds
+        } else {
+            milliseconds = fullMilliseconds
+        }
+        reconnectMilliseconds = fullMilliseconds
+    }
+
+    init(milliseconds: Int) {
+        let clamped = min(max(milliseconds, 1), Self.maximumMilliseconds)
+        self.milliseconds = clamped
+        reconnectMilliseconds = clamped
+    }
+
+    private static func parseMilliseconds(_ raw: String) -> Int? {
+        guard let value = Int64(raw.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return clamp(value)
+    }
+
+    private static func parseSeconds(_ raw: String) -> Int? {
+        guard let seconds = Int64(raw.trimmingCharacters(in: .whitespaces)) else { return nil }
+        let multiplied = seconds.multipliedReportingOverflow(by: 1_000)
+        let milliseconds = multiplied.overflow ? (seconds > 0 ? Int64.max : Int64.min) : multiplied.partialValue
+        return clamp(milliseconds)
+    }
+
+    private static func clamp(_ milliseconds: Int64) -> Int {
+        Int(min(max(milliseconds, 1), Int64(maximumMilliseconds)))
+    }
+}
+
+struct KafkaConnectDeadline: Sendable {
+    private let expiresAt: TimeInterval
+
+    init(timeout: KafkaConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        self.init(milliseconds: timeout.milliseconds, now: now)
+    }
+
+    init(milliseconds: Int, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        expiresAt = now + TimeInterval(milliseconds) / 1_000
+    }
+
+    func remainingMilliseconds(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Int? {
+        let remaining = Int(((expiresAt - now) * 1_000).rounded(.up))
+        return remaining > 0 ? remaining : nil
+    }
+}
+
 /// The field ids the connection form writes into `additionalFields`, and the small amount of
 /// interpretation the driver does on the way back out.
 ///
@@ -109,14 +174,6 @@ enum KafkaConnectionField {
                         label: String(localized: "Only use the bootstrap address")
                     )
                 ]),
-                section: .advanced
-            ),
-            ConnectionField(
-                id: connectTimeout,
-                label: String(localized: "Connect Timeout (seconds)"),
-                required: false,
-                defaultValue: "10",
-                fieldType: .stepper(range: ConnectionField.IntRange(1 ... 120)),
                 section: .advanced
             )
         ]

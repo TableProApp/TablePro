@@ -133,3 +133,22 @@ struct MongoDBTimeoutPolicyTests {
         #expect(!MongoDBTimeoutPolicy.isTimeoutCode(292))
     }
 }
+
+struct MongoDBConnectTimeoutTests {
+    @Test("The same remaining budget configures TCP and server selection")
+    func uriParametersUseRemainingBudget() {
+        let timeout = MongoDBConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "4321"])
+
+        #expect(timeout.uriParameters == ["connectTimeoutMS=4321", "serverSelectionTimeoutMS=4321"])
+    }
+
+    @Test("The compatibility timeout is parsed in seconds and clamped")
+    func compatibilitySecondsClamp() {
+        #expect(MongoDBConnectTimeout(additionalFields: ["connectTimeoutSeconds": "7"]).milliseconds == 7_000)
+        #expect(MongoDBConnectTimeout(additionalFields: ["connectTimeoutSeconds": "-1"]).milliseconds == 1)
+        #expect(
+            MongoDBConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "999999999"]).milliseconds
+                == Int32(MongoDBConnectTimeout.maximumMilliseconds)
+        )
+    }
+}

@@ -103,6 +103,39 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     ]
 }
 
+public enum TableFolderSyncField: String, SyncSchemaField {
+    case folderId
+    case connectionId
+    case database
+    case schema
+    case name
+    case createdAt
+    case updatedAt
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .folderId, .connectionId, .database, .schema, .name,
+        .createdAt, .updatedAt, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
+/// One object filed in a folder. The record is named after the object, not the folder, so moving a
+/// table between folders rewrites one record and an object can never be in two folders at once.
+public enum TableFolderItemSyncField: String, SyncSchemaField {
+    case connectionId
+    case database
+    case schema
+    case name
+    case folderId
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .schema, .name, .folderId, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
 /// Everything except the password, which stays in the Keychain, and except the payload of a
 /// `.source` password mode, which can name a shell command this Mac would then run. `passwordMode`
 /// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives

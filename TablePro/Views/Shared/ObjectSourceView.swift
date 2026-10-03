@@ -64,7 +64,7 @@ struct ObjectSourceView: View {
             Button {
                 Task { await export() }
             } label: {
-                Label("Export…", systemImage: "square.and.arrow.down")
+                Label("Export…", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(.bordered)
             .disabled(!hasSource)

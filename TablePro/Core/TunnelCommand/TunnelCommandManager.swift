@@ -17,7 +17,6 @@ actor TunnelCommandManager: TunnelManaging {
     static let shared = TunnelCommandManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "TunnelCommandManager")
 
-    private static let readinessTimeout: TimeInterval = 30
     private static let readinessPollInterval: UInt64 = 250_000_000
     private static let portRetryCount = 5
     private static let stalePidsDefaultsKey = "tunnelCommandStalePids"
@@ -52,9 +51,13 @@ actor TunnelCommandManager: TunnelManaging {
         connectionId: UUID,
         config: TunnelCommandConfiguration,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel("\(remoteHost):\(remotePort)")
+        try deadline.check(endpoint: timeoutEndpoint)
         await sweepStalePidsIfNeeded()
+        try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
@@ -64,6 +67,7 @@ actor TunnelCommandManager: TunnelManaging {
         var lastError: Error = TunnelCommandError.noAvailablePort
 
         for _ in 0..<Self.portRetryCount {
+            try deadline.check(endpoint: timeoutEndpoint)
             guard let port = LoopbackPort.allocateFree() else {
                 throw TunnelCommandError.noAvailablePort
             }
@@ -90,7 +94,13 @@ actor TunnelCommandManager: TunnelManaging {
             /// cancels while the port is still being waited on would otherwise leave the forward
             /// running until the next launch swept it, still holding its port.
             do {
-                try await awaitReadiness(runner: runner, port: port)
+                try await awaitReadiness(
+                    runner: runner,
+                    port: port,
+                    deadline: deadline,
+                    timeoutEndpoint: timeoutEndpoint
+                )
+                try deadline.check(endpoint: timeoutEndpoint)
             } catch {
                 runner.stop()
                 if let commandError = error as? TunnelCommandError,
@@ -249,7 +259,12 @@ actor TunnelCommandManager: TunnelManaging {
 
     // MARK: - Private: readiness
 
-    private func awaitReadiness(runner: any SupervisedProcessRunner, port: Int) async throws {
+    private func awaitReadiness(
+        runner: any SupervisedProcessRunner,
+        port: Int,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws {
         let monitor = TunnelCommandStartupMonitor()
         let stderrTask = Task {
             for await line in runner.stderrLines {
@@ -259,17 +274,17 @@ actor TunnelCommandManager: TunnelManaging {
         }
         defer { stderrTask.cancel() }
 
-        let deadline = Date().addingTimeInterval(Self.readinessTimeout)
-        while Date() < deadline {
+        while !deadline.isExpired {
             if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
                 return
             }
             if await monitor.streamEnded {
                 throw TunnelCommandError.startupFailed(stderrTail: await monitor.tail)
             }
-            try await Task.sleep(nanoseconds: Self.readinessPollInterval)
+            let remainingNanoseconds = UInt64(max(1, deadline.remainingMilliseconds)) * 1_000_000
+            try await Task.sleep(nanoseconds: min(Self.readinessPollInterval, remainingNanoseconds))
         }
-        throw TunnelCommandError.readinessTimeout(stderrTail: await monitor.tail)
+        throw deadline.timeoutError(for: timeoutEndpoint)
     }
 
     // MARK: - Private: executable

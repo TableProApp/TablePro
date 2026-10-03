@@ -341,34 +341,69 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
         let alias = aliasInput.isEmpty ? "remotedb" : aliasInput
-
-        try await connectionActor.open(spec: DuckDBOpenSpec(path: ":memory:", accessMode: .readWrite))
+        let attempt = DuckDBConnectAttempt(
+            additionalFields: config.additionalFields,
+            interrupt: { [liveConnection] in liveConnection.interrupt() }
+        )
+        let timeoutTask = Task.detached { [attempt] in
+            do {
+                try await ContinuousClock().sleep(until: attempt.deadline)
+            } catch {
+                return
+            }
+            attempt.expire()
+        }
 
         // Every step below can throw, and nothing upstream closes a driver whose connect failed:
         // `DatabaseManager` disconnects only a cancelled attempt. A remote host that does not
         // resolve is enough to reach this, and each attempt used to leak a whole DuckDB instance
         // and its worker threads for the life of the app. `connectLocal` has the same guard.
         do {
-            await enableExtensionAutoloading()
-            await loadQuackExtension()
+            try await withTaskCancellationHandler(
+                operation: {
+                    try attempt.check()
+                    try await connectionActor.open(spec: DuckDBOpenSpec(path: ":memory:", accessMode: .readWrite))
+                    try attempt.check()
+                    try await enableExtensionAutoloading(during: attempt)
+                    try await loadQuackExtension(during: attempt)
 
-            if !token.isEmpty {
-                try await connectionActor.executeQuery(QuackConnectBuilder.secretSQL(token: token))
-            }
+                    if !token.isEmpty {
+                        try await executeRemoteConnectStatement(
+                            QuackConnectBuilder.secretSQL(token: token),
+                            during: attempt
+                        )
+                    }
 
-            try await connectionActor.executeQuery(
-                QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias)
+                    try await executeRemoteConnectStatement(
+                        QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias),
+                        during: attempt
+                    )
+                    try await executeRemoteConnectStatement(QuackConnectBuilder.useSQL(alias: alias), during: attempt)
+                    try attempt.finish {
+                        stateLock.withLock {
+                            _currentSchema = "main"
+                            _currentDatabase = alias
+                        }
+                    }
+                },
+                onCancel: {
+                    attempt.cancel()
+                }
             )
-            try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
         } catch {
+            timeoutTask.cancel()
+            let attemptError = attempt.stop()
+            resetCurrentPosition()
             await connectionActor.close()
+            if attemptError is DuckDBConnectAttemptError {
+                throw DuckDBPluginError.connectionFailed(
+                    String(localized: "Connecting to the remote DuckDB database timed out.")
+                )
+            }
+            if let attemptError { throw attemptError }
             throw error
         }
-
-        stateLock.withLock {
-            _currentSchema = "main"
-            _currentDatabase = alias
-        }
+        timeoutTask.cancel()
     }
 
     /// Every metadata query is anchored to the catalog, and the app seeds the browsed
@@ -432,13 +467,46 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func loadQuackExtension() async {
-        for statement in ["INSTALL quack", "LOAD quack"] {
+    private func enableExtensionAutoloading(during attempt: DuckDBConnectAttempt) async throws {
+        for statement in ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"] {
             do {
-                try await connectionActor.executeQuery(statement)
+                try await executeRemoteConnectStatement(statement, during: attempt)
             } catch {
+                try attempt.check()
                 Self.logger.warning("DuckDB '\(statement)' failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func loadQuackExtension(during attempt: DuckDBConnectAttempt) async throws {
+        for statement in ["INSTALL quack", "LOAD quack"] {
+            do {
+                try await executeRemoteConnectStatement(statement, during: attempt)
+            } catch {
+                try attempt.check()
+                Self.logger.warning("DuckDB '\(statement)' failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func executeRemoteConnectStatement(
+        _ statement: String,
+        during attempt: DuckDBConnectAttempt
+    ) async throws {
+        try attempt.check()
+        do {
+            try await connectionActor.executeQuery(statement)
+        } catch {
+            try attempt.check()
+            throw error
+        }
+        try attempt.check()
+    }
+
+    private func resetCurrentPosition() {
+        stateLock.withLock {
+            _currentSchema = "main"
+            _currentDatabase = nil
         }
     }
 
@@ -509,6 +577,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() {
+        liveConnection.interrupt()
+        resetCurrentPosition()
         let actor = connectionActor
         let timer = idleReleaseTimer
         Task {

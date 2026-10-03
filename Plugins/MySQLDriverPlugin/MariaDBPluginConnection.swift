@@ -25,6 +25,7 @@ struct MariaDBPluginError: Error {
     /// dropping the connection. The two arrive as the same `2013`, and only this one leaves a copy
     /// of the statement running on the server, so it is never replayed.
     var outlastedSocketTimeout = false
+    var isConnectionTimeout = false
 
     /// `1317 Query execution was interrupted` is what the server answers a `KILL QUERY`, so the
     /// deadline reports its own stop under the code and SQLSTATE a native statement timeout uses.
@@ -43,6 +44,14 @@ struct MariaDBPluginError: Error {
         code: 0, message: String(localized: "Not connected to database"), sqlState: nil)
     static let connectionFailed = MariaDBPluginError(
         code: 0, message: String(localized: "Failed to establish connection"), sqlState: nil)
+    static let connectionTimedOut = MariaDBPluginError(
+        code: 0,
+        message: String(localized: "Timed out while connecting to the server"),
+        sqlState: nil,
+        isConnectionTimeout: true
+    )
+    static let connectionTimeoutConfigurationFailed = MariaDBPluginError(
+        code: 0, message: String(localized: "Failed to configure the connection timeout"), sqlState: nil)
     static let initFailed = MariaDBPluginError(
         code: 0, message: String(localized: "Failed to initialize MySQL client"), sqlState: nil)
 }
@@ -89,6 +98,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let enableCleartextPlugin: Bool
     private let queryTimeoutSeconds: Int
     private let connectionEncoding: MySQLConnectionEncoding
+    private let connectTimeoutMilliseconds: Int
 
     /// How long a read may go silent before libmariadb reports the connection lost, which is the
     /// only thing separating its own timeout from a server-side drop.
@@ -249,7 +259,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
         queryTimeoutSeconds: Int = 0,
-        connectionEncoding: MySQLConnectionEncoding = .utf8
+        connectionEncoding: MySQLConnectionEncoding = .utf8,
+        connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -260,6 +271,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.enableCleartextPlugin = enableCleartextPlugin
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.connectionEncoding = connectionEncoding
+        self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
         self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
     }
 
@@ -276,16 +288,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
+    func connect(deadline suppliedDeadline: MySQLConnectDeadline? = nil) async throws {
+        let deadline = suppliedDeadline
+            ?? MySQLConnectDeadline(timeout: MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds))
         try await pluginDispatchAsync(on: queue) { [self] in
             let mode = self.sslConfig.mode
             let handle: UnsafeMutablePointer<MYSQL>
             do {
-                handle = try self.attemptConnect(enforceSSL: mode != .disabled)
+                handle = try self.attemptConnect(enforceSSL: mode != .disabled, deadline: deadline)
             } catch let error as MariaDBPluginError where mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
-                    handle = try self.attemptConnect(enforceSSL: false)
+                    handle = try self.attemptConnect(enforceSSL: false, deadline: deadline)
                 } catch let fallbackError as MariaDBPluginError {
                     if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
                         throw sslError
@@ -316,7 +330,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
-    private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
+    private func attemptConnect(
+        enforceSSL: Bool,
+        deadline: MySQLConnectDeadline
+    ) throws -> UnsafeMutablePointer<MYSQL> {
+        var timeout = try connectSocketTimeoutSeconds(deadline: deadline)
         guard let mysql = mysql_init(nil) else {
             throw MariaDBPluginError.initFailed
         }
@@ -324,13 +342,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var reconnect: my_bool = 0
         mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect)
 
-        var timeout: UInt32 = 10
         mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
 
-        var readTimeout = socketTimeoutSeconds
+        var readTimeout = timeout
         mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
 
-        var writeTimeout = socketTimeoutSeconds
+        var writeTimeout = timeout
         mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
 
         var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
@@ -400,12 +417,85 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
         }
 
-        guard result != nil, MariaDBCharacterSet.establishSession(on: mysql, encoding: connectionEncoding) else {
+        guard result != nil else {
             let error = readError(from: mysql)
+            mysql_close(mysql)
+            try checkConnectDeadline(deadline)
+            throw error
+        }
+
+        do {
+            let established = try MariaDBCharacterSet.establishSession(
+                on: mysql,
+                encoding: connectionEncoding
+            ) { operation in
+                try applyConnectSocketTimeout(deadline: deadline, to: mysql)
+                let succeeded = operation()
+                try checkConnectDeadline(deadline)
+                return succeeded
+            }
+            guard established else {
+                throw readError(from: mysql)
+            }
+            try checkConnectDeadline(deadline)
+            return mysql
+        } catch {
             mysql_close(mysql)
             throw error
         }
-        return mysql
+    }
+
+    func executeConnectQuery(
+        _ query: String,
+        deadline: MySQLConnectDeadline
+    ) async throws -> MariaDBPluginQueryResult {
+        let queryToRun = String(query)
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let mysql else { throw MariaDBPluginError.notConnected }
+            try applyConnectSocketTimeout(deadline: deadline, to: mysql)
+            do {
+                let result = try executeQuerySync(queryToRun)
+                try checkConnectDeadline(deadline)
+                return result
+            } catch {
+                try checkConnectDeadline(deadline)
+                throw error
+            }
+        }
+    }
+
+    func completeConnect(deadline: MySQLConnectDeadline) async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard let mysql else { throw MariaDBPluginError.notConnected }
+            try checkConnectDeadline(deadline)
+            guard tablepro_mysql_set_io_timeout(mysql, socketTimeoutSeconds) == 0 else {
+                throw MariaDBPluginError.connectionTimeoutConfigurationFailed
+            }
+            try checkConnectDeadline(deadline)
+        }
+    }
+
+    private func applyConnectSocketTimeout(
+        deadline: MySQLConnectDeadline,
+        to mysql: UnsafeMutablePointer<MYSQL>
+    ) throws {
+        let timeout = try connectSocketTimeoutSeconds(deadline: deadline)
+        guard tablepro_mysql_set_io_timeout(mysql, timeout) == 0 else {
+            throw MariaDBPluginError.connectionTimeoutConfigurationFailed
+        }
+    }
+
+    private func connectSocketTimeoutSeconds(deadline: MySQLConnectDeadline) throws -> UInt32 {
+        guard let timeout = deadline.socketTimeoutSeconds() else {
+            throw MariaDBPluginError.connectionTimedOut
+        }
+        return timeout
+    }
+
+    private func checkConnectDeadline(_ deadline: MySQLConnectDeadline) throws {
+        guard deadline.remainingMilliseconds() != nil else {
+            throw MariaDBPluginError.connectionTimedOut
+        }
     }
 
     private func readError(from mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {

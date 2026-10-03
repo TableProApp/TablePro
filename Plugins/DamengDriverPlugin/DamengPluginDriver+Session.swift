@@ -105,7 +105,8 @@ extension DamengPluginDriver {
             host: config.host,
             port: config.port,
             username: config.username,
-            password: config.password
+            password: config.password,
+            timeoutMilliseconds: connectTimeout.reconnectMilliseconds
         )
         textEscaping = await detectTextEscaping()
         guard let schema, !schema.isEmpty else { return }

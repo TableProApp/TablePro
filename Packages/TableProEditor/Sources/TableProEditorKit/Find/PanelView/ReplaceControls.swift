@@ -23,11 +23,12 @@ struct ReplaceControls: View {
     var condensed: Bool
 
     var shouldDisableSingle: Bool {
-        !viewModel.isFocused || viewModel.findText.isEmpty || viewModel.matchesEmpty
+        !viewModel.canReplace || !viewModel.isFocused || viewModel.findText.isEmpty || viewModel.matchesEmpty
+            || viewModel.currentFindMatchIndex == nil
     }
 
     var shouldDisableAll: Bool {
-        viewModel.findText.isEmpty || viewModel.matchesEmpty
+        !viewModel.canReplace || viewModel.findText.isEmpty || viewModel.matchesEmpty
     }
 
     var body: some View {

@@ -42,7 +42,8 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
                     supportsConnectionPooling: false,
-                    localFilePathField: .additionalField("duckdbFilePath")
+                    localFilePathField: .additionalField("duckdbFilePath"),
+                    newDatabaseFileExtensions: ["duckdb", "ddb"]
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

@@ -11,7 +11,6 @@ actor CloudSQLProxyManager: TunnelManaging {
     static let shared = CloudSQLProxyManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyManager")
 
-    private static let readinessTimeout: TimeInterval = 30
     private static let readinessPollInterval: UInt64 = 250_000_000
     private static let portRetryCount = 5
     private static let stalePidsDefaultsKey = "cloudSQLProxyStalePids"
@@ -50,30 +49,48 @@ actor CloudSQLProxyManager: TunnelManaging {
     func createTunnel(
         connectionId: UUID,
         config: CloudSQLProxyConfiguration,
-        serviceAccountKeyJSON: String? = nil
+        serviceAccountKeyJSON: String? = nil,
+        deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
         guard config.isValid else { throw CloudSQLProxyError.invalidInstanceConnectionName }
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.proxy(config.instanceConnectionName)
+        try deadline.check(endpoint: timeoutEndpoint)
 
         /// A `cloud-sql-proxy` a crashed session left behind still owns the port this is about to
         /// ask for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
         await sweepStalePidsIfNeeded()
+        try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
         }
 
         let binaryPath = try await resolveBinaryPath(config: config)
+        try deadline.check(endpoint: timeoutEndpoint)
         let credentialsFilePath = try writeCredentialsFileIfNeeded(
             connectionId: connectionId,
             config: config,
             serviceAccountKeyJSON: serviceAccountKeyJSON
         )
+        do {
+            try deadline.check(endpoint: timeoutEndpoint)
+        } catch {
+            deleteCredentialsFile(at: credentialsFilePath)
+            throw error
+        }
         let environment = ProcessInfo.processInfo.environment
         let attempts = config.localPort != nil ? 1 : Self.portRetryCount
 
         var lastError: Error = CloudSQLProxyError.noAvailablePort
         for _ in 0..<attempts {
+            do {
+                try deadline.check(endpoint: timeoutEndpoint)
+            } catch {
+                deleteCredentialsFile(at: credentialsFilePath)
+                throw error
+            }
             guard let port = config.localPort ?? LoopbackPort.allocateFree() else {
+                deleteCredentialsFile(at: credentialsFilePath)
                 throw CloudSQLProxyError.noAvailablePort
             }
             let runner = runnerFactory()
@@ -87,10 +104,19 @@ actor CloudSQLProxyManager: TunnelManaging {
             }
 
             do {
-                try await awaitReadiness(runner: runner, port: port)
-            } catch let error as CloudSQLProxyError {
+                try await awaitReadiness(
+                    runner: runner,
+                    port: port,
+                    deadline: deadline,
+                    timeoutEndpoint: timeoutEndpoint
+                )
+                try deadline.check(endpoint: timeoutEndpoint)
+            } catch {
                 runner.stop()
-                if case .startupFailed(let tail) = error, config.localPort == nil, Self.isPortInUse(tail) {
+                if let proxyError = error as? CloudSQLProxyError,
+                   case .startupFailed(let tail) = proxyError,
+                   config.localPort == nil,
+                   Self.isPortInUse(tail) {
                     Self.logger.notice("cloud-sql-proxy port \(port) in use, retrying with another")
                     lastError = CloudSQLProxyError.noAvailablePort
                     continue
@@ -236,7 +262,12 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     // MARK: - Private: readiness
 
-    private func awaitReadiness(runner: any SupervisedProcessRunner, port: Int) async throws {
+    private func awaitReadiness(
+        runner: any SupervisedProcessRunner,
+        port: Int,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws {
         let monitor = CloudSQLProxyStartupMonitor()
         let stderrTask = Task {
             for await line in runner.stderrLines {
@@ -246,17 +277,17 @@ actor CloudSQLProxyManager: TunnelManaging {
         }
         defer { stderrTask.cancel() }
 
-        let deadline = Date().addingTimeInterval(Self.readinessTimeout)
-        while Date() < deadline {
+        while !deadline.isExpired {
             if await monitor.streamEnded {
                 throw CloudSQLProxyError.startupFailed(stderrTail: await monitor.tail)
             }
             if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
                 return
             }
-            try await Task.sleep(nanoseconds: Self.readinessPollInterval)
+            let remainingNanoseconds = UInt64(max(1, deadline.remainingMilliseconds)) * 1_000_000
+            try await Task.sleep(nanoseconds: min(Self.readinessPollInterval, remainingNanoseconds))
         }
-        throw CloudSQLProxyError.readinessTimeout(stderrTail: await monitor.tail)
+        throw deadline.timeoutError(for: timeoutEndpoint)
     }
 
     // MARK: - Private: binary, arguments, credentials

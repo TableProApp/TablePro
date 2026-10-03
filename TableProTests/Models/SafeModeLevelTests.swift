@@ -3,13 +3,14 @@
 //  TableProTests
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 struct SafeModeLevelTests {
-
     // MARK: - Raw Values
 
     @Test("Raw values match expected strings")
@@ -122,12 +123,33 @@ struct SafeModeLevelTests {
 
     @Test("each case has the correct SF Symbol icon name")
     func iconNames() {
-        #expect(SafeModeLevel.silent.iconName == "lock.open.fill")
+        #expect(SafeModeLevel.silent.iconName == "lock.open")
         #expect(SafeModeLevel.alert.iconName == "exclamationmark.triangle")
         #expect(SafeModeLevel.alertFull.iconName == "exclamationmark.triangle.fill")
         #expect(SafeModeLevel.safeMode.iconName == "lock.shield")
         #expect(SafeModeLevel.safeModeFull.iconName == "lock.shield.fill")
-        #expect(SafeModeLevel.readOnly.iconName == "lock.fill")
+        #expect(SafeModeLevel.readOnly.iconName == "lock")
+    }
+
+    /// The fill used to mark two of the four levels that gate reads and both of the two that do
+    /// not, so it said nothing. The weakest level drew the heaviest glyph in the toolbar.
+    @Test("An icon is filled exactly when its level applies to all queries", arguments: SafeModeLevel.allCases)
+    func fillMeansTheLevelAppliesToAllQueries(level: SafeModeLevel) {
+        #expect(level.iconName.hasSuffix(".fill") == level.appliesToAllQueries)
+    }
+
+    /// The toolbar glyph is re-read only when the name changes, so two levels sharing one would
+    /// leave the previous level's glyph in place.
+    @Test("Every level draws its own symbol, and each one exists")
+    func iconNamesAreDistinctAndResolve() {
+        let names = SafeModeLevel.allCases.map(\.iconName)
+        #expect(Set(names).count == names.count)
+        for name in names {
+            #expect(
+                NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,
+                "\(name) is not a system symbol"
+            )
+        }
     }
 
     // MARK: - badgeColor
@@ -161,5 +183,29 @@ struct SafeModeLevelTests {
             let decoded = try decoder.decode(SafeModeLevel.self, from: data)
             #expect(decoded == level)
         }
+    }
+
+    @Test("A macOS wire value decodes to its own level", arguments: SafeModeLevel.allCases)
+    func decodesOwnWireValues(_ level: SafeModeLevel) {
+        #expect(SafeModeLevel(wireValue: level.rawValue, isReadOnly: false) == level)
+    }
+
+    @Test("iOS wire values map to the nearest macOS level")
+    func decodesIOSWireValues() {
+        #expect(SafeModeLevel(wireValue: "off", isReadOnly: false) == .silent)
+        #expect(SafeModeLevel(wireValue: "confirmWrites", isReadOnly: false) == .alert)
+        #expect(SafeModeLevel(wireValue: "readOnly", isReadOnly: false) == .readOnly)
+    }
+
+    @Test("An unrecognized wire value requires confirmation instead of failing open")
+    func unknownWireValueFailsClosed() {
+        #expect(SafeModeLevel(wireValue: "someFutureLevel", isReadOnly: false) == .alert)
+        #expect(SafeModeLevel(wireValue: "someFutureLevel", isReadOnly: true) == .readOnly)
+    }
+
+    @Test("A missing wire value honors the read-only flag")
+    func missingWireValueHonorsReadOnly() {
+        #expect(SafeModeLevel(wireValue: nil, isReadOnly: true) == .readOnly)
+        #expect(SafeModeLevel(wireValue: nil, isReadOnly: false) == .silent)
     }
 }

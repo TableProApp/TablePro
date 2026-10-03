@@ -27,10 +27,7 @@ internal enum TransientConnectionFactory {
             }
         }
 
-        var sslConfig = SSLConfiguration()
-        if let sslMode = parsed.sslMode {
-            sslConfig.mode = sslMode
-        }
+        let sslConfig = SSLConfiguration(mode: parsed.sslModeResolution.mode)
 
         var color: ConnectionColor = .none
         if let hex = parsed.statusColor {
@@ -47,7 +44,7 @@ internal enum TransientConnectionFactory {
         var connection = DatabaseConnection(
             name: parsed.connectionName ?? parsed.suggestedName,
             host: parsed.host,
-            port: parsed.port ?? parsed.type.defaultPort,
+            port: parsed.resolvedPort,
             database: parsed.database,
             username: parsed.username,
             type: parsed.type,
@@ -63,6 +60,8 @@ internal enum TransientConnectionFactory {
             redisDatabase: parsed.redisDatabase,
             oracleServiceName: parsed.oracleServiceName
         )
+
+        connection.additionalFields.merge(parsed.additionalFields) { _, imported in imported }
 
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
             if key != "authMechanism" && key != "replicaSet" {

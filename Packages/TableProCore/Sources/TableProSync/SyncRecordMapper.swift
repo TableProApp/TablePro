@@ -64,7 +64,7 @@ public enum SyncRecordMapper {
             fields[.tagIds] = tagIdStrings as CKRecordValue
             fields[.tagId] = tagIdStrings[0] as CKRecordValue
         }
-        if let queryTimeout = connection.queryTimeoutSeconds {
+        if let queryTimeout = validQueryTimeout(connection.queryTimeoutSeconds) {
             fields[.queryTimeoutSeconds] = Int64(queryTimeout) as CKRecordValue
         }
 
@@ -86,9 +86,10 @@ public enum SyncRecordMapper {
             }
         }
 
-        if !connection.additionalFields.isEmpty {
+        let syncedAdditionalFields = syncedAdditionalFields(for: connection)
+        if !syncedAdditionalFields.isEmpty {
             do {
-                let data = try encoder.encode(connection.additionalFields)
+                let data = try encoder.encode(syncedAdditionalFields)
                 fields[.additionalFieldsJson] = data as CKRecordValue
             } catch {
                 logger.warning("Failed to encode additional fields for sync: \(error.localizedDescription)")
@@ -131,7 +132,7 @@ public enum SyncRecordMapper {
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let safeModeLevel = storedSafeModeLevel(in: fields)
         let queryTimeout = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
         var sshConfig: SSHConfiguration?
         if let sshData = fields[.sshConfigJson] as? Data {
@@ -161,8 +162,14 @@ public enum SyncRecordMapper {
         if let fieldsData = fields[.additionalFieldsJson] as? Data {
             additionalFields = (try? decoder.decode([String: String].self, from: fieldsData)) ?? [:]
         }
+        let legacyConnectTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+            .flatMap(Int.init)
+        let legacyQueryTimeout = additionalFields
+            .removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+            .flatMap(Int.init)
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             id: id,
             name: name,
             type: DatabaseType(rawValue: typeRaw),
@@ -173,7 +180,7 @@ public enum SyncRecordMapper {
             color: color,
             isReadOnly: isReadOnly,
             safeModeLevel: safeModeLevel,
-            queryTimeoutSeconds: queryTimeout,
+            queryTimeoutSeconds: validQueryTimeout(queryTimeout ?? legacyQueryTimeout),
             additionalFields: additionalFields,
             sshEnabled: sshEnabled,
             sshConfiguration: sshConfig,
@@ -184,22 +191,22 @@ public enum SyncRecordMapper {
             sortOrder: sortOrder,
             isFavorite: isFavorite
         )
+        connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
+        return connection
     }
 
-    private static func safeModeLevel(fromWire raw: String?, isReadOnly: Bool) -> SafeModeLevel {
-        guard let raw else { return isReadOnly ? .readOnly : .off }
-        if let level = SafeModeLevel(rawValue: raw) { return level }
-        switch raw {
-        case "silent": return .off
-        case "alert", "alertFull", "safeMode", "safeModeFull": return .confirmWrites
-        default: return isReadOnly ? .readOnly : .off
-        }
+    private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
+        SafeModeLevel(
+            wireValue: fields[.safeModeLevel] as? String,
+            isReadOnly: (fields[.isReadOnly] as? Int64 ?? 0) != 0
+        )
     }
 
     // MARK: - Update Existing CKRecord (preserves macOS-only fields)
 
     public static func updateRecord(_ record: CKRecord, with connection: DatabaseConnection) {
         let fields = record.fields(ConnectionSyncField.self)
+        let serverSafeModeLevel = storedSafeModeLevel(in: fields)
         fields[.connectionId] = connection.id.uuidString as CKRecordValue
         fields[.name] = connection.name as CKRecordValue
         fields[.host] = connection.host as CKRecordValue
@@ -209,7 +216,9 @@ public enum SyncRecordMapper {
         fields[.type] = connection.type.rawValue as CKRecordValue
         fields[.sortOrder] = Int64(connection.sortOrder) as CKRecordValue
         fields[.isReadOnly] = Int64(connection.isReadOnly ? 1 : 0) as CKRecordValue
-        fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
+        if connection.safeModeLevel != serverSafeModeLevel {
+            fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
+        }
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
@@ -225,7 +234,7 @@ public enum SyncRecordMapper {
             fields[.tagId] = nil
         }
 
-        fields[.queryTimeoutSeconds] = connection.queryTimeoutSeconds.map { Int64($0) } as CKRecordValue?
+        fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
         if let sshConfig = connection.sshConfiguration {
             if let data = try? encoder.encode(sshConfig) {
@@ -243,8 +252,9 @@ public enum SyncRecordMapper {
             fields[.sslConfigJson] = nil
         }
 
-        if !connection.additionalFields.isEmpty {
-            if let data = try? encoder.encode(connection.additionalFields) {
+        let syncedAdditionalFields = syncedAdditionalFields(for: connection)
+        if !syncedAdditionalFields.isEmpty {
+            if let data = try? encoder.encode(syncedAdditionalFields) {
                 fields[.additionalFieldsJson] = data as CKRecordValue
             }
         } else {
@@ -252,6 +262,24 @@ public enum SyncRecordMapper {
         }
 
         fields[.modifiedAtLocal] = Date() as CKRecordValue
+    }
+
+    private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
+        var fields = connection.additionalFields
+        fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
+        fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
+        if let connectTimeoutSeconds = validConnectTimeout(connection.connectTimeoutSeconds) {
+            fields[DatabaseConnection.connectTimeoutSecondsKey] = String(connectTimeoutSeconds)
+        }
+        return fields
+    }
+
+    private static func validConnectTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.connectTimeoutSecondsRange.contains($0) ? $0 : nil }
+    }
+
+    private static func validQueryTimeout(_ value: Int?) -> Int? {
+        value.flatMap { DatabaseConnection.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
     }
 
     // MARK: - Group -> CKRecord

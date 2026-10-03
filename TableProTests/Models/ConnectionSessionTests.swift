@@ -224,6 +224,28 @@ struct ConnectionSessionStateTests {
         #expect(session.safeModeLevel == .readOnly)
     }
 
+    @Test("session snapshots preserve inherited disabled and finite timeout states")
+    func sessionPreservesTimeoutOverrides() {
+        let overrides: [(connect: Int?, query: Int?, effectiveQuery: Int)] = [
+            (nil, nil, 0),
+            (12, 0, 0),
+            (600, 45, 45)
+        ]
+
+        for override in overrides {
+            var connection = TestFixtures.makeConnection()
+            connection.connectTimeoutSeconds = override.connect
+            connection.queryTimeoutSeconds = override.query
+
+            var session = ConnectionSession(connection: connection)
+            session.connection.database = "reconnected"
+
+            #expect(session.connection.connectTimeoutSeconds == override.connect)
+            #expect(session.connection.queryTimeoutSeconds == override.query)
+            #expect(session.effectiveQueryTimeoutSeconds == override.effectiveQuery)
+        }
+    }
+
     @Test("clearCachedData preserves safe mode so reconnect keeps protection")
     func clearCachedDataPreservesSafeMode() {
         var connection = TestFixtures.makeConnection()

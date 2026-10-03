@@ -13,13 +13,15 @@ import TableProPluginKit
 import TableProSQLGrammar
 
 extension MainContentCoordinator {
-    func runExplain(variant: ExplainVariant? = nil) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    @discardableResult
+    func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runExplain")
-            return
+            return nil
         }
-        guard let statement = explainStatement(in: tab) else { return }
+        guard !isShowingSafeModePrompt else { return nil }
+        guard let statement = explainStatement(in: tab) else { return nil }
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
         guard let request = ExplainRequest.make(
             variant: variant,
@@ -32,33 +34,38 @@ extension MainContentCoordinator {
                     localized: "EXPLAIN is not supported for this database type."
                 )
             }
-            return
+            return nil
         }
 
-        let level = safeModeLevel
-        guard level.appliesToAllQueries, level.requiresConfirmation else {
-            executeExplain(request, anchor: anchor)
-            return
-        }
-
-        Task {
-            let decision = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connectionId,
-                    databaseType: connection.type,
-                    sql: request.sql,
-                    kind: .readQuery,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Execute Query")
-                )
-            )
-            guard case .authorized = decision else { return }
-            executeExplain(request, anchor: anchor)
+        isShowingSafeModePrompt = true
+        let tabId = tab.id
+        let authorization = authorizationRequest(for: request)
+        return Task {
+            defer { isShowingSafeModePrompt = false }
+            switch await executionGate.authorize(authorization) {
+            case .authorized:
+                executeExplain(request, anchor: anchor, tabId: tabId)
+            case .denied(let reason, .policy):
+                tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
+            case .denied(_, .cancelledByUser):
+                return
+            }
         }
     }
 
     // MARK: - Request
+
+    private func authorizationRequest(for request: ExplainRequest) -> OperationRequest {
+        OperationRequest(
+            connectionId: connectionId,
+            databaseType: connection.type,
+            sql: request.sql,
+            kind: OperationKind.worst(of: [request.sql], databaseType: connection.type),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Execute Query")
+        )
+    }
 
     /// The statement EXPLAIN will describe, and where it sits in the tab's query.
     ///
@@ -86,20 +93,19 @@ extension MainContentCoordinator {
 
     // MARK: - Execution
 
-    private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?, tabId: UUID) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
         guard let scope = scope(for: tab) else {
-            tabManager.mutate(at: index) {
+            tabManager.mutate(tabId: tabId) {
                 $0.execution.errorMessage = String(localized: "Not connected to database")
             }
             return
         }
 
-        let (claim, lease) = beginTabExecution(for: tab.id)
-        let tabId = tab.id
+        let (claim, lease) = beginTabExecution(for: tabId)
         let conn = connection
 
-        tabManager.mutate(at: index) { $0.execution.errorMessage = nil }
+        tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
         let explainTask = Task { [weak self] in
             guard let self else { return }

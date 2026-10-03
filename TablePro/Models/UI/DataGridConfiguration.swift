@@ -49,6 +49,10 @@ struct DataGridConfiguration: Equatable {
     /// question is what the grid holds, not which tab it sits in.
     var appliesRowSortPreferences: Bool = false
 
+    /// Whether a heading click or the heading menu orders the rows. A Cassandra table cannot be ordered by an
+    /// arbitrary column, so its table grid offers no sort rather than one the server refuses.
+    var supportsColumnSort: Bool = true
+
     /// Why these rows cannot be written back, when they cannot. A grid that silently refuses every
     /// keystroke reads as broken, so the reason rides with the configuration and the grid shows it.
     var editRefusalMessage: String?

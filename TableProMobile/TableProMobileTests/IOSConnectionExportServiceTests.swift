@@ -127,4 +127,58 @@ struct IOSConnectionExportServiceTests {
         #expect(ssh.port == nil)
         #expect(ssh.authMethod == "SSH Agent")
     }
+
+    @Test("Timeout overrides export explicitly and keep unrelated fields")
+    func exportKeepsTimeoutOverrides() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        var connection = DatabaseConnection(
+            name: "Prod",
+            type: .postgresql,
+            queryTimeoutSeconds: 0,
+            additionalFields: ["schema": "public"]
+        )
+        connection.connectTimeoutSeconds = 12
+
+        let exported = try #require(IOSConnectionExportService.buildEnvelope([connection], appState: state).connections.first)
+
+        #expect(exported.connectTimeoutSeconds == 12)
+        #expect(exported.queryTimeoutSeconds == 0)
+        #expect(exported.additionalFields == ["schema": "public"])
+    }
+
+    @Test("Export drops a query timeout unsafe for millisecond APIs")
+    func exportDropsUnsafeQueryTimeout() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        var connection = DatabaseConnection(name: "Prod", type: .postgresql)
+        connection.queryTimeoutSeconds = DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1
+
+        let exported = try #require(
+            IOSConnectionExportService.buildEnvelope([connection], appState: state).connections.first
+        )
+
+        #expect(exported.queryTimeoutSeconds == nil)
+    }
+
+    @Test("An export leaves out the fields every importer drops and keeps the rest")
+    func exportLeavesOutImportBlockedFields() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let connection = DatabaseConnection(
+            name: "Scripted",
+            type: .postgresql,
+            host: "10.0.0.5",
+            additionalFields: [
+                "preConnectScript": "export PGTOKEN=secret-token",
+                "usePgpass": "true",
+                "promptForPassword": "true",
+                "awsRegion": "us-east-1",
+                "connectionOptions": "-c search_path=app"
+            ]
+        )
+        #expect(state.addConnection(connection))
+
+        let envelope = IOSConnectionExportService.buildEnvelope([connection], appState: state)
+        let fields = try #require(envelope.connections.first?.additionalFields)
+
+        #expect(fields == ["connectionOptions": "-c search_path=app"])
+    }
 }

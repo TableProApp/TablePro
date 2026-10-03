@@ -55,7 +55,7 @@ struct IntegrationsConnectedClientsPane: View {
                     disconnectCandidate = client
                 }
             } label: {
-                Label(String(localized: "Disconnect"), systemImage: "xmark.circle")
+                Label(String(localized: "Disconnect"), systemImage: ToolbarSymbols.disconnect())
             }
             .help(String(localized: "Disconnect the selected client"))
             .disabled(selection == nil)

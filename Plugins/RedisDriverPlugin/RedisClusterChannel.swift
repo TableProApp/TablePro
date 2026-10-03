@@ -29,7 +29,7 @@ protocol RedisClusterNodeConnection: RedisCommandChannel {
     func adoptHomeDatabase(_ index: Int)
 }
 
-typealias RedisClusterNodeFactory = @Sendable (RedisNodeAddress) -> any RedisClusterNodeConnection
+typealias RedisClusterNodeFactory = @Sendable (RedisNodeAddress, Int) -> any RedisClusterNodeConnection
 
 final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     private enum Limits {
@@ -40,6 +40,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     }
 
     private let seeds: [RedisNodeAddress]
+    private let connectTimeout: RedisConnectTimeout
     private let openNode: RedisClusterNodeFactory
 
     private let lock = NSLock()
@@ -48,12 +49,21 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     private var routing = RedisCommandRouting()
     private var redirectsSinceReload = 0
     private var isShuttingDown = false
+    private var awaitingConnectFinish = false
+    private var activeConnectDeadline: RedisConnectDeadline?
     private var cachedVersion: String?
     private var home = 0
     private var servedDatabases = 1
 
-    init(seeds: [RedisNodeAddress], openNode: @escaping RedisClusterNodeFactory) {
+    init(
+        seeds: [RedisNodeAddress],
+        connectTimeout: RedisConnectTimeout = RedisConnectTimeout(
+            milliseconds: RedisConnectTimeout.defaultMilliseconds
+        ),
+        openNode: @escaping RedisClusterNodeFactory
+    ) {
         self.seeds = seeds
+        self.connectTimeout = connectTimeout
         self.openNode = openNode
     }
 
@@ -83,13 +93,18 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         guard !seeds.isEmpty else {
             throw RedisPluginError(code: 0, message: String(localized: "Cluster mode needs at least one seed node."))
         }
+        let deadline = RedisConnectDeadline(timeout: connectTimeout)
+        lock.withLock {
+            awaitingConnectFinish = true
+            activeConnectDeadline = deadline
+        }
         report(.custom(String(localized: "Discovering cluster topology")))
 
         var lastError: Error?
         for seed in seeds {
             do {
-                let discovered = try await discoverTopology(from: seed, reportingStage: report)
-                try await adopt(discovered, discoveredFrom: seed)
+                let discovered = try await discoverTopology(from: seed, deadline: deadline, reportingStage: report)
+                try await adopt(discovered, discoveredFrom: seed, deadline: deadline)
                 logger.info("Cluster topology: \(discovered.shards.count, privacy: .public) shards")
                 return
             } catch {
@@ -100,9 +115,22 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         throw lastError ?? RedisPluginError.connectionFailed
     }
 
+    func finishConnecting() async throws {
+        let open = lock.withLock { Array(connections.values) }
+        for connection in open {
+            try await connection.finishConnecting()
+        }
+        lock.withLock {
+            awaitingConnectFinish = false
+            activeConnectDeadline = nil
+        }
+    }
+
     func disconnect() {
         lock.lock()
         isShuttingDown = true
+        awaitingConnectFinish = false
+        activeConnectDeadline = nil
         let open = Array(connections.values)
         connections.removeAll()
         topology = RedisClusterTopology(shards: [])
@@ -315,12 +343,16 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             }
         }
         guard let node = try owningNode(for: args, snapshot: snapshot) else {
-            return try await routeToAnyMaster(args, snapshot: snapshot, scope: scope)
+            return try await routeToAnyPrimary(args, snapshot: snapshot, scope: scope)
         }
         return try await send(args, to: node.address, scope: scope)
     }
 
-    private func routeToAnyMaster(_ args: [Data], snapshot: Snapshot, scope: RedisCommandScope) async throws -> RedisReply {
+    private func routeToAnyPrimary(
+        _ args: [Data],
+        snapshot: Snapshot,
+        scope: RedisCommandScope
+    ) async throws -> RedisReply {
         guard let node = snapshot.topology.orderedMasters.first else { throw RedisPluginError.notConnected }
         return try await send(args, to: node.address, scope: scope)
     }
@@ -546,8 +578,13 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     private func reloadTopology() async {
         let known = snapshotState().topology.masters.map(\.address) + seeds
+        let deadline = RedisConnectDeadline(timeout: connectTimeout)
         for address in known {
-            guard let refreshed = try? await discoverTopology(from: address, reportingStage: { _ in }) else { continue }
+            guard let refreshed = try? await discoverTopology(
+                from: address,
+                deadline: deadline,
+                reportingStage: { _ in }
+            ) else { continue }
             adoptTopology(refreshed)
             return
         }
@@ -583,16 +620,26 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     /// Every node is handed the cluster's database each time it is handed out, so a node that has
     /// not run a command since the cluster moved, or one opened afterwards, catches up before it
     /// sends anything. Connecting starts a session on database 0, so the database follows it.
-    private func connection(to address: RedisNodeAddress) async throws -> any RedisClusterNodeConnection {
+    private func connection(
+        to address: RedisNodeAddress,
+        deadline: RedisConnectDeadline? = nil
+    ) async throws -> any RedisClusterNodeConnection {
         let existing = try reusableConnection(to: address)
         if let connection = existing.connection {
             connection.adoptHomeDatabase(existing.home)
             return connection
         }
 
-        let opened = openNode(address)
+        let bootstrapDeadline = lock.withLock { activeConnectDeadline }
+        let deadline = deadline ?? bootstrapDeadline ?? RedisConnectDeadline(timeout: connectTimeout)
+        guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+            throw RedisPluginError(code: 0, message: String(localized: "Timed out while connecting to the server"))
+        }
+        let opened = openNode(address, remainingMilliseconds)
         opened.adoptRouting(existing.routing)
         try await opened.connect()
+        let deferFinish = lock.withLock { awaitingConnectFinish }
+        if !deferFinish { try await opened.finishConnecting() }
         opened.adoptHomeDatabase(existing.home)
 
         guard let replaced = store(opened, at: address) else {
@@ -629,9 +676,10 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
 
     private func discoverTopology(
         from seed: RedisNodeAddress,
+        deadline: RedisConnectDeadline,
         reportingStage report: @escaping ConnectionStageReporter
     ) async throws -> RedisClusterTopology {
-        let connection = try await connection(to: seed)
+        let connection = try await connection(to: seed, deadline: deadline)
 
         let shardsReply = try await connection.executeCommand(["CLUSTER", "SHARDS"], scope: .outsideBlock)
         if let parsed = RedisClusterTopologyParser.parseShards(shardsReply, fallbackHost: seed.host) {
@@ -657,24 +705,28 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         return parsed
     }
 
-    private func adopt(_ discovered: RedisClusterTopology, discoveredFrom seed: RedisNodeAddress) async throws {
+    private func adopt(
+        _ discovered: RedisClusterTopology,
+        discoveredFrom seed: RedisNodeAddress,
+        deadline: RedisConnectDeadline
+    ) async throws {
         adoptTopology(discovered)
 
-        if let table = try? await fetchRouting(from: seed) {
+        if let table = try? await fetchRouting(from: seed, deadline: deadline) {
             adoptRoutingTable(table).forEach { $0.adoptRouting(table) }
         }
 
         for node in discovered.masters {
-            _ = try await connection(to: node.address)
+            _ = try await connection(to: node.address, deadline: deadline)
         }
 
         if let first = discovered.orderedMasters.first {
-            let connection = try await connection(to: first.address)
+            let connection = try await connection(to: first.address, deadline: deadline)
             let info = (try? await connection.executeCommand(["INFO", "server"], scope: .outsideBlock))?.stringValue
             adoptVersion(info.flatMap(RedisServerInfo.version(from:)))
         }
 
-        let served = await databasesServed(by: discovered.orderedMasters)
+        let served = await databasesServed(by: discovered.orderedMasters, deadline: deadline)
         adoptServedDatabases(served)
         logger.info("Cluster serves \(served, privacy: .public) database(s)")
     }
@@ -683,10 +735,13 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     /// change at runtime, while Redis 8.10.1 answers an empty list for a setting it does not have.
     /// The fewest any primary serves is the count, because a database one primary lacks cannot
     /// hold the keys that hash to it. A primary that declines CONFIG says nothing either way.
-    private func databasesServed(by primaries: [RedisClusterNode]) async -> Int {
+    private func databasesServed(
+        by primaries: [RedisClusterNode],
+        deadline: RedisConnectDeadline? = nil
+    ) async -> Int {
         var replies: [RedisReply?] = []
         for primary in primaries {
-            let reply = try? await connection(to: primary.address)
+            let reply = try? await connection(to: primary.address, deadline: deadline)
                 .runMetadataRead(["CONFIG", "GET", "cluster-databases"])
             replies.append(reply)
         }
@@ -696,8 +751,11 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
     /// One COMMAND at connect rather than a lookup per unknown command. The full answer is about
     /// 110 KB for 300 commands in a single round trip, and a user whose ACL denies COMMAND is
     /// denied CLUSTER SLOTS too, so there is no case where lazy lookups would have helped.
-    private func fetchRouting(from seed: RedisNodeAddress) async throws -> RedisCommandRouting {
-        let connection = try await connection(to: seed)
+    private func fetchRouting(
+        from seed: RedisNodeAddress,
+        deadline: RedisConnectDeadline? = nil
+    ) async throws -> RedisCommandRouting {
+        let connection = try await connection(to: seed, deadline: deadline)
         let reply = try await connection.executeCommand(["COMMAND"], scope: .outsideBlock)
         guard let parsed = RedisCommandRouting.parse(commandReply: reply) else {
             logger.notice("COMMAND unavailable; using the curated routing table")

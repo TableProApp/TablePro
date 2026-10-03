@@ -147,13 +147,17 @@ struct MySQLDashboardProvider: ServerDashboardQueryProvider {
     }
 
     func killSessionSQL(processId: String) -> String? {
-        guard let id = Int(processId) else { return nil }
+        guard acceptsProcessId(processId), let id = Int(processId) else { return nil }
         return "KILL \(id)"
     }
 
     func cancelQuerySQL(processId: String) -> String? {
-        guard let id = Int(processId) else { return nil }
+        guard acceptsProcessId(processId), let id = Int(processId) else { return nil }
         return "KILL QUERY \(id)"
+    }
+
+    func acceptsProcessId(_ processId: String) -> Bool {
+        Int(processId) != nil
     }
 }
 

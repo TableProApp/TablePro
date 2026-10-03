@@ -113,6 +113,20 @@ enum DataWriteExecutor {
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
 
         var sideStatements: [String] = []
+
+        func drainEpilogue() async {
+            for statement in plan.epilogue {
+                do {
+                    _ = try await driver.execute(query: statement)
+                    sideStatements.append(statement)
+                } catch {
+                    logger.warning(
+                        "Epilogue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
+                    )
+                }
+            }
+        }
+
         for statement in plan.prologue {
             do {
                 _ = try await driver.execute(query: statement)
@@ -121,6 +135,10 @@ enum DataWriteExecutor {
                 logger.warning(
                     "Prologue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
                 )
+                guard !plan.prologueIsRequired else {
+                    await drainEpilogue()
+                    throw error
+                }
             }
         }
 
@@ -131,19 +149,6 @@ enum DataWriteExecutor {
             sessionState: await driver.heldSessionTransactionState()
         )
         var results: [DataWriteStepResult] = []
-
-        func drainEpilogue() async {
-            for statement in plan.epilogue {
-                do {
-                    _ = try await driver.execute(query: statement)
-                    sideStatements.append(statement)
-                } catch {
-                    logger.warning(
-                        "Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
-                    )
-                }
-            }
-        }
 
         do {
             if owner.opensTransaction {

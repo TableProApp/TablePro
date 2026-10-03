@@ -375,6 +375,9 @@ final class RowEditingCoordinator: ObservableObject {
               tab.tabType == .table else { return }
 
         let tabId = tab.id
+        /// Pasted rows hand the columns the server owns back to it, which only the schema names, so pasting waits for
+        /// it the way Add Row does rather than staging an identity value the save would send.
+        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
         let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)

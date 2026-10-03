@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-/// Generated from Libs/libsqlite3_vendored.a by scripts/check-sqlite-build.sh --write-builtin-names,
+/// Generated from Libs/libsqlite3_vendored.a by scripts/probes/check-sqlite-build.sh --write-builtin-names,
 /// which fails whenever this list and the library disagree.
 enum SQLiteBuiltinNames {
     static let functions: Set<String> = [

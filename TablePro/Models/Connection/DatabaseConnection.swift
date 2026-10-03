@@ -147,6 +147,10 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
 /// Model representing a database connection
 struct DatabaseConnection: Identifiable, Hashable {
+    static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
+
     let id: UUID
     var name: String
     var host: String
@@ -246,6 +250,42 @@ struct DatabaseConnection: Identifiable, Hashable {
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
+    }
+
+    var connectTimeoutSeconds: Int? {
+        get {
+            if let common = additionalFields[Self.connectTimeoutSecondsKey] {
+                return Int(common)
+            }
+            guard type == .kafka else { return nil }
+            return additionalFields["kafkaConnectTimeout"].flatMap(Int.init)
+        }
+        set {
+            if let newValue {
+                additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
+            }
+            if type == .kafka {
+                additionalFields.removeValue(forKey: "kafkaConnectTimeout")
+            }
+        }
+    }
+
+    var queryTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.queryTimeoutSecondsKey].flatMap(Int.init),
+                  Self.queryTimeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.queryTimeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
+            }
+        }
     }
 
     var sshForwardUnixSocketPath: String? {
@@ -378,6 +418,28 @@ struct DatabaseConnection: Identifiable, Hashable {
 
 extension DatabaseConnection {
     static let preview = DatabaseConnection(name: "Preview Connection")
+}
+
+// MARK: - Device-Local State
+
+internal extension DatabaseConnection {
+    var participatesInSync: Bool {
+        !localOnly && !isSample
+    }
+
+    func adoptingDeviceLocalState(from local: DatabaseConnection) -> DatabaseConnection {
+        var adopted = self
+        adopted.localOnly = local.localOnly
+        adopted.isSample = local.isSample
+        adopted.passwordSource = local.passwordSource
+        adopted.credentialMode = local.credentialMode
+        adopted.externalAccess = local.externalAccess
+        adopted.cloudflareTunnelMode = local.cloudflareTunnelMode
+        adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
+        adopted.socksProxyMode = local.socksProxyMode
+        adopted.tunnelCommandMode = local.tunnelCommandMode
+        return adopted
+    }
 }
 
 // MARK: - Display Helpers

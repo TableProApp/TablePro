@@ -35,6 +35,41 @@ struct PaginationCapabilityTests {
         #expect(PaginationCapability.of(.postgresql) == .offset)
     }
 
+    @Test("Cassandra and ScyllaDB cannot skip rows and cap nothing")
+    func cassandraDeclaresNoSeekAndNoCeiling() {
+        for type in [DatabaseType.cassandra, .scylladb] {
+            let declared = PaginationCapability.of(type)
+            #expect(declared == .leadingRowsOnly(maximumRows: nil))
+            #expect(!declared.allowsSeeking)
+            #expect(declared.maximumRows == nil)
+            #expect(declared.clampedRowCount(500_000) == 500_000)
+        }
+    }
+
+    @Test("An engine with no ceiling pages through a plugin that builds its own browse, and reads leading rows otherwise")
+    func noCeilingResolvesByPlugin() {
+        let noCeiling = PaginationCapability.leadingRowsOnly(maximumRows: nil)
+
+        #expect(noCeiling.resolved(pluginBuildsBrowse: true) == .offset)
+        #expect(noCeiling.resolved(pluginBuildsBrowse: false) == noCeiling)
+        #expect(leadingRows.resolved(pluginBuildsBrowse: true) == leadingRows)
+        #expect(PaginationCapability.offset.resolved(pluginBuildsBrowse: false) == .offset)
+    }
+
+    @Test("Without its own browse, a Cassandra table query reads the leading rows with no OFFSET and no ceiling")
+    func cassandraHostQueryReadsLeadingRows() {
+        let builder = TableQueryBuilder(databaseType: .cassandra, pagination: .leadingRowsOnly(maximumRows: nil))
+        let query = builder.buildBaseQuery(tableName: "users", schemaName: "shop", limit: 500_000, offset: 3_000)
+
+        #expect(query == #"SELECT * FROM "shop"."users" LIMIT 500000"#)
+    }
+
+    @Test("Where no plugin builds the browse, the app resolves Cassandra to its leading rows")
+    func pluginManagerResolvesWithoutAPlugin() {
+        #expect(PluginManager.shared.paginationCapability(for: .cassandra) == .leadingRowsOnly(maximumRows: nil))
+        #expect(PluginManager.shared.paginationCapability(for: .postgresql) == .offset)
+    }
+
     @Test("A leading-rows table query states a clamped LIMIT and never an OFFSET")
     func builderNeverOffsets() {
         let builder = TableQueryBuilder(databaseType: .cloudflareR2SQL, pagination: leadingRows)

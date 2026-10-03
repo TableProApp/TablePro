@@ -38,38 +38,67 @@ final class DamengConnection: @unchecked Sendable {
         }
     }
 
-    func connect(host: String, port: Int, username: String, password: String) async throws {
+    func connect(
+        host: String,
+        port: Int,
+        username: String,
+        password: String,
+        timeoutMilliseconds: Int = DamengConnectTimeout.defaultMilliseconds
+    ) async throws {
         guard let port = UInt16(exactly: port), port > 0 else {
             throw DamengError(message: String(localized: "The Dameng port must be between 1 and 65535."))
         }
         let attempt = invalidateAttempts()
-        try await run {
-            var rawError: OpaquePointer?
-            let connection = host.withUTF8Bytes { hostBytes in
-                username.withUTF8Bytes { usernameBytes in
-                    password.withUTF8Bytes { passwordBytes in
-                        tp_dm_connect(
-                            hostBytes.baseAddress,
-                            hostBytes.count,
-                            port,
-                            usernameBytes.baseAddress,
-                            usernameBytes.count,
-                            passwordBytes.baseAddress,
-                            passwordBytes.count,
-                            &rawError
-                        )
+        let timeout = min(max(timeoutMilliseconds, 1), DamengConnectTimeout.maximumMilliseconds)
+        let gate = DamengConnectGate()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                gate.arm(continuation)
+                queue.async {
+                    let outcome = Result<Void, any Error> {
+                        var rawError: OpaquePointer?
+                        let connection = host.withUTF8Bytes { hostBytes in
+                            username.withUTF8Bytes { usernameBytes in
+                                password.withUTF8Bytes { passwordBytes in
+                                    tp_dm_connect(
+                                        hostBytes.baseAddress,
+                                        hostBytes.count,
+                                        port,
+                                        usernameBytes.baseAddress,
+                                        usernameBytes.count,
+                                        passwordBytes.baseAddress,
+                                        passwordBytes.count,
+                                        &rawError
+                                    )
+                                }
+                            }
+                        }
+                        guard let connection else {
+                            throw Self.failure(from: rawError)
+                        }
+                        guard self.adopt(connection, attempt: attempt) else {
+                            tp_dm_disconnect(connection)
+                            throw DamengError(
+                                message: String(localized: "The Dameng connection is closed."),
+                                closedConnection: true
+                            )
+                        }
+                    }
+                    gate.finish(with: outcome)
+                }
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(
+                    deadline: .now() + .milliseconds(timeout)
+                ) { [weak self] in
+                    gate.fail(
+                        DamengError(message: String(localized: "Timed out while connecting to the Dameng server"))
+                    ) {
+                        self?.abandon(attempt: attempt)
                     }
                 }
             }
-            guard let connection else {
-                throw Self.failure(from: rawError)
-            }
-            guard self.adopt(connection, attempt: attempt) else {
-                tp_dm_disconnect(connection)
-                throw DamengError(
-                    message: String(localized: "The Dameng connection is closed."),
-                    closedConnection: true
-                )
+        } onCancel: {
+            gate.fail(CancellationError()) { [weak self] in
+                self?.abandon(attempt: attempt)
             }
         }
     }
@@ -91,13 +120,13 @@ final class DamengConnection: @unchecked Sendable {
     func applyQueryTimeout(seconds: Int) {
         stateLock.lock()
         defer { stateLock.unlock() }
-        queryTimeoutSeconds = max(0, seconds)
+        queryTimeoutSeconds = PluginQueryTimeout.boundedSeconds(seconds)
     }
 
     private func timeoutMilliseconds() -> UInt64 {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return UInt64(queryTimeoutSeconds) * 1_000
+        return UInt64(PluginQueryTimeout.milliseconds(queryTimeoutSeconds))
     }
 
     static func fetchLimit(_ rowCap: Int?) -> Int {
@@ -133,6 +162,20 @@ final class DamengConnection: @unchecked Sendable {
         stateLock.unlock()
         dispose(handle)
         return attempt
+    }
+
+    private func abandon(attempt: UInt64) {
+        stateLock.lock()
+        guard epoch == attempt else {
+            stateLock.unlock()
+            return
+        }
+        let handle = rawConnection
+        rawConnection = nil
+        epoch &+= 1
+        tickets.reset()
+        stateLock.unlock()
+        dispose(handle)
     }
 
     /// Closes a handle no caller can still be holding.
