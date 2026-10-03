@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Requesty in Add Provider, an OpenAI-compatible router with its Base URL filled in. (#3128)
+
 ### Changed
 
+- A new AI provider with several models and no default starts with no model picked. (#3128)
 - Toolbar Save is a plain checkmark, and the Safe Mode icon is filled only at the two Full levels. (#3250)
 - Actions, filter and Disconnect toolbar icons lose their circle on macOS 26 and later, and Actions its chevron. (#3250)
 
 ### Fixed
 
+- Reasoning setting ignored on OpenRouter, OpenCode Zen, llama.cpp, MLX and custom AI providers. (#3128)
+- Reasoning picker shown for Gemini and Ollama, where it changed nothing. (#3128)
+- Image attachments offered for OpenRouter models that take text only. (#3128)
+- Max output tokens ignored and image attachments rejected on Ollama. (#3128)
+- AI provider failing with "Invalid endpoint" until relaunch after its Base URL was cleared. (#3128)
 - Export in the Structure and object source views showing the Import icon. (#3250)
 - VoiceOver reading the welcome window and Integrations filter menus as "chevron.pulldown". (#3250)
 - Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250)

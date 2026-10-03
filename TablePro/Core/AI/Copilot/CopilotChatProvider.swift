@@ -169,7 +169,9 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         let models = try await client.fetchCopilotModels()
         let chatModels = models.filter { $0.scopes?.contains("chat-panel") ?? false }
         let sorted = chatModels.sorted { ($0.isChatDefault ?? false) && !($1.isChatDefault ?? false) }
-        return sorted.map { AIModelInfo(id: $0.id, displayName: $0.modelName) }
+        return sorted.map {
+            AIModelInfo(id: $0.id, displayName: $0.modelName, isProviderDefault: $0.isChatDefault ?? false)
+        }
     }
 
     func testConnection() async throws -> Bool {

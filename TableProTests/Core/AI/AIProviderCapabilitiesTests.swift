@@ -54,6 +54,54 @@ struct AIProviderCapabilitiesTests {
         }
     }
 
+    @Test("The OpenAI-compatible family is registered from one list, on one transport")
+    func openAICompatibleFamilySharesATransport() {
+        for type in AIProviderType.openAICompatibleFamily {
+            let config = AIProviderConfig(type: type, model: "m", endpoint: "http://localhost:1")
+            #expect(
+                descriptor(type)?.makeProvider(config, nil) is OpenAICompatibleProvider,
+                "\(type.rawValue) must build the OpenAI-compatible transport"
+            )
+        }
+    }
+
+    /// Neither transport sends an effort: Gemini builds no thinking configuration, and Ollama's
+    /// native route takes `think` rather than `reasoning_effort`. A picker there changed nothing.
+    @Test("A provider whose transport ignores reasoning effort offers no effort picker")
+    func noEffortPickerWhereTheTransportIgnoresIt() {
+        for type in [AIProviderType.gemini, .ollama] {
+            #expect(descriptor(type)?.supportsReasoning == false, "\(type.rawValue) must not offer reasoning")
+            #expect(descriptor(type)?.supportedEffortLevels(forModelID: "any-model").isEmpty == true)
+        }
+    }
+
+    @Test("The provider's own model list narrows reasoning and images per model")
+    func fetchedModelInfoNarrowsTheEnvelope() throws {
+        let router = try #require(descriptor(.openRouter))
+        let textOnly = AIModelInfo(id: "m", modalities: [.text], reasoning: .unsupported)
+        #expect(router.supportsImages(fetched: textOnly) == false)
+        #expect(router.supportedEffortLevels(forModelID: "m", fetched: textOnly).isEmpty)
+
+        let capable = AIModelInfo(
+            id: "m",
+            modalities: [.text, .image],
+            reasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high])
+        )
+        #expect(router.supportsImages(fetched: capable))
+        #expect(router.supportedEffortLevels(forModelID: "m", fetched: capable) == [.low, .medium, .high])
+    }
+
+    /// A plain OpenAI model list carries an id and nothing else. Reading that silence as "text
+    /// only" would have closed images and reasoning for every model on such a server.
+    @Test("A model list that says nothing about a model leaves the envelope open")
+    func silentModelInfoLeavesTheEnvelopeOpen() throws {
+        let router = try #require(descriptor(.openRouter))
+        let silent = AIModelInfo(id: "m")
+        #expect(silent.supportsImages == nil)
+        #expect(router.supportsImages(fetched: silent))
+        #expect(router.supportedEffortLevels(forModelID: "m", fetched: silent) == [.low, .medium, .high])
+    }
+
     @Test("Only the custom provider allows the name field")
     func nameFieldOnlyForCustom() {
         #expect(descriptor(.custom)?.allowsNameConfiguration == true)
