@@ -64,15 +64,33 @@ struct FieldDrivenListEmphasisTests {
 
     /// The two shapes that make AppKit draw a row's selection with a material: a source list
     /// anywhere, and an inset table with a material behind it, which is what a popover is.
-    private enum MaterialShape {
+    enum MaterialShape {
         case sourceList
         case insetOverMaterial
     }
 
-    private func makeChooserTable(
-        _ shape: MaterialShape,
-        source: ChooserTableSource
-    ) -> (host: NSView, tableView: FieldDrivenTableView) {
+    @MainActor
+    private struct StagedChooser {
+        let source: ChooserTableSource
+        let host: NSView
+        let tableView: FieldDrivenTableView
+
+        var selectedRowView: NSTableRowView? {
+            tableView.rowView(atRow: 1, makeIfNecessary: false)
+        }
+
+        var selectionMaterial: NSVisualEffectView? {
+            selectedRowView?.subviews
+                .compactMap { $0 as? NSVisualEffectView }
+                .first { $0.material == .selection }
+        }
+    }
+
+    /// The list selects its row from a SwiftUI update, before the table has a window, and the
+    /// layout pass is what builds the row there. Without it no row exists until the table is in
+    /// the window, and the order the bug needs never happens.
+    private static func stageChooserSelectedOutsideAWindow(_ shape: MaterialShape) -> StagedChooser {
+        let source = ChooserTableSource()
         let tableView = FieldDrivenTableView()
         tableView.headerView = nil
         tableView.rowHeight = 28
@@ -84,46 +102,55 @@ struct FieldDrivenListEmphasisTests {
         tableView.dataSource = source
         tableView.delegate = source
 
-        let scrollView = NSScrollView(frame: Self.windowFrame)
+        let scrollView = NSScrollView(frame: windowFrame)
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
+        var host: NSView = scrollView
+        if shape == .insetOverMaterial {
+            let backdrop = NSVisualEffectView(frame: windowFrame)
+            backdrop.material = .popover
+            backdrop.addSubview(scrollView)
+            host = backdrop
+        }
+
         tableView.reloadData()
-
-        guard shape == .insetOverMaterial else { return (scrollView, tableView) }
-        let backdrop = NSVisualEffectView(frame: Self.windowFrame)
-        backdrop.material = .popover
-        backdrop.addSubview(scrollView)
-        return (backdrop, tableView)
-    }
-
-    private func selectionMaterial(of rowView: NSTableRowView) -> NSVisualEffectView? {
-        rowView.subviews
-            .compactMap { $0 as? NSVisualEffectView }
-            .first { $0.material == .selection }
-    }
-
-    /// The list selects its row from a SwiftUI update, before the table has a window, and the
-    /// layout pass is what builds the row there. Without it no row exists until the table is in
-    /// the window, and the order the bug needs never happens.
-    private func expectEmphasizedSelectionMaterial(_ shape: MaterialShape) throws {
-        let source = ChooserTableSource()
-        let (host, tableView) = makeChooserTable(shape, source: source)
         tableView.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
         tableView.scrollRowToVisible(1)
         host.layoutSubtreeIfNeeded()
+        return StagedChooser(source: source, host: host, tableView: tableView)
+    }
 
-        let rowView = try #require(tableView.rowView(atRow: 1, makeIfNecessary: false))
-        let material = try #require(selectionMaterial(of: rowView))
+    /// On the macOS 26 CI runner a row selected and laid out outside a window has no selection
+    /// material, so the order the material tests stage cannot happen there. Asked of the host
+    /// rather than read off an OS version, because nothing documents which hosts build it early.
+    static func buildsSelectionMaterialOutsideAWindow(_ shape: MaterialShape) -> Bool {
+        stageChooserSelectedOutsideAWindow(shape).selectionMaterial != nil
+    }
+
+    /// What AppKit stored, read through `NSTableRowView`'s own getter so a row that answers from
+    /// an override cannot stand in for it. The selection fill follows this value on every host.
+    private func storedEmphasis(of rowView: NSTableRowView) -> Bool {
+        typealias Getter = @convention(c) (NSTableRowView, Selector) -> Bool
+        let selector = #selector(getter: NSTableRowView.isEmphasized)
+        guard let implementation = class_getMethodImplementation(NSTableRowView.self, selector) else {
+            return false
+        }
+        return unsafeBitCast(implementation, to: Getter.self)(rowView, selector)
+    }
+
+    private func expectEmphasizedSelectionMaterial(_ shape: MaterialShape) throws {
+        let chooser = Self.stageChooserSelectedOutsideAWindow(shape)
+        let rowView = try #require(chooser.selectedRowView)
+        let material = try #require(chooser.selectionMaterial)
         #expect(material.isEmphasized == false)
 
         let window = makeWindow(isKeyWindow: true)
-        window.contentView?.addSubview(host)
+        window.contentView?.addSubview(chooser.host)
         window.contentView?.layoutSubtreeIfNeeded()
 
-        #expect(tableView.rowView(atRow: 1, makeIfNecessary: false) === rowView)
+        #expect(chooser.selectedRowView === rowView)
         #expect(rowView.isEmphasized)
         #expect(material.isEmphasized)
-        withExtendedLifetime(source) {}
     }
 
     /// The regression. AppKit copies `interiorBackgroundStyle` into the cell views while the row is
@@ -140,16 +167,49 @@ struct FieldDrivenListEmphasisTests {
         #expect(cell.backgroundStyle == .emphasized)
     }
 
+    /// The order the bug lived in, checked on every host: selected outside a window, then added to
+    /// a key one, with no key change after it. A rule answered from the getter stored nothing.
+    @Test("A chooser row that joins a key window stores its emphasis where AppKit reads it")
+    func chooserStoresItsEmphasis() {
+        let (rowView, _) = makeRow(followsWindowKeyState: true, isSelected: true)
+        #expect(storedEmphasis(of: rowView) == false)
+
+        makeWindow(isKeyWindow: true).contentView?.addSubview(rowView)
+
+        #expect(storedEmphasis(of: rowView))
+    }
+
+    /// The gate on the material tests reads a missing material as a host difference. A stage that
+    /// built no row has no material either, so the row is checked here, on every host, where the
+    /// gate cannot hide it.
+    @Test("The material tests' stage builds the selected row before it reaches a window")
+    func stageBuildsTheSelectedRowOutsideAWindow() {
+        let sourceList = Self.stageChooserSelectedOutsideAWindow(.sourceList)
+        let overMaterial = Self.stageChooserSelectedOutsideAWindow(.insetOverMaterial)
+        #expect(sourceList.selectedRowView != nil)
+        #expect(overMaterial.selectedRowView != nil)
+    }
+
     /// The other half of the same regression. AppKit configures the selection material only when
     /// the selection, the stored emphasis or the key state changes. None of the three follows a
     /// row that was selected outside the window, so the material kept the unemphasized look it was
     /// built with, under cells that had turned white.
-    @Test("A source list row selected before it reaches the window emphasizes its selection material")
+    @Test(
+        "A source list row selected before it reaches the window emphasizes its selection material",
+        .enabled("The host builds no selection material outside a window") {
+            await FieldDrivenListEmphasisTests.buildsSelectionMaterialOutsideAWindow(.sourceList)
+        }
+    )
     func sourceListChooserEmphasizesTheSelectionMaterial() throws {
         try expectEmphasizedSelectionMaterial(.sourceList)
     }
 
-    @Test("A popover row selected before it reaches the window emphasizes its selection material")
+    @Test(
+        "A popover row selected before it reaches the window emphasizes its selection material",
+        .enabled("The host builds no selection material outside a window") {
+            await FieldDrivenListEmphasisTests.buildsSelectionMaterialOutsideAWindow(.insetOverMaterial)
+        }
+    )
     func popoverChooserEmphasizesTheSelectionMaterial() throws {
         try expectEmphasizedSelectionMaterial(.insetOverMaterial)
     }
