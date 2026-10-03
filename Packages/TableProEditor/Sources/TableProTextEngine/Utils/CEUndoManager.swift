@@ -120,12 +120,49 @@ public class CEUndoManager: UndoManager {
         }
         textView.textStorage.endEditing()
 
-        updateSelectionsForMutations(mutations: item.mutations.map { $0.inverse })
+        updateSelectionsForMutations(mutations: Self.redoneRanges(of: item.mutations))
         textView.scrollSelectionToVisible()
 
         NotificationCenter.default.post(name: .NSUndoManagerDidRedoChange, object: self)
         undoStack.append(item)
         _isRedoing = false
+    }
+
+    /// Each inverse range is where its text sat right after its own mutation. Mutations applied after it and in front
+    /// of it have moved that text since. In a group applied last to first, like Replace All, that is every later
+    /// mutation, so a running sum does it in one pass; in a group applied first to last, like an indent, it is none.
+    private static func redoneRanges(of mutations: [Mutation]) -> [TextMutation] {
+        let pairs = zip(mutations, mutations.dropFirst())
+        let isLastToFirst = pairs.allSatisfy { NSMaxRange($1.mutation.range) <= $0.mutation.range.location }
+        let isFirstToLast = pairs.allSatisfy { $1.mutation.range.location >= NSMaxRange($0.inverse.range) }
+        var shifts = [Int](repeating: 0, count: mutations.count)
+        if isLastToFirst {
+            var later = 0
+            for index in mutations.indices.reversed() {
+                shifts[index] = later
+                later += delta(of: mutations[index].mutation)
+            }
+        } else if !isFirstToLast {
+            for index in mutations.indices {
+                let location = mutations[index].inverse.range.location
+                for laterIndex in (index + 1)..<mutations.count
+                where NSMaxRange(mutations[laterIndex].mutation.range) <= location {
+                    shifts[index] += delta(of: mutations[laterIndex].mutation)
+                }
+            }
+        }
+        return mutations.indices.map { index in
+            let inverse = mutations[index].inverse
+            return TextMutation(
+                string: inverse.string,
+                range: NSRange(location: inverse.range.location + shifts[index], length: inverse.range.length),
+                limit: inverse.limit + shifts[index]
+            )
+        }
+    }
+
+    private static func delta(of mutation: TextMutation) -> Int {
+        (mutation.string as NSString).length - mutation.range.length
     }
 
     /// We often undo/redo a group of mutations that contain updated ranges that are next to each other but for a user

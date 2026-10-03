@@ -47,7 +47,8 @@ struct FindSearchField: View {
                         .overlay(alignment: .leading) {
                             FindModePicker(
                                 mode: $viewModel.mode,
-                                wrapAround: $viewModel.wrapAround
+                                wrapAround: $viewModel.wrapAround,
+                                canReplace: viewModel.canReplace
                             )
                         }
                         .clipped()
@@ -61,7 +62,8 @@ struct FindSearchField: View {
                     HStack(spacing: 0) {
                         FindModePicker(
                             mode: $viewModel.mode,
-                            wrapAround: $viewModel.wrapAround
+                            wrapAround: $viewModel.wrapAround,
+                            canReplace: viewModel.canReplace
                         )
                         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { findModePickerWidth = $0 }
                         .focusable(false)

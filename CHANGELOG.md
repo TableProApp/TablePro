@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `$1` in a regular-expression Replace in the SQL editor inserts the capture group, as in data files.
+
 ### Fixed
 
+- Find panel Replace editing the wrong text after the first replacement, and crashing when a match ran past the end.
+- Replace All crashing on a space in an indent or after Clear Query, and wrapping quotes and brackets in pairs.
+- Replace All taking minutes on a few thousand matches, and two Replace clicks undoing as one step.
+- Replace and All offered in read-only editors, clearing the matches without changing the text.
+- A collapsed fold hiding the wrong text after Replace All.
+- Regular-expression Replace in data files inserting the wrong capture text when a replacement changes length.
 - Import into Table from a data file naming the sheet, the proposed table, error reports and history after a temporary copy.
 - Query editor staying put when Cmd+Up, Cmd+Down or a long paste moves the caret out of view. (#3239)
 - Clear Query, a favorite, a history entry or an AI fix sometimes not reaching the editor, and typing then bringing the old query back.
@@ -16,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use Selection for Find reverting to the previous search term once the caret moves.
 - Connections strip entries cutting off their database or schema line, with the icon crowded against the top of the highlight. (#3244)
 - Connections strip resting partway through an entry after the sidebar size changed.
+- Oracle closing TablePro, or resetting with "unexpected message", while loading rows from a table with SDO_GEOMETRY or BLOB columns. (#3241)
+- Oracle closing TablePro when a query is stopped or the connection closed while rows are still loading. (#3241)
+- Oracle object columns such as SDO_GEOMETRY labelled "unknown" and showing a placeholder instead of NULL. (#3241)
 
 ## [0.77.0] - 2026-10-02
 

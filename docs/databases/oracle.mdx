@@ -135,6 +135,9 @@ If the connection drops while a transaction is open, the next write fails with "
 | ROWID | As stored |
 | BOOLEAN | `true` / `false` |
 | BFILE | `<bfile>` placeholder (locator only) |
+| Object types, such as SDO_GEOMETRY | `<unsupported: object>` placeholder; a NULL object shows as NULL |
+
+To read a geometry as text, select `SDO_UTIL.TO_WKTGEOMETRY(column)` instead of the column.
 
 Anything else renders as `<unsupported: type>`. Report those through [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
 

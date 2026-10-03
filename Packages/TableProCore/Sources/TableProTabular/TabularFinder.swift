@@ -75,7 +75,8 @@ public final class TabularFindMatcher: @unchecked Sendable {
         let result = NSMutableString(string: text)
         var offset = 0
         for match in matches {
-            let replacement = expression.replacementString(for: match, in: text, offset: offset, template: effectiveTemplate)
+            // The match's capture groups are read from the original text, where its ranges still point.
+            let replacement = expression.replacementString(for: match, in: text, offset: 0, template: effectiveTemplate)
             result.replaceCharacters(
                 in: NSRange(location: match.range.location + offset, length: match.range.length),
                 with: replacement

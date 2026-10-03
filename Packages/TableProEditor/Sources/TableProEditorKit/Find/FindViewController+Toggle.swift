@@ -23,7 +23,7 @@ extension FindViewController {
     ///   - animated: Whether the panel slides into place.
     func showFindPanel(mode: FindPanelMode? = nil, animated: Bool = true) {
         if let mode {
-            viewModel.mode = mode
+            viewModel.mode = viewModel.canReplace ? mode : .find
         }
 
         if viewModel.isShowingFindPanel {

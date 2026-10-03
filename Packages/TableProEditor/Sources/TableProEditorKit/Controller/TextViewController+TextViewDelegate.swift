@@ -28,6 +28,10 @@ extension TextViewController: TextViewDelegate {
             }
         }
 
+        guard !isApplyingUnfilteredEdits else {
+            suggestionTriggerModel.programmaticEditDidReplaceContents()
+            return
+        }
         suggestionTriggerModel.textView(textView, didReplaceContentsIn: range, with: string)
     }
 

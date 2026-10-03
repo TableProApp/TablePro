@@ -19,6 +19,19 @@ public extension TextView {
         with string: String,
         skipUpdateSelection: Bool = false
     ) {
+        replaceCharacters(
+            ranges.map { TextReplacement(range: $0, string: string) },
+            skipUpdateSelection: skipUpdateSelection
+        )
+    }
+
+    /// Replaces each range with its own string as one edit: one text change notification, one undo mutation per
+    /// range, and the selection carried through every replacement. Ranges are in the coordinates of the text before
+    /// the edit and must not overlap.
+    /// - Parameters:
+    ///   - replacements: The ranges to replace and what to put in each.
+    ///   - skipUpdateSelection: Skips the selection update step
+    func replaceCharacters(_ replacements: [TextReplacement], skipUpdateSelection: Bool = false) {
         guard isEditable else { return }
         NotificationCenter.default.post(name: Self.textWillChangeNotification, object: self)
         textStorage.beginEditing()
@@ -29,7 +42,10 @@ public extension TextView {
         }
 
         // Can't insert an empty string into an empty range. One must be not empty
-        for range in ranges.sorted(by: { $0.location > $1.location }) where valid(range: range, string: string) {
+        for replacement in replacements.sorted(by: { $0.range.location > $1.range.location })
+        where valid(range: replacement.range, string: replacement.string) {
+            let range = replacement.range
+            let string = replacement.string
             delegate?.textView(self, willReplaceContentsIn: range, with: string)
 
             editorUndoManager?.registerMutation(
