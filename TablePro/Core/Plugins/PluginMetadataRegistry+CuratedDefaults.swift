@@ -15,6 +15,10 @@ import TableProPluginKit
 /// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
 /// the plugin that drives them.
 extension PluginMetadataRegistry {
+    /// SQLite's own extensions. libSQL and Turso name a new local file with them too, since the file
+    /// their driver creates is a SQLite database.
+    static let sqliteFileExtensions = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
+
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let mysqlDialect = SQLDialectDescriptor(
@@ -689,6 +693,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false,
                     localFilePathField: .database,
+                    newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
                     supportsRemoteDatabaseSession: true
                 ),
@@ -701,7 +706,7 @@ extension PluginMetadataRegistry {
                     immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
-                    fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
+                    fileExtensions: Self.sqliteFileExtensions,
                     fileSignatures: [.magic("SQLite format 3\u{0}")],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [

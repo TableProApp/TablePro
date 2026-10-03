@@ -33,7 +33,7 @@ The bar along the bottom carries **Test Connection**, **Cancel** and **Save**. W
 | **Prompt for password** | Stores nothing, asks on every connect. Reads **Prompt for API token** on API-only drivers |
 | **Use Password File** | PostgreSQL, Redshift, and CockroachDB. Reads `~/.pgpass`, and reports underneath whether the file exists, has `chmod 0600`, and holds a matching line |
 
-SQLite, DuckDB, and Beancount replace the host fields with a file path picker.
+SQLite, DuckDB, libSQL, and Beancount replace the host fields with a file path. **Browse…** picks a file that exists. **New…** names one that does not, and the file is made when you connect; Beancount opens only an existing ledger, so it has no **New…**.
 
 ## Network
 

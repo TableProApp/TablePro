@@ -17,6 +17,14 @@ struct SQLiteFileExtensionsTests {
         #expect(snapshot.schema.fileExtensions.sorted() == Self.canonical.sorted())
     }
 
+    @Test("SQLite, libSQL and Turso name a new database file with the canonical SQLite extensions")
+    func newDatabaseFilesUseTheCanonicalExtensions() throws {
+        for typeId in ["SQLite", "libSQL", "Turso"] {
+            let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+            #expect(snapshot.capabilities.newDatabaseFileExtensions == Self.canonical, "\(typeId)")
+        }
+    }
+
     @Test("URLClassifier resolves every canonical extension to the SQLite database type")
     func urlClassifierResolvesEveryExtension() {
         let extensionMap = PluginManager.shared.allRegisteredFileExtensions

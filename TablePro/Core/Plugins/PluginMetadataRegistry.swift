@@ -114,6 +114,12 @@ struct PluginMetadataSnapshot: Sendable {
         /// network, which is what makes it the test for "can this connection name a remote file".
         var localFilePathField: LocalFilePathField?
 
+        /// The extensions a new database file can be named with, the first one preferred. Empty
+        /// when the driver refuses a path with nothing at it, as Beancount does, so the form offers
+        /// no way to name one. DuckDB lists only its own format: a missing Parquet or CSV path is
+        /// refused rather than created.
+        var newDatabaseFileExtensions: [String] = []
+
         var supportsSOCKSProxy: Bool { supportsSSH }
 
         /// A tunnel command forwards a loopback port to the server the connection names, so it
@@ -746,6 +752,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
+                newDatabaseFileExtensions: existingSnapshot?.capabilities.newDatabaseFileExtensions ?? [],
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,
                 supportsRemoteDatabaseSession: existingSnapshot?.capabilities

@@ -28,6 +28,22 @@ private final class MockDuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockSQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock SQLite"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled SQLite plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SQLite"
+    static let databaseDisplayName = "SQLite"
+    static let iconName = "sqlite-icon"
+    static let defaultPort = 0
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockMongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock MongoDB"
     static let pluginVersion = "1.0.0"
@@ -220,6 +236,46 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.schema.fileSignatures == [.magic("DUCK", at: 8).andZeroes(at: 14, count: 6)],
             "No DriverPlugin declares a signature, so loading the plugin would otherwise erase it"
         )
+    }
+
+    @Test("DuckDB keeps the file kinds a new database can be named with when its plugin registers")
+    func duckDBKeepsItsNewDatabaseFileExtensions() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.capabilities.newDatabaseFileExtensions == DuckDBFileKinds.database,
+            "A missing Parquet or CSV path is refused, so New… must offer only DuckDB's own format"
+        )
+    }
+
+    @Test("SQLite keeps the file kinds a new database can be named with when its plugin registers")
+    func sqliteKeepsItsNewDatabaseFileExtensions() throws {
+        let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SQLite"))
+
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockSQLitePlugin.self)
+
+        #expect(built.capabilities.newDatabaseFileExtensions == curated.schema.fileExtensions)
+        #expect(built.capabilities.newDatabaseFileExtensions.first == "db")
+    }
+
+    @Test("Only a driver that creates a missing file offers a new one")
+    func newDatabaseFilePerEngine() throws {
+        let cases: [(typeId: String, createsMissingFile: Bool)] = [
+            ("SQLite", true),
+            ("libSQL", true),
+            ("Turso", true),
+            ("DuckDB", true),
+            ("Beancount", false),
+            ("MySQL", false),
+            ("PostgreSQL", false),
+        ]
+        for entry in cases {
+            let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: entry.typeId))
+            #expect(
+                snapshot.capabilities.newDatabaseFileExtensions.isEmpty == !entry.createsMissingFile,
+                "\(entry.typeId)"
+            )
+        }
     }
 
     @Test("MongoDB keeps its database-scoped authentication when its plugin registers")
@@ -469,6 +525,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.tlsImpliedPorts.isEmpty)
         #expect(built.capabilities.verifiesServerWithSystemTrust == false)
         #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)
+        #expect(built.capabilities.newDatabaseFileExtensions.isEmpty)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

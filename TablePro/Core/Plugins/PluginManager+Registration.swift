@@ -546,6 +546,13 @@ extension PluginManager {
             .capabilities.localFilePathField
     }
 
+    /// The extensions a new database file of this type can be named with, or empty when its driver
+    /// opens only a file that already exists.
+    func newDatabaseFileExtensions(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.newDatabaseFileExtensions ?? []
+    }
+
     /// Whether this type can point at a database file on an SSH server instead of a local one.
     func supportsRemoteDatabaseFile(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?

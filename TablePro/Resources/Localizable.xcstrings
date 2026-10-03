@@ -30206,6 +30206,9 @@
         }
       }
     },
+    "Choose a name and location for the new database. TablePro creates it when you connect, and opens a file that already exists as it is." : {
+
+    },
     "Choose a name the source does not already have." : {
 
     },
@@ -95599,6 +95602,9 @@
     "Name a connection to run this on." : {
 
     },
+    "Name a new database file, created when you connect" : {
+
+    },
     "Name as supplied" : {
       "localizations" : {
         "ko" : {
@@ -97442,6 +97448,9 @@
           }
         }
       }
+    },
+    "New…" : {
+
     },
     "New Table…" : {
       "localizations" : {
@@ -181741,6 +181750,9 @@
 
     },
     "Choose an auth method for this connection." : {
+
+    },
+    "Choose an existing database file" : {
 
     },
     "Value %lld is not a JSON array." : {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New… beside Browse… for SQLite, DuckDB and libSQL database files, to name a database that does not exist yet.
+
 ### Changed
 
 - `$1` in a regular-expression Replace in the SQL editor inserts the capture group, as in data files.
@@ -29,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle closing TablePro, or resetting with "unexpected message", while loading rows from a table with SDO_GEOMETRY or BLOB columns. (#3241)
 - Oracle closing TablePro when a query is stopped or the connection closed while rows are still loading. (#3241)
 - Oracle object columns such as SDO_GEOMETRY labelled "unknown" and showing a placeholder instead of NULL. (#3241)
+- DuckDB Browse… offering any file, and SQLite Browse… dimming SQLite databases saved without a known extension.
+- File > Open File… dimming folders reached through a symlink or a Finder alias.
 
 ## [0.77.0] - 2026-10-02
 
