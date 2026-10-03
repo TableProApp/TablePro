@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Highlighted row in the database and connection switchers drawn as white text on a grey fill. (#3249)
+
 ## [0.77.1] - 2026-10-03
 
 ### Added

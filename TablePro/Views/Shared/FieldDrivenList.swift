@@ -323,7 +323,7 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
 
 /// A chooser's highlight stands for the search field's selection, so it draws emphasized whenever
 /// the window is key: the field is the thing holding focus. A browser owns its own focus, so AppKit
-/// already emphasizes it exactly right and this row leaves the property alone.
+/// already emphasizes it exactly right and this row passes its value through.
 internal final class FieldDrivenRowView: NSTableRowView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("FieldDrivenRow")
 
@@ -336,22 +336,59 @@ internal final class FieldDrivenRowView: NSTableRowView {
         return view
     }
 
-    /// The setter has to forward, because AppKit's own stored value is what a browser row draws
-    /// from and swallowing the write would leave every browser row permanently unemphasized.
+    /// The chooser rule sits in the setter, so the value AppKit stores is the value the row draws.
+    /// In a popover and in a source list the selection fill is a material view, and AppKit
+    /// configures it only when that stored value changes. A rule answered from the getter left
+    /// the fill at whatever it read while the row had no window: grey, under cells that had since
+    /// turned white. The table also rewrites the value on every key and first-responder change,
+    /// with false for a table that does not hold focus, and substituting here is what keeps that
+    /// write from switching the highlight off. A browser row forwards, because AppKit's value is
+    /// already the right one.
     override internal var isEmphasized: Bool {
-        get { followsWindowKeyState ? window?.isKeyWindow ?? false : super.isEmphasized }
-        set { super.isEmphasized = newValue }
+        get { super.isEmphasized }
+        set { super.isEmphasized = followsWindowKeyState ? windowHoldsKeyboard : newValue }
     }
 
-    /// AppKit copies `interiorBackgroundStyle` into the cell views from `didAddSubview`, and a row
-    /// is populated before it is added to the table, so at that moment `window` is still nil and a
-    /// key-state-derived emphasis reads false. The row then paints its accent fill from the live
-    /// value while the cells keep the unemphasized foreground: blue fill, dark text, until some
-    /// later selection change happens to re-run the copy. Repeating it here is the first point the
-    /// derived value is true, and AppKit keeps the two in step from then on.
+    private var windowHoldsKeyboard: Bool { window?.isKeyWindow ?? false }
+
+    /// A row is selected and populated before it is added to the table, so its window is still nil
+    /// and this is the first point the rule can read true. The key notifications are observed for
+    /// every window, because a popover's window posts none of its own: it reports its parent's key
+    /// state, and the parent is the object of the notification. A popover that opens with its rows
+    /// already inside posts nothing at all, and there the table's own write is what reaches the
+    /// setter.
     override internal func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        center.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
         guard followsWindowKeyState else { return }
+        if window != nil {
+            center.addObserver(
+                self,
+                selector: #selector(windowKeyStateDidChange(_:)),
+                name: NSWindow.didBecomeKeyNotification,
+                object: nil
+            )
+            center.addObserver(
+                self,
+                selector: #selector(windowKeyStateDidChange(_:)),
+                name: NSWindow.didResignKeyNotification,
+                object: nil
+            )
+        }
+        syncEmphasisWithWindow()
+    }
+
+    @objc private func windowKeyStateDidChange(_ notification: Notification) {
+        syncEmphasisWithWindow()
+    }
+
+    /// AppKit's setter repaints the fill, but it restyles only the cells the table registered, and
+    /// on one path not before the next layout. Copying the style here moves the fill and the
+    /// content in the same call.
+    private func syncEmphasisWithWindow() {
+        isEmphasized = windowHoldsKeyboard
         let style = interiorBackgroundStyle
         for case let cell as NSTableCellView in subviews where cell.backgroundStyle != style {
             cell.backgroundStyle = style
