@@ -15,6 +15,7 @@ final class AnthropicProvider: ChatTransport {
     private let model: String
     private let maxOutputTokens: Int
     private let configuredEffort: ReasoningEffort?
+    private let providerID: UUID?
     private let session: URLSession
 
     init(
@@ -23,6 +24,7 @@ final class AnthropicProvider: ChatTransport {
         model: String = "",
         maxOutputTokens: Int = 4_096,
         reasoningEffort: ReasoningEffort? = nil,
+        providerID: UUID? = nil,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
         self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,6 +33,7 @@ final class AnthropicProvider: ChatTransport {
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.configuredEffort = reasoningEffort
+        self.providerID = providerID
         self.session = session
     }
 
@@ -224,7 +227,8 @@ final class AnthropicProvider: ChatTransport {
             options: options,
             effort: effort,
             maxTokens: resolvedMaxTokens,
-            stream: stream
+            stream: stream,
+            liveReasoning: AIModelCatalog.shared.fetchedInfo(providerID: providerID, modelID: options.model)?.reasoning
         )
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -236,7 +240,8 @@ final class AnthropicProvider: ChatTransport {
         options: ChatTransportOptions,
         effort: ReasoningEffort?,
         maxTokens: Int,
-        stream: Bool
+        stream: Bool,
+        liveReasoning: AIReasoningSupport? = nil
     ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": options.model,
@@ -249,7 +254,7 @@ final class AnthropicProvider: ChatTransport {
         }
 
         if let effort {
-            let reasoning = resolvedReasoning(for: options.model)
+            let reasoning = liveReasoning ?? offlineReasoning(for: options.model)
 
             if let thinking = thinkingBody(for: effort, reasoning: reasoning, maxTokens: maxTokens) {
                 body["thinking"] = thinking
@@ -272,13 +277,7 @@ final class AnthropicProvider: ChatTransport {
         return body
     }
 
-    static func resolvedReasoning(for model: String) -> AIReasoningSupport {
-        if let live = AIModelCatalog.shared.reasoning(
-            providerTypeID: AIProviderType.claude.rawValue,
-            modelID: model
-        ) {
-            return live
-        }
+    private static func offlineReasoning(for model: String) -> AIReasoningSupport {
         let capabilities = AnthropicModelCapabilities.resolve(model: model)
         return AIReasoningSupport(
             mode: capabilities.thinkingMode == .adaptive ? .adaptive : .budgeted,

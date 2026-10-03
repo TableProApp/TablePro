@@ -35,6 +35,13 @@ struct ChatImageInput: Codable, Equatable, Sendable {
             return url.absoluteString
         }
     }
+
+    /// The image bytes alone, for a wire format that takes base64 rather than a URL. A remote
+    /// image has none to give without a download.
+    func base64Payload() -> String? {
+        guard case .cacheFile(let filename, _) = source else { return nil }
+        return AIImageCache.shared.read(filename: filename)?.base64EncodedString()
+    }
 }
 
 enum DetailHint: String, Codable, Sendable, CaseIterable, Identifiable {

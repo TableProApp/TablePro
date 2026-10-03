@@ -131,6 +131,23 @@ struct AIProviderModelFetchTests {
         #expect(models.isEmpty)
     }
 
+    @Test("An OpenAI-compatible model list comes back sorted by id, with what the server said about each model")
+    func openAICompatibleListKeepsModelMetadata() async throws {
+        StubModelListProtocol.respond(status: 200, body: #"""
+        {"data":[
+          {"id":"openai/gpt-5.5","supports_vision":true,"supports_reasoning":true},
+          {"id":"alibaba/qwen-max","supports_vision":false,"supports_reasoning":false},
+          {"object":"model"}
+        ]}
+        """#)
+        let models = try await compatibleProvider(.custom, endpoint: "https://router.requesty.ai")
+            .fetchAvailableModels()
+        #expect(models.map(\.id) == ["alibaba/qwen-max", "openai/gpt-5.5"])
+        #expect(models.first?.supportsImages == false)
+        #expect(models.first?.reasoning == .unsupported)
+        #expect(models.last?.supportsImages == true)
+    }
+
     /// An empty picker with no error reads as "this server has no models", which is not what a
     /// gateway answering 200 with the wrong shape is saying.
     @Test("A 200 whose JSON has no model array is reported, not read as an empty list")

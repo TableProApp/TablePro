@@ -5,46 +5,39 @@
 
 import Foundation
 
+/// What each provider's own model list said about its models, one entry per provider configuration.
+///
+/// Keyed by configuration rather than by provider type: two custom providers are two servers, and
+/// a list fetched from one used to replace what was known about the other.
 final class AIModelCatalog: @unchecked Sendable {
     static let shared = AIModelCatalog()
 
     private let lock = NSLock()
-    private var fetched: [String: [String: AIModelInfo]] = [:]
+    private var fetched: [UUID: [String: AIModelInfo]] = [:]
 
     init() {}
 
-    func store(providerTypeID: String, models: [AIModelInfo]) {
+    func store(providerID: UUID, models: [AIModelInfo]) {
         guard !models.isEmpty else { return }
-        lock.lock()
-        defer { lock.unlock() }
         var byID: [String: AIModelInfo] = [:]
         for model in models {
             byID[model.id] = model
         }
-        fetched[providerTypeID] = byID
-    }
-
-    func fetchedInfo(providerTypeID: String, modelID: String) -> AIModelInfo? {
         lock.lock()
         defer { lock.unlock() }
-        return fetched[providerTypeID]?[modelID]
+        fetched[providerID] = byID
     }
 
-    func resolve(providerTypeID: String, modelID: String) -> AIModelInfo {
-        let overlay = AIModelOverlay.info(providerTypeID: providerTypeID, modelID: modelID)
-        if let live = fetchedInfo(providerTypeID: providerTypeID, modelID: modelID) {
-            return live.merging(fallback: overlay)
-        }
-        return overlay ?? AIModelInfo(id: modelID)
-    }
-
-    func reasoning(providerTypeID: String, modelID: String) -> AIReasoningSupport? {
-        resolve(providerTypeID: providerTypeID, modelID: modelID).reasoning
-    }
-
-    func removeAll() {
+    func remove(providerID: UUID) {
         lock.lock()
         defer { lock.unlock() }
-        fetched.removeAll()
+        fetched.removeValue(forKey: providerID)
+    }
+
+    func fetchedInfo(providerID: UUID?, modelID: String) -> AIModelInfo? {
+        guard let providerID else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return fetched[providerID]?[modelID]
     }
 }

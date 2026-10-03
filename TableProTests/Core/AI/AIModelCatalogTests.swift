@@ -8,63 +8,74 @@ import Foundation
 import Testing
 
 struct AIModelCatalogTests {
-    private let claude = AIProviderType.claude.rawValue
+    init() {
+        AIProviderRegistration.registerAll()
+    }
+
+    private func claudeDescriptor() throws -> AIProviderDescriptor {
+        try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.claude.rawValue))
+    }
 
     @Test("Live provider metadata wins over the static overlay")
-    func liveMetadataWins() {
-        let catalog = AIModelCatalog()
+    func liveMetadataWins() throws {
         let live = AIModelInfo(
             id: "claude-haiku-4-5",
-            displayName: "Claude Haiku 4.5",
-            maxOutputTokens: 64_000,
             reasoning: AIReasoningSupport(mode: .adaptive, effortLevels: [.low, .medium, .high, .xhigh])
         )
-        catalog.store(providerTypeID: claude, models: [live])
-
-        let resolved = catalog.resolve(providerTypeID: claude, modelID: "claude-haiku-4-5")
-        #expect(resolved.reasoning?.mode == .adaptive, "live metadata must override the offline table")
-        #expect(resolved.maxOutputTokens == 64_000)
-        #expect(resolved.displayName == "Claude Haiku 4.5")
+        let levels = try claudeDescriptor().supportedEffortLevels(forModelID: "claude-haiku-4-5", fetched: live)
+        #expect(levels == [.low, .medium, .high, .xhigh], "live metadata must override the offline table")
     }
 
     @Test("Without live metadata the overlay supplies the answer")
-    func overlayFallback() {
-        let catalog = AIModelCatalog()
-        let resolved = catalog.resolve(providerTypeID: claude, modelID: "claude-haiku-4-5")
-        #expect(resolved.reasoning?.mode == .budgeted, "Haiku 4.5 has no adaptive thinking")
-        #expect(resolved.reasoning?.effortLevels == [.low, .medium, .high])
-    }
-
-    @Test("An unknown provider and model still resolve to a usable value")
-    func unknownResolvesToPlainInfo() {
-        let catalog = AIModelCatalog()
-        let resolved = catalog.resolve(providerTypeID: "nonexistent", modelID: "some-model")
-        #expect(resolved.id == "some-model")
-        #expect(resolved.reasoning == nil)
+    func overlayFallback() throws {
+        let levels = try claudeDescriptor().supportedEffortLevels(forModelID: "claude-haiku-4-5", fetched: nil)
+        #expect(levels == [.low, .medium, .high])
     }
 
     @Test("Storing an empty list never erases what is already known")
     func emptyStoreIsIgnored() {
         let catalog = AIModelCatalog()
+        let provider = UUID()
         let live = AIModelInfo(id: "m", reasoning: AIReasoningSupport(mode: .adaptive, effortLevels: [.high]))
-        catalog.store(providerTypeID: claude, models: [live])
-        catalog.store(providerTypeID: claude, models: [])
-        #expect(catalog.fetchedInfo(providerTypeID: claude, modelID: "m") != nil)
+        catalog.store(providerID: provider, models: [live])
+        catalog.store(providerID: provider, models: [])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") != nil)
     }
 
-    @Test("Merging fills only the fields the provider left unknown")
-    func mergingPrefersLiveFields() {
-        let live = AIModelInfo(id: "m", displayName: nil, maxOutputTokens: 100)
-        let fallback = AIModelInfo(
-            id: "m",
-            displayName: "Fallback",
-            maxOutputTokens: 999,
-            reasoning: AIReasoningSupport(mode: .budgeted, effortLevels: [.low])
-        )
-        let merged = live.merging(fallback: fallback)
-        #expect(merged.maxOutputTokens == 100, "a live value must not be overwritten")
-        #expect(merged.displayName == "Fallback", "an unknown live field takes the fallback")
-        #expect(merged.reasoning?.mode == .budgeted)
+    /// Two custom providers are two servers. Keyed by provider type, a list fetched from one
+    /// replaced what was known about the other.
+    @Test("Two providers of the same type keep separate lists")
+    func listsAreKeptPerProvider() {
+        let catalog = AIModelCatalog()
+        let router = UUID()
+        let local = UUID()
+        catalog.store(providerID: router, models: [AIModelInfo(id: "shared", modalities: [.text])])
+        catalog.store(providerID: local, models: [AIModelInfo(id: "shared", modalities: [.text, .image])])
+
+        #expect(catalog.fetchedInfo(providerID: router, modelID: "shared")?.supportsImages == false)
+        #expect(catalog.fetchedInfo(providerID: local, modelID: "shared")?.supportsImages == true)
+    }
+
+    @Test("A newer list replaces the older one for the same provider")
+    func newerListReplacesTheOlder() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        catalog.store(providerID: provider, models: [AIModelInfo(id: "old")])
+        catalog.store(providerID: provider, models: [AIModelInfo(id: "new")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "old") == nil)
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "new") != nil)
+    }
+
+    @Test("A provider nothing was fetched for has no entry, and a removed one loses its own")
+    func unknownAndRemovedProvidersHaveNoEntry() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") == nil)
+        #expect(catalog.fetchedInfo(providerID: nil, modelID: "m") == nil)
+
+        catalog.store(providerID: provider, models: [AIModelInfo(id: "m")])
+        catalog.remove(providerID: provider)
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") == nil)
     }
 
     @Test("Anthropic capability payloads decode into reasoning support")

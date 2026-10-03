@@ -11,10 +11,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.claude.rawValue,
-            displayName: "Claude",
-            defaultEndpoint: "https://api.anthropic.com",
-            capabilities: [.chat, .models, .reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            symbolName: "brain",
+            capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             curatedModels: claudeCuratedModels,
             effortLevelResolver: { AnthropicModelCapabilities.effortLevels(forModel: $0) },
             makeProvider: { config, apiKey in
@@ -25,32 +22,26 @@ enum AIProviderRegistration {
                     maxOutputTokens: config.maxOutputTokens
                         ?? config.reasoningEffort?.autoScaledMaxOutputTokens
                         ?? 4_096,
-                    reasoningEffort: config.reasoningEffort
+                    reasoningEffort: config.reasoningEffort,
+                    providerID: config.id
                 )
             }
         ))
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.claudeAgent.rawValue,
-            displayName: AIProviderType.claudeAgent.displayName,
-            defaultEndpoint: "",
-            capabilities: [.chat, .models],
-            symbolName: AIProviderType.claudeAgent.symbolName,
+            capabilities: [],
             curatedModels: ClaudeAgent.curatedModels,
             makeProvider: { config, _ in
                 ClaudeAgentProvider(model: config.model)
             }
         ))
 
+        /// Gemini has no `.reasoning`: its transport sends no thinking configuration, so an effort
+        /// picker there would change nothing.
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.gemini.rawValue,
-            displayName: "Gemini",
-            defaultEndpoint: "https://generativelanguage.googleapis.com",
-            capabilities: [
-                .chat, .models, .reasoning, .images,
-                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
-            ],
-            symbolName: "wand.and.stars",
+            capabilities: [.images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             makeProvider: { config, apiKey in
                 GeminiProvider(
                     endpoint: config.endpoint,
@@ -62,10 +53,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.openAI.rawValue,
-            displayName: AIProviderType.openAI.displayName,
-            defaultEndpoint: AIProviderType.openAI.defaultEndpoint,
-            capabilities: [.chat, .models, .reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            symbolName: iconForType(.openAI),
+            capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             curatedModels: openAICuratedModels,
             makeProvider: { config, apiKey in
                 OpenAIResponsesProvider(
@@ -79,13 +67,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.xai.rawValue,
-            displayName: AIProviderType.xai.displayName,
-            defaultEndpoint: AIProviderType.xai.defaultEndpoint,
-            capabilities: [
-                .chat, .models, .reasoning, .images,
-                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
-            ],
-            symbolName: iconForType(.xai),
+            capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
             curatedModels: XAI.apiCuratedModels,
             makeProvider: { config, apiKey in
                 if let apiKey, !apiKey.isEmpty {
@@ -101,38 +83,19 @@ enum AIProviderRegistration {
             }
         ))
 
-        for type in [AIProviderType.openRouter, .requesty, .openCode, .ollama, .llamaCpp, .mlx, .custom] {
-            var capabilities: AIProviderCapabilities = [
-                .chat, .models, .reasoning, .images,
-                .endpointConfigurable, .maxOutputTokens, .modelListFetchable
-            ]
-            if type == .custom {
-                capabilities.insert(.nameConfigurable)
-            }
+        for type in AIProviderType.openAICompatibleFamily {
             registry.register(AIProviderDescriptor(
                 typeID: type.rawValue,
-                displayName: type.displayName,
-                defaultEndpoint: type.defaultEndpoint,
-                capabilities: capabilities,
-                symbolName: iconForType(type),
+                capabilities: openAICompatibleCapabilities(for: type),
                 makeProvider: { config, apiKey in
-                    OpenAICompatibleProvider(
-                        endpoint: config.endpoint,
-                        apiKey: apiKey,
-                        providerType: config.type,
-                        model: config.model,
-                        maxOutputTokens: config.maxOutputTokens
-                    )
+                    OpenAICompatibleProvider(config: config, apiKey: apiKey)
                 }
             ))
         }
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.copilot.rawValue,
-            displayName: "GitHub Copilot",
-            defaultEndpoint: "",
-            capabilities: [.chat, .models, .modelListFetchable],
-            symbolName: AIProviderType.copilot.symbolName,
+            capabilities: [.modelListFetchable],
             showsTelemetryToggle: true,
             defaultTelemetryEnabled: true,
             oauthFlowKind: .deviceCode,
@@ -141,10 +104,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.chatgptCodex.rawValue,
-            displayName: AIProviderType.chatgptCodex.displayName,
-            defaultEndpoint: "",
-            capabilities: [.chat, .inline, .models, .reasoning],
-            symbolName: AIProviderType.chatgptCodex.symbolName,
+            capabilities: [.reasoning],
             curatedModels: chatGPTCodexCuratedModels,
             oauthFlowKind: .browserRedirect,
             makeProvider: { config, _ in
@@ -154,10 +114,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.cursor.rawValue,
-            displayName: AIProviderType.cursor.displayName,
-            defaultEndpoint: "",
-            capabilities: [.chat, .inline, .models, .modelListFetchable],
-            symbolName: AIProviderType.cursor.symbolName,
+            capabilities: [.modelListFetchable],
             curatedModels: cursorCuratedModels,
             makeProvider: { config, apiKey in
                 if let apiKey, !apiKey.isEmpty {
@@ -166,6 +123,22 @@ enum AIProviderRegistration {
                 return CursorAgentProvider(model: config.model)
             }
         ))
+    }
+
+    /// Reasoning and images are an envelope here, narrowed per model by what the server's own
+    /// model list says. Ollama is the exception: its native route takes `think`, not the
+    /// `reasoning_effort` this transport sends.
+    private static func openAICompatibleCapabilities(for type: AIProviderType) -> AIProviderCapabilities {
+        var capabilities: AIProviderCapabilities = [
+            .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable
+        ]
+        if type != .ollama {
+            capabilities.insert(.reasoning)
+        }
+        if type == .custom {
+            capabilities.insert(.nameConfigurable)
+        }
+        return capabilities
     }
 
     private static let cursorCuratedModels: [CuratedModel] = CursorAI.curatedModels.map {
@@ -203,8 +176,4 @@ enum AIProviderRegistration {
         curatedModel(id: "claude-sonnet-5", displayName: "Claude Sonnet 5", provider: .claude),
         curatedModel(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", provider: .claude, defaultEffort: .low)
     ]
-
-    private static func iconForType(_ type: AIProviderType) -> String {
-        type.symbolName
-    }
 }

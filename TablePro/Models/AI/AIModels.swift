@@ -15,7 +15,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case claudeAgent
     case openAI
     case openRouter
-    case requesty
     case gemini
     case xai
     case ollama
@@ -35,7 +34,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return "Claude Agent"
         case .openAI:       return "OpenAI"
         case .openRouter:   return "OpenRouter"
-        case .requesty:     return "Requesty"
         case .gemini:       return "Gemini"
         case .xai:          return "xAI"
         case .ollama:       return "Ollama"
@@ -55,7 +53,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return ""
         case .openAI:       return "https://api.openai.com"
         case .openRouter:   return "https://openrouter.ai/api"
-        case .requesty:     return "https://router.requesty.ai"
         case .gemini:       return "https://generativelanguage.googleapis.com"
         case .xai:          return "https://api.x.ai"
         case .ollama:       return "http://localhost:11434"
@@ -77,28 +74,39 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
         case .cursor:       return .optionalApiKey
+        case .claude:       return .apiKey
         case .claudeAgent:  return .none
+        case .openAI:       return .apiKey
+        case .openRouter:   return .apiKey
+        case .gemini:       return .apiKey
         case .xai:          return .optionalApiKey
         case .ollama:       return .none
         case .llamaCpp:     return .none
         case .mlx:          return .none
         case .openCode:     return .optionalApiKey
         case .custom:       return .optionalApiKey
-        default:            return .apiKey
         }
     }
 
     /// How the configured endpoint is turned into a request URL. Providers that reach a fixed
-    /// host ignore it, so the fall-through matches `AIProviderFactory`'s own fallback transport.
+    /// host ignore it, so they answer with `AIProviderFactory`'s own fallback transport.
     var endpointStyle: AIEndpointStyle {
         switch self {
-        case .claude:            return .messages
-        case .openAI, .xai:      return .responses
-        case .gemini:            return .gemini
-        case .ollama:            return .ollama
-        default:                 return .chatCompletions
+        case .claude:
+            return .messages
+        case .openAI, .xai:
+            return .responses
+        case .gemini:
+            return .gemini
+        case .ollama:
+            return .ollama
+        case .copilot, .chatgptCodex, .cursor, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
+            return .chatCompletions
         }
     }
+
+    /// The types `OpenAICompatibleProvider` serves, which share one registration.
+    static let openAICompatibleFamily: [AIProviderType] = [.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom]
 
     var symbolName: String {
         switch self {
@@ -109,7 +117,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         case .claudeAgent:  return "terminal"
         case .openAI:       return "cpu"
         case .openRouter:   return "globe"
-        case .requesty:     return "arrow.triangle.branch"
         case .gemini:       return "wand.and.stars"
         case .xai:          return "x.circle"
         case .ollama:       return "desktopcomputer"
@@ -127,6 +134,10 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var name: String
     var type: AIProviderType
+    /// Set on a `.custom` provider added from an `AIProviderPreset`. An id this build does not
+    /// know is kept as it stands, so a preset from a newer build survives a round trip through
+    /// this one and reads as a plain custom provider in the meantime.
+    var presetID: String?
     var model: String
     var endpoint: String
     var maxOutputTokens: Int?
@@ -137,6 +148,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String = "",
         type: AIProviderType = .claude,
+        presetID: String? = nil,
         model: String = "",
         endpoint: String = "",
         maxOutputTokens: Int? = nil,
@@ -146,11 +158,18 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.id = id
         self.name = name
         self.type = type
+        self.presetID = presetID
         self.model = model
-        self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
+        self.endpoint = endpoint.isEmpty ? Self.defaultEndpoint(type: type, presetID: presetID) : endpoint
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
         self.reasoningEffort = reasoningEffort
+    }
+
+    /// The name is stored rather than derived, so a build without this preset still lists the
+    /// provider under the vendor's name.
+    init(preset: AIProviderPreset) {
+        self.init(name: preset.displayName, type: .custom, presetID: preset.id)
     }
 
     init(from decoder: Decoder) throws {
@@ -158,16 +177,38 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         type = try container.decode(AIProviderType.self, forKey: .type)
+        presetID = try container.decodeIfPresent(String.self, forKey: .presetID)
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
         let rawEndpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
-        endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
+        endpoint = rawEndpoint.isEmpty ? Self.defaultEndpoint(type: type, presetID: presetID) : rawEndpoint
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
         reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort)
     }
 
+    var preset: AIProviderPreset? {
+        guard type == .custom else { return nil }
+        return AIProviderPreset.preset(withID: presetID)
+    }
+
+    /// What kind of provider this is, as opposed to what the user named it.
+    var kindName: String { preset?.displayName ?? type.displayName }
+
     var displayName: String {
-        name.isEmpty ? type.displayName : name
+        name.isEmpty ? kindName : name
+    }
+
+    var symbolName: String { preset?.symbolName ?? type.symbolName }
+
+    var authStyle: AIProviderType.AuthStyle { preset?.authStyle ?? type.authStyle }
+
+    var defaultEndpoint: String { Self.defaultEndpoint(type: type, presetID: presetID) }
+
+    private static func defaultEndpoint(type: AIProviderType, presetID: String?) -> String {
+        guard type == .custom, let preset = AIProviderPreset.preset(withID: presetID) else {
+            return type.defaultEndpoint
+        }
+        return preset.endpoint
     }
 }
 
