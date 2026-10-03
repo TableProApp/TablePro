@@ -141,22 +141,28 @@ struct SSHTunnelErrorTests {
         #expect(interrupted.withLock { $0 })
     }
 
+    /// The dismissal is a main-actor job and this test runs off the main actor, so it waits for
+    /// the dismissal itself. Yielding here never waited for the main actor, and every yield could
+    /// pass before the main thread took its turn.
     @Test("Cancelling SSH authentication dismisses its active prompt")
     func cancellationDismissesPrompt() async throws {
         let deadline = ConnectionDeadline(configuredSeconds: 30)
         let endpoint = ConnectionTimeoutEndpoint.tunnel("jump.example:22")
         let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
-        let dismissed = OSAllocatedUnfairLock(initialState: false)
+        let (dismissals, dismissal) = AsyncStream<Void>.makeStream()
         let promptId = try attempt.registerPrompt(for: endpoint) {
-            dismissed.withLock { $0 = true }
+            dismissal.yield()
+            dismissal.finish()
         }
 
         attempt.cancel()
-        for _ in 0..<20 where !dismissed.withLock({ $0 }) {
-            await Task.yield()
+
+        let dismissed = await BoundedCall.result {
+            for await _ in dismissals { return true }
+            return false
         }
 
-        #expect(dismissed.withLock { $0 })
+        #expect(dismissed == true)
         #expect(throws: CancellationError.self) {
             try attempt.check(for: endpoint)
         }

@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 import Testing
@@ -521,6 +522,34 @@ struct SidebarViewModelMultiSectionTests {
     }
 }
 
+/// The debounce runs on real time, so a test waits for the value it publishes and not for a
+/// sleep of its own to outlast it. `$filterQuery` replays its current value to a new subscriber,
+/// which `dropFirst` discards.
+@MainActor
+private final class DebouncedFilterQueries {
+    private(set) var published: [String] = []
+    private let values: AsyncStream<String>
+    private var subscription: AnyCancellable?
+
+    init(of viewModel: SidebarViewModel) {
+        let (values, continuation) = AsyncStream<String>.makeStream()
+        self.values = values
+        subscription = viewModel.$filterQuery.dropFirst().sink { [weak self] value in
+            self?.published.append(value)
+            continuation.yield(value)
+        }
+    }
+
+    func first() async -> String? {
+        let stream = values
+        let arrived = await BoundedCall.result { () -> String? in
+            for await value in stream { return value }
+            return nil
+        }
+        return arrived ?? nil
+    }
+}
+
 struct SidebarViewModelSearchDebounceTests {
     @Test("filterQuery updates immediately on first non-empty input")
     @MainActor
@@ -563,12 +592,11 @@ struct SidebarViewModelSearchDebounceTests {
     func filterQueryCatchesUpAfterDebounce() async {
         let vm = makeViewModel()
         vm.searchText = "user"
+        let debounced = DebouncedFilterQueries(of: vm)
 
         vm.searchText = "users"
 
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        await Task.yield()
-
+        #expect(await debounced.first() == "users")
         #expect(vm.filterQuery == "users")
     }
 
@@ -578,6 +606,8 @@ struct SidebarViewModelSearchDebounceTests {
         let vm = makeViewModel()
         vm.searchText = "u"
 
+        let debounced = DebouncedFilterQueries(of: vm)
+
         vm.searchText = "us"
         vm.searchText = "use"
         vm.searchText = "user"
@@ -585,9 +615,8 @@ struct SidebarViewModelSearchDebounceTests {
 
         #expect(vm.filterQuery == "u")
 
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        await Task.yield()
-
+        #expect(await debounced.first() == "user")
+        #expect(debounced.published == ["user"])
         #expect(vm.filterQuery == "user")
     }
 
