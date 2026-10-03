@@ -40,7 +40,7 @@ enum SettingsPane: String, CaseIterable {
         case .mcp: "network"
         case .plugins: "puzzlepiece.extension"
         case .sync: "arrow.triangle.2.circlepath"
-        case .account: "key.fill"
+        case .account: "key"
         }
     }
 }

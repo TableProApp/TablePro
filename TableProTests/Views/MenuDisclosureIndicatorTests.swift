@@ -30,6 +30,17 @@ struct MenuDisclosureIndicatorTests {
         return url
     }()
 
+    /// A `Menu` hosted by a toolbar is the reverse of the rule the first test below holds. Measured
+    /// through the accessibility API on a build linked against the macOS 26 SDK: the label alone
+    /// publishes `AXTitle` "chevron.pulldown", in every label form that test allows, and
+    /// `.accessibilityLabel` on the `Menu` is the one construction that names it. Both menus shipped
+    /// unnamed. Keyed by file, each of which holds a single `Menu`, because a line number moves with
+    /// every edit above it.
+    private static let toolbarHostedMenus: Set<String> = [
+        "TablePro/Views/Integrations/IntegrationsActivityLogPane.swift",
+        "TablePro/Views/Welcome/WelcomeLibraryPane.swift",
+    ]
+
     /// `.accessibilityLabel` on a `Menu` is not additive. Measured with System Events against a
     /// standalone SwiftUI app: a menu labelled `Text("Add tags")` publishes `AXTitle` "Add tags",
     /// and the same menu with `.accessibilityLabel(Text("Add tags"))` on it publishes an empty name.
@@ -55,6 +66,7 @@ struct MenuDisclosureIndicatorTests {
             let relativePath = url.path.replacingOccurrences(of: Self.repositoryRoot.path + "/", with: "")
             let result = Self.scanForMisplacedNames(source, relativePath: relativePath)
             inspected += result.inspected
+            guard !Self.toolbarHostedMenus.contains(relativePath) else { continue }
             offenders += result.offenders
         }
 
@@ -63,6 +75,21 @@ struct MenuDisclosureIndicatorTests {
             offenders.isEmpty,
             "These menus name themselves with .accessibilityLabel, which leaves them nameless. Put the name in the label, as `Label { Text(name) } icon: { EmptyView() }` with .labelStyle(.iconOnly), or as the label's own Text: \(offenders.sorted())"
         )
+    }
+
+    @Test("A toolbar-hosted menu names itself with accessibilityLabel")
+    func toolbarHostedMenusCarryTheirNameOnTheMenu() throws {
+        for relativePath in Self.toolbarHostedMenus.sorted() {
+            let url = Self.repositoryRoot.appendingPathComponent(relativePath)
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let result = Self.scanForMisplacedNames(source, relativePath: relativePath)
+
+            #expect(result.inspected == 1, "Expected one menu in \(relativePath), found \(result.inspected)")
+            #expect(
+                result.offenders.count == 1,
+                "The toolbar menu in \(relativePath) needs .accessibilityLabel on the Menu itself, or VoiceOver reads it as \"chevron.pulldown\""
+            )
+        }
     }
 
     @Test("A label on the menu itself is flagged, a label on a container wrapping it is not")

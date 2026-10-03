@@ -104,18 +104,21 @@ extension MainWindowToolbar {
 
     /// The long tail of what a context can do, in one control whose menu changes with the tab.
     ///
-    /// `ellipsis.circle` is the glyph Finder gives its own Action pull-down. The menu is built by
-    /// `ConnectionActionsMenuDelegate` when it opens. The overflow entry is AppKit's own and is
-    /// left to it: measured on macOS 27, an `NSMenuToolbarItem` answers `menuFormRepresentation`
-    /// with a fresh item titled with its label over this same menu, whatever was assigned, so a
-    /// narrow window's overflow offers exactly what the control would.
+    /// The glyph and the missing indicator are Finder's own Action pull-down, which is why they
+    /// come from `ToolbarSymbols` rather than being named here: Finder draws it differently before
+    /// and after macOS 26. The menu is built by `ConnectionActionsMenuDelegate` when it opens. The
+    /// overflow entry is AppKit's own and is left to it: measured on macOS 27, an
+    /// `NSMenuToolbarItem` answers `menuFormRepresentation` with a fresh item titled with its label
+    /// over this same menu, whatever was assigned, so a narrow window's overflow offers exactly
+    /// what the control would.
     func makeActionsItem() -> NSToolbarItem {
         let label = String(localized: "Actions")
         let item = StatefulMenuToolbarItem(itemIdentifier: Self.actions)
         item.label = label
         item.paletteLabel = label
         item.isBordered = true
-        item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: label)
+        item.image = NSImage(systemSymbolName: ToolbarSymbols.more(), accessibilityDescription: label)
+        item.showsIndicator = ToolbarSymbols.moreShowsIndicator()
         item.toolTip = String(localized: "Commands for the current tab and connection")
         item.isEnabledProvider = enablement(of: Self.actions)
         item.menu = menu(delegate: actionsMenuDelegate)
@@ -217,14 +220,20 @@ extension MainWindowToolbar {
     /// Labelled with the verb the tab commits with, and re-labelled by `refreshCommitVerb(for:)` when
     /// the tab kind moves, so the palette, the overflow entry and the tooltip never offer to save a
     /// table definition that is about to be created.
+    ///
+    /// The overflow entry carries no image. A check drawn in a menu row is the mark the system
+    /// gives an item that is on, so the glyph that reads as "commit" in the toolbar would read as
+    /// "already saved" in the overflow list.
     func makeSaveChangesItem() -> NSToolbarItem {
-        menuOnlyItem(
+        let item = menuOnlyItem(
             id: Self.saveChanges,
             label: commitVerb,
-            symbol: "checkmark.circle.fill",
+            symbol: ToolbarSymbols.commit,
             action: #selector(performSaveChanges(_:)),
             shortcut: .saveChanges
         )
+        item.menuFormRepresentation?.image = nil
+        return item
     }
 
     /// A row insert is a change to the data, so it belongs with the other data commands rather than

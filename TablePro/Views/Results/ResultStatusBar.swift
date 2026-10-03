@@ -314,6 +314,7 @@ struct ResultStatusBar: View {
                 Text("Columns")
             } icon: {
                 Image(systemName: hasHiddenColumns ? "eye.slash" : "eye")
+                    .statusBarControlIcon(besideTitle: presentation.showsControlTitles)
             }
         }
         .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)
@@ -351,8 +352,12 @@ struct ResultStatusBar: View {
                 Text("Highlight Rules")
             } icon: {
                 Image(systemName: "highlighter")
+                    .statusBarControlIcon(besideTitle: false)
             }
         }
+        /// A glyph at every tier. Its title would add 88pt, and measured at the window's default
+        /// 1200pt with the sidebar open the regular tier then no longer fits, so drawing it would
+        /// take the titles off Columns and Filters at the size most windows are.
         .labelStyle(.iconOnly)
         .controlSize(.small)
         .disabled(highlightState.columns.isEmpty)
@@ -388,6 +393,7 @@ struct ResultStatusBar: View {
                 Image(systemName: filterState.hasAppliedFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
+                    .statusBarControlIcon(besideTitle: presentation.showsControlTitles)
             }
         }
         .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)

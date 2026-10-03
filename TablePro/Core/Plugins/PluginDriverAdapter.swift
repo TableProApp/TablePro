@@ -820,7 +820,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             sizeBytes: pluginMeta.sizeBytes,
             lastAccessed: nil,
             isSystemDatabase: isSystem,
-            icon: isSystem ? "gearshape.fill" : "cylinder.fill"
+            icon: isSystem ? "gearshape" : "cylinder"
         )
     }
 

@@ -105,7 +105,7 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
             return makeItem(itemIdentifier, label: String(localized: "Delete"), symbol: "minus",
                             action: #selector(DataFileSplitViewController.dataFileDeleteSelectedRows(_:)))
         case .dataFileFilters:
-            return makeItem(itemIdentifier, label: String(localized: "Filters"), symbol: "line.3.horizontal.decrease.circle",
+            return makeItem(itemIdentifier, label: String(localized: "Filters"), symbol: ToolbarSymbols.filter(),
                             action: #selector(DataFileSplitViewController.toggleFilterBar(_:)))
         case .dataFileInspector:
             return makeItem(itemIdentifier, label: String(localized: "Inspector"), symbol: "sidebar.trailing",

@@ -112,7 +112,7 @@ extension TableStructureView {
                 .buttonStyle(.bordered)
 
                 Button(action: exportDDL) {
-                    Label("Export", systemImage: "square.and.arrow.down")
+                    Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
             }
