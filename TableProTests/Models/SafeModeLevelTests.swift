@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 import Testing
@@ -122,12 +123,33 @@ struct SafeModeLevelTests {
 
     @Test("each case has the correct SF Symbol icon name")
     func iconNames() {
-        #expect(SafeModeLevel.silent.iconName == "lock.open.fill")
+        #expect(SafeModeLevel.silent.iconName == "lock.open")
         #expect(SafeModeLevel.alert.iconName == "exclamationmark.triangle")
         #expect(SafeModeLevel.alertFull.iconName == "exclamationmark.triangle.fill")
         #expect(SafeModeLevel.safeMode.iconName == "lock.shield")
         #expect(SafeModeLevel.safeModeFull.iconName == "lock.shield.fill")
-        #expect(SafeModeLevel.readOnly.iconName == "lock.fill")
+        #expect(SafeModeLevel.readOnly.iconName == "lock")
+    }
+
+    /// The fill used to mark two of the four levels that gate reads and both of the two that do
+    /// not, so it said nothing. The weakest level drew the heaviest glyph in the toolbar.
+    @Test("An icon is filled exactly when its level applies to all queries", arguments: SafeModeLevel.allCases)
+    func fillMeansTheLevelAppliesToAllQueries(level: SafeModeLevel) {
+        #expect(level.iconName.hasSuffix(".fill") == level.appliesToAllQueries)
+    }
+
+    /// The toolbar glyph is re-read only when the name changes, so two levels sharing one would
+    /// leave the previous level's glyph in place.
+    @Test("Every level draws its own symbol, and each one exists")
+    func iconNamesAreDistinctAndResolve() {
+        let names = SafeModeLevel.allCases.map(\.iconName)
+        #expect(Set(names).count == names.count)
+        for name in names {
+            #expect(
+                NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,
+                "\(name) is not a system symbol"
+            )
+        }
     }
 
     // MARK: - badgeColor

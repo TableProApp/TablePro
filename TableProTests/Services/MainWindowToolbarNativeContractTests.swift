@@ -209,6 +209,47 @@ struct MainWindowToolbarNativeContractTests {
         #expect(!item.label.isEmpty)
     }
 
+    /// Finder's own Action pull-down, which is a bare ellipsis with no indicator where the item
+    /// has a glass container and a circled one with a chevron where it has none. `ToolbarSymbols`
+    /// owns both answers, so the glyph and the indicator cannot be taken from different releases.
+    @Test("The Actions item draws its indicator only where the More glyph is circled")
+    func actionsIndicatorFollowsTheGlyph() throws {
+        let owner = MainWindowToolbar()
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.actions,
+                willBeInsertedIntoToolbar: true
+            ) as? NSMenuToolbarItem
+        )
+
+        #expect(item.image != nil)
+        #expect(item.showsIndicator == ToolbarSymbols.moreShowsIndicator())
+    }
+
+    /// Save drew the filled, circled check the rest of the app uses for "succeeded", the one
+    /// filled glyph in a toolbar of outline ones. The bare check is the HIG's glyph for Save, and
+    /// it stays out of the overflow entry: a check in a menu row is the mark of an item that is on.
+    @Test("The commit control draws the bare check, and its overflow entry draws no image")
+    func commitGlyphStaysOutOfTheOverflowEntry() throws {
+        let owner = MainWindowToolbar()
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.saveChanges,
+                willBeInsertedIntoToolbar: true
+            ) as? StatefulToolbarItem
+        )
+        let provider = try #require(item.symbolProvider)
+
+        #expect(provider() == ToolbarSymbols.commit)
+        #expect(item.image != nil)
+        let overflow = try #require(item.menuFormRepresentation)
+        #expect(overflow.image == nil)
+        #expect(overflow.title == item.label)
+        #expect(overflow.action == item.action)
+    }
+
     /// The commit control says what its tab commits. The palette, the overflow entry and the
     /// tooltip all read the label, so a Create Table tab offering to Save Changes is the defect.
     ///

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Toolbar Save is a plain checkmark, and the Safe Mode icon is filled only at the two Full levels. (#3250)
+- Actions, filter and Disconnect toolbar icons lose their circle on macOS 26 and later, and Actions its chevron. (#3250)
+
+### Fixed
+
+- Export in the Structure and object source views showing the Import icon. (#3250)
+- VoiceOver reading the welcome window and Integrations filter menus as "chevron.pulldown". (#3250)
+- Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250)
+- Status bar buttons a point or two taller or shorter than each other depending on their icon. (#3250)
+
 ## [0.77.1] - 2026-10-03
 
 ### Added
