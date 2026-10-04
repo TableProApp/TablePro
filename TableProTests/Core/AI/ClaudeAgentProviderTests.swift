@@ -257,7 +257,7 @@ struct ClaudeAgentRegistrationTests {
         let descriptor = try #require(
             AIProviderRegistry.shared.descriptor(for: AIProviderType.claudeAgent.rawValue)
         )
-        #expect(descriptor.displayName == "Claude Agent")
+        #expect(AIProviderType.claudeAgent.displayName == "Claude Agent")
         #expect(!descriptor.allowsEndpointConfiguration)
         #expect(descriptor.curatedModels.map(\.id) == ["opus", "sonnet", "haiku"])
 

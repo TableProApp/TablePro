@@ -13,6 +13,15 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let connectionNameResolver: @Sendable (UUID) async -> String?
     private let auditLog: any ExecutionAuditLogging
 
+    /// The end of a sentence macOS writes, not a sentence of its own. `LAContext` shows the reason
+    /// as "<app> is trying to <reason>.", and the system supplies the closing mark in every
+    /// language the app ships: Vietnamese and Chinese continue the same verb ("đang cố gắng %@.",
+    /// "正在尝试%@。"), Korean and Turkish put the reason after a colon. So each translation is a
+    /// lowercase phrase with no closing period.
+    static var authenticationReason: String {
+        String(localized: "execute database operations")
+    }
+
     init(
         confirming: OperationConfirming,
         authenticating: OperationAuthenticating,
@@ -100,9 +109,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
             if caps.contains(.cannotPrompt) {
                 return .denied(reason: String(localized: "Authentication is required for this operation"))
             }
-            let authenticated = await authenticating.authenticate(
-                reason: String(localized: "Authenticate to execute database operations")
-            )
+            let authenticated = await authenticating.authenticate(reason: Self.authenticationReason)
             guard authenticated else {
                 return .denied(reason: String(localized: "Authentication required to execute write operations"))
             }

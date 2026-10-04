@@ -60,7 +60,10 @@ private final class StubConnectionProtocol: URLProtocol, @unchecked Sendable {
 
 @Suite("OpenAICompatibleProvider connection test", .serialized)
 struct OpenAICompatibleProviderConnectionTests {
-    private func makeProvider(endpoint: String) -> OpenAICompatibleProvider {
+    private func makeProvider(
+        endpoint: String,
+        treatsForbiddenAsAuthFailure: Bool = false
+    ) -> OpenAICompatibleProvider {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubConnectionProtocol.self]
         return OpenAICompatibleProvider(
@@ -68,8 +71,97 @@ struct OpenAICompatibleProviderConnectionTests {
             apiKey: "key",
             providerType: .custom,
             model: "glm-4.6",
+            treatsForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
             session: URLSession(configuration: config)
         )
+    }
+
+    private func thrownError(_ body: () async throws -> Void) async -> AIProviderError? {
+        do {
+            try await body()
+            return nil
+        } catch {
+            return error as? AIProviderError
+        }
+    }
+
+    private func isAuthenticationFailure(_ error: AIProviderError?) -> Bool {
+        if case .authenticationFailed = error { return true }
+        return false
+    }
+
+    private static let requestyBadKeyBody = #"{"error":{"origin":"router","message":"Invalid authorization token"}}"#
+
+    /// Requesty answers a wrong key with 403. Read as a server error, the sheet said "Server error
+    /// (403)" and the chat offered to retry a request that could never succeed.
+    @Test("A 403 from a server that rejects bad keys that way is an authentication failure")
+    func forbiddenIsAnAuthFailureForAPresetThatSaysSo() async {
+        StubConnectionProtocol.respond(status: 403, body: Self.requestyBadKeyBody)
+        let provider = makeProvider(endpoint: "https://router.requesty.ai", treatsForbiddenAsAuthFailure: true)
+        let error = await thrownError { _ = try await provider.testConnection() }
+        #expect(isAuthenticationFailure(error))
+        #expect(error?.isRetryable == false)
+    }
+
+    @Test("A 403 from any other server stays a server error")
+    func forbiddenStaysAServerErrorByDefault() async {
+        StubConnectionProtocol.respond(status: 403, body: #"{"error":{"message":"region not supported"}}"#)
+        let error = await thrownError { _ = try await makeProvider(endpoint: "https://host/v1").testConnection() }
+        #expect(error != nil)
+        #expect(!isAuthenticationFailure(error))
+    }
+
+    @Test("A 403 on the model list is an authentication failure for such a server")
+    func forbiddenModelListIsAnAuthFailure() async {
+        StubConnectionProtocol.respond(status: 403, body: Self.requestyBadKeyBody)
+        let provider = makeProvider(endpoint: "https://router.requesty.ai", treatsForbiddenAsAuthFailure: true)
+        let error = await thrownError { _ = try await provider.fetchAvailableModels() }
+        #expect(isAuthenticationFailure(error))
+    }
+
+    @Test("A 403 on a chat turn is an authentication failure for such a server, so it is not retried")
+    func forbiddenChatTurnIsAnAuthFailure() async {
+        StubConnectionProtocol.respond(status: 403, body: Self.requestyBadKeyBody)
+        let provider = makeProvider(endpoint: "https://router.requesty.ai", treatsForbiddenAsAuthFailure: true)
+        let error = await thrownError {
+            let stream = provider.streamChat(
+                turns: [ChatTurnWire(role: .user, blocks: [.text("hi")])],
+                options: ChatTransportOptions(model: "glm-4.6")
+            )
+            for try await _ in stream {}
+        }
+        #expect(isAuthenticationFailure(error))
+        #expect(error?.isRetryable == false)
+    }
+
+    @Test("A provider built from the Requesty preset reads a 403 as a rejected key")
+    func presetProviderCarriesTheRule() async {
+        StubConnectionProtocol.respond(status: 403, body: Self.requestyBadKeyBody)
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubConnectionProtocol.self]
+        let provider = OpenAICompatibleProvider(
+            config: AIProviderConfig(preset: .requesty),
+            apiKey: "key",
+            session: URLSession(configuration: sessionConfig)
+        )
+        let error = await thrownError { _ = try await provider.testConnection() }
+        #expect(isAuthenticationFailure(error))
+        #expect(StubConnectionProtocol.lastRequestedURL() == "https://router.requesty.ai/v1/chat/completions")
+    }
+
+    @Test("A plain custom provider built from its configuration keeps a 403 as a server error")
+    func plainCustomProviderDoesNot() async {
+        StubConnectionProtocol.respond(status: 403, body: Self.requestyBadKeyBody)
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubConnectionProtocol.self]
+        let provider = OpenAICompatibleProvider(
+            config: AIProviderConfig(type: .custom, endpoint: "https://host/v1"),
+            apiKey: "key",
+            session: URLSession(configuration: sessionConfig)
+        )
+        let error = await thrownError { _ = try await provider.testConnection() }
+        #expect(error != nil)
+        #expect(!isAuthenticationFailure(error))
     }
 
     @Test("A 200 is a working connection")

@@ -147,6 +147,13 @@ final class MainContentCoordinator: ObservableObject {
         SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connectionId)
     }
     var statementModel: QueryStatementModel { QueryStatementModel.forDatabaseType(connection.type) }
+    /// Whether `:name` in this connection's queries is a bind parameter, which it is only in SQL.
+    ///
+    /// Every other language already gives the colon a meaning: an object key in a MongoDB script, a field
+    /// query in an Elasticsearch URL (`?q=name:lamp`), a key separator in Redis (`GET user:name`), a record
+    /// id in SurrealQL (`person:tobie`). Read as a parameter, it opens the panel, holds the run until a value
+    /// is typed, and then sends a placeholder the engine's driver never binds.
+    var bindsNamedParameters: Bool { services.pluginManager.editorLanguage(for: connection.type) == .sql }
     var browseDatabaseName: String {
         services.databaseManager.browseDatabaseName(for: connection)
     }
@@ -1117,10 +1124,7 @@ final class MainContentCoordinator: ObservableObject {
             return true
         }
 
-        // `:active` is a bind placeholder in SQL and an ordinary object key in JavaScript, so a
-        // script would open the parameter panel and then be rewritten into something the driver
-        // cannot run.
-        if services.appSettings.editor.queryParametersEnabled, statementModel == .sql {
+        if services.appSettings.editor.queryParametersEnabled, bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 

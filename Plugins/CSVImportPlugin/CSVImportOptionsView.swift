@@ -66,8 +66,9 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("NULL text:")
-                    TextField("", text: $plugin.settings.nullString, prompt: Text(verbatim: "\\N"))
+                    TextField(String(localized: "NULL text", bundle: .main), text: $plugin.settings.nullString, prompt: Text(verbatim: "\\N"))
                         .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
                         .frame(width: 170)
                         .help("An extra value that should be imported as NULL, for example \\N.")
                 }

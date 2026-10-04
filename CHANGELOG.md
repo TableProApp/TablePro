@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Requesty in Add Provider, an OpenAI-compatible router with its Base URL filled in. (#3128)
+
 ### Changed
 
+- A new AI provider with several models and no default starts with no model picked. (#3128)
 - Toolbar Save is a plain checkmark, and the Safe Mode icon is filled only at the two Full levels. (#3250)
 - Actions, filter and Disconnect toolbar icons lose their circle on macOS 26 and later, and Actions its chevron. (#3250)
 
 ### Fixed
 
+- Reasoning setting ignored on OpenRouter, OpenCode Zen, llama.cpp, MLX and custom AI providers. (#3128)
+- Reasoning picker shown for Gemini and Ollama, where it changed nothing. (#3128)
+- Image attachments offered for OpenRouter models that take text only. (#3128)
+- Max output tokens ignored and image attachments rejected on Ollama. (#3128)
+- AI provider failing with "Invalid endpoint" until relaunch after its Base URL was cleared. (#3128)
 - Export in the Structure and object source views showing the Import icon. (#3250)
 - VoiceOver reading the welcome window and Integrations filter menus as "chevron.pulldown". (#3250)
 - Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250)
@@ -23,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Last column's divider sitting on the grid's right edge, where it could not be dragged to resize.
 - Cells keeping their old width or order while a column is resized or dragged, until the mouse is released.
 - Resize cursor showing a few points from a column divider, where a drag moved the column instead.
+- Elasticsearch, Typesense and Weaviate request bodies underlined as syntax errors although they run.
+- Wildcard index paths such as `GET /_cat/indices/*` underlined as an unterminated comment.
+- Brackets in Redis and etcd command arguments underlined as unmatched.
+- Colons in Elasticsearch URLs, Redis keys and SurrealDB record IDs read as query parameters, holding the run.
+- Counts reading "3 table to export" in the Export dialog, and "1 rows" in the result status bar and query plan.
+- Safe Mode's Touch ID prompt reading "TablePro is trying to Authenticate to execute database operations."
+- VoiceOver reading no name for the AI provider pop-up, max output tokens, plugin category filter and CSV NULL text field.
 - Server Dashboard's metrics staying on a spinner, and slow queries never refreshing.
 - Users & Roles privilege checkboxes, Review & Apply and "Modified" not updating after a click.
 - Count Exactly on a Redis database leaving the estimate in place.

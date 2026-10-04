@@ -8,15 +8,12 @@ import Foundation
 struct AIProviderCapabilities: OptionSet, Sendable {
     let rawValue: UInt16
 
-    static let chat = AIProviderCapabilities(rawValue: 1 << 0)
-    static let inline = AIProviderCapabilities(rawValue: 1 << 1)
-    static let models = AIProviderCapabilities(rawValue: 1 << 2)
-    static let reasoning = AIProviderCapabilities(rawValue: 1 << 3)
-    static let images = AIProviderCapabilities(rawValue: 1 << 4)
-    static let endpointConfigurable = AIProviderCapabilities(rawValue: 1 << 5)
-    static let nameConfigurable = AIProviderCapabilities(rawValue: 1 << 6)
-    static let maxOutputTokens = AIProviderCapabilities(rawValue: 1 << 7)
-    static let modelListFetchable = AIProviderCapabilities(rawValue: 1 << 8)
+    static let reasoning = AIProviderCapabilities(rawValue: 1 << 0)
+    static let images = AIProviderCapabilities(rawValue: 1 << 1)
+    static let endpointConfigurable = AIProviderCapabilities(rawValue: 1 << 2)
+    static let nameConfigurable = AIProviderCapabilities(rawValue: 1 << 3)
+    static let maxOutputTokens = AIProviderCapabilities(rawValue: 1 << 4)
+    static let modelListFetchable = AIProviderCapabilities(rawValue: 1 << 5)
 }
 
 struct CuratedModel: Sendable, Identifiable, Equatable {
@@ -38,12 +35,10 @@ struct CuratedModel: Sendable, Identifiable, Equatable {
     }
 }
 
+/// How a provider type behaves. Its name, icon and default endpoint live on `AIProviderType`.
 struct AIProviderDescriptor: Sendable {
     let typeID: String
-    let displayName: String
-    let defaultEndpoint: String
     let capabilities: AIProviderCapabilities
-    let symbolName: String
     let curatedModels: [CuratedModel]
     let showsTelemetryToggle: Bool
     let defaultTelemetryEnabled: Bool
@@ -62,9 +57,11 @@ struct AIProviderDescriptor: Sendable {
         curatedModels.first(where: { $0.id == id })
     }
 
-    func supportedEffortLevels(forModelID id: String) -> [ReasoningEffort] {
+    /// `fetched` is what the provider's own model list said about the model, when it has been
+    /// loaded. It wins over the offline tables, and its silence leaves the provider's envelope open.
+    func supportedEffortLevels(forModelID id: String, fetched: AIModelInfo? = nil) -> [ReasoningEffort] {
         guard supportsReasoning else { return [] }
-        if let reasoning = AIModelCatalog.shared.reasoning(providerTypeID: typeID, modelID: id) {
+        if let reasoning = fetched?.reasoning ?? AIModelOverlay.reasoning(providerTypeID: typeID, modelID: id) {
             return reasoning.effortLevels
         }
         if let effortLevelResolver {
@@ -76,22 +73,14 @@ struct AIProviderDescriptor: Sendable {
         return [.low, .medium, .high]
     }
 
-    func modelInfo(forModelID id: String) -> AIModelInfo {
-        AIModelCatalog.shared.resolve(providerTypeID: typeID, modelID: id)
-    }
-
-    func supportsImages(forModelID id: String) -> Bool {
+    func supportsImages(fetched: AIModelInfo?) -> Bool {
         guard supportsImages else { return false }
-        guard let live = AIModelCatalog.shared.fetchedInfo(providerTypeID: typeID, modelID: id) else { return true }
-        return live.supportsImages
+        return fetched?.supportsImages ?? true
     }
 
     init(
         typeID: String,
-        displayName: String,
-        defaultEndpoint: String,
         capabilities: AIProviderCapabilities,
-        symbolName: String,
         curatedModels: [CuratedModel] = [],
         showsTelemetryToggle: Bool = false,
         defaultTelemetryEnabled: Bool = false,
@@ -100,10 +89,7 @@ struct AIProviderDescriptor: Sendable {
         makeProvider: @escaping @Sendable (AIProviderConfig, String?) -> ChatTransport
     ) {
         self.typeID = typeID
-        self.displayName = displayName
-        self.defaultEndpoint = defaultEndpoint
         self.capabilities = capabilities
-        self.symbolName = symbolName
         self.curatedModels = curatedModels
         self.showsTelemetryToggle = showsTelemetryToggle
         self.defaultTelemetryEnabled = defaultTelemetryEnabled

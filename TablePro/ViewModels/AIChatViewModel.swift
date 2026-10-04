@@ -217,10 +217,16 @@ final class AIChatViewModel: ObservableObject {
         let settings = services.appSettings.ai
         let configID = selectedProviderId ?? settings.activeProviderID
         guard let configID,
-              let config = settings.providers.first(where: { $0.id == configID }),
-              let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue)
+              let config = settings.providers.first(where: { $0.id == configID })
         else { return false }
-        return descriptor.supportsImages
+        return Self.acceptsImages(config: config, model: selectedModel ?? config.model, catalog: .shared)
+    }
+
+    /// The provider type sets the envelope, and the provider's own model list narrows it: a
+    /// router lists text-only models beside vision ones, and an image sent to one of those fails.
+    nonisolated static func acceptsImages(config: AIProviderConfig, model: String, catalog: AIModelCatalog) -> Bool {
+        guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else { return false }
+        return descriptor.supportsImages(fetched: catalog.fetchedInfo(providerID: config.id, modelID: model))
     }
 
     func sendWithContext(prompt: String) {
@@ -371,7 +377,7 @@ final class AIChatViewModel: ObservableObject {
         let results = await withTaskGroup(of: (UUID, [String]?).self) { group in
             for config in pending {
                 let apiKey: String?
-                switch config.type.authStyle {
+                switch config.authStyle {
                 case .apiKey, .optionalApiKey:
                     apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
                 case .oauth, .none:
@@ -381,7 +387,7 @@ final class AIChatViewModel: ObservableObject {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        AIModelCatalog.shared.store(providerTypeID: config.type.rawValue, models: models)
+                        AIModelCatalog.shared.store(providerID: config.id, models: models)
                         return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
