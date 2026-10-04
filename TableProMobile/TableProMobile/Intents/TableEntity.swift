@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProModels
 
 struct TableEntity: AppEntity {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Table")
@@ -50,11 +51,22 @@ struct TableEntityQuery: EntityQuery {
     }
 
     func suggestedEntities() async throws -> [TableEntity] {
-        guard let scope = selectedScope else { return [] }
-        let tables = try? await IntentDatabaseSession.with(connectionId: scope.connectionId) {
+        try await Self.tables(in: selectedScope)
+    }
+
+    /// Throws instead of listing nothing: the Shortcuts editor shows the error in the picker, so a
+    /// connection that cannot open does not look like a database with no tables.
+    static func tables(
+        in scope: TableListingScope?,
+        savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:)
+    ) async throws -> [TableEntity] {
+        guard let scope else { return [] }
+        return try await IntentDatabaseSession.with(
+            connectionId: scope.connectionId,
+            savedConnection: savedConnection
+        ) {
             try await $0.tables(namespace: scope.namespace)
         }
-        return tables ?? []
     }
 
     private var selectedScope: TableListingScope? {
