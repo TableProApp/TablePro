@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Format Query on Elasticsearch, Typesense and Weaviate joining the body onto the request line and changing the URL.
+- Format Query changing Redis keys, etcd paths and SurrealDB record ids, such as `user:1` into `user :1`.
+- Sidebar Show All running a MongoDB command on Elasticsearch, Typesense and Weaviate, and a Redis command on etcd.
+- Change preview on Elasticsearch, Typesense and Weaviate rewriting a stored `{"$oid": …}` as `ObjectId(…)`.
+- Preview SQL and other wrapped text splitting a quoted name such as `"public"."reviews"` across two lines.
+
 ## [0.77.2] - 2026-10-05
 
 ### Added

@@ -10,8 +10,6 @@ import Foundation
 /// `/*` that is a wildcard, not the start of a comment, and a query string may hold any bracket.
 /// Like the console parsers, only the document's first line is read as the request line.
 struct ConsoleRequestDiagnosticsProducer: QueryDiagnosticsProducing {
-    private static let requestMethods: Set<String> = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
-
     func diagnostics(for text: String) -> [QueryDiagnostic] {
         let source = text as NSString
         guard source.length > 0, source.length <= QueryDiagnosticsLimits.maximumDocumentLength else { return [] }
@@ -44,7 +42,7 @@ struct ConsoleRequestDiagnosticsProducer: QueryDiagnosticsProducing {
         source.getLineStart(nil, end: nil, contentsEnd: &contentsEnd, for: firstVisible)
         let lineText = source.substring(with: NSRange(location: firstVisible.location, length: contentsEnd - firstVisible.location))
         let words = lineText.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
-        guard let method = words.first, Self.requestMethods.contains(method.uppercased()) else { return source }
+        guard let method = words.first, ConsoleRequestLine.methods.contains(method.uppercased()) else { return source }
 
         var requestEnd = lineText.endIndex
         if words.count == 3, let opener = words[2].first, opener == "{" || opener == "[" {

@@ -48,6 +48,17 @@ struct QueryTabBaseQueryTests {
         #expect(!query.hasSuffix(";"))
     }
 
+    /// Their plugins build the browse query. Without one the tab must not be handed another engine's
+    /// command: either the plugin builds it or the build throws.
+    @Test("An engine that highlights like MongoDB or Redis is not browsed with their commands", arguments: [
+        DatabaseType.elasticsearch, .typesense, .weaviate, .etcd
+    ])
+    func otherEnginesNeverGetShellBrowseQueries(databaseType: DatabaseType) {
+        let query = try? QueryTab.buildBaseTableQuery(tableName: "products", databaseType: databaseType)
+        #expect(!(query ?? "").contains(".find("))
+        #expect(!(query ?? "").hasPrefix("SCAN "))
+    }
+
     @Test("A JavaScript editor's own query reaches the collection through the shared accessor")
     func javascriptQueryUsesSharedAccessor() throws {
         let lineTerminators: Set<Unicode.Scalar> = ["\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"]

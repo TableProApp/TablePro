@@ -142,6 +142,8 @@ struct MenuValidationContext: Equatable {
     /// Whether the engine declares an EXPLAIN variant. Read through the same rule the editor bar
     /// uses, so the menu item cannot run a statement the bar's button refuses to.
     var supportsExplain = false
+    /// Whether the engine's query language has a formatter, the rule the editor bar's Format button uses.
+    var supportsFormatting = false
     var hasSessionContexts = false
     var canFilterDatabases = false
     var canFavoriteActiveDatabase = false
@@ -507,9 +509,10 @@ extension MainSplitViewController: NSMenuItemValidation {
         switch selector {
         case #selector(executeQuery(_:)),
              #selector(executeAllStatements(_:)),
-             #selector(executeQueryWithoutLimit(_:)),
-             #selector(formatQuery(_:)):
+             #selector(executeQueryWithoutLimit(_:)):
             return context.isConnected && context.hasQueryText
+        case #selector(formatQuery(_:)):
+            return context.isConnected && context.hasQueryText && context.supportsFormatting
         case #selector(explainQuery(_:)):
             return QueryCommandAvailability.canExplain(
                 isConnected: context.isConnected,
@@ -660,6 +663,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             supportsExplain: actions.supportsExplain,
+            supportsFormatting: actions.supportsFormatting,
             hasSessionContexts: actions.hasSessionContexts,
             canFilterDatabases: actions.canFilterDatabases,
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,

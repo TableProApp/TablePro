@@ -30,14 +30,29 @@ struct SQLQueryFormatter: QueryFormatting {
 
 @MainActor
 enum QueryFormatterFactory {
-    static func make(for databaseType: DatabaseType?) -> QueryFormatting {
+    /// Nil for a language with no formatter of its own. The SQL formatter reads a Redis key `user:1` as
+    /// `user :1`, an etcd path as `/ config / name` and a SurrealQL record id `person:tobie` as two tokens,
+    /// so running it there changes what the command does.
+    static func make(for databaseType: DatabaseType?) -> QueryFormatting? {
         let dialect = databaseType ?? .mysql
 
-        switch PluginManager.shared.editorLanguage(for: dialect) {
-        case .javascript:
+        // Elasticsearch, Typesense and Weaviate highlight as JavaScript for their JSON bodies, and the
+        // shell formatter joins a body onto its request line. Only a MongoDB script is JavaScript.
+        if QueryStatementModel.forDatabaseType(dialect) == .javascript {
             return MongoShellFormatter()
-        default:
-            return SQLQueryFormatter(dialect: dialect, keywordCase: AppSettingsManager.shared.editor.keywordCase)
         }
+
+        switch PluginManager.shared.editorLanguage(for: dialect) {
+        case .sql:
+            return SQLQueryFormatter(dialect: dialect, keywordCase: AppSettingsManager.shared.editor.keywordCase)
+        case .javascript:
+            return ConsoleRequestFormatter()
+        case .bash, .custom:
+            return nil
+        }
+    }
+
+    static func supportsFormatting(_ databaseType: DatabaseType?) -> Bool {
+        make(for: databaseType) != nil
     }
 }

@@ -328,10 +328,12 @@ struct QueryTab: Identifiable, Equatable {
             return pluginQuery
         }
 
-        switch PluginManager.shared.editorLanguage(for: databaseType) {
-        case .javascript:
+        /// Keyed by engine: Elasticsearch, Typesense and Weaviate also highlight as JavaScript and etcd as a
+        /// command line, and none of them runs these. Without their plugin they reach the dialect, which throws.
+        switch databaseType {
+        case .mongodb:
             return "\(MongoCollectionAccessor.expression(for: tableName)).find({}).limit(\(pageSize))"
-        case .bash:
+        case .redis:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
             let dialect = try resolveSQLDialect(for: databaseType)
