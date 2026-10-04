@@ -186,6 +186,32 @@ extension RedisCommandChannel {
         let page = RedisScanReply.parse(reply)
         return RedisKeyspacePage(cursor: page.cursor, keys: page.keys, isIncomplete: false)
     }
+
+    /// The keys a scan with this glob and type scope visits, walked to the end and each counted
+    /// once: SCAN may return a key twice while the keyspace rehashes, so the pages are
+    /// deduplicated rather than tallied. A cluster that lost or replaced a node mid-walk cannot
+    /// say it visited every key, so that walk throws rather than report a total as exact.
+    func countKeys(pattern: String?, type: String?) async throws -> Int {
+        var seen = Set<String>()
+        var cursor = RedisClusterCursor.start
+
+        repeat {
+            try Task.checkCancellation()
+            let page = try await scanKeyspace(
+                cursor: cursor, pattern: pattern, type: type, count: 1_000, scope: .outsideBlock
+            )
+            guard !page.isIncomplete else {
+                throw RedisPluginError(
+                    code: 0,
+                    message: String(localized: "The cluster changed while its keys were being counted. Count again.")
+                )
+            }
+            cursor = page.cursor
+            seen.formUnion(page.keys)
+        } while cursor != RedisClusterCursor.start
+
+        return seen.count
+    }
 }
 
 enum RedisScanReply {

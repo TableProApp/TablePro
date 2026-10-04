@@ -160,14 +160,8 @@ struct TableQueryBuilder {
             let sortCols = SortColumnResolver.resolvedIndices(
                 for: sortState, displayColumns: columns, targetColumns: targetColumns
             )
-            var tuples: [(column: String, op: String, value: String)] = []
-            let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
-            if !trimmedPattern.isEmpty {
-                tuples.append((column: "Key", op: "MATCH", value: trimmedPattern))
-            }
-            if let typeScope, !typeScope.isEmpty {
-                tuples.append((column: "Type", op: "=", value: typeScope))
-            }
+            let tuples = BrowseSearchState(pattern: pattern, typeScope: typeScope).pluginQueryFilters
+                .map { (column: $0.column, op: $0.op, value: $0.value) }
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, filters: tuples,
                 logicMode: "and", sortColumns: sortCols,

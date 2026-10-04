@@ -216,6 +216,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// counts to keep browsing responsive must not apply that cap here.
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
 
+    /// The exact count of a browse narrowed by a search the plugin defines, such as Redis's key
+    /// pattern and type, rather than by table filters. Nil when the driver has no such count.
+    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
+
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
 
@@ -769,6 +773,7 @@ extension DatabaseDriver {
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
     }
+    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int? { nil }
 
     func maintenanceOperations() -> [PluginMaintenanceOperation]? { nil }
     func maintenanceStatements(
