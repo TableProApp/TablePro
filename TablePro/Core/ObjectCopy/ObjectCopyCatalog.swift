@@ -105,6 +105,31 @@ internal struct ObjectCopyCatalog {
         return found
     }
 
+    /// The index names the endpoint's schema holds, keyed by the table each belongs to.
+    ///
+    /// A driver that cannot list them answers nothing rather than failing the copy, which then names
+    /// its indexes as it did before it looked.
+    internal func indexNames(
+        in endpoint: DatabaseEndpoint,
+        connection: DatabaseConnection
+    ) async throws -> [String: [String]] {
+        try await manager.ensureConnected(connection)
+        let schema = endpoint.schema?.nilIfEmpty
+        return try await manager.withMetadataDriver(scope: endpoint.scope, workload: .bulk) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [:] }
+            do {
+                return try await plugin.fetchAllIndexes(schema: schema).mapValues { $0.map(\.name) }
+            } catch let cancellation as CancellationError {
+                throw cancellation
+            } catch {
+                Self.logger.warning(
+                    "Target index names unreadable: \(error.publicLogShape, privacy: .public)"
+                )
+                return [:]
+            }
+        }
+    }
+
     /// The schemas a database-wide copy would have to cover, so the sheet can refuse rather than
     /// carry one schema's objects and call it the database.
     internal func schemas(

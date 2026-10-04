@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Users & Roles search results showing a disclosure triangle that opened onto nothing.
 - Redis tab narrowed by its key pattern or type showing the whole database's key count as its "~" total.
 - Redis key pattern change keeping the previous pattern's exact count.
+- Copy To into PostgreSQL, SQLite, DuckDB or Oracle failing on an index name another table in the target schema already uses.
 
 ## [0.77.2] - 2026-10-05
 

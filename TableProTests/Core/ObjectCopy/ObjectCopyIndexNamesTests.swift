@@ -100,11 +100,44 @@ struct ObjectCopyIndexNamesTests {
         }
     }
 
-    @Test("A copy within one engine runs exactly as it did")
-    func sameEngineIsUntouched() {
-        let tables = [Self.table("orders", ["user_id"]), Self.table("reviews", ["user_id"])]
+    @Test("A copy within one engine keeps every name the target schema does not hold")
+    func sameEngineKeepsItsNames() {
+        let tables = [
+            Self.table("orders", ["orders_user_id_idx"]),
+            Self.table("reviews", ["reviews_user_id_idx"])
+        ]
         #expect(Self.placed(tables, from: .postgresql, to: .postgresql) == tables)
         #expect(Self.placed(tables, from: .sqlite, to: .sqlite) == tables)
+        #expect(Self.placed(tables, from: .mysql, to: .mysql) == tables)
+    }
+
+    @Test("A copy within one engine renames an index the target schema already holds on another table")
+    func sameEngineAvoidsAnExistingIndex() {
+        var taken = ObjectCopyIndexNames.kept(["orders_2023": ["orders_user_id_idx"]], droppingFirst: [])
+        let placed = ObjectCopyIndexNames.placed(
+            [Self.table("orders", ["orders_user_id_idx"])], avoiding: &taken, from: .postgresql, to: .postgresql
+        )
+        #expect(Self.names(placed) == [["orders_user_id_idx_2"]])
+    }
+
+    @Test("Two schemas of one PostgreSQL database copied into one schema keep their indexes apart")
+    func sameEngineScopesLandingInOneSchemaShareTheirNames() {
+        var taken = Set<String>()
+        let sales = ObjectCopyIndexNames.placed(
+            [Self.table("orders", ["user_id"])], avoiding: &taken, from: .postgresql, to: .postgresql
+        )
+        let crm = ObjectCopyIndexNames.placed(
+            [Self.table("contacts", ["user_id"])], avoiding: &taken, from: .postgresql, to: .postgresql
+        )
+        #expect(Self.names(sales) == [["user_id"]])
+        #expect(Self.names(crm) == [["user_id_2"]])
+    }
+
+    @Test("A copy within Oracle keeps a name past the 30 bytes a made-up name is cut to")
+    func sameEngineKeepsTheLengthTheSourceAccepted() {
+        let long = "IDX_CUSTOMER_SUBSCRIPTION_BILLING_HISTORY"
+        let tables = [Self.table("CUSTOMER_SUBSCRIPTIONS", [long])]
+        #expect(Self.names(Self.placed(tables, from: .oracle, to: .oracle)) == [[long]])
     }
 
     @Test("A source whose names are already schema-wide keeps them, unless one is named like a table")
@@ -124,6 +157,69 @@ struct ObjectCopyIndexNamesTests {
             [Self.table("orders", ["user_id"])], besides: ["Orders_User_Id"], from: .mysql, to: .postgresql
         )
         #expect(Self.names(placed) == [["orders_user_id_2"]])
+    }
+
+    @Test("An index on a target table outside the copy keeps its name, and the copy's takes a number")
+    func existingIndexOnAnotherTableIsAvoided() {
+        var taken = ObjectCopyIndexNames.kept(
+            ["orders_2023": ["Orders_User_Id", "orders_2023_pkey"], "reviews_old": ["reviews_product_id"]],
+            droppingFirst: []
+        )
+        let placed = ObjectCopyIndexNames.placed(
+            [Self.table("orders", ["user_id"]), Self.table("reviews", ["product_id"])],
+            avoiding: &taken,
+            from: .mysql,
+            to: .postgresql
+        )
+        #expect(Self.names(placed) == [["orders_user_id_2"], ["reviews_product_id_2"]])
+    }
+
+    @Test("An index on a table the copy replaces does not cost the new table its name")
+    func indexOnAReplacedTableIsFree() {
+        let existing = ["orders": ["orders_user_id"], "Orders_Archive": ["orders_archive_user_id"]]
+        #expect(ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"]) == ["orders_archive_user_id"])
+
+        var taken = ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"])
+        let placed = ObjectCopyIndexNames.placed(
+            [Self.table("orders", ["user_id"])], avoiding: &taken, from: .mysql, to: .postgresql
+        )
+        #expect(Self.names(placed) == [["orders_user_id"]])
+    }
+
+    @Test("A table is dropped by its exact name, so a same-named table in another case keeps its indexes")
+    func droppedTableMatchesExactly() {
+        let existing = ["Orders": ["orders_user_id"]]
+        #expect(ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"]) == ["orders_user_id"])
+    }
+
+    @Test("Tables, views and sequences block an index name on PostgreSQL and SQLite; routines and triggers never do")
+    func occupiedNamesFollowTheTargetNamespace() {
+        let objects = [
+            ObjectCopySelection(kind: .table, name: "Orders", schema: "public"),
+            ObjectCopySelection(kind: .view, name: "order_totals", schema: "public"),
+            ObjectCopySelection(kind: .materializedView, name: "daily_sales", schema: "public"),
+            ObjectCopySelection(kind: .sequence, name: "orders_id_seq", schema: "public"),
+            ObjectCopySelection(kind: .function, name: "audit", schema: "public", signature: ""),
+            ObjectCopySelection(kind: .procedure, name: "archive", schema: "public", signature: ""),
+            ObjectCopySelection(kind: .trigger, name: "orders_audit", schema: "public", owner: "orders")
+        ]
+        let relations: Set<String> = ["orders", "order_totals", "daily_sales", "orders_id_seq"]
+        #expect(ObjectCopyIndexNames.occupied(by: objects, in: .postgresql) == relations)
+        #expect(ObjectCopyIndexNames.occupied(by: objects, in: .sqlite) == relations)
+        #expect(ObjectCopyIndexNames.occupied(by: objects, in: .duckdb).isEmpty)
+        #expect(ObjectCopyIndexNames.occupied(by: objects, in: .oracle).isEmpty)
+        #expect(ObjectCopyIndexNames.occupied(by: objects, in: .mysql).isEmpty)
+    }
+
+    @Test("DuckDB and Oracle let an index share a table's name; PostgreSQL and SQLite do not")
+    func indexNamedLikeATableInTheCopy() {
+        let tables = [Self.table("orders", ["user_id"]), Self.table("orders_user_id", [])]
+        for target in [DatabaseType.duckdb, .oracle] {
+            #expect(Self.names(Self.placed(tables, from: .mysql, to: target)) == [["orders_user_id"], []])
+        }
+        for target in [DatabaseType.postgresql, .sqlite] {
+            #expect(Self.names(Self.placed(tables, from: .mysql, to: target)) == [["orders_user_id_2"], []])
+        }
     }
 
     @Test("Two source schemas copied into one target schema share the names they have used")

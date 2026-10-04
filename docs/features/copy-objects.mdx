@@ -70,8 +70,11 @@ MySQL, MariaDB, SQL Server and CockroachDB name an index within its table, so se
 have a `user_id` index. PostgreSQL, SQLite, DuckDB and Oracle name it within the schema, so a copy
 from the first group into the second puts the table's name in front, as in `orders_user_id`, unless
 the index name already has it as a word, as `idx_orders_created_at` does. A name past the target's
-limit, 63 bytes or 30 on Oracle, is cut. A name that matches another index in the copy, or a table
-or view the target already has, gets a number at the end.
+limit, 63 bytes or 30 on Oracle, is cut. A name that matches another index in the copy or in the
+target schema gets a number at the end, as `orders_user_id_2`. On PostgreSQL and SQLite, so does a name
+that matches a table or view there. An index on a table the copy replaces does not count, because the
+copy drops that table first. A copy between two databases of the same type keeps every index name the
+target schema does not already use.
 
 ## When the target already has the object
 
