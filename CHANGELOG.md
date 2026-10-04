@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status bar truncating the row count and Count Exactly instead of dropping to a narrower layout.
 - Query editor bar cut off, with the editor's text over it, when the editor pane is at its smallest.
 - Long column names drawn over their type in the ER diagram.
+- Beancount BQL results showing a position as raw JSON, tags and links as a JSON list, and booleans as 1 or 0.
+- Beancount BQL results, tables, directive metadata and transaction tags coming back empty with `rledger` 0.23 and later.
+- Beancount balances listing a commodity held in several lots once per lot on `rledger`.
 
 ## [0.77.1] - 2026-10-03
 
