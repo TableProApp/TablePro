@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar Show All running a MongoDB command on Elasticsearch, Typesense and Weaviate, and a Redis command on etcd.
 - Change preview on Elasticsearch, Typesense and Weaviate rewriting a stored `{"$oid": …}` as `ObjectId(…)`.
 - Preview SQL and other wrapped text splitting a quoted name such as `"public"."reviews"` across two lines.
+- Copy To into PostgreSQL, SQLite, DuckDB or Oracle failing on an index name another table in the target schema already uses.
 - Crash when VoiceOver reads Settings > License while a license appears in it.
 - Pickers, checkboxes and fields that VoiceOver announced by role alone, such as in Copy To, Users & Roles and Create Table.
 

@@ -5,8 +5,9 @@
 # ObjectCopyIndexNames renames the indexes a copy creates only where the target refuses a second
 # index of the same name on another table. MySQL, MariaDB and SQL Server scope a name to its table,
 # so a shop copied from MariaDB carries a `user_id` index on several tables. This asserts that
-# PostgreSQL, SQLite and DuckDB each refuse the second one, that PostgreSQL also refuses an index
-# named like a table, and that it truncates a name past 63 bytes rather than refusing it.
+# PostgreSQL, SQLite and DuckDB each refuse the second one, that PostgreSQL and SQLite also refuse an
+# index named like a table while DuckDB accepts it, and that PostgreSQL truncates a name past 63 bytes
+# rather than refusing it.
 #
 # Each engine is skipped when its shell is missing. PostgreSQL is reached through psql with the
 # usual PG* environment variables, and the probe works in a schema of its own that it drops.
@@ -37,6 +38,11 @@ if command -v "$SQLITE" > /dev/null; then
     else
         pass "a second index named user_id on another table is refused"
     fi
+    if "$SQLITE" "$WORK/scope.db" "CREATE INDEX a ON b(user_id);" 2> /dev/null; then
+        fail "an index named like a table is accepted"
+    else
+        pass "an index named like a table is refused"
+    fi
 else
     skip "$SQLITE not found"
 fi
@@ -49,6 +55,12 @@ if command -v "$DUCKDB" > /dev/null; then
         pass "a second index named user_id on another table is refused"
     else
         fail "a second index named user_id on another table is accepted"
+    fi
+    output="$("$DUCKDB" "$WORK/scope.duckdb" -c "CREATE INDEX a ON b(user_id);" 2>&1)"
+    if [ -z "$output" ]; then
+        pass "an index named like a table is accepted"
+    else
+        fail "an index named like a table is refused"
     fi
 else
     skip "$DUCKDB not found"
@@ -87,7 +99,7 @@ fi
 
 printf '\n'
 if [ "$failures" -gt 0 ]; then
-    printf '%d check(s) failed. ObjectCopyIndexNames.sharesOneNamespace may need to change.\n' "$failures"
+    printf '%d check(s) failed. ObjectCopyIndexNames.sharesOneNamespace or sharesNamesWithRelations may need to change.\n' "$failures"
     exit 1
 fi
 printf 'All checks passed.\n'

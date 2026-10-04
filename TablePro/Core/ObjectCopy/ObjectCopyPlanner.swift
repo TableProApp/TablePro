@@ -52,9 +52,9 @@ internal struct ObjectCopyPlanner {
         /// A copy into a chosen target resolves every scope to the same endpoint, so a database
         /// with twelve schemas read the same catalog twelve times.
         var targetObjectsByEndpoint: [String: [String: ObjectCopySelection]] = [:]
-        /// Every source scope of a copy to a chosen target lands in the one schema that was chosen,
-        /// so the names its indexes take are allocated across scopes, not afresh for each.
-        var indexNamesByEndpoint: [String: Set<String>] = [:]
+        /// Every scope is read and drafted before any index is named, because a table a later scope
+        /// replaces frees its index names for an earlier one: every drop runs before any create.
+        var passes: [ScopePass] = []
 
         for scope in Self.scopes(of: request) {
             let names = Set(scope.objects.map(\.name))
@@ -71,8 +71,8 @@ internal struct ObjectCopyPlanner {
                 request, endpoint: targetEndpoint, connection: connections.target, names: names
             )
             var targetObjects: [String: ObjectCopySelection] = [:]
-            /// Only the definition steps read it, and only when structure takes part, so a
-            /// data-only copy never pays for a catalog it would discard unread.
+            /// Only the definition steps and the index names read it, and only when structure takes
+            /// part, so a data-only copy never pays for a catalog it would discard unread.
             if request.content.includesStructure {
                 if let cached = targetObjectsByEndpoint[targetEndpoint.id] {
                     targetObjects = cached
@@ -84,26 +84,60 @@ internal struct ObjectCopyPlanner {
                 }
             }
 
-            var indexNames = indexNamesByEndpoint[targetEndpoint.id]
-                ?? NewTableNaming.comparisonKeys(for: targetObjects.values.map(\.name))
-            tableSteps += try await buildTableSteps(
+            var tableSkips: [ObjectCopySkip] = []
+            let drafts = tableDrafts(
                 request,
                 scope: scope,
                 sourceEndpoint: sourceEndpoint,
                 targetEndpoint: targetEndpoint,
                 sourceReads: sourceReads,
                 targetReads: targetReads,
-                indexNames: &indexNames,
-                skipped: &skipped
+                skipped: &tableSkips
             )
-            indexNamesByEndpoint[targetEndpoint.id] = indexNames
-            definitionSteps += try await buildDefinitionSteps(
-                request,
+            passes.append(ScopePass(
                 scope: scope,
                 sourceEndpoint: sourceEndpoint,
                 targetEndpoint: targetEndpoint,
                 sourceReads: sourceReads,
                 targetObjects: targetObjects,
+                drafts: drafts,
+                skipped: tableSkips
+            ))
+        }
+
+        /// Every source scope of a copy to a chosen target lands in the one schema that was chosen,
+        /// so the names its indexes take are allocated across scopes, not afresh for each.
+        var indexNamesByEndpoint: [String: Set<String>] = [:]
+        for pass in passes {
+            skipped += pass.skipped
+            let endpoint = pass.targetEndpoint.id
+            var indexNames: Set<String>
+            if let allocated = indexNamesByEndpoint[endpoint] {
+                indexNames = allocated
+            } else {
+                indexNames = try await reservedIndexNames(
+                    request,
+                    endpoint: pass.targetEndpoint,
+                    connection: connections.target,
+                    targetObjects: pass.targetObjects,
+                    drafts: passes.filter { $0.targetEndpoint.id == endpoint }.flatMap(\.drafts)
+                )
+            }
+            tableSteps += try await buildTableSteps(
+                request,
+                drafts: pass.drafts,
+                sourceEndpoint: pass.sourceEndpoint,
+                targetEndpoint: pass.targetEndpoint,
+                indexNames: &indexNames
+            )
+            indexNamesByEndpoint[endpoint] = indexNames
+            definitionSteps += try await buildDefinitionSteps(
+                request,
+                scope: pass.scope,
+                sourceEndpoint: pass.sourceEndpoint,
+                targetEndpoint: pass.targetEndpoint,
+                sourceReads: pass.sourceReads,
+                targetObjects: pass.targetObjects,
                 connection: connections.source,
                 skipped: &skipped
             )
@@ -162,6 +196,17 @@ internal struct ObjectCopyPlanner {
         internal func targetNamespace(for request: ObjectCopyRequest) -> String? {
             request.destination.createsDatabase ? namespace : request.target.schema
         }
+    }
+
+    /// What one scope read and decided, held until every scope has been drafted.
+    private struct ScopePass {
+        let scope: Scope
+        let sourceEndpoint: DatabaseEndpoint
+        let targetEndpoint: DatabaseEndpoint
+        let sourceReads: [TableStructureRead]
+        let targetObjects: [String: ObjectCopySelection]
+        let drafts: [ObjectCopyTableDraft]
+        let skipped: [ObjectCopySkip]
     }
 
     nonisolated internal static func scopes(of request: ObjectCopyRequest) -> [Scope] {
@@ -260,6 +305,43 @@ internal struct ObjectCopyPlanner {
         )
     }
 
+    /// The names an index created in one target schema may not take, before the run creates any.
+    ///
+    /// `drafts` are every scope's tables bound for that schema, so a table any of them replaces
+    /// frees its index names. The schema's indexes are read only when some table will be created
+    /// with a named index: the read is one query per table on a driver without a bulk one.
+    private func reservedIndexNames(
+        _ request: ObjectCopyRequest,
+        endpoint: DatabaseEndpoint,
+        connection: DatabaseConnection,
+        targetObjects: [String: ObjectCopySelection],
+        drafts: [ObjectCopyTableDraft]
+    ) async throws -> Set<String> {
+        let occupied = ObjectCopyIndexNames.occupied(
+            by: Array(targetObjects.values), in: request.target.databaseType
+        )
+        let namesAnIndex = drafts.contains { draft in
+            draft.writesStructure && draft.targetStructure.indexes.contains { !$0.isPrimary }
+        }
+        guard namesAnIndex else { return occupied }
+        let existing = try await existingTargetIndexes(request, endpoint: endpoint, connection: connection)
+        let replaced = Set(drafts.filter(\.dropsFirst).map(\.targetTable))
+        return occupied.union(ObjectCopyIndexNames.kept(existing, droppingFirst: replaced))
+    }
+
+    /// Where the target keeps one namespace of index names per schema, an index on any of its
+    /// tables can refuse a copied one of the same name, including a table the copy never reads.
+    private func existingTargetIndexes(
+        _ request: ObjectCopyRequest,
+        endpoint: DatabaseEndpoint,
+        connection: DatabaseConnection
+    ) async throws -> [String: [String]] {
+        guard !request.destination.createsDatabase,
+              ObjectCopyIndexNames.sharesOneNamespace(request.target.databaseType)
+        else { return [:] }
+        return try await catalog.indexNames(in: endpoint, connection: connection)
+    }
+
     /// A materialized view and a view are one object to the engines that have both, and a
     /// procedure and a function share a namespace on several, so the key folds those pairs. The
     /// signature and the trigger's table stay in it, because two overloads and two same-named
@@ -278,16 +360,15 @@ internal struct ObjectCopyPlanner {
 
     // MARK: - Tables
 
-    private func buildTableSteps(
+    private func tableDrafts(
         _ request: ObjectCopyRequest,
         scope: Scope,
         sourceEndpoint: DatabaseEndpoint,
         targetEndpoint: DatabaseEndpoint,
         sourceReads: [TableStructureRead],
         targetReads: [TableStructureRead],
-        indexNames: inout Set<String>,
         skipped: inout [ObjectCopySkip]
-    ) async throws -> [ObjectCopyTableStep] {
+    ) -> [ObjectCopyTableDraft] {
         var reads: [ObjectCopySelection: TableStructureRead] = [:]
         for selection in scope.objects.filter({ $0.kind.carriesRows }) {
             guard let read = match(selection, in: sourceReads) else {
@@ -306,7 +387,6 @@ internal struct ObjectCopyPlanner {
         /// table while its foreign keys carry the database name, so ordering by the schema alone
         /// matched no edge and fell through to alphabetical order.
         let sourceNamespace = ObjectCopyNamespace.name(for: sourceEndpoint)
-        let targetNamespace = ObjectCopyNamespace.name(for: targetEndpoint)
         /// Seeded from the user's own order, not from `reads.keys`. Swift seeds Dictionary hashing
         /// per process, so taking the keys gave the tables with no foreign key between them a
         /// different tie-break on every launch: the approved script, the progress order and the
@@ -344,6 +424,16 @@ internal struct ObjectCopyPlanner {
                 request: request
             ))
         }
+        return drafts
+    }
+
+    private func buildTableSteps(
+        _ request: ObjectCopyRequest,
+        drafts: [ObjectCopyTableDraft],
+        sourceEndpoint: DatabaseEndpoint,
+        targetEndpoint: DatabaseEndpoint,
+        indexNames: inout Set<String>
+    ) async throws -> [ObjectCopyTableStep] {
         guard !drafts.isEmpty else { return [] }
 
         let sourceParts = try await readSourceParts(drafts, endpoint: sourceEndpoint)
@@ -352,8 +442,8 @@ internal struct ObjectCopyPlanner {
             indexNames: &indexNames,
             request: request,
             targetEndpoint: targetEndpoint,
-            sourceNamespace: sourceNamespace,
-            targetNamespace: targetNamespace
+            sourceNamespace: ObjectCopyNamespace.name(for: sourceEndpoint),
+            targetNamespace: ObjectCopyNamespace.name(for: targetEndpoint)
         )
         let serverSide = try await buildServerSideInserts(
             drafts, request: request, sourceEndpoint: sourceEndpoint, targetEndpoint: targetEndpoint
@@ -561,7 +651,6 @@ internal struct ObjectCopyPlanner {
         targetNamespace: String?
     ) async throws -> [String: ObjectCopyTableDDL] {
         let created = drafts.filter(\.writesStructure)
-        indexNames.formUnion(NewTableNaming.comparisonKeys(for: drafts.map(\.targetTable)))
         let placed = ObjectCopyIndexNames.placed(
             created.map(\.targetStructure),
             avoiding: &indexNames,
