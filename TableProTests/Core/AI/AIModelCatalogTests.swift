@@ -26,10 +26,13 @@ struct AIModelCatalogTests {
         #expect(levels == [.low, .medium, .high, .xhigh], "live metadata must override the offline table")
     }
 
+    /// OpenAI has no effort resolver and does not curate gpt-5.4, and the plain default lacks
+    /// Extra High, so only the offline table can supply this answer.
     @Test("Without live metadata the overlay supplies the answer")
     func overlayFallback() throws {
-        let levels = try claudeDescriptor().supportedEffortLevels(forModelID: "claude-haiku-4-5", fetched: nil)
-        #expect(levels == [.low, .medium, .high])
+        let openAI = try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.openAI.rawValue))
+        #expect(openAI.curatedModel(forID: "gpt-5.4") == nil)
+        #expect(openAI.supportedEffortLevels(forModelID: "gpt-5.4", fetched: nil) == [.low, .medium, .high, .xhigh])
     }
 
     @Test("Storing an empty list never erases what is already known")
@@ -64,6 +67,58 @@ struct AIModelCatalogTests {
         catalog.store(providerID: provider, models: [AIModelInfo(id: "new")])
         #expect(catalog.fetchedInfo(providerID: provider, modelID: "old") == nil)
         #expect(catalog.fetchedInfo(providerID: provider, modelID: "new") != nil)
+    }
+
+    @Test("A refresh that lands stores its list")
+    func refreshStoresItsList() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let token = catalog.beginRefresh(providerID: provider)
+        catalog.finishRefresh(providerID: provider, token: token, models: [AIModelInfo(id: "m")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") != nil)
+    }
+
+    /// Two Saves in a row start two refreshes. The first can answer last, from the server the
+    /// provider no longer points at.
+    @Test("An older refresh that lands after a newer one is dropped")
+    func olderRefreshIsDropped() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let first = catalog.beginRefresh(providerID: provider)
+        let second = catalog.beginRefresh(providerID: provider)
+        catalog.finishRefresh(providerID: provider, token: second, models: [AIModelInfo(id: "new-server")])
+        catalog.finishRefresh(providerID: provider, token: first, models: [AIModelInfo(id: "old-server")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "new-server") != nil)
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "old-server") == nil)
+    }
+
+    @Test("A refresh that a Save with a loaded list overtook is dropped")
+    func refreshOvertakenByAStoreIsDropped() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let token = catalog.beginRefresh(providerID: provider)
+        catalog.store(providerID: provider, models: [AIModelInfo(id: "saved")])
+        catalog.finishRefresh(providerID: provider, token: token, models: [AIModelInfo(id: "late")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "saved") != nil)
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "late") == nil)
+    }
+
+    @Test("A refresh that lands after its provider was removed does not bring it back")
+    func refreshAfterRemovalIsDropped() {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        let token = catalog.beginRefresh(providerID: provider)
+        catalog.remove(providerID: provider)
+        catalog.finishRefresh(providerID: provider, token: token, models: [AIModelInfo(id: "m")])
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "m") == nil)
+    }
+
+    @Test("A refresh fetches through the transport it is given")
+    func refreshFetchesThroughTheTransport() async {
+        let catalog = AIModelCatalog()
+        let provider = UUID()
+        await catalog.refresh(providerID: provider, using: ListedModelsTransport(ids: ["a", "b"]))
+        #expect(catalog.fetchedInfo(providerID: provider, modelID: "b") != nil)
     }
 
     @Test("A provider nothing was fetched for has no entry, and a removed one loses its own")
@@ -163,4 +218,22 @@ struct AIModelCatalogTests {
         let adaptive = AIReasoningSupport(mode: .adaptive, effortLevels: [.low])
         #expect(adaptive.sendsEffortParameter)
     }
+}
+
+private final class ListedModelsTransport: ChatTransport, @unchecked Sendable {
+    private let ids: [String]
+
+    init(ids: [String]) {
+        self.ids = ids
+    }
+
+    func streamChat(turns: [ChatTurnWire], options: ChatTransportOptions) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        ids.map { AIModelInfo(id: $0) }
+    }
+
+    func testConnection() async throws -> Bool { true }
 }

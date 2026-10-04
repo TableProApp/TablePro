@@ -93,6 +93,7 @@ struct AIProviderDetailSheet: View {
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isSaveEnabled)
+                    .accessibilityIdentifier("ai-provider-save")
                 }
             }
             .onAppear {
@@ -683,6 +684,7 @@ struct AIProviderDetailSheet: View {
             Section {
                 if allowsNameField {
                     TextField(String(localized: "Name"), text: $draft.name)
+                        .accessibilityIdentifier("ai-provider-name")
                 }
                 if allowsEndpointField {
                     TextField(
@@ -690,6 +692,7 @@ struct AIProviderDetailSheet: View {
                         text: $draft.endpoint,
                         prompt: Text(draft.defaultEndpoint)
                     )
+                    .accessibilityIdentifier("ai-provider-base-url")
                     .onChange(of: draft.endpoint) { _ in
                         scheduleFetchModels()
                         testResult = nil
@@ -727,13 +730,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private var modelListBlocker: AIModelListFetchGate.Blocker? {
-        AIModelListFetchGate.blocker(
-            fetchesModelList: descriptor?.fetchesModelList == true,
-            takesEndpoint: descriptor?.allowsEndpointConfiguration == true,
-            endpoint: normalizedDraft.endpoint,
-            authStyle: draft.authStyle,
-            apiKey: apiKey
-        )
+        AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: apiKey)
     }
 
     /// Ollama, llama.cpp, MLX and a keyless Custom server send no authorization header at all, so
@@ -1044,6 +1041,12 @@ struct AIProviderDetailSheet: View {
             AIModelCatalog.shared.store(providerID: draft.id, models: fetched)
         case .remove:
             AIModelCatalog.shared.remove(providerID: draft.id)
+        case .refetch:
+            AIModelCatalog.shared.remove(providerID: draft.id)
+            guard descriptor?.fetchesModelList == true else { return }
+            let providerID = draft.id
+            let transport = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
+            Task { await AIModelCatalog.shared.refresh(providerID: providerID, using: transport) }
         case .keep:
             break
         }
@@ -1093,12 +1096,10 @@ struct AIProviderDetailSheet: View {
                 isFetchingModels = false
             } catch {
                 guard !Task.isCancelled else { return }
-                /// A list still on screen after the key or Base URL changed came from the old
-                /// ones, so it goes when the new ones fail. A list fetched with the current ones
-                /// stays: the server it describes has not changed.
-                if !fetchedListIsCurrent {
-                    fetched = []
-                }
+                /// The list on screen was fetched with the previous key or Base URL, so it does not
+                /// describe the server that just failed.
+                fetched = []
+                fetchedListIsCurrent = false
                 modelFetchError = error.localizedDescription
                 isFetchingModels = false
             }

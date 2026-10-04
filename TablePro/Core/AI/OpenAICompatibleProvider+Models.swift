@@ -11,11 +11,8 @@ extension OpenAICompatibleProvider {
     /// neither, and then nothing is claimed about the model.
     static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
         guard let id = json["id"] as? String, !id.isEmpty else { return nil }
-        let topProvider = json["top_provider"] as? [String: Any]
         return AIModelInfo(
             id: id,
-            contextWindow: json["context_window"] as? Int ?? json["context_length"] as? Int,
-            maxOutputTokens: json["max_output_tokens"] as? Int ?? topProvider?["max_completion_tokens"] as? Int,
             modalities: decodeModalities(json),
             reasoning: decodeReasoning(json)
         )

@@ -64,6 +64,22 @@ struct AIProviderDraftRulesTests {
         #expect(!AIProviderDraftRules.needsModelChoice(model: "", fetched: []))
     }
 
+    /// The fetch runs on a timer while the field is edited. Resolving an emptied Base URL to the
+    /// default sent the key typed for a gateway to the vendor's own host with no click.
+    @Test("The automatic model fetch waits while the Base URL field is empty")
+    func emptiedBaseURLBlocksTheFetch() {
+        AIProviderRegistration.registerAll()
+        let descriptor = AIProviderRegistry.shared.descriptor(for: AIProviderType.claude.rawValue)
+        var draft = AIProviderConfig(type: .claude, endpoint: "https://llm-gateway.example/anthropic")
+        #expect(AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: "sk-gateway") == nil)
+
+        draft.endpoint = ""
+        #expect(
+            AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: "sk-gateway")
+                == .missingEndpoint
+        )
+    }
+
     /// The reported defect: clearing the field saved an empty endpoint under a placeholder that
     /// showed the default, and every request failed until the next launch.
     @Test("A cleared Base URL saves as the default the placeholder shows")
@@ -103,12 +119,13 @@ struct AIProviderDraftRulesTests {
     }
 
     /// The list on record was fetched with the old key or Base URL, so it describes a server the
-    /// saved provider no longer points at.
-    @Test("Save drops the old list when the key or Base URL changed and the new one did not load")
-    func staleListIsRemovedWhenTheConnectionChanged() {
+    /// saved provider no longer points at. Open chat windows never refetch on their own, so Save
+    /// fetches it again rather than leaving them with no list.
+    @Test("Save fetches the list again when the key or Base URL changed and the new one did not load")
+    func staleListIsFetchedAgainWhenTheConnectionChanged() {
         #expect(
             AIProviderDraftRules.catalogUpdate(listIsCurrent: false, listIsEmpty: false, connectionChanged: true)
-                == .remove
+                == .refetch
         )
     }
 

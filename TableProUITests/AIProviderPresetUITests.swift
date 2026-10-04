@@ -34,15 +34,17 @@ final class AIProviderPresetUITests: UITestCase {
         let sheet = settingsWindow.sheets.firstMatch
         XCTAssertTrue(sheet.waitToExist(timeout: 10))
 
-        let baseURL = sheet.textFields["Base URL"]
+        /// A SwiftUI form field carries no label of its own in the accessibility tree, so the
+        /// fields are found by identifier rather than by their visible titles.
+        let baseURL = sheet.textFields["ai-provider-base-url"]
         XCTAssertTrue(baseURL.waitToExist(timeout: 10))
         XCTAssertEqual(baseURL.value as? String, "https://router.requesty.ai")
 
-        let name = sheet.textFields["Name"]
+        let name = sheet.textFields["ai-provider-name"]
         XCTAssertTrue(name.waitToExist(timeout: 10))
         XCTAssertEqual(name.value as? String, "Requesty")
 
-        let save = sheet.buttons["Save"]
+        let save = settingsWindow.buttons["ai-provider-save"]
         XCTAssertTrue(save.waitToExist(timeout: 10))
         XCTAssertFalse(save.isEnabled, "Requesty requires a key, so Save has to wait for one")
     }

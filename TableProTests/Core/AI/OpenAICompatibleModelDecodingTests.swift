@@ -33,15 +33,13 @@ struct OpenAICompatibleModelDecodingTests {
         ]
     }
 
-    @Test("Requesty's flags decode into images, reasoning and token limits")
+    @Test("Requesty's flags decode into images and reasoning")
     func requestyShape() throws {
         let capable = try #require(OpenAICompatibleProvider.decodeModel(requestyModel(vision: true, reasoning: true)))
         #expect(capable.id == "zai/glm-5.3-flash")
         #expect(capable.supportsImages == true)
         #expect(capable.reasoning?.effortLevels == [.low, .medium, .high])
         #expect(capable.reasoning?.sendsEffortParameter == true)
-        #expect(capable.contextWindow == 1_000_000)
-        #expect(capable.maxOutputTokens == 128_000)
 
         let plain = try #require(OpenAICompatibleProvider.decodeModel(requestyModel(vision: false, reasoning: false)))
         #expect(plain.supportsImages == false)
@@ -57,8 +55,6 @@ struct OpenAICompatibleModelDecodingTests {
         )
         #expect(capable.supportsImages == true)
         #expect(capable.reasoning?.sendsEffortParameter == true)
-        #expect(capable.contextWindow == 262_144)
-        #expect(capable.maxOutputTokens == 32_768)
 
         let plain = try #require(
             OpenAICompatibleProvider.decodeModel(openRouterModel(inputs: ["text"], parameters: ["max_tokens", "tools"]))
@@ -73,8 +69,6 @@ struct OpenAICompatibleModelDecodingTests {
         let model = try #require(OpenAICompatibleProvider.decodeModel(["id": "glm-4.6", "object": "model"]))
         #expect(model.supportsImages == nil)
         #expect(model.reasoning == nil)
-        #expect(model.contextWindow == nil)
-        #expect(model.maxOutputTokens == nil)
     }
 
     @Test("An entry with no usable id is skipped")

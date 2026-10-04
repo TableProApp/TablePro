@@ -38,18 +38,36 @@ internal enum AIProviderDraftRules {
         return trimmed.isEmpty ? defaultEndpoint : trimmed
     }
 
+    /// The automatic fetch reads the Base URL as typed, never the default an empty field saves as.
+    /// It runs on a timer while the field is edited, and resolving an empty field to the default
+    /// would send a key typed for one host to another with no click.
+    internal static func modelListBlocker(
+        descriptor: AIProviderDescriptor?,
+        draft: AIProviderConfig,
+        apiKey: String
+    ) -> AIModelListFetchGate.Blocker? {
+        AIModelListFetchGate.blocker(
+            fetchesModelList: descriptor?.fetchesModelList == true,
+            takesEndpoint: descriptor?.allowsEndpointConfiguration == true,
+            endpoint: draft.endpoint,
+            authStyle: draft.authStyle,
+            apiKey: apiKey
+        )
+    }
+
     internal enum CatalogUpdate: Equatable {
         case store
         case remove
+        case refetch
         case keep
     }
 
     /// What Save does with the shared model list.
     ///
     /// The sheet fetches for a draft, which can point at a server the saved provider never did, so
-    /// its list reaches the catalog only on Save. A list that did not load for the draft's key and
-    /// Base URL is not stored, and when either of those changed, the list fetched with the old ones
-    /// is dropped rather than left to describe the new server.
+    /// its list reaches the catalog only on Save. When the key or Base URL changed and no list loaded
+    /// for the new ones yet, the old list is dropped rather than left to describe the new server,
+    /// and fetched again with what was saved.
     internal static func catalogUpdate(
         listIsCurrent: Bool,
         listIsEmpty: Bool,
@@ -58,6 +76,6 @@ internal enum AIProviderDraftRules {
         if listIsCurrent {
             return listIsEmpty ? .remove : .store
         }
-        return connectionChanged ? .remove : .keep
+        return connectionChanged ? .refetch : .keep
     }
 }

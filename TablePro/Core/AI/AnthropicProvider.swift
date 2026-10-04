@@ -204,7 +204,7 @@ final class AnthropicProvider: ChatTransport {
         throw AIProviderError.mapHTTPError(statusCode: statusCode, body: body, requestURL: request.url)
     }
 
-    private func buildMessagesRequest(
+    func buildMessagesRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions,
         stream: Bool = true,
