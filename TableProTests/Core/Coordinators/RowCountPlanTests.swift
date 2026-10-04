@@ -101,6 +101,39 @@ struct RowCountPlanTests {
         #expect(PluginManager.shared.exactRowCountIsFullScan(for: .scylladb))
     }
 
+    /// The estimate is the whole database's key count, so on a tab narrowed by its key pattern it is
+    /// never the total. The plan counts by the search instead, bounded by the database's size.
+    @Test("A browse search is counted by its own scope, never by the table's estimate")
+    func browseSearchCountsItsOwnScope() {
+        let search = BrowseSearchState(pattern: "user:*")
+        let plan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: true, filterState: TabFilterState(), approximateRowCount: 5_000_000, threshold: 100_000,
+            browseSearch: search
+        )
+        #expect(plan == .browseSearch(search, tableSizeLimit: 100_000))
+    }
+
+    @Test("A browse search on an engine counted only on request keeps whatever count it has")
+    func browseSearchWithoutAutomaticCountSkips() {
+        let plan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: true, filterState: TabFilterState(), approximateRowCount: nil, threshold: 100_000,
+            countsAutomatically: false, browseSearch: BrowseSearchState(typeScope: "hash")
+        )
+        #expect(plan == .skip)
+    }
+
+    @Test("A browse search narrows the rows only on an engine that runs one")
+    func browseSearchNarrowsRows() {
+        var state = TabFilterState()
+        state.browseSearch = BrowseSearchState(pattern: "user:*")
+
+        #expect(state.narrowsRows(browseSearchIsSupported: true))
+        #expect(!state.narrowsRows(browseSearchIsSupported: false))
+        #expect(state.activeBrowseSearch(isSupported: true) == BrowseSearchState(pattern: "user:*"))
+        #expect(!TabFilterState().narrowsRows(browseSearchIsSupported: true))
+        #expect(filtered().narrowsRows(browseSearchIsSupported: false))
+    }
+
     @Test("Non-SQL filtered defers to the driver filtered count")
     func nonSQLFiltered() {
         let state = filtered()

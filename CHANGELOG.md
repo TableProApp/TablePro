@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Users & Roles object tree keeping its old rows after a search or a switch to Granted, until something else changed.
+- Users & Roles search results showing a disclosure triangle that opened onto nothing.
+- Redis tab narrowed by its key pattern or type showing the whole database's key count as its "~" total.
+- Redis key pattern change keeping the previous pattern's exact count.
+
 ## [0.77.2] - 2026-10-05
 
 ### Added

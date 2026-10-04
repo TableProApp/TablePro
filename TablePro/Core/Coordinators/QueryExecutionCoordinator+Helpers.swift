@@ -275,6 +275,7 @@ extension QueryExecutionCoordinator {
         /// and put the old total back. Kept, a total above the automatic-count threshold stops the
         /// count this read launches, so paging stays bounded by the table as it was.
         let answeredRowsChange = parent.tabSessionRegistry.recordRead(read, for: existingTabId)
+        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1
@@ -290,7 +291,7 @@ extension QueryExecutionCoordinator {
                 tab.pagination.retireDerivedRowCount()
             }
             if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
-               !tab.filterState.hasAppliedFilters {
+               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             if hasSchema {
@@ -629,6 +630,7 @@ extension QueryExecutionCoordinator {
             )
         }
 
+        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
         parent.tabManager.mutate(tabId: tabId) { tab in
             if !parsed.primaryKeyColumns.isEmpty {
                 tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
@@ -636,7 +638,7 @@ extension QueryExecutionCoordinator {
                 tab.display.activeResultSet?.origin?.keysResolved = true
             }
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
-               !tab.filterState.hasAppliedFilters {
+               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
                 tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             tab.metadataVersion += 1
@@ -701,7 +703,8 @@ extension QueryExecutionCoordinator {
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
-                    countsAutomatically: countsAutomatically
+                    countsAutomatically: countsAutomatically,
+                    browseSearch: parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let queryColumns = parent.queryColumns(for: tab)
@@ -768,6 +771,18 @@ extension QueryExecutionCoordinator {
                 try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
             }) else { return .clear }
             return .count(count, isApproximate: false)
+        case let .browseSearch(search, tableSizeLimit):
+            do {
+                let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                    try await ExactRowCounter.countBrowseSearch(
+                        on: driver, table: tableName, search: search, tableSizeLimit: tableSizeLimit
+                    )
+                }
+                return count.map { RowCountOutcome.count($0, isApproximate: false) }
+            } catch {
+                helpersLogger.warning("Browse search count failed for \(tableName): \(error.localizedDescription)")
+                return nil
+            }
         case .exactCount:
             guard let exactCount, let sql = exactCount.sql else { return nil }
             do {
@@ -790,13 +805,22 @@ extension QueryExecutionCoordinator {
 
     /// `countsAutomatically` is `PluginManager.countsRowsAutomatically(for:)`: an engine that cannot skip rows, or
     /// whose count is a billed scan, is only counted when the user asks.
+    ///
+    /// `browseSearch` is the search the browse runs in place of the table filters, such as a Redis key
+    /// pattern. The table's estimate measures the whole database, not the keys that search lists, so it is
+    /// never the answer. A search change retires the total, which is why nothing is cleared here: a page
+    /// turn after `Count Exactly` keeps that count.
     static func rowCountPlan(
         isNonSQL: Bool,
         filterState: TabFilterState,
         approximateRowCount: Int?,
         threshold: Int,
-        countsAutomatically: Bool = true
+        countsAutomatically: Bool = true,
+        browseSearch: BrowseSearchState? = nil
     ) -> RowCountPlan {
+        if let browseSearch {
+            return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
+        }
         guard countsAutomatically else {
             return filterState.hasAppliedFilters ? .clear : .skip
         }
@@ -890,6 +914,7 @@ enum RowCountPlan: Equatable {
     case skip
     case clear
     case approximate
+    case browseSearch(BrowseSearchState, tableSizeLimit: Int)
     case exactCount(filtered: Bool)
     case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
 }

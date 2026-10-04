@@ -175,6 +175,12 @@ final class FilterCoordinator: ObservableObject {
         PluginManager.shared.browseFilterDescriptor(for: parent.connection.type) != nil
     }
 
+    /// The search a tab's browse runs instead of its table filters. The browse query, the automatic
+    /// row count and `Count Exactly` all read it here, so each describes the keys the grid lists.
+    func activeBrowseSearch(for filterState: TabFilterState) -> BrowseSearchState? {
+        filterState.activeBrowseSearch(isSupported: usesBrowseSearch)
+    }
+
     func applyBrowseSearch(_ search: BrowseSearchState) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               let tableName = tab.tableContext.tableName else { return }
@@ -189,7 +195,13 @@ final class FilterCoordinator: ObservableObject {
                 state.browseSearch = search
                 state.isVisible = true
             }
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
+            /// The total on screen counted the previous search's keys, or the whole database. An
+            /// exact one is never replaced by a later estimate, so left in place it would go on
+            /// describing this search.
+            parent.tabManager.mutate(at: capturedTabIndex) { tab in
+                tab.pagination.reset()
+                tab.pagination.retireDerivedRowCount()
+            }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
             parent.runQuery(viewport: .firstRow)
@@ -209,7 +221,11 @@ final class FilterCoordinator: ObservableObject {
             mutateSelectedTabFilterState { state in
                 state.browseSearch = BrowseSearchState()
             }
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
+            /// A total counted for the search does not describe the whole database.
+            parent.tabManager.mutate(at: capturedTabIndex) { tab in
+                tab.pagination.reset()
+                tab.pagination.retireDerivedRowCount()
+            }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
             parent.runQuery(viewport: .firstRow)
@@ -255,8 +271,7 @@ final class FilterCoordinator: ObservableObject {
 
         let newQuery: String
         var executed: [TableFilter] = []
-        if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
-            let search = tab.filterState.browseSearch
+        if let search = activeBrowseSearch(for: tab.filterState) {
             newQuery = parent.queryBuilder.buildKeyPatternBrowseQuery(
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
