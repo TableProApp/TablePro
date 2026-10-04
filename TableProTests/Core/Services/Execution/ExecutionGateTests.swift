@@ -29,10 +29,15 @@ final class StubConfirming: OperationConfirming, @unchecked Sendable {
 final class StubAuthenticating: OperationAuthenticating, @unchecked Sendable {
     private let lock = NSLock()
     private var storedCallCount = 0
+    private var storedReason: String?
     private let answer: Bool
 
     var callCount: Int {
         lock.withLock { storedCallCount }
+    }
+
+    var lastReason: String? {
+        lock.withLock { storedReason }
     }
 
     init(answer: Bool) {
@@ -40,7 +45,10 @@ final class StubAuthenticating: OperationAuthenticating, @unchecked Sendable {
     }
 
     func authenticate(reason: String) async -> Bool {
-        lock.withLock { storedCallCount += 1 }
+        lock.withLock {
+            storedCallCount += 1
+            storedReason = reason
+        }
         return answer
     }
 }
@@ -455,6 +463,37 @@ struct ExecutionGateTests {
         #expect(decision.isAuthorized)
         #expect(confirm.callCount == 1)
         #expect(auth.callCount == 1)
+    }
+
+    /// macOS shows the reason as "<app> is trying to <reason>.", so a capitalised imperative read
+    /// "TablePro is trying to Authenticate to execute database operations."
+    @Test("The Touch ID reason completes the sentence macOS puts it in")
+    func authenticationReasonCompletesTheSystemSentence() async throws {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let gate = makeGate(level: .safeMode, confirm: confirm, auth: auth)
+
+        _ = await gate.authorize(makeRequest(sql: "UPDATE t SET a=1", kind: .writeQuery))
+
+        let reason = try #require(auth.lastReason)
+        #expect(reason == DefaultExecutionGate.authenticationReason)
+        #expect(reason.first?.isUppercase != true, "\(reason) starts with a capital")
+        #expect(!reason.hasSuffix(".") && !reason.hasSuffix("\u{3002}"), "\(reason) closes the sentence")
+    }
+
+    /// Every shipped language supplies its own closing mark after the reason ("đang cố gắng %@.",
+    /// "正在尝试%@。"), so a translation that capitalises or closes it reads wrong in the same way.
+    @Test("Every translation of the Touch ID reason continues the system sentence")
+    func authenticationReasonTranslationsContinueTheSentence() throws {
+        let units = try StringCatalog.loadAll()
+            .flatMap(\.translatedUnits)
+            .filter { $0.key == "execute database operations" }
+
+        #expect(units.count >= 5, "Expected the reason in every shipped language, found \(units.count)")
+        for unit in units {
+            #expect(unit.value.first?.isUppercase != true, "\(unit.description) starts with a capital")
+            #expect(!unit.value.hasSuffix(".") && !unit.value.hasSuffix("\u{3002}"), "\(unit.description) closes the sentence")
+        }
     }
 
     @Test("Safe mode does not authenticate when confirmation cancelled")

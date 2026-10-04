@@ -11,6 +11,9 @@ import SwiftUI
 /// noun inflects with the count. The previous shape assembled one sentence out of seven independent
 /// keys through `String(format:)`, which never groups and cannot select a plural variant, so it
 /// rendered "1 rows" and put an ungrouped range next to a grouped total in the same breath.
+///
+/// The count the noun agrees with sits inside the `^[...](inflect: true)` span. Agreement reads
+/// only the number the span encloses, so a count written before it still rendered "1 rows".
 struct ResultStatusReadoutView: View {
     let readout: ResultStatusReadout
 
@@ -43,23 +46,23 @@ struct ResultStatusReadoutView: View {
         case .noRows:
             Text("No rows")
         case let .rowCount(count):
-            Text("\(count) ^[rows](inflect: true)")
+            Text("^[\(count) row](inflect: true)")
         case let .partialLoad(count):
-            Text("Showing \(count) ^[rows](inflect: true)")
+            Text("Showing ^[\(count) row](inflect: true)")
         case let .range(start, end, total, isEstimate):
             if isEstimate {
-                Text("\(start)-\(end) of ~\(total) ^[rows](inflect: true)")
+                Text("\(start)-\(end) of ~^[\(total) row](inflect: true)")
             } else {
-                Text("\(start)-\(end) of \(total) ^[rows](inflect: true)")
+                Text("\(start)-\(end) of ^[\(total) row](inflect: true)")
             }
         case let .rangeOfUnknownTotal(start, end):
             Text("Rows \(start)-\(end)")
         case let .valueFiltered(shown, loaded):
-            Text("Filtered to \(shown) of \(loaded) ^[rows](inflect: true)")
+            Text("Filtered to \(shown) of ^[\(loaded) row](inflect: true)")
         case let .selection(selected, total):
-            Text("\(selected) of \(total) ^[rows](inflect: true) selected")
+            Text("\(selected) of ^[\(total) row](inflect: true) selected")
         case let .allSelected(count):
-            Text("All \(count) ^[rows](inflect: true) selected")
+            Text("All ^[\(count) row](inflect: true) selected")
         }
     }
 }
