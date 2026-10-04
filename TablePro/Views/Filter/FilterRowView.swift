@@ -168,7 +168,7 @@ struct FilterRowView: View {
 
     private var columnPicker: some View {
         HStack(spacing: 4) {
-            Picker("", selection: $filter.columnName) {
+            Picker(String(localized: "Filter column"), selection: $filter.columnName) {
                 if offersRawFilter || filter.isRawSQL {
                     Text(rawFilterLabel).tag(TableFilter.rawSQLColumn)
                     Divider()
@@ -196,7 +196,6 @@ struct FilterRowView: View {
             /// edges. Capped, the name truncates and the row stays the width of its host.
             .frame(maxWidth: Self.columnPickerMaximumWidth)
             .labelsHidden()
-            .accessibilityLabel(String(localized: "Filter column"))
             .accessibilityValue(filter.isRawSQL ? rawFilterLabel : filter.columnName)
             .help(String(localized: "Select filter column"))
 
@@ -268,7 +267,7 @@ struct FilterRowView: View {
 
     private var operatorPicker: some View {
         Menu {
-            Picker("", selection: $filter.filterOperator) {
+            Picker(String(localized: "Filter operator"), selection: $filter.filterOperator) {
                 ForEach(FilterOperator.allCases) { op in
                     OperatorMenuLabel(op: op).tag(op)
                 }
@@ -462,7 +461,7 @@ struct FilterRowView: View {
     @ViewBuilder
     private func enumValuePicker(allowedValues: [String]) -> some View {
         let isDrift = !filter.value.isEmpty && !allowedValues.contains(filter.value)
-        Picker("", selection: $filter.value) {
+        Picker(String(localized: "Filter value"), selection: $filter.value) {
             ForEach(allowedValues, id: \.self) { value in
                 Text(value).tag(value)
             }
@@ -475,7 +474,6 @@ struct FilterRowView: View {
         .controlSize(.small)
         .frame(minWidth: 100)
         .labelsHidden()
-        .accessibilityLabel(String(localized: "Filter value"))
     }
 
     private struct OperatorMenuLabel: View {

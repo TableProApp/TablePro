@@ -181,6 +181,7 @@ struct CreateTableView: View {
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled(true)
                 .frame(maxWidth: 300)
+                .accessibilityLabel(String(localized: "Table Name"))
                 .accessibilityIdentifier("create-table-name")
 
             if showMySQLOptions {
@@ -265,7 +266,7 @@ struct CreateTableView: View {
 
             Spacer(minLength: 12)
 
-            Picker("", selection: $selectedTab) {
+            Picker(String(localized: "Structure"), selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tab.displayName).tag(tab)
                 }

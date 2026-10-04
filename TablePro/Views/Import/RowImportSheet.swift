@@ -298,6 +298,7 @@ struct RowImportSheet: View {
                     TextField("", text: $newTableName, prompt: Text("table_name"))
                         .frame(maxWidth: 280)
                         .focused($newTableNameFocused)
+                        .accessibilityLabel(String(localized: "New table"))
                 }
             }
 
@@ -562,6 +563,7 @@ struct RowImportSheet: View {
                 .accessibilityLabel(Text(String(format: String(localized: "Create %@"), column.name)))
                 .frame(width: 16)
             TextField("name", text: settings.name)
+                .accessibilityLabel(String(localized: "Column name"))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 150)
                 .disabled(!column.include)

@@ -92,23 +92,7 @@ struct LicenseSettingsView: View {
     /// fact appears once, and only facts somebody acts on appear at all.
     private func detailsSection(_ license: License) -> some View {
         Section {
-            LabeledContent(String(localized: "License key")) {
-                HStack(spacing: 8) {
-                    /// Enough of the key to tell which licence this is, and no more. A full-length
-                    /// mask is the same secret-shaped run of dots for everyone, so it earned its
-                    /// width by being unreadable and then lost the end of itself to truncation.
-                    Text(LicensePresentation.maskedKey(license.key))
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .accessibilityLabel(Text(String(localized: "License key, hidden")))
-
-                    Button(String(localized: "Copy Key")) {
-                        ClipboardService.shared.writeSecretText(license.key)
-                    }
-                    .controlSize(.small)
-                    .accessibilityIdentifier("license-copy-key")
-                }
-            }
+            LicenseKeyRow(key: license.key)
         }
     }
 
@@ -200,6 +184,37 @@ struct LicenseSettingsView: View {
             expiry: license.expiresAt.map { $0.formatted(date: .abbreviated, time: .omitted) }
         )
     }}
+
+/// The license key, masked, with Copy for the real one.
+struct LicenseKeyRow: View {
+    let key: String
+
+    var body: some View {
+        LabeledContent(String(localized: "License key")) {
+            HStack(spacing: 8) {
+                /// Enough of the key to tell which licence this is, and no more. A full-length
+                /// mask is the same secret-shaped run of dots for everyone, so it earned its
+                /// width by being unreadable and then lost the end of itself to truncation.
+                Text(LicensePresentation.maskedKey(key))
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                    /// Not `.accessibilityLabel`. On a line-limited `Text` in a `LabeledContent`
+                    /// shown after the first render, SwiftUI reads that label back through the
+                    /// platform element it set it on, which calls the label again until the stack
+                    /// overflows. A replacement element carries no platform element.
+                    .accessibilityRepresentation {
+                        Text(String(localized: "License key, hidden"))
+                    }
+
+                Button(String(localized: "Copy Key")) {
+                    ClipboardService.shared.writeSecretText(key)
+                }
+                .controlSize(.small)
+                .accessibilityIdentifier("license-copy-key")
+            }
+        }
+    }
+}
 
 /// A degraded state, stated where it applies rather than floated over the pane.
 private struct LicenseNoticeSection: View {

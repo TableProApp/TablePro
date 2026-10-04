@@ -364,7 +364,7 @@ struct AIChatPanelView: View {
             }
         )
         return Menu {
-            Picker("", selection: binding) {
+            Picker(String(localized: "Mode"), selection: binding) {
                 ForEach(AIChatMode.allCases) { mode in
                     Label(mode.displayName, systemImage: mode.symbolName)
                         .tag(mode)
