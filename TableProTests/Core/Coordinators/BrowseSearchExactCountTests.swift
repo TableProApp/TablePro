@@ -15,9 +15,18 @@ import Testing
 private final class BrowseCountStubDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var received: [[PluginQueryFilter]] = []
+    private let databaseSize: Int?
+
+    init(databaseSize: Int? = nil) {
+        self.databaseSize = databaseSize
+    }
 
     var receivedFilters: [[PluginQueryFilter]] {
         lock.withLock { received }
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        databaseSize
     }
 
     func fetchExactRowCount(
@@ -81,5 +90,51 @@ struct BrowseSearchExactCountTests {
     func inactiveSearchHasNoFilters() {
         #expect(BrowseSearchState().pluginQueryFilters.isEmpty)
         #expect(BrowseSearchState(pattern: "   ").pluginQueryFilters.isEmpty)
+    }
+
+    // MARK: - Automatic count
+
+    private func adapter(_ stub: BrowseCountStubDriver) -> PluginDriverAdapter {
+        PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .redis), pluginDriver: stub)
+    }
+
+    @Test("A narrowed database small enough to count is counted by its search, exactly")
+    func smallDatabaseIsCountedBySearch() async throws {
+        let stub = BrowseCountStubDriver(databaseSize: 1_000)
+
+        let count = try await ExactRowCounter.countBrowseSearch(
+            on: adapter(stub), table: "db0", search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
+        )
+
+        #expect(count == 3)
+        let received = try #require(stub.receivedFilters.first)
+        #expect(received.map(\.column) == ["Key"])
+        #expect(received.map(\.value) == ["user:*"])
+    }
+
+    /// The count walks every key in the database whatever the pattern, so the database's own size
+    /// is what decides whether it runs on its own.
+    @Test("A database at or over the limit is left uncounted rather than walked")
+    func largeDatabaseIsNotWalked() async throws {
+        let stub = BrowseCountStubDriver(databaseSize: 100_000)
+
+        let count = try await ExactRowCounter.countBrowseSearch(
+            on: adapter(stub), table: "db0", search: BrowseSearchState(pattern: "user:*"), tableSizeLimit: 100_000
+        )
+
+        #expect(count == nil)
+        #expect(stub.receivedFilters.isEmpty)
+    }
+
+    @Test("A database of unknown size is left uncounted")
+    func unknownSizeIsNotWalked() async throws {
+        let stub = BrowseCountStubDriver(databaseSize: nil)
+
+        let count = try await ExactRowCounter.countBrowseSearch(
+            on: adapter(stub), table: "db0", search: BrowseSearchState(typeScope: "hash"), tableSizeLimit: 100_000
+        )
+
+        #expect(count == nil)
+        #expect(stub.receivedFilters.isEmpty)
     }
 }

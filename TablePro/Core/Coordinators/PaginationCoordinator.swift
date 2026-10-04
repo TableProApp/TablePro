@@ -173,9 +173,7 @@ final class PaginationCoordinator: ObservableObject {
         let logicMode = tab.filterState.filterLogicMode
         /// A browse narrowed by the plugin's own search runs that search instead of the table
         /// filters, so the count has to read the same search or it counts the whole table.
-        let browseFilters = parent.filterCoordinator.usesBrowseSearch && tab.filterState.hasActiveBrowseSearch
-            ? tab.filterState.browseSearch.pluginQueryFilters
-            : nil
+        let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
         let queryColumns = parent.queryColumns(for: tab)
         let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(

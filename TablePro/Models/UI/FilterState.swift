@@ -110,4 +110,16 @@ extension TabFilterState {
     var hasActiveBrowseSearch: Bool {
         browseSearch.isActive
     }
+
+    /// The search the tab's browse runs, nil when it narrows nothing. Only an engine that declares
+    /// a browse search runs one, so the caller says whether this tab's engine does.
+    func activeBrowseSearch(isSupported: Bool) -> BrowseSearchState? {
+        isSupported && hasActiveBrowseSearch ? browseSearch : nil
+    }
+
+    /// Whether the tab lists fewer rows than its table holds, so the table's own size, which is
+    /// what an estimate measures, is not the total of what is on screen.
+    func narrowsRows(browseSearchIsSupported: Bool) -> Bool {
+        hasAppliedFilters || activeBrowseSearch(isSupported: browseSearchIsSupported) != nil
+    }
 }

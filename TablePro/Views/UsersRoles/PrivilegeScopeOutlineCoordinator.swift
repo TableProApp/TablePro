@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -7,7 +8,12 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     static let scopeColumn = NSUserInterfaceItemIdentifier("scope")
     static let summaryColumn = NSUserInterfaceItemIdentifier("summary")
 
-    var viewModel: UsersRolesViewModel
+    var viewModel: UsersRolesViewModel {
+        didSet {
+            guard viewModel !== oldValue else { return }
+            observeNodeChanges()
+        }
+    }
     weak var outlineView: NSOutlineView?
 
     var structureVersion = -1
@@ -16,9 +22,21 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
 
     private var isRestoringExpansion = false
     private var pendingExpansions: Set<String> = []
+    private var nodeChanges: AnyCancellable?
 
     init(viewModel: UsersRolesViewModel) {
         self.viewModel = viewModel
+        super.init()
+        observeNodeChanges()
+    }
+
+    /// A lazy load changes one node, so only that item is reloaded: its row shows or drops the
+    /// spinner, and its children appear under it without the rest of the outline collapsing.
+    private func observeNodeChanges() {
+        nodeChanges = viewModel.privilegeTree.nodeDidChange
+            .sink { [weak self] node in
+                self?.outlineView?.reloadItem(node, reloadChildren: true)
+            }
     }
 
     func configureColumns(on outlineView: NSOutlineView) {
@@ -73,16 +91,11 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
 
         Task { @MainActor in
             await viewModel.expand(node)
-            guard let outlineView else { return }
 
             // The user can collapse the node again while its children are loading. Honour that
             // instead of re-expanding underneath them.
-            guard pendingExpansions.remove(node.persistentKey) != nil else {
-                outlineView.reloadItem(node, reloadChildren: true)
-                return
-            }
-            outlineView.reloadItem(node, reloadChildren: true)
-            outlineView.expandItem(node)
+            guard pendingExpansions.remove(node.persistentKey) != nil else { return }
+            outlineView?.expandItem(node)
         }
     }
 

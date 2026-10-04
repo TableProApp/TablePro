@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Users & Roles object tree keeping its old rows after a search or a switch to Granted, until something else changed.
+- Users & Roles search results showing a disclosure triangle that opened onto nothing.
+- Redis tab narrowed by its key pattern or type showing the whole database's key count as its "~" total.
+- Redis key pattern change keeping the previous pattern's exact count.
 - Format Query on Elasticsearch, Typesense and Weaviate joining the body onto the request line and changing the URL.
 - Format Query changing Redis keys, etcd paths and SurrealDB record ids, such as `user:1` into `user :1`.
 - Sidebar Show All running a MongoDB command on Elasticsearch, Typesense and Weaviate, and a Redis command on etcd.
