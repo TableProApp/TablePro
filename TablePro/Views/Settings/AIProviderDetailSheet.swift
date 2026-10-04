@@ -917,9 +917,7 @@ struct AIProviderDetailSheet: View {
         if showsMaxOutputTokens || showsTelemetryToggle {
             Section {
                 if showsMaxOutputTokens {
-                    HStack {
-                        Text("Max output tokens")
-                        Spacer()
+                    LabeledContent("Max output tokens") {
                         TextField("", text: maxOutputTokensBinding)
                             .frame(width: 100)
                             .multilineTextAlignment(.trailing)

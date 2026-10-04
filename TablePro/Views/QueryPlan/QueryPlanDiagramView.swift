@@ -211,7 +211,7 @@ struct QueryPlanDiagramNodeView: View {
                         .foregroundStyle(.tertiary)
                 }
                 if let rows = node.estimatedRows {
-                    Text("\(rows) ^[rows](inflect: true)")
+                    Text("^[\(rows) row](inflect: true)")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }

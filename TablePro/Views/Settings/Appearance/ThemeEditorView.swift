@@ -40,12 +40,13 @@ internal struct ThemeEditorView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
-            Picker("", selection: $activeTab) {
+            Picker("Theme", selection: $activeTab) {
                 ForEach(EditorTab.allCases, id: \.self) { tab in
                     Text(tab.localizedName).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
