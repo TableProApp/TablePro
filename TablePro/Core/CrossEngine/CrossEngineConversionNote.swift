@@ -20,19 +20,24 @@ internal struct CrossEngineConversionNote: Identifiable, Hashable, Sendable {
     internal let summary: String
     internal let reason: String
     internal let fidelity: CanonicalTypeFidelity
+    /// True when `summary` is two type spellings rather than a sentence. A spelling has no space
+    /// to wrap at, so an `ENUM` listing its values broke mid-token across two lines.
+    internal let isTypeChange: Bool
 
     internal init(
         table: String,
         subject: String,
         summary: String,
         reason: String,
-        fidelity: CanonicalTypeFidelity
+        fidelity: CanonicalTypeFidelity,
+        isTypeChange: Bool = false
     ) {
         self.table = table
         self.subject = subject
         self.summary = summary
         self.reason = reason
         self.fidelity = fidelity
+        self.isTypeChange = isTypeChange
     }
 
     internal var id: String { "\(table)\u{1F}\(subject)\u{1F}\(summary)" }

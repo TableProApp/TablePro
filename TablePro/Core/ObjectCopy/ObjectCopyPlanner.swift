@@ -52,6 +52,9 @@ internal struct ObjectCopyPlanner {
         /// A copy into a chosen target resolves every scope to the same endpoint, so a database
         /// with twelve schemas read the same catalog twelve times.
         var targetObjectsByEndpoint: [String: [String: ObjectCopySelection]] = [:]
+        /// Every source scope of a copy to a chosen target lands in the one schema that was chosen,
+        /// so the names its indexes take are allocated across scopes, not afresh for each.
+        var indexNamesByEndpoint: [String: Set<String>] = [:]
 
         for scope in Self.scopes(of: request) {
             let names = Set(scope.objects.map(\.name))
@@ -81,6 +84,8 @@ internal struct ObjectCopyPlanner {
                 }
             }
 
+            var indexNames = indexNamesByEndpoint[targetEndpoint.id]
+                ?? NewTableNaming.comparisonKeys(for: targetObjects.values.map(\.name))
             tableSteps += try await buildTableSteps(
                 request,
                 scope: scope,
@@ -88,8 +93,10 @@ internal struct ObjectCopyPlanner {
                 targetEndpoint: targetEndpoint,
                 sourceReads: sourceReads,
                 targetReads: targetReads,
+                indexNames: &indexNames,
                 skipped: &skipped
             )
+            indexNamesByEndpoint[targetEndpoint.id] = indexNames
             definitionSteps += try await buildDefinitionSteps(
                 request,
                 scope: scope,
@@ -278,6 +285,7 @@ internal struct ObjectCopyPlanner {
         targetEndpoint: DatabaseEndpoint,
         sourceReads: [TableStructureRead],
         targetReads: [TableStructureRead],
+        indexNames: inout Set<String>,
         skipped: inout [ObjectCopySkip]
     ) async throws -> [ObjectCopyTableStep] {
         var reads: [ObjectCopySelection: TableStructureRead] = [:]
@@ -341,6 +349,7 @@ internal struct ObjectCopyPlanner {
         let sourceParts = try await readSourceParts(drafts, endpoint: sourceEndpoint)
         let ddl = try await buildTargetDDL(
             drafts,
+            indexNames: &indexNames,
             request: request,
             targetEndpoint: targetEndpoint,
             sourceNamespace: sourceNamespace,
@@ -545,18 +554,33 @@ internal struct ObjectCopyPlanner {
 
     private func buildTargetDDL(
         _ drafts: [ObjectCopyTableDraft],
+        indexNames: inout Set<String>,
         request: ObjectCopyRequest,
         targetEndpoint: DatabaseEndpoint,
         sourceNamespace: String?,
         targetNamespace: String?
     ) async throws -> [String: ObjectCopyTableDDL] {
+        let created = drafts.filter(\.writesStructure)
+        indexNames.formUnion(NewTableNaming.comparisonKeys(for: drafts.map(\.targetTable)))
+        let placed = ObjectCopyIndexNames.placed(
+            created.map(\.targetStructure),
+            avoiding: &indexNames,
+            from: request.source.databaseType,
+            to: request.target.databaseType
+        )
+        let structures = Dictionary(
+            zip(created.map(\.selection.id), placed), uniquingKeysWith: { first, _ in first }
+        )
         let inputs = drafts.map {
             ObjectCopyDDLInput(
                 id: $0.selection.id,
                 /// The translated structure, so the `CREATE TABLE` the target driver writes names
                 /// types that engine has. Identical to the source's within one type family.
                 snapshot: Self.retargeted(
-                    $0.targetStructure, from: sourceNamespace, to: targetNamespace, schema: $0.targetSchema
+                    structures[$0.selection.id] ?? $0.targetStructure,
+                    from: sourceNamespace,
+                    to: targetNamespace,
+                    schema: $0.targetSchema
                 ),
                 targetSchema: $0.targetSchema,
                 writesStructure: $0.writesStructure,

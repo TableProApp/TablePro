@@ -221,7 +221,8 @@ internal enum CrossEngineStructureTranslator {
                 subject: column.name,
                 summary: "\(column.name): \(draft.source.sourceSpelling) → \(rendered.spelling)",
                 reason: reason,
-                fidelity: rendered.fidelity
+                fidelity: rendered.fidelity,
+                isTypeChange: true
             ))
         }
 

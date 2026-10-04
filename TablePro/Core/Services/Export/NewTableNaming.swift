@@ -156,7 +156,7 @@ enum NewTableNaming {
 
     /// Cuts on a `Character` boundary while counting UTF-8 bytes, because the engines state their
     /// limits in bytes and a multi-byte name would otherwise be cut mid-grapheme.
-    private static func truncating(_ name: String, toByteLength limit: Int) -> String {
+    static func truncating(_ name: String, toByteLength limit: Int) -> String {
         guard name.utf8.count > limit else { return name }
         var result = ""
         var usedBytes = 0
@@ -178,7 +178,7 @@ enum NewTableNaming {
 
     /// One more candidate than there are names guarantees a free one, so the walk is bounded by
     /// the catalog rather than by a constant that a large schema could exhaust.
-    private static func disambiguating(
+    static func disambiguating(
         _ name: String,
         style: NewTableNameStyle,
         avoiding existingKeys: Set<String>

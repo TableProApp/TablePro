@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Brackets in Redis and etcd command arguments underlined as unmatched.
 - Colons in Elasticsearch URLs, Redis keys and SurrealDB record IDs read as query parameters, holding the run.
 - Counts reading "3 table to export" in the Export dialog, and "1 rows" in the result status bar and query plan.
+- Copy To from MySQL, MariaDB or SQL Server into PostgreSQL, SQLite, DuckDB or Oracle failing on a repeated index name.
+- Copy To review breaking a long ENUM type mid-word, and not naming the table each type change belongs to.
 - Safe Mode's Touch ID prompt reading "TablePro is trying to Authenticate to execute database operations."
 - VoiceOver reading no name for the AI provider pop-up, max output tokens, plugin category filter and CSV NULL text field.
 
