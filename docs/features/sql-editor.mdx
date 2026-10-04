@@ -203,6 +203,8 @@ HAVING COUNT(o.id) > 5
 ORDER BY order_count DESC;
 ```
 
+In an Elasticsearch, Typesense or Weaviate console, formatting indents each JSON request body and leaves the request line as typed. A body that is not a single JSON value, such as a `_bulk` body or a GraphQL query, is left alone. Redis and etcd commands, SurrealQL and KafkaQL have no formatter, so Format is not offered there.
+
 ## Invisible characters
 
 Characters that would otherwise draw as nothing, or as an ordinary space, are marked where they sit. A mark is the character itself: select it, arrow past it, or delete it like any other text.

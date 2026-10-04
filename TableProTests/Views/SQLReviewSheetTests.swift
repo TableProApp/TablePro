@@ -151,6 +151,25 @@ struct SQLReviewSheetTests {
         #expect(result.full.hasSuffix(";"))
     }
 
+    @Test("A MongoDB preview shows Extended JSON as ObjectId")
+    func mongoPreviewWritesShellSyntax() {
+        let statement = #"db.users.deleteOne({"_id": {"$oid": "507f1f77bcf86cd799439011"}})"#
+        let result = SQLReviewSheet.build(statements: [statement], databaseType: .mongodb)
+        #expect(result.full == #"db.users.deleteOne({"_id": ObjectId("507f1f77bcf86cd799439011")});"#)
+    }
+
+    @Test("A request body keeps a stored $oid as the JSON it is", arguments: [
+        DatabaseType.elasticsearch, .typesense, .weaviate
+    ])
+    func requestBodyKeepsExtendedJSON(databaseType: DatabaseType) {
+        let statement = """
+        POST /orders/_doc/1
+        {"source": {"$oid": "507f1f77bcf86cd799439011"}}
+        """
+        let result = SQLReviewSheet.build(statements: [statement], databaseType: databaseType)
+        #expect(result.full == statement + ";")
+    }
+
     @Test("Empty statement list returns empty display")
     func emptyStatements() {
         let result = SQLReviewSheet.build(statements: [], databaseType: .mysql)

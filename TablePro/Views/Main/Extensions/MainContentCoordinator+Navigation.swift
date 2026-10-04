@@ -423,38 +423,23 @@ extension MainContentCoordinator {
     }
 
     func showAllTablesMetadata() {
-        guard let sql = allTablesMetadataSQL() else { return }
-
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            initialQuery: sql
-        )
-        openTabInNewWindow(payload)
+        switch allTablesListing() {
+        case .shellCommand(let command):
+            tabManager.addTab(initialQuery: command, databaseName: browseDatabaseName)
+            runQuery(viewport: .firstRow)
+        case .statement(let sql):
+            openTabInNewWindow(EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: sql))
+        case nil:
+            return
+        }
     }
 
-    private func allTablesMetadataSQL() -> String? {
-        let editorLang = PluginManager.shared.editorLanguage(for: connection.type)
-        // Non-SQL databases: open a command tab instead
-        if editorLang == .javascript {
-            tabManager.addTab(
-                initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
-                databaseName: browseDatabaseName
-            )
-            runQuery(viewport: .firstRow)
-            return nil
-        } else if editorLang == .bash {
-            tabManager.addTab(
-                initialQuery: "SCAN 0 MATCH * COUNT 100",
-                databaseName: browseDatabaseName
-            )
-            runQuery(viewport: .firstRow)
-            return nil
+    /// Nil when the engine has no listing, which is when the sidebar leaves the command out.
+    func allTablesListing() -> AllTablesListing? {
+        let pluginListing = DatabaseManager.shared.driver(for: connectionId).flatMap { driver in
+            (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
         }
-
-        // SQL databases: delegate to plugin driver
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
-        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+        return AllTablesListing.resolve(databaseType: connection.type, pluginListing: pluginListing)
     }
 
     /// The container this listing is about, named rather than left to the driver.

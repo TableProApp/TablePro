@@ -166616,6 +166616,9 @@
         }
       }
     },
+    "This query language has no formatter." : {
+
+    },
     "This query may permanently modify or delete data and cannot be undone.\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {

@@ -15,6 +15,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     var onAIAction: ((AIQueryAction) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onFormatSQL: ((NSRange) -> Void)?
+    var canFormatSQL: (() -> Bool)?
     /// Whether the cursor sits inside a collapsed fold. `nil` when there is no fold at the cursor.
     var foldStateAtCursor: (() -> Bool?)?
     var onToggleFold: (() -> Void)?
@@ -60,7 +61,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     }
 
     private var formatItem: NSMenuItem? {
-        guard hasText, onFormatSQL != nil else { return nil }
+        guard hasText, onFormatSQL != nil, canFormatSQL?() ?? true else { return nil }
         let item = NSMenuItem(title: String(localized: "Format SQL"), action: #selector(handleFormatSQL), keyEquivalent: "")
         item.target = self
         item.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)

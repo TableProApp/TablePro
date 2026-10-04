@@ -1111,6 +1111,10 @@ final class MainContentCommandActions: ObservableObject {
         !connection.type.explainVariants.isEmpty
     }
 
+    var supportsFormatting: Bool {
+        QueryFormatterFactory.supportsFormatting(connection.type)
+    }
+
     func explainQuery() {
         coordinator?.runExplain()
     }

@@ -419,6 +419,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] range in self?.formatSQL(selectedRange: range) }
+        menu.canFormatSQL = { [weak self] in QueryFormatterFactory.supportsFormatting(self?.databaseType) }
         menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }
         menu.onToggleFold = { [weak controller] in controller?.toggleFoldAtCursor() }
         contextMenu = menu
@@ -465,8 +466,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func formatSQL(selectedRange: NSRange) {
-        guard let textView = controller?.textView else { return }
-        let formatter = QueryFormatterFactory.make(for: databaseType)
+        guard let textView = controller?.textView,
+              let formatter = QueryFormatterFactory.make(for: databaseType) else { return }
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
             selectedRange: selectedRange

@@ -334,7 +334,7 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuSection] {
         var items: [DatabaseTreeMenuItem] = []
-        if kind == .table {
+        if kind == .table, context.canShowAllTables {
             let title = context.objectKindTitles[kind] ?? kind.pluralDisplayName
             items.append(.command(
                 String(format: String(localized: "Show All %@"), title),
