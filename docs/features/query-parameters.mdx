@@ -47,6 +47,8 @@ Where the driver has a parameter API the value is bound, never pasted into the t
 
 The same name twice (`:id = :id`) gets one field and one value.
 
+Parameters are detected on SQL connections only. On MongoDB, Elasticsearch, Typesense, Weaviate, Redis, etcd, SurrealDB and Kafka a `:word` is sent as written, so `GET /products/_search?q=name:lamp` and `GET user:name` run without asking for a value.
+
 ## LIKE patterns and IN lists
 
 One placeholder is one value, which is where both of these go wrong.

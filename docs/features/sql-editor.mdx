@@ -156,6 +156,8 @@ Full-width letters and digits inside a name written in another script, such as `
 
 Text between `'`, `"` or `` ` `` quotes and text in a `--` or `/* */` comment is not checked. Neither is a `#` comment on MySQL and MariaDB, a `$$` body on PostgreSQL, or a `[bracketed]` name on SQL Server and SQLite. On other engines, a `#` comment, a `$$` body or a bracketed name is checked like the rest of the query.
 
+On Elasticsearch, Typesense and Weaviate the request body is checked and the request line is not, so the `/*` in `GET /_cat/indices/*` is a wildcard, not a comment. Redis and etcd commands are not checked, because a bracket in an argument is plain text.
+
 A half-written statement is never flagged. An opener you have not closed yet, a string you are still typing, and brackets inside a string or a comment are all left alone. Documents over 100,000 characters are not checked at all.
 
 Switching tabs or loading a query checks the new text the same way, without a keystroke. Rest the pointer on an underline to read its message. In VoiceOver, the rotor lists every underline under **Query Issues**, each read with its message.
