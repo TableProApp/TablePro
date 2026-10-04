@@ -300,6 +300,33 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await conn.keyCount(inDatabase: index)
     }
 
+    /// What `Count Exactly` runs on a database tab. Without it the kit's default answered nil, which
+    /// the app reads as "no count", so the button stayed and the estimate was never replaced.
+    ///
+    /// An unfiltered tab is counted by the same reading the estimate came from: `DBSIZE` and
+    /// `INFO keyspace` both report the exact number of keys a database holds. A filtered tab is
+    /// counted by scanning with its browse's own `MATCH` glob and `TYPE` scope to the end, without
+    /// the cap the browse stops at, because nothing short of the whole scan is exact.
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        guard let conn = redisConnection else {
+            throw RedisPluginError.notConnected
+        }
+        guard let index = RedisDatabaseIndex.parse(table) else { return nil }
+
+        let scope = RedisQueryBuilder().browseScope(filters: filters)
+        guard scope.pattern != nil || scope.typeScope != nil else {
+            return try await conn.keyCount(inDatabase: index)
+        }
+        return try await conn.withDatabase(index) {
+            try await conn.countKeys(pattern: scope.pattern, type: scope.typeScope)
+        }
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected

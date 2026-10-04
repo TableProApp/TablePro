@@ -100,10 +100,18 @@ final class UsersRolesViewModel: ObservableObject {
 
     @Published var scopeSearchTask: Task<Void, Never>?
 
+    private var changeManagerForwarding: AnyCancellable?
+
+    /// Every view on this tab observes the view model, not `changeManager`, and reads the staged
+    /// grants, the change count and each principal's stage through it. A change the manager
+    /// published reached none of them: a ticked privilege stayed unticked, and Review & Apply and
+    /// "Modified" stayed stale until the view model happened to publish something of its own.
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         expansionStore = PrivilegeExpansionStore(connectionId: connectionId)
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
     }
 
     // MARK: - Derived

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum FilterLogicMode: String, Codable {
     case and = "AND"
@@ -30,6 +31,21 @@ struct BrowseSearchState: Codable, Equatable {
 
     var isActive: Bool {
         !pattern.trimmingCharacters(in: .whitespaces).isEmpty || typeScope != nil
+    }
+
+    /// The search as the filters a plugin's browse reads: a raw `MATCH` glob on the key and a
+    /// `TYPE` scope. The browse query and `Count Exactly` both build from this, so the count is of
+    /// the keys the grid lists.
+    var pluginQueryFilters: [PluginQueryFilter] {
+        var filters: [PluginQueryFilter] = []
+        let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
+        if !trimmedPattern.isEmpty {
+            filters.append(PluginQueryFilter(column: "Key", op: "MATCH", value: trimmedPattern))
+        }
+        if let typeScope, !typeScope.isEmpty {
+            filters.append(PluginQueryFilter(column: "Type", op: "=", value: typeScope))
+        }
+        return filters
     }
 }
 

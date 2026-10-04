@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Last column's divider sitting on the grid's right edge, where it could not be dragged to resize.
 - Cells keeping their old width or order while a column is resized or dragged, until the mouse is released.
 - Resize cursor showing a few points from a column divider, where a drag moved the column instead.
+- Server Dashboard's metrics staying on a spinner, and slow queries never refreshing.
+- Users & Roles privilege checkboxes, Review & Apply and "Modified" not updating after a click.
+- Count Exactly on a Redis database leaving the estimate in place.
+- Status bar truncating the row count and Count Exactly instead of dropping to a narrower layout.
+- Query editor bar cut off, with the editor's text over it, when the editor pane is at its smallest.
+- Long column names drawn over their type in the ER diagram.
 
 ## [0.77.1] - 2026-10-03
 
