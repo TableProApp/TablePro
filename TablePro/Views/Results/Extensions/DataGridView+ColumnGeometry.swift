@@ -15,6 +15,9 @@ extension TableViewCoordinator {
     /// the columns still fit inside the viewport, so nothing is marked dirty and the body keeps the
     /// layout it last drew until an unrelated event invalidates a row (#2449).
     ///
+    /// The column notifications arrive once a gesture ends, so a divider or reorder drag also comes
+    /// here from `SortableHeaderView.viewWillDraw()` on every step.
+    ///
     /// Everything that paints from live `rect(ofColumn:)` is invalidated here: each row, the table
     /// view's own background past the last row, and the cell selection outline. A row is reached
     /// through its drawn cells, which is enough for the whole row: `canDrawSubviewsIntoLayer` makes

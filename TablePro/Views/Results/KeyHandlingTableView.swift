@@ -49,6 +49,38 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.repaintRowGutter()
     }
 
+    /// AppKit sizes the table to its columns, so the document ends at the last column's divider.
+    /// Widening the frame AppKit proposes, rather than insetting the clip view, keeps the header and
+    /// the row views covering the trailing space, and holds through reloads, column changes and
+    /// window resizes. Measured on macOS 27, the same padding added in `tile()` was lost on
+    /// `reloadData` and on a clip resize.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(NSSize(width: max(newSize.width, trailingExtent), height: newSize.height))
+    }
+
+    /// Measured from the last shown column, which is AppKit's own extent: hidden columns and pool
+    /// slots occupy nothing. Asking the pool which columns it presents instead cost ten times as much
+    /// with thousands of surplus slots, and mid-reconcile it can name a column not yet unhidden.
+    private var trailingExtent: CGFloat {
+        guard let last = tableColumns.lastIndex(where: { !$0.isHidden }) else { return 0 }
+        return rect(ofColumn: last).maxX + DataGridMetrics.trailingSpace
+    }
+
+    /// AppKit reorders `tableColumns` as a dragged column passes each neighbour but posts
+    /// `columnDidMoveNotification` only at mouse-up, where the coordinator settles the new order.
+    /// The body follows the drag step by step, so the map from a data column to where it now sits
+    /// has to follow each pass. The display order is read before the first pass and kept: a drag
+    /// that passes a neighbour and comes back leaves the order, and the selection, as they were.
+    override func moveColumn(_ oldIndex: Int, toColumn newIndex: Int) {
+        let isDragging = (headerView?.draggedColumn ?? -1) >= 0
+        if isDragging {
+            _ = coordinator?.presentedDataColumns
+        }
+        super.moveColumn(oldIndex, toColumn: newIndex)
+        guard isDragging else { return }
+        coordinator?.invalidateTableColumnIndexMap()
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }

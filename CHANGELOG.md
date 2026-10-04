@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250)
 - Status bar buttons a point or two taller or shorter than each other depending on their icon. (#3250)
 - Highlighted row in the database and connection switchers drawn as white text on a grey fill. (#3249)
+- Second "#" column showing beside the row numbers when the data grid bounces past its left edge.
+- Last column's divider sitting on the grid's right edge, where it could not be dragged to resize.
+- Cells keeping their old width or order while a column is resized or dragged, until the mouse is released.
+- Resize cursor showing a few points from a column divider, where a drag moved the column instead.
 
 ## [0.77.1] - 2026-10-03
 

@@ -16,17 +16,30 @@ extension TableViewCoordinator {
     /// The correction scrolls through `scroll(_:)`, which moves the header with the rows. Scrolling
     /// the clip view and reflecting it leaves the header clip where it was, measured on macOS 27, so
     /// every heading sat as far off its column as the correction had moved.
+    ///
+    /// The last column gets the same treatment on its trailing side. AppKit stops with that
+    /// column's divider on the viewport edge, which leaves the trailing space off screen and the
+    /// divider where the window's edge resize takes the press.
     func scrollColumnToVisible(tableColumnIndex index: Int) {
         guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
         tableView.scrollColumnToVisible(index)
         guard let clipView = tableView.enclosingScrollView?.contentView else { return }
-        let gutterWidth = DataGridRowGutterView.width(of: tableView)
-        guard gutterWidth > 0 else { return }
         let columnRect = tableView.rect(ofColumn: index)
         guard columnRect.width > 0 else { return }
-        let hidden = clipView.bounds.origin.x + gutterWidth - columnRect.minX
-        guard hidden > 0 else { return }
-        tableView.scroll(NSPoint(x: clipView.bounds.origin.x - hidden, y: clipView.bounds.origin.y))
+        let visible = clipView.bounds
+        let gutterWidth = DataGridRowGutterView.width(of: tableView)
+        let hidden = visible.minX + gutterWidth - columnRect.minX
+        if gutterWidth > 0, hidden > 0 {
+            tableView.scroll(NSPoint(x: visible.minX - hidden, y: visible.minY))
+            return
+        }
+        guard index == lastPresentedColumnIndex() else { return }
+        let trailingEdge = min(columnRect.maxX + DataGridMetrics.trailingSpace, tableView.bounds.maxX)
+        let shortfall = trailingEdge - visible.maxX
+        guard shortfall > 0,
+              columnRect.maxX <= visible.maxX,
+              columnRect.minX - gutterWidth >= visible.minX + shortfall else { return }
+        tableView.scroll(NSPoint(x: visible.minX + shortfall, y: visible.minY))
     }
 
     /// Re-reads the pinned gutter's geometry from the column it mirrors. The width moves when the

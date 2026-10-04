@@ -172,6 +172,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    /// Drops only the data index to `tableColumns` map, for a column that moved under a live reorder
+    /// drag. The display order, and the selection held in display positions, stay as they were
+    /// until the reorder commits, so the selection keeps naming the cells the user picked.
+    func invalidateTableColumnIndexMap() {
+        columnIndexByDataIndex.removeAll()
+    }
+
     func invalidateColumnIndexCache() {
         invalidatePresentedColumnCache()
         guard !columnIndexByDataIndex.isEmpty else { return }
