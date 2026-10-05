@@ -49,7 +49,7 @@ internal struct AgentSessionRailView: View {
                 bottomBar
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onAppear { railState.highlightedSessionId = openSessionId }
+            .onAppear(perform: seedHighlightIfNeeded)
             /// Opening a session, starting one and closing the one on screen all move which session
             /// the window draws, and the rail follows it: the new row is highlighted and scrolled to,
             /// which for a session just started is the top of the list.
@@ -59,6 +59,14 @@ internal struct AgentSessionRailView: View {
                 proxy.scrollTo(id)
             }
         }
+    }
+
+    /// A connection switch removes the rail and re-adds it, firing `onAppear` again, while
+    /// `railState` outlives it. Close Session and Delete act on the highlight, so a highlight the
+    /// user moved is kept unless it names a session this connection no longer has.
+    private func seedHighlightIfNeeded() {
+        guard highlightedSession == nil else { return }
+        railState.highlightedSessionId = openSessionId
     }
 
     private var list: some View {

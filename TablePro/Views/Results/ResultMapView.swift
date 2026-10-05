@@ -29,9 +29,10 @@ struct ResultMapView: View {
 
     /// Every state the pane can be in has a branch below, so there is no combination that renders
     /// nothing. Projection is cancellable but cannot otherwise fail, which its signature enforces.
+    /// A loaded projection carries the key it was built for, so the two cannot disagree.
     private enum LoadState: Equatable {
         case loading
-        case loaded(ResultMapProjection)
+        case loaded(ResultMapProjection, key: ResultMapProjectionKey)
     }
 
     @State private var state: LoadState = .loading
@@ -52,7 +53,7 @@ struct ResultMapView: View {
     }
 
     private var loadedProjection: ResultMapProjection? {
-        guard case .loaded(let projection) = state else { return nil }
+        guard case .loaded(let projection, _) = state else { return nil }
         return projection
     }
 
@@ -98,13 +99,13 @@ struct ResultMapView: View {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Building map"))
-            case .loaded(let projection) where projection.isEmpty:
+            case .loaded(let projection, _) where projection.isEmpty:
                 UnavailableStateView {
                     Label(String(localized: "Nothing to Draw"), systemImage: "map")
                 } description: {
                     Text(emptyProjectionReason(projection))
                 }
-            case .loaded(let projection):
+            case .loaded(let projection, _):
                 ResultMapCanvas(
                     projection: projection,
                     projectionToken: projectionKey.hashValue,
@@ -265,9 +266,13 @@ struct ResultMapView: View {
 
     // MARK: - Projection
 
-    /// A cancelled projection leaves the state alone: `task(id:)` cancels only to start a
-    /// replacement, and that replacement owns the state from its first line.
+    /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with an unchanged
+    /// key. Rebuilding then would enter `.loading`, which unmounts the canvas and loses the user's
+    /// zoom and pan, so a projection already built for that key is kept. A cancelled projection
+    /// commits nothing; the replacement task, or the next appearance, owns the state from its
+    /// first line.
     private func rebuild(for expectedKey: ResultMapProjectionKey) async {
+        if case .loaded(_, let key) = state, key == expectedKey { return }
         guard let column = resolved else { return }
         state = .loading
         let output = await SpatialResultProjector.shared.project(
@@ -276,6 +281,6 @@ struct ResultMapView: View {
             column: column
         )
         guard !Task.isCancelled, projectionKey == expectedKey else { return }
-        state = .loaded(output)
+        state = .loaded(output, key: expectedKey)
     }
 }

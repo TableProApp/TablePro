@@ -565,8 +565,14 @@ final class SchemaService: ObservableObject {
     /// A load cut short by cancellation settles the kinds it put on a spinner, unless a newer load
     /// already owns them. Left alone, a cancel with no reload behind it kept those sections waiting
     /// on a fetch nothing was running.
-    private func abandonSideLoads(_ connectionId: UUID, generation: Int) {
+    private func abandonLoad(_ connectionId: UUID, generation: Int) {
         guard loadGenerations[connectionId] == generation else { return }
+        /// Nothing replaces a `.loading` that a cancelled load leaves behind: the object list shows a
+        /// spinner with no Retry, and every caller that loads only what is not loaded or loading
+        /// waits on it forever.
+        if case .loading = states[connectionId] {
+            states[connectionId] = .idle
+        }
         updateSideObjects(connectionId) { side in
             side.routines = side.routines.settled(by: .cancelled, discardingValue: false)
             side.triggers = side.triggers.settled(by: .cancelled, discardingValue: false)
@@ -875,7 +881,7 @@ final class SchemaService: ObservableObject {
             bumpGeneration(connectionId)
             tablesLoaded = true
         } catch is CancellationError {
-            abandonSideLoads(connectionId, generation: generation)
+            abandonLoad(connectionId, generation: generation)
             return
         } catch {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-failed") else {
@@ -968,7 +974,7 @@ final class SchemaService: ObservableObject {
                 try await driver.fetchSchemas()
             }
         } catch is CancellationError {
-            abandonSideLoads(connectionId, generation: generation)
+            abandonLoad(connectionId, generation: generation)
             return
         } catch {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-failed") else {

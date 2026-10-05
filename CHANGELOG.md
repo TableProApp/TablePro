@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Each switch between connections in the connections strip reloading that connection's schema.
+- Opening a connection fetching every column of its schema twice.
+- Unsaved grid edits not kept with their tab after jumping to a tab of a background connection.
+- Users & Roles discarding staged changes and Undo after switching tab or connection.
+- Object source, ClickHouse parts, chart and map reloading after switching connection and back, and the map losing zoom.
+- History drawer dropping loaded pages and the selected entry after switching connection and back.
+- Assistant transcript, agent session highlight, inspector field edits and Redis key filter reset after a connection switch.
+- Structure tab stuck on a cancellation error after switching connection while it loaded.
+- File handle leaked on each switch to a SQLite or Beancount connection.
 - Blank results pane instead of the data grid while a table loads, or after its load error is dismissed.
 - Previous table's primary key or row count carried into the next table opened in its tab, so edits matched wrong rows.
 - Status bar stuck on Loading after cancelling a Safe Mode (Full) confirmation for a table.

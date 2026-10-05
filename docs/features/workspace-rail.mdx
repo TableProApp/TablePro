@@ -46,6 +46,8 @@ Closing an entry's last tab leaves the entry where it is: tabs and entries close
 
 Between two connections, the window switches connection and returns you to the tab you last used there; between two databases of one connection, the sidebar moves and the tabs stay. An entry with nothing open moves the sidebar only, and clicking the entry you are in does nothing. No tab is ever closed or retargeted by a switch: each one keeps querying the database it was opened against.
 
+Coming back to a connection reloads nothing it already had. The tab in front keeps its rows, scroll position and unsaved edits, and the object list and [autocomplete](/features/autocomplete#my-new-table-does-not-complete) keep what they loaded. To pick up a table created from another client, press `Cmd+R`.
+
 The strip takes the keyboard too. Click into it, then use the arrow keys to move the highlight. Type the start of a connection, database, or schema name to jump to it, and press `Return` to open the entry.
 
 More entries than fit the window means the strip scrolls, and it settles on whole entries rather than halfway through one. Switching to an entry that is off screen brings it into view.

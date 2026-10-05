@@ -26,6 +26,12 @@ internal struct BlobHexEditorView: View {
     /// takes its 10,240-byte prefix, and a computed property pays that on every body pass, twice.
     @State private var isTruncated = false
 
+    /// The stored value the draft was formatted from. A connection switch or a trailing-pane swap
+    /// re-adds the editor with the draft intact, and reloading there overwrote typing not yet
+    /// committed. A first-appearance flag would not do: this branch is rebuilt when the field leaves
+    /// read-only (a row marked deleted, then restored), and its new `onChange` misses what changed.
+    @State private var draftSource: String?
+
     var body: some View {
         if context.isReadOnly {
             readOnlyHexView
@@ -76,7 +82,7 @@ internal struct BlobHexEditorView: View {
 
             statusLine
         }
-        .onAppear { loadDraft() }
+        .onAppear(perform: loadDraftIfStale)
         .onChange(of: context.value.wrappedValue) { _ in
             if !isFocused {
                 loadDraft()
@@ -107,9 +113,16 @@ internal struct BlobHexEditorView: View {
     /// One place that formats the stored value for editing, so the draft and the truncation flag
     /// are always taken from the same read rather than from two.
     private func loadDraft() {
-        let formatted = BlobFormattingService.shared.format(context.value.wrappedValue, for: .edit) ?? ""
+        let stored = context.value.wrappedValue
+        let formatted = BlobFormattingService.shared.format(stored, for: .edit) ?? ""
         hexEditText = formatted
         isTruncated = formatted.hasSuffix("…")
+        draftSource = stored
+    }
+
+    private func loadDraftIfStale() {
+        guard draftSource != context.value.wrappedValue else { return }
+        loadDraft()
     }
 
     private func commitHexEdit() {

@@ -647,14 +647,22 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// so the first switch away from it found no cached coordinator to resign: it kept
         /// `isKeyWindow` and never scheduled the eviction.
         let incoming = workspaces.selected?.sessionState?.coordinator
+        var handedOffKey = false
         for workspace in workspaces.workspaces {
             guard let coordinator = workspace.sessionState?.coordinator,
                   coordinator !== incoming,
                   coordinator.isKeyWindow else { continue }
             coordinator.handleWindowDidResignKey()
+            handedOffKey = true
         }
+        /// Key status is handed over, never invented. A window that is not key can still change its
+        /// selection, and marking that connection key kept its row eviction from ever being
+        /// scheduled and let a deferred restore load in a window nobody was looking at. The real
+        /// `windowDidBecomeKey` reaches whichever connection is selected when the window comes forward.
         if lastActiveCoordinator !== incoming {
-            incoming?.handleWindowDidBecomeKey()
+            if handedOffKey || view.window?.isKeyWindow == true {
+                incoming?.handleWindowDidBecomeKey()
+            }
             lastActiveCoordinator = incoming
         }
 

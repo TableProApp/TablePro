@@ -207,7 +207,9 @@ struct TableStructureView: View {
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
-            selectionState.indices = []
+            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
+            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
+            selectionState.indices = selectedRows
             coordinator?.inspectorRowSource = gridDelegate
 
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }

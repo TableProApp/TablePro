@@ -18,13 +18,13 @@ extension MainContentView {
     // MARK: - Initialization
 
     func initializeAndRestoreTabs() async {
-        guard !hasInitialized else {
+        guard !coordinator.hasRestoredTabs else {
             MainContentView.lifecycleLogger.info(
                 "[open] initializeAndRestoreTabs skipped (already initialized) windowId=\(windowId, privacy: .public)"
             )
             return
         }
-        hasInitialized = true
+        coordinator.hasRestoredTabs = true
         let schemaTaskStart = Date()
         async let schemaLoad: Void = {
             await coordinator.loadSchemaIfNeeded()
@@ -285,6 +285,10 @@ extension MainContentView {
     }
 
     func setupCommandActions() {
+        /// Called from `onAppear`, which a connection switch fires again. Building a second set of
+        /// actions left the hidden trailing pane holding the first, so every refresh and connect
+        /// broadcast was handled twice, and both trailing panes were rebuilt on every switch.
+        guard commandActions == nil else { return }
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,

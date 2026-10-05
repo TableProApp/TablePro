@@ -80,6 +80,22 @@ struct WorkspaceSwitchKeyStateTests {
         #expect(second.isKeyWindow)
     }
 
+    /// A window that is not key can still change its selection, for example when a close is
+    /// cancelled. Marking that connection key kept its row eviction from ever being scheduled.
+    @Test("Switching in a window that is not key marks nothing key")
+    func switchInNonKeyWindowMarksNothingKey() throws {
+        let harness = Harness()
+        defer { harness.tearDown() }
+        let first = try harness.coordinator(harness.first)
+        let second = try harness.coordinator(harness.second)
+        #expect(harness.window.isKeyWindow == false)
+
+        harness.controller.workspaces.select(harness.second.connectionId)
+
+        #expect(first.isKeyWindow == false)
+        #expect(second.isKeyWindow == false)
+    }
+
     @Test("Switching back hands key status back")
     func switchingBackHandsItBack() throws {
         let harness = Harness()
