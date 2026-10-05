@@ -72,6 +72,15 @@ struct QueryCommandAvailabilityTests {
         #expect(commands.explainHint.contains("does not explain"))
     }
 
+    @Test("A language with no formatter does not offer Format, and says why")
+    func noFormatter() {
+        let commands = Self.make(supportsFormatting: false)
+
+        #expect(commands.canFormat == false)
+        #expect(commands.formatHint.contains("no formatter"))
+        #expect(commands.canRun)
+    }
+
     /// Redis has no planner. It used to answer Explain with `DEBUG OBJECT`, which describes a stored
     /// value rather than a statement and which Redis 7 refuses by default.
     @Test("Redis declares no plan, so its bar does not offer Explain")
@@ -196,7 +205,8 @@ struct QueryCommandAvailabilityTests {
         isExecuting: Bool = false,
         isStoppable: Bool = true,
         hasResults: Bool = true,
-        explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")]
+        explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")],
+        supportsFormatting: Bool = true
     ) -> QueryCommandAvailability {
         QueryCommandAvailability(
             isConnected: isConnected,
@@ -205,6 +215,7 @@ struct QueryCommandAvailabilityTests {
             isStoppable: isStoppable,
             hasResults: hasResults,
             explainVariants: explainVariants,
+            supportsFormatting: supportsFormatting,
             shortcutHint: { label, _ in label }
         )
     }

@@ -7,6 +7,8 @@ final class ConnectionFormDatabaseFileUITests: UITestCase {
     private let filePath = "connection-form-file-path"
     private let browseButton = "connection-form-file-browse"
     private let newButton = "connection-form-file-new"
+    /// AppKit's own identifier for the save panel's name field, as the runner's element tree shows it.
+    private let saveAsNameField = "saveAsNameTextField"
 
     func testNewNamesADatabaseFileThatDoesNotExistYet() throws {
         let app = try launchApp()
@@ -25,9 +27,13 @@ final class ConnectionFormDatabaseFileUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(new, timeout: 10))
         new.click()
 
-        let panel = form.sheets.firstMatch
-        XCTAssertTrue(panel.waitToExist(timeout: 10), "New… should open a save panel on the form")
-        panel.typeKey(.return, modifierFlags: [])
+        let panel = readySavePanel(on: form)
+        let create = panel.buttons["Create"]
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { create.exists && create.isEnabled },
+            "A name that does not exist yet should leave Create enabled"
+        )
+        create.click()
 
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { !form.sheets.firstMatch.exists },
@@ -53,8 +59,7 @@ final class ConnectionFormDatabaseFileUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(new, timeout: 10))
         new.click()
 
-        let panel = form.sheets.firstMatch
-        XCTAssertTrue(panel.waitToExist(timeout: 10))
+        let panel = readySavePanel(on: form)
         panel.typeKey(.escape, modifierFlags: [])
 
         XCTAssertTrue(waitForPredicate(timeout: 10) { !form.sheets.firstMatch.exists })
@@ -62,6 +67,30 @@ final class ConnectionFormDatabaseFileUITests: UITestCase {
     }
 
     // MARK: - Helpers
+
+    /// The save panel New… opens, once it takes input.
+    ///
+    /// The sheet is in the accessibility tree before the panel can take a key or a click. The runner's
+    /// screen recordings in run 37204198338 show it arrive in three steps: on screen with Create dimmed,
+    /// then Create enabled, then, about a quarter of a second after it appeared, key, with the name
+    /// selected in its field and Create turned blue. A Return sent as soon as the sheet existed fell
+    /// into that gap and nothing took it: both attempts left the panel open, Create enabled and the
+    /// name typed, until the wait for it to close ran out. The runs that passed did so only because
+    /// XCTest's wait for the app to go idle after the New… click happened to outlast the panel's setup.
+    ///
+    /// The name field takes the keyboard in the same moment the panel becomes key, so waiting for that
+    /// waits for the panel to be ready. Nothing in the app can close the gap: making the sheet key once
+    /// it is presented is AppKit's own sequence.
+    private func readySavePanel(on form: XCUIElement) -> XCUIElement {
+        let panel = form.sheets.firstMatch
+        XCTAssertTrue(panel.waitToExist(timeout: 10), "New… should open a save panel on the form")
+        let nameField = panel.textFields[saveAsNameField]
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { holdsKeyboardFocus(nameField) },
+            "The save panel should become key with the keyboard in its name field"
+        )
+        return panel
+    }
 
     private func replaceText(in field: XCUIElement, with text: String) {
         XCTAssertTrue(waitUntilHittable(field, timeout: 10))

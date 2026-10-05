@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProModels
 
 struct DatabaseEntity: AppEntity {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Database or Schema")
@@ -31,11 +32,19 @@ struct DatabaseEntityQuery: EntityQuery {
     }
 
     func suggestedEntities() async throws -> [DatabaseEntity] {
-        guard let connection = selectedConnection else { return [] }
-        let namespaces = try? await IntentDatabaseSession.with(connectionId: connection.id) {
+        try await Self.namespaces(of: selectedConnection?.id)
+    }
+
+    /// Throws instead of listing nothing, for the same reason as the table picker: an empty list
+    /// would read as a server with no databases.
+    static func namespaces(
+        of connectionId: UUID?,
+        savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:)
+    ) async throws -> [DatabaseEntity] {
+        guard let connectionId else { return [] }
+        return try await IntentDatabaseSession.with(connectionId: connectionId, savedConnection: savedConnection) {
             try await $0.namespaces()
         }
-        return namespaces ?? []
     }
 
     private var selectedConnection: ConnectionEntity? {

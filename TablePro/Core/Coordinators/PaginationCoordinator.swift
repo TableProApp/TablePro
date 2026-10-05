@@ -171,6 +171,9 @@ final class PaginationCoordinator: ObservableObject {
         let schemaName = tab.tableContext.schemaName
         let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
         let logicMode = tab.filterState.filterLogicMode
+        /// A browse narrowed by the plugin's own search runs that search instead of the table
+        /// filters, so the count has to read the same search or it counts the whole table.
+        let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
         let queryColumns = parent.queryColumns(for: tab)
         let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(
@@ -195,6 +198,7 @@ final class PaginationCoordinator: ObservableObject {
                 tableName: tableName,
                 filters: filters,
                 logicMode: logicMode,
+                browseFilters: browseFilters,
                 countSQL: countSQL
             )
 
@@ -243,11 +247,15 @@ final class PaginationCoordinator: ObservableObject {
         tableName: String,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
+        browseFilters: [PluginQueryFilter]?,
         countSQL: String?
     ) async -> Result<Int?, Error> {
         do {
             let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-                try await ExactRowCounter.count(
+                if let browseFilters {
+                    return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
+                }
+                return try await ExactRowCounter.count(
                     on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
                 )
             }

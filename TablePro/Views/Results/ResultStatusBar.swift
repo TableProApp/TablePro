@@ -153,22 +153,35 @@ struct ResultStatusBar: View {
     // MARK: - Readout
 
     /// The zone that absorbs the bar's slack, which is why `row` gives it the flexible frame and the
-    /// clusters on either side keep their intrinsic widths.
+    /// clusters on either side keep their intrinsic widths. Its three parts are the slots
+    /// `ReadoutZoneLayout` sizes: the sentence, the actions beside it, and the report after them.
     private var readoutCluster: some View {
-        HStack(spacing: 6) {
-            if model.controls.showsReadout {
-                resultReadout
+        ReadoutZoneLayout(spacing: Self.readoutSpacing, sentenceIdealWidth: StatusBarLayoutMetrics.readoutIdealWidth) {
+            HStack(spacing: Self.readoutSpacing) {
+                if model.controls.showsReadout {
+                    readoutSentence
+                }
             }
-            executionReport
-            if model.controls.showsReadout, isRefreshingSchema {
-                DelayedProgressIndicator(isActive: true)
-                    .accessibilityLabel(String(localized: "Refreshing"))
+            HStack(spacing: Self.readoutSpacing) {
+                if model.controls.showsReadout {
+                    readoutActions
+                }
+            }
+            HStack(spacing: Self.readoutSpacing) {
+                if model.controls.showsReadout {
+                    readoutMessage
+                }
+                executionReport
+                if model.controls.showsReadout, isRefreshingSchema {
+                    DelayedProgressIndicator(isActive: true)
+                        .accessibilityLabel(String(localized: "Refreshing"))
+                }
             }
         }
     }
 
     @ViewBuilder
-    private var resultReadout: some View {
+    private var readoutSentence: some View {
         if model.controls.showsLoadingMore {
             ProgressView()
                 .controlSize(.small)
@@ -185,13 +198,21 @@ struct ResultStatusBar: View {
                 .controlSize(.small)
                 .accessibilityLabel(String(localized: "Counting rows"))
         }
+    }
 
+    /// Drawn at the bar's small control size, as every other control on the bar is, and never
+    /// truncated: the sentence beside them gives way first, and `ReadoutZoneLayout` counts their
+    /// width into the tier choice so the bar drops a tier before either has to.
+    @ViewBuilder
+    private var readoutActions: some View {
         if model.controls.showsExactCountAction {
             Button(
                 String(localized: "Count Exactly"),
                 action: paginationCallbacks.onRequestExactCount
             )
             .accessoryBarActionStyle()
+            .controlSize(.small)
+            .fixedSize()
             .help(String(localized: "Replace the estimate with an exact row count."))
             .accessibilityIdentifier("result-status-count-exactly")
         }
@@ -199,16 +220,21 @@ struct ResultStatusBar: View {
         if model.controls.showsFetchAll, let onFetchAll {
             Button(String(localized: "Fetch All"), action: onFetchAll)
                 .accessoryBarActionStyle()
+                .controlSize(.small)
+                .fixedSize()
                 .help(String(localized: "Load the rows the row cap left behind."))
                 .accessibilityIdentifier("result-status-fetch-all")
         }
+    }
 
+    @ViewBuilder
+    private var readoutMessage: some View {
         if let statusMessage = model.statusMessage {
             StatusBarSeparator()
-            /// Yields its width before the sentence beside it does, so a wordy driver message
-            /// truncates instead of squeezing out the row count. Which tier the bar draws is not
-            /// its business: the enclosing frame reports a constant ideal width so no message
-            /// length can change that choice.
+            /// Yields its width before the execution report beside it does, so a wordy driver
+            /// message truncates instead of squeezing anything else out. Which tier the bar draws
+            /// is not its business: `ReadoutZoneLayout` leaves it out of the ideal width, so no
+            /// message length can change that choice.
             Text(statusMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -239,14 +265,13 @@ struct ResultStatusBar: View {
         }
     }
 
+    /// No `idealWidth` here: `ReadoutZoneLayout` reports the zone's ideal itself, and a frame that
+    /// named one would replace it.
     private func readoutZone(_ content: some View) -> some View {
-        content.frame(
-            minWidth: 0,
-            idealWidth: StatusBarLayoutMetrics.readoutIdealWidth,
-            maxWidth: .infinity,
-            alignment: .leading
-        )
+        content.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
+
+    private static let readoutSpacing: CGFloat = 6
 
     // MARK: - Controls
 
@@ -421,6 +446,71 @@ struct ResultStatusBar: View {
     private var filtersAccessibilityValue: String {
         guard filterState.hasAppliedFilters else { return String(localized: "No filters applied") }
         return String(format: String(localized: "%d filters applied"), filterState.appliedFilters.count)
+    }
+}
+
+/// The readout zone: the sentence, the actions beside it, and the report after them, left to right.
+///
+/// It exists for the ideal width it reports, which is the width `ViewThatFits` picks a tier by. The
+/// sentence and the report count as one constant, `StatusBarLayoutMetrics.readoutIdealWidth`, so
+/// neither a long count nor a wordy driver message drops the bar a tier by itself. The actions add
+/// their own width on top. Counted inside the constant, they left a table with an estimate on the
+/// regular tier with no room for both, and the bar drew "1-22 of ~22 r…" beside "Count Ex…".
+///
+/// Placed, the actions keep their width and the report keeps what it cannot give up. The sentence
+/// takes the rest up to its own width, and whatever is left after that goes to the report, whose
+/// driver message truncates into it.
+private struct ReadoutZoneLayout: Layout {
+    let spacing: CGFloat
+    let sentenceIdealWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = slotSizes(width: proposal.width, height: proposal.height, subviews: subviews)
+        let height = sizes.map(\.height).max() ?? 0
+        guard proposal.width != nil else {
+            let actions = subviews.count == 3 ? sizes[1].width : 0
+            return CGSize(width: sentenceIdealWidth + (actions > 0 ? spacing + actions : 0), height: height)
+        }
+        return CGSize(width: span(of: sizes.map(\.width)), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = slotSizes(width: bounds.width, height: bounds.height, subviews: subviews)
+        var x = bounds.minX
+        for (subview, size) in zip(subviews, sizes) where size.width > 0 {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.midY),
+                anchor: .leading,
+                proposal: ProposedViewSize(width: size.width, height: bounds.height)
+            )
+            x += size.width + spacing
+        }
+    }
+
+    private func slotSizes(width: CGFloat?, height: CGFloat?, subviews: Subviews) -> [CGSize] {
+        guard let width, subviews.count == 3 else {
+            return subviews.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)) }
+        }
+        let sentence = subviews[0], actions = subviews[1], report = subviews[2]
+        let actionsSize = actions.sizeThatFits(ProposedViewSize(width: nil, height: height))
+        let sentenceIdeal = sentence.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
+        let reportIdeal = report.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
+        let reportFloor = report.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
+        let gaps = span(of: [sentenceIdeal, actionsSize.width, reportIdeal]) - sentenceIdeal - actionsSize.width - reportIdeal
+
+        let sentenceWidth = min(sentenceIdeal, max(0, width - gaps - actionsSize.width - reportFloor))
+        let reportWidth = max(reportFloor, width - gaps - actionsSize.width - sentenceWidth)
+        return [
+            sentence.sizeThatFits(ProposedViewSize(width: sentenceWidth, height: height)),
+            actionsSize,
+            report.sizeThatFits(ProposedViewSize(width: reportWidth, height: height)),
+        ]
+    }
+
+    /// The width of slots laid side by side, with one gap between each pair that draws anything.
+    private func span(of widths: [CGFloat]) -> CGFloat {
+        let drawn = widths.filter { $0 > 0 }
+        return drawn.reduce(0, +) + spacing * CGFloat(max(0, drawn.count - 1))
     }
 }
 

@@ -33,13 +33,7 @@ enum AIProviderFactory {
     /// a half-typed endpoint would hand it to the session already streaming through that provider.
     static func makeUncachedProvider(for config: AIProviderConfig, apiKey: String?) -> ChatTransport {
         guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else {
-            return OpenAICompatibleProvider(
-                endpoint: config.endpoint,
-                apiKey: apiKey,
-                providerType: config.type,
-                model: config.model,
-                maxOutputTokens: config.maxOutputTokens
-            )
+            return OpenAICompatibleProvider(config: config, apiKey: apiKey)
         }
         return descriptor.makeProvider(config, apiKey)
     }
@@ -90,7 +84,7 @@ enum AIProviderFactory {
         }
         guard let config else { return nil }
         let apiKey: String?
-        switch config.type.authStyle {
+        switch config.authStyle {
         case .apiKey, .optionalApiKey:
             apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
         case .oauth, .none:

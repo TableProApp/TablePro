@@ -168,6 +168,67 @@ extension BeancountPluginDriver {
         return version.isEmpty ? nil : version
     }
 
+    /// Runs an `#entries` query against the metadata column this rledger has.
+    internal static func entriesQuery(
+        ledgerPath: String,
+        bql: (BeancountEntriesMetadataColumn) -> String,
+        connectAttempt: BeancountConnectAttempt?
+    ) throws -> [[String: Any]] {
+        let column = try entriesMetadataColumn(ledgerPath: ledgerPath, connectAttempt: connectAttempt)
+        return try entriesRows(ledgerPath: ledgerPath, bql: bql(column), column: column, connectAttempt: connectAttempt)
+    }
+
+    // Read from the table's columns once per executable. Trying the real query instead cannot tell:
+    // rledger reports a missing column only while evaluating a row, so a ledger with no matching
+    // entries answers without error.
+    private static func entriesMetadataColumn(
+        ledgerPath: String,
+        connectAttempt: BeancountConnectAttempt?
+    ) throws -> BeancountEntriesMetadataColumn {
+        let executablePath = try rustledgerExecutablePath()
+        if let cached = entriesMetadataColumns.withLock({ $0[executablePath] }) {
+            return cached
+        }
+        let data = try runRledger(
+            arguments: rledgerQueryArguments(
+                ledgerPath: ledgerPath,
+                query: "SELECT * FROM #entries LIMIT 0",
+                connectAttempt: connectAttempt
+            ),
+            connectAttempt: connectAttempt
+        )
+        let column: BeancountEntriesMetadataColumn = try decodeRledgerColumns(data).contains("meta")
+            ? .meta
+            : .entryMeta
+        entriesMetadataColumns.withLock { $0[executablePath] = column }
+        return column
+    }
+
+    private static func entriesRows(
+        ledgerPath: String,
+        bql: String,
+        column: BeancountEntriesMetadataColumn,
+        connectAttempt: BeancountConnectAttempt?
+    ) throws -> [[String: Any]] {
+        let rows = try query(ledgerPath: ledgerPath, bql: bql, connectAttempt: connectAttempt)
+        guard column == .meta else { return rows }
+        return rows.map { row in
+            var row = row
+            row["_entry_meta"] = ownMetadata(row["_entry_meta"])
+            return row
+        }
+    }
+
+    // `meta` also holds the parser's `filename` and `lineno` and Beancount's `__`-prefixed keys,
+    // which the Python projection leaves out of directive metadata as well.
+    static func ownMetadata(_ value: Any?) -> Any {
+        guard let metadata = value as? [String: Any] else { return value ?? NSNull() }
+        let own = metadata.filter { key, _ in
+            key != "filename" && key != "lineno" && !key.hasPrefix("__")
+        }
+        return own.isEmpty ? NSNull() : own
+    }
+
     private static func rledgerSupportsNoCache(
         executablePath: String,
         connectAttempt: BeancountConnectAttempt?

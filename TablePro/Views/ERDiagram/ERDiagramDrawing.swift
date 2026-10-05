@@ -28,16 +28,20 @@ enum ERDiagramTextRenderer {
     /// The anchor point is the text's visual centre on the vertical axis, which is where
     /// `GraphicsContext.draw(_:at:anchor:)` put it. The context is flipped, so the baseline sits
     /// below that centre by half the difference between ascent and descent.
+    ///
+    /// Text wider than `maxWidth` is cut at its end with an ellipsis, the way a truncating label is,
+    /// so two texts given widths that add up to their room can never draw over each other.
     static func draw(
         _ text: String,
         font: NSFont,
         color: NSColor,
         at point: CGPoint,
         anchor: ERDiagramTextAnchor,
+        maxWidth: CGFloat = .greatestFiniteMagnitude,
         in context: CGContext
     ) {
-        guard !text.isEmpty else { return }
-        let line = self.line(for: text, font: font, color: color)
+        guard !text.isEmpty, maxWidth > 0 else { return }
+        let line = fitted(self.line(for: text, font: font, color: color), to: maxWidth, font: font, color: color)
         let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
 
         let originX: CGFloat
@@ -52,6 +56,18 @@ enum ERDiagramTextRenderer {
         context.textPosition = CGPoint(x: originX, y: point.y + (font.ascender + font.descender) / 2)
         CTLineDraw(line, context)
         context.restoreGState()
+    }
+
+    /// The width `draw` lays `text` out at before any truncation.
+    static func width(of text: String, font: NSFont) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        return CGFloat(CTLineGetTypographicBounds(line(for: text, font: font, color: .labelColor), nil, nil, nil))
+    }
+
+    private static func fitted(_ line: CTLine, to maxWidth: CGFloat, font: NSFont, color: NSColor) -> CTLine {
+        guard CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) > maxWidth else { return line }
+        let ellipsis = self.line(for: "\u{2026}", font: font, color: color)
+        return CTLineCreateTruncatedLine(line, Double(maxWidth), .end, ellipsis) ?? ellipsis
     }
 
     private static func line(for text: String, font: NSFont, color: NSColor) -> CTLine {

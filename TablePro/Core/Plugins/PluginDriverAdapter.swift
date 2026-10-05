@@ -599,6 +599,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
+    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int? {
+        try await pluginDriver.fetchExactRowCount(
+            table: table,
+            schema: pluginDriver.currentSchema,
+            queryFilters: browseFilters,
+            logicMode: "and"
+        )
+    }
+
     func fetchTableDDL(table: String) async throws -> String {
         try await fetchTableDDL(table: table, schema: nil)
     }

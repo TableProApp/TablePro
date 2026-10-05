@@ -2,7 +2,11 @@ import AppKit
 import SwiftUI
 
 struct ServerDashboardSplitView: NSViewControllerRepresentable {
-    let viewModel: ServerDashboardViewModel
+    /// Observed, not just held. As a plain reference the representable compared equal to itself on
+    /// every refresh, so SwiftUI never called `updateNSViewController` and the metrics and slow
+    /// query panes kept the empty values they were built with: Server Metrics never left its
+    /// spinner. The sessions pane only updated because `SessionsTableView` observes the model itself.
+    @ObservedObject var viewModel: ServerDashboardViewModel
 
     func makeCoordinator() -> Coordinator {
         Coordinator()

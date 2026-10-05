@@ -181,7 +181,7 @@ struct QueryPlanResultView: View {
     private var toolbar: some View {
         HStack(spacing: 12) {
             if presentation.plan != nil {
-                Picker("", selection: $tabState.viewMode) {
+                Picker(String(localized: "View Mode"), selection: $tabState.viewMode) {
                     ForEach(availableModes) { mode in
                         Text(mode.title).tag(mode)
                     }

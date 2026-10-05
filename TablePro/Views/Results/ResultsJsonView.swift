@@ -121,11 +121,12 @@ internal struct ResultsJsonView: View {
 
             Spacer()
 
-            Picker("", selection: $viewMode) {
+            Picker("View Mode", selection: $viewMode) {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .fixedSize()
 
             Spacer()

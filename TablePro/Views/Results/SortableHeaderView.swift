@@ -77,7 +77,10 @@ final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
 
     private static let clickDragThreshold: CGFloat = 4
-    private static let resizeZoneWidth: CGFloat = 4
+    /// AppKit's own divider band, measured on macOS 27: a press from 3pt before a column's trailing
+    /// edge up to, not including, 2pt after it resizes. A wider band showed the resize cursor where
+    /// the press reorders the column instead, and a click there sorted nothing.
+    private static let resizeZone: Range<CGFloat> = -3..<2
     private static let fallbackHeight: CGFloat = 28
 
     private var mouseMovedTrackingArea: NSTrackingArea?
@@ -120,6 +123,7 @@ final class SortableHeaderView: NSTableHeaderView {
     /// when nothing scrolled: row numbers turned on, or the column widening for a longer number,
     /// while the grid is already scrolled sideways.
     private(set) var drawnPinnedHeadingRect: NSRect?
+    private var bodyFollowsColumnDrag = false
 
     override init(frame frameRect: NSRect) {
         naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
@@ -223,11 +227,72 @@ final class SortableHeaderView: NSTableHeaderView {
         needsDisplay = true
     }
 
+    /// AppKit redraws the header on every step of a divider or reorder drag, but posts the column
+    /// notifications only at mouse-up, and the body's cells are drawn rather than mounted, so nothing
+    /// else moves them. `viewWillDraw` is where a view may mark others for the same display pass.
+    /// The pass after a drag repaints once more: a reorder released before passing a neighbour
+    /// posts no notification at all.
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        let isDragging = resizedColumn >= 0 || draggedColumn >= 0
+        guard isDragging || bodyFollowsColumnDrag else { return }
+        bodyFollowsColumnDrag = isDragging
+        coordinator?.columnGeometryDidChange()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         SortableHeaderChrome.fillBackground(dirtyRect)
+        let rowNumberCell = rowNumberColumnIndex.flatMap {
+            tableView?.tableColumns[$0].headerCell as? SortableHeaderCell
+        }
+        rowNumberCell?.drawsInterior = false
         super.draw(dirtyRect)
+        rowNumberCell?.drawsInterior = true
+        drawOverhang(in: dirtyRect)
         drawPinnedRowNumberHeading(in: dirtyRect)
-        SortableHeaderChrome.drawBottomSeparator(in: bounds)
+        SortableHeaderChrome.drawBottomSeparator(in: bounds.union(dirtyRect))
+    }
+
+    /// Paints the part of the dirty rect outside the header's bounds, which a sideways bounce exposes,
+    /// as blank heading.
+    ///
+    /// AppKit lays its translucent grey over the header's bounds only, so the overhang read as the
+    /// bare fill: in dark mode a darker band beside the headings, measured at 40 against 65. One
+    /// heading drawn with no cell content and repeated across the band matches them, the same move
+    /// the pinned heading makes.
+    private func drawOverhang(in dirtyRect: NSRect) {
+        /// Clamped before the rects are built: `NSRect.width` reports a negative width as positive.
+        let leading = max(0, min(dirtyRect.maxX, bounds.minX) - dirtyRect.minX)
+        let trailingStart = max(dirtyRect.minX, bounds.maxX)
+        let trailing = max(0, dirtyRect.maxX - trailingStart)
+        let bands = [
+            NSRect(x: dirtyRect.minX, y: bounds.minY, width: leading, height: bounds.height),
+            NSRect(x: trailingStart, y: bounds.minY, width: trailing, height: bounds.height)
+        ].filter { $0.width > 0 }
+        guard !bands.isEmpty, let tableView,
+              let index = tableView.tableColumns.indices.first(where: { headerRect(ofColumn: $0).width > 0 }),
+              let cell = tableView.tableColumns[index].headerCell as? SortableHeaderCell,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let heading = headerRect(ofColumn: index)
+        let (drewInterior, drewDivider) = (cell.drawsInterior, cell.drawsDivider)
+        cell.drawsInterior = false
+        cell.drawsDivider = false
+        defer {
+            cell.drawsInterior = drewInterior
+            cell.drawsDivider = drewDivider
+        }
+        for band in bands {
+            var originX = band.minX
+            while originX < band.maxX {
+                context.saveGState()
+                band.clip()
+                context.translateBy(x: originX - heading.minX, y: 0)
+                SortableHeaderChrome.fillBackground(heading)
+                super.draw(heading)
+                context.restoreGState()
+                originX += heading.width
+            }
+        }
     }
 
     // MARK: - Pinned row-number heading
@@ -252,8 +317,10 @@ final class SortableHeaderView: NSTableHeaderView {
         return index
     }
 
-    /// Paints the row-number heading again at the visible leading edge, over the heading scrolled
-    /// under it.
+    /// Paints the row-number heading at the visible leading edge, at every offset.
+    ///
+    /// It is the only pass that paints the "#". The heading underneath is drawn blank, because a
+    /// bounce past the leading edge slides it out from under this one, which showed it twice.
     ///
     /// It is the drawing that paints the heading unscrolled, moved: the heading's rect goes through
     /// this view's own fill and `super.draw`, translated to the leading edge and clipped to it. No
@@ -268,10 +335,6 @@ final class SortableHeaderView: NSTableHeaderView {
             return
         }
         let heading = headerRect(ofColumn: index)
-        guard pinned.minX != heading.minX else {
-            drawnPinnedHeadingRect = nil
-            return
-        }
         guard pinned.intersects(dirtyRect), let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         pinned.clip()
@@ -364,12 +427,10 @@ final class SortableHeaderView: NSTableHeaderView {
     /// it belong to columns the reader cannot see there.
     internal func isInResizeZone(point: NSPoint) -> Bool {
         guard let tableView, let coordinator, !isInPinnedRowNumberHeading(point) else { return false }
-        let zone = Self.resizeZoneWidth
         return tableView.tableColumns.enumerated().contains { index, column in
             guard column.resizingMask.contains(.userResizingMask),
                   coordinator.presentsColumn(column) else { return false }
-            let edge = headerRect(ofColumn: index).maxX
-            return abs(point.x - edge) <= zone
+            return Self.resizeZone.contains(point.x - headerRect(ofColumn: index).maxX)
         }
     }
 

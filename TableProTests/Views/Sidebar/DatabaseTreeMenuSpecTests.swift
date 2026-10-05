@@ -56,7 +56,8 @@ struct DatabaseTreeMenuSpecTests {
         supportsSchemaPrivileges: Bool = false,
         supportsCascadeDrop: Bool = true,
         canExpressTableOperations: Bool = true,
-        objectToolSupport: DatabaseObjectToolEligibility.Support = .none
+        objectToolSupport: DatabaseObjectToolEligibility.Support = .none,
+        canShowAllTables: Bool = true
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -118,7 +119,8 @@ struct DatabaseTreeMenuSpecTests {
             canDuplicateDatabase: canDuplicateDatabase,
             canCreateType: canCreateType,
             canCreateTable: canCreateTable,
-            objectToolSupport: objectToolSupport
+            objectToolSupport: objectToolSupport,
+            canShowAllTables: canShowAllTables
         )
     }
 
@@ -861,6 +863,20 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued == [.refreshRedisKeys])
         #expect(SidebarMenuCommand.refreshRedisKeys.shortcutAction == nil)
+    }
+
+    /// Elasticsearch, Typesense and Weaviate have no listing, and the item used to run a MongoDB command
+    /// against them.
+    @Test("Show All Tables is offered only when the engine has a listing")
+    func showAllTablesNeedsAListing() {
+        let offered = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.table))))
+        let withheld = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .objectKindSection(.table), canShowAllTables: false)
+        ))
+
+        #expect(offered.contains(.showAllTablesMetadata))
+        #expect(!withheld.contains(.showAllTablesMetadata))
+        #expect(withheld.contains(.refreshObjectKind(.table)))
     }
 
     @Test("A status row keeps the background menu")

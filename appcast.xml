@@ -3,6 +3,147 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.77.2</title>
+            <pubDate>Mon, 05 Oct 2026 03:51:30 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:version>136</sparkle:version>
+            <sparkle:shortVersionString>0.77.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.77.2
+
+### Added
+
+- Requesty in Add Provider, an OpenAI-compatible router with its Base URL filled in. (#3128 by @Thibaultjaigu)
+
+### Changed
+
+- A new AI provider with several models and no default starts with no model picked. (#3128 by @Thibaultjaigu)
+- Toolbar Save is a plain checkmark, and the Safe Mode icon is filled only at the two Full levels. (#3250, #3252)
+- Actions, filter and Disconnect toolbar icons lose their circle on macOS 26 and later, and Actions its chevron. (#3250, #3252)
+
+### Fixed
+
+- Reasoning setting ignored on OpenRouter, OpenCode Zen, llama.cpp, MLX and custom AI providers. (#3128 by @Thibaultjaigu)
+- Reasoning picker shown for Gemini and Ollama, where it changed nothing. (#3128 by @Thibaultjaigu)
+- Image attachments offered for OpenRouter models that take text only. (#3128 by @Thibaultjaigu)
+- Max output tokens ignored and image attachments rejected on Ollama. (#3128 by @Thibaultjaigu)
+- AI provider failing with "Invalid endpoint" until relaunch after its Base URL was cleared. (#3128 by @Thibaultjaigu)
+- Export in the Structure and object source views showing the Import icon. (#3250, #3252)
+- VoiceOver reading the welcome window and Integrations filter menus as "chevron.pulldown". (#3250, #3252)
+- Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250, #3252)
+- Status bar buttons a point or two taller or shorter than each other depending on their icon. (#3250, #3252)
+- Highlighted row in the database and connection switchers drawn as white text on a grey fill. (#3249, #3251)
+- Second "#" column showing beside the row numbers when the data grid bounces past its left edge. (#3254)
+- Last column's divider sitting on the grid's right edge, where it could not be dragged to resize. (#3254)
+- Cells keeping their old width or order while a column is resized or dragged, until the mouse is released. (#3254)
+- Resize cursor showing a few points from a column divider, where a drag moved the column instead. (#3254)
+- Elasticsearch, Typesense and Weaviate request bodies underlined as syntax errors although they run. (#3255)
+- Wildcard index paths such as `GET /_cat/indices/*` underlined as an unterminated comment. (#3255)
+- Brackets in Redis and etcd command arguments underlined as unmatched. (#3255)
+- Colons in Elasticsearch URLs, Redis keys and SurrealDB record IDs read as query parameters, holding the run. (#3255)
+- Format Query on Elasticsearch, Typesense and Weaviate joining the body onto the request line and changing the URL. (#3263)
+- Format Query changing Redis keys, etcd paths and SurrealDB record ids, such as `user:1` into `user :1`. (#3263)
+- Sidebar Show All running a MongoDB command on Elasticsearch, Typesense and Weaviate, and a Redis command on etcd. (#3263)
+- Change preview on Elasticsearch, Typesense and Weaviate rewriting a stored `{"$oid": …}` as `ObjectId(…)`. (#3263)
+- Preview SQL and other wrapped text splitting a quoted name such as `"public"."reviews"` across two lines. (#3263)
+- Counts reading "3 table to export" in the Export dialog, and "1 rows" in the result status bar and query plan. (#3256)
+- Copy To into PostgreSQL, SQLite, DuckDB or Oracle failing on an index name repeated in the copy or the target. (#3258, #3264)
+- Copy To review breaking a long ENUM type mid-word, and not naming the table each type change belongs to. (#3258)
+- Safe Mode's Touch ID prompt reading "TablePro is trying to Authenticate to execute database operations." (#3256)
+- No VoiceOver name on pickers and fields such as the AI provider pop-up, CSV NULL text, Copy To and Create Table. (#3256, #3265)
+- Crash when VoiceOver reads Settings > License while a license appears in it. (#3265)
+- Shortcuts Add Row and Add Rows listing no tables until a database or schema is picked, which SQLite never offers. (#3259)
+- Shortcuts Table and Database or Schema pickers showing an empty list instead of why the connection failed. (#3266)
+- Server Dashboard's metrics staying on a spinner, and slow queries never refreshing. (#3257)
+- Users & Roles privilege checkboxes, Review & Apply and "Modified" not updating after a click. (#3257)
+- Users & Roles object tree keeping its old rows after a search or a switch to Granted, until something else changed. (#3262)
+- Users & Roles search results showing a disclosure triangle that opened onto nothing. (#3262)
+- Count Exactly on a Redis database leaving the estimate in place. (#3257, #3262)
+- Redis tab narrowed by its key pattern or type showing the whole database's key count as its "~" total. (#3262)
+- Status bar truncating the row count and Count Exactly instead of dropping to a narrower layout. (#3257)
+- Query editor bar cut off, with the editor's text over it, when the editor pane is at its smallest. (#3257)
+- Long column names drawn over their type in the ER diagram. (#3257)
+- Beancount BQL results showing a position as raw JSON, tags and links as a JSON list, and booleans as 1 or 0. (#3260)
+- Beancount BQL results, tables, directive metadata and transaction tags empty with `rledger` 0.23 and later. (#3260)
+- Beancount balances listing a commodity held in several lots once per lot on `rledger`. (#3260)
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-arm64.zip" length="32559106" type="application/octet-stream" sparkle:edSignature="dPTGNv1yeLzVJHUpbr4SMDzeXktV2gdT5/KJ5/C+oxbE2m3eWq/hAbPfJpypLp/pOCQCCYJQi8z5g5b7oaSNBw=="/>
+        </item>
+        <item>
+            <title>0.77.2</title>
+            <pubDate>Mon, 05 Oct 2026 03:51:31 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:version>136</sparkle:version>
+            <sparkle:shortVersionString>0.77.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.77.2
+
+### Added
+
+- Requesty in Add Provider, an OpenAI-compatible router with its Base URL filled in. (#3128 by @Thibaultjaigu)
+
+### Changed
+
+- A new AI provider with several models and no default starts with no model picked. (#3128 by @Thibaultjaigu)
+- Toolbar Save is a plain checkmark, and the Safe Mode icon is filled only at the two Full levels. (#3250, #3252)
+- Actions, filter and Disconnect toolbar icons lose their circle on macOS 26 and later, and Actions its chevron. (#3250, #3252)
+
+### Fixed
+
+- Reasoning setting ignored on OpenRouter, OpenCode Zen, llama.cpp, MLX and custom AI providers. (#3128 by @Thibaultjaigu)
+- Reasoning picker shown for Gemini and Ollama, where it changed nothing. (#3128 by @Thibaultjaigu)
+- Image attachments offered for OpenRouter models that take text only. (#3128 by @Thibaultjaigu)
+- Max output tokens ignored and image attachments rejected on Ollama. (#3128 by @Thibaultjaigu)
+- AI provider failing with "Invalid endpoint" until relaunch after its Base URL was cleared. (#3128 by @Thibaultjaigu)
+- Export in the Structure and object source views showing the Import icon. (#3250, #3252)
+- VoiceOver reading the welcome window and Integrations filter menus as "chevron.pulldown". (#3250, #3252)
+- Database icon filled in the database switcher and query editor, outline in the toolbar and sidebar. (#3250, #3252)
+- Status bar buttons a point or two taller or shorter than each other depending on their icon. (#3250, #3252)
+- Highlighted row in the database and connection switchers drawn as white text on a grey fill. (#3249, #3251)
+- Second "#" column showing beside the row numbers when the data grid bounces past its left edge. (#3254)
+- Last column's divider sitting on the grid's right edge, where it could not be dragged to resize. (#3254)
+- Cells keeping their old width or order while a column is resized or dragged, until the mouse is released. (#3254)
+- Resize cursor showing a few points from a column divider, where a drag moved the column instead. (#3254)
+- Elasticsearch, Typesense and Weaviate request bodies underlined as syntax errors although they run. (#3255)
+- Wildcard index paths such as `GET /_cat/indices/*` underlined as an unterminated comment. (#3255)
+- Brackets in Redis and etcd command arguments underlined as unmatched. (#3255)
+- Colons in Elasticsearch URLs, Redis keys and SurrealDB record IDs read as query parameters, holding the run. (#3255)
+- Format Query on Elasticsearch, Typesense and Weaviate joining the body onto the request line and changing the URL. (#3263)
+- Format Query changing Redis keys, etcd paths and SurrealDB record ids, such as `user:1` into `user :1`. (#3263)
+- Sidebar Show All running a MongoDB command on Elasticsearch, Typesense and Weaviate, and a Redis command on etcd. (#3263)
+- Change preview on Elasticsearch, Typesense and Weaviate rewriting a stored `{"$oid": …}` as `ObjectId(…)`. (#3263)
+- Preview SQL and other wrapped text splitting a quoted name such as `"public"."reviews"` across two lines. (#3263)
+- Counts reading "3 table to export" in the Export dialog, and "1 rows" in the result status bar and query plan. (#3256)
+- Copy To into PostgreSQL, SQLite, DuckDB or Oracle failing on an index name repeated in the copy or the target. (#3258, #3264)
+- Copy To review breaking a long ENUM type mid-word, and not naming the table each type change belongs to. (#3258)
+- Safe Mode's Touch ID prompt reading "TablePro is trying to Authenticate to execute database operations." (#3256)
+- No VoiceOver name on pickers and fields such as the AI provider pop-up, CSV NULL text, Copy To and Create Table. (#3256, #3265)
+- Crash when VoiceOver reads Settings > License while a license appears in it. (#3265)
+- Shortcuts Add Row and Add Rows listing no tables until a database or schema is picked, which SQLite never offers. (#3259)
+- Shortcuts Table and Database or Schema pickers showing an empty list instead of why the connection failed. (#3266)
+- Server Dashboard's metrics staying on a spinner, and slow queries never refreshing. (#3257)
+- Users & Roles privilege checkboxes, Review & Apply and "Modified" not updating after a click. (#3257)
+- Users & Roles object tree keeping its old rows after a search or a switch to Granted, until something else changed. (#3262)
+- Users & Roles search results showing a disclosure triangle that opened onto nothing. (#3262)
+- Count Exactly on a Redis database leaving the estimate in place. (#3257, #3262)
+- Redis tab narrowed by its key pattern or type showing the whole database's key count as its "~" total. (#3262)
+- Status bar truncating the row count and Count Exactly instead of dropping to a narrower layout. (#3257)
+- Query editor bar cut off, with the editor's text over it, when the editor pane is at its smallest. (#3257)
+- Long column names drawn over their type in the ER diagram. (#3257)
+- Beancount BQL results showing a position as raw JSON, tags and links as a JSON list, and booleans as 1 or 0. (#3260)
+- Beancount BQL results, tables, directive metadata and transaction tags empty with `rledger` 0.23 and later. (#3260)
+- Beancount balances listing a commodity held in several lots once per lot on `rledger`. (#3260)
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-x86_64.zip" length="34985487" type="application/octet-stream" sparkle:edSignature="vj3BirFlNhH1ger2f5E+7vquackzmuACRIzmquGeh1oE0VGkcL6clg0PP+L0xjBz1kW4cYQp8f6fps9iUftyDA=="/>
+        </item>
+        <item>
             <title>0.77.1</title>
             <pubDate>Sat, 03 Oct 2026 05:49:53 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -305,49 +446,6 @@ The table list beside the table browser on iPad, and a sample database on iPhone
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.76.0/TablePro-0.76.0-x86_64.zip" length="33720555" type="application/octet-stream" sparkle:edSignature="cdYKQFTt4n5oeyJUYFBot2n78usb0C12cmQZ/1A3AeeLmZUJ+ZdLREIhw422uHd+7IgVAWpKFcArIK4hD6NuDg=="/>
-        </item>
-        <item>
-            <title>0.75.0</title>
-            <pubDate>Thu, 17 Sep 2026 22:22:52 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>131</sparkle:version>
-            <sparkle:shortVersionString>0.75.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.75.0
-
-Runs on macOS 13 Ventura and later.
-Credential profiles: one saved login shared by any number of connections.
-Import RDS instances and Aurora clusters from AWS as connections.
-Updates download in the background and install when you quit.
-A rebuilt welcome window with Favorites, Recent, nested groups and drag and drop.
-Find and Replace in the SQL editor, a Run button with more ways to run, and partitions in the sidebar.
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.75.0/TablePro-0.75.0-arm64.zip" length="28190207" type="application/octet-stream" sparkle:edSignature="G4OTcGVzsRVJya7hyiFc2cTx4HROM2ShQt5ln9Q6ZdJ56E3oL1+OlLRnBc+L7CAFhTOEryozK3Cuj5mGqnfIAQ=="/>
-        </item>
-        <item>
-            <title>0.75.0</title>
-            <pubDate>Thu, 17 Sep 2026 22:22:53 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>131</sparkle:version>
-            <sparkle:shortVersionString>0.75.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.75.0
-
-Runs on macOS 13 Ventura and later.
-Credential profiles: one saved login shared by any number of connections.
-Import RDS instances and Aurora clusters from AWS as connections.
-Updates download in the background and install when you quit.
-A rebuilt welcome window with Favorites, Recent, nested groups and drag and drop.
-Find and Replace in the SQL editor, a Run button with more ways to run, and partitions in the sidebar.
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.75.0/TablePro-0.75.0-x86_64.zip" length="30102751" type="application/octet-stream" sparkle:edSignature="UVSjY0Ft5mBYXElc65QvF6681PBXsIEEO+NGsiejdcGRrNQPxjjFsmUVq/4QytAm83fUdKBmMW3dDsaxGrHsDg=="/>
         </item>
     </channel>
 </rss>

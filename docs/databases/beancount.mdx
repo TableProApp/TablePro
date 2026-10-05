@@ -11,7 +11,7 @@ Install `rledger` or Python Beancount before you connect. The plugin shells out 
 
 ## Backend requirements
 
-The compatibility fixture exercises `rledger` 0.22.0 and Python Beancount 3.2.3. Other versions may work, but are not part of that tested contract. Install `rledger` if you are choosing: it wins when both are present, it is the only one that fills `diagnostics`, and BQL runs through it and nothing else.
+The compatibility fixture exercises `rledger` 0.22.0 and 0.24.0, and Python Beancount 3.2.3. Other versions may work, but are not part of that tested contract. Install `rledger` if you are choosing: it wins when both are present, it is the only one that fills `diagnostics`, and BQL runs through it and nothing else.
 
 <CodeGroup>
 ```bash rledger
@@ -144,6 +144,8 @@ BQL: SELECT account FROM accounts ORDER BY account
 ```
 
 Table browsing, row counts, and pagination work on a BQL result. SQL parameters do not.
+
+BQL values read as Beancount writes them: an amount as `19.43 USD`, a position held at cost as `2 AAPL {150.00 USD}`, tags as `trip, food`, and a boolean as `TRUE`. The JSON that `rledger` returns carries no lot date or label, so a position shows neither.
 
 ## Limitations
 

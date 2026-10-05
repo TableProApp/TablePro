@@ -1185,6 +1185,7 @@ struct MainEditorContentView: View {
             isStoppable: coordinator.tabExecution.isStoppable(tab.id),
             hasResults: coordinator.canClearActiveQueryResults,
             explainVariants: coordinator.connection.type.explainVariants,
+            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
             aiActions: coordinator.aiQueryActionAvailability(for: tab),
             shortcutHint: { label, action in
                 settingsManager.keyboard.shortcutHint(label, for: action)

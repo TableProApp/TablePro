@@ -24,6 +24,24 @@ internal enum ExactRowCounter {
         return exactRowCountIsFullScan ? .driverCount : .driverCountThenHostSQL(countSQL)
     }
 
+    /// The exact number of keys a browse search lists, counted only when the table it narrows is
+    /// smaller than `tableSizeLimit`.
+    ///
+    /// Nothing short of walking every key the search could match is exact, and that walk visits the
+    /// whole table, so the table's own size bounds it the way the estimate bounds an automatic
+    /// `COUNT(*)`. An unknown or larger table answers nil and the total stays unknown, with
+    /// `Count Exactly` offered for it.
+    internal static func countBrowseSearch(
+        on driver: DatabaseDriver,
+        table: String,
+        search: BrowseSearchState,
+        tableSizeLimit: Int
+    ) async throws -> Int? {
+        guard let tableSize = try await driver.fetchApproximateRowCount(table: table),
+              tableSize < tableSizeLimit else { return nil }
+        return try await driver.fetchExactRowCount(table: table, browseFilters: search.pluginQueryFilters)
+    }
+
     internal static func count(
         on driver: DatabaseDriver,
         table: String,

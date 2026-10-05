@@ -75,15 +75,31 @@ struct AnthropicProviderEncodingTests {
     private func body(
         model: String,
         effort: ReasoningEffort?,
-        maxTokens: Int = 32_768
+        maxTokens: Int = 32_768,
+        liveReasoning: AIReasoningSupport? = nil
     ) throws -> [String: Any] {
         try AnthropicProvider.makeRequestBody(
             turns: [ChatTurnWire(role: .user, blocks: [.text("hi")])],
             options: ChatTransportOptions(model: model),
             effort: effort,
             maxTokens: maxTokens,
-            stream: true
+            stream: true,
+            liveReasoning: liveReasoning
         )
+    }
+
+    /// Haiku 4.5 is budgeted in the offline table. A model list that reports adaptive thinking for
+    /// it has to win, or a capability Anthropic adds later is ignored until the table is edited.
+    @Test("What the provider's model list says about reasoning wins over the offline table")
+    func liveReasoningWinsOverTheOfflineTable() throws {
+        let offline = try body(model: "claude-haiku-4-5", effort: .high)
+        #expect((offline["thinking"] as? [String: Any])?["type"] as? String == "enabled")
+        #expect(offline["output_config"] == nil)
+
+        let live = AIReasoningSupport(mode: .adaptive, effortLevels: [.low, .medium, .high])
+        let encoded = try body(model: "claude-haiku-4-5", effort: .high, liveReasoning: live)
+        #expect((encoded["thinking"] as? [String: Any])?["type"] as? String == "adaptive")
+        #expect((encoded["output_config"] as? [String: Any])?["effort"] as? String == "high")
     }
 
     @Test("Effort travels in output_config, never inside thinking (#2031)")

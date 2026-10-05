@@ -11,6 +11,9 @@ extension TableViewCoordinator {
     /// `markColumnWidthUserSized` decide whether the new width is the user's to keep, which is a
     /// question about persistence; the body has to be redrawn either way, and the second guard is
     /// false for the row-number column and for every unused pool slot.
+    ///
+    /// A divider drag posts this once, at mouse-up, so it is where the width is kept; the steps
+    /// before it repaint through `SortableHeaderView.viewWillDraw()`.
     func tableViewColumnDidResize(_ notification: Notification) {
         columnGeometryDidChange()
         guard !isRebuildingColumns else { return }

@@ -38,16 +38,25 @@ struct RedisQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let pattern = extractBrowsePattern(from: filters, namespace: namespace)
-        let typeScope = extractTypeScope(from: filters)
+        let scope = browseScope(filters: filters, namespace: namespace)
 
-        guard pattern != nil || typeScope != nil else {
+        guard scope.pattern != nil || scope.typeScope != nil else {
             return buildBaseQuery(namespace: namespace, database: database, limit: limit, offset: offset)
         }
 
         return buildKeyBrowseQuery(
-            pattern: pattern, typeScope: typeScope, database: database, limit: limit, offset: offset
+            pattern: scope.pattern, typeScope: scope.typeScope, database: database, limit: limit, offset: offset
         )
+    }
+
+    /// The SCAN `MATCH` glob and `TYPE` scope a filtered browse lists keys by, both nil when the
+    /// filters narrow nothing. The exact row count reads the same pair, so it counts the keys the
+    /// grid would list rather than a reading of the filters of its own.
+    func browseScope(
+        filters: [(column: String, op: String, value: String)],
+        namespace: String = ""
+    ) -> (pattern: String?, typeScope: String?) {
+        (extractBrowsePattern(from: filters, namespace: namespace), extractTypeScope(from: filters))
     }
 
     /// Streamed, so the whole database is read and `LIMIT` is never consulted.

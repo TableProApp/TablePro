@@ -85,6 +85,22 @@ enum BeancountBackend {
     case python(String)
 }
 
+// Where `#entries` keeps a directive's own metadata: `_entry_meta` through rledger 0.22, and from 0.23
+// only `meta`, which also carries the source location.
+enum BeancountEntriesMetadataColumn: Sendable {
+    case entryMeta
+    case meta
+
+    var selection: String {
+        switch self {
+        case .entryMeta:
+            return "_entry_meta"
+        case .meta:
+            return "meta AS _entry_meta"
+        }
+    }
+}
+
 final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let lock = NSLock()
@@ -98,10 +114,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let transactionsCoreColumns =
         "id, date, flag, payee, narration, filename, lineno"
-    private static let transactionsDetailColumns = "tags, links, _entry_meta"
-    private static let transactionsQuery =
-        "SELECT \(transactionsCoreColumns), \(transactionsDetailColumns) "
+    private static func transactionsQuery(_ metadata: BeancountEntriesMetadataColumn) -> String {
+        "SELECT \(transactionsCoreColumns), tags, links, \(metadata.selection) "
             + "FROM #entries WHERE type = 'transaction' ORDER BY id"
+    }
     private static let transactionsCoreQuery =
         "SELECT \(transactionsCoreColumns) FROM #entries WHERE type = 'transaction' ORDER BY id"
 
@@ -114,7 +130,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let accountsCoreQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
     private static let pricesQuery = "SELECT date, currency, amount FROM #prices ORDER BY date, currency"
     private static let balancesQuery =
-        "SELECT account, sum(position) AS balance FROM #postings GROUP BY account ORDER BY account"
+        "SELECT account, sum(units(position)) AS balance FROM #postings GROUP BY account ORDER BY account"
     private static let balanceAssertionsQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
     private static let commoditiesQuery = "SELECT date, name FROM #commodities ORDER BY date, name"
     private static let documentsQuery =
@@ -127,9 +143,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // `_entry_meta` is the backend's own metadata for a directive, alongside the entry id and the
     // authoritative filename and line the parser recorded. Re-deriving any of that by reading the
     // ledger text would be a second, weaker parser that cannot see plugin-generated entries.
-    private static let directivesQuery =
-        "SELECT id, type, date, filename, lineno, _entry_meta FROM #entries "
+    private static func directivesQuery(_ metadata: BeancountEntriesMetadataColumn) -> String {
+        "SELECT id, type, date, filename, lineno, \(metadata.selection) FROM #entries "
             + "WHERE type != 'transaction' ORDER BY id"
+    }
     private static let closesQuery =
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
@@ -137,6 +154,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let postingsColumnLevels =
         OSAllocatedUnfairLock(initialState: [String: PostingsColumnLevel]())
     static let backendVersions = OSAllocatedUnfairLock(initialState: [String: String]())
+    static let entriesMetadataColumns =
+        OSAllocatedUnfairLock(initialState: [String: BeancountEntriesMetadataColumn]())
 
     private static let workQueue = DispatchQueue(
         label: "com.TablePro.BeancountDriver",
@@ -702,12 +721,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ),
                 queries: sourceDirectives.queries,
                 custom: sourceDirectives.custom,
-                directives: try directiveRows(
-                    ledgerPath: ledgerPath,
-                    bql: directivesQuery,
-                    table: "directives",
-                    connectAttempt: connectAttempt
-                ),
+                directives: try directiveRows(table: "directives", connectAttempt: connectAttempt) {
+                    try entriesQuery(ledgerPath: ledgerPath, bql: directivesQuery, connectAttempt: connectAttempt)
+                },
                 diagnostics: try validationDiagnostics(
                     ledgerPath: ledgerPath,
                     connectAttempt: connectAttempt
@@ -864,7 +880,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private static func query(
+    static func query(
         ledgerPath: String,
         bql: String,
         connectAttempt: BeancountConnectAttempt? = nil
@@ -885,7 +901,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         connectAttempt: BeancountConnectAttempt?
     ) throws -> [[String: Any]] {
         do {
-            return try query(ledgerPath: ledgerPath, bql: transactionsQuery, connectAttempt: connectAttempt)
+            return try entriesQuery(ledgerPath: ledgerPath, bql: transactionsQuery, connectAttempt: connectAttempt)
         } catch {
             try connectAttempt?.check()
             logger.warning("Beancount transaction details unavailable, projecting core columns: \(error)")
@@ -1001,8 +1017,18 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         table: String,
         connectAttempt: BeancountConnectAttempt?
     ) throws -> [[String: Any]] {
+        try directiveRows(table: table, connectAttempt: connectAttempt) {
+            try query(ledgerPath: ledgerPath, bql: bql, connectAttempt: connectAttempt)
+        }
+    }
+
+    private static func directiveRows(
+        table: String,
+        connectAttempt: BeancountConnectAttempt?,
+        _ rows: () throws -> [[String: Any]]
+    ) throws -> [[String: Any]] {
         do {
-            return try query(ledgerPath: ledgerPath, bql: bql, connectAttempt: connectAttempt)
+            return try rows()
         } catch {
             try connectAttempt?.check()
             logger.warning("Beancount projection left \(table, privacy: .public) empty: \(error)")
@@ -1130,73 +1156,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             logger.warning("Beancount validation did not run, leaving the diagnostics table empty: \(error)")
             return []
         }
-    }
-
-    private static func parseRledgerJSON(_ data: Data) throws -> (columns: [String]?, rows: [[String: Any]]) {
-        let object = try JSONSerialization.jsonObject(with: data)
-        guard let dictionary = object as? [String: Any] else {
-            throw BeancountDriverError.queryFailed(String(localized: "Invalid rustledger JSON output"))
-        }
-        return (dictionary["columns"] as? [String], (dictionary["rows"] as? [[String: Any]]) ?? [])
-    }
-
-    private static func decodeRledgerRows(_ data: Data) throws -> [[String: Any]] {
-        try parseRledgerJSON(data).rows
-    }
-
-    private static func decodeRustledgerQueryOutput(
-        _ data: Data,
-        executionTime: TimeInterval
-    ) throws -> PluginQueryResult {
-        let parsed = try parseRledgerJSON(data)
-        guard let columns = parsed.columns else {
-            throw BeancountDriverError.queryFailed(String(localized: "Invalid rustledger JSON output"))
-        }
-        let rawRows = parsed.rows
-
-        let rows = rawRows.prefix(PluginRowLimits.emergencyMax).map { rawRow in
-            columns.map { column -> PluginCellValue in
-                guard let value = rawRow[column], !(value is NSNull) else { return .null }
-                return .text(rustledgerCellValue(value))
-            }
-        }
-
-        return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: Array(repeating: "TEXT", count: columns.count),
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: executionTime,
-            isTruncated: rawRows.count > rows.count
-        )
-    }
-
-    static func rustledgerCellValue(_ value: Any) -> String {
-        if let string = value as? String {
-            return string
-        }
-        if let number = value as? NSNumber {
-            return NumberText.text(for: number)
-        }
-        if let amount = value as? [String: Any],
-           let number = amount["number"] as? String,
-           let currency = amount["currency"] as? String {
-            return "\(number) \(currency)"
-        }
-        if let inventory = value as? [String: Any],
-           let positions = inventory["positions"] as? [[String: Any]] {
-            return positions.compactMap { position in
-                guard let number = position["number"] as? String,
-                      let currency = position["currency"] as? String else {
-                    return nil
-                }
-                return "\(number) \(currency)"
-            }.joined(separator: ", ")
-        }
-        if let string = NumberText.json(from: value) {
-            return string
-        }
-        return String(describing: value)
     }
 
     // MARK: - SQLite Helpers

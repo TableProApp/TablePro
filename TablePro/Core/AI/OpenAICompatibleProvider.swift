@@ -19,6 +19,9 @@ final class OpenAICompatibleProvider: ChatTransport {
     private let providerType: AIProviderType
     private let model: String
     private let maxOutputTokens: Int?
+    private let treatsForbiddenAsAuthFailure: Bool
+    private let providerID: UUID?
+    private let catalog: AIModelCatalog
     private let session: URLSession
     private var testConnectionModel: String {
         model.isEmpty ? "test" : model
@@ -30,6 +33,9 @@ final class OpenAICompatibleProvider: ChatTransport {
         providerType: AIProviderType,
         model: String = "",
         maxOutputTokens: Int? = nil,
+        treatsForbiddenAsAuthFailure: Bool = false,
+        providerID: UUID? = nil,
+        catalog: AIModelCatalog = .shared,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
         let style = providerType.endpointStyle
@@ -40,7 +46,27 @@ final class OpenAICompatibleProvider: ChatTransport {
         self.providerType = providerType
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
+        self.treatsForbiddenAsAuthFailure = treatsForbiddenAsAuthFailure
+        self.providerID = providerID
+        self.catalog = catalog
         self.session = session
+    }
+
+    convenience init(
+        config: AIProviderConfig,
+        apiKey: String?,
+        session: URLSession = URLSession(configuration: .ephemeral)
+    ) {
+        self.init(
+            endpoint: config.endpoint,
+            apiKey: apiKey,
+            providerType: config.type,
+            model: config.model,
+            maxOutputTokens: config.maxOutputTokens,
+            treatsForbiddenAsAuthFailure: config.preset?.rejectsBadKeyWithForbidden ?? false,
+            providerID: config.id,
+            session: session
+        )
     }
 
     private func requestURL(_ resource: String) throws -> URL {
@@ -57,6 +83,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         let providerType = self.providerType
         return SSEEventStream.make(
             session: session,
+            treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
             buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
             decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
             makeState: { OpenAIStreamState() },
@@ -209,16 +236,8 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        try await fetchModelIDs().map { AIModelInfo(id: $0) }
-    }
-
-    private func fetchModelIDs() async throws -> [String] {
-        switch providerType {
-        case .ollama:
-            return try await fetchOllamaModels()
-        default:
-            return try await fetchOpenAIModels()
-        }
+        guard providerType == .ollama else { return try await fetchOpenAIModels() }
+        return try await fetchOllamaModels().map { AIModelInfo(id: $0) }
     }
 
     func testConnection() async throws -> Bool {
@@ -273,7 +292,7 @@ final class OpenAICompatibleProvider: ChatTransport {
 
             let statusCode = httpResponse.statusCode
 
-            if statusCode == 401 {
+            if statusCode == 401 || (statusCode == 403 && treatsForbiddenAsAuthFailure) {
                 throw AIProviderError.authenticationFailed("")
             }
 
@@ -282,7 +301,12 @@ final class OpenAICompatibleProvider: ChatTransport {
             }
 
             let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.mapHTTPError(statusCode: statusCode, body: errorBody, requestURL: url)
+            throw AIProviderError.mapHTTPError(
+                statusCode: statusCode,
+                body: errorBody,
+                treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
+                requestURL: url
+            )
         }
     }
 
@@ -296,7 +320,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         return (try? JSONSerialization.jsonObject(with: data)) != nil
     }
 
-    private func buildChatCompletionRequest(
+    func buildChatCompletionRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
@@ -329,11 +353,21 @@ final class OpenAICompatibleProvider: ChatTransport {
 
         let resolvedMaxTokens = options.maxOutputTokens ?? maxOutputTokens
         if let resolvedMaxTokens {
-            body["max_tokens"] = resolvedMaxTokens
+            /// Ollama's native route reads the limit from `options` and ignores a top-level
+            /// `max_tokens`.
+            if providerType == .ollama {
+                body["options"] = ["num_predict": resolvedMaxTokens]
+            } else {
+                body["max_tokens"] = resolvedMaxTokens
+            }
         }
 
         if providerType != .ollama {
             body["stream_options"] = ["include_usage": true]
+        }
+
+        if let effort = options.reasoningEffort, acceptsReasoningEffort(model: options.model) {
+            body["reasoning_effort"] = effort.openAIWireValue
         }
 
         if !options.tools.isEmpty {
@@ -342,6 +376,16 @@ final class OpenAICompatibleProvider: ChatTransport {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    /// The effort is withheld only from a model its own server lists as non-reasoning. A server
+    /// that says nothing about its models is taken at the user's word.
+    private func acceptsReasoningEffort(model: String) -> Bool {
+        guard providerType != .ollama else { return false }
+        guard let reasoning = catalog.fetchedInfo(providerID: providerID, modelID: model)?.reasoning else {
+            return true
+        }
+        return reasoning.sendsEffortParameter
     }
 
     func encodeTurn(_ turn: ChatTurnWire) -> [[String: Any]] {
@@ -407,6 +451,10 @@ final class OpenAICompatibleProvider: ChatTransport {
             return messages
         }
 
+        if turn.role == .user, !imageBlocks.isEmpty, providerType == .ollama {
+            return ollamaImageMessage(text: textContent, images: imageBlocks)
+        }
+
         if turn.role == .user, !imageBlocks.isEmpty {
             var parts: [[String: Any]] = []
             if !textContent.isEmpty {
@@ -447,6 +495,18 @@ final class OpenAICompatibleProvider: ChatTransport {
         }.joined()
     }
 
+    /// Ollama's native route takes a string `content` with the images beside it as base64. It
+    /// rejects the content-part array the OpenAI wire format uses.
+    private func ollamaImageMessage(text: String, images: [ChatImageInput]) -> [[String: Any]] {
+        let payloads = images.compactMap { $0.base64Payload() }
+        guard !text.isEmpty || !payloads.isEmpty else { return [] }
+        var message: [String: Any] = ["role": "user", "content": text]
+        if !payloads.isEmpty {
+            message["images"] = payloads
+        }
+        return [message]
+    }
+
     private func chatCompletionsImagePart(_ input: ChatImageInput) -> [String: Any]? {
         guard let url = input.imageURLString() else { return nil }
         return [
@@ -470,7 +530,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         ]
     }
 
-    private func fetchOpenAIModels() async throws -> [String] {
+    private func fetchOpenAIModels() async throws -> [AIModelInfo] {
         let url = try requestURL(style.modelsResource)
 
         var request = URLRequest(url: url)
@@ -504,6 +564,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             throw AIProviderError.mapHTTPError(
                 statusCode: httpResponse.statusCode,
                 body: body,
+                treatForbiddenAsAuthFailure: treatsForbiddenAsAuthFailure,
                 requestURL: url
             )
         }
@@ -520,7 +581,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             )
         }
 
-        return modelsArray.compactMap { $0["id"] as? String }.sorted()
+        return modelsArray.compactMap(Self.decodeModel(_:)).sorted { $0.id < $1.id }
     }
 
     private func fetchOllamaModels() async throws -> [String] {

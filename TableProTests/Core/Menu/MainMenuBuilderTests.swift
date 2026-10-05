@@ -456,6 +456,16 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.explainQuery(_:)), context))
     }
 
+    @Test("Format Query needs a language that has a formatter")
+    func formatNeedsAFormatter() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasQueryText = true
+        #expect(!enabled(#selector(MainSplitViewController.formatQuery(_:)), context))
+        context.supportsFormatting = true
+        #expect(enabled(#selector(MainSplitViewController.formatQuery(_:)), context))
+    }
+
     /// `runExplain` returns at its first guard while the tab runs, so a lit item did nothing.
     @Test("Explain Query dims while the tab is running a query")
     func explainDimsWhileExecuting() {

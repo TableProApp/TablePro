@@ -32,6 +32,8 @@ To browse everything the app offers, open Shortcuts, tap the action list, and go
   <Step title="Point it at a table">
     Pick a **Connection**, then a **Table** read live from it. **Database or Schema** is optional and
     lists schemas on PostgreSQL and the like, databases elsewhere; empty means the connection's own.
+    SQLite has neither, so it stays empty there. When the connection cannot open, both pickers
+    show why, such as an SSH host key to check, instead of an empty list.
   </Step>
   <Step title="Supply the row">
     Feed **Row (JSON or CSV)** from a Shortcuts **Dictionary** action keyed by column name, which

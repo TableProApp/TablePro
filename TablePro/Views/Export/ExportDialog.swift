@@ -447,12 +447,12 @@ struct ExportDialog: View {
                             .foregroundStyle(.secondary)
                     } else if exportsSingleResult {
                         if let singleResultRowCount {
-                            Text("\(singleResultRowCount) ^[row](inflect: true) to export")
+                            Text("^[\(singleResultRowCount) row](inflect: true) to export")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        Text("\(exportableCount) ^[table](inflect: true) to export")
+                        Text("^[\(exportableCount) table](inflect: true) to export")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 

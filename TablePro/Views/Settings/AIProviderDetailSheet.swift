@@ -14,9 +14,13 @@ struct AIProviderDetailSheet: View {
     let onDelete: (() -> Void)?
     let onCancel: () -> Void
 
+    private let savedEndpoint: String
+    private let savedAPIKey: String
+
     @State private var draft: AIProviderConfig
     @State private var apiKey: String
-    @State private var fetchedModels: [String] = []
+    @State private var fetched: [AIModelInfo] = []
+    @State private var fetchedListIsCurrent = false
     @State private var isFetchingModels = false
     @State private var modelFetchError: String?
     @State private var modelFetchTask: Task<Void, Never>?
@@ -50,6 +54,8 @@ struct AIProviderDetailSheet: View {
         onDelete: (() -> Void)? = nil,
         onCancel: @escaping () -> Void
     ) {
+        self.savedEndpoint = provider.endpoint
+        self.savedAPIKey = initialAPIKey
         self._draft = State(initialValue: provider)
         self._apiKey = State(initialValue: initialAPIKey)
         self.isNew = isNew
@@ -82,10 +88,12 @@ struct AIProviderDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Save")) {
                         cancelTasks()
+                        commitModelList()
                         onSave(normalizedDraft, apiKey)
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isSaveEnabled)
+                    .accessibilityIdentifier("ai-provider-save")
                 }
             }
             .onAppear {
@@ -131,13 +139,18 @@ struct AIProviderDetailSheet: View {
 
     private var navigationTitle: String {
         if isNew {
-            return String(format: String(localized: "Add %@"), draft.type.displayName)
+            return String(format: String(localized: "Add %@"), draft.kindName)
         }
         return draft.displayName
     }
 
+    private var needsModelChoice: Bool {
+        AIProviderDraftRules.needsModelChoice(model: draft.model, fetched: fetched)
+    }
+
     private var isSaveEnabled: Bool {
-        switch draft.type.authStyle {
+        guard !needsModelChoice else { return false }
+        switch draft.authStyle {
         case .apiKey:
             return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .optionalApiKey, .oauth, .none:
@@ -148,6 +161,7 @@ struct AIProviderDetailSheet: View {
     private var normalizedDraft: AIProviderConfig {
         var provider = draft
         provider.model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        provider.endpoint = AIProviderDraftRules.endpoint(draft.endpoint, defaultEndpoint: draft.defaultEndpoint)
         return provider
     }
 
@@ -155,7 +169,7 @@ struct AIProviderDetailSheet: View {
 
     @ViewBuilder
     private var authSection: some View {
-        switch draft.type.authStyle {
+        switch draft.authStyle {
         case .apiKey, .optionalApiKey:
             if draft.type == .cursor {
                 cursorAuthSection
@@ -239,7 +253,7 @@ struct AIProviderDetailSheet: View {
                         Text("Test Connection")
                     }
                 }
-                .disabled(isTesting || (draft.type.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                .disabled(isTesting || (draft.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
             if case .success = testResult {
                 Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
@@ -670,13 +684,15 @@ struct AIProviderDetailSheet: View {
             Section {
                 if allowsNameField {
                     TextField(String(localized: "Name"), text: $draft.name)
+                        .accessibilityIdentifier("ai-provider-name")
                 }
                 if allowsEndpointField {
                     TextField(
                         String(localized: "Base URL"),
                         text: $draft.endpoint,
-                        prompt: Text(draft.type.defaultEndpoint)
+                        prompt: Text(draft.defaultEndpoint)
                     )
+                    .accessibilityIdentifier("ai-provider-base-url")
                     .onChange(of: draft.endpoint) { _ in
                         scheduleFetchModels()
                         testResult = nil
@@ -714,19 +730,13 @@ struct AIProviderDetailSheet: View {
     }
 
     private var modelListBlocker: AIModelListFetchGate.Blocker? {
-        AIModelListFetchGate.blocker(
-            fetchesModelList: descriptor?.fetchesModelList == true,
-            takesEndpoint: descriptor?.allowsEndpointConfiguration == true,
-            endpoint: draft.endpoint,
-            authStyle: draft.type.authStyle,
-            apiKey: apiKey
-        )
+        AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: apiKey)
     }
 
     /// Ollama, llama.cpp, MLX and a keyless Custom server send no authorization header at all, so
     /// naming the key there would warn about something that is not happening.
     private var cleartextCaution: String {
-        guard draft.type.authStyle.usesAPIKey,
+        guard draft.authStyle.usesAPIKey,
               !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return String(localized: "Requests to this host are sent unencrypted over http.")
@@ -735,7 +745,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private var resolvedEndpoint: AIEndpoint? {
-        AIEndpoint(draft.endpoint, style: draft.type.endpointStyle)
+        AIEndpoint(normalizedDraft.endpoint, style: draft.type.endpointStyle)
     }
 
     private var resolvedChatURL: String? {
@@ -774,8 +784,15 @@ struct AIProviderDetailSheet: View {
         descriptor?.curatedModels ?? []
     }
 
+    private var fetchedModels: [String] {
+        fetched.map(\.id)
+    }
+
     private var effortLevelsForCurrentModel: [ReasoningEffort] {
-        descriptor?.supportedEffortLevels(forModelID: draft.model) ?? []
+        descriptor?.supportedEffortLevels(
+            forModelID: draft.model,
+            fetched: fetched.first(where: { $0.id == draft.model })
+        ) ?? []
     }
 
     private var showsReasoningPicker: Bool {
@@ -860,6 +877,9 @@ struct AIProviderDetailSheet: View {
                     }
                 case .fetched(let id):
                     draft.model = id
+                    if let effort = draft.reasoningEffort, !effortLevelsForCurrentModel.contains(effort) {
+                        draft.reasoningEffort = nil
+                    }
                 case .custom:
                     if curatedModels.contains(where: { $0.id == draft.model }) || fetchedModels.contains(draft.model) {
                         draft.model = ""
@@ -908,6 +928,11 @@ struct AIProviderDetailSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        if needsModelChoice {
+            Text("Pick a model to save this provider.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Advanced
@@ -917,9 +942,7 @@ struct AIProviderDetailSheet: View {
         if showsMaxOutputTokens || showsTelemetryToggle {
             Section {
                 if showsMaxOutputTokens {
-                    HStack {
-                        Text("Max output tokens")
-                        Spacer()
+                    LabeledContent("Max output tokens") {
                         TextField("", text: maxOutputTokensBinding)
                             .frame(width: 100)
                             .multilineTextAlignment(.trailing)
@@ -1005,7 +1028,30 @@ struct AIProviderDetailSheet: View {
         }
     }
 
+    private func commitModelList() {
+        let update = AIProviderDraftRules.catalogUpdate(
+            listIsCurrent: fetchedListIsCurrent,
+            listIsEmpty: fetched.isEmpty,
+            connectionChanged: normalizedDraft.endpoint != savedEndpoint || apiKey != savedAPIKey
+        )
+        switch update {
+        case .store:
+            AIModelCatalog.shared.store(providerID: draft.id, models: fetched)
+        case .remove:
+            AIModelCatalog.shared.remove(providerID: draft.id)
+        case .refetch:
+            AIModelCatalog.shared.remove(providerID: draft.id)
+            guard descriptor?.fetchesModelList == true else { return }
+            let providerID = draft.id
+            let transport = AIProviderFactory.makeUncachedProvider(for: normalizedDraft, apiKey: apiKey)
+            Task { await AIModelCatalog.shared.refresh(providerID: providerID, using: transport) }
+        case .keep:
+            break
+        }
+    }
+
     private func scheduleFetchModels() {
+        fetchedListIsCurrent = false
         modelFetchTask?.cancel()
         modelFetchTask = Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -1017,15 +1063,15 @@ struct AIProviderDetailSheet: View {
     private func fetchModels() {
         switch modelListBlocker {
         case .notFetchable:
-            fetchedModels = []
+            fetched = []
+            fetchedListIsCurrent = false
             modelFetchError = nil
             isFetchingModels = false
-            if draft.model.isEmpty, let first = curatedModels.first {
-                draft.model = first.id
-            }
+            selectInitialModel()
             return
         case .missingEndpoint, .missingAPIKey:
-            fetchedModels = []
+            fetched = []
+            fetchedListIsCurrent = false
             modelFetchError = nil
             isFetchingModels = false
             return
@@ -1042,23 +1088,32 @@ struct AIProviderDetailSheet: View {
             do {
                 let models = try await provider.fetchAvailableModels()
                 guard !Task.isCancelled else { return }
-                AIModelCatalog.shared.store(providerTypeID: draft.type.rawValue, models: models)
-                fetchedModels = models.map(\.id)
-                if draft.model.isEmpty, let first = fetchedModels.first {
-                    draft.model = first
-                }
+                fetched = models
+                fetchedListIsCurrent = true
+                selectInitialModel()
                 isFetchingModels = false
             } catch {
                 guard !Task.isCancelled else { return }
+                /// The list on screen was fetched with the previous key or Base URL, so it does not
+                /// describe the server that just failed.
+                fetched = []
+                fetchedListIsCurrent = false
                 modelFetchError = error.localizedDescription
                 isFetchingModels = false
             }
         }
     }
 
+    private func selectInitialModel() {
+        guard draft.model.isEmpty,
+              let initial = AIProviderDraftRules.initialModel(curated: curatedModels, fetched: fetched)
+        else { return }
+        draft.model = initial
+    }
+
     func testProvider() {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if draft.type.authStyle == .apiKey, trimmed.isEmpty {
+        if draft.authStyle == .apiKey, trimmed.isEmpty {
             testResult = .failure(String(localized: "API key is required"))
             return
         }

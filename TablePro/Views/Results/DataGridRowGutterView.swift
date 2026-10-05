@@ -25,7 +25,8 @@ import AppKit
 /// The column stays attached underneath. It reserves the leading width, keeps every column-index
 /// computation in the grid working untouched, and keeps mounting the one cell view the grid still
 /// mounts, which is the row number's only `AXCell` and the tooltip host for the reason a reorder is
-/// unavailable. This view draws over it, so the two must agree on the number they show.
+/// unavailable. That cell carries the number for accessibility only and paints nothing, so a bounce
+/// past the leading edge, which slides the column out from under this view, shows no second number.
 @MainActor
 final class DataGridRowGutterView: NSView {
     weak var coordinator: TableViewCoordinator?

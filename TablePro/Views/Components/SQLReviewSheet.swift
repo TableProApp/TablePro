@@ -137,25 +137,33 @@ struct SQLReviewSheet: View {
 
     private func prepare() async {
         guard prepared == nil, !statements.isEmpty else { return }
-        let isJavaScript = !showsStatementsVerbatim
-            && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        let writesShellSyntax = Self.writesShellSyntax(for: databaseType, verbatim: showsStatementsVerbatim)
         let verbatim = showsStatementsVerbatim
-        let result = await Task.detached(priority: .userInitiated) { [statements, isJavaScript, verbatim] in
-            Self.build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
+        let result = await Task.detached(priority: .userInitiated) { [statements, writesShellSyntax, verbatim] in
+            Self.build(statements: statements, writesShellSyntax: writesShellSyntax, verbatim: verbatim)
         }.value
         prepared = result
     }
 
     static func build(statements: [String], databaseType: DatabaseType, verbatim: Bool = false) -> Prepared {
-        let isJavaScript = !verbatim && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
-        return build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
+        build(
+            statements: statements,
+            writesShellSyntax: writesShellSyntax(for: databaseType, verbatim: verbatim),
+            verbatim: verbatim
+        )
     }
 
-    nonisolated private static func build(statements: [String], isJavaScript: Bool, verbatim: Bool) -> Prepared {
+    /// `ObjectId("…")` is MongoDB shell syntax. An Elasticsearch, Typesense or Weaviate body is JSON,
+    /// where the same rewrite of a stored `{"$oid": "…"}` leaves a request that no longer parses.
+    private static func writesShellSyntax(for databaseType: DatabaseType, verbatim: Bool) -> Bool {
+        !verbatim && QueryStatementModel.forDatabaseType(databaseType) == .javascript
+    }
+
+    nonisolated private static func build(statements: [String], writesShellSyntax: Bool, verbatim: Bool) -> Prepared {
         var full = verbatim
             ? statements.joined(separator: "\n\n")
             : statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if isJavaScript {
+        if writesShellSyntax {
             full = convertExtendedJsonToShellSyntax(full)
         }
 

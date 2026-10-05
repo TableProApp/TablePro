@@ -265,6 +265,21 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertTrue(result.notes.contains { $0.subject == "total" })
     }
 
+    /// The review keeps a type change to one line, cut in the middle, because a spelling such as an
+    /// `ENUM` value list has no space to wrap at. A note written as a sentence still wraps.
+    func testATypeChangeIsMarkedApartFromASentence() throws {
+        let source = snapshot(columns: [
+            column("status", "enum('pending','paid','shipped','delivered','cancelled','refunded')"),
+            column("total", "DECIMAL(10,2)", generation: "price * quantity")
+        ])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mariadb, to: .postgresql)
+        let status = try XCTUnwrap(result.notes.first { $0.subject == "status" })
+        XCTAssertTrue(status.isTypeChange)
+        XCTAssertTrue(status.summary.hasSuffix("→ VARCHAR(9)"))
+        let total = try XCTUnwrap(result.notes.first { $0.subject == "total" })
+        XCTAssertFalse(total.isTypeChange)
+    }
+
     // MARK: - Keys and indexes
 
     /// MySQL refuses a `PRIMARY KEY` on a `LONGTEXT` outright, and the whole `CREATE TABLE` fails

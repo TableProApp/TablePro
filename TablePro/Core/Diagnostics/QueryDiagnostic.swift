@@ -45,15 +45,25 @@ enum QueryDiagnosticsFactory {
     static func make(for databaseType: DatabaseType?) -> QueryDiagnosticsProducing {
         let resolvedType = databaseType ?? .mysql
 
+        // Highlighting as JavaScript does not make the language JavaScript: Elasticsearch, Typesense
+        // and Weaviate do it for their JSON bodies. Only a MongoDB script is a program the parser can check.
+        if QueryStatementModel.forDatabaseType(resolvedType) == .javascript {
+            return MongoDiagnosticsProducer()
+        }
+
         switch PluginManager.shared.editorLanguage(for: resolvedType) {
         case .javascript:
-            return MongoDiagnosticsProducer()
+            return ConsoleRequestDiagnosticsProducer()
         case .sql:
             return CombinedQueryDiagnosticsProducer(producers: [
                 SQLDiagnosticsProducer(),
                 SQLConfusableCharacterDiagnosticsProducer(grammar: resolvedType.lexicalGrammar)
             ])
-        default:
+        case .bash:
+            // A command line's arguments are plain text, so `SET smile :)` holds a bracket that closes
+            // nothing and is still a valid command. There is no structure to check.
+            return CombinedQueryDiagnosticsProducer(producers: [])
+        case .custom:
             return SQLDiagnosticsProducer()
         }
     }

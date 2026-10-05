@@ -438,6 +438,7 @@ targets:
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Backend.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver+RledgerOutput.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift
       - Plugins/BigQueryDriverPlugin/BigQueryConnection.swift
       - Plugins/BigQueryDriverPlugin/BigQueryCredentialFactory.swift

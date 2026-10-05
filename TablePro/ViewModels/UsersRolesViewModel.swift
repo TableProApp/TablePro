@@ -100,10 +100,26 @@ final class UsersRolesViewModel: ObservableObject {
 
     @Published var scopeSearchTask: Task<Void, Never>?
 
+    private var changeManagerForwarding: AnyCancellable?
+    private var privilegeTreeForwarding: AnyCancellable?
+
+    /// Every view on this tab observes the view model, not `changeManager`, and reads the staged
+    /// grants, the change count and each principal's stage through it. A change the manager
+    /// published reached none of them: a ticked privilege stayed unticked, and Review & Apply and
+    /// "Modified" stayed stale until the view model happened to publish something of its own.
+    ///
+    /// The scope outline reads the tree's structure version through the view model the same way,
+    /// so a search result or a switch to Granted reached it only when something else published.
+    /// The tree publishes only when its roots are replaced, so a lazy expand does not reload the
+    /// whole outline through this.
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         expansionStore = PrivilegeExpansionStore(connectionId: connectionId)
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+        privilegeTreeForwarding = privilegeTree.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
     }
 
     // MARK: - Derived

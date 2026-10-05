@@ -46,6 +46,7 @@ struct QueryCommandAvailability {
         isStoppable: Bool,
         hasResults: Bool,
         explainVariants: [ExplainVariant],
+        supportsFormatting: Bool = true,
         aiActions: AIQueryActionAvailability = .hidden,
         shortcutHint: (String, ShortcutAction) -> String
     ) {
@@ -61,7 +62,7 @@ struct QueryCommandAvailability {
             supportsExplain: !explainVariants.isEmpty
         )
         /// Formatting rewrites text the reader already has, so it does not wait for a server.
-        canFormat = hasQueryText
+        canFormat = hasQueryText && supportsFormatting
         canSaveAsFavorite = hasQueryText
         canClearQuery = hasQueryText
         canClearResults = hasResults
@@ -85,7 +86,9 @@ struct QueryCommandAvailability {
         )
         formatHint = Self.hint(
             base: shortcutHint(String(localized: "Format"), .formatQuery),
-            reason: hasQueryText ? nil : String(localized: "There is nothing to format yet.")
+            reason: !supportsFormatting
+                ? String(localized: "This query language has no formatter.")
+                : hasQueryText ? nil : String(localized: "There is nothing to format yet.")
         )
         favoriteHint = Self.hint(
             base: shortcutHint(String(localized: "Save as Favorite"), .saveAsFavorite),

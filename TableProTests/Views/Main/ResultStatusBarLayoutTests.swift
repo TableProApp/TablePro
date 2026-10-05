@@ -476,6 +476,70 @@ struct ResultStatusBarLayoutTests {
         expectFills(bar, at: width)
     }
 
+    private static var estimatedPagination: PaginationState {
+        var pagination = PaginationState(totalRowCount: 22, pageSize: 1_000)
+        pagination.isApproximateRowCount = true
+        return pagination
+    }
+
+    @Test("A table with an estimate is never wider than its host", arguments: statusBarHostWidths)
+    func estimatedBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 22, hasColumns: true, tabType: .table, viewMode: .data, pagination: Self.estimatedPagination
+        )
+        #expect(bar.model.controls.showsExactCountAction)
+        expectFills(bar, at: width)
+    }
+
+    /// `ViewThatFits` picks a tier from each candidate's ideal width. With Count Exactly counted
+    /// inside the readout's constant, a table with an estimate stayed on the regular tier at widths
+    /// with no room for the sentence and the button together, and the bar drew "1-22 of ~22 r…"
+    /// beside "Count Ex…".
+    @Test("Count Exactly adds its own width to the width the bar asks for")
+    func exactCountActionWidensTheIdealWidth() {
+        let estimated = makeBar(
+            rowCount: 22, hasColumns: true, tabType: .table, viewMode: .data, pagination: Self.estimatedPagination
+        )
+        let exact = makeBar(
+            rowCount: 22,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 22, pageSize: 1_000)
+        )
+        #expect(!exact.model.controls.showsExactCountAction)
+
+        let extra = idealWidth(of: estimated) - idealWidth(of: exact)
+        #expect(extra > 40, "the bar asked for \(extra)pt more with Count Exactly on it")
+    }
+
+    /// A wordy driver message still adds nothing: it truncates instead of dropping the tier.
+    @Test("A driver message adds nothing to the width the bar asks for")
+    func statusMessageLeavesTheIdealWidthAlone() {
+        let plain = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let wordy = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            statusMessage: Self.wordyDriverMessage
+        )
+        #expect(idealWidth(of: wordy) == idealWidth(of: plain))
+    }
+
+    private func idealWidth(of bar: ResultStatusBar) -> CGFloat {
+        let host = NSHostingView(rootView: bar)
+        host.layoutSubtreeIfNeeded()
+        return host.intrinsicContentSize.width
+    }
+
     /// The narrowest tier has to fit the narrowest pane the window can produce, or `ViewThatFits`
     /// falls through to a row that overflows anyway. `resolveDetailMinimumThickness` sets that
     /// floor, so the two are checked against each other rather than against a literal that could

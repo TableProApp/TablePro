@@ -55,7 +55,8 @@ struct LocalProviderRegistrationTests {
             let provider = descriptor(for: type)
             #expect(provider?.supportsReasoning == true)
             #expect(provider?.supportsImages == true)
-            #expect(provider?.supportsImages(forModelID: "some-unfetched-local-model") == true)
+            #expect(provider?.supportsImages(fetched: nil) == true)
+            #expect(provider?.supportsImages(fetched: AIModelInfo(id: "text-only", modalities: [.text])) == false)
             #expect(provider?.supportedEffortLevels(forModelID: "some-unfetched-local-model").isEmpty == false)
         }
     }

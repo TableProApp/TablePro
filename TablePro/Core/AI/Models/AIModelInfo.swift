@@ -61,18 +61,23 @@ struct AIModelInfo: Codable, Sendable, Equatable, Identifiable {
     let displayName: String?
     let contextWindow: Int?
     let maxOutputTokens: Int?
+    /// Empty when the provider's model list does not say, which is most of them: a plain OpenAI
+    /// list carries an id and nothing else.
     let modalities: Set<AIModality>
     let reasoning: AIReasoningSupport?
     let isDeprecated: Bool
+    /// The model the provider itself starts a new chat on.
+    let isProviderDefault: Bool
 
     init(
         id: String,
         displayName: String? = nil,
         contextWindow: Int? = nil,
         maxOutputTokens: Int? = nil,
-        modalities: Set<AIModality> = [.text],
+        modalities: Set<AIModality> = [],
         reasoning: AIReasoningSupport? = nil,
-        isDeprecated: Bool = false
+        isDeprecated: Bool = false,
+        isProviderDefault: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -81,6 +86,7 @@ struct AIModelInfo: Codable, Sendable, Equatable, Identifiable {
         self.modalities = modalities
         self.reasoning = reasoning
         self.isDeprecated = isDeprecated
+        self.isProviderDefault = isProviderDefault
     }
 
     var label: String {
@@ -88,20 +94,8 @@ struct AIModelInfo: Codable, Sendable, Equatable, Identifiable {
         return displayName
     }
 
-    var supportsImages: Bool {
-        modalities.contains(.image)
-    }
-
-    func merging(fallback: AIModelInfo?) -> AIModelInfo {
-        guard let fallback else { return self }
-        return AIModelInfo(
-            id: id,
-            displayName: displayName ?? fallback.displayName,
-            contextWindow: contextWindow ?? fallback.contextWindow,
-            maxOutputTokens: maxOutputTokens ?? fallback.maxOutputTokens,
-            modalities: modalities.isEmpty ? fallback.modalities : modalities,
-            reasoning: reasoning ?? fallback.reasoning,
-            isDeprecated: isDeprecated || fallback.isDeprecated
-        )
+    /// Nil when the provider did not state the model's modalities.
+    var supportsImages: Bool? {
+        modalities.isEmpty ? nil : modalities.contains(.image)
     }
 }

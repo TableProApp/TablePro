@@ -50,6 +50,11 @@ struct QueryEditorView: View {
 
     @State private var vimMode: VimMode = .normal
 
+    /// The editor takes whatever height the bar above it leaves, with no minimum of its own. The
+    /// query split's editor pane bottoms out at `VerticalCollapsibleSplitView.defaultTopMinimumThickness`,
+    /// and an editor that also insisted on that much under a bar asked for more than the pane can
+    /// ever be: at the pane's minimum the stack overflowed it, the bar was cut off at the top and the
+    /// editor's text ran up over it.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             QueryEditorBar(
@@ -105,7 +110,6 @@ struct QueryEditorView: View {
                 onAIAction: onAIAction,
                 onSaveAsFavorite: onSaveAsFavorite
             )
-            .frame(minHeight: 100)
             .clipped()
         }
         .background(Color(nsColor: .textBackgroundColor))
