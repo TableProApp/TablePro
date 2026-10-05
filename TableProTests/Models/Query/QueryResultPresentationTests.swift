@@ -41,6 +41,55 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .executing)
     }
 
+    /// The state every retarget passes through: the buffer was emptied for the new table and its
+    /// first page is in flight. It used to resolve to `.executing`, which drew a blank pane for the
+    /// whole fetch and unmounted the grid.
+    @Test("A table tab loading its first page keeps its grid")
+    func tableTabLoadingKeepsGrid() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.tableName = "orders"
+        inputs.isExecuting = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
+    }
+
+    @Test("A table tab loading in a mode that draws no grid reports the load")
+    func tableTabLoadingInOtherModes() {
+        for mode in [ResultsViewMode.json, .chart, .map] {
+            var inputs = QueryResultInputs()
+            inputs.tabType = .table
+            inputs.tableName = "orders"
+            inputs.viewMode = mode
+            inputs.isExecuting = true
+
+            #expect(
+                QueryResultPresentation(inputs: inputs).content == .executing,
+                "a table tab loading in \(mode) has nothing to draw yet"
+            )
+        }
+    }
+
+    /// A failed first load leaves no result set, and Dismiss clears the error, which used to leave
+    /// a blank pane that no tab switch reloaded.
+    @Test("A table tab whose failed load was dismissed still draws its grid")
+    func dismissedTableFailureKeepsGrid() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.tableName = "secret"
+        inputs.hasExecuted = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
+    }
+
+    @Test("A query tab whose run left no result stays idle")
+    func queryTabWithoutResultStaysIdle() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .idle)
+    }
+
     /// Retargeting a tab empties its buffer before the replacing fetch starts. Reporting "no rows"
     /// there states that the table the reader just opened is empty.
     @Test("A running fetch over loaded rows keeps drawing them")

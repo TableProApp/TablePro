@@ -10,11 +10,12 @@ extension QueryTab {
         execution.lastExecutedAt != nil
     }
 
-    /// A query tab the user has invested work in, either by typing into it or by running it.
-    /// A tab holding query work must not be silently reused in place.
+    /// A query tab the user has invested work in, by typing into it, running it or opening a file
+    /// into it. A tab holding query work must not be silently reused in place. An empty file counts:
+    /// a table that took its tab over kept the file, and saving wrote the table's query into it.
     var holdsQueryWork: Bool {
         guard tabType == .query else { return false }
-        return hasQueryText || hasExecutedQuery
+        return hasQueryText || hasExecutedQuery || content.sourceFileURL != nil
     }
 
     /// Whether closing this tab loses something worth bringing back. Only the text of a query

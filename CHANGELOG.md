@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Blank results pane instead of the data grid while a table loads, or after its load error is dismissed.
+- Previous table's primary key or row count carried into the next table opened in its tab, so edits matched wrong rows.
+- Status bar stuck on Loading after cancelling a Safe Mode (Full) confirmation for a table.
+- Approving a Safe Mode (Full) confirmation running that table's query in a tab opened from a link meanwhile.
+- Restored table tab that never loads when another tab was opened before its window came forward.
+- Save writing a table's query into the SQL file whose tab the table was opened over.
+
 ## [0.77.2] - 2026-10-05
 
 ### Added

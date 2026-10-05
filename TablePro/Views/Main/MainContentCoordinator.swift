@@ -1159,14 +1159,19 @@ final class MainContentCoordinator: ObservableObject {
     /// Execute table tab query directly.
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
-    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated, viewport: GridReloadIntent) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    /// Returns the confirmation task when Safe Mode asks before the load runs.
+    @discardableResult
+    func executeTableTabQueryDirectly(
+        trigger: TableLoadTrigger = .userInitiated,
+        viewport: GridReloadIntent
+    ) -> Task<Void, Never>? {
+        guard let tab = tabManager.selectedTab else { return nil }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tab.id)
 
         let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             traceNavigationAbandoned(tabId: tab.id, outcome: .emptyQuery)
-            return
+            return nil
         }
 
         let level = safeModeLevel
@@ -1175,11 +1180,12 @@ final class MainContentCoordinator: ObservableObject {
         {
             guard !isShowingSafeModePrompt else {
                 traceNavigationAbandoned(tabId: tab.id, outcome: .safeModePromptAlreadyOpen)
-                return
+                return nil
             }
             isShowingSafeModePrompt = true
-            Task {
-                defer { isShowingSafeModePrompt = false }
+            let tabId = tab.id
+            let askedContext = tab.tableContext
+            return Task {
                 let decision = await executionGate.authorize(
                     OperationRequest(
                         connectionId: connectionId,
@@ -1191,17 +1197,35 @@ final class MainContentCoordinator: ObservableObject {
                         operationDescription: String(localized: "Execute Query")
                     )
                 )
+                isShowingSafeModePrompt = false
+                /// The sheet holds this window, not a link or an agent selecting another table under
+                /// it, and the answer is about the statement it showed. Run on whatever tab was
+                /// selected by then, it put this table's rows under another table's name. The text
+                /// alone does not name the statement: a Redis database switch keeps the same SCAN.
+                let asked = tabManager.tabs.first(where: { $0.id == tabId })
+                guard tabManager.selectedTabId == tabId,
+                      let asked,
+                      asked.content.query == sql,
+                      asked.tableContext.tableName == askedContext.tableName,
+                      asked.tableContext.databaseName == askedContext.databaseName else {
+                    traceNavigationAbandoned(tabId: tabId, outcome: .superseded)
+                    if tabManager.selectedTabId != tabId {
+                        declineTableLoad(for: tabId)
+                    }
+                    lazyLoadCurrentTabIfNeeded(trigger: trigger)
+                    return
+                }
                 switch decision {
                 case .authorized:
                     executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
                 case .denied(let reason, _):
-                    traceNavigationAbandoned(tabId: tab.id, outcome: .safeModeDenied)
-                    tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+                    traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
+                    queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
                 }
             }
-        } else {
-            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
         }
+        executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
+        return nil
     }
 
     // MARK: - Editor Query Loading
@@ -1307,6 +1331,7 @@ final class MainContentCoordinator: ObservableObject {
             guard tabExecution.settle(claim) else { return }
             tabManager.mutate(at: index) { tab in
                 tab.execution.errorMessage = String(localized: "Not connected to database")
+                tab.pagination.isLoading = false
             }
             return
         }
@@ -1359,8 +1384,8 @@ final class MainContentCoordinator: ObservableObject {
                 /// never holds the new columns under the old keys, defaults or generated columns.
                 let definition = needsDefinition ? try? await schemaTask?.value : nil
 
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
+                let applied = await MainActor.run { [weak self] () -> Bool in
+                    guard let self else { return false }
                     traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
 
                     // Every write below belongs to whoever owns the tab now. A superseded result
@@ -1371,12 +1396,12 @@ final class MainContentCoordinator: ObservableObject {
                     // circuit there would leave the tab claimed forever and refusing later runs.
                     guard tabExecution.settle(claim) else {
                         traceStaleResultDropped(traceToken)
-                        return
+                        return false
                     }
                     retireQueryTask(.claim(claim))
                     guard !Task.isCancelled else {
                         traceStaleResultDropped(traceToken)
-                        return
+                        return false
                     }
                     toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: tabId)
 
@@ -1418,6 +1443,14 @@ final class MainContentCoordinator: ObservableObject {
                             )
                         )
                     )
+                    return true
+                }
+                /// Phase 2 writes keys, defaults and a row count onto whatever the tab holds when it
+                /// lands. A result that lost the tab to a retarget would describe its own table on
+                /// the next one, so only the execution that applied its rows may start it.
+                guard applied else {
+                    schemaTask?.cancel()
+                    return
                 }
 
                 if isEditable, let tableName {

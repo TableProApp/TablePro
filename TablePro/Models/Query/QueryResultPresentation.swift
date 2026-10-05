@@ -119,7 +119,12 @@ struct QueryResultPresentation: Equatable {
 
         if inputs.isExplainResult { return .queryPlan }
 
-        if inputs.isExecuting, inputs.loadedColumnCount == 0 { return .executing }
+        /// A table's grid is its own placeholder, so it stays mounted while the first page loads. A
+        /// retarget empties the buffer before the fetch claims the tab, and dropping the grid there
+        /// blanked the pane for the whole fetch and took the grid's first responder with it.
+        if inputs.isExecuting, inputs.loadedColumnCount == 0, !Self.keepsGridWhileLoading(inputs) {
+            return .executing
+        }
 
         if inputs.viewMode == .output, !inputs.isExecuting, !inputs.activeResultServerOutput.isEmpty {
             return .serverOutput(inputs.activeResultServerOutput)
@@ -177,7 +182,9 @@ struct QueryResultPresentation: Equatable {
 
         guard inputs.loadedColumnCount == 0 else { return resolveEmptyRows(inputs) }
         guard resolvedError(inputs) == nil else { return nil }
-        guard inputs.resultSetCount > 0 else { return .idle }
+        /// A failed table load leaves no result set, and dismissing its banner removes the error, so
+        /// this state is a table that has not loaded rather than a statement that ran.
+        guard inputs.resultSetCount > 0 else { return inputs.tabType == .table ? nil : .idle }
 
         return .statementSucceeded(
             rowsAffected: inputs.executionRowsAffected,
@@ -185,6 +192,10 @@ struct QueryResultPresentation: Equatable {
             statusMessage: inputs.executionStatusMessage,
             serverOutput: .none
         )
+    }
+
+    private static func keepsGridWhileLoading(_ inputs: QueryResultInputs) -> Bool {
+        inputs.tabType == .table && inputs.viewMode == .data
     }
 
     /// Columns without rows. A filtered table that filtered everything away keeps the grid, because

@@ -291,6 +291,26 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.pendingLoadTrigger == .restore)
     }
 
+    /// A link or an agent can select another tab before the restored window comes forward. The
+    /// deferral used to outlive that, and refused every later load of the deferred tab, including
+    /// a table opened into it from the sidebar.
+    @Test("Becoming key ends a deferral even when another tab is selected")
+    func becomingKeyEndsADeferralForAnUnselectedTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let deferredId = addTableTab(to: tabManager)
+        _ = addTableTab(to: tabManager, tableName: "orders", query: "SELECT * FROM orders")
+        coordinator.deferredRestoreLoadTabId = deferredId
+
+        coordinator.handleWindowDidBecomeKey()
+        #expect(coordinator.deferredRestoreLoadTabId == nil)
+
+        tabManager.selectedTabId = deferredId
+        coordinator.pendingLoadTrigger = nil
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+    }
+
     // MARK: - Idempotency
 
     @Test("Idempotent: repeated calls with the same loaded state are no-ops")

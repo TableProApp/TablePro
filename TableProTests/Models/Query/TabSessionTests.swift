@@ -78,6 +78,46 @@ struct TabRetargetSessionStateTests {
         #expect(tab.columnLayout.hiddenColumns.isEmpty)
     }
 
+    /// The first load of the new table falls back to the keys the tab already holds when the result
+    /// reports none, so a keyless table's edits matched rows on the previous table's key.
+    @Test("Retargeting a tab drops the previous table's primary keys")
+    func retargetDropsPrimaryKeys() throws {
+        let (tabManager, _) = Self.makeManager()
+        let tabId = Self.addTableTab(to: tabManager, tableName: "orders")
+        tabManager.mutate(tabId: tabId) { $0.tableContext.primaryKeyColumns = ["id"] }
+
+        try tabManager.replaceTabContent(tableName: "audit_log", databaseName: "shop", schemaName: "public")
+
+        let context = try #require(tabManager.tabs.first(where: { $0.id == tabId })?.tableContext)
+        #expect(context.primaryKeyColumns.isEmpty)
+        #expect(context.tableName == "audit_log")
+        #expect(context.databaseName == "shop")
+        #expect(context.schemaName == "public")
+        #expect(context.isEditable)
+    }
+
+    /// Every path that retargets, the in-place database switch included, goes through here. A tab
+    /// that kept its file bound to it saved the table's query into that file.
+    @Test("Retargeting a file-backed tab drops the file it was opened from")
+    func retargetDropsTheFileBinding() throws {
+        let (tabManager, _) = Self.makeManager()
+        let tab = QueryTab(title: "notes", query: "", tabType: .query)
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+        tabManager.mutate(tabId: tab.id) { tab in
+            tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/notes.sql")
+            tab.content.savedFileContent = ""
+        }
+
+        try tabManager.replaceTabContent(tableName: "orders")
+
+        let content = try #require(tabManager.tabs.first(where: { $0.id == tab.id })?.content)
+        #expect(content.sourceFileURL == nil)
+        #expect(content.savedFileContent == nil)
+        #expect(content.isFileDirty == false)
+        #expect(content.query.contains("orders"))
+    }
+
     @Test("The row buffer stays reachable through the retarget")
     func rowBufferSurvivesTheRetarget() throws {
         let (tabManager, registry) = Self.makeManager()
