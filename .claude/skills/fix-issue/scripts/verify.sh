@@ -18,7 +18,7 @@
 #   verify.sh [options] abi   <merge-base>
 #   verify.sh [options] lint  <path> [path…]
 #   verify.sh [options] docs                    # docs/ house style + claims against source
-#   verify.sh [options] l10n                    # both String Catalogs, and plugin strings in the app catalog
+#   verify.sh [options] l10n                    # plugin and package strings in the app catalog, managed manually
 #   verify.sh [options] agent-docs              # CLAUDE.md, .claude/rules and this skill against the tree
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
@@ -605,15 +605,12 @@ case "$STEP" in
 
     l10n)
         # Plugin strings live in the app's catalog, and CI fails a PR whose new plugin message is
-        # missing from it, which neither a build nor SwiftLint notices.
+        # missing from it or not managed manually, which neither a build nor SwiftLint notices.
         log="$(new_log l10n)"
         : > "$log"
         code=0
-        for args in "verify" "plugins"; do
-            echo "== localization.py $args" >> "$log"
-            # shellcheck disable=SC2086
-            (cd "$REPO_ROOT" && python3 scripts/localization.py $args) >> "$log" 2>&1 || code=1
-        done
+        echo "== localization.py plugins" >> "$log"
+        (cd "$REPO_ROOT" && python3 scripts/localization.py plugins) >> "$log" 2>&1 || code=1
         if [ $code -eq 0 ]; then
             STATUS=PASS
         else

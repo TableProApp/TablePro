@@ -42,20 +42,22 @@ them, and the plugin SDK.
 
 ## Translating the app
 
-Interface strings live in one `.xcstrings` catalog that interleaves every language inside every
-key, so a hand edit means working next to languages you do not speak. `scripts/localization.py`
-gives one flat JSON file per language instead:
+Translate through Xcode's export and import, one XLIFF file per language. Never edit
+`Localizable.xcstrings` by hand: Xcode is the only tool that writes it, so a translation diff holds
+your language and nothing else.
 
 ```bash
+xcodebuild -exportLocalizations -project TablePro.xcodeproj -scheme TablePro \
+    -localizationPath Localization -exportLanguage fr
+xcodebuild -importLocalizations -project TablePro.xcodeproj -localizationPath Localization/fr.xcloc
 scripts/localization.py status              # coverage, per language
-scripts/localization.py export vi           # writes Localization/mac.vi.json
-scripts/localization.py import vi           # merges the edits back into the catalog
 ```
 
-Edit the `translation` values in the exported file, then import. Add `--target ios` for the iPhone
-and iPad app, which has a catalog of its own. Commit the catalog and not the export: `Localization/`
-is gitignored, and a merge rewrites only the strings that changed, so the diff shows the
-translation and nothing else.
+Between the two commands, translate `Localization/fr.xcloc` in Xcode, or its
+`Localized Contents/fr.xliff` in any XLIFF editor. The export builds the app first. Commit the
+catalog and not the export: `Localization/` is gitignored. For the iPhone and iPad app, run the same
+commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme.
 
-Run `scripts/localization.py verify` after changing the script. It re-reads and rewrites each
-catalog and checks the result is byte for byte identical.
+Plugin and package strings live in the app's catalog, marked "Managed Manually" so that Xcode keeps
+them. Run `scripts/localization.py plugins --add` after adding a `String(localized:)` to a plugin or
+a package.

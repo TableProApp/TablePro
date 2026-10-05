@@ -1,43 +1,46 @@
 #!/usr/bin/env python3
-"""Export one language out of a String Catalog and merge it back.
+"""Coverage and hidden-string checks for the String Catalogs.
 
-A `.xcstrings` file interleaves every language inside every key, so a translator who changes
-fifty Vietnamese strings produces a diff scattered through a 109,000-line file, next to Turkish
-and Chinese they never touched. Nobody can review that, which is why translation contributions
-stall.
+Translation itself goes through Xcode: `xcodebuild -exportLocalizations` writes one XLIFF per
+language, `xcodebuild -importLocalizations` merges it back, and Xcode stays the only tool that
+rewrites a catalog. CONTRIBUTING.md has the commands.
 
-    scripts/localization.py export vi            -> Localization/vi.json
-    scripts/localization.py import vi            -> merges it back
-    scripts/localization.py status               -> per-language coverage
-    scripts/localization.py plugins [--add]      -> plugin strings missing from the catalog
+    scripts/localization.py status              -> per-language coverage
+    scripts/localization.py plugins [--add]     -> strings Xcode cannot see, missing or unmanaged
 
-The exported file is flat and sorted: one key, one string, so it can be edited by hand or fed to
-any translation tool. It is a working copy and is not committed; the catalog stays the single
-source of truth. Export, edit, import, then commit the catalog.
-
-The merge is byte-exact for everything it did not translate. That matters more than it sounds:
-a merge that reformats the catalog puts the reviewer back in front of a 109,000-line diff, which
-is the problem this exists to remove. Two Xcode quirks have to be reproduced for that to hold,
-and both are covered by `verify`:
-
-  - the key separator is " : ", not ": "
-  - an empty object is written across three lines, not as "{}"
-  - there is no trailing newline
-
-Keys keep the catalog's own order. Sorting them looks tidier and rewrites the entire file.
+Xcode extracts strings per target. Code in a plugin bundle or in a package under `Packages/`
+resolves `String(localized:)` against `Bundle.main`, which is the host app, so its strings must be
+in the app's catalog, yet no sync of the app target ever finds them in its sources. Xcode deletes
+such a key on its next sync (a build in Xcode, an export, an import) unless the key is managed
+manually. `plugins` checks that every one of them is present and manual.
 """
 
 import argparse
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 CATALOGS = {
     "mac": Path("TablePro/Resources/Localizable.xcstrings"),
     "ios": Path("TableProMobile/TableProMobile/Localizable.xcstrings"),
 }
-EXPORT_DIR = Path("Localization")
+HIDDEN_SOURCE_ROOTS = (Path("Plugins"), Path("Packages"))
+
+# Xcode writes a catalog through JSONSerialization with exactly these options. Writing through the
+# same call keeps the file identical to what Xcode would write, so its next sync moves nothing.
+WRITE_LIKE_XCODE = """
+import Foundation
+let input = URL(fileURLWithPath: CommandLine.arguments[1])
+let output = URL(fileURLWithPath: CommandLine.arguments[2])
+let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: input))
+try JSONSerialization.data(
+    withJSONObject: catalog,
+    options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+).write(to: output)
+"""
 
 
 def load(path: Path) -> dict:
@@ -46,98 +49,13 @@ def load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf8"))
 
 
-def serialize(catalog: dict) -> str:
-    """Reproduce Xcode's own formatting exactly, so an untouched string stays untouched."""
-    out = json.dumps(catalog, indent=2, ensure_ascii=False, separators=(",", " : "))
-    return re.sub(
-        r"(?m)^(\s*)\S.*?: \{\}",
-        lambda m: m.group(0)[:-2] + "{\n\n" + m.group(1) + "}",
-        out,
-    )
-
-
-def source_value(key: str, entry: dict, source_language: str) -> str:
-    localization = (entry.get("localizations") or {}).get(source_language)
-    if localization:
-        unit = localization.get("stringUnit") or {}
-        if unit.get("value"):
-            return unit["value"]
-    return key
-
-
-def export(target: str, language: str) -> None:
-    path = CATALOGS[target]
-    catalog = load(path)
-    source_language = catalog.get("sourceLanguage", "en")
-    if language == source_language:
-        sys.exit(f"FATAL: {language} is the source language; there is nothing to translate.")
-
-    rows = {}
-    for key, entry in sorted((catalog.get("strings") or {}).items()):
-        if not key:
-            continue
-        unit = ((entry.get("localizations") or {}).get(language) or {}).get("stringUnit") or {}
-        row = {
-            "source": source_value(key, entry, source_language),
-            "translation": unit.get("value", ""),
-        }
-        # Surfaced so a translator can find what still needs attention. The merge ignores it:
-        # state belongs to whoever reviewed the string, not to whoever edited this file.
-        if unit.get("state") and unit["state"] != "translated":
-            row["state"] = unit["state"]
-        rows[key] = row
-
-    EXPORT_DIR.mkdir(exist_ok=True)
-    out = EXPORT_DIR / f"{target}.{language}.json"
-    out.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
-
-    translated = sum(1 for row in rows.values() if row["translation"])
-    print(f"{out}: {translated}/{len(rows)} translated")
-
-
-def merge(target: str, language: str) -> None:
-    path = CATALOGS[target]
-    source = EXPORT_DIR / f"{target}.{language}.json"
-    if not source.exists():
-        sys.exit(f"FATAL: {source} not found. Run export first.")
-
-    catalog = load(path)
-    before = serialize(catalog)
-    rows = json.loads(source.read_text(encoding="utf8"))
-    strings = catalog.get("strings") or {}
-
-    changed = 0
-    unknown = []
-    for key, row in rows.items():
-        translation = row.get("translation") or ""
-        # Only blankness is tested against the stripped form. Leading and trailing whitespace is
-        # meaningful in these strings, and stripping the stored value silently corrupts them.
-        if not translation.strip():
-            continue
-        entry = strings.get(key)
-        if entry is None:
-            unknown.append(key)
-            continue
-        localizations = entry.setdefault("localizations", {})
-        unit = localizations.setdefault(language, {}).setdefault("stringUnit", {})
-        # Only a changed value is a translation. Rewriting state on an untouched string would
-        # quietly clear someone's needs_review, and would make an unedited round-trip produce a
-        # diff, which is the thing this tool exists to prevent.
-        if unit.get("value") == translation:
-            continue
-        unit["value"] = translation
-        unit["state"] = "translated"
-        changed += 1
-
-    after = serialize(catalog)
-    if after == before:
-        print("No change.")
-        return
-
-    path.write_text(after, encoding="utf8")
-    print(f"{path}: {changed} string(s) updated")
-    if unknown:
-        print(f"Skipped {len(unknown)} key(s) not in the catalog, first few: {unknown[:5]}")
+def write(path: Path, catalog: dict) -> None:
+    with tempfile.TemporaryDirectory() as scratch:
+        script = Path(scratch) / "write.swift"
+        script.write_text(WRITE_LIKE_XCODE, encoding="utf8")
+        source = Path(scratch) / "catalog.json"
+        source.write_text(json.dumps(catalog, ensure_ascii=False), encoding="utf8")
+        subprocess.run(["xcrun", "swift", str(script), str(source), str(path)], check=True)
 
 
 def status(target: str) -> None:
@@ -160,22 +78,10 @@ def status(target: str) -> None:
         print(f"  {language:<8} {done:>5}/{total}  {done * 100 // max(total, 1):>3}%")
 
 
-def verify() -> int:
-    """A round-trip that changes nothing must produce a byte-identical file."""
-    failures = 0
-    for name, path in CATALOGS.items():
-        original = path.read_text(encoding="utf8")
-        if serialize(json.loads(original)) != original:
-            print(f"FAIL: re-serializing {path} does not reproduce it byte for byte")
-            failures += 1
-        else:
-            print(f"ok: {path}")
-    return failures
-
-
 # A call wrapped after `String(` and a literal holding `\"` both read as a key. The first pattern
 # missed both, so a wrapped message and every one naming a quoted value never reached the catalog.
-PLUGIN_KEY = re.compile(r'String\(\s*localized:\s*"((?:[^"\\]|\\.)*)"')
+PLUGIN_KEY = re.compile(r'String\(\s*localized:\s*"(?!"")((?:[^"\\]|\\.)*)"')
+PLUGIN_MULTILINE_KEY = re.compile(r'String\(\s*localized:\s*"""[ \t]*\n(.*?)\n([ \t]*)"""', re.DOTALL)
 SWIFT_ESCAPE = re.compile(r'\\(u\{[0-9A-Fa-f]+\}|[ntr0"\'\\])')
 SWIFT_ESCAPED_CHARACTER = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", '"': '"', "'": "'", "\\": "\\"}
 
@@ -192,74 +98,93 @@ def swift_literal_value(literal: str) -> str:
     return SWIFT_ESCAPE.sub(replace, literal)
 
 
-def plugin_keys() -> list[str]:
-    """Every literal a plugin asks to localize, in the order the sources give them.
+def swift_multiline_literal(body: str, indent: str) -> str:
+    """The text of a `\"\"\"` literal: the closing delimiter's indent is stripped from every line,
+    and a line ending in an unescaped backslash continues without a newline."""
+    text = ""
+    for line in body.split("\n"):
+        line = line.removeprefix(indent)
+        trailing = len(line) - len(line.rstrip("\\"))
+        if trailing % 2:
+            text += line[:-1]
+        else:
+            text += line + "\n"
+    return text.removesuffix("\n")
 
-    `String(localized:)` resolves against `Bundle.main`, which for a loaded `.tableplugin` is the
-    host app, so a plugin's strings are looked up in the app's catalog and nowhere else. Xcode
-    cannot put them there: it extracts per target, and the plugin targets are not the app target.
-    So a plugin string reaches a translator only if something adds the key by hand, which is what
-    this does.
-    """
+
+def source_literals(source: str) -> list[str]:
+    literals = [match.group(1) for match in PLUGIN_KEY.finditer(source)]
+    literals += [swift_multiline_literal(*match.groups()) for match in PLUGIN_MULTILINE_KEY.finditer(source)]
+    return literals
+
+
+def hidden_keys(roots: tuple[Path, ...] = HIDDEN_SOURCE_ROOTS) -> list[str]:
+    """Every literal that plugin and package code asks to localize, in source order."""
     seen: dict[str, None] = {}
-    for path in sorted(Path("Plugins").rglob("*.swift")):
-        if "Tests" in path.parts:
-            continue
-        for match in PLUGIN_KEY.finditer(path.read_text(encoding="utf8", errors="replace")):
-            literal = match.group(1)
-            # An interpolated key is a different defect: it never matches any catalog entry.
-            if literal and "\\(" not in literal:
-                seen.setdefault(swift_literal_value(literal), None)
+    for root in roots:
+        for path in sorted(root.rglob("*.swift")):
+            # Tests never ship, and `.build` holds SwiftPM's checkouts of third-party code.
+            if "Tests" in path.parts or any(part.startswith(".") for part in path.parts):
+                continue
+            for literal in source_literals(path.read_text(encoding="utf8", errors="replace")):
+                # An interpolated key is a different defect: it never matches any catalog entry.
+                if literal and "\\(" not in literal:
+                    seen.setdefault(swift_literal_value(literal), None)
     return list(seen)
+
+
+def is_managed(entry: dict) -> bool:
+    # Symbol generation stays off: the app sets STRING_CATALOG_GENERATE_SYMBOLS, which covers every
+    # manual key, and keys such as "Output" and "output" would generate the same symbol.
+    return entry.get("extractionState") == "manual" and entry.get("generatesSymbol") is False
+
+
+def unmanaged_keys(strings: dict, keys: list[str]) -> list[str]:
+    return [key for key in keys if not is_managed(strings.get(key) or {})]
+
+
+def manage(strings: dict, keys: list[str]) -> None:
+    for key in keys:
+        entry = strings.setdefault(key, {})
+        entry["extractionState"] = "manual"
+        entry["generatesSymbol"] = False
 
 
 def plugins(add: bool) -> int:
     path = CATALOGS["mac"]
     catalog = load(path)
     strings = catalog["strings"]
-    missing = [key for key in plugin_keys() if key not in strings]
+    pending = unmanaged_keys(strings, hidden_keys())
 
-    if not missing:
-        print(f"ok: every plugin string is in {path}")
+    if not pending:
+        print(f"ok: every plugin and package string is in {path}, managed manually")
         return 0
 
     if not add:
-        print(f"{len(missing)} plugin strings are missing from {path}:")
-        for key in missing[:20]:
+        print(f"{len(pending)} plugin or package strings are missing from {path} or not managed manually:")
+        for key in pending[:20]:
             print(f"  {key!r}")
-        if len(missing) > 20:
-            print(f"  ... and {len(missing) - 20} more")
-        print("Run with --add to append them as untranslated source entries.")
+        if len(pending) > 20:
+            print(f"  ... and {len(pending) - 20} more")
+        print("Run with --add to add them and mark them managed manually.")
         return 1
 
-    for key in missing:
-        strings[key] = {}
-    path.write_text(serialize(catalog), encoding="utf8")
-    print(f"added {len(missing)} plugin strings to {path}")
+    manage(strings, pending)
+    write(path, catalog)
+    print(f"managed {len(pending)} plugin and package strings in {path}")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["export", "import", "plugins", "status", "verify"])
-    parser.add_argument("language", nargs="?", help="for example vi, tr, zh-Hans")
+    parser.add_argument("command", choices=["plugins", "status"])
     parser.add_argument("--target", choices=sorted(CATALOGS), default="mac")
-    parser.add_argument("--add", action="store_true", help="for plugins: append the missing keys")
+    parser.add_argument("--add", action="store_true", help="for plugins: add and manage the pending keys")
     args = parser.parse_args()
 
-    if args.command == "verify":
-        return verify()
     if args.command == "plugins":
         return plugins(args.add)
-    if args.command == "status":
-        status(args.target)
-        return 0
-    if not args.language:
-        sys.exit(f"FATAL: {args.command} needs a language, for example: {args.command} vi")
-    if args.command == "export":
-        export(args.target, args.language)
-    else:
-        merge(args.target, args.language)
+    status(args.target)
     return 0
 
 

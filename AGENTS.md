@@ -93,7 +93,7 @@ swiftlint lint --strict <files>
 
 1. **Tests.** Unit tests for testable behavior; `TableProUITests` automation for a user flow that runs deterministically, or the reason in the PR. UI suites subclass `UITestCase`. Details: `.claude/rules/tests.md`.
 2. **CHANGELOG.md.** A user-visible change gets one fragment under `[Unreleased]`, in the existing canonical section. Format: `.claude/rules/changelog.md`.
-3. **Localization.** `String(localized:)` for user-facing strings outside SwiftUI literals, never with interpolation (use `String(format: String(localized: "Preview %@"), name)`). Do not localize technical terms. Plugin messages must be in the app catalog: `python3 scripts/localization.py plugins --add`.
+3. **Localization.** `String(localized:)` for user-facing strings outside SwiftUI literals, never with interpolation (use `String(format: String(localized: "Preview %@"), name)`). Do not localize technical terms. Plugin and package messages must be in the app catalog, managed manually: `python3 scripts/localization.py plugins --add`. Never hand-edit a `.xcstrings`; translations go through `xcodebuild -exportLocalizations` and `-importLocalizations`.
 4. **Docs.** A new shortcut, UI or settings change, or driver change updates `docs/` (Mintlify). Follow `docs/STYLE.md`.
 5. **Lint** the changed Swift files with `swiftlint lint --strict`.
 6. **Atomic API changes.** A rename or signature change updates every caller and test in the same commit.

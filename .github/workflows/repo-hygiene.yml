@@ -128,11 +128,14 @@ jobs:
       - name: Validate the test suite attribute check
         run: python3 scripts/ci/test_check_test_suite_attributes.py
 
-      # A plugin's String(localized:) resolves against Bundle.main, which is the host app, so its
-      # strings live in the app's catalog. Xcode extracts per target and the plugin targets are not
-      # the app target, so nothing puts them there: 537 strings had never reached a translator.
+      # A plugin's or package's String(localized:) resolves against Bundle.main, which is the host
+      # app, so its strings live in the app's catalog. Xcode never finds them in the app's sources,
+      # so each one must be there and managed manually, or Xcode's next sync deletes it.
       - name: Check plugin strings reach the string catalog
         run: python3 scripts/localization.py plugins
+
+      - name: Validate the localization script
+        run: python3 scripts/test_localization.py
 
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
