@@ -407,7 +407,11 @@ extension DatabaseManager {
         }
 
         if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
-            try await reconnectOntoDatabase(database, for: connectionId)
+            if let session = session(for: connectionId), usesDatabaseLanes(session) {
+                try await moveBrowsingOntoLane(database, for: connectionId)
+            } else {
+                try await reconnectOntoDatabase(database, for: connectionId)
+            }
         } else if driver is PluginDriverAdapter {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
             let sessionStartedAt = session(for: connectionId)?.connectedAt
@@ -447,6 +451,118 @@ extension DatabaseManager {
         )
         AppEvents.shared.browseContainerChanged.send(connectionId)
     }
+
+    /// Browses `database` on its own connection, for an engine that cannot change database on a live
+    /// connection but can open a second one to the same server.
+    ///
+    /// The connection being left is parked, not closed, so its transaction, temp tables and settings
+    /// stay where the user left them, and coming back to it is a swap rather than a connect. Only a
+    /// database never browsed before opens a connection, and that open happens before anything moves:
+    /// a server that refuses it (no access, too many connections) leaves the session as it was.
+    ///
+    /// `connection.database` follows the browsed database, as it did when a switch reconnected, so
+    /// every reconnect path keeps dialing the database on screen.
+    private func moveBrowsingOntoLane(_ database: String, for connectionId: UUID) async throws {
+        guard let session = session(for: connectionId), let leavingDriver = session.driver else {
+            throw DatabaseError.notConnected
+        }
+        let leavingDatabase = session.resolvedBrowseDatabase
+        guard database != leavingDatabase else { return }
+        /// A transport being rebuilt ends every connection dialed through it, the one this would
+        /// promote included, so the switch waits for the connection to come back.
+        guard !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId) else {
+            throw DatabaseError.connectionFailed(Self.reconnectingSwitchMessage)
+        }
+        let sessionStartedAt = session.connectedAt
+        let generation = sessionLanes.beginSwitch(for: connectionId)
+
+        let target: DatabaseDriver
+        let freshlyOpened: Bool
+        if let parkedDriver = await answeringParkedDriver(database: database, for: connectionId) {
+            target = parkedDriver
+            freshlyOpened = false
+        } else {
+            target = try await sessionLanes.open(
+                DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+            )
+            freshlyOpened = true
+        }
+        guard sessionLanes.isCurrent(generation, for: connectionId),
+              !MetadataConnectionPool.shared.isReplacingTransport(for: connectionId),
+              self.session(for: connectionId)?.connectedAt == sessionStartedAt,
+              self.session(for: connectionId)?.driver === leavingDriver
+        else {
+            if freshlyOpened { target.disconnect() }
+            throw CancellationError()
+        }
+
+        _ = sessionLanes.unpark(database: database, for: connectionId)
+        sessionLanes.park(leavingDriver, database: leavingDatabase, for: connectionId)
+        /// A parked connection may have died while nobody used it, so the first turn on it asks the
+        /// server again rather than trusting the answer the previous browsed connection earned.
+        if freshlyOpened {
+            lastVerifiedAt[connectionId] = Date()
+        } else {
+            lastVerifiedAt.removeValue(forKey: connectionId)
+        }
+        let targetSchema = (target as? SchemaSwitchable)?.currentSchema
+        updateSession(connectionId) { session in
+            session.connection.database = database
+            session.effectiveConnection?.database = database
+            session.browseDatabase = database
+            session.browseSchema = targetSchema
+            session.driver = target
+            session.status = .connected
+        }
+        /// The connection on screen is now one that answered, whatever the check on the database
+        /// just left concluded about that one.
+        if freshlyOpened || sessionLanes.isFresh(target) {
+            markSessionLive(connectionId)
+        }
+        /// The saved schema is what the next launch restores on this connection, and the one on
+        /// file belongs to the database just left.
+        appSettingsStorage.saveLastSchema(targetSchema, for: connectionId)
+        await SchemaService.shared.invalidate(connectionId: connectionId)
+        Self.logger.info(
+            "switchDatabase moved onto a database connection conn=\(connectionId, privacy: .public) reused=\(!freshlyOpened)"
+        )
+    }
+
+    /// The connection parked for `database`, if it still answers. One that died is closed, and if it
+    /// was holding a transaction, the next work on that database is told the server rolled it back.
+    /// A turn running on it right now is answer enough, and asking would wait for that turn.
+    private func answeringParkedDriver(database: String, for connectionId: UUID) async -> DatabaseDriver? {
+        let key = SessionDriverGate.Key(connectionId: connectionId, database: database)
+        guard var parked = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
+        /// A check already running decides for this switch too: once it ends it has either confirmed
+        /// the driver or parked a replacement, and that is what gets promoted.
+        if sessionLanes.isVerifying(parked) {
+            await sessionLanes.waitForVerification(of: parked)
+            guard let settled = sessionLanes.parkedDriver(for: connectionId, database: database) else { return nil }
+            parked = settled
+        }
+        if sessionLanes.isFresh(parked) || sessionDriverGate.isHeld(key) { return parked }
+        /// Read before the ping, which on a closed socket leaves libpq reporting no state at all.
+        let held = await parked.heldSessionTransactionState()
+        do {
+            try await sessionDriverGate.withExclusiveAccess(key) {
+                try await parked.ping()
+            }
+            sessionLanes.markVerified(parked)
+            return parked
+        } catch {
+            guard sessionLanes.parkedDriver(for: connectionId, database: database) === parked else { return nil }
+            sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
+            if !held.permitsAppTransaction {
+                sessionLanes.markTransactionLost(database: database, for: connectionId)
+            }
+            return nil
+        }
+    }
+
+    static let reconnectingSwitchMessage = String(
+        localized: "The connection is reconnecting. Switch databases again once it is back."
+    )
 
     /// Reopens the connection on `database`, for an engine that cannot change database on a live
     /// connection.
@@ -535,10 +651,16 @@ extension DatabaseManager {
         /// ping skips at its `queriesInFlight` guard instead of entering a driver that is not
         /// thread-safe alongside this. Holding `sessionDriverGate` is not enough on its own: the
         /// ping never asks for that gate.
-        try await sessionDriverGate.withExclusiveAccess(connectionId) {
+        let gateKey = browsedGateKey(for: connectionId)
+        try await sessionDriverGate.withExclusiveAccess(gateKey) {
             try await trackOperation(sessionId: connectionId) {
                 try Task.checkCancellation()
                 guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                    throw CancellationError()
+                }
+                /// A database switch while this waited moved the browsed connection to another
+                /// database, whose schema this was never asked to change.
+                if let database = gateKey.database, session(for: connectionId)?.resolvedBrowseDatabase != database {
                     throw CancellationError()
                 }
                 guard let schemaDriver = driver(for: connectionId) as? SchemaSwitchable else {
@@ -904,6 +1026,8 @@ extension DatabaseManager {
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        sessionLanes.closeAll(for: connectionId)
+        monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)

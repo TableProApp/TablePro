@@ -66,6 +66,15 @@ extension DatabaseManager {
         else {
             return .sessionDriver
         }
+        /// A database the user has browsed keeps its own session connection, so its tabs carry on in
+        /// the transaction, temp tables and settings they left there.
+        /// A database whose connection ended with a transaction still open takes the session path
+        /// once more, where that loss is reported before anything runs on a replacement.
+        if usesDatabaseLanes(session),
+           sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) != nil
+            || sessionLanes.hasTransactionLoss(database: scope.database, for: scope.connectionId) {
+            return .sessionDriver
+        }
         guard canPool(session) else {
             return .unavailable(
                 String(
@@ -289,7 +298,7 @@ extension DatabaseManager {
     /// serve the wrong database entirely. And one whose database lives inside the driver
     /// instance, rather than on a server it reconnects to, hands the pool a different database
     /// altogether: `supportsConnectionPooling` is how those opt out.
-    private func canPool(_ session: ConnectionSession) -> Bool {
+    internal func canPool(_ session: ConnectionSession) -> Bool {
         guard session.connection.type.supportsConnectionPooling else { return false }
         let actions = PluginMetadataRegistry.shared.snapshot(
             for: session.connection.type
@@ -298,6 +307,15 @@ extension DatabaseManager {
             if case .selectDatabaseFromConnectionField = action { return true }
             return false
         }
+    }
+
+    /// Whether browsing another database keeps one connection per database instead of reconnecting.
+    /// It takes an engine that has to reconnect to change database, and a server that accepts a
+    /// second connection to the same definition: the test pooling already answers.
+    internal func usesDatabaseLanes(_ session: ConnectionSession) -> Bool {
+        guard PluginMetadataRegistry.shared.snapshot(for: session.connection.type)?
+            .capabilities.requiresReconnectForDatabaseSwitch == true else { return false }
+        return canPool(session)
     }
 
     /// Whether the connection is running work that must not be interrupted, whatever its age.
@@ -309,7 +327,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(connectionId: scope.connectionId) { driver in
+        try await withSessionDriverTurn(scope: scope) { driver in
             try await pin(driver, to: scope)
             return try await body(driver)
         }
@@ -322,7 +340,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> TableReadTurn<T> {
-        try await withSessionDriverTurn(connectionId: scope.connectionId) { driver in
+        try await withSessionDriverTurn(scope: scope) { driver in
             let route = executionRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await pin(driver, to: scope)
@@ -331,30 +349,127 @@ extension DatabaseManager {
     }
 
     private func withSessionDriverTurn<R>(
-        connectionId: UUID,
+        scope: DatabaseScope,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
-        /// Outside the gate on purpose. A verification that has to reconnect runs the whole
-        /// reconnect, which restores the schema and the database on the new driver, and doing that
-        /// while holding the gate would deadlock the very thing waiting to be pinned.
-        await verifyBeforeUse(connectionId)
+        let connectionId = scope.connectionId
+        let lane = activeSessions[connectionId].flatMap { laneDatabase(for: scope, in: $0) }
+        let startsOnBrowsed = lane == nil || lane == activeSessions[connectionId]?.resolvedBrowseDatabase
+        if startsOnBrowsed {
+            /// Outside the gate on purpose. A verification that has to reconnect runs the whole
+            /// reconnect, which restores the schema and the database on the new driver, and doing that
+            /// while holding the gate would deadlock the very thing waiting to be pinned.
+            await verifyBeforeUse(connectionId)
+        }
         /// A check that failed and could not recover left the driver installed and disconnected,
         /// so the presence of a driver below is not enough. Refusing here is the point of checking
         /// at all: without it the user's own work runs on a handle the app already knows is dead.
         guard isUsable(connectionId) else {
             throw DatabaseError.notConnected
         }
-        return try await sessionDriverGate.withExclusiveAccess(connectionId) {
+        return try await sessionDriverGate.withExclusiveAccess(
+            SessionDriverGate.Key(connectionId: connectionId, database: lane)
+        ) {
             try await trackOperation(sessionId: connectionId) {
                 try Task.checkCancellation()
                 /// Asked again once the lease has its turn, because a database switch that held the
-                /// gate can have left the driver the same way while this lease waited.
-                guard isUsable(connectionId), let driver = driver(for: connectionId) else {
+                /// gate can have left the driver the same way while this lease waited, or moved the
+                /// database this turn belongs to from the browsed connection to a parked one.
+                /// A database whose own connection is gone, its entry closed, falls back to the browsed
+                /// driver only to be turned away: a table read re-routes to the pool and anything else
+                /// is refused by `pin` before it runs a statement there.
+                guard isUsable(connectionId),
+                      let driver = sessionDriver(for: connectionId, laneDatabase: lane)
+                        ?? activeSessions[connectionId]?.driver
+                else {
                     throw DatabaseError.notConnected
                 }
-                return try await turn(driver)
+                guard let lane else { return try await turn(driver) }
+                let laneDriver = sessionLanes.isParked(driver, for: connectionId)
+                    ? try await verifiedParkedDriver(driver, database: lane, for: connectionId)
+                    : driver
+                if sessionLanes.takeTransactionLoss(database: lane, for: connectionId) {
+                    throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: lane))
+                }
+                return try await turn(laneDriver)
             }
         }
+    }
+
+    /// The turn that guards the browsed connection: per database for a connection that keeps one
+    /// connection per database, per connection otherwise.
+    internal func browsedGateKey(for connectionId: UUID) -> SessionDriverGate.Key {
+        guard let session = activeSessions[connectionId], usesDatabaseLanes(session) else {
+            return SessionDriverGate.Key(connectionId: connectionId, database: nil)
+        }
+        return SessionDriverGate.Key(connectionId: connectionId, database: session.resolvedBrowseDatabase)
+    }
+
+    /// The database whose session connection a scope runs on, for a connection that keeps one per
+    /// database; nil for every other connection, which has the one shared driver.
+    private func laneDatabase(for scope: DatabaseScope, in session: ConnectionSession) -> String? {
+        guard usesDatabaseLanes(session) else { return nil }
+        return scope.isServerScoped ? session.resolvedBrowseDatabase : scope.database
+    }
+
+    /// The driver holding `laneDatabase` right now: the browsed one, or the one parked for it.
+    private func sessionDriver(for connectionId: UUID, laneDatabase: String?) -> DatabaseDriver? {
+        guard let session = activeSessions[connectionId] else { return nil }
+        guard let laneDatabase, laneDatabase != session.resolvedBrowseDatabase else {
+            return session.driver
+        }
+        return sessionLanes.parkedDriver(for: connectionId, database: laneDatabase)
+    }
+
+    /// A parked connection nobody watched may have died while it sat idle. One that no longer
+    /// answers is replaced before the work runs, and if it was holding a transaction the work is
+    /// refused once, because running it on the new connection would carry on as if that transaction
+    /// had not just been rolled back by the server.
+    private func verifiedParkedDriver(
+        _ driver: DatabaseDriver,
+        database: String,
+        for connectionId: UUID
+    ) async throws -> DatabaseDriver {
+        if sessionLanes.isFresh(driver) { return driver }
+        /// Read before the ping: a ping that finds the socket closed leaves libpq reporting no
+        /// transaction state at all, which would read as nothing to lose.
+        let held = await driver.heldSessionTransactionState()
+        sessionLanes.beginVerifying(driver)
+        defer { sessionLanes.endVerifying(driver) }
+        do {
+            try await driver.ping()
+            sessionLanes.markVerified(driver)
+            return driver
+        } catch {
+            sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
+            /// Recorded before the reopen, which can fail or be superseded: the transaction is gone
+            /// either way, and whatever runs on this database next has to hear about it.
+            if !held.permitsAppTransaction {
+                sessionLanes.markTransactionLost(database: database, for: connectionId)
+            }
+            let generation = sessionLanes.generation(for: connectionId)
+            let reopened = try await sessionLanes.open(
+                DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+            )
+            guard sessionLanes.generation(for: connectionId) == generation,
+                  activeSessions[connectionId]?.resolvedBrowseDatabase != database
+            else {
+                reopened.disconnect()
+                throw DatabaseError.notConnected
+            }
+            sessionLanes.park(reopened, database: database, for: connectionId)
+            sessionLanes.markVerified(reopened)
+            return reopened
+        }
+    }
+
+    static func parkedTransactionLostMessage(database: String) -> String {
+        String(
+            format: String(
+                localized: "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again."
+            ),
+            database
+        )
     }
 
     /// Moves the shared driver onto the scope. It writes no session state, so the
@@ -375,7 +490,9 @@ extension DatabaseManager {
         let databaseType = session.connection.type
         if !scope.isServerScoped, pluginManager.supportsDatabaseSwitching(for: databaseType) {
             if pluginManager.requiresReconnectForDatabaseSwitch(for: databaseType) {
-                guard scope.database == session.resolvedBrowseDatabase else {
+                guard scope.database == session.resolvedBrowseDatabase
+                    || sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) === driver
+                else {
                     throw DatabaseError.queryFailed(
                         String(
                             format: String(

@@ -5,7 +5,7 @@ description: Connect to PostgreSQL 9.1 and later with the libpq driver, includin
 
 import DeclaredColumnType from "/snippets/declared-column-type.mdx";
 
-Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes database only by reconnecting. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
+Unlike MySQL, PostgreSQL will not connect without a **Database**, and a connection to the server serves that one database. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
 
 ## Connection settings
 
@@ -122,11 +122,13 @@ A `CREATE INDEX CONCURRENTLY` or `REINDEX CONCURRENTLY` that fails or is cancell
 
 ## Cross-database tabs
 
-PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).
+PostgreSQL has no in-place `USE`, so every database browsed from the [connections strip](/features/workspace-rail) gets a server connection of its own. Moving between two database entries switches between those connections without reconnecting, and each keeps its open transaction, temp tables, and `SET` values until its entry is closed or the connection ends. A tab runs on the connection of the database it is bound to.
+
+A tab bound to a database that has no entry runs on a [metadata connection](/connections/connection-form#connection-health) instead. That one is shared with the Structure tab and closes after 10 minutes idle, so open the database from the strip before starting a transaction or a `CREATE TEMP TABLE` there. A database connection that died while idle is reopened on its next use; if it held a transaction, that statement is refused once with a message saying the server rolled it back. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).
 
 ## Sessions on the server
 
-In `pg_stat_activity`, the connection your query editor uses reports `application_name` as `TablePro`. The [metadata connections](/connections/connection-form#connection-health) that read the sidebar and the Structure tab, and the ones a cross-database tab runs on, report `TablePro Metadata`. To name them yourself, put `-c application_name=reporting` in **Connection Options**: every connection then uses that name.
+In `pg_stat_activity`, each database's own connection reports `application_name` as `TablePro`, one per database entry in the strip. The [metadata connections](/connections/connection-form#connection-health) that read the sidebar and the Structure tab, and the ones a tab on a database without an entry runs on, report `TablePro Metadata`. To name them yourself, put `-c application_name=reporting` in **Connection Options**: every connection then uses that name.
 
 ## Text encoding
 
@@ -143,7 +145,7 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 ## Limitations
 
 - Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
-- A cross-database tab cannot share session state with the main connection. Statements that depend on a temp table or an open transaction have to run on one database.
+- Session state belongs to one database. A temp table or an open transaction made on `app` is not visible from a tab on `logs`, and closing the `app` entry ends it.
 - Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew. `pg_dump` 15 and later refuse PostgreSQL 9.1, so back one up with `pg_dump` 14 or earlier.
 - Before PostgreSQL 12, the [`run_maintenance`](/external-api/mcp-tools) tool's `REINDEX` with no `table` runs without `CONCURRENTLY` and rebuilds the system catalog indexes as well. While an index rebuilds, writes to its table wait, and so do reads that use that index. Run it when the database is quiet.
 

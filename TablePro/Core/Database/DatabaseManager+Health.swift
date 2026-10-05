@@ -58,6 +58,7 @@ extension DatabaseManager {
                     Self.logger.debug("Ping skipped — no active driver for \(connectionId)")
                     return false
                 }
+                await self.notePinged(mainDriver, for: connectionId)
                 do {
                     try await mainDriver.ping()
                     await self.markSessionVerified(connectionId)
@@ -69,7 +70,10 @@ extension DatabaseManager {
             },
             reconnectHandler: { [weak self] in
                 guard let self else { return .abort }
-                return await self.performHealthMonitorReconnect(connectionId: connectionId)
+                return await self.performHealthMonitorReconnect(
+                    connectionId: connectionId,
+                    failedDriver: await self.pingedDriver(for: connectionId)
+                )
             },
             onStateChanged: { [weak self] id, state in
                 guard let self else { return }
@@ -112,19 +116,33 @@ extension DatabaseManager {
     /// is not a teardown, and clearing the cache here leaves the sidebar and autocomplete empty
     /// with nothing scheduled to refill them. Success publishes `databaseDidConnect` so the same
     /// listeners that reload after a first connect or a manual reconnect run here too.
-    internal func performHealthMonitorReconnect(connectionId: UUID) async -> ConnectionHealthMonitor.ReconnectOutcome {
+    internal func performHealthMonitorReconnect(
+        connectionId: UUID,
+        failedDriver: ObjectIdentifier? = nil
+    ) async -> ConnectionHealthMonitor.ReconnectOutcome {
         guard let session = activeSessions[connectionId] else { return .abort }
+        /// The check that failed was made on one driver, and a database switch may have parked it and
+        /// put another one in its place since. Reconnecting now would disconnect the connection the
+        /// user just moved onto, with its transaction; the parked one is checked again before use.
+        if let failedDriver, let current = session.driver, ObjectIdentifier(current) != failedDriver {
+            return .success
+        }
         /// The driver this attempt is replacing. Every give-up below is fenced on it, because a
         /// reconnect blocked inside a C call cannot be cancelled and completes late: without the
         /// fence, a losing attempt would report a connection unreachable that a later one restored.
         let attemptedDriver = session.driver
-        await SchemaService.shared.prepareForReload(connectionId: connectionId)
-        await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
         /// A connection that stopped answering has most likely taken its pooled connections with it,
         /// and a rebuilt tunnel moves every one of them to a new port, so pooled work waits for the
-        /// replacement rather than dialing what is being torn down.
+        /// replacement rather than dialing what is being torn down. Begun before anything suspends,
+        /// so a database switch cannot promote another connection in the meantime.
         MetadataConnectionPool.shared.beginTransportReplacement(connectionId: connectionId)
         defer { MetadataConnectionPool.shared.endTransportReplacement(connectionId: connectionId) }
+        await SchemaService.shared.prepareForReload(connectionId: connectionId)
+        await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
+        /// Asked again after the suspensions above: a switch that landed before the replacement
+        /// began installed another database's connection, which must not be disconnected for a
+        /// failure it never had.
+        guard activeSessions[connectionId]?.driver === attemptedDriver else { return .success }
 
         do {
             guard let result = try await trackOperation(sessionId: connectionId, operation: {
@@ -255,6 +273,9 @@ extension DatabaseManager {
         // Rebuild the tunnel if needed; otherwise reuse effective connection
         let connectionForDriver: DatabaseConnection
         if session.connection.activeTunnelKind != nil {
+            /// Rebuilding the tunnel moves it to a new local port, which strands every other
+            /// database's connection on the old one.
+            await sessionLanes.closeAllNotingLostTransactions(for: session.connection.id)
             connectionForDriver = try await buildEffectiveConnection(
                 for: session.connection,
                 deadline: deadline
@@ -377,6 +398,9 @@ extension DatabaseManager {
         let replacesPooledTransport = session.connection.activeTunnelKind != nil || session.liveness != .live
         if replacesPooledTransport {
             MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
+            /// The other databases' connections were dialed through the same transport, so they go
+            /// with it and reopen on their next use.
+            await sessionLanes.closeAllNotingLostTransactions(for: sessionId)
         }
         defer {
             if replacesPooledTransport {

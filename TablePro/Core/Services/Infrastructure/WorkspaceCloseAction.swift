@@ -103,9 +103,9 @@ internal enum WorkspaceCloseAction {
             return
         }
         /// The entry goes now, before the connection leaves the container, because leaving it is a
-        /// reconnect and a schema reload on every engine that cannot change database on a live
-        /// connection: waiting for that left the row the user just closed sitting there for seconds
-        /// while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
+        /// schema reload, and on an engine that can neither change database on a live connection nor
+        /// open a second one, a reconnect: waiting for that left the row the user just closed sitting
+        /// there for seconds while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
         /// browse cursor's own row early, and the cursor follows underneath.
         if !victims.isEmpty {
             closeTabs(victims.map(\.id), across: coordinators)
@@ -153,6 +153,9 @@ internal enum WorkspaceCloseAction {
             }
         }
         landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
+        /// The database keeps its own connection while its entry is listed; closing the entry is
+        /// what ends it, and the connection has already moved off it above.
+        DatabaseManager.shared.sessionLanes.close(database: workspace.container, for: workspace.connectionId)
     }
 
     /// Shown, then asked, for the same reason a connection close reveals itself first: an alert

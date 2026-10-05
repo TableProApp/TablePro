@@ -125,7 +125,7 @@ A tab is bound to one connection, database, and schema, and every query, refresh
 The centred toolbar control names the frontmost tab's database, and clicking it switches to another. That is how you tell two tabs on one connection apart. On engines with schemas, **Database > Schema** names the one in use and switches it.
 
 <Info>
-PostgreSQL, Redshift, and CockroachDB change database only by reconnecting, so a tab bound to a second database runs on its own connection: no shared temp tables, session variables, or open transaction. See [PostgreSQL](/databases/postgresql#cross-database-tabs).
+PostgreSQL, Redshift, and CockroachDB keep one connection per database in the connections strip, and a tab runs on the connection of the database it is bound to. Temp tables, session variables, and an open transaction stay with that database. See [PostgreSQL](/databases/postgresql#cross-database-tabs).
 </Info>
 
 ## What survives a restart

@@ -45,7 +45,7 @@ Table and view DDL comes from CockroachDB's own `SHOW CREATE`, so the DDL tab sh
 
 `EXPLAIN` and `EXPLAIN ANALYZE` render as a visual plan tree. CockroachDB returns text plans rather than JSON, and the text is parsed into the tree. See [EXPLAIN Visualization](/features/explain-visualization).
 
-Changing database means reconnecting, as on PostgreSQL. A tab bound to a database other than the connection's active one runs on a separate connection for it, sharing no temp tables, session variables, or open transaction with the query editor. See [Cross-database tabs](/databases/postgresql#cross-database-tabs).
+As on PostgreSQL, each database browsed from the connections strip keeps a connection of its own, so moving between databases does not reconnect, and a tab runs on its database's connection. See [Cross-database tabs](/databases/postgresql#cross-database-tabs).
 
 ## Limitations
 

@@ -546,6 +546,10 @@ extension MCPConnectionBridge {
     }
 
     func dropDatabase(connectionId: UUID, name: String) async throws -> JsonValue {
+        await MainActor.run {
+            MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
+            DatabaseManager.shared.sessionLanes.close(database: name, for: connectionId)
+        }
         let (driver, _) = try await resolveDriver(connectionId)
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)

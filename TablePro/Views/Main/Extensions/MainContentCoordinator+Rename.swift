@@ -82,6 +82,7 @@ extension MainContentCoordinator {
             /// is, so its leases on that database are closed first.
             if let database = ref.database {
                 MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: database)
+                DatabaseManager.shared.sessionLanes.close(database: database, for: connectionId)
             }
             guard let scope = browseScope else { throw DatabaseError.notConnected }
             let route = DatabaseManager.shared.executionRoute(for: scope)

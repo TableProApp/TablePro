@@ -156,7 +156,10 @@ extension DatabaseManager {
         } catch {
             guard activeSessions[connectionId]?.driver === driver else { return }
             Self.logger.info("Connection \(connectionId) did not answer before use, reconnecting")
-            let outcome = await performHealthMonitorReconnect(connectionId: connectionId)
+            let outcome = await performHealthMonitorReconnect(
+                connectionId: connectionId,
+                failedDriver: ObjectIdentifier(driver)
+            )
             guard case .retry(let failure) = outcome else { return }
             /// The reconnect disconnected the installed driver before it failed, so the session is
             /// holding a handle that cannot work. Saying so is the whole point: `ensureConnected`

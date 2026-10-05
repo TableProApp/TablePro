@@ -686,6 +686,7 @@ extension MainContentCoordinator {
             : PluginManager.shared.containerEntityName(for: connection.type)
         let name = target.name
         let kind = target.kind
+        let connectionId = connectionId
         try await DatabaseManager.shared.runContainerOperation(
             description: String(format: String(localized: "Drop %1$@ \"%2$@\""), entity, name),
             kind: .destructiveQuery,
@@ -698,7 +699,15 @@ extension MainContentCoordinator {
             isConfirmationPreCleared: true
         ) { driver in
             switch kind {
-            case .database: try await driver.dropDatabase(name: name)
+            case .database:
+                /// PostgreSQL refuses to drop a database while a backend is attached to it, and the
+                /// connection kept for it and the pooled ones are such backends. Closed only here,
+                /// once the drop is authorized: a refused drop must not end the session on it.
+                await MainActor.run {
+                    MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
+                    DatabaseManager.shared.sessionLanes.close(database: name, for: connectionId)
+                }
+                try await driver.dropDatabase(name: name)
             case .schema: try await driver.dropSchema(name: name)
             }
         }

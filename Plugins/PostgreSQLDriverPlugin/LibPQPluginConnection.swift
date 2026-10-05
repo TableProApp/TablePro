@@ -658,6 +658,30 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return Self.transactionState(PQtransactionStatus(conn))
     }
 
+    /// libpq has no round trip that sends no statement, so the socket is read first: that sees a
+    /// server that closed the session, and inside a transaction block it is the whole check
+    /// (`LibPQSessionCheck.sendsStatement`). A statement the server refuses still proves the
+    /// backend answered, so it does not fail the ping.
+    func ping() async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            guard LibPQSessionCheck.sendsStatement(in: transactionStateOnQueue()) else { return }
+            do {
+                if let deadline = activeConnectDeadline {
+                    _ = try executeConnectQuerySync(LibPQSessionCheck.statement, deadline: deadline)
+                } else {
+                    _ = try executeQuerySync(LibPQSessionCheck.statement)
+                }
+            } catch {
+                guard PQstatus(conn) == CONNECTION_OK,
+                      let sqlState = LibPQSessionCheck.refusalState(of: error)
+                else { throw error }
+                Self.logger.info("Ping refused with SQLSTATE \(sqlState, privacy: .public) on a live session")
+            }
+        }
+    }
+
     func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let cap = max(rowCap, 1)

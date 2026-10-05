@@ -59,8 +59,10 @@ struct SwitchSchemaTests {
 
         let acquired = SchemaSwitchLatch()
         let release = SchemaSwitchLatch()
+        /// PostgreSQL takes one turn per database, so the turn held is the browsed database's.
+        let gateKey = DatabaseManager.shared.browsedGateKey(for: connection.id)
         let holder = Task { @MainActor in
-            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connection.id) {
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(gateKey) {
                 acquired.open()
                 await release.wait()
             }
