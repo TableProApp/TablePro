@@ -103,6 +103,10 @@ final class UsersRolesViewModel: ObservableObject {
     private var changeManagerForwarding: AnyCancellable?
     private var privilegeTreeForwarding: AnyCancellable?
 
+    /// The tab's view loads again on every tab or connection switch, and a non-forced load resets
+    /// the change manager, so once a snapshot is in only a forced load may replace it.
+    private var hasLoadedSnapshot = false
+
     /// Every view on this tab observes the view model, not `changeManager`, and reads the staged
     /// grants, the change count and each principal's stage through it. A change the manager
     /// published reached none of them: a ticked privilege stayed unticked, and Review & Apply and
@@ -196,6 +200,7 @@ final class UsersRolesViewModel: ObservableObject {
     // MARK: - Loading
 
     func load(forceReload: Bool = false) async {
+        guard forceReload || !hasLoadedSnapshot else { return }
         guard let driver = DatabaseManager.shared.principalDriver(for: connectionId) else {
             loadError = String(
                 localized: "This connection does not support user and role management."
@@ -223,14 +228,20 @@ final class UsersRolesViewModel: ObservableObject {
 
         do {
             let snapshot = try await loader.load(forceReload: forceReload)
-            databases = try await loader.databases()
-            connectedPrincipal = try await loader.currentPrincipal()
+            let databases = try await loader.databases()
+            let connectedPrincipal = try await loader.currentPrincipal()
+            /// Another load put its snapshot in while this one waited, and work may be staged on it.
+            guard forceReload || !hasLoadedSnapshot else { return }
+
+            self.databases = databases
+            self.connectedPrincipal = connectedPrincipal
 
             if forceReload {
                 changeManager.reload(principals: snapshot.principals, catalog: snapshot.catalog)
             } else {
                 changeManager.load(principals: snapshot.principals, catalog: snapshot.catalog)
             }
+            hasLoadedSnapshot = true
 
             privilegeTree.configure(
                 databases: databases,

@@ -48,10 +48,49 @@ extension MainContentCoordinator {
     }
 
     private func loadSchemaForNewSession() {
-        Task { @MainActor in
-            self.setupPluginDriver()
-            await self.loadSchemaIfNeeded()
+        setupPluginDriver()
+        startSchemaLoad()
+    }
+
+    /// The schema half of an activation, which runs on every appearance of this connection's
+    /// content, a connection switch included. A catalog and an autocomplete provider that are
+    /// already loaded are left alone, so coming back to a connection queries nothing.
+    func loadSchemaOnActivation() {
+        let scope = services.databaseManager.browseScope(for: connectionId)
+        let action = SchemaLoadPolicy.activationAction(
+            hasLiveDriver: hasLiveDriver,
+            catalog: services.schemaService.state(for: connectionId),
+            autocompletePopulated: scope.map { services.schemaProviderRegistry.isPopulated($0) } ?? false,
+            loadInFlight: schemaLoadTask != nil
+        )
+        Self.logger.info(
+            "[schema] activation connId=\(self.connectionId, privacy: .public) action=\(String(describing: action), privacy: .public)"
+        )
+        switch action {
+        case .none:
+            return
+        case .awaitConnection:
+            armPostConnectSchemaLoad()
+        case .load:
+            startSchemaLoad()
         }
+    }
+
+    /// Starts the schema load, or joins the one already running, and returns it. Every caller
+    /// shares one load, so opening a connection no longer fetches every column twice, once for the
+    /// view restoring its tabs and once for the view appearing.
+    @discardableResult
+    func startSchemaLoad() -> Task<Void, Never> {
+        if let schemaLoadTask { return schemaLoadTask }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadSchema()
+            self.schemaLoadTask = nil
+            self.schemaLoadDriver = nil
+        }
+        schemaLoadTask = task
+        schemaLoadDriver = services.databaseManager.driver(for: connectionId)
+        return task
     }
 
     func loadSchema() async {

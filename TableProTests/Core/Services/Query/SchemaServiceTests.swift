@@ -240,4 +240,18 @@ struct SchemaServiceTests {
         }
         #expect(isFailed)
     }
+
+    /// A load cancelled before anything arrived used to leave `.loading` behind, a spinner nothing
+    /// would ever replace and a state every "load what is missing" check reads as a load in flight.
+    @Test("a first load that is cancelled settles back to idle")
+    func cancelledFirstLoadSettlesToIdle() async {
+        let connection = TestFixtures.makeConnection(database: "")
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.fetchTablesError = CancellationError()
+        let service = SchemaService()
+
+        await service.load(connectionId: connection.id, driver: driver, connection: connection)
+
+        #expect(service.state(for: connection.id) == .idle)
+    }
 }

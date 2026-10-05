@@ -377,6 +377,19 @@ final class MainContentCoordinator: ObservableObject {
     private var draftSaveTask: Task<Void, Never>?
     private var terminationObserver: NSObjectProtocol?
     internal var postConnectCancellable: AnyCancellable?
+    /// Owned here rather than by the view that asks for it: a view's `task` is cancelled whenever a
+    /// connection switch takes its pane out of the window, and a cancelled first load left the
+    /// object list without anything to load it again.
+    internal var schemaLoadTask: Task<Void, Never>?
+    /// The driver `schemaLoadTask` reads through. A reconnect installs a new one, and a load still
+    /// running on the old driver says nothing about the catalog the new one sees.
+    internal weak var schemaLoadDriver: (any DatabaseDriver)?
+    /// The coordinator's, not the view's: a session that drops and comes back swaps the content
+    /// view out and in again, and restoring the saved tabs a second time over the live ones replaced
+    /// whatever changed since the last save.
+    internal var hasRestoredTabs = false
+    /// How many times this connection's content has appeared, a connection switch back included.
+    internal private(set) var activationCount = 0
     private var externalFileModCancellable: AnyCancellable?
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
@@ -391,7 +404,7 @@ final class MainContentCoordinator: ObservableObject {
         let mineContent: String
         let diskContent: String
     }
-    private var fileWatcher: DatabaseFileWatcher?
+    internal private(set) var fileWatcher: DatabaseFileWatcher?
 
     /// Set during handleTabChange to suppress redundant column-change reconfiguration
     internal var isHandlingTabSwitch = false
@@ -778,31 +791,36 @@ final class MainContentCoordinator: ObservableObject {
 
     func markActivated() {
         let start = Date()
+        activationCount += 1
         let wasAlreadyActive = _didActivate.withLock { current -> Bool in
             let prior = current
             current = true
             return prior
         }
+        /// This runs on every appearance, and a connection switch is one: it takes this
+        /// connection's panes out of the window and puts them back. Only the first one starts what
+        /// lives as long as the coordinator.
         if !wasAlreadyActive {
             services.schemaProviderRegistry.setLiveScopeProvider(CoordinatorLiveScopeProvider.shared)
             services.schemaProviderRegistry.retain(for: connection.id)
+            registerForPersistence()
+            /// Recovery records which connections have a live coordinator, which only changes here
+            /// and in `teardown()`, so a switch has nothing new to write.
+            SessionRecoveryTracker.sync()
+            startPeriodicSave()
+            startFileWatcherIfNeeded()
         }
-        registerForPersistence()
-        SessionRecoveryTracker.sync()
-        startPeriodicSave()
         setupPluginDriver()
-        startFileWatcherIfNeeded()
-        if changeManager.pluginDriver == nil {
-            armPostConnectSchemaLoad()
-        }
+        loadSchemaOnActivation()
         Self.lifecycleLogger.info(
-            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) firstActivation=\(!wasAlreadyActive) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
-        guard services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
+        guard fileWatcher == nil,
+              services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
         let filePath = connection.database
         guard !filePath.isEmpty else { return }
 
@@ -837,6 +855,9 @@ final class MainContentCoordinator: ObservableObject {
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
+        /// `pluginDriver` is published, so writing the same driver back on every appearance
+        /// re-evaluated every view that reads the change manager for nothing.
+        guard pluginDriver !== changeManager.pluginDriver else { return }
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
     }
@@ -937,6 +958,8 @@ final class MainContentCoordinator: ObservableObject {
             terminationObserver = nil
         }
         postConnectCancellable = nil
+        schemaLoadTask?.cancel()
+        schemaLoadTask = nil
         externalFileModCancellable = nil
         sourceFileDiskChangeMonitor.cancel()
         schemaSwitchCancellable = nil
@@ -1040,8 +1063,11 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     /// Load schema if not already loaded by another window for this connection.
+    /// A second window on a connection, or this view mounting again, finds the schema loaded and
+    /// leaves it alone instead of reloading the autocomplete every window shares.
     func loadSchemaIfNeeded() async {
-        await loadSchema()
+        loadSchemaOnActivation()
+        await schemaLoadTask?.value
     }
 
     /// Initialize view with connection info and load schema (legacy — used by first window)

@@ -209,7 +209,9 @@ struct AIChatPanelView: View {
                 pinnedToBottom = atBottom
                 bottomVisibleMessageID = atBottom ? lastMessageID : visibleMessages.dropLast().last?.id
             }
-            .onAppear { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
+            .modifier(ScrollsToBottomOnFirstAppearance {
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            })
             .onChange(of: visibleMessages.count) { _ in
                 if pinnedToBottom {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
@@ -737,5 +739,22 @@ private struct ChatAtBottomKey: PreferenceKey {
 
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = nextValue()
+    }
+}
+
+/// Re-adding the pane to the window fires `onAppear` again while the scroll view keeps its offset,
+/// so scrolling on every appearance threw a reader who had scrolled up back to the bottom. The flag
+/// lives with the scroll view, so a transcript rebuilt after the empty state still opens at the end.
+private struct ScrollsToBottomOnFirstAppearance: ViewModifier {
+    let scrollToBottom: () -> Void
+
+    @State private var hasScrolled = false
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !hasScrolled else { return }
+            hasScrolled = true
+            scrollToBottom()
+        }
     }
 }

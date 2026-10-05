@@ -12,6 +12,7 @@ internal struct SchemaTextFieldView: View {
     let context: FieldEditorContext
 
     @State private var draft: String = ""
+    @State private var hasSeededDraft = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -20,7 +21,7 @@ internal struct SchemaTextFieldView: View {
             .autocorrectionDisabled(true)
             .focused($isFocused)
             .disabled(context.isReadOnly)
-            .onAppear { draft = context.value.wrappedValue }
+            .onAppear(perform: seedDraftOnFirstAppearance)
             .onChange(of: context.value.wrappedValue) { newValue in
                 guard !isFocused else { return }
                 draft = newValue
@@ -30,6 +31,15 @@ internal struct SchemaTextFieldView: View {
                 commit()
             }
             .onSubmit { commit() }
+    }
+
+    /// A connection switch or a trailing-pane swap removes the field and re-adds it with the draft
+    /// intact. Reseeding there overwrote typing not yet committed, and the blur that follows then
+    /// found nothing to commit. A real change of the stored value still arrives through `onChange`.
+    private func seedDraftOnFirstAppearance() {
+        guard !hasSeededDraft else { return }
+        hasSeededDraft = true
+        draft = context.value.wrappedValue
     }
 
     private func commit() {

@@ -58,7 +58,6 @@ struct MainContentView: View {
     @State var inspectorContextRefreshTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
-    @State var hasInitialized = false
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
 

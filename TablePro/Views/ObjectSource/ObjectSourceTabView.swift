@@ -32,10 +32,16 @@ final class ObjectSourceLoader: ObservableObject {
 
     private let connectionId: UUID
     private let objectRef: DatabaseObjectRef
+    private let metadata: any ScopedMetadataProviding
 
-    init(connectionId: UUID, objectRef: DatabaseObjectRef) {
+    init(
+        connectionId: UUID,
+        objectRef: DatabaseObjectRef,
+        metadata: any ScopedMetadataProviding = DatabaseManager.shared
+    ) {
         self.connectionId = connectionId
         self.objectRef = objectRef
+        self.metadata = metadata
     }
 
     var source: String {
@@ -70,6 +76,14 @@ final class ObjectSourceLoader: ObservableObject {
         }
     }
 
+    /// A connection switch re-parents the tab and SwiftUI restarts its `.task`, so an appearance
+    /// fetches only while nothing is loaded. A cancelled or failed load is not `.loaded`, so the
+    /// next appearance retries it; Reload and Try Again call `load` and always fetch.
+    func loadIfNeeded() async {
+        if case .loaded = state { return }
+        await load()
+    }
+
     /// One round trip. Re-listing the schema to recover the attributes cost a full catalog scan
     /// per open and per reload, for values the sidebar's listing already carried into the ref. A
     /// type is the exception: its labels are what the viewer edits, so they are read fresh.
@@ -79,7 +93,7 @@ final class ObjectSourceLoader: ObservableObject {
             database: objectRef.database,
             schema: objectRef.schema
         )
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { [objectRef] driver in
+        return try await metadata.withMetadataDriver(scope: scope) { [objectRef] driver in
             switch objectRef.kind {
             case .procedure, .function:
                 guard let routine = objectRef.routine else {
@@ -147,7 +161,7 @@ struct ObjectSourceTabView: View {
             Divider()
             content
         }
-        .task { await loader.load() }
+        .task { await loader.loadIfNeeded() }
     }
 
     /// Only an enum has anything to edit in place: a label is appended or renamed with one

@@ -93,7 +93,9 @@ struct CreateTableView: View {
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
-            selectionState.indices = []
+            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
+            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
+            selectionState.indices = selectedRows
             draft.resolveForm(
                 from: DatabaseManager.shared.driver(for: connection.id)?.createTableFormSpec(schema: scope?.schema)
             )

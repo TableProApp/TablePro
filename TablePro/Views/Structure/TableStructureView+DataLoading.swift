@@ -32,8 +32,12 @@ extension TableStructureView {
         }
         await loadColumns()
         for tab in session.tabsFetchedOnMount where tab != .columns {
+            guard !Task.isCancelled else { break }
             await loadTabDataIfNeeded(tab)
         }
+        /// A workspace switch cancels this task and SwiftUI restarts it on return, which fetches only
+        /// for a session not yet loaded, so a load cut short here must not count as one.
+        guard !Task.isCancelled else { return }
         loadSchemaForEditing()
         session.hasLoaded = true
         isInitialLoading = false
@@ -47,7 +51,9 @@ extension TableStructureView {
             columns = try await structureLoader.columns()
             tabData.markFetched(.columns)
         } catch {
-            errorMessage = error.localizedDescription
+            if let message = fetchFailure(error).message {
+                errorMessage = message
+            }
         }
 
         isLoading = false
@@ -79,6 +85,7 @@ extension TableStructureView {
                 do {
                     triggers = try await structureLoader.triggers()
                 } catch {
+                    guard fetchFailure(error) != .cancelled else { return }
                     Self.logger.error("Failed to load triggers: \(error.publicLogShape, privacy: .public)")
                     triggers = []
                 }
@@ -87,9 +94,14 @@ extension TableStructureView {
             }
             tabData.markFetched(tab)
         } catch {
+            guard let message = fetchFailure(error).message else { return }
             Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            errorMessage = error.localizedDescription
+            errorMessage = message
         }
+    }
+
+    private func fetchFailure(_ error: any Error) -> StructureFetchFailure {
+        StructureFetchFailure(error, taskIsCancelled: Task.isCancelled)
     }
 
     func loadSchemaForEditing() {
@@ -208,8 +220,37 @@ extension TableStructureView {
             }
             await session.reloadConcurrentRefreshAvailability()
         } catch {
+            guard let message = fetchFailure(error).message else { return }
             Self.logger.error("Failed to reload structure: \(error.publicLogShape, privacy: .public)")
-            errorMessage = error.localizedDescription
+            errorMessage = message
+        }
+    }
+}
+
+/// How a structure fetch that did not land ends, read from the error so it can be tested without
+/// mounting the view.
+///
+/// A workspace switch takes the pane out of the window, so SwiftUI cancels the view's `.task` and
+/// starts it again on return. A fetch cut short that way has not failed, and showing it left
+/// "CancellationError" on screen with no way to retry. An error that arrives after the task was
+/// cancelled counts as cancelled too: the next appearance fetches again and shows a real one then.
+internal enum StructureFetchFailure: Equatable {
+    case cancelled
+    case failed(String)
+
+    internal init(_ error: any Error, taskIsCancelled: Bool) {
+        if error is CancellationError || taskIsCancelled {
+            self = .cancelled
+        } else {
+            self = .failed(error.localizedDescription)
+        }
+    }
+
+    /// What the error view says. Nil for a cancelled fetch, which shows nothing.
+    internal var message: String? {
+        switch self {
+        case .cancelled: nil
+        case .failed(let message): message
         }
     }
 }
