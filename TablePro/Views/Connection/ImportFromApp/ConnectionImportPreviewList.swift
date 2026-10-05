@@ -27,7 +27,7 @@ struct ConnectionImportPreviewList: View {
     private func importItemRow(_ item: ImportItem) -> some View {
         let isSelected = selectedIds.contains(item.id)
         HStack(spacing: 8) {
-            Toggle("", isOn: Binding(
+            Toggle(item.connection.name, isOn: Binding(
                 get: { isSelected },
                 set: { newValue in
                     if newValue {
@@ -72,7 +72,7 @@ struct ConnectionImportPreviewList: View {
             Spacer()
 
             if case .duplicate = item.status, isSelected {
-                Picker("", selection: Binding(
+                Picker(String(localized: "If the connection is already there"), selection: Binding(
                     get: { duplicateResolutions[item.id] ?? .importAsCopy },
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {

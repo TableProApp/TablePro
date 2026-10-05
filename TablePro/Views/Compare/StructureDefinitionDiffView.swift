@@ -29,7 +29,7 @@ internal struct StructureDefinitionDiffView: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Picker("", selection: $isUnified) {
+                Picker(String(localized: "Diff layout"), selection: $isUnified) {
                     Text("Split").tag(false)
                     Text("Unified").tag(true)
                 }

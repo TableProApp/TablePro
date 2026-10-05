@@ -92,7 +92,7 @@ struct HighlightRuleRow: View {
     }
 
     private var columnPicker: some View {
-        Picker("", selection: columnSelection) {
+        Picker(String(localized: "Rule column"), selection: columnSelection) {
             ForEach(columnOptions) { option in
                 Text(option.label).tag(option.id)
             }
@@ -106,7 +106,6 @@ struct HighlightRuleRow: View {
         .controlSize(.small)
         .frame(maxWidth: Self.columnPickerMaximumWidth)
         .labelsHidden()
-        .accessibilityLabel(String(localized: "Rule column"))
         .accessibilityValue(rule.columnName)
         .accessibilityIdentifier("highlight-rule-column")
         .help(rule.columnName)
@@ -189,7 +188,7 @@ struct HighlightRuleRow: View {
     }
 
     private var colorPicker: some View {
-        Picker("", selection: $rule.color) {
+        Picker(String(localized: "Highlight color"), selection: $rule.color) {
             ForEach(HighlightColor.allCases) { color in
                 Label {
                     Text(color.displayName)
@@ -203,7 +202,6 @@ struct HighlightRuleRow: View {
         .controlSize(.small)
         .fixedSize()
         .labelsHidden()
-        .accessibilityLabel(String(localized: "Highlight color"))
         .accessibilityValue(rule.color.displayName)
     }
 
