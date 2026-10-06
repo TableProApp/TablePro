@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save writing a table's query into the SQL file whose tab the table was opened over.
 - Closing a database entry or connection, or disconnecting, rolling back an open transaction without asking.
 - Oracle column types shown with the wrong size, such as NVARCHAR2(100) as nvarchar2(200) and TIMESTAMP as timestamp(6)(11).
-- Oracle DDL and SQL exports failing to restore a column with a default and NOT NULL, an identity or a virtual column.
+- Oracle DDL and SQL exports failing to restore a column with a default and NOT NULL, or a virtual column.
 - Oracle DATE values missing their time of day, and TIMESTAMP fractions cut to milliseconds or misread after a leading zero.
 - Oracle NCHAR and JSON values shown as `<decode error>`, BFILE values shown as NULL, and long decimals shown rounded.
 - Oracle tables with a UROWID or REF column, or an index-organized table's ROWID, failing to load and resetting the connection.

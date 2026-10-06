@@ -390,19 +390,85 @@ struct OracleRowWriterTests {
         #expect(writes.map { $0.rowIndices } == [[0], [1]])
     }
 
-    @Test("Deletes come after inserts and updates")
-    func deletesLast() throws {
-        let delete = PluginRowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: Self.original)
-        let writes = try writer().rowWrites(
-            for: [delete, update("V", to: .text("x"))],
+    /// Moving the delete after the insert fails the insert with ORA-00001 when it reuses the deleted row's key.
+    @Test("A delete stays ahead of an insert that reuses its key")
+    func deleteKeepsItsPlace() throws {
+        let keyed = writer(keys: ["ID"], columns: ["ID", "V"], typeNames: ["ID": "NUMBER", "V": "VARCHAR2(5 BYTE)"])
+        let delete = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("7"), .text("a")])
+        let insert = PluginRowChange(rowIndex: 1, type: .insert, cellChanges: [], originalRow: nil)
+        let writes = try keyed.rowWrites(
+            for: [delete, insert],
+            insertedRowData: [1: [.text("7"), .text("b")]],
+            deletedRowIndices: [0],
+            insertedRowIndices: [1]
+        )
+        #expect(writes.map { $0.statement } == [
+            "DELETE FROM \"T1\" WHERE \"ID\" = 7",
+            "INSERT INTO \"T1\" (\"ID\", \"V\") VALUES (7, 'b')"
+        ])
+    }
+
+    @Test("Only consecutive deletes are batched, each run where it stood")
+    func interleavedDeleteRuns() throws {
+        let keyed = writer(keys: ["ID"], columns: ["ID", "V"], typeNames: ["ID": "NUMBER", "V": "VARCHAR2(5 BYTE)"])
+        func delete(_ row: Int) -> PluginRowChange {
+            PluginRowChange(rowIndex: row, type: .delete, cellChanges: [], originalRow: [.text("\(row)"), .null])
+        }
+        let update = PluginRowChange(
+            rowIndex: 3,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "V", oldValue: .null, newValue: .text("x"))],
+            originalRow: [.text("3"), .null]
+        )
+        let writes = try keyed.rowWrites(
+            for: [delete(1), delete(2), update, delete(4), delete(5)],
             insertedRowData: [:],
-            deletedRowIndices: [1],
+            deletedRowIndices: [1, 2, 4, 5],
             insertedRowIndices: []
         )
         #expect(writes.map { $0.statement } == [
-            "UPDATE \"T1\" SET \"V\" = 'x' WHERE \"ID\" = 7",
-            "DELETE FROM \"T1\" WHERE \"ID\" = 7"
+            "DELETE FROM \"T1\" WHERE \"ID\" = 1 OR \"ID\" = 2",
+            "UPDATE \"T1\" SET \"V\" = 'x' WHERE \"ID\" = 3",
+            "DELETE FROM \"T1\" WHERE \"ID\" = 4 OR \"ID\" = 5"
         ])
+        #expect(writes.map { $0.rowIndices } == [[1, 2], [3], [4, 5]])
+    }
+
+    // MARK: - BFILE
+
+    /// A BFILE reads as `BFILENAME('DIR', 'file')`; quoted or bound, that text fails with ORA-00932.
+    @Test("A BFILE value is written back as the BFILENAME call it reads as")
+    func bfileWrittenAsCall() throws {
+        let files = writer(keys: [], columns: ["ID", "F"], typeNames: ["ID": "NUMBER", "F": "BFILE"])
+        let row = try #require(try insert(files, [.text("2"), .text("BFILENAME('DATA_PUMP_DIR', 'it''s.bin')")]))
+        #expect(row.statement == "INSERT INTO \"T1\" (\"ID\", \"F\") VALUES (2, BFILENAME('DATA_PUMP_DIR', 'it''s.bin'))")
+        #expect(row.parameters.isEmpty)
+        let empty = try #require(try insert(files, [.text("3"), .null]))
+        #expect(empty.statement == "INSERT INTO \"T1\" (\"ID\", \"F\") VALUES (3, NULL)")
+    }
+
+    @Test("Anything in a BFILE cell but the exact BFILENAME call is refused")
+    func bfileRefusesOtherText() {
+        let files = writer(keys: [], columns: ["F"], typeNames: ["F": "BFILE"])
+        let refused = [
+            "<bfile>", "x.bin", "BFILENAME('DIR','x.bin')", "bfilename('DIR', 'x.bin')",
+            "BFILENAME('DIR', 'x.bin'); DROP TABLE T1", "BFILENAME('DIR', 'x.bin')) --", "BFILENAME('DIR', 'it's')",
+            "BFILENAME('DIR', 'x.bin'"
+        ]
+        for text in refused {
+            #expect(throws: PluginRowWriteRefusal.self, "\(text)") { try insert(files, [.text(text)]) }
+        }
+        #expect(throws: PluginRowWriteRefusal.self) { try insert(files, [.bytes(Data([1]))]) }
+    }
+
+    @Test("The BFILENAME text is parsed only in its exact shape")
+    func bfileParsing() {
+        let names = OracleBFileText.names(in: "BFILENAME('D''IR', 'a''b''.bin')")
+        #expect(names?.directory == "D'IR")
+        #expect(names?.fileName == "a'b'.bin")
+        #expect(OracleBFileText.call(from: "BFILENAME('D''IR', 'a''b''.bin')") == "BFILENAME('D''IR', 'a''b''.bin')")
+        #expect(OracleBFileText.names(in: "BFILENAME('DIR', 'x') ") == nil)
+        #expect(OracleBFileText.names(in: "BFILENAME('DIR', x)") == nil)
     }
 
     // MARK: - Numeric literal

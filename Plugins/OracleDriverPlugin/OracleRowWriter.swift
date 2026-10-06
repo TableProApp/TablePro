@@ -41,37 +41,48 @@ internal struct OracleRowWriter {
         insertedRowIndices: Set<Int>
     ) throws -> [PluginRowWrite] {
         var writes: [PluginRowWrite] = []
-        var deletes: [PluginRowChange] = []
+        var pendingDeletes: [PluginRowChange] = []
+        func flushDeletes() throws {
+            writes += try deleteWrites(for: pendingDeletes)
+            pendingDeletes.removeAll()
+        }
         for change in changes {
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let values = insertedRowData[change.rowIndex],
-                      let write = insert(values: values, rowIndex: change.rowIndex) else { continue }
+                      let write = try insert(values: values, rowIndex: change.rowIndex) else { continue }
+                try flushDeletes()
                 writes.append(write)
             case .update:
                 guard let write = try update(change) else { continue }
+                try flushDeletes()
                 writes.append(write)
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                deletes.append(change)
+                pendingDeletes.append(change)
             }
         }
-        return writes + (try deleteWrites(for: deletes))
+        try flushDeletes()
+        return writes
     }
 
     // MARK: - Statements
 
     /// Oracle has no `DEFAULT VALUES`. A row whose every column is the server's is written as one column's `DEFAULT`,
     /// which an identity or virtual column takes (measured on 23ai).
-    private func insert(values: [PluginCellValue], rowIndex: Int) -> PluginRowWrite? {
+    private func insert(values: [PluginCellValue], rowIndex: Int) throws -> PluginRowWrite? {
         guard let firstColumn = columns.first else { return nil }
         var names: [String] = []
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
         for (column, value) in zip(columns, values) where !context.serverOwnedColumns.contains(column) {
             names.append(Self.quote(column))
-            placeholders.append(value == Self.defaultMarker ? "DEFAULT" : sql(for: value, column: column, into: &parameters))
+            placeholders.append(
+                value == Self.defaultMarker
+                    ? "DEFAULT"
+                    : try sql(for: value, column: column, rowIndex: rowIndex, into: &parameters)
+            )
         }
         guard !names.isEmpty else {
             return PluginRowWrite(
@@ -90,10 +101,11 @@ internal struct OracleRowWriter {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(owned.columnName))
         }
         var parameters: [PluginCellValue] = []
-        let assignments = change.cellChanges.map { cell -> String in
+        let assignments = try change.cellChanges.map { cell -> String in
             let column = Self.quote(cell.columnName)
             guard cell.newValue != Self.defaultMarker else { return "\(column) = DEFAULT" }
-            return "\(column) = \(sql(for: cell.newValue, column: cell.columnName, into: &parameters))"
+            let value = try sql(for: cell.newValue, column: cell.columnName, rowIndex: change.rowIndex, into: &parameters)
+            return "\(column) = \(value)"
         }
         let match = try rowMatch(for: change, parameters: &parameters)
         let bound = primaryKeyColumns.isEmpty ? " AND ROWNUM = 1" : ""
@@ -145,7 +157,8 @@ internal struct OracleRowWriter {
                     reason: String(localized: "The row's primary key is not loaded, so the row cannot be found.")
                 )
             }
-            return "\(Self.quote(column)) = \(sql(for: value, column: column, into: &parameters))"
+            let operand = try sql(for: value, column: column, rowIndex: change.rowIndex, into: &parameters)
+            return "\(Self.quote(column)) = \(operand)"
         }.joined(separator: " AND ")
     }
 
@@ -161,7 +174,8 @@ internal struct OracleRowWriter {
             guard isComparable(column) else {
                 throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unmatchableReason(column))
             }
-            return "\(Self.quote(column)) = \(sql(for: value, column: column, into: &parameters))"
+            let operand = try sql(for: value, column: column, rowIndex: change.rowIndex, into: &parameters)
+            return "\(Self.quote(column)) = \(operand)"
         }
         guard !conditions.isEmpty else {
             throw PluginRowWriteRefusal(
@@ -206,13 +220,21 @@ internal struct OracleRowWriter {
     /// placeholder writer, which writes numeric-looking text unquoted, so `00123` would be stored in a VARCHAR2 as
     /// `123` and a keyless match on it would compare the column as a number. Text over the literal limit stays `?` and
     /// is bound. A column of no known type keeps the plain `?`.
-    private func sql(for value: PluginCellValue, column: String, into parameters: inout [PluginCellValue]) -> String {
+    private func sql(
+        for value: PluginCellValue,
+        column: String,
+        rowIndex: Int,
+        into parameters: inout [PluginCellValue]
+    ) throws -> String {
         guard let typeName = context.columnTypeNames[column] else {
             guard !value.isNull else { return "NULL" }
             parameters.append(value)
             return "?"
         }
         let kind = OracleValueKind(typeName: typeName)
+        if kind == .bfile, !value.isNull {
+            return try bfileSQL(for: value, rowIndex: rowIndex)
+        }
         switch value {
         case .null:
             return "NULL"
@@ -227,6 +249,19 @@ internal struct OracleRowWriter {
             parameters.append(value)
             return kind.converting("?")
         }
+    }
+
+    /// A BFILE reads as the `BFILENAME('DIR', 'file')` call that makes it, and only that call writes one back: the
+    /// text quoted or bound fails with ORA-00932. Anything else in a BFILE cell, such as the `<bfile>` placeholder,
+    /// is refused rather than sent.
+    private func bfileSQL(for value: PluginCellValue, rowIndex: Int) throws -> String {
+        guard let text = value.asText, let call = OracleBFileText.call(from: text) else {
+            throw PluginRowWriteRefusal(
+                rowIndex: rowIndex,
+                reason: String(format: String(localized: "Values of type %@ can't be written."), "BFILE")
+            )
+        }
+        return call
     }
 
     // MARK: - Helpers
@@ -256,6 +291,7 @@ internal enum OracleValueKind: Equatable {
     case number
     case binaryFloat
     case binaryDouble
+    case bfile
     case other
 
     init(typeName: String) {
@@ -269,6 +305,7 @@ internal enum OracleValueKind: Equatable {
             self = .number
         case "BINARY_FLOAT": self = .binaryFloat
         case "BINARY_DOUBLE": self = .binaryDouble
+        case "BFILE": self = .bfile
         default: self = .other
         }
     }
@@ -276,7 +313,7 @@ internal enum OracleValueKind: Equatable {
     var isNumeric: Bool {
         switch self {
         case .number, .binaryFloat, .binaryDouble: return true
-        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .other: return false
+        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .bfile, .other: return false
         }
     }
 
@@ -294,7 +331,7 @@ internal enum OracleValueKind: Equatable {
             return "TO_TIMESTAMP(\(operand), '\(OracleRowWriter.timestampMask)')"
         case .timestampWithTimeZone, .timestampWithLocalTimeZone:
             return "TO_TIMESTAMP_TZ(\(operand), '\(OracleRowWriter.timestampWithTimeZoneMask)')"
-        case .number, .binaryFloat, .binaryDouble, .other:
+        case .number, .binaryFloat, .binaryDouble, .bfile, .other:
             return operand
         }
     }
@@ -315,7 +352,7 @@ internal enum OracleValueKind: Equatable {
         case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone:
             let keyword = text.trimmingCharacters(in: .whitespaces).uppercased()
             return Self.temporalFunctions.contains(keyword) ? keyword : nil
-        case .other:
+        case .bfile, .other:
             return nil
         }
     }
@@ -356,5 +393,60 @@ internal enum OracleNumericLiteral {
 
     private static func isDigit(_ byte: UInt8) -> Bool {
         byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")
+    }
+}
+
+/// The `BFILENAME('DIR', 'file')` text a BFILE reads as, taken apart only in exactly that shape: two single-quoted
+/// literals with `''` escapes and nothing else. Both names are quoted again, so nothing from the text reaches the
+/// statement unescaped.
+internal enum OracleBFileText {
+    static func call(from text: String) -> String? {
+        guard let names = names(in: text),
+              let directory = OracleBindPlaceholders.quotedLiteral(names.directory),
+              let fileName = OracleBindPlaceholders.quotedLiteral(names.fileName) else { return nil }
+        return "BFILENAME(\(directory), \(fileName))"
+    }
+
+    static func names(in text: String) -> (directory: String, fileName: String)? {
+        var cursor = Cursor(scalars: Array(text.unicodeScalars))
+        guard cursor.consume("BFILENAME("),
+              let directory = cursor.quotedLiteral(),
+              cursor.consume(", "),
+              let fileName = cursor.quotedLiteral(),
+              cursor.consume(")"),
+              cursor.isAtEnd else { return nil }
+        return (directory, fileName)
+    }
+
+    private struct Cursor {
+        let scalars: [Unicode.Scalar]
+        var index = 0
+
+        var isAtEnd: Bool { index == scalars.count }
+
+        mutating func consume(_ expected: String) -> Bool {
+            for scalar in expected.unicodeScalars {
+                guard index < scalars.count, scalars[index] == scalar else { return false }
+                index += 1
+            }
+            return true
+        }
+
+        mutating func quotedLiteral() -> String? {
+            guard consume("'") else { return nil }
+            var value = String.UnicodeScalarView()
+            while index < scalars.count {
+                let scalar = scalars[index]
+                index += 1
+                guard scalar == "'" else {
+                    value.append(scalar)
+                    continue
+                }
+                guard index < scalars.count, scalars[index] == "'" else { return String(value) }
+                value.append(scalar)
+                index += 1
+            }
+            return nil
+        }
     }
 }

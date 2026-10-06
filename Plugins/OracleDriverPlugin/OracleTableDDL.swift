@@ -12,9 +12,8 @@ import TableProPluginKit
 /// connection state machine broken.
 ///
 /// Each column is written in the order Oracle's grammar takes it, measured on 23ai: the type verbatim, then
-/// `GENERATED ... AS IDENTITY` or `GENERATED ALWAYS AS (...) VIRTUAL`, then `DEFAULT`, then `NOT NULL`. `NOT NULL`
-/// before `DEFAULT` fails with ORA-03076, and a type folded to upper case names no type at all when it is a quoted
-/// mixed-case object type.
+/// `GENERATED ALWAYS AS (...) VIRTUAL` or `DEFAULT`, then `NOT NULL`. `NOT NULL` before `DEFAULT` fails with
+/// ORA-03076, and a type folded to upper case names no type at all when it is a quoted mixed-case object type.
 internal enum OracleTableDDL {
     static func createTable(
         qualifiedTable: String,
@@ -27,17 +26,24 @@ internal enum OracleTableDDL {
 
     static func columnDefinition(_ column: PluginColumnInfo, quote: (String) -> String) -> String {
         var parts = [quote(column.name), column.ddlSpelling ?? column.dataType]
-        if let identity = column.identityKind {
-            parts.append("GENERATED \(identity.rawValue) AS IDENTITY")
-        } else if column.generationKind == .virtual || column.isGenerated,
-                  let expression = column.ddlGenerationExpression ?? column.generationExpression {
-            parts.append("GENERATED ALWAYS AS (\(expression)) VIRTUAL")
-        } else if let defaultValue = column.ddlDefault ?? column.defaultValue, !defaultValue.isEmpty {
-            parts.append("DEFAULT \(defaultValue)")
+        if let clause = valueClause(for: column) {
+            parts.append(clause)
         }
         if !column.isNullable {
             parts.append("NOT NULL")
         }
         return parts.joined(separator: " ")
+    }
+
+    /// An identity column gets no clause: a restore inserts the dump's rows with their keys, which a
+    /// `GENERATED ALWAYS` identity refuses with ORA-32795.
+    private static func valueClause(for column: PluginColumnInfo) -> String? {
+        guard column.identityKind == nil else { return nil }
+        if column.generationKind == .virtual || column.isGenerated,
+           let expression = column.ddlGenerationExpression ?? column.generationExpression {
+            return "GENERATED ALWAYS AS (\(expression)) VIRTUAL"
+        }
+        guard let defaultValue = column.ddlDefault ?? column.defaultValue, !defaultValue.isEmpty else { return nil }
+        return "DEFAULT \(defaultValue)"
     }
 }
