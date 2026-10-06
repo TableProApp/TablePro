@@ -116,7 +116,8 @@ extension MainContentCoordinator {
                     schemaName: newTab.tableContext.schemaName,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchPolicy: newRows.rowMatchPolicy
+                    rowMatchPolicy: newRows.rowMatchPolicy,
+                    columnTypeNames: newRows.columnTypeNames
                 )
                 tabManager.mutate(at: newIndex) { $0.pendingChanges = TabChangeSnapshot() }
             } else {
@@ -128,6 +129,7 @@ extension MainContentCoordinator {
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
                     rowMatchPolicy: newRows.rowMatchPolicy,
+                    columnTypeNames: newRows.columnTypeNames,
                     triggerReload: false
                 )
             }

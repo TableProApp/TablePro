@@ -2,7 +2,7 @@
 import XCTest
 
 final class OracleSchemaQueriesTests: XCTestCase {
-    private let release23ai = OracleServerRelease(major: 23)
+    private let release23ai = OracleServerRelease(major: 23, update: 4)
 
     func testSchemaOwnerIsEscapedInEveryQuery() {
         let owner = "O'BRIEN"
@@ -135,10 +135,10 @@ final class OracleSchemaQueriesTests: XCTestCase {
         ]
         let parsed = OracleSchemaQueries.parseColumnRow(row)
         XCTAssertEqual(parsed?.name, "SALARY")
-        XCTAssertEqual(parsed?.dataType, "number")
+        XCTAssertEqual(parsed?.dataType, "NUMBER")
         XCTAssertEqual(parsed?.isNullable, false)
         XCTAssertEqual(parsed?.isPrimaryKey, false)
-        XCTAssertEqual(parsed?.displayType, "number(10,2)")
+        XCTAssertEqual(parsed?.displayType, "NUMBER(10,2)")
     }
 
     func testParseColumnRowReadsTheDefault() {
@@ -231,7 +231,7 @@ final class OracleSchemaQueriesTests: XCTestCase {
         let parsed = OracleSchemaQueries.parseTableColumnRow(row)
         XCTAssertEqual(parsed?.table, "ORDERS")
         XCTAssertEqual(parsed?.column.name, "QTY")
-        XCTAssertEqual(parsed?.column.displayType, "number(5)")
+        XCTAssertEqual(parsed?.column.displayType, "NUMBER(5)")
         XCTAssertEqual(parsed?.column.isNullable, false)
         XCTAssertEqual(parsed?.column.defaultValue, "0")
         XCTAssertNil(OracleSchemaQueries.parseTableColumnRow([.null, .string("QTY")]))
@@ -282,16 +282,62 @@ final class OracleSchemaQueriesTests: XCTestCase {
     }
 
     /// The bulk read is parsed by dropping its first cell, so after `TABLE_NAME` its projection has to be the
-    /// per-table one, column for column.
+    /// per-table one, column for column, and the parser reads by position, so every release projects the same count.
     func testTheBulkReadProjectsTheTableNameThenThePerTableColumns() {
-        for major in [11, 19, 23] {
-            let release = OracleServerRelease(major: major)
+        for release in Self.releases {
             let single = projection(of: OracleSchemaQueries.columns(schema: "HR", table: "T", release: release))
             let bulk = projection(of: OracleSchemaQueries.allColumns(schema: "HR", release: release))
             XCTAssertEqual(bulk.first, "c.TABLE_NAME")
-            XCTAssertEqual(Array(bulk.dropFirst()), single, "release \(major)")
-            XCTAssertEqual(single.count, 13, "release \(major)")
+            XCTAssertEqual(Array(bulk.dropFirst()), single, "release \(release)")
+            XCTAssertEqual(single.count, 19, "release \(release)")
+            XCTAssertEqual(single.last, "c.OWNER", "release \(release)")
         }
+    }
+
+    private static let releases = [
+        OracleServerRelease(major: 11),
+        OracleServerRelease(major: 12),
+        OracleServerRelease(major: 19),
+        OracleServerRelease(major: 21),
+        OracleServerRelease(major: 23, update: 3),
+        OracleServerRelease(major: 23, update: 4),
+        OracleServerRelease(major: 23, update: 26)
+    ]
+
+    /// The `ALL_TAB_COLS` columns each release lacks, from the Database Reference of 11.2, 12.1, 19c, 21c and 23ai.
+    /// `VECTOR_INFO` is not documented before 23.4, so 23.3 is treated as lacking it.
+    func testNoReleaseIsAskedForATypeColumnItDoesNotHave() {
+        let lacking: [(OracleServerRelease, [String])] = [
+            (OracleServerRelease(major: 11), ["IDENTITY_COLUMN", "DEFAULT_ON_NULL", "DEFAULT_ON_NULL_UPD", "USER_GENERATED", "VECTOR_INFO"]),
+            (OracleServerRelease(major: 12), ["DEFAULT_ON_NULL_UPD", "VECTOR_INFO"]),
+            (OracleServerRelease(major: 21), ["DEFAULT_ON_NULL_UPD", "VECTOR_INFO"]),
+            (OracleServerRelease(major: 23, update: 3), ["VECTOR_INFO"]),
+            (OracleServerRelease(major: 23, update: 4), [])
+        ]
+        for (release, columns) in lacking {
+            for sql in [
+                OracleSchemaQueries.columns(schema: "HR", table: "T", release: release),
+                OracleSchemaQueries.allColumns(schema: "HR", release: release)
+            ] {
+                for column in columns {
+                    XCTAssertFalse(names(sql, column), "release \(release) names \(column)")
+                }
+                for column in ["CHAR_LENGTH", "CHAR_USED", "DATA_TYPE_OWNER", "DATA_TYPE_MOD"] {
+                    XCTAssertTrue(names(sql, column), "release \(release) does not name \(column)")
+                }
+            }
+        }
+    }
+
+    func testVectorInfoIsALiteralNullWhereTheReleaseLacksIt() {
+        let legacy = OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 23, update: 3))
+        XCTAssertTrue(legacy.contains("NULL AS VECTOR_INFO"), legacy)
+        let modern = OracleSchemaQueries.columns(schema: "HR", table: "T", release: release23ai)
+        XCTAssertTrue(modern.contains("c.VECTOR_INFO AS VECTOR_INFO"), modern)
+    }
+
+    private func names(_ sql: String, _ column: String) -> Bool {
+        sql.range(of: #"\bc\.\#(column)\b"#, options: .regularExpression) != nil
     }
 
     private func projection(of sql: String) -> [String] {
@@ -302,21 +348,108 @@ final class OracleSchemaQueriesTests: XCTestCase {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
-    func testParseColumnRowTreatsMissingTypeAsVarchar2() {
-        let parsed = OracleSchemaQueries.parseColumnRow([.string("C"), .null, .null, .null, .null, .string("Y"), .string("Y")])
-        XCTAssertEqual(parsed?.dataType, "varchar2")
-        XCTAssertEqual(parsed?.isNullable, true)
-        XCTAssertEqual(parsed?.isPrimaryKey, true)
+    /// A whole row as the projection writes it, positions 13 to 18 being `CHAR_LENGTH`, `CHAR_USED`,
+    /// `DATA_TYPE_OWNER`, `DATA_TYPE_MOD`, `VECTOR_INFO` and the table's `OWNER`.
+    private func columnRow(
+        _ name: String,
+        type: String,
+        length: String?,
+        precision: String? = nil,
+        scale: String? = nil,
+        storedDefault: String? = nil,
+        isVirtual: Bool = false,
+        charLength: String? = nil,
+        charUsed: String? = nil,
+        typeOwner: String? = nil,
+        typeModifier: String? = nil,
+        vectorInfo: String? = nil
+    ) -> [OracleRawCell] {
+        let cell: (String?) -> OracleRawCell = { $0.map(OracleRawCell.string) ?? .null }
+        return [
+            .string(name), .string(type), cell(length), cell(precision), cell(scale), .string("Y"), .string("N"),
+            cell(storedDefault), .string(isVirtual ? "YES" : "NO"), .string("NO"), .string("NO"), .string("NO"), .null,
+            cell(charLength), cell(charUsed), cell(typeOwner), cell(typeModifier), cell(vectorInfo), .string("HR")
+        ]
     }
 
-    func testFullTypeRendersLengthPrecisionAndFixedTypes() {
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "date", dataLength: "7", precision: nil, scale: nil), "date")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "clob", dataLength: "4000", precision: nil, scale: nil), "clob")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "varchar2", dataLength: "50", precision: nil, scale: nil), "varchar2(50)")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "number", dataLength: "22", precision: "10", scale: "0"), "number(10)")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "number", dataLength: "22", precision: "10", scale: "2"), "number(10,2)")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "number", dataLength: "22", precision: nil, scale: nil), "number")
-        XCTAssertEqual(OracleSchemaQueries.fullType(dataType: "varchar2", dataLength: "0", precision: nil, scale: nil), "varchar2")
+    /// `NVARCHAR2(100)` reports `DATA_LENGTH` 200 in AL16UTF16, which the app used to show as `nvarchar2(200)`.
+    func testParseColumnRowReadsTheCharacterLengthAndSemantics() {
+        let national = OracleSchemaQueries.parseColumnRow(
+            columnRow("NOTE", type: "NVARCHAR2", length: "200", charLength: "100", charUsed: "C")
+        )
+        XCTAssertEqual(national?.displayType, "NVARCHAR2(100)")
+        XCTAssertEqual(national?.charLength, 100)
+        XCTAssertNil(national?.classificationTypeName)
+
+        let characters = OracleSchemaQueries.parseColumnRow(
+            columnRow("NAME", type: "VARCHAR2", length: "200", charLength: "50", charUsed: "C")
+        )
+        XCTAssertEqual(characters?.displayType, "VARCHAR2(50 CHAR)")
+        XCTAssertEqual(characters?.dataLength, "200")
+    }
+
+    func testParseColumnRowQualifiesATypeFromAnotherSchema() {
+        let geometry = OracleSchemaQueries.parseColumnRow(
+            columnRow("SHAPE", type: "SDO_GEOMETRY", length: "1", typeOwner: "MDSYS")
+        )
+        XCTAssertEqual(geometry?.displayType, "\"MDSYS\".\"SDO_GEOMETRY\"")
+        XCTAssertEqual(geometry?.classificationTypeName, "SDO_GEOMETRY")
+
+        let reference = OracleSchemaQueries.parseColumnRow(
+            columnRow("ADDR", type: "ADDRESS_T", length: "50", typeOwner: "HR", typeModifier: "REF")
+        )
+        XCTAssertEqual(reference?.displayType, "REF ADDRESS_T")
+        XCTAssertEqual(reference?.classificationTypeName, "ADDRESS_T")
+    }
+
+    func testParseColumnRowKeepsTheCaseOfAQuotedTypeName() {
+        let mixed = OracleSchemaQueries.parseColumnRow(
+            columnRow("M", type: "Mixed_T", length: "1", typeOwner: "HR")
+        )
+        XCTAssertEqual(mixed?.dataType, "Mixed_T")
+        XCTAssertEqual(mixed?.displayType, "\"Mixed_T\"")
+    }
+
+    func testParseColumnRowReadsVectorInfo() {
+        let vector = OracleSchemaQueries.parseColumnRow(
+            columnRow("EMBEDDING", type: "VECTOR", length: "8200", charLength: "3", vectorInfo: "VECTOR(3,FLOAT32,DENSE)")
+        )
+        XCTAssertEqual(vector?.displayType, "VECTOR(3, FLOAT32)")
+        XCTAssertNil(vector?.charLength)
+    }
+
+    /// Oracle stores a virtual column's expression rewritten, `"A"+1` for `a + 1`, in `DATA_DEFAULT` (measured).
+    func testParseColumnRowReadsTheExpressionOfAVirtualColumn() {
+        let virtual = OracleSchemaQueries.parseColumnRow(
+            columnRow("V", type: "NUMBER", length: "22", storedDefault: "\"A\"+1\n  ", isVirtual: true)
+        )
+        XCTAssertEqual(virtual?.generationExpression, "\"A\"+1")
+        XCTAssertNil(virtual?.defaultValue)
+
+        let plain = OracleSchemaQueries.parseColumnRow(
+            columnRow("D", type: "NUMBER", length: "22", storedDefault: "5 /* five */")
+        )
+        XCTAssertNil(plain?.generationExpression)
+        XCTAssertEqual(plain?.defaultValue, "5")
+    }
+
+    func testParseColumnRowClassifiesADateAsATimestamp() {
+        let date = OracleSchemaQueries.parseColumnRow(columnRow("CREATED", type: "DATE", length: "7"))
+        XCTAssertEqual(date?.displayType, "DATE")
+        XCTAssertEqual(date?.classificationTypeName, "TIMESTAMP(0)")
+    }
+
+    func testTheBulkRowReadsTheSameTypeColumns() {
+        let row = [OracleRawCell.string("NOTES")]
+            + columnRow("NOTE", type: "NVARCHAR2", length: "200", charLength: "100", charUsed: "C")
+        XCTAssertEqual(OracleSchemaQueries.parseTableColumnRow(row)?.column.displayType, "NVARCHAR2(100)")
+    }
+
+    func testParseColumnRowTreatsMissingTypeAsVarchar2() {
+        let parsed = OracleSchemaQueries.parseColumnRow([.string("C"), .null, .null, .null, .null, .string("Y"), .string("Y")])
+        XCTAssertEqual(parsed?.dataType, "VARCHAR2")
+        XCTAssertEqual(parsed?.isNullable, true)
+        XCTAssertEqual(parsed?.isPrimaryKey, true)
     }
 
     func testParseIndexRowReadsUniquenessAndPrimaryFlag() {

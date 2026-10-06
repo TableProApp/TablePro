@@ -768,3 +768,35 @@ struct TableRowsGeneratedColumnsTests {
         #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .none)
     }
 }
+
+struct TableRowsColumnTypeNamesTests {
+    @Test("Each column is named with the type it was read as")
+    func namesEachColumnsType() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["ID", "NAME", "CREATED"],
+            columnTypes: [.decimal(rawType: "number"), .text(rawType: "nvarchar2"), .timestamp(rawType: "date")]
+        )
+        #expect(table.columnTypeNames == ["ID": "number", "NAME": "nvarchar2", "CREATED": "date"])
+    }
+
+    @Test("A column with no type, or past the end of the types, is left out")
+    func leavesOutAnUntypedColumn() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["a", "b", "c"],
+            columnTypes: [.text(rawType: nil), .integer(rawType: "INT")]
+        )
+        #expect(table.columnTypeNames == ["b": "INT"])
+    }
+
+    @Test("A repeated name keeps the first column's type")
+    func repeatedNameKeepsTheFirst() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["id", "id"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR")]
+        )
+        #expect(table.columnTypeNames == ["id": "INT"])
+    }
+}

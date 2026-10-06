@@ -192,6 +192,7 @@ extension RowEditingCoordinator {
         let route = DatabaseManager.shared.executionRoute(for: scope)
         let savingTabId = parent.tabManager.selectedTabId
         let serverOwned = serverOwnedColumns(of: savingTabId)
+        let columnTypeNames = parent.changeManager.columnTypeNames
 
         Task { [weak self, parent] in
             guard let self else { return }
@@ -211,7 +212,13 @@ extension RowEditingCoordinator {
                     steps: validSteps, results: run.results, connection: conn, scope: scope
                 )
                 recordSideStatementHistory(run.sideStatements, connection: conn, scope: scope)
-                captureRewindRecord(plan: plan, history: history, connection: conn, serverOwned: serverOwned)
+                captureRewindRecord(
+                    plan: plan,
+                    history: history,
+                    connection: conn,
+                    serverOwned: serverOwned,
+                    columnTypeNames: columnTypeNames
+                )
 
                 finishSuccessfulSave(
                     plan: plan,
@@ -536,7 +543,8 @@ extension RowEditingCoordinator {
         plan: DataWritePlan,
         history: (id: UUID, stored: Task<Bool, Never>)?,
         connection: DatabaseConnection,
-        serverOwned: (generated: [String], identity: [String])
+        serverOwned: (generated: [String], identity: [String]),
+        columnTypeNames: [String: String]
     ) {
         guard parent.services.licenseManager.isFeatureAvailable(.dataRewind) else { return }
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
@@ -565,6 +573,7 @@ extension RowEditingCoordinator {
                     capturedAt: capturedAt,
                     generatedColumns: generatedColumns,
                     identityColumns: identityColumns,
+                    columnTypeNames: columnTypeNames,
                     operations: operations
                 )
             )

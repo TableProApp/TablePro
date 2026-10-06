@@ -492,9 +492,14 @@ targets:
       - Plugins/DamengDriverPlugin/DamengConnectTimeout.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleBindPlaceholders.swift
+      - Plugins/OracleDriverPlugin/OracleBrowseSQL.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
+      - Plugins/OracleDriverPlugin/OracleRowWriter.swift
+      - Plugins/OracleDriverPlugin/OracleTableDDL.swift
+      - Plugins/OracleDriverPlugin/OracleTypeCatalog.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift

@@ -26,5 +26,10 @@ public struct PluginRowWriteContext: Sendable, Equatable {
     /// not compare equal to the column as stored.
     public var rowMatchTextColumns: Set<String> = []
 
+    /// The type each column was read as, keyed by column name and spelled as the server reported it, so compare it
+    /// without regard to case. A driver that writes a value through its column's type, a date through an explicit
+    /// mask rather than the session's format, reads it here. A column missing from it has no type the host knows.
+    public var columnTypeNames: [String: String] = [:]
+
     public init() {}
 }

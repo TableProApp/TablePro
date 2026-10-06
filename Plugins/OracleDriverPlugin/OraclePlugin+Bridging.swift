@@ -44,6 +44,16 @@ extension OracleRawCell {
     }
 }
 
+extension PluginCellValue {
+    var oracleBindValue: OracleBindValue {
+        switch self {
+        case .null: return .null
+        case .text(let value): return .text(value)
+        case .bytes(let data): return .bytes(data)
+        }
+    }
+}
+
 extension OracleColumnRow {
     var pluginColumnInfo: PluginColumnInfo {
         PluginColumnInfo(
@@ -52,8 +62,20 @@ extension OracleColumnRow {
             isNullable: isNullable,
             isPrimaryKey: isPrimaryKey,
             defaultValue: defaultValue,
+            extra: nil,
+            charset: nil,
+            collation: nil,
+            comment: nil,
             identityKind: identityGeneration.map(\.identityKind),
-            isGenerated: isVirtual
+            isGenerated: isVirtual,
+            allowedValues: nil,
+            generationExpression: generationExpression,
+            generationKind: isVirtual ? .virtual : nil,
+            ddlSpelling: OracleTypeCatalog.ddlSpelling(forDeclaredType: displayType),
+            ddlDefault: nil,
+            ddlGenerationExpression: nil,
+            ddlCollation: nil,
+            classificationTypeName: classificationTypeName
         )
     }
 }
@@ -69,13 +91,16 @@ extension OracleIdentityGeneration {
 
 extension OracleRawResult {
     func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
-        PluginQueryResult(
-            columns: columns.map(\.name),
-            columnTypeNames: columns.map(\.typeName),
+        let names = columns.map(\.name)
+        let typeNames = columns.map(\.typeName)
+        return PluginQueryResult(
+            columns: names,
+            columnTypeNames: typeNames,
             rows: rows.map { $0.map(\.asPluginCell) },
             rowsAffected: affectedRows,
-            executionTime: executionTime,
-            isTruncated: isTruncated
+            timing: PluginQueryTiming(total: executionTime),
+            isTruncated: isTruncated,
+            columnMeta: OracleTypeCatalog.resultColumnMeta(columns: names, typeNames: typeNames)
         )
     }
 }

@@ -89,14 +89,16 @@ extension MainContentView {
 
         guard columnsChanged || tableChanged else { return }
 
+        let rows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         changeManager.configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: newColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
-            generatedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
-            rowMatchPolicy: coordinator.tabSessionRegistry.tableRows(for: tab.id).rowMatchPolicy
+            generatedColumns: rows.generatedColumns,
+            rowMatchPolicy: rows.rowMatchPolicy,
+            columnTypeNames: rows.columnTypeNames
         )
     }
 

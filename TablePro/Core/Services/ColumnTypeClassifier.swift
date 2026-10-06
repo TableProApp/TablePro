@@ -200,9 +200,10 @@ struct ColumnTypeClassifier {
             map[key] = { .json(rawType: $0) }
         }
 
+        /// Oracle's `LONG RAW` and `BFILE` hold bytes, and no pattern arm below reads either name as binary.
         for key in [
             "BLOB", "BYTEA", "BINARY", "VARBINARY", "RAW", "IMAGE",
-            "TINYBLOB", "MEDIUMBLOB", "LONGBLOB"
+            "TINYBLOB", "MEDIUMBLOB", "LONGBLOB", "LONG RAW", "BFILE"
         ] {
             map[key] = { .blob(rawType: $0) }
         }
@@ -230,7 +231,7 @@ struct ColumnTypeClassifier {
         // Text (explicit entries for common types not caught by fallback)
         for key in [
             "TEXT", "VARCHAR", "CHAR", "NVARCHAR", "NCHAR", "NTEXT",
-            "VARCHAR2", "CLOB", "NCLOB",
+            "VARCHAR2", "NVARCHAR2", "CLOB", "NCLOB", "ROWID", "UROWID", "REF",
             "STRING", "FIXEDSTRING",
             "UUID", "UNIQUEIDENTIFIER", "SQL_VARIANT",
             "TINYTEXT", "MEDIUMTEXT", "LONGTEXT"

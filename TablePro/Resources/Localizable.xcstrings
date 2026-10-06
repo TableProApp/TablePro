@@ -145365,6 +145365,8 @@
 
     },
     "The table has no primary key, so this row cannot be identified." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {

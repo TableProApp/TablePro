@@ -44,6 +44,8 @@ struct RowChangeStatementFactory {
     let primaryKeyColumns: [String]
     let generatedColumns: Set<String>
     let rowMatchPolicy: RowMatchPolicy
+    /// The type each column was read as, by column name, for a driver that writes a value through its column's type.
+    let columnTypeNames: [String: String]
     let databaseType: DatabaseType
     let pluginDriver: (any PluginDatabaseDriver)?
     /// The `GENERATED ALWAYS` and SQL Server `IDENTITY` columns among `generatedColumns`, which a restore writes back
@@ -57,6 +59,7 @@ struct RowChangeStatementFactory {
         primaryKeyColumns: [String],
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
+        columnTypeNames: [String: String] = [:],
         databaseType: DatabaseType,
         pluginDriver: (any PluginDatabaseDriver)?,
         identityColumns: Set<String>? = []
@@ -67,6 +70,7 @@ struct RowChangeStatementFactory {
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
+        self.columnTypeNames = columnTypeNames
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.identityColumns = identityColumns
@@ -158,6 +162,7 @@ struct RowChangeStatementFactory {
         context.serverOwnedColumns = generatedColumns
         context.rowMatchExcludedColumns = rowMatchPolicy.excludedColumns
         context.rowMatchTextColumns = rowMatchPolicy.textColumns
+        context.columnTypeNames = columnTypeNames
         return context
     }
 

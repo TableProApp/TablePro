@@ -49,7 +49,6 @@ final class OracleDictionaryQualificationTests: XCTestCase {
             ("segmentSize other", OracleSchemaQueries.segmentSize(schema: "HR", table: "T", ownedByCurrentSchema: false)),
             ("viewDefinition", OracleSchemaQueries.viewDefinition(schema: "HR", view: "V")),
             ("allTablesMetadata", OracleSchemaQueries.allTablesMetadata(schema: "HR")),
-            ("columnNamesAndTypes", OracleSchemaQueries.columnNamesAndTypes(schema: "HR", table: "T")),
             ("errorsQuery named", OraclePLSQLUnit(type: "PROCEDURE", owner: "HR", name: "P").errorsQuery),
             ("errorsQuery current", OraclePLSQLUnit(type: "PROCEDURE", owner: nil, name: "P").errorsQuery)
         ]

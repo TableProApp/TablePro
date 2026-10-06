@@ -28,9 +28,11 @@ nonisolated enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        /// Oracle pages without an `ORDER BY`. The `ORDER BY 1` this used to add fails with ORA-22848 when the first
+        /// column is a LOB, so such a table never opened.
         case .oracle:
-            let order = orderBy.isEmpty ? "ORDER BY 1" : orderBy
-            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+            let trailing = "OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+            return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         default:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"

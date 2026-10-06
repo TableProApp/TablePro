@@ -115,7 +115,11 @@ final class PluginManager: ObservableObject {
     /// compare each column. The default forwards to the requirement without the context, so an
     /// already-built plugin keeps loading and writes what it wrote before; the minimum stays where it
     /// is and no bulk re-release is needed.
-    nonisolated static let currentPluginKitVersion = 34
+    ///
+    /// 35 adds `PluginRowWriteContext.columnTypeNames`, the type each column was read as. A plugin
+    /// built against it reads a property a 34 host does not have, so the number moves; an
+    /// already-built plugin never reads it, so the minimum stays and no bulk re-release is needed.
+    nonisolated static let currentPluginKitVersion = 35
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

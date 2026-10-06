@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Manage Macs link on the activation limit error, opening the tablepro.app page that removes a Mac from the license.
+- BOOLEAN, JSON and VECTOR in the Oracle column type picker.
 
 ### Changed
 
@@ -39,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restored table tab that never loads when another tab was opened before its window came forward.
 - Save writing a table's query into the SQL file whose tab the table was opened over.
 - Closing a database entry or connection, or disconnecting, rolling back an open transaction without asking.
+- Oracle column types shown with the wrong size, such as NVARCHAR2(100) as nvarchar2(200) and TIMESTAMP as timestamp(6)(11).
+- Oracle DDL and SQL exports failing to restore a column with a default and NOT NULL, an identity or a virtual column.
+- Oracle DATE values missing their time of day, and TIMESTAMP fractions cut to milliseconds or misread after a leading zero.
+- Oracle NCHAR and JSON values shown as `<decode error>`, BFILE values shown as NULL, and long decimals shown rounded.
+- Oracle tables with a UROWID or REF column, or an index-organized table's ROWID, failing to load and resetting the connection.
+- Crash reading an Oracle time zone west of UTC, a negative INTERVAL DAY TO SECOND, or an integer of 20 or more digits.
+- Oracle edits and deletes failing on rows with a DATE, TIMESTAMP, LOB or RAW value, or saving nothing with NCHAR or JSON.
+- Oracle tables whose first column is a CLOB or BLOB failing to open.
+- Oracle BLOB columns in query results treated as text, and an empty result listing every column of the first table.
+- Copying an Oracle table to another database turning NUMBER(10) keys into decimals and BOOLEAN or JSON into text.
+- Importing into a new Oracle table proposing TEXT columns, which Oracle rejects.
 
 ## [0.77.2] - 2026-10-05
 

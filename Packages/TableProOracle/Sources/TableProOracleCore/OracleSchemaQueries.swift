@@ -26,17 +26,37 @@ public struct OraclePartitionRow: Sendable, Equatable {
 
 public struct OracleColumnRow: Sendable, Equatable {
     public let name: String
-    public let dataType: String
-    public let dataLength: String?
-    public let precision: String?
-    public let scale: String?
+    public let typeSpelling: OracleColumnTypeSpelling
     public let isNullable: Bool
     public let isPrimaryKey: Bool
     /// The exact SQL that follows `DEFAULT`, or nil when the column has no default. ``OracleColumnDefault`` decides it.
     public let defaultValue: String?
     public let identityGeneration: OracleIdentityGeneration?
     public let isVirtual: Bool
+    /// The expression of a virtual column, nil for every other column. ``OracleColumnDefault`` decides it.
+    public let generationExpression: String?
 
+    public init(
+        name: String,
+        typeSpelling: OracleColumnTypeSpelling,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String?,
+        identityGeneration: OracleIdentityGeneration? = nil,
+        isVirtual: Bool = false,
+        generationExpression: String? = nil
+    ) {
+        self.name = name
+        self.typeSpelling = typeSpelling
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.identityGeneration = identityGeneration
+        self.isVirtual = isVirtual
+        self.generationExpression = generationExpression
+    }
+
+    /// Without `CHAR_LENGTH` and `CHAR_USED`, a character type is spelled from its byte length as a `BYTE` column.
     public init(
         name: String,
         dataType: String,
@@ -47,27 +67,57 @@ public struct OracleColumnRow: Sendable, Equatable {
         isPrimaryKey: Bool,
         defaultValue: String?,
         identityGeneration: OracleIdentityGeneration? = nil,
-        isVirtual: Bool = false
+        isVirtual: Bool = false,
+        generationExpression: String? = nil
     ) {
-        self.name = name
-        self.dataType = dataType
-        self.dataLength = dataLength
-        self.precision = precision
-        self.scale = scale
-        self.isNullable = isNullable
-        self.isPrimaryKey = isPrimaryKey
-        self.defaultValue = defaultValue
-        self.identityGeneration = identityGeneration
-        self.isVirtual = isVirtual
+        self.init(
+            name: name,
+            typeSpelling: OracleColumnTypeSpelling(
+                dataType: dataType,
+                dataLength: dataLength.flatMap(OracleSchemaQueries.integer),
+                precision: precision.flatMap(OracleSchemaQueries.integer),
+                scale: scale.flatMap(OracleSchemaQueries.integer)
+            ),
+            isNullable: isNullable,
+            isPrimaryKey: isPrimaryKey,
+            defaultValue: defaultValue,
+            identityGeneration: identityGeneration,
+            isVirtual: isVirtual,
+            generationExpression: generationExpression
+        )
     }
 
+    /// `DATA_TYPE` as the dictionary reports it.
+    public var dataType: String {
+        typeSpelling.dataType
+    }
+
+    /// `DATA_LENGTH`, in bytes for every type.
+    public var dataLength: String? {
+        typeSpelling.dataLength.map(String.init)
+    }
+
+    public var precision: String? {
+        typeSpelling.precision.map(String.init)
+    }
+
+    public var scale: String? {
+        typeSpelling.scale.map(String.init)
+    }
+
+    /// The declared type, the spelling `CREATE TABLE` takes back.
     public var displayType: String {
-        OracleSchemaQueries.fullType(
-            dataType: dataType,
-            dataLength: dataLength,
-            precision: precision,
-            scale: scale
-        )
+        typeSpelling.declaration
+    }
+
+    /// See ``OracleColumnTypeSpelling/classificationTypeName``.
+    public var classificationTypeName: String? {
+        typeSpelling.classificationTypeName
+    }
+
+    /// The declared length of a `VARCHAR2`, `CHAR`, `NVARCHAR2` or `NCHAR` column, nil for every other type.
+    public var charLength: Int? {
+        typeSpelling.characterLength
     }
 }
 
@@ -196,8 +246,12 @@ public enum OracleSchemaQueries {
             """
     }
 
-    /// The columns ``parseColumnRow(_:)`` reads, in its order. A flag the release does not have is the literal
-    /// `'NO'`, because naming a missing dictionary column fails the whole statement.
+    /// The columns ``parseColumnRow(_:)`` reads, in its order. A column the release does not have is a literal in its
+    /// place (`'NO'` for a flag, `NULL` otherwise), because naming a missing dictionary column fails the whole statement
+    /// and the parser reads by position.
+    ///
+    /// `CHAR_LENGTH`, `CHAR_USED`, `DATA_TYPE_OWNER` and `DATA_TYPE_MOD` are on 11.2 and later; `OWNER` is the table's,
+    /// which decides whether a type of the same schema needs its owner spelled.
     private static func columnProjection(release: OracleServerRelease) -> String {
         let identity = release.hasIdentityColumns ? "c.IDENTITY_COLUMN" : "'NO'"
         let onNull = release.hasIdentityColumns ? "c.DEFAULT_ON_NULL" : "'NO'"
@@ -206,6 +260,7 @@ public enum OracleSchemaQueries {
             (SELECT i.GENERATION_TYPE FROM \(OracleDictionary.allTabIdentityCols) i
                     WHERE i.OWNER = c.OWNER AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = c.COLUMN_NAME)
             """ : "NULL"
+        let vectorInfo = release.hasVectorInfo ? "c.VECTOR_INFO" : "NULL"
         return """
             c.COLUMN_NAME,
                 c.DATA_TYPE,
@@ -219,7 +274,13 @@ public enum OracleSchemaQueries {
                 \(identity) AS IDENTITY_COLUMN,
                 \(onNull) AS DEFAULT_ON_NULL,
                 \(onNullForUpdate) AS DEFAULT_ON_NULL_UPD,
-                \(generation) AS GENERATION_TYPE
+                \(generation) AS GENERATION_TYPE,
+                c.CHAR_LENGTH,
+                c.CHAR_USED,
+                c.DATA_TYPE_OWNER,
+                c.DATA_TYPE_MOD,
+                \(vectorInfo) AS VECTOR_INFO,
+                c.OWNER
             """
     }
 
@@ -397,16 +458,6 @@ public enum OracleSchemaQueries {
         """
     }
 
-    /// The column names and types of one table, used to recover the header of an empty result set.
-    public static func columnNamesAndTypes(schema: String, table: String) -> String {
-        """
-        SELECT COLUMN_NAME, DATA_TYPE FROM \(OracleDictionary.allTabColumns) \
-        WHERE OWNER = '\(escapeLiteral(schema))' \
-        AND TABLE_NAME = '\(escapeLiteral(table))' \
-        ORDER BY COLUMN_ID
-        """
-    }
-
     public static func parseTableRow(_ row: [OracleRawCell]) -> OracleTableRow? {
         guard let name = row[safe: 0]?.stringValue else { return nil }
         return OracleTableRow(
@@ -441,6 +492,7 @@ public enum OracleSchemaQueries {
         )
     }
 
+    /// A row of ``columns(schema:table:release:)``, read by position in the projection's order.
     public static func parseColumnRow(_ row: [OracleRawCell]) -> OracleColumnRow? {
         guard let name = row[safe: 0]?.stringValue else { return nil }
         let columnDefault = OracleColumnDefault(
@@ -452,20 +504,38 @@ public enum OracleSchemaQueries {
                 onUpdate: row[safe: 11]?.stringValue == "YES"
             )
         )
+        let typeSpelling = OracleColumnTypeSpelling(
+            dataType: row[safe: 1]?.stringValue ?? "VARCHAR2",
+            dataLength: integer(in: row[safe: 2]),
+            precision: integer(in: row[safe: 3]),
+            scale: integer(in: row[safe: 4]),
+            charLength: integer(in: row[safe: 13]),
+            charUsed: row[safe: 14]?.stringValue,
+            typeOwner: row[safe: 15]?.stringValue,
+            typeModifier: row[safe: 16]?.stringValue,
+            vectorInfo: row[safe: 17]?.stringValue,
+            tableOwner: row[safe: 18]?.stringValue
+        )
         return OracleColumnRow(
             name: name,
-            dataType: (row[safe: 1]?.stringValue)?.lowercased() ?? "varchar2",
-            dataLength: row[safe: 2]?.stringValue,
-            precision: row[safe: 3]?.stringValue,
-            scale: row[safe: 4]?.stringValue,
+            typeSpelling: typeSpelling,
             isNullable: row[safe: 5]?.stringValue == "Y",
             isPrimaryKey: row[safe: 6]?.stringValue == "Y",
             defaultValue: columnDefault.clause,
             identityGeneration: columnDefault.isIdentity
                 ? row[safe: 12]?.stringValue.flatMap(OracleIdentityGeneration.init(rawValue:)) ?? .always
                 : nil,
-            isVirtual: columnDefault.isVirtual
+            isVirtual: columnDefault.isVirtual,
+            generationExpression: columnDefault.generationExpression
         )
+    }
+
+    private static func integer(in cell: OracleRawCell?) -> Int? {
+        cell?.stringValue.flatMap(integer)
+    }
+
+    static func integer(_ text: String) -> Int? {
+        Int(text.trimmingCharacters(in: .whitespaces))
     }
 
     /// A row of ``allColumns(schema:release:)``: the table name, then a row ``parseColumnRow(_:)`` reads.
@@ -499,32 +569,6 @@ public enum OracleSchemaQueries {
             referencedSchema: row[safe: 5]?.stringValue,
             deleteRule: row[safe: 4]?.stringValue ?? "NO ACTION"
         )
-    }
-
-    public static func fullType(
-        dataType: String,
-        dataLength: String?,
-        precision: String?,
-        scale: String?
-    ) -> String {
-        let fixedTypes: Set<String> = [
-            "date", "clob", "nclob", "blob", "bfile", "long", "long raw",
-            "rowid", "urowid", "binary_float", "binary_double", "xmltype"
-        ]
-        if fixedTypes.contains(dataType) {
-            return dataType
-        }
-        if dataType == "number" {
-            guard let precision, let precisionValue = Int(precision) else { return dataType }
-            if let scale, let scaleValue = Int(scale), scaleValue > 0 {
-                return "number(\(precisionValue),\(scaleValue))"
-            }
-            return "number(\(precisionValue))"
-        }
-        if let dataLength, let lengthValue = Int(dataLength), lengthValue > 0 {
-            return "\(dataType)(\(lengthValue))"
-        }
-        return dataType
     }
 }
 
