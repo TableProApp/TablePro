@@ -764,6 +764,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             /// can redial and install a new connection. Marking the failure dead after that would tear
             /// down the connection the next query is already running on.
             let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: query)
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped
@@ -867,6 +868,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             continuation.finish()
         } catch {
             let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: query)
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped

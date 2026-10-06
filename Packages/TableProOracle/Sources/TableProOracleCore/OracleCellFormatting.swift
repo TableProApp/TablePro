@@ -199,9 +199,20 @@ public struct OracleSessionTimeZones: Sendable, Equatable {
     }
 
     /// Whether a statement can change the session's zone, so the zones read before it no longer hold.
+    ///
+    /// PL/SQL counts, because a block can run `EXECUTE IMMEDIATE 'ALTER SESSION ...'` where no header shows it, and so
+    /// does a statement that opens with no word at all, such as a `<<label>>` before `BEGIN`.
     static func mayChange(after sql: String) -> Bool {
         var reader = HeaderReader(String(String.UnicodeScalarView(sql.unicodeScalars.prefix(4_096))))
-        return reader.nextWord() == "ALTER" && reader.nextWord() == "SESSION"
+        guard let first = reader.nextWord() else { return true }
+        switch first {
+        case "ALTER":
+            return reader.nextWord() == "SESSION"
+        case "BEGIN", "DECLARE", "CALL":
+            return true
+        default:
+            return false
+        }
     }
 }
 

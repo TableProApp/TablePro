@@ -852,14 +852,14 @@ struct ColumnTypeClassifierTests {
             #expect(isTimestamp(classifier.classify(rawTypeName: "TIMESTAMP WITH TIME ZONE")))
         }
 
-        @Test("LONG RAW and BFILE hold bytes", arguments: ["LONG RAW", "long raw", "BFILE", "bfile"])
-        func longRawAndBFileAreBinary(rawTypeName: String) {
+        @Test("LONG RAW holds bytes", arguments: ["LONG RAW", "long raw"])
+        func longRawIsBinary(rawTypeName: String) {
             #expect(classifier.classify(rawTypeName: rawTypeName) == .blob(rawType: rawTypeName))
         }
 
         @Test(
-            "National character, rowid and REF columns classify as text",
-            arguments: ["NVARCHAR2", "NVARCHAR2(100)", "nvarchar2", "ROWID", "UROWID", "urowid", "REF"]
+            "National character, rowid, REF and BFILE columns classify as text",
+            arguments: ["NVARCHAR2", "NVARCHAR2(100)", "nvarchar2", "ROWID", "UROWID", "urowid", "REF", "BFILE", "bfile"]
         )
         func oracleTextTypes(rawTypeName: String) {
             #expect(classifier.classify(rawTypeName: rawTypeName) == .text(rawType: rawTypeName))

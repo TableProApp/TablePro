@@ -204,11 +204,18 @@ final class OracleCellFormattingTests: XCTestCase {
         ]))
     }
 
-    func testOnlyAnAlterSessionCanChangeTheZones() {
+    func testAlterSessionAndPLSQLCanChangeTheZones() {
         XCTAssertTrue(OracleSessionTimeZones.mayChange(after: "ALTER SESSION SET TIME_ZONE = '-03:00'"))
         XCTAssertTrue(OracleSessionTimeZones.mayChange(after: "  alter session set time_zone = dbtimezone"))
         XCTAssertFalse(OracleSessionTimeZones.mayChange(after: "ALTER TABLE t ADD c NUMBER"))
         XCTAssertFalse(OracleSessionTimeZones.mayChange(after: "SELECT 1 FROM DUAL"))
+        XCTAssertFalse(OracleSessionTimeZones.mayChange(after: "UPDATE t SET c = 1"))
+        XCTAssertTrue(OracleSessionTimeZones.mayChange(
+            after: "BEGIN EXECUTE IMMEDIATE 'ALTER SESSION SET TIME_ZONE = ''-03:00'''; END;"
+        ))
+        XCTAssertTrue(OracleSessionTimeZones.mayChange(after: "declare x number; begin null; end;"))
+        XCTAssertTrue(OracleSessionTimeZones.mayChange(after: "CALL set_zone()"))
+        XCTAssertTrue(OracleSessionTimeZones.mayChange(after: "<<outer>> BEGIN NULL; END;"))
     }
 
     func testBFILETextIsTheCallThatCreatesIt() {
