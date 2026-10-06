@@ -603,8 +603,19 @@ final class QueryTabManager: ObservableObject {
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
-        tab.tableContext.tableName = tableName
-        tab.content.query = query
+        /// Built whole rather than field by field: a field left over describes the previous table,
+        /// and its primary keys were what a keyless table's edits matched rows on.
+        tab.tableContext = TabTableContext(
+            tableName: tableName,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            isEditable: !isView,
+            isView: isView,
+            objectType: objectType
+        )
+        /// Fresh for the same reason. A query tab keeps the file it was opened from, and a table
+        /// carried that binding, so Save wrote the table's query into the file.
+        tab.content = TabQueryContent(query: query)
         tab.schemaVersion += 1
         tab.execution.executionTime = nil
         tab.execution.statusMessage = nil
@@ -619,9 +630,6 @@ final class QueryTabManager: ObservableObject {
         tab.cellSelection = .empty
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
-        tab.tableContext.isView = isView
-        tab.tableContext.objectType = objectType
-        tab.tableContext.isEditable = !isView
         tab.filterState = TabFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
@@ -632,8 +640,6 @@ final class QueryTabManager: ObservableObject {
         tab.restoredPage = nil
         tab.restoredPageSize = nil
         tab.restoredRowAnchor = nil
-        tab.tableContext.databaseName = databaseName
-        tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         tabStructureVersion += 1

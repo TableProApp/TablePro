@@ -118,30 +118,26 @@ Full guide: [docs/development/plugin-registry](https://docs.tablepro.app/develop
 
 ## Translating
 
-Strings live in a `.xcstrings` catalog, which interleaves every language inside every key. Editing
-one by hand means working in a 109,000-line file next to languages you do not speak.
-
-`scripts/localization.py` gives you one flat file per language instead.
+Translate through Xcode's export and import, one XLIFF file per language. Never edit
+`Localizable.xcstrings` by hand: Xcode is the only tool that writes it, so a translation diff holds
+your language and nothing else.
 
 ```bash
+xcodebuild -exportLocalizations -project TablePro.xcodeproj -scheme TablePro \
+    -localizationPath Localization -exportLanguage fr
+# translate Localization/fr.xcloc in Xcode, or its Localized Contents/fr.xliff in any XLIFF editor
+xcodebuild -importLocalizations -project TablePro.xcodeproj -localizationPath Localization/fr.xcloc
 scripts/localization.py status              # what is translated, per language
-scripts/localization.py export vi           # Localization/mac.vi.json
-# edit the "translation" values
-scripts/localization.py import vi           # merge back into the catalog
 ```
 
-Add `--target ios` for the iPhone and iPad app, which has its own catalog.
+The export builds the app first, so run `scripts/download-libs.sh` and
+`scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new
+one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone
+and iPad app has a catalog of its own: run the same commands on
+`TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme.
 
-Commit the catalog, not the exported file: `Localization/` is ignored, and the catalog stays the
-single source of truth. A merge only rewrites the strings you actually changed, so the diff shows
-your work and nothing else.
-
-A string marked `needs_review` carries a `"state"` field in the export so you can find it. The
-merge never writes that field back: whether a string still needs review is the reviewer's call, not
-a side effect of editing the file.
-
-Run `scripts/localization.py verify` if you change the script. It checks that reading and rewriting
-each catalog reproduces it byte for byte, which is what keeps a translation diff small.
+Strings from plugins and from packages under `Packages/` live in the app's catalog too, marked
+"Managed Manually" so that Xcode keeps them. `scripts/localization.py plugins --add` adds new ones.
 
 ## Reporting Bugs
 

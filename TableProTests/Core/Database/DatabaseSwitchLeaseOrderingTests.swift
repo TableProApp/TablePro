@@ -41,8 +41,10 @@ struct DatabaseSwitchLeaseOrderingTests {
 
     /// A type that reopens its connection to change database, and whose driver plugin is not
     /// registered, so every switch reaches the reconnect and fails there. `pools` says whether it can
-    /// open a second connection for a database the session has left.
-    private func registerTypeIfNeeded(_ typeId: String = Self.typeId, pools: Bool = true) {
+    /// open a second connection for a database the session has left; one that can switches by
+    /// keeping a connection per database instead (`SessionLanesTests`), so the reconnect needs one
+    /// that cannot.
+    private func registerTypeIfNeeded(_ typeId: String = Self.typeId, pools: Bool = false) {
         guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId) == nil else { return }
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
         var capabilities = PluginMetadataSnapshot.CapabilityFlags(
@@ -90,11 +92,15 @@ struct DatabaseSwitchLeaseOrderingTests {
         PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
     }
 
-    /// Holds the connection's driver until `release` opens, and returns only once it holds it.
-    private func holdDriver(_ connectionId: UUID, until release: Latch) async -> Task<Void, Error> {
+    /// Holds the connection's driver until `release` opens, and returns only once it holds it. A
+    /// connection that keeps one driver per database takes its turns per database, so `database`
+    /// names which one to hold.
+    private func holdDriver(_ connectionId: UUID, database: String? = nil, until release: Latch) async -> Task<Void, Error> {
         let acquired = Latch()
         let holder = Task { @MainActor in
-            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connectionId) {
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
+                SessionDriverGate.Key(connectionId: connectionId, database: database)
+            ) {
                 acquired.open()
                 await release.wait()
             }
@@ -355,7 +361,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
         let release = Latch()
-        let holder = await holdDriver(connection.id, until: release)
+        let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let read = Task { @MainActor in
             try await DatabaseManager.shared.withTableReadDriver(scope: app, cancellation: .cancellableRead(DriverLeaseOwner())) { driver in
@@ -380,7 +386,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
         let release = Latch()
-        let holder = await holdDriver(connection.id, until: release)
+        let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let ran = LeaseRecord()
         let lease = Task { @MainActor in
@@ -414,7 +420,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
         let release = Latch()
-        let holder = await holdDriver(connection.id, until: release)
+        let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let running = LeaseRecord()
         let finish = Latch()
@@ -434,7 +440,9 @@ struct DatabaseSwitchLeaseOrderingTests {
 
         let probe = LeaseRecord()
         let prober = Task { @MainActor in
-            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connection.id) {
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
+                SessionDriverGate.Key(connectionId: connection.id, database: "app")
+            ) {
                 probe.didRun = true
             }
         }
@@ -455,7 +463,7 @@ struct DatabaseSwitchLeaseOrderingTests {
         defer { cleanUpTableRead(connection.id) }
         let app = appScope(connection)
         let release = Latch()
-        let holder = await holdDriver(connection.id, until: release)
+        let holder = await holdDriver(connection.id, database: "app", until: release)
 
         let ran = LeaseRecord()
         let read = Task { @MainActor in

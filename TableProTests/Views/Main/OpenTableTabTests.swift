@@ -252,6 +252,20 @@ struct OpenTableTabTests {
         #expect(coordinator.isActiveTabReusable == false)
     }
 
+    /// A tab bound to a file is the user's document even while the file is empty. Taken over, it
+    /// kept the binding, and Save wrote the table's query into the file.
+    @Test("An empty file-backed query tab is protected and not reusable")
+    @MainActor
+    func emptyFileBackedQueryTabIsNotReusable() {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(
+            databaseName: "db",
+            sourceFileURL: URL(fileURLWithPath: "/tmp/notes.sql")
+        )
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
     // MARK: - Promotion (double-click / interaction)
 
     @Test("promotePreviewTab clears the preview flag and protects the tab")
@@ -492,6 +506,29 @@ struct OpenTableTabTests {
         _ = try coordinator.tabManager.replaceTabContent(tableName: "orders", databaseName: "db_a")
 
         #expect(coordinator.structureSessions[id] == nil)
+    }
+
+    /// A change recorded against the previous table made the next table's first page wait for a
+    /// definition fetch, and opened the window in which the previous load wrote its keys onto it.
+    @Test("Retargeting a tab forgets the change marks of the table it showed")
+    @MainActor
+    func retargetForgetsFreshness() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(
+            tableName: "users", databaseType: .mysql, databaseName: "db_a", isPreview: true
+        )
+        let id = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabSessionRegistry.recordChange(
+            TableFreshness.Change(extent: .definition, at: .now),
+            for: id
+        )
+        #expect(coordinator.tabSessionRegistry.needsDefinition(id))
+
+        _ = try coordinator.tabManager.replaceTabContent(tableName: "orders", databaseName: "db_a")
+
+        #expect(coordinator.tabSessionRegistry.needsDefinition(id) == false)
+        #expect(coordinator.tabSessionRegistry.isStale(id) == false)
     }
 
     @Test("A table tab with pending cell edits holds protected content")

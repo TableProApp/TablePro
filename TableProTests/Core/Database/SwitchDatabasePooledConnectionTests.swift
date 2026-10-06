@@ -23,7 +23,7 @@ struct SwitchDatabasePooledConnectionTests {
     private func registerTypeIfNeeded() {
         guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: Self.typeId) == nil else { return }
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
-        let capabilities = PluginMetadataSnapshot.CapabilityFlags(
+        var capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,
             supportsImport: defaults.supportsImport,
             supportsExport: defaults.supportsExport,
@@ -36,6 +36,9 @@ struct SwitchDatabasePooledConnectionTests {
             requiresReconnectForDatabaseSwitch: true,
             supportsDropDatabase: defaults.supportsDropDatabase
         )
+        /// No second connection, so a switch still takes the reconnect this suite is about rather
+        /// than opening a connection of its own for the database.
+        capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
             displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,

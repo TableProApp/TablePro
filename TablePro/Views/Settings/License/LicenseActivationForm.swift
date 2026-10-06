@@ -18,7 +18,7 @@ struct LicenseActivationForm: View {
 
     @State private var codeOrKey = ""
     @State private var isActivating = false
-    @State private var errorMessage: String?
+    @State private var failure: LicenseActivationFailure?
     @FocusState private var fieldFocused: Bool
 
     private var trimmed: String {
@@ -35,12 +35,20 @@ struct LicenseActivationForm: View {
                 .onSubmit { activate() }
                 .accessibilityIdentifier("license-key-field")
 
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("license-activation-error")
+            if let failure {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(failure.message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("license-activation-error")
+
+                    if let link = failure.link {
+                        Link(link.title, destination: link.destination)
+                            .font(.callout)
+                            .accessibilityIdentifier("license-activation-error-link")
+                    }
+                }
             }
 
             HStack(spacing: 10) {
@@ -59,19 +67,20 @@ struct LicenseActivationForm: View {
     }
 
     private func activate() {
-        guard !trimmed.isEmpty, !isActivating else { return }
+        let entry = trimmed
+        guard !entry.isEmpty, !isActivating else { return }
 
         Task {
-            errorMessage = nil
+            failure = nil
             isActivating = true
             defer { isActivating = false }
 
             do {
-                try await LicenseManager.shared.activate(codeOrKey: trimmed)
+                try await LicenseManager.shared.activate(codeOrKey: entry)
                 codeOrKey = ""
                 onActivated()
             } catch {
-                errorMessage = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription
+                failure = LicensePresentation.activationFailure(for: error, entry: entry)
             }
         }
     }

@@ -164,7 +164,7 @@ final class LibPQDriverCore: @unchecked Sendable {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
         }
-        _ = try await pqConn.executeQuery("SELECT 1")
+        try await pqConn.ping()
     }
 
     // MARK: - Query Execution

@@ -150,4 +150,33 @@ struct ImportDataSinkAdapterMappingTests {
             ["name": .text("Grace")],
         ])
     }
+
+    /// A session connection can already hold the user's own transaction, as a database kept open
+    /// for its rail entry does. Opening one there joined it, and the import's COMMIT then committed
+    /// the user's pending work with it.
+    @Test("An import into a session holding the user's transaction neither opens nor commits one")
+    func importJoinsTheUsersTransaction() async throws {
+        let driver = MockDatabaseDriver()
+        driver.sessionTransactionStateToReturn = .inTransaction
+        let sink = ImportDataSinkAdapter(driver: driver, databaseType: .mysql, targetTable: "people")
+
+        try await sink.beginTransaction()
+        try await sink.commitTransaction()
+
+        #expect(driver.beginTransactionCallCount == 0)
+        #expect(driver.commitTransactionCallCount == 0)
+    }
+
+    @Test("An import into an idle session opens and commits its own transaction")
+    func importOwnsItsTransactionOnAnIdleSession() async throws {
+        let driver = MockDatabaseDriver()
+        driver.sessionTransactionStateToReturn = .idle
+        let sink = ImportDataSinkAdapter(driver: driver, databaseType: .mysql, targetTable: "people")
+
+        try await sink.beginTransaction()
+        try await sink.commitTransaction()
+
+        #expect(driver.beginTransactionCallCount == 1)
+        #expect(driver.commitTransactionCallCount == 1)
+    }
 }

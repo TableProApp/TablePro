@@ -161,6 +161,7 @@ extension DatabaseManager {
 
         await stopHealthMonitor(for: connectionId)
 
+        await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
         activeSessions[connectionId]?.driver?.disconnect()
         updateSession(connectionId) { session in
             session.driver = nil

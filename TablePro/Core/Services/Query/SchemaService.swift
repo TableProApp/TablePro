@@ -20,14 +20,29 @@ final class SchemaService: ObservableObject {
         var userDefinedTypes: MetadataLoadState<[UserDefinedTypeInfo]> = .idle
     }
 
-    @Published private(set) var states: [UUID: SchemaState] = [:]
-    @Published private(set) var sideObjects: [UUID: SideObjects] = [:]
-    @Published private(set) var schemasInOrder: [UUID: [String]] = [:]
+    @Published private(set) var states: [CatalogKey: SchemaState] = [:]
+    @Published private(set) var sideObjects: [CatalogKey: SideObjects] = [:]
+    @Published private(set) var schemasInOrder: [CatalogKey: [String]] = [:]
     @Published private(set) var perSchemaStates: [SchemaKey: SchemaState] = [:]
     @Published private(set) var perSchemaSideObjects: [SchemaKey: SideObjects] = [:]
     @Published private(set) var generations: [UUID: Int] = [:]
     @Published private(set) var refreshingConnections: Set<UUID> = []
-    @Published private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
+    @Published private var shownCatalogs: [UUID: ShownCatalog] = [:]
+
+    /// Each database a connection browses keeps its own catalog, so switching back to one shows what
+    /// it held instead of fetching it from nothing. An engine grouped by schema lists one schema's
+    /// objects, so it keeps one per schema; a hierarchical engine names the schema of every per-schema
+    /// list itself, so it keeps one per database like the rest.
+    struct CatalogKey: Hashable, Sendable {
+        let connectionId: UUID
+        let database: String
+        let schema: String?
+    }
+
+    private struct ShownCatalog: Equatable {
+        let key: CatalogKey
+        let scope: DatabaseScope
+    }
 
     func generationToken(for connectionId: UUID) -> Int {
         generations[connectionId] ?? 0
@@ -88,7 +103,13 @@ final class SchemaService: ObservableObject {
         let continuation: CheckedContinuation<Void, Never>
     }
 
-    private var loadGenerations: [UUID: Int] = [:]
+    private var loadGenerations: [CatalogKey: Int] = [:]
+    private var refreshGenerations: [UUID: Int] = [:]
+    /// The newest switch, or load of the browsed scope, per connection: the only one that may move
+    /// what the connection shows.
+    private var shownClaims: [UUID: Int] = [:]
+    /// Catalogs kept from an earlier visit and shown again, which no load has refreshed since.
+    private var unrefreshedCatalogs: Set<CatalogKey> = []
     private var schemaLoadGenerations: [SchemaKey: Int] = [:]
     private var schemaFreshness = CatalogFreshness<SchemaKey>()
     private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
@@ -96,7 +117,7 @@ final class SchemaService: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
     func state(for connectionId: UUID) -> SchemaState {
-        states[connectionId] ?? .idle
+        states[shownKey(connectionId)] ?? .idle
     }
 
     func isRefreshing(connectionId: UUID) -> Bool {
@@ -104,7 +125,106 @@ final class SchemaService: ObservableObject {
     }
 
     func loadedScope(for connectionId: UUID) -> DatabaseScope? {
-        loadedScopes[connectionId]
+        guard hasLoadedContent(for: connectionId) else { return nil }
+        return shownCatalogs[connectionId]?.scope
+    }
+
+    /// False while the catalog on screen is one kept from an earlier visit that no load has refreshed
+    /// since: it can still list an object dropped, or lack one created, while the connection was away.
+    func isCatalogCurrent(for connectionId: UUID) -> Bool {
+        !unrefreshedCatalogs.contains(shownKey(connectionId))
+    }
+
+    private func shownKey(_ connectionId: UUID) -> CatalogKey {
+        shownCatalogs[connectionId]?.key ?? CatalogKey(connectionId: connectionId, database: "", schema: nil)
+    }
+
+    private func catalogKey(for scope: DatabaseScope, type: DatabaseType?) -> CatalogKey {
+        let keepsSchema = type.map { PluginManager.shared.databaseGroupingStrategy(for: $0) == .bySchema } ?? false
+        return CatalogKey(
+            connectionId: scope.connectionId,
+            database: scope.database,
+            schema: keepsSchema ? scope.schema : nil
+        )
+    }
+
+    /// A connection with no session has no browse cursor to disagree with.
+    private func isBrowsed(_ key: CatalogKey, type: DatabaseType?) -> Bool {
+        guard let browseScope = DatabaseManager.shared.browseScope(for: key.connectionId) else { return true }
+        return catalogKey(for: browseScope, type: type) == key
+    }
+
+    /// Shows the catalog kept for `scope`, in the turn the browse cursor moves there: a database browsed
+    /// before shows what it held at once, and one never browsed shows nothing loaded rather than the
+    /// previous database's objects under its name. A load still running for the scope left writes that
+    /// scope's catalog and moves nothing.
+    func show(scope: DatabaseScope, type: DatabaseType) {
+        showCatalog(catalogKey(for: scope, type: type), scope: scope)
+        bumpGeneration(scope.connectionId)
+    }
+
+    @discardableResult
+    private func showCatalog(_ key: CatalogKey, scope: DatabaseScope) -> Bool {
+        nextLoadGeneration += 1
+        shownClaims[key.connectionId] = nextLoadGeneration
+        return point(key.connectionId, at: key, scope: scope)
+    }
+
+    /// A catalog kept from an earlier visit is not current until a load for it commits. The per-schema
+    /// lists of the database left are kept as well, and nothing refreshes them while it is away, so
+    /// the first reader after a return reads them again.
+    @discardableResult
+    private func point(_ connectionId: UUID, at key: CatalogKey, scope: DatabaseScope) -> Bool {
+        let shown = ShownCatalog(key: key, scope: scope)
+        let previous = shownCatalogs[connectionId]
+        guard previous != shown else { return false }
+        shownCatalogs[connectionId] = shown
+        guard let previous, previous.key != key else { return true }
+        if hasLoadedContent(key) {
+            unrefreshedCatalogs.insert(key)
+        }
+        guard previous.key.database != key.database else { return true }
+        for schemaKey in perSchemaStates.keys
+        where schemaKey.connectionId == connectionId && schemaKey.database == previous.key.database
+            && holdsOrIsLoading(schemaKey) {
+            schemaFreshness.markChanged(schemaKey)
+        }
+        return true
+    }
+
+    /// A load of the scope the connection browses becomes what it shows: at once when nothing loaded
+    /// is on screen, otherwise once it settles, so a refresh keeps the catalog it refreshes on screen.
+    private func claimShown(_ key: CatalogKey, scope: DatabaseScope?, generation: Int, type: DatabaseType) {
+        guard let scope, isBrowsed(key, type: type) else { return }
+        shownClaims[key.connectionId] = generation
+        if !hasLoadedContent(for: key.connectionId) {
+            point(key.connectionId, at: key, scope: scope)
+        }
+    }
+
+    /// A load that a switch or a newer load overtook, or one for a scope the connection has since left,
+    /// writes its own catalog and moves nothing.
+    @discardableResult
+    private func adoptShown(_ key: CatalogKey, scope: DatabaseScope?, generation: Int, type: DatabaseType) -> Bool {
+        guard let scope, shownClaims[key.connectionId] == generation, isBrowsed(key, type: type) else { return false }
+        return point(key.connectionId, at: key, scope: scope)
+    }
+
+    /// Drops every catalog kept for `database`, whose entry closed or which the server dropped or
+    /// renamed. A load still running for it finds its generation gone and commits nothing.
+    func forget(database: String, connectionId: UUID) {
+        let isForgotten: (CatalogKey) -> Bool = { $0.connectionId == connectionId && $0.database == database }
+        let isForgottenSchema: (SchemaKey) -> Bool = { $0.connectionId == connectionId && $0.database == database }
+        states = states.filter { !isForgotten($0.key) }
+        sideObjects = sideObjects.filter { !isForgotten($0.key) }
+        schemasInOrder = schemasInOrder.filter { !isForgotten($0.key) }
+        loadGenerations = loadGenerations.filter { !isForgotten($0.key) }
+        unrefreshedCatalogs = unrefreshedCatalogs.filter { !isForgotten($0) }
+        perSchemaStates = perSchemaStates.filter { !isForgottenSchema($0.key) }
+        perSchemaSideObjects = perSchemaSideObjects.filter { !isForgottenSchema($0.key) }
+        schemaLoadGenerations = schemaLoadGenerations.filter { !isForgottenSchema($0.key) }
+        schemaFreshness.removeAll(where: isForgottenSchema)
+        bumpGeneration(connectionId)
     }
 
     /// Records that what is loaded already covers `scope`, without refetching it.
@@ -116,8 +236,9 @@ final class SchemaService: ObservableObject {
     /// compares the two and runs the full reload the caller just avoided.
     func noteScopeCovered(_ scope: DatabaseScope, for connectionId: UUID) {
         guard case .loaded = state(for: connectionId),
-              loadedScopes[connectionId]?.database == scope.database else { return }
-        loadedScopes[connectionId] = scope
+              let shown = shownCatalogs[connectionId],
+              shown.scope.database == scope.database else { return }
+        shownCatalogs[connectionId] = ShownCatalog(key: shown.key, scope: scope)
     }
 
     func waitForRefresh(connectionId: UUID) async {
@@ -154,6 +275,11 @@ final class SchemaService: ObservableObject {
         return false
     }
 
+    private func hasLoadedContent(_ key: CatalogKey) -> Bool {
+        if case .loaded = states[key] { return true }
+        return false
+    }
+
     func tables(for connectionId: UUID) -> [TableInfo] {
         if case .loaded(let tables) = state(for: connectionId) {
             return tables
@@ -182,19 +308,19 @@ final class SchemaService: ObservableObject {
     }
 
     func routinesLoadState(for connectionId: UUID) -> MetadataLoadState<[RoutineInfo]> {
-        sideObjects[connectionId]?.routines ?? .idle
+        sideObjects[shownKey(connectionId)]?.routines ?? .idle
     }
 
     func triggersLoadState(for connectionId: UUID) -> MetadataLoadState<[TriggerInfo]> {
-        sideObjects[connectionId]?.triggers ?? .idle
+        sideObjects[shownKey(connectionId)]?.triggers ?? .idle
     }
 
     func userDefinedTypesLoadState(for connectionId: UUID) -> MetadataLoadState<[UserDefinedTypeInfo]> {
-        sideObjects[connectionId]?.userDefinedTypes ?? .idle
+        sideObjects[shownKey(connectionId)]?.userDefinedTypes ?? .idle
     }
 
     func schemas(for connectionId: UUID) -> [String] {
-        schemasInOrder[connectionId] ?? []
+        schemasInOrder[shownKey(connectionId)] ?? []
     }
 
     func schemaState(for connectionId: UUID, schema: String) -> SchemaState {
@@ -208,7 +334,7 @@ final class SchemaService: ObservableObject {
     }
 
     private func catalogDatabase(_ connectionId: UUID) -> String {
-        loadedScopes[connectionId]?.database ?? ""
+        shownKey(connectionId).database
     }
 
     private func catalogEntries<Value>(_ entries: [SchemaKey: Value], of connectionId: UUID) -> [String: Value] {
@@ -475,13 +601,7 @@ final class SchemaService: ObservableObject {
         guard schemaLoadGenerations[key] == generation else { return }
         schemaLoadGenerations.removeValue(forKey: key)
         updateSchemaSideObjects(key) { side in
-            side = Self.settled(
-                side,
-                routines: routinesOutcome,
-                triggers: triggersOutcome,
-                types: typesOutcome,
-                discardingValue: false
-            )
+            side = Self.settled(side, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
         }
         bumpGeneration(connectionId)
     }
@@ -517,25 +637,25 @@ final class SchemaService: ObservableObject {
         await perSchemaTypesDedup.cancel(where: shouldCancel)
     }
 
-    /// The per-schema lists of a database the connection has moved off describe nothing it shows,
-    /// and a fetch still running for one of them finds its generation gone and commits nothing.
-    private func discardSchemaObjects(of connectionId: UUID, outside database: String) async {
-        let isOutside: (SchemaKey) -> Bool = { $0.connectionId == connectionId && $0.database != database }
-        let discarded = Set(perSchemaStates.keys.filter(isOutside))
-            .union(perSchemaSideObjects.keys.filter(isOutside))
-            .union(schemaLoadGenerations.keys.filter(isOutside))
-        guard !discarded.isEmpty else { return }
-        perSchemaStates = perSchemaStates.filter { !discarded.contains($0.key) }
-        perSchemaSideObjects = perSchemaSideObjects.filter { !discarded.contains($0.key) }
-        schemaLoadGenerations = schemaLoadGenerations.filter { !discarded.contains($0.key) }
-        schemaFreshness.removeAll { discarded.contains($0) }
-        await cancelSchemaLoads { discarded.contains($0.schemaKey) }
+    private func updateSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
+        var side = sideObjects[key] ?? SideObjects()
+        change(&side)
+        sideObjects[key] = side
     }
 
-    private func updateSideObjects(_ connectionId: UUID, _ change: (inout SideObjects) -> Void) {
-        var side = sideObjects[connectionId] ?? SideObjects()
+    /// The catalog of the scope the reload reads, not of whatever is shown when it starts: a switch
+    /// while it waits for a connection would file one database's objects under another.
+    private func reloadKey(_ connectionId: UUID, scope: DatabaseScope?, driver: DatabaseDriver) -> CatalogKey {
+        guard let scope else { return shownKey(connectionId) }
+        return catalogKey(for: scope, type: driver.connection.type)
+    }
+
+    /// A reload that lands after `forget` dropped its catalog writes nothing, rather than bringing
+    /// back objects of a database whose entry closed.
+    private func updateKeptSideObjects(_ key: CatalogKey, _ change: (inout SideObjects) -> Void) {
+        guard var side = sideObjects[key] else { return }
         change(&side)
-        sideObjects[connectionId] = side
+        sideObjects[key] = side
     }
 
     private func updateSchemaSideObjects(_ key: SchemaKey, _ change: (inout SideObjects) -> Void) {
@@ -545,34 +665,33 @@ final class SchemaService: ObservableObject {
     }
 
     private func commitSideObjects(
-        _ connectionId: UUID,
+        _ key: CatalogKey,
         routines: MetadataFetchOutcome<[RoutineInfo]>,
         triggers: MetadataFetchOutcome<[TriggerInfo]>?,
-        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?,
-        discardingValue: Bool
+        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?
     ) {
-        updateSideObjects(connectionId) { side in
-            side = Self.settled(
-                side,
-                routines: routines,
-                triggers: triggers,
-                types: types,
-                discardingValue: discardingValue
-            )
+        updateSideObjects(key) { side in
+            side = Self.settled(side, routines: routines, triggers: triggers, types: types)
         }
     }
 
     /// A load cut short by cancellation settles the kinds it put on a spinner, unless a newer load
     /// already owns them. Left alone, a cancel with no reload behind it kept those sections waiting
     /// on a fetch nothing was running.
-    private func abandonSideLoads(_ connectionId: UUID, generation: Int) {
-        guard loadGenerations[connectionId] == generation else { return }
-        updateSideObjects(connectionId) { side in
+    private func abandonLoad(_ key: CatalogKey, generation: Int) {
+        guard loadGenerations[key] == generation else { return }
+        /// Nothing replaces a `.loading` that a cancelled load leaves behind: the object list shows a
+        /// spinner with no Retry, and every caller that loads only what is not loaded or loading
+        /// waits on it forever.
+        if case .loading = states[key] {
+            states[key] = .idle
+        }
+        updateSideObjects(key) { side in
             side.routines = side.routines.settled(by: .cancelled, discardingValue: false)
             side.triggers = side.triggers.settled(by: .cancelled, discardingValue: false)
             side.userDefinedTypes = side.userDefinedTypes.settled(by: .cancelled, discardingValue: false)
         }
-        bumpGeneration(connectionId)
+        bumpGeneration(key.connectionId)
     }
 
     private static func enteringLoad(_ side: SideObjects, kinds: SideKinds) -> SideObjects {
@@ -583,26 +702,20 @@ final class SchemaService: ObservableObject {
         return next
     }
 
-    /// A kind the engine was not asked for has no outcome. It keeps its state, unless the load
-    /// moved to another scope, where whatever it held describes the scope being left.
+    /// A kind the engine was not asked for has no outcome and keeps its state.
     private static func settled(
         _ side: SideObjects,
         routines: MetadataFetchOutcome<[RoutineInfo]>,
         triggers: MetadataFetchOutcome<[TriggerInfo]>?,
-        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?,
-        discardingValue: Bool
+        types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?
     ) -> SideObjects {
         var next = side
-        next.routines = side.routines.settled(by: routines, discardingValue: discardingValue)
+        next.routines = side.routines.settled(by: routines, discardingValue: false)
         if let triggers {
-            next.triggers = side.triggers.settled(by: triggers, discardingValue: discardingValue)
-        } else if discardingValue {
-            next.triggers = .idle
+            next.triggers = side.triggers.settled(by: triggers, discardingValue: false)
         }
         if let types {
-            next.userDefinedTypes = side.userDefinedTypes.settled(by: types, discardingValue: discardingValue)
-        } else if discardingValue {
-            next.userDefinedTypes = .idle
+            next.userDefinedTypes = side.userDefinedTypes.settled(by: types, discardingValue: false)
         }
         return next
     }
@@ -614,7 +727,8 @@ final class SchemaService: ObservableObject {
         scope: DatabaseScope? = nil
     ) async {
         switch state(for: connectionId) {
-        case .loaded where scope == nil || loadedScopes[connectionId] == scope:
+        case .loaded where (scope == nil || loadedScope(for: connectionId) == scope)
+            && isCatalogCurrent(for: connectionId):
             return
         case .idle, .loading, .failed, .loaded:
             await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
@@ -634,7 +748,8 @@ final class SchemaService: ObservableObject {
     /// is about to record what its refresh covered can tell a real reload from a swallowed error.
     @discardableResult
     func reloadRoutines(connectionId: UUID, driver: DatabaseDriver, scope: DatabaseScope?) async -> Bool {
-        updateSideObjects(connectionId) { $0.routines = $0.routines.enteringLoad }
+        let key = reloadKey(connectionId, scope: scope, driver: driver)
+        updateSideObjects(key) { $0.routines = $0.routines.enteringLoad }
         bumpGeneration(connectionId)
         let outcome = await Self.fetchObjectsSafely(
             key: LoadKey(connectionId: connectionId, scope: scope),
@@ -643,14 +758,15 @@ final class SchemaService: ObservableObject {
             dedup: routinesDedup,
             fetch: { try await driver.fetchRoutines(schema: nil) }
         )
-        updateSideObjects(connectionId) { $0.routines = $0.routines.settled(by: outcome, discardingValue: false) }
+        updateKeptSideObjects(key) { $0.routines = $0.routines.settled(by: outcome, discardingValue: false) }
         bumpGeneration(connectionId)
         return outcome.didFetch
     }
 
     @discardableResult
     func reloadTriggers(connectionId: UUID, driver: DatabaseDriver, scope: DatabaseScope?) async -> Bool {
-        updateSideObjects(connectionId) { $0.triggers = $0.triggers.enteringLoad }
+        let key = reloadKey(connectionId, scope: scope, driver: driver)
+        updateSideObjects(key) { $0.triggers = $0.triggers.enteringLoad }
         bumpGeneration(connectionId)
         let outcome = await Self.fetchObjectsSafely(
             key: LoadKey(connectionId: connectionId, scope: scope),
@@ -659,14 +775,15 @@ final class SchemaService: ObservableObject {
             dedup: triggersDedup,
             fetch: { try await driver.fetchAllTriggers(schema: nil) }
         )
-        updateSideObjects(connectionId) { $0.triggers = $0.triggers.settled(by: outcome, discardingValue: false) }
+        updateKeptSideObjects(key) { $0.triggers = $0.triggers.settled(by: outcome, discardingValue: false) }
         bumpGeneration(connectionId)
         return outcome.didFetch
     }
 
     @discardableResult
     func reloadUserDefinedTypes(connectionId: UUID, driver: DatabaseDriver, scope: DatabaseScope?) async -> Bool {
-        updateSideObjects(connectionId) { $0.userDefinedTypes = $0.userDefinedTypes.enteringLoad }
+        let key = reloadKey(connectionId, scope: scope, driver: driver)
+        updateSideObjects(key) { $0.userDefinedTypes = $0.userDefinedTypes.enteringLoad }
         bumpGeneration(connectionId)
         let outcome = await Self.fetchObjectsSafely(
             key: LoadKey(connectionId: connectionId, scope: scope),
@@ -675,7 +792,7 @@ final class SchemaService: ObservableObject {
             dedup: typesDedup,
             fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
         )
-        updateSideObjects(connectionId) {
+        updateKeptSideObjects(key) {
             $0.userDefinedTypes = $0.userDefinedTypes.settled(by: outcome, discardingValue: false)
         }
         bumpGeneration(connectionId)
@@ -699,17 +816,20 @@ final class SchemaService: ObservableObject {
 
     func invalidate(connectionId: UUID) async {
         await cancelInFlightLoads(connectionId: connectionId)
-        loadGenerations.removeValue(forKey: connectionId)
+        loadGenerations = loadGenerations.filter { $0.key.connectionId != connectionId }
+        refreshGenerations.removeValue(forKey: connectionId)
+        shownClaims.removeValue(forKey: connectionId)
+        unrefreshedCatalogs = unrefreshedCatalogs.filter { $0.connectionId != connectionId }
         schemaLoadGenerations = schemaLoadGenerations.filter { $0.key.connectionId != connectionId }
         schemaFreshness.removeAll { $0.connectionId == connectionId }
         refreshingConnections.remove(connectionId)
-        states.removeValue(forKey: connectionId)
-        sideObjects.removeValue(forKey: connectionId)
-        schemasInOrder.removeValue(forKey: connectionId)
+        states = states.filter { $0.key.connectionId != connectionId }
+        sideObjects = sideObjects.filter { $0.key.connectionId != connectionId }
+        schemasInOrder = schemasInOrder.filter { $0.key.connectionId != connectionId }
         perSchemaStates = perSchemaStates.filter { $0.key.connectionId != connectionId }
         perSchemaSideObjects = perSchemaSideObjects.filter { $0.key.connectionId != connectionId }
         generations.removeValue(forKey: connectionId)
-        loadedScopes.removeValue(forKey: connectionId)
+        shownCatalogs.removeValue(forKey: connectionId)
         resumeRefreshWaiters(connectionId)
     }
 
@@ -743,48 +863,41 @@ final class SchemaService: ObservableObject {
     }
 
     /// For a load that failed before it could run, so no fetch is left to settle the other object
-    /// kinds. When the failed scope is not the one the loaded objects came from, as after a database
-    /// switch, every kind reports the failure instead of showing the database being left.
+    /// kinds. When that leaves no tables, each kind the engine lists with nothing loaded reports the
+    /// failure too, because an empty section that has not failed reads as one still loading.
     func markLoadFailed(connectionId: UUID, message: String, scope: DatabaseScope?) {
-        let leftLoadedScope = hasLeftLoadedScope(connectionId, for: scope)
-        guard settleTablesFailed(connectionId, message: message, leftLoadedScope: leftLoadedScope) else { return }
-        if leftLoadedScope {
-            updateSideObjects(connectionId) { $0 = Self.failed($0, message: message) }
+        let type = DatabaseManager.shared.session(for: connectionId)?.connection.type
+        var key = shownKey(connectionId)
+        var moved = false
+        if let scope {
+            key = catalogKey(for: scope, type: type)
+            if isBrowsed(key, type: type) {
+                moved = showCatalog(key, scope: scope)
+            }
+        }
+        if settleTablesFailed(key, message: message) {
+            let kinds = type.map(SideKinds.init)
+            updateSideObjects(key) { side in
+                side = Self.settled(
+                    side,
+                    routines: .failed(message),
+                    triggers: kinds?.triggers == true ? .failed(message) : nil,
+                    types: kinds?.types == true ? .failed(message) : nil
+                )
+            }
+        } else if !moved {
+            return
         }
         bumpGeneration(connectionId)
     }
 
-    /// No recorded scope proves nothing about where the held objects came from: a table fetch that
-    /// failed for the database being browsed clears it while that database's routines still load.
-    private func hasLeftLoadedScope(_ connectionId: UUID, for scope: DatabaseScope?) -> Bool {
-        guard let scope, let loadedScope = loadedScopes[connectionId] else { return false }
-        return loadedScope != scope
-    }
-
     /// Returns false when nothing changed, so a refresh that failed over tables it keeps publishes nothing.
-    private func settleTablesFailed(_ connectionId: UUID, message: String, leftLoadedScope: Bool) -> Bool {
-        let current = state(for: connectionId)
-        let next = current.settled(byFailure: message, discardingValue: leftLoadedScope)
-        guard next != current || leftLoadedScope else { return false }
-        states[connectionId] = next
-        if leftLoadedScope {
-            loadedScopes.removeValue(forKey: connectionId)
-        }
+    private func settleTablesFailed(_ key: CatalogKey, message: String) -> Bool {
+        let current = states[key] ?? .idle
+        let next = current.settled(byFailure: message, discardingValue: false)
+        guard next != current else { return false }
+        states[key] = next
         return true
-    }
-
-    /// A kind still idle was never browsed for this connection, so there is no fetch to report as failed.
-    private static func failed(_ side: SideObjects, message: String) -> SideObjects {
-        var next = side
-        next.routines = failed(side.routines, message: message)
-        next.triggers = failed(side.triggers, message: message)
-        next.userDefinedTypes = failed(side.userDefinedTypes, message: message)
-        return next
-    }
-
-    private static func failed<Value>(_ state: MetadataLoadState<Value>, message: String) -> MetadataLoadState<Value> {
-        if case .idle = state { return .idle }
-        return state.settled(by: .failed(message), discardingValue: true)
     }
 
     private func runLoad(
@@ -793,35 +906,34 @@ final class SchemaService: ObservableObject {
         connection: DatabaseConnection,
         scope: DatabaseScope?
     ) async {
-        let generation = beginLoadGeneration(for: connectionId)
-        beginRefresh(connectionId)
+        let type = connection.type
+        let key = scope.map { catalogKey(for: $0, type: type) } ?? shownKey(connectionId)
+        let generation = beginLoadGeneration(for: key)
+        beginRefresh(connectionId, generation: generation)
         defer { endRefresh(connectionId, generation: generation) }
-        if !hasLoadedContent(for: connectionId) {
-            states[connectionId] = .loading
+        claimShown(key, scope: scope, generation: generation, type: type)
+        if !hasLoadedContent(key) {
+            states[key] = .loading
         }
-        let kinds = SideKinds(connection.type)
-        updateSideObjects(connectionId) { $0 = Self.enteringLoad($0, kinds: kinds) }
+        let kinds = SideKinds(type)
+        updateSideObjects(key) { $0 = Self.enteringLoad($0, kinds: kinds) }
         bumpGeneration(connectionId)
 
-        /// Keeping the previous routines is only right for a refresh of the same scope. When the
-        /// scope moved, routines fetched from the database being left do not describe the one
-        /// being entered, and showing them is worse than showing none.
-        let scopeChanged = scope != nil && loadedScopes[connectionId] != scope
-
-        let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: connection.type)
+        let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: type)
         if !supportsSchemas {
-            schemasInOrder.removeValue(forKey: connectionId)
+            schemasInOrder.removeValue(forKey: key)
         }
 
         let loadKey = LoadKey(connectionId: connectionId, scope: scope)
-        let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        let grouping = PluginManager.shared.databaseGroupingStrategy(for: type)
         if grouping == .hierarchicalSchema {
             await runHierarchicalLoad(
+                key: key,
                 loadKey: loadKey,
                 driver: driver,
                 kinds: kinds,
-                scopeChanged: scopeChanged,
-                generation: generation
+                generation: generation,
+                type: type
             )
             return
         }
@@ -865,29 +977,30 @@ final class SchemaService: ObservableObject {
         /// Tables are committed the moment they arrive and the other kinds settle behind them, so a
         /// failed tables fetch still settles routines, triggers and types instead of leaving each
         /// section on a spinner no load is coming to replace.
-        var tablesLoaded = false
         do {
             let tables = try await tablesTask
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-loaded") else {
+            guard isCurrentLoadGeneration(generation, for: key, phase: "tables-loaded") else {
                 return
             }
-            states[connectionId] = .loaded(tables)
+            adoptShown(key, scope: scope, generation: generation, type: type)
+            states[key] = .loaded(tables)
+            unrefreshedCatalogs.remove(key)
             bumpGeneration(connectionId)
-            tablesLoaded = true
         } catch is CancellationError {
-            abandonSideLoads(connectionId, generation: generation)
+            abandonLoad(key, generation: generation)
             return
         } catch {
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "tables-failed") else {
-                if loadGenerations[connectionId] == nil, case .loading = states[connectionId] {
-                    states[connectionId] = .idle
+            guard isCurrentLoadGeneration(generation, for: key, phase: "tables-failed") else {
+                if loadGenerations[key] == nil, case .loading = states[key] {
+                    states[key] = .idle
                 }
                 return
             }
             Self.logger.warning(
                 "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
-            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+            let moved = adoptShown(key, scope: scope, generation: generation, type: type)
+            if settleTablesFailed(key, message: error.localizedDescription) || moved {
                 bumpGeneration(connectionId)
             }
         }
@@ -895,40 +1008,27 @@ final class SchemaService: ObservableObject {
         let routinesOutcome = await routinesTask
         let triggersOutcome = await triggersTask
         let typesOutcome = await typesTask
-        guard isCurrentLoadGeneration(generation, for: connectionId, phase: "side-objects-loaded") else {
+        guard isCurrentLoadGeneration(generation, for: key, phase: "side-objects-loaded") else {
             return
         }
-        commitSideObjects(
-            connectionId,
-            routines: routinesOutcome,
-            triggers: triggersOutcome,
-            types: typesOutcome,
-            discardingValue: scopeChanged
-        )
+        commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
 
         if let loadedSchemas = await schemasTask {
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "schemas-loaded") else {
+            guard isCurrentLoadGeneration(generation, for: key, phase: "schemas-loaded") else {
                 return
             }
-            schemasInOrder[connectionId] = loadedSchemas
-        }
-        if tablesLoaded, let scope {
-            await adoptLoadedScope(scope)
+            schemasInOrder[key] = loadedSchemas
         }
         bumpGeneration(connectionId)
     }
 
-    private func adoptLoadedScope(_ scope: DatabaseScope) async {
-        loadedScopes[scope.connectionId] = scope
-        await discardSchemaObjects(of: scope.connectionId, outside: scope.database)
-    }
-
     private func runHierarchicalLoad(
+        key: CatalogKey,
         loadKey: LoadKey,
         driver: DatabaseDriver,
         kinds: SideKinds,
-        scopeChanged: Bool,
-        generation: Int
+        generation: Int,
+        type: DatabaseType
     ) async {
         let connectionId = loadKey.connectionId
         let scope = loadKey.scope
@@ -968,52 +1068,55 @@ final class SchemaService: ObservableObject {
                 try await driver.fetchSchemas()
             }
         } catch is CancellationError {
-            abandonSideLoads(connectionId, generation: generation)
+            abandonLoad(key, generation: generation)
             return
         } catch {
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-failed") else {
+            guard isCurrentLoadGeneration(generation, for: key, phase: "hierarchical-failed") else {
                 return
             }
             Self.logger.warning(
                 "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
-            commitSideObjects(
-                connectionId,
-                routines: routinesOutcome,
-                triggers: triggersOutcome,
-                types: typesOutcome,
-                discardingValue: scopeChanged
-            )
-            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+            let moved = adoptShown(key, scope: scope, generation: generation, type: type)
+            commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
+            if settleTablesFailed(key, message: error.localizedDescription) || moved {
                 bumpGeneration(connectionId)
             }
             return
         }
 
-        guard isCurrentLoadGeneration(generation, for: connectionId, phase: "hierarchical-loaded") else {
+        guard isCurrentLoadGeneration(generation, for: key, phase: "hierarchical-loaded") else {
             return
         }
-        schemasInOrder[connectionId] = loadedSchemas
-        commitSideObjects(
-            connectionId,
-            routines: routinesOutcome,
-            triggers: triggersOutcome,
-            types: typesOutcome,
-            discardingValue: scopeChanged
-        )
-        states[connectionId] = .loaded([])
-        if let scope {
-            await adoptLoadedScope(scope)
-        }
+        adoptShown(key, scope: scope, generation: generation, type: type)
+        schemasInOrder[key] = loadedSchemas
+        dropSchemaLists(of: key, outside: Set(loadedSchemas))
+        commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
+        states[key] = .loaded([])
+        unrefreshedCatalogs.remove(key)
         bumpGeneration(connectionId)
     }
 
-    private func beginRefresh(_ connectionId: UUID) {
+    /// A schema the server no longer lists has no row left to fetch it again, so a list kept for it,
+    /// from before the database was left, would go on feeding its tables to every catalog reader. A
+    /// fetch still running for one finds its generation gone and commits nothing.
+    private func dropSchemaLists(of key: CatalogKey, outside schemas: Set<String>) {
+        let isGone: (SchemaKey) -> Bool = {
+            $0.connectionId == key.connectionId && $0.database == key.database && !schemas.contains($0.schema)
+        }
+        perSchemaStates = perSchemaStates.filter { !isGone($0.key) }
+        perSchemaSideObjects = perSchemaSideObjects.filter { !isGone($0.key) }
+        schemaLoadGenerations = schemaLoadGenerations.filter { !isGone($0.key) }
+        schemaFreshness.removeAll(where: isGone)
+    }
+
+    private func beginRefresh(_ connectionId: UUID, generation: Int) {
+        refreshGenerations[connectionId] = generation
         refreshingConnections.insert(connectionId)
     }
 
     private func endRefresh(_ connectionId: UUID, generation: Int) {
-        guard loadGenerations[connectionId] == generation else { return }
+        guard refreshGenerations[connectionId] == generation else { return }
         refreshingConnections.remove(connectionId)
         resumeRefreshWaiters(connectionId)
     }
@@ -1033,28 +1136,28 @@ final class SchemaService: ObservableObject {
         waiter.continuation.resume()
     }
 
-    private func beginLoadGeneration(for connectionId: UUID) -> Int {
+    private func beginLoadGeneration(for key: CatalogKey) -> Int {
         nextLoadGeneration += 1
         let generation = nextLoadGeneration
-        if case .loading? = states[connectionId] {
-            let previousGeneration = loadGenerations[connectionId] ?? 0
+        if case .loading? = states[key] {
+            let previousGeneration = loadGenerations[key] ?? 0
             Self.logger.debug(
-                "[schema] superseding in-flight load connId=\(connectionId, privacy: .public) previousGeneration=\(previousGeneration) newGeneration=\(generation)"
+                "[schema] superseding in-flight load connId=\(key.connectionId, privacy: .public) previousGeneration=\(previousGeneration) newGeneration=\(generation)"
             )
         }
-        loadGenerations[connectionId] = generation
+        loadGenerations[key] = generation
         return generation
     }
 
     private func isCurrentLoadGeneration(
         _ generation: Int,
-        for connectionId: UUID,
+        for key: CatalogKey,
         phase: String
     ) -> Bool {
-        guard loadGenerations[connectionId] == generation else {
-            let currentGeneration = loadGenerations[connectionId] ?? 0
+        guard loadGenerations[key] == generation else {
+            let currentGeneration = loadGenerations[key] ?? 0
             Self.logger.debug(
-                "[schema] stale load transition ignored connId=\(connectionId, privacy: .public) phase=\(phase, privacy: .public) generation=\(generation) currentGeneration=\(currentGeneration)"
+                "[schema] stale load transition ignored connId=\(key.connectionId, privacy: .public) phase=\(phase, privacy: .public) generation=\(generation) currentGeneration=\(currentGeneration)"
             )
             return false
         }

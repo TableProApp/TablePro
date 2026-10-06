@@ -163,6 +163,7 @@ internal struct FavoriteTableCatalogReader {
             tables: tables.filter { names.contains($0.name) },
             coverage: coverage,
             isCurrent: !schemaService.isRefreshing(connectionId: connectionId)
+                && schemaService.isCatalogCurrent(for: connectionId)
         )]
     }
 

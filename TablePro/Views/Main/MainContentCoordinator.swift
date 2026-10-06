@@ -377,6 +377,19 @@ final class MainContentCoordinator: ObservableObject {
     private var draftSaveTask: Task<Void, Never>?
     private var terminationObserver: NSObjectProtocol?
     internal var postConnectCancellable: AnyCancellable?
+    /// Owned here rather than by the view that asks for it: a view's `task` is cancelled whenever a
+    /// connection switch takes its pane out of the window, and a cancelled first load left the
+    /// object list without anything to load it again.
+    internal var schemaLoadTask: Task<Void, Never>?
+    /// The driver `schemaLoadTask` reads through. A reconnect installs a new one, and a load still
+    /// running on the old driver says nothing about the catalog the new one sees.
+    internal weak var schemaLoadDriver: (any DatabaseDriver)?
+    /// The coordinator's, not the view's: a session that drops and comes back swaps the content
+    /// view out and in again, and restoring the saved tabs a second time over the live ones replaced
+    /// whatever changed since the last save.
+    internal var hasRestoredTabs = false
+    /// How many times this connection's content has appeared, a connection switch back included.
+    internal private(set) var activationCount = 0
     private var externalFileModCancellable: AnyCancellable?
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
@@ -391,7 +404,7 @@ final class MainContentCoordinator: ObservableObject {
         let mineContent: String
         let diskContent: String
     }
-    private var fileWatcher: DatabaseFileWatcher?
+    internal private(set) var fileWatcher: DatabaseFileWatcher?
 
     /// Set during handleTabChange to suppress redundant column-change reconfiguration
     internal var isHandlingTabSwitch = false
@@ -778,31 +791,36 @@ final class MainContentCoordinator: ObservableObject {
 
     func markActivated() {
         let start = Date()
+        activationCount += 1
         let wasAlreadyActive = _didActivate.withLock { current -> Bool in
             let prior = current
             current = true
             return prior
         }
+        /// This runs on every appearance, and a connection switch is one: it takes this
+        /// connection's panes out of the window and puts them back. Only the first one starts what
+        /// lives as long as the coordinator.
         if !wasAlreadyActive {
             services.schemaProviderRegistry.setLiveScopeProvider(CoordinatorLiveScopeProvider.shared)
             services.schemaProviderRegistry.retain(for: connection.id)
+            registerForPersistence()
+            /// Recovery records which connections have a live coordinator, which only changes here
+            /// and in `teardown()`, so a switch has nothing new to write.
+            SessionRecoveryTracker.sync()
+            startPeriodicSave()
+            startFileWatcherIfNeeded()
         }
-        registerForPersistence()
-        SessionRecoveryTracker.sync()
-        startPeriodicSave()
         setupPluginDriver()
-        startFileWatcherIfNeeded()
-        if changeManager.pluginDriver == nil {
-            armPostConnectSchemaLoad()
-        }
+        loadSchemaOnActivation()
         Self.lifecycleLogger.info(
-            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) firstActivation=\(!wasAlreadyActive) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
-        guard services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
+        guard fileWatcher == nil,
+              services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
         let filePath = connection.database
         guard !filePath.isEmpty else { return }
 
@@ -837,6 +855,9 @@ final class MainContentCoordinator: ObservableObject {
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
+        /// `pluginDriver` is published, so writing the same driver back on every appearance
+        /// re-evaluated every view that reads the change manager for nothing.
+        guard pluginDriver !== changeManager.pluginDriver else { return }
         queryBuilder.setPluginDriver(pluginDriver)
         changeManager.pluginDriver = pluginDriver
     }
@@ -937,6 +958,8 @@ final class MainContentCoordinator: ObservableObject {
             terminationObserver = nil
         }
         postConnectCancellable = nil
+        schemaLoadTask?.cancel()
+        schemaLoadTask = nil
         externalFileModCancellable = nil
         sourceFileDiskChangeMonitor.cancel()
         schemaSwitchCancellable = nil
@@ -1040,8 +1063,11 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     /// Load schema if not already loaded by another window for this connection.
+    /// A second window on a connection, or this view mounting again, finds the schema loaded and
+    /// leaves it alone instead of reloading the autocomplete every window shares.
     func loadSchemaIfNeeded() async {
-        await loadSchema()
+        loadSchemaOnActivation()
+        await schemaLoadTask?.value
     }
 
     /// Initialize view with connection info and load schema (legacy — used by first window)
@@ -1159,14 +1185,19 @@ final class MainContentCoordinator: ObservableObject {
     /// Execute table tab query directly.
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
-    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated, viewport: GridReloadIntent) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    /// Returns the confirmation task when Safe Mode asks before the load runs.
+    @discardableResult
+    func executeTableTabQueryDirectly(
+        trigger: TableLoadTrigger = .userInitiated,
+        viewport: GridReloadIntent
+    ) -> Task<Void, Never>? {
+        guard let tab = tabManager.selectedTab else { return nil }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tab.id)
 
         let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             traceNavigationAbandoned(tabId: tab.id, outcome: .emptyQuery)
-            return
+            return nil
         }
 
         let level = safeModeLevel
@@ -1175,11 +1206,12 @@ final class MainContentCoordinator: ObservableObject {
         {
             guard !isShowingSafeModePrompt else {
                 traceNavigationAbandoned(tabId: tab.id, outcome: .safeModePromptAlreadyOpen)
-                return
+                return nil
             }
             isShowingSafeModePrompt = true
-            Task {
-                defer { isShowingSafeModePrompt = false }
+            let tabId = tab.id
+            let askedContext = tab.tableContext
+            return Task {
                 let decision = await executionGate.authorize(
                     OperationRequest(
                         connectionId: connectionId,
@@ -1191,17 +1223,35 @@ final class MainContentCoordinator: ObservableObject {
                         operationDescription: String(localized: "Execute Query")
                     )
                 )
+                isShowingSafeModePrompt = false
+                /// The sheet holds this window, not a link or an agent selecting another table under
+                /// it, and the answer is about the statement it showed. Run on whatever tab was
+                /// selected by then, it put this table's rows under another table's name. The text
+                /// alone does not name the statement: a Redis database switch keeps the same SCAN.
+                let asked = tabManager.tabs.first(where: { $0.id == tabId })
+                guard tabManager.selectedTabId == tabId,
+                      let asked,
+                      asked.content.query == sql,
+                      asked.tableContext.tableName == askedContext.tableName,
+                      asked.tableContext.databaseName == askedContext.databaseName else {
+                    traceNavigationAbandoned(tabId: tabId, outcome: .superseded)
+                    if tabManager.selectedTabId != tabId {
+                        declineTableLoad(for: tabId)
+                    }
+                    lazyLoadCurrentTabIfNeeded(trigger: trigger)
+                    return
+                }
                 switch decision {
                 case .authorized:
                     executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
                 case .denied(let reason, _):
-                    traceNavigationAbandoned(tabId: tab.id, outcome: .safeModeDenied)
-                    tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
+                    traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
+                    queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
                 }
             }
-        } else {
-            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
         }
+        executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
+        return nil
     }
 
     // MARK: - Editor Query Loading
@@ -1307,6 +1357,7 @@ final class MainContentCoordinator: ObservableObject {
             guard tabExecution.settle(claim) else { return }
             tabManager.mutate(at: index) { tab in
                 tab.execution.errorMessage = String(localized: "Not connected to database")
+                tab.pagination.isLoading = false
             }
             return
         }
@@ -1359,8 +1410,8 @@ final class MainContentCoordinator: ObservableObject {
                 /// never holds the new columns under the old keys, defaults or generated columns.
                 let definition = needsDefinition ? try? await schemaTask?.value : nil
 
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
+                let applied = await MainActor.run { [weak self] () -> Bool in
+                    guard let self else { return false }
                     traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
 
                     // Every write below belongs to whoever owns the tab now. A superseded result
@@ -1371,12 +1422,12 @@ final class MainContentCoordinator: ObservableObject {
                     // circuit there would leave the tab claimed forever and refusing later runs.
                     guard tabExecution.settle(claim) else {
                         traceStaleResultDropped(traceToken)
-                        return
+                        return false
                     }
                     retireQueryTask(.claim(claim))
                     guard !Task.isCancelled else {
                         traceStaleResultDropped(traceToken)
-                        return
+                        return false
                     }
                     toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: tabId)
 
@@ -1418,6 +1469,14 @@ final class MainContentCoordinator: ObservableObject {
                             )
                         )
                     )
+                    return true
+                }
+                /// Phase 2 writes keys, defaults and a row count onto whatever the tab holds when it
+                /// lands. A result that lost the tab to a retarget would describe its own table on
+                /// the next one, so only the execution that applied its rows may start it.
+                guard applied else {
+                    schemaTask?.cancel()
+                    return
                 }
 
                 if isEditable, let tableName {

@@ -51,4 +51,75 @@ struct SchemaLoadPolicyTests {
 
         #expect(disposition == .surface(DatabaseError.notConnected.localizedDescription))
     }
+
+    private static let loaded = SchemaState.loaded([TestFixtures.makeTableInfo(name: "users")])
+
+    private static func activation(
+        hasLiveDriver: Bool = true,
+        catalog: SchemaState,
+        autocompletePopulated: Bool = false,
+        loadInFlight: Bool = false
+    ) -> SchemaActivationAction {
+        SchemaLoadPolicy.activationAction(
+            hasLiveDriver: hasLiveDriver,
+            catalog: catalog,
+            autocompletePopulated: autocompletePopulated,
+            loadInFlight: loadInFlight
+        )
+    }
+
+    @Test("coming back to a loaded connection loads nothing")
+    func loadedAndPopulatedIsLeftAlone() {
+        #expect(Self.activation(catalog: Self.loaded, autocompletePopulated: true) == .none)
+    }
+
+    @Test("a loaded catalog without an autocomplete provider still fills it")
+    func loadedButUnpopulatedLoads() {
+        #expect(Self.activation(catalog: Self.loaded, autocompletePopulated: false) == .load)
+    }
+
+    @Test("a connection whose catalog never loaded loads on activation")
+    func idleLoads() {
+        #expect(Self.activation(catalog: .idle) == .load)
+    }
+
+    @Test("a failed catalog waits for Retry instead of reloading on every switch")
+    func failedWaitsForRetry() {
+        #expect(Self.activation(catalog: .failed("timed out")) == .none)
+    }
+
+    @Test("a catalog already loading is not loaded a second time")
+    func loadingIsNotRepeated() {
+        #expect(Self.activation(catalog: .loading) == .none)
+    }
+
+    @Test("a load already in flight is joined, not repeated")
+    func inFlightIsNotRepeated() {
+        #expect(Self.activation(catalog: .idle, loadInFlight: true) == .none)
+    }
+
+    @Test("no driver yet waits for the connection")
+    func noDriverWaits() {
+        #expect(Self.activation(hasLiveDriver: false, catalog: .idle) == .awaitConnection)
+        #expect(Self.activation(hasLiveDriver: false, catalog: Self.loaded, autocompletePopulated: true) == .awaitConnection)
+    }
+
+    @Test("a load on the driver that just connected answers the connect")
+    func loadOnTheConnectedDriverCoversConnect() {
+        let driver = MockDatabaseDriver()
+
+        #expect(SchemaLoadPolicy.inFlightLoadCoversConnect(loadDriver: driver, connectedDriver: driver))
+    }
+
+    /// A reconnect replaces the driver while a load started on the old one may still be running.
+    /// Waiting on that load and trusting its catalog skipped the refresh the new driver needed.
+    @Test("a load still running on a replaced driver does not answer a reconnect")
+    func loadOnAReplacedDriverDoesNotCoverReconnect() {
+        let replaced = MockDatabaseDriver()
+        let reconnected = MockDatabaseDriver()
+
+        #expect(!SchemaLoadPolicy.inFlightLoadCoversConnect(loadDriver: replaced, connectedDriver: reconnected))
+        #expect(!SchemaLoadPolicy.inFlightLoadCoversConnect(loadDriver: nil, connectedDriver: reconnected))
+        #expect(!SchemaLoadPolicy.inFlightLoadCoversConnect(loadDriver: replaced, connectedDriver: nil))
+    }
 }

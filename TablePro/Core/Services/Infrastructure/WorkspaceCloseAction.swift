@@ -77,12 +77,17 @@ internal enum WorkspaceCloseAction {
 
         let coordinators = hostedWorkspaces.compactMap { $0.sessionState?.coordinator }
         let coordinator = coordinators.first
-        let victims = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
         /// Where the user was before the alert. Confirming reveals the work at risk, which switches
         /// the window to that connection and selects one of the tabs, and an answer that closes
         /// nothing has to put all of that back: leaving the user on a connection they did not ask
         /// for, with the entry still listed, is a close that reads as a switch.
         let wasShowing = WindowManager.shared.shownConnection(besides: workspace.connectionId)
+        guard await confirmEndingTransaction(in: workspace) else {
+            Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .public)")
+            return
+        }
+        /// Taken after the transaction prompt: the tabs stay editable while it is answered.
+        let victims = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
         guard let closable = await confirm(victims, across: coordinators, revealing: workspace) else {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
@@ -103,9 +108,9 @@ internal enum WorkspaceCloseAction {
             return
         }
         /// The entry goes now, before the connection leaves the container, because leaving it is a
-        /// reconnect and a schema reload on every engine that cannot change database on a live
-        /// connection: waiting for that left the row the user just closed sitting there for seconds
-        /// while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
+        /// schema reload, and on an engine that can neither change database on a live connection nor
+        /// open a second one, a reconnect: waiting for that left the row the user just closed sitting
+        /// there for seconds while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
         /// browse cursor's own row early, and the cursor follows underneath.
         if !victims.isEmpty {
             closeTabs(victims.map(\.id), across: coordinators)
@@ -153,6 +158,10 @@ internal enum WorkspaceCloseAction {
             }
         }
         landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
+        /// The database keeps its own connection and its catalog while its entry is listed; closing the
+        /// entry is what ends them, and the connection has already moved off it above.
+        DatabaseManager.shared.sessionLanes.close(database: workspace.container, for: workspace.connectionId)
+        SchemaService.shared.forget(database: workspace.container, connectionId: workspace.connectionId)
     }
 
     /// Shown, then asked, for the same reason a connection close reveals itself first: an alert
@@ -221,6 +230,29 @@ internal enum WorkspaceCloseAction {
         }
         closable.formUnion(unclaimed)
         return closable
+    }
+
+    /// Asked before the unsaved-work prompt, whose Save writes at once, so a Cancel here leaves
+    /// everything as it was. Nothing is revealed: the alert names the database, and the transaction
+    /// is not in any one tab. Only a database with its own connection loses a transaction on close.
+    private static func confirmEndingTransaction(in workspace: WorkspaceID) async -> Bool {
+        let manager = DatabaseManager.shared
+        guard let session = manager.session(for: workspace.connectionId),
+              manager.usesDatabaseLanes(session)
+        else { return true }
+        let holding = await manager.databasesHoldingTransaction(
+            for: workspace.connectionId,
+            among: [workspace.container]
+        )
+        guard !holding.isEmpty else { return true }
+        return await AlertHelper.confirmDestructive(
+            title: String(format: String(localized: "Close the database “%@”?"), workspace.container),
+            message: String(
+                localized: "This database has an open transaction. Closing it rolls the transaction back and discards its uncommitted changes."
+            ),
+            confirmButton: String(localized: "Close"),
+            window: WindowManager.shared.window(for: workspace.connectionId)
+        )
     }
 
     /// Leaves the container before it stops being listed, and only when it is the one being browsed.

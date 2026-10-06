@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Manage Macs link on the activation limit error, opening the tablepro.app page that removes a Mac from the license.
+
+### Changed
+
+- PostgreSQL, Redshift and CockroachDB keep one connection per database in the connections strip, and send TCP keepalives so idle ones stay open.
+- Manage Billing in Settings > License is now Manage Account.
+
+### Fixed
+
+- Switching between two databases of a PostgreSQL connection reconnecting each time and dropping the open transaction and temp tables.
+- Switching back to a PostgreSQL, Redshift or CockroachDB database reloading its object list from empty.
+- A tab on a database the connection had switched away from running on a shared connection that closed after 10 minutes idle.
+- Import and Copy To committing a transaction left open on the target connection.
+- Health check reconnecting a PostgreSQL session that was sitting in a failed transaction.
+- Each switch between connections in the connections strip reloading that connection's schema.
+- Opening a connection fetching every column of its schema twice.
+- Unsaved grid edits not kept with their tab after jumping to a tab of a background connection.
+- Users & Roles discarding staged changes and Undo after switching tab or connection.
+- Object source, ClickHouse parts, chart and map reloading after switching connection and back, and the map losing zoom.
+- History drawer dropping loaded pages and the selected entry after switching connection and back.
+- Assistant transcript, agent session highlight, inspector field edits and Redis key filter reset after a connection switch.
+- Structure tab stuck on a cancellation error after switching connection while it loaded.
+- File handle leaked on each switch to a SQLite or Beancount connection.
+- Blank results pane instead of the data grid while a table loads, or after its load error is dismissed.
+- Previous table's primary key or row count carried into the next table opened in its tab, so edits matched wrong rows.
+- Status bar stuck on Loading after cancelling a Safe Mode (Full) confirmation for a table.
+- Approving a Safe Mode (Full) confirmation running that table's query in a tab opened from a link meanwhile.
+- Restored table tab that never loads when another tab was opened before its window came forward.
+- Save writing a table's query into the SQL file whose tab the table was opened over.
+- Closing a database entry or connection, or disconnecting, rolling back an open transaction without asking.
+
 ## [0.77.2] - 2026-10-05
 
 ### Added

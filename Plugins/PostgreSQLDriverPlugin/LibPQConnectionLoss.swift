@@ -51,6 +51,38 @@ enum LibPQServerMessage {
     }
 }
 
+/// How a health check asks whether a session is still there without disturbing what the user has
+/// open in it.
+internal enum LibPQSessionCheck {
+    static let statement = "SELECT 1"
+
+    /// Never inside a transaction block. In an aborted one the server refuses every statement with
+    /// `25P02` while the session is fine, and in an open one a statement can take a repeatable-read
+    /// snapshot early and resets `idle_in_transaction_session_timeout`. Reading the socket, which
+    /// the caller does first, still sees a server that closed the session.
+    static func sendsStatement(in state: LibPQTransactionState) -> Bool {
+        switch state {
+        case .inTransaction, .inError:
+            return false
+        case .idle, .active, .unknown:
+            return true
+        }
+    }
+
+    /// The SQLSTATE of a server that refused the check statement, or nil when the failure is not
+    /// the server's answer. libpq's own failures carry no SQLSTATE and a lost session arrives as
+    /// `LibPQConnectionLostError`. A FATAL carries a SQLSTATE too, so the caller also requires
+    /// `PQstatus` to read `CONNECTION_OK` afterwards: `PQexec` reads past a FATAL to the closed
+    /// socket and turns it `CONNECTION_BAD`.
+    static func refusalState(of error: Error) -> String? {
+        guard let error = error as? LibPQPluginError,
+              let sqlState = error.sqlState,
+              !sqlState.isEmpty
+        else { return nil }
+        return sqlState
+    }
+}
+
 enum LibPQConnectionLoss: Sendable, Equatable {
     case beforeSending(transactionMayBeOpen: Bool)
     case afterSending

@@ -218,4 +218,74 @@ struct LicensePresentationTests {
         #expect(LicensePresentation.memberCount(used: 4, limit: 5).contains("4"))
         #expect(LicensePresentation.memberCount(used: 0, limit: 0).isEmpty == false)
     }
+
+    // MARK: - Activation failures
+
+    private static let licenseKey = "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
+
+    @Test("A key with no free activation links to the account's Macs page")
+    func activationLimitLinksToTheMacsPage() throws {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: Self.licenseKey
+        )
+
+        let link = try #require(failure.link)
+        #expect(link.destination == SupportLinks.accountMachines)
+        #expect(link.title == String(localized: "Manage Macs"))
+        #expect(
+            failure.message == String(
+                localized: "This license has reached its activation limit. Remove a Mac from your account, then activate again."
+            )
+        )
+    }
+
+    @Test("A key typed in lowercase still gets the Macs link, since activation accepts it")
+    func lowercaseKeyStillGetsTheLink() {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: Self.licenseKey.lowercased()
+        )
+
+        #expect(failure.link?.destination == SupportLinks.accountMachines)
+    }
+
+    /// The server answers a full team with the same status, and the Macs page lists only the
+    /// licenses the signed-in email bought, so it holds nothing an invitee can remove.
+    @Test("An invite code that finds no free seat gets no Macs link")
+    func inviteCodeAtTheLimitHasNoLink() {
+        let failure = LicensePresentation.activationFailure(
+            for: LicenseError.activationLimitReached,
+            entry: "k3J9xQ2mT7vR"
+        )
+
+        #expect(failure.link == nil)
+    }
+
+    @Test("Every other license failure keeps its own message and offers no link")
+    func otherFailuresHaveNoLink() {
+        let errors: [LicenseError] = [
+            .invalidKey,
+            .licenseExpired,
+            .licenseSuspended,
+            .notActivated,
+            .networkError(URLError(.notConnectedToInternet)),
+            .serverError(500, "Internal Server Error"),
+        ]
+
+        for error in errors {
+            let failure = LicensePresentation.activationFailure(for: error, entry: Self.licenseKey)
+            #expect(failure.link == nil)
+            #expect(failure.message == error.friendlyDescription)
+        }
+    }
+
+    @Test("A failure that is not a license error reads as its own description")
+    func foreignErrorUsesItsDescription() {
+        let error = URLError(.timedOut)
+        let failure = LicensePresentation.activationFailure(for: error, entry: Self.licenseKey)
+
+        #expect(failure.message == error.localizedDescription)
+        #expect(failure.link == nil)
+    }
 }

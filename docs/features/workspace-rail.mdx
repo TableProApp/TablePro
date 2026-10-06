@@ -46,6 +46,8 @@ Closing an entry's last tab leaves the entry where it is: tabs and entries close
 
 Between two connections, the window switches connection and returns you to the tab you last used there; between two databases of one connection, the sidebar moves and the tabs stay. An entry with nothing open moves the sidebar only, and clicking the entry you are in does nothing. No tab is ever closed or retargeted by a switch: each one keeps querying the database it was opened against.
 
+On PostgreSQL, Redshift, and CockroachDB every database entry keeps its own server connection, so moving between two entries reconnects nothing and leaves each database's open transaction and temp tables where they were. Closing an entry closes its connection and rolls back a transaction still open there, so it asks first when there is one.
+
 The strip takes the keyboard too. Click into it, then use the arrow keys to move the highlight. Type the start of a connection, database, or schema name to jump to it, and press `Return` to open the entry.
 
 More entries than fit the window means the strip scrolls, and it settles on whole entries rather than halfway through one. Switching to an entry that is off screen brings it into view.
@@ -64,7 +66,7 @@ Right-click an entry and choose **Close Database “\<name\>”** to close that 
 
 **Close Connection “\<name\>”**, below it, closes the whole connection: every tab across every database it has open, its session, and all of its entries. The window closes too if that was its last connection, and **File > Close Connection** does the same for the connection on screen. A connection down to one entry has nothing else left, so closing that entry closes it. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
 
-**Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a query is running or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
+**Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a transaction is open, a query is running, or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
 
 ## Reordering
 

@@ -101,12 +101,18 @@ final class CatalogChangeService {
             recordRenamedTable(ref, to: newName, connectionId: connectionId)
         case .containerDropped(let container, _):
             adoption.adoptContainerDrop(container, connectionId: connectionId)
+            if container.kind == .database, let database = container.database {
+                SchemaService.shared.forget(database: database, connectionId: connectionId)
+            }
             AppCommands.shared.containerChanged.send(
                 DatabaseContainerChange(connectionId: connectionId, container: container, kind: .dropped)
             )
             schedule(Self.change(for: container, connectionId: connectionId))
         case .containerRenamed(let container, let newName, _):
             adoption.adoptContainerRename(container, to: newName, connectionId: connectionId)
+            if container.kind == .database, let database = container.database {
+                SchemaService.shared.forget(database: database, connectionId: connectionId)
+            }
             AppCommands.shared.containerChanged.send(
                 DatabaseContainerChange(connectionId: connectionId, container: container, kind: .renamed(to: newName))
             )

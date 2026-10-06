@@ -410,13 +410,14 @@ final class SchemaEditorViewModel: ObservableObject {
     }
 
     /// The schema list is only a duplicate pre-check, and it is only used when it describes the
-    /// database this sheet targets. `SchemaService` holds one catalog per connection, for the
+    /// database this sheet targets. `SchemaService` shows one catalog per connection, for the
     /// database the window browses, so a schema row from another database would otherwise be
     /// checked against the wrong list: a valid rename blocked by a same-named schema elsewhere, and
     /// a real collision missed until the server refused it.
     private func browsedSchemaNames() -> [String] {
         guard let loaded = services.schemaService.loadedScope(for: connectionId),
-              loaded.database == database
+              loaded.database == database,
+              services.schemaService.isCatalogCurrent(for: connectionId)
         else { return [] }
         return services.schemaService.schemas(for: connectionId)
     }

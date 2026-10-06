@@ -5,6 +5,7 @@
 //  Tests for SchemaService aggregation across per-schema table lists.
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -173,6 +174,63 @@ struct SchemaServiceTests {
         #expect(service.loadedScope(for: connection.id) == sales)
     }
 
+    @Test("Switching back to a database shows its tables at once and refreshes them without loading")
+    func switchingBackShowsTheKeptTables() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let orders = TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)
+        let refunds = TableInfo(name: "refunds", type: .table, rowCount: 0, schema: nil)
+        let driver = MockDatabaseDriver()
+        let service = SchemaService()
+        driver.tablesToReturn = [orders]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+        #expect(service.state(for: connection.id) == .idle)
+        driver.tablesToReturn = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.state(for: connection.id) == .loaded([orders]))
+        #expect(service.loadedScope(for: connection.id) == sales)
+        #expect(!service.isCatalogCurrent(for: connection.id))
+
+        var sawLoading = false
+        let watch = service.$states.sink { states in
+            if states.values.contains(.loading) { sawLoading = true }
+        }
+        driver.tablesToReturn = [orders, refunds]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        watch.cancel()
+
+        #expect(!sawLoading)
+        #expect(service.state(for: connection.id) == .loaded([orders, refunds]))
+        #expect(service.isCatalogCurrent(for: connection.id))
+    }
+
+    @Test("Forgetting a database drops its kept tables and leaves the one on screen")
+    func forgetDropsTheDatabasesCatalog() async {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let invoices = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
+        let driver = MockDatabaseDriver()
+        let service = SchemaService()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+        driver.tablesToReturn = invoices
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+
+        service.forget(database: "sales", connectionId: connection.id)
+
+        #expect(service.state(for: connection.id) == .loaded(invoices))
+        service.show(scope: sales, type: connection.type)
+        #expect(service.state(for: connection.id) == .idle)
+        #expect(service.loadedScope(for: connection.id) == nil)
+    }
+
     @Test("Tables and the other object kinds settle a failure by the same rule")
     func tableFailureRuleMatchesSideObjects() {
         let tables = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
@@ -239,5 +297,19 @@ struct SchemaServiceTests {
             isFailed = true
         }
         #expect(isFailed)
+    }
+
+    /// A load cancelled before anything arrived used to leave `.loading` behind, a spinner nothing
+    /// would ever replace and a state every "load what is missing" check reads as a load in flight.
+    @Test("a first load that is cancelled settles back to idle")
+    func cancelledFirstLoadSettlesToIdle() async {
+        let connection = TestFixtures.makeConnection(database: "")
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.fetchTablesError = CancellationError()
+        let service = SchemaService()
+
+        await service.load(connectionId: connection.id, driver: driver, connection: connection)
+
+        #expect(service.state(for: connection.id) == .idle)
     }
 }

@@ -127,6 +127,23 @@ final class DatabaseManager: ObservableObject {
     /// their pins and each run against the other's database.
     internal let sessionDriverGate = SessionDriverGate()
 
+    /// The connections a session keeps on databases it is not browsing. See `SessionLanes`.
+    internal let sessionLanes = SessionLanes()
+
+    /// The driver each connection's health monitor last pinged, so the reconnect that follows a
+    /// failed ping acts only on that driver and never on one a database switch put in its place.
+    /// Held, not just identified: a closed driver that was freed would hand its address, and with it
+    /// the fence, to the next driver allocated.
+    internal var monitorPingedDrivers: [UUID: DatabaseDriver] = [:]
+
+    internal func notePinged(_ driver: DatabaseDriver, for connectionId: UUID) {
+        monitorPingedDrivers[connectionId] = driver
+    }
+
+    internal func pingedDriver(for connectionId: UUID) -> ObjectIdentifier? {
+        monitorPingedDrivers[connectionId].map { ObjectIdentifier($0) }
+    }
+
     /// The drivers each connection is currently executing user SQL on, keyed by an
     /// operation token so a finishing operation can only release its own handle. Stop
     /// reaches the right one even when a cross-database tab runs on a pooled connection.

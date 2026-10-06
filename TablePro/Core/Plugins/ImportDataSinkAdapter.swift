@@ -29,6 +29,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let tableEditDialect: TableEditDialect?
     private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
+    /// Whether this import opened the transaction it is in. A session connection can already hold
+    /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
+    /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
+    private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
 
@@ -253,15 +257,25 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
+        ownsTransaction.withLock { $0 = owner.opensTransaction }
+        guard owner.opensTransaction else { return }
         try await driver.beginTransaction(mode: .readWrite)
     }
 
     func commitTransaction() async throws {
+        guard ownsTransaction.withLock({ $0 }) else { return }
         try await driver.commitTransaction()
+        ownsTransaction.withLock { $0 = false }
     }
 
     func rollbackTransaction() async throws {
+        guard ownsTransaction.withLock({ $0 }) else { return }
         try await driver.rollbackTransaction()
+        ownsTransaction.withLock { $0 = false }
     }
 
     func disableForeignKeyChecks() async throws {

@@ -396,7 +396,9 @@ enum LicenseError: LocalizedError {
         case .invalidKey:
             return String(localized: "That doesn't look like a valid license key. Check for typos and try again.")
         case .activationLimitReached:
-            return String(localized: "This license has reached its activation limit. Deactivate another Mac first.")
+            return String(
+                localized: "This license has reached its activation limit. Remove a Mac from your account, then activate again."
+            )
         case .licenseExpired:
             return String(localized: "This license has expired. Renew it to continue using Pro features.")
         case .licenseSuspended:

@@ -98,7 +98,7 @@ struct LicenseSettingsView: View {
 
     private var actionsSection: some View {
         Section {
-            Link(String(localized: "Manage Billing"), destination: SupportLinks.account)
+            Link(String(localized: "Manage Account"), destination: SupportLinks.account)
 
             Button(String(localized: "Deactivate on This Mac…"), role: .destructive) {
                 Task { @MainActor in

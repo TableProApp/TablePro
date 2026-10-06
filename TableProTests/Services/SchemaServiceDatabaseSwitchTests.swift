@@ -22,6 +22,15 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
     var onTableFetchPaused: (@Sendable () -> Void)?
     private var tableFetchGate: CheckedContinuation<Void, Never>?
 
+    var pausesNextSchemaFetch = false
+    var onSchemaFetchPaused: (@Sendable () -> Void)?
+    private var schemaFetchGate: CheckedContinuation<Void, Never>?
+
+    var routinesToReturn: [RoutineInfo] = []
+    var pausesNextRoutineFetch = false
+    var onRoutineFetchPaused: (@Sendable () -> Void)?
+    private var routineFetchGate: CheckedContinuation<Void, Never>?
+
     init(connection: DatabaseConnection) {
         self.connection = connection
     }
@@ -29,6 +38,28 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
     func resumeTableFetch() {
         tableFetchGate?.resume()
         tableFetchGate = nil
+    }
+
+    func resumeSchemaFetch() {
+        schemaFetchGate?.resume()
+        schemaFetchGate = nil
+    }
+
+    func resumeRoutineFetch() {
+        routineFetchGate?.resume()
+        routineFetchGate = nil
+    }
+
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
+        let snapshot = routinesToReturn
+        if pausesNextRoutineFetch {
+            pausesNextRoutineFetch = false
+            await withCheckedContinuation { continuation in
+                routineFetchGate = continuation
+                onRoutineFetchPaused?()
+            }
+        }
+        return snapshot
     }
 
     func connect() async throws {}
@@ -49,7 +80,15 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchSchemas() async throws -> [String] {
-        schemasToReturn
+        let snapshot = schemasToReturn
+        if pausesNextSchemaFetch {
+            pausesNextSchemaFetch = false
+            await withCheckedContinuation { continuation in
+                schemaFetchGate = continuation
+                onSchemaFetchPaused?()
+            }
+        }
+        return snapshot
     }
 
     func fetchTables() async throws -> [TableInfo] { [] }
@@ -259,5 +298,99 @@ struct SchemaServiceDatabaseSwitchTests {
 
         #expect(service.tables(for: connectionId, schema: "PUBLIC").map(\.name) == ["ORDERS"])
         #expect(salesDriver.tableFetches == ["PUBLIC", "PUBLIC"])
+    }
+
+    @Test("Switching back shows the kept schema list and objects at once, then reads them again")
+    func switchingBackShowsTheKeptObjects() async {
+        let service = SchemaService()
+        let salesDriver = sales()
+        await browse(service, database: "SALES", driver: salesDriver)
+        await loadObjects(service, schema: "PUBLIC", database: "SALES", driver: salesDriver)
+        service.show(scope: scope("MARKETING"), type: connection.type)
+        await browse(service, database: "MARKETING", driver: marketing())
+
+        service.show(scope: scope("SALES"), type: connection.type)
+
+        #expect(service.state(for: connectionId) == .loaded([]))
+        #expect(service.schemas(for: connectionId) == ["PUBLIC", "LEDGER"])
+        #expect(service.tables(for: connectionId, schema: "PUBLIC").map(\.name) == ["ORDERS"])
+        #expect(service.schemaObjectsNeedFetch(for: connectionId, schema: "PUBLIC"))
+    }
+
+    @Test("A schema dropped while its database was away is not listed after switching back")
+    func schemaDroppedWhileAwayIsNotKept() async {
+        let service = SchemaService()
+        let salesDriver = sales()
+        await browse(service, database: "SALES", driver: salesDriver)
+        await loadObjects(service, schema: "LEDGER", database: "SALES", driver: salesDriver)
+        service.show(scope: scope("MARKETING"), type: connection.type)
+        await browse(service, database: "MARKETING", driver: marketing())
+
+        salesDriver.schemasToReturn = ["PUBLIC"]
+        service.show(scope: scope("SALES"), type: connection.type)
+        await browse(service, database: "SALES", driver: salesDriver)
+
+        #expect(service.schemas(for: connectionId) == ["PUBLIC"])
+        #expect(service.tables(for: connectionId, schema: "LEDGER").isEmpty)
+        #expect(!service.allLoadedTables(for: connectionId).contains { $0.name == "ENTRIES" })
+    }
+
+    @Test("A lazy load reads a kept catalog again until something has refreshed it")
+    func lazyLoadRefreshesAKeptCatalog() async {
+        let service = SchemaService()
+        let salesDriver = sales()
+        await browse(service, database: "SALES", driver: salesDriver)
+        service.show(scope: scope("MARKETING"), type: connection.type)
+        await browse(service, database: "MARKETING", driver: marketing())
+        service.show(scope: scope("SALES"), type: connection.type)
+        #expect(!service.isCatalogCurrent(for: connectionId))
+
+        await service.load(connectionId: connectionId, driver: salesDriver, connection: connection, scope: scope("SALES"))
+
+        #expect(service.isCatalogCurrent(for: connectionId))
+    }
+
+    @Test("A routines reload that lands after its database was forgotten brings nothing back")
+    func lateRoutinesReloadAfterForgetWritesNothing() async {
+        let service = SchemaService()
+        let salesDriver = sales()
+        salesDriver.routinesToReturn = [RoutineInfo(name: "POST_ENTRY", kind: .procedure, schema: "LEDGER")]
+        await browse(service, database: "SALES", driver: salesDriver)
+        salesDriver.pausesNextRoutineFetch = true
+        var late: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            salesDriver.onRoutineFetchPaused = { paused.resume() }
+            late = Task { _ = await service.reloadRoutines(connectionId: connectionId, driver: salesDriver, scope: scope("SALES")) }
+        }
+        service.show(scope: scope("MARKETING"), type: connection.type)
+        await browse(service, database: "MARKETING", driver: marketing())
+        service.forget(database: "SALES", connectionId: connectionId)
+        salesDriver.resumeRoutineFetch()
+        await late?.value
+
+        service.show(scope: scope("SALES"), type: connection.type)
+
+        #expect(service.routinesLoadState(for: connectionId) == .idle)
+    }
+
+    @Test("A catalog load for the database left that lands after switching back changes nothing shown")
+    func lateCatalogLoadForTheDatabaseLeftIsNotShown() async {
+        let service = SchemaService()
+        await browse(service, database: "SALES", driver: sales())
+        service.show(scope: scope("MARKETING"), type: connection.type)
+
+        let marketingDriver = marketing()
+        marketingDriver.pausesNextSchemaFetch = true
+        var late: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            marketingDriver.onSchemaFetchPaused = { paused.resume() }
+            late = Task { await browse(service, database: "MARKETING", driver: marketingDriver) }
+        }
+        service.show(scope: scope("SALES"), type: connection.type)
+        marketingDriver.resumeSchemaFetch()
+        await late?.value
+
+        #expect(service.loadedScope(for: connectionId) == scope("SALES"))
+        #expect(service.schemas(for: connectionId) == ["PUBLIC", "LEDGER"])
     }
 }

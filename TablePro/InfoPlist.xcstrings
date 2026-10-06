@@ -64,6 +64,9 @@
       },
       "shouldTranslate" : false
     },
+    "Delimited Data" : {
+
+    },
     "DuckDB Database" : {
       "localizations" : {
         "ko" : {
@@ -97,6 +100,9 @@
           }
         }
       }
+    },
+    "JSON Lines" : {
+
     },
     "NSDesktopFolderUsageDescription" : {
       "comment" : "Privacy - Desktop Folder Usage Description",
@@ -265,6 +271,9 @@
           }
         }
       }
+    },
+    "Pipe-Separated Values" : {
+
     },
     "SQL File" : {
       "localizations" : {

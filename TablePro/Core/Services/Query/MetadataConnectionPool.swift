@@ -114,7 +114,7 @@ final class MetadataConnectionPool {
 
     private init(openDriver: DriverOpener? = nil) {
         self.openDriver = openDriver ?? { scope in
-            try await MetadataConnectionPool.openSessionDriver(for: scope)
+            try await MetadataConnectionPool.openServerDriver(for: scope, purpose: .metadata)
         }
     }
 
@@ -219,11 +219,13 @@ final class MetadataConnectionPool {
     internal func transportWaiterCount(for connectionId: UUID) -> Int {
         transportWaiters[connectionId]?.count ?? 0
     }
+    #endif
 
+    /// Whether the connection's transport is being rebuilt, which ends every connection dialed
+    /// through it, so nothing new should be opened or promoted onto it until that is over.
     internal func isReplacingTransport(for connectionId: UUID) -> Bool {
         transportReplacements[connectionId] != nil
     }
-    #endif
 
     private func releaseEntry(_ entry: Entry, connectionId: UUID) {
         entry.inFlightCount -= 1
@@ -406,7 +408,11 @@ final class MetadataConnectionPool {
         waiter.continuation.resume(throwing: CancellationError())
     }
 
-    private static func openSessionDriver(for scope: DatabaseScope) async throws -> DatabaseDriver {
+    /// Opens a second connection to the session's server, on `scope`'s database, through the
+    /// transport the session already holds. Every tunnel manager closes its tunnel before building a
+    /// new one, so dialing the session's effective endpoint is what keeps the other connections up.
+    /// A database lane opens its user connection here too, as `.session`.
+    internal static func openServerDriver(for scope: DatabaseScope, purpose: DriverPurpose) async throws -> DatabaseDriver {
         guard let session = DatabaseManager.shared.session(for: scope.connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -422,7 +428,7 @@ final class MetadataConnectionPool {
         connection.database = plan.connectDatabase
         let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(
             for: connection,
-            purpose: .metadata
+            purpose: purpose
         )
         let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
         let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
@@ -436,7 +442,7 @@ final class MetadataConnectionPool {
             for: connection,
             passwordOverride: session.cachedPassword,
             awaitPlugins: true,
-            purpose: .metadata,
+            purpose: purpose,
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,

@@ -59,6 +59,20 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return serverOutputToReturn
     }
 
+    var sessionTransactionStateToReturn: PluginSessionTransactionState = .unknown
+    var sessionTransactionStateDelaySeconds: Double = 0
+    var sessionTransactionStateReadWasCancelled = false
+    /// libpq reports no transaction state once a check has found the socket closed.
+    var pingFailureForgetsTransactionState = false
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        if sessionTransactionStateDelaySeconds > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(sessionTransactionStateDelaySeconds * 1_000_000_000))
+            if Task.isCancelled { sessionTransactionStateReadWasCancelled = true }
+        }
+        return sessionTransactionStateToReturn
+    }
+
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
     }
@@ -94,6 +108,9 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
             try? await Task.sleep(nanoseconds: UInt64(pingDelaySeconds * 1_000_000_000))
         }
         if let pingError {
+            if pingFailureForgetsTransactionState {
+                sessionTransactionStateToReturn = .unknown
+            }
             throw pingError
         }
     }
@@ -276,8 +293,10 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {}
     func cancelQuery() throws { cancelQueryCallCount += 1 }
-    func beginTransaction() async throws {}
-    func commitTransaction() async throws {}
+    var beginTransactionCallCount = 0
+    var commitTransactionCallCount = 0
+    func beginTransaction() async throws { beginTransactionCallCount += 1 }
+    func commitTransaction() async throws { commitTransactionCallCount += 1 }
     func rollbackTransaction() async throws {}
 
     func switchSchema(to schema: String) async throws {

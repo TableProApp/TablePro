@@ -74,6 +74,18 @@ internal enum LibPQConnectionString {
     static let sessionApplicationName = "TablePro"
     static let metadataApplicationName = "TablePro Metadata"
 
+    /// Left to the kernel, macOS sends the first keepalive after 7,200 s of idle, while an AWS
+    /// Network Load Balancer drops an idle flow after 350 s and an Azure Load Balancer silently after
+    /// 4 minutes. These keep a parked session's flow open and let the kernel declare a dead peer
+    /// about 90 s after the last traffic. `tcp_user_timeout` is left out: macOS has no
+    /// `TCP_USER_TIMEOUT`, so libpq accepts it and changes nothing.
+    static let keepaliveParameters: [(String, String)] = [
+        ("keepalives", "1"),
+        ("keepalives_idle", "60"),
+        ("keepalives_interval", "10"),
+        ("keepalives_count", "3")
+    ]
+
     static func build(
         host: String,
         port: Int,
@@ -100,6 +112,7 @@ internal enum LibPQConnectionString {
         if let connectTimeoutSeconds {
             parameters.append(("connect_timeout", String(max(connectTimeoutSeconds, 1))))
         }
+        parameters.append(contentsOf: keepaliveParameters)
 
         parameters.append(("sslmode", LibPQSSLMapping.sslmode(for: sslConfig.mode)))
         if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {

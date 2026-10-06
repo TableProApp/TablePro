@@ -755,7 +755,7 @@ struct MainEditorContentView: View {
         case .idle:
             Spacer()
         case .executing:
-            Spacer()
+            ExecutingResultPane()
         case let .structure(tableName):
             structureContent(tab: tab, tableName: tableName)
         case .queryPlan:

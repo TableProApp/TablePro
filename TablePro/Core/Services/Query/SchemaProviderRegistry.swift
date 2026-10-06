@@ -64,6 +64,10 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         providers[scope]
     }
 
+    func isPopulated(_ scope: DatabaseScope) -> Bool {
+        providers[scope] != nil && loadedScopes.contains(scope)
+    }
+
     func getOrCreate(for scope: DatabaseScope) -> SQLSchemaProvider {
         let connectionId = scope.connectionId
         if let removalTask = removalTasks[connectionId] {

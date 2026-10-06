@@ -25,6 +25,7 @@ struct ClickHousePartsView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selection: Set<UUID> = []
+    @State private var loadedToken: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,7 +57,7 @@ struct ClickHousePartsView: View {
                 partsTable
             }
         }
-        .task(id: reloadToken) { await loadParts() }
+        .task(id: reloadToken) { await loadPartsIfNeeded() }
     }
 
     private var partsToolbar: some View {
@@ -237,7 +238,16 @@ struct ClickHousePartsView: View {
 
     // MARK: - Data Loading
 
+    /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with the same token,
+    /// so only a new token, which Refresh issues, fetches the parts again.
+    private func loadPartsIfNeeded() async {
+        guard loadedToken != reloadToken else { return }
+        await loadParts()
+    }
+
+    /// A cancelled load commits nothing and records no token, so the next appearance retries it.
     private func loadParts() async {
+        let token = reloadToken
         isLoading = true
         errorMessage = nil
 
@@ -249,6 +259,7 @@ struct ClickHousePartsView: View {
                     database: scope.database, table: tableName, escape: driver.escapeStringLiteral
                 ))
             }
+            guard !Task.isCancelled else { return }
             parts = result.rows.compactMap { row -> ClickHousePartInfo? in
                 guard let name = row[safe: 1]?.asText else { return nil }
                 let partition = row[safe: 0]?.asText ?? ""
@@ -265,7 +276,9 @@ struct ClickHousePartsView: View {
                     active: active
                 )
             }
+            loadedToken = token
         } catch {
+            guard !Task.isCancelled else { return }
             Self.logger.error("Failed to load parts: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
