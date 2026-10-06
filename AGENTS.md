@@ -67,7 +67,7 @@ swiftlint lint --strict <files>
 ## Invariants that apply everywhere
 
 - **The app runs the AppKit lifecycle.** `main.swift` starts it, `MainMenuBuilder.install` builds the menu bar in `applicationWillFinishLaunching`, and every window is an `NSWindowController`. Never add a SwiftUI `App`: it rewrites `NSApp.mainMenu` after launch.
-- **A refresh never clears the cache it refreshes.** Fetch, then commit over the old value. Enter `.loading` only when nothing is loaded, keep the good data when a refresh fails, and use `prepareForReload` for a reload, keeping `invalidate` for disconnect or a database switch.
+- **A refresh never clears the cache it refreshes.** Fetch, then commit over the old value. Enter `.loading` only when nothing is loaded, keep the good data when a refresh fails, and use `prepareForReload` for a reload, keeping `invalidate` for disconnect.
 - **Canceling a connect does not stop the driver.** `Task.cancel()` cannot interrupt a blocking C call, so a connect must be abortable (poll it, or resume through `runCancellableBlocking` and let the late call close its own handle), and every attempt checks its `ConnectionAttemptRegistry` generation before adopting a driver.
 
 ## Code style

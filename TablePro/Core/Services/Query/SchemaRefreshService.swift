@@ -141,7 +141,7 @@ final class SchemaRefreshService {
               session.driver != nil,
               let scope = metadataDriverProvider.browseScope(for: connectionId) else { return false }
 
-        if schemaService.loadedScope(for: connectionId) != scope {
+        if schemaService.loadedScope(for: connectionId) != scope || !schemaService.isCatalogCurrent(for: connectionId) {
             await refresh(connection: session.connection)
             await waitForRefresh(connectionId: connectionId)
             await schemaService.waitForRefresh(connectionId: connectionId)

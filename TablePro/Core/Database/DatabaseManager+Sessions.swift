@@ -522,7 +522,7 @@ extension DatabaseManager {
         /// The saved schema is what the next launch restores on this connection, and the one on
         /// file belongs to the database just left.
         appSettingsStorage.saveLastSchema(targetSchema, for: connectionId)
-        await SchemaService.shared.invalidate(connectionId: connectionId)
+        showBrowsedCatalog(connectionId)
         Self.logger.info(
             "switchDatabase moved onto a database connection conn=\(connectionId, privacy: .public) reused=\(!freshlyOpened)"
         )
@@ -611,7 +611,7 @@ extension DatabaseManager {
             session.status = .connecting
         }
         appSettingsStorage.saveLastSchema(nil, for: connectionId)
-        await SchemaService.shared.invalidate(connectionId: connectionId)
+        showBrowsedCatalog(connectionId)
 
         do {
             try await reconnectSession(connectionId)
@@ -621,9 +621,17 @@ extension DatabaseManager {
                 session.browseDatabase = previousBrowseDatabase
                 session.browseSchema = previousBrowseSchema
             }
+            showBrowsedCatalog(connectionId)
             appSettingsStorage.saveLastSchema(previousSavedSchema, for: connectionId)
             throw error
         }
+    }
+
+    /// In the same turn as the session's browse cursor, so nothing reads one database's catalog under
+    /// another's name.
+    private func showBrowsedCatalog(_ connectionId: UUID) {
+        guard let session = session(for: connectionId), let scope = browseScope(for: connectionId) else { return }
+        SchemaService.shared.show(scope: scope, type: session.connection.type)
     }
 
     /// Moves the driver to the engine's default schema after a database switch.

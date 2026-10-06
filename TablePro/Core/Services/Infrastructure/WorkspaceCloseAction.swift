@@ -153,9 +153,10 @@ internal enum WorkspaceCloseAction {
             }
         }
         landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
-        /// The database keeps its own connection while its entry is listed; closing the entry is
-        /// what ends it, and the connection has already moved off it above.
+        /// The database keeps its own connection and its catalog while its entry is listed; closing the
+        /// entry is what ends them, and the connection has already moved off it above.
         DatabaseManager.shared.sessionLanes.close(database: workspace.container, for: workspace.connectionId)
+        SchemaService.shared.forget(database: workspace.container, connectionId: workspace.connectionId)
     }
 
     /// Shown, then asked, for the same reason a connection close reveals itself first: an alert

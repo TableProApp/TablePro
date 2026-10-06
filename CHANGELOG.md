@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Switching between two databases of a PostgreSQL connection reconnecting each time and dropping the open transaction and temp tables.
+- Switching back to a PostgreSQL, Redshift or CockroachDB database reloading its object list from empty.
 - A tab on a database the connection had switched away from running on a shared connection that closed after 10 minutes idle.
 - Import and Copy To committing a transaction left open on the target connection.
 - Health check reconnecting a PostgreSQL session that was sitting in a failed transaction.

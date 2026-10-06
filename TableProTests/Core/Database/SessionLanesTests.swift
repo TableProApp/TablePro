@@ -139,6 +139,28 @@ struct SessionLanesTests {
         #expect(DatabaseManager.shared.sessionLanes.parkedDriver(for: harness.connection.id, database: "logs") === logs)
     }
 
+    @Test("Switching back shows the catalog the database had, without emptying it on the way")
+    func switchingBackKeepsTheCatalog() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        let connectionId = harness.connection.id
+        let tables = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        harness.home.tablesToReturn = tables
+        await SchemaService.shared.reload(
+            connectionId: connectionId,
+            driver: harness.home,
+            connection: harness.connection,
+            scope: DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
+        )
+
+        try await DatabaseManager.shared.switchDatabase(to: "logs", for: connectionId, persist: false)
+        #expect(SchemaService.shared.state(for: connectionId) == .idle)
+        try await DatabaseManager.shared.switchDatabase(to: "app", for: connectionId, persist: false)
+
+        #expect(SchemaService.shared.state(for: connectionId) == .loaded(tables))
+        await SchemaService.shared.invalidate(connectionId: connectionId)
+    }
+
     @Test("A database the server refuses leaves the session where it was")
     func refusedOpenChangesNothing() async {
         let harness = makeHarness()

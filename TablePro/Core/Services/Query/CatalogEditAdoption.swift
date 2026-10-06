@@ -222,6 +222,7 @@ struct CatalogEditAdoption {
     func loadedBrowseCatalog(connectionId: UUID) -> LoadedBrowseCatalog? {
         guard let session = databaseManager.session(for: connectionId),
               case .loaded = schemaService.state(for: connectionId),
+              schemaService.isCatalogCurrent(for: connectionId),
               let loadedScope = schemaService.loadedScope(for: connectionId) else { return nil }
         let browseDatabase = databaseManager.browseDatabaseName(for: session.connection)
         guard loadedScope.database == browseDatabase else { return nil }
