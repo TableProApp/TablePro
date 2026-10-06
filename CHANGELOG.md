@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Manage Macs link on the activation limit error, opening the tablepro.app page that removes a Mac from the license.
+
 ### Changed
 
 - PostgreSQL, Redshift and CockroachDB keep one connection per database in the connections strip, and send TCP keepalives so idle ones stay open.
+- Manage Billing in Settings > License is now Manage Account.
 
 ### Fixed
 

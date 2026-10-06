@@ -84,4 +84,10 @@ struct SupportLinksTests {
             #expect(!SupportLinks.sponsors(referrer).absoluteString.contains("$"))
         }
     }
+
+    @Test("The Macs link opens the account page that removes a Mac from a license")
+    func accountMachinesOpensTheMacsPage() {
+        #expect(SupportLinks.accountMachines.absoluteString == "https://tablepro.app/account/machines")
+        #expect(SupportLinks.account.absoluteString == "https://tablepro.app/account")
+    }
 }

@@ -38,6 +38,18 @@ internal struct LicenseNotice: Equatable {
     let tone: LicenseNoticeTone
 }
 
+/// A page on tablepro.app that clears an activation failure, offered as a link under its message.
+internal struct LicenseActivationLink: Equatable {
+    let title: String
+    let destination: URL
+}
+
+/// What the activation form says when activating fails, and where to go about it.
+internal struct LicenseActivationFailure: Equatable {
+    let message: String
+    let link: LicenseActivationLink?
+}
+
 /// Turns license state into what the pane shows. Pure and free of any view type, so the whole grid
 /// of states can be tested without building a view, the same way `LicenseManager.resolveStatus` is.
 internal enum LicensePresentation {
@@ -150,6 +162,28 @@ internal enum LicensePresentation {
         default:
             return String(format: String(localized: "This license expires in %lld days."), days)
         }
+    }
+
+    /// What the activation form shows after activating `entry` failed.
+    ///
+    /// The Macs link goes with a license key only. An invite code fails with the same status when
+    /// the team has no seat left, which only the team's owner can change, and the Macs page lists
+    /// only the licenses bought with the signed-in email.
+    static func activationFailure(for error: Error, entry: String) -> LicenseActivationFailure {
+        let licenseError = error as? LicenseError
+        let message = licenseError?.friendlyDescription ?? error.localizedDescription
+
+        guard case .activationLimitReached? = licenseError, LicenseManager.isLicenseKey(entry) else {
+            return LicenseActivationFailure(message: message, link: nil)
+        }
+
+        return LicenseActivationFailure(
+            message: message,
+            link: LicenseActivationLink(
+                title: String(localized: "Manage Macs"),
+                destination: SupportLinks.accountMachines
+            )
+        )
     }
 
     /// The seat count, as a phrase rather than two numbers glued together, so a translation can put
