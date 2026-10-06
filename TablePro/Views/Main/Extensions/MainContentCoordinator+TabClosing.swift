@@ -88,8 +88,12 @@ extension MainContentCoordinator {
     /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
     /// retargeted at all; this is what keeps the caches honest once one without work has been.
     func releaseRetargetedTabState(for tabId: UUID) {
+        if let url = tabManager.tabs.first(where: { $0.id == tabId })?.content.sourceFileURL {
+            WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+        }
         displayStateCache.removeValue(forKey: tabId)
         tableMetadataCache.removeValue(forKey: tabId)
+        tabSessionRegistry.forgetFreshness(for: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
         tabsWithStagedPrincipals.remove(tabId)

@@ -115,6 +115,12 @@ final class TabSessionRegistry {
         ensureSession(for: tabId).freshness.record(change)
     }
 
+    /// For a tab pointed at another table. Its marks describe the table it showed before, and a
+    /// definition mark makes the next table's first page wait for a schema fetch it does not need.
+    func forgetFreshness(for tabId: UUID) {
+        sessions[tabId]?.freshness = TableFreshness()
+    }
+
     func pendingChange(for tabId: UUID) -> TableFreshness.Change? {
         sessions[tabId]?.freshness.pendingChange
     }

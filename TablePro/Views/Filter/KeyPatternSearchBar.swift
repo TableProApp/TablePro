@@ -7,6 +7,7 @@ struct KeyPatternSearchBar: View {
 
     @State private var pattern: String = ""
     @State private var typeScope: String?
+    @State private var hasSyncedFromState = false
 
     /// How much of a type name the bar will spend width on before truncating it.
     private static let typeScopeMaximumWidth: CGFloat = 160
@@ -47,7 +48,7 @@ struct KeyPatternSearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .onAppear(perform: syncFromState)
+        .onAppear(perform: syncOnFirstAppearance)
         .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _ in
             syncFromState()
         }
@@ -61,6 +62,14 @@ struct KeyPatternSearchBar: View {
         descriptor.usesGlob
             ? String(localized: "Key pattern, e.g. user:*")
             : String(localized: "Key pattern")
+    }
+
+    /// A connection switch removes this bar and re-adds it, firing `onAppear` again, and the field
+    /// commits only on Return. A real change to the applied search arrives through `onChange`.
+    private func syncOnFirstAppearance() {
+        guard !hasSyncedFromState else { return }
+        hasSyncedFromState = true
+        syncFromState()
     }
 
     private func syncFromState() {

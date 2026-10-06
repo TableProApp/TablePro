@@ -241,11 +241,13 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = nil
     }
 
+    /// Becoming key ends the deferral whichever tab is selected. A link or an agent can select
+    /// another tab before the window comes forward, and a deferral left standing refused every
+    /// later load of that tab, including the table the user next opened into it.
     func consumeDeferredRestoreLoadIfNeeded() {
-        guard isKeyWindow else { return }
-        guard let deferredId = deferredRestoreLoadTabId,
-              deferredId == tabManager.selectedTabId else { return }
+        guard isKeyWindow, let deferredId = deferredRestoreLoadTabId else { return }
         deferredRestoreLoadTabId = nil
+        guard deferredId == tabManager.selectedTabId else { return }
         lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 

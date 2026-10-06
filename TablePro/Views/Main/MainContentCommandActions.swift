@@ -1495,6 +1495,24 @@ final class MainContentCommandActions: ObservableObject {
     private func handleDatabaseDidConnect() {
         Task { [weak coordinator] in
             guard let coordinator, !coordinator.isTearingDown else { return }
+            /// A reconnect hands the session a new driver, and the query builder would otherwise keep
+            /// building against the one that was just disconnected.
+            coordinator.setupPluginDriver()
+            /// The first connect is also announced here, while the coordinator's own initial load runs
+            /// for it on the same driver. Refreshing on top sent every catalog query twice, so the
+            /// refresh waits for that load and runs only if it did not leave the catalog loaded.
+            if let inFlight = coordinator.schemaLoadTask,
+               SchemaLoadPolicy.inFlightLoadCoversConnect(
+                   loadDriver: coordinator.schemaLoadDriver,
+                   connectedDriver: DatabaseManager.shared.driver(for: coordinator.connection.id)
+               ) {
+                await inFlight.value
+                guard !coordinator.isTearingDown else { return }
+                if case .loaded = SchemaService.shared.state(for: coordinator.connection.id) {
+                    coordinator.initRedisKeyTreeIfNeeded()
+                    return
+                }
+            }
             if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
                 coordinator.initRedisKeyTreeIfNeeded()
                 return

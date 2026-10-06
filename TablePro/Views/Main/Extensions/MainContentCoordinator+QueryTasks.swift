@@ -24,6 +24,7 @@ extension MainContentCoordinator {
             guard tabExecution.settle(claim) else { return false }
             retireQueryTask(.claim(claim))
             pendingLoadTrigger = trigger
+            declineTableLoad(for: claim.tabId)
             return false
         }
     }
