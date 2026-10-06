@@ -426,6 +426,97 @@ struct SessionLanesTests {
 
         #expect(AppSettingsStorage.shared.loadLastSchema(for: harness.connection.id) == "logs_schema")
     }
+
+    @Test("An open transaction is reported for the browsed database and for every parked one")
+    func openTransactionsAreReportedOnEveryLane() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        try await DatabaseManager.shared.switchDatabase(to: "logs", for: harness.connection.id, persist: false)
+        let logs = try #require(harness.opener.opened["logs"])
+        harness.home.sessionTransactionStateToReturn = .inTransaction
+        logs.sessionTransactionStateToReturn = .abortedTransaction
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+        let parkedOnly = await DatabaseManager.shared.databasesHoldingTransaction(
+            for: harness.connection.id,
+            among: ["app"]
+        )
+
+        #expect(holding.sorted() == ["app", "logs"])
+        #expect(parkedOnly == ["app"])
+    }
+
+    /// A lock or an unknown state loses no work, so neither is worth asking about.
+    @Test(
+        "A connection without an open transaction is not reported",
+        arguments: [PluginSessionTransactionState.idle, .holdsSessionLocks, .unknown]
+    )
+    func onlyAnOpenTransactionIsReported(_ state: PluginSessionTransactionState) async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        try await DatabaseManager.shared.switchDatabase(to: "logs", for: harness.connection.id, persist: false)
+        let logs = try #require(harness.opener.opened["logs"])
+        harness.home.sessionTransactionStateToReturn = state
+        logs.sessionTransactionStateToReturn = state
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+
+        #expect(holding.isEmpty)
+    }
+
+    @Test("A connection running a turn is not asked, because asking would wait for the turn")
+    func connectionRunningATurnIsSkipped() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        harness.home.sessionTransactionStateToReturn = .inTransaction
+        let release = AsyncLatch()
+        let acquired = AsyncLatch()
+        let holder = Task { @MainActor in
+            try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
+                SessionDriverGate.Key(connectionId: harness.connection.id, database: "app")
+            ) {
+                acquired.open()
+                await release.wait()
+            }
+        }
+        await acquired.wait()
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+
+        release.open()
+        try await holder.value
+        #expect(holding.isEmpty)
+    }
+
+    @Test("A connection that does not answer counts as holding nothing once the bound passes")
+    func silentConnectionIsBounded() async {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        harness.home.sessionTransactionStateToReturn = .inTransaction
+        harness.home.sessionTransactionStateDelaySeconds = 30
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+
+        #expect(holding.isEmpty)
+        #expect(clock.now - started < .seconds(5))
+    }
+
+    /// A driver's cancel can reach past the read: FreeTDS stops every call queued on the connection.
+    @Test("A read that misses the bound is left to finish, not cancelled")
+    func lateReadIsNotCancelled() async throws {
+        let harness = makeHarness()
+        defer { cleanUp(harness) }
+        harness.home.sessionTransactionStateToReturn = .inTransaction
+        harness.home.sessionTransactionStateDelaySeconds = 1.5
+
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+        try await Task.sleep(for: .seconds(1))
+
+        #expect(holding.isEmpty)
+        #expect(!harness.home.sessionTransactionStateReadWasCancelled)
+    }
 }
 
 @MainActor

@@ -15,7 +15,7 @@ struct ConnectionCloseActionTests {
     @Test("A connection with no session closes without asking")
     func sessionlessClosesImmediately() {
         #expect(
-            ConnectionCloseAction.decision(hasSession: false, hasUnsavedWork: false) == .closeImmediately
+            ConnectionCloseAction.decision(hasSession: false, holdsTransaction: false, hasUnsavedWork: false) == .closeImmediately
         )
     }
 
@@ -24,21 +24,68 @@ struct ConnectionCloseActionTests {
     @Test("Unsaved work without a session still closes without asking")
     func sessionlessIgnoresUnsavedWork() {
         #expect(
-            ConnectionCloseAction.decision(hasSession: false, hasUnsavedWork: true) == .closeImmediately
+            ConnectionCloseAction.decision(hasSession: false, holdsTransaction: false, hasUnsavedWork: true) == .closeImmediately
         )
     }
 
     @Test("A clean connection closes without asking")
     func cleanSessionClosesImmediately() {
         #expect(
-            ConnectionCloseAction.decision(hasSession: true, hasUnsavedWork: false) == .closeImmediately
+            ConnectionCloseAction.decision(hasSession: true, holdsTransaction: false, hasUnsavedWork: false) == .closeImmediately
         )
     }
 
     @Test("A connection with unsaved work asks first")
     func unsavedWorkIsConfirmed() {
         #expect(
-            ConnectionCloseAction.decision(hasSession: true, hasUnsavedWork: true) == .confirmUnsavedWork
+            ConnectionCloseAction.decision(hasSession: true, holdsTransaction: false, hasUnsavedWork: true) == .confirmUnsavedWork
         )
+    }
+
+    /// Closing ends the session connection, and the server rolls back what it was holding.
+    @Test("A connection holding an open transaction asks first")
+    func openTransactionIsConfirmed() {
+        #expect(
+            ConnectionCloseAction.decision(hasSession: true, holdsTransaction: true, hasUnsavedWork: false)
+                == .confirmEndingTransaction
+        )
+    }
+
+    /// Save on the unsaved-work alert writes at once, so the transaction has to be asked about
+    /// while a Cancel can still leave everything as it was.
+    @Test("An open transaction is asked about before unsaved work")
+    func openTransactionComesBeforeUnsavedWork() {
+        #expect(
+            ConnectionCloseAction.decision(hasSession: true, holdsTransaction: true, hasUnsavedWork: true)
+                == .confirmEndingTransaction
+        )
+    }
+
+    @Test("A transaction reported without a session still closes without asking")
+    func sessionlessIgnoresTransaction() {
+        #expect(
+            ConnectionCloseAction.decision(hasSession: false, holdsTransaction: true, hasUnsavedWork: true)
+                == .closeImmediately
+        )
+    }
+
+    @Test("No open transaction adds nothing to the close prompt")
+    func noTransactionNoMessage() {
+        #expect(ConnectionCloseAction.transactionMessage(for: []) == nil)
+    }
+
+    @Test("One open transaction names its database")
+    func oneTransactionNamesTheDatabase() throws {
+        let message = try #require(ConnectionCloseAction.transactionMessage(for: ["app"]))
+        #expect(message.contains("“app”"))
+        #expect(message.contains("Closing rolls it back"))
+    }
+
+    @Test("Several open transactions list every database")
+    func severalTransactionsListEveryDatabase() throws {
+        let message = try #require(ConnectionCloseAction.transactionMessage(for: ["app", "logs"]))
+        #expect(message.contains("“app”"))
+        #expect(message.contains("“logs”"))
+        #expect(message.contains("Closing rolls them back"))
     }
 }

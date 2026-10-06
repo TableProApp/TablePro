@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Approving a Safe Mode (Full) confirmation running that table's query in a tab opened from a link meanwhile.
 - Restored table tab that never loads when another tab was opened before its window came forward.
 - Save writing a table's query into the SQL file whose tab the table was opened over.
+- Closing a database entry or connection, or disconnecting, rolling back an open transaction without asking.
 
 ## [0.77.2] - 2026-10-05
 

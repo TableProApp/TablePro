@@ -60,11 +60,17 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     var sessionTransactionStateToReturn: PluginSessionTransactionState = .unknown
+    var sessionTransactionStateDelaySeconds: Double = 0
+    var sessionTransactionStateReadWasCancelled = false
     /// libpq reports no transaction state once a check has found the socket closed.
     var pingFailureForgetsTransactionState = false
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
-        sessionTransactionStateToReturn
+        if sessionTransactionStateDelaySeconds > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(sessionTransactionStateDelaySeconds * 1_000_000_000))
+            if Task.isCancelled { sessionTransactionStateReadWasCancelled = true }
+        }
+        return sessionTransactionStateToReturn
     }
 
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {

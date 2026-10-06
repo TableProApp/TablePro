@@ -731,10 +731,7 @@ final class MainContentCommandActions: ObservableObject {
             closeTab(id: selected.id)
             return
         }
-        Task {
-            guard await confirmDiscardingUnsavedWork() else { return }
-            WindowManager.shared.closeWindow(for: connectionId)
-        }
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
     /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets

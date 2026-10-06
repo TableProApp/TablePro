@@ -107,19 +107,6 @@ extension MainContentCommandActions {
         }
     }
 
-    /// For the paths that close everything whatever the answer: a window closing, a connection
-    /// closing, a disconnect. They have nowhere to leave a tab open, so a save that could not take
-    /// every victim stops them, the way a failed apply of staged ALTERs always did. Answering true
-    /// on a partial save would close exactly the tabs the save refused.
-    func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
-        switch await resolveUnsavedWork(in: victims) {
-        case .cancel:
-            return false
-        case .close(let closable):
-            return closable.isSuperset(of: Set(victims.map(\.id)))
-        }
-    }
-
     /// Save cannot reach a tab that is not on screen for grid edits, staged principals or a table
     /// draft, so the alert says what will happen to those rather than promising a save it cannot
     /// make: they stay open, and everything else closes.
