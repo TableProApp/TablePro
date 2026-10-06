@@ -19,6 +19,39 @@ struct AppLanguageTests {
 
         #expect(decoded.language == .korean)
     }
+
+    @Test("Includes French with its standard locale identifier and native name")
+    func includesFrench() throws {
+        #expect(AppLanguage(rawValue: "fr") == .french)
+        #expect(AppLanguage.french.displayName == "Français")
+
+        let data = try JSONEncoder().encode(GeneralSettings(language: .french))
+        #expect(try JSONDecoder().decode(GeneralSettings.self, from: data).language == .french)
+    }
+
+    /// The picker writes the choice to `AppleLanguages`, and a language the catalog does not carry
+    /// silently falls back to English, so offering one is a promise only the catalog can keep.
+    @Test("Every language the picker offers is translated in the app's catalog")
+    func everyOfferedLanguageShipsInTheCatalog() throws {
+        let catalog = try Self.catalogStrings()
+        let languageLabel = try #require(catalog["Language:"]?["localizations"] as? [String: Any])
+
+        for language in AppLanguage.allCases where language != .system && language != .english {
+            #expect(languageLabel[language.rawValue] != nil, "\(language.rawValue) is offered but not translated")
+        }
+    }
+
+    private static func catalogStrings() throws -> [String: [String: Any]] {
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: directory.appendingPathComponent("project.yml").path) {
+            let parent = directory.deletingLastPathComponent()
+            guard parent != directory else { throw CocoaError(.fileNoSuchFile) }
+            directory = parent
+        }
+        let data = try Data(contentsOf: directory.appendingPathComponent("TablePro/Resources/Localizable.xcstrings"))
+        let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try #require(root["strings"] as? [String: [String: Any]])
+    }
 }
 
 struct GeneralSettingsTests {

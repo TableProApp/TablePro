@@ -11,6 +11,7 @@ Atlas
 Authentication
 Beancount
 Cloud
+Code
 Connector
 Drive
 Entra

@@ -2,10 +2,23 @@
   "sourceLanguage" : "en",
   "strings" : {
     "Apache Parquet File" : {
-
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fichier Apache Parquet"
+          }
+        }
+      }
     },
     "Beancount Ledger" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registre Beancount"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -65,10 +78,23 @@
       "shouldTranslate" : false
     },
     "Delimited Data" : {
-
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Données délimitées"
+          }
+        }
+      }
     },
     "DuckDB Database" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base de données DuckDB"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -102,7 +128,14 @@
       }
     },
     "JSON Lines" : {
-
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JSON Lines"
+          }
+        }
+      }
     },
     "NSDesktopFolderUsageDescription" : {
       "comment" : "Privacy - Desktop Folder Usage Description",
@@ -112,6 +145,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro reads database settings from the project folder you choose."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro lit les réglages de base de données dans le dossier de projet que vous choisissez."
           }
         },
         "ko" : {
@@ -156,6 +195,12 @@
             "value" : "TablePro reads database settings from the project folder you choose."
           }
         },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro lit les réglages de base de données dans le dossier de projet que vous choisissez."
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -196,6 +241,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro reads database settings from the project folder you choose."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro lit les réglages de base de données dans le dossier de projet que vous choisissez."
           }
         },
         "ko" : {
@@ -240,6 +291,12 @@
             "value" : "TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames."
           }
         },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro se connecte aux serveurs de bases de données et aux tunnels SSH de votre réseau local, y compris les noms d’hôte Bonjour (.local)."
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -273,10 +330,23 @@
       }
     },
     "Pipe-Separated Values" : {
-
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valeurs séparées par des barres verticales"
+          }
+        }
+      }
     },
     "SQL File" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fichier SQL"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -311,6 +381,12 @@
     },
     "SQLite Database" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base de données SQLite"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -345,6 +421,12 @@
     },
     "TablePro Connection" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion TablePro"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -379,6 +461,12 @@
     },
     "TablePro Filter Row" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligne de filtre TablePro"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
@@ -413,6 +501,12 @@
     },
     "TablePro Plugin" : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin TablePro"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",

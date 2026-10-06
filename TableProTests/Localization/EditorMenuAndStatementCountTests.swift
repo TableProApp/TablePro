@@ -60,7 +60,7 @@ struct EditorMenuAndStatementCountTests {
         }
     }
 
-    private static let shippedLanguages = ["ko", "tr", "vi", "zh-Hans", "zh-Hant"]
+    private static let shippedLanguages = ["fr", "ko", "tr", "vi", "zh-Hans", "zh-Hant"]
 
     private func catalogEntries() throws -> [String: Any] {
         let url = try repositoryRoot().appendingPathComponent("TablePro/Resources/Localizable.xcstrings")

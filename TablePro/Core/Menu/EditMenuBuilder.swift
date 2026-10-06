@@ -9,8 +9,13 @@ import AppKit
 /// them to the Edit menu itself.
 @MainActor
 enum EditMenuBuilder {
+    /// A key of its own: French names this menu "Édition" but an Edit button "Modifier".
+    static var title: String {
+        String(localized: "menu.edit", defaultValue: "Edit", comment: "The Edit menu in the menu bar")
+    }
+
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(String(localized: "Edit"), items: [
+        MenuItemFactory.menu(title, items: [
             MenuItemFactory.item(
                 String(localized: "Undo"),
                 action: Selector(("undo:")),

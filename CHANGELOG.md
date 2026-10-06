@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Manage Macs link on the activation limit error, opening the tablepro.app page that removes a Mac from the license.
+- French localization for macOS, with a Français option in Settings > General.
 
 ### Changed
 

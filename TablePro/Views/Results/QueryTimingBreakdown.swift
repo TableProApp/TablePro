@@ -46,7 +46,11 @@ struct QueryTimingBreakdown: Equatable {
         if let transfer = timing.transfer {
             rows.append(Row(
                 id: "transfer",
-                label: String(localized: "Transfer"),
+                label: String(
+                    localized: "query-timing.transfer",
+                    defaultValue: "Transfer",
+                    comment: "The time spent receiving a result from the server, not the Transfer button"
+                ),
                 value: QueryDurationFormatter.string(from: transfer)
             ))
         }

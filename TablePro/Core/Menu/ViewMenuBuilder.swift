@@ -11,8 +11,14 @@ import TableProConnectionLibrary
 /// belongs.
 @MainActor
 enum ViewMenuBuilder {
+    /// A key of its own: "View" is also a database view, which French calls "Vue", while the
+    /// menu is "Présentation".
+    static var title: String {
+        String(localized: "menu.view", defaultValue: "View", comment: "The View menu in the menu bar")
+    }
+
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(String(localized: "View"), items: [
+        MenuItemFactory.menu(title, items: [
             MenuItemFactory.item(
                 String(localized: "Show Sidebar"),
                 action: #selector(NSSplitViewController.toggleSidebar(_:)),

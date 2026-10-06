@@ -46,8 +46,8 @@ struct MainMenuStructureTests {
         #expect(titles == [
             "TablePro",
             String(localized: "File"),
-            String(localized: "Edit"),
-            String(localized: "View"),
+            EditMenuBuilder.title,
+            ViewMenuBuilder.title,
             String(localized: "Database"),
             String(localized: "Query"),
             String(localized: "Window"),
@@ -58,7 +58,7 @@ struct MainMenuStructureTests {
     @Test("Custom menus sit between View and Window")
     func customMenuPlacement() {
         let titles = buildMenu().items.map(\.title)
-        let view = try? #require(titles.firstIndex(of: String(localized: "View")))
+        let view = try? #require(titles.firstIndex(of: ViewMenuBuilder.title))
         let window = try? #require(titles.firstIndex(of: String(localized: "Window")))
         let database = try? #require(titles.firstIndex(of: String(localized: "Database")))
         #expect(view ?? 0 < database ?? 0)
@@ -67,7 +67,7 @@ struct MainMenuStructureTests {
 
     @Test("Edit Document sits just above Insert Document in the Edit menu")
     func documentCommandsOrder() throws {
-        let edit = try #require(buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu)
+        let edit = try #require(buildMenu().items.first { $0.title == EditMenuBuilder.title }?.submenu)
         let titles = edit.items.map(\.title)
         let editIndex = try #require(titles.firstIndex(of: String(localized: "Edit Document…")))
         let insertIndex = try #require(titles.firstIndex(of: String(localized: "Insert Document…")))
@@ -312,7 +312,7 @@ struct MainMenuShortcutCoverageTests {
 
     @Test("Jump to Column… sits in the Edit menu's Find submenu on Cmd+Shift+J")
     func jumpToColumnLivesUnderFind() {
-        let edit = buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu
+        let edit = buildMenu().items.first { $0.title == EditMenuBuilder.title }?.submenu
         let find = edit?.items.first { $0.title == String(localized: "Find") }?.submenu
         let item = find?.items.first { $0.identifier == MenuItemFactory.identifier(for: .jumpToColumn) }
 
