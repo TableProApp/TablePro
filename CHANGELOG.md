@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Opper in Add Provider, an OpenAI-compatible gateway with its Base URL filled in.
+
 ## [0.78.0] - 2026-10-07
 
 TablePro in French: pick Français in Settings > General.

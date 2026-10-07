@@ -29,7 +29,18 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         rejectsBadKeyWithForbidden: true
     )
 
-    static let all: [AIProviderPreset] = [.requesty]
+    /// Opper serves its OpenAI-compatible routes under `/v3/compat` with no `/v1`, so the default
+    /// names the chat completions route, which `AIEndpoint` trims back to that base.
+    static let opper = AIProviderPreset(
+        id: "opper",
+        displayName: "Opper",
+        endpoint: "https://api.opper.ai/v3/compat/chat/completions",
+        symbolName: "network",
+        authStyle: .apiKey,
+        rejectsBadKeyWithForbidden: false
+    )
+
+    static let all: [AIProviderPreset] = [.requesty, .opper]
 
     static func preset(withID id: String?) -> AIProviderPreset? {
         guard let id else { return nil }

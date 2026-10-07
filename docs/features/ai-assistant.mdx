@@ -40,6 +40,7 @@ With no preference, start with Claude or OpenAI on an API key: both take a key, 
 | Cursor | API key, or **Sign in with Cursor** with the Cursor CLI installed | Runs as an agent, not a chat-completions endpoint, so it cannot call TablePro's tools: Edit and Agent modes run no queries through it |
 | xAI | API key, or **Sign in with xAI** on a SuperGrok or X Premium+ subscription | Sign-in opens a Grok Build consent screen and is unofficial. Presets: Grok 4.5, Grok 4.3 |
 | Requesty | API key | An OpenAI-compatible router. The Base URL is filled in; set it to `https://router.eu.requesty.ai` for EU routing |
+| Opper | API key | An OpenAI-compatible gateway hosted in the EU. The Base URL is filled in. Model ids are plain names such as `claude-sonnet-4-6` |
 | Ollama, llama.cpp, MLX | None. Start the server first | Presets fill in `http://localhost:11434` for Ollama and `http://localhost:8080` for `llama-server` and `mlx_lm.server`. Start `llama-server` with `--jinja` for tool calling |
 | Claude Agent | Claude Code's `claude` command, no key | Bills against a Claude subscription, with tradeoffs |
 

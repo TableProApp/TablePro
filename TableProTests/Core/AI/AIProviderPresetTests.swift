@@ -31,6 +31,25 @@ struct AIProviderPresetTests {
         )
     }
 
+    @Test("Opper needs a key, and its default Base URL resolves to its chat completions and models routes")
+    func opperPreset() throws {
+        let preset = AIProviderPreset.opper
+        #expect(preset.authStyle == .apiKey)
+        #expect(!preset.rejectsBadKeyWithForbidden)
+
+        let config = AIProviderConfig(preset: preset)
+        let style = config.type.endpointStyle
+        #expect(style == .chatCompletions)
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.chatURL(model: "claude-sonnet-4-6", style: style)?.absoluteString
+                == "https://api.opper.ai/v3/compat/chat/completions"
+        )
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.url(appending: style.modelsResource)?.absoluteString
+                == "https://api.opper.ai/v3/compat/models"
+        )
+    }
+
     @Test("Every preset has a unique id and an https endpoint the transport can resolve")
     func presetsAreWellFormed() {
         #expect(Set(AIProviderPreset.all.map(\.id)).count == AIProviderPreset.all.count)
