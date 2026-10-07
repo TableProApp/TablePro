@@ -160,6 +160,26 @@ struct ConnectionFormTransportTests {
         }
     }
 
+    @Test("Weaviate offers the SSH tunnel and every other transport that forwards a port")
+    func weaviateOffersPortForwards() {
+        let available = coordinator(type: .weaviate).availableTransports
+        #expect(available == [nil, .ssh, .cloudflare, .socksProxy, .tunnelCommand])
+    }
+
+    /// The built-in entry of a registry type is what the form reads until its plugin is installed,
+    /// and BigQuery or DuckDB offered Cloudflare Tunnel from it with nothing to forward to.
+    @Test("a type with no port forward and no remote file connects directly only")
+    func typeWithoutPortForwardIsDirectOnly() {
+        let manager = PluginManager.shared
+        for type in DatabaseType.allKnownTypes
+        where !manager.supportsSSH(for: type) && !manager.supportsRemoteDatabaseFile(for: type) {
+            #expect(
+                coordinator(type: type).availableTransports == [nil],
+                "\(type.rawValue) offers a transport it has no port to forward through"
+            )
+        }
+    }
+
     @Test("changing the database type returns the connection to direct")
     func typeChangeResetsTransport() {
         let coordinator = coordinator()

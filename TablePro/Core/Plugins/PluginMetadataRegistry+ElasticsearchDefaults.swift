@@ -22,7 +22,7 @@ extension PluginMetadataRegistry {
                     supportsSchemaSwitching: false,
                     supportsImport: false,
                     supportsExport: true,
-                    supportsSSH: false,
+                    supportsSSH: true,
                     supportsSSL: true,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,

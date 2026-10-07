@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSH tunnel, Cloudflare Tunnel, SOCKS proxy and tunnel command for Weaviate, Typesense and Elasticsearch. (#3277)
+
+### Fixed
+
+- Cloudflare Tunnel offered for BigQuery, DuckDB, DynamoDB and other drivers that cannot use it, until their plugin was installed.
+
 ## [0.78.0] - 2026-10-07
 
 TablePro in French: pick Français in Settings > General.

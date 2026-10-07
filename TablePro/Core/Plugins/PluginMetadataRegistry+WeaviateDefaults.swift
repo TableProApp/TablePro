@@ -17,7 +17,7 @@ extension PluginMetadataRegistry {
                     supportsSchemaSwitching: false,
                     supportsImport: false,
                     supportsExport: true,
-                    supportsSSH: false,
+                    supportsSSH: true,
                     supportsSSL: true,
                     supportsCascadeDrop: false,
                     supportsForeignKeyDisable: false,
@@ -32,7 +32,6 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
-                    supportsCloudflareTunnel: false,
                     supportsPrincipalConnectionLimit: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

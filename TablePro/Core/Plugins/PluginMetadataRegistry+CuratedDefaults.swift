@@ -625,7 +625,6 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
-                    supportsCloudflareTunnel: false,
                     supportsConnectionPooling: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -691,7 +690,6 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraints: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
-                    supportsCloudflareTunnel: false,
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
