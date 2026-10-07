@@ -55,6 +55,38 @@ struct ImportTypeMapperTests {
         #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .sqlite) == "TEXT")
     }
 
+    @Test("Oracle gets types it has, never TEXT")
+    func oracleMapsToItsOwnTypes() {
+        #expect(ImportTypeMapper.sqlType(for: .integer, databaseType: .oracle) == "NUMBER(19)")
+        #expect(ImportTypeMapper.sqlType(for: .real, databaseType: .oracle) == "BINARY_DOUBLE")
+        #expect(ImportTypeMapper.sqlType(for: .text, databaseType: .oracle) == "VARCHAR2(4000 CHAR)")
+        #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .oracle) == "CLOB")
+    }
+
+    @Test("An Oracle boolean is BOOLEAN from 23ai and the file's own words before it")
+    func oracleBooleanFollowsTheRelease() {
+        let banners: [(banner: String?, expected: String)] = [
+            ("Oracle Database 23ai Free Release 23.0.0.0.0 - Develop, Access, Validate - Production", "BOOLEAN"),
+            ("Oracle AI Database 26ai Enterprise Edition Release 23.26.0.0", "BOOLEAN"),
+            ("Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production", "VARCHAR2(5 CHAR)"),
+            ("Oracle Database 11g Enterprise Edition Release 11.2.0.4.0 - 64bit Production", "VARCHAR2(5 CHAR)"),
+            (nil, "VARCHAR2(5 CHAR)")
+        ]
+        for (banner, expected) in banners {
+            #expect(
+                ImportTypeMapper.sqlType(for: .boolean, databaseType: .oracle, serverVersion: banner) == expected,
+                "\(banner ?? "no banner")"
+            )
+        }
+    }
+
+    @Test("The Oracle release is read from the banner's Release field")
+    func oracleReleaseFromBanner() {
+        #expect(ImportTypeMapper.oracleMajorRelease(in: "Oracle Database 21c Express Edition Release 21.0.0.0.0") == 21)
+        #expect(ImportTypeMapper.oracleMajorRelease(in: "Oracle Database 19c") == nil)
+        #expect(ImportTypeMapper.oracleMajorRelease(in: nil) == nil)
+    }
+
     @Test("Unhandled database types fall back to generic SQL types")
     func testFallback() {
         #expect(ImportTypeMapper.sqlType(for: .text, databaseType: .clickhouse) == "TEXT")

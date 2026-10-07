@@ -129,6 +129,75 @@ struct RowChangeStatementFactoryServerOwnedTests {
     }
 
     @Test
+    func theDriverIsHandedTheTypeEachColumnWasReadAs() throws {
+        let driver = ContextRecordingDriver()
+        let types = ["ID": "NUMBER(10)", "Name": "NVARCHAR2(100)", "Doubled": "DATE"]
+        let factory = RowChangeStatementFactory(
+            tableName: "Ord",
+            schemaName: nil,
+            columns: columns,
+            primaryKeyColumns: ["ID"],
+            columnTypeNames: types,
+            databaseType: .oracle,
+            pluginDriver: driver
+        )
+        _ = try factory.statements(for: [edit("Name", at: 1)])
+        let context = try #require(driver.context)
+        #expect(context.columnTypeNames == types)
+    }
+
+    @Test
+    func aFactoryGivenNoTypesHandsTheDriverNone() throws {
+        let driver = ContextRecordingDriver()
+        _ = try factory(driver: driver).statements(for: [edit("Name", at: 1)])
+        let context = try #require(driver.context)
+        #expect(context.columnTypeNames.isEmpty)
+    }
+
+    @Test
+    func aSaveHandsTheDriverTheTypesTheTableWasConfiguredWith() throws {
+        let driver = ContextRecordingDriver()
+        let types = ["ID": "number", "Name": "nvarchar2", "Doubled": "date"]
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "Ord",
+            columns: columns,
+            primaryKeyColumns: ["ID"],
+            databaseType: .oracle,
+            generatedColumns: [],
+            columnTypeNames: types
+        )
+        manager.pluginDriver = driver
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "Name",
+            oldValue: "a", newValue: "b", originalRow: ["1", "a", "2"]
+        )
+
+        _ = try manager.generateSQL()
+
+        let context = try #require(driver.context)
+        #expect(context.columnTypeNames == types)
+    }
+
+    @Test
+    func aRestoredTabKeepsItsColumnTypes() {
+        let manager = DataChangeManager()
+        manager.restoreState(
+            from: TabChangeSnapshot(),
+            tableName: "Ord",
+            databaseType: .oracle,
+            generatedColumns: [],
+            columnTypeNames: ["ID": "number"]
+        )
+        #expect(manager.columnTypeNames == ["ID": "number"])
+
+        manager.configureForTable(
+            tableName: "Other", columns: ["x"], primaryKeyColumns: [], databaseType: .oracle, generatedColumns: []
+        )
+        #expect(manager.columnTypeNames.isEmpty)
+    }
+
+    @Test
     func aNewRowLeavesEveryServerOwnedColumnToTheServer() throws {
         let driver = ContextRecordingDriver()
         let rowID = RowID.inserted(UUID())

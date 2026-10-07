@@ -66,6 +66,18 @@ struct TableRows: Sendable {
 
     var count: Int { rows.count }
 
+    /// The type each column was read as, by name. A name the result repeats keeps the first column's type, the one a
+    /// save addresses by that name, and a column the driver named no type for is left out.
+    var columnTypeNames: [String: String] {
+        var names: [String: String] = [:]
+        var seen: Set<String> = []
+        for (index, column) in columns.enumerated() where seen.insert(column).inserted {
+            guard columnTypes.indices.contains(index), let rawType = columnTypes[index].rawType else { continue }
+            names[column] = rawType
+        }
+        return names
+    }
+
     /// Whether leaving the column out of an INSERT makes the server supply the value.
     ///
     /// A default expression is only one of the two ways that happens. An identity column has no

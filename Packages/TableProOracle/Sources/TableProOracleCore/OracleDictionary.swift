@@ -43,7 +43,6 @@ public enum OracleDictionary {
 
     public static let allTables = view("ALL_TABLES")
     public static let allViews = view("ALL_VIEWS")
-    public static let allTabColumns = view("ALL_TAB_COLUMNS")
     public static let allTabCols = view("ALL_TAB_COLS")
     public static let allTabIdentityCols = view("ALL_TAB_IDENTITY_COLS")
     public static let allConstraints = view("ALL_CONSTRAINTS")

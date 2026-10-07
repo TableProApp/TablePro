@@ -15,6 +15,13 @@ extension PluginMetadataRegistry {
     /// cast to the same text, so a keyless match on it could pick either row.
     static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
 
+    /// Oracle cannot compare a LOB, `LONG`, `LONG RAW`, `BFILE`, `XMLTYPE`, `JSON`, `VECTOR` or spatial value with `=`
+    /// (ORA-22848 on a CLOB), so a keyless match leaves them out. Matched against the bare type name, which an
+    /// owner-qualified column such as `"MDSYS"."SDO_GEOMETRY"` classifies by.
+    static let oracleRowMatchExcludedTypePrefixes = [
+        "CLOB", "NCLOB", "BLOB", "LONG", "BFILE", "XMLTYPE", "JSON", "VECTOR", "SDO_"
+    ]
+
     // swiftlint:disable function_body_length
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
@@ -583,7 +590,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: PluginMetadataRegistry.oracleSystemSchemaNames,
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
+                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: oracleDialect,

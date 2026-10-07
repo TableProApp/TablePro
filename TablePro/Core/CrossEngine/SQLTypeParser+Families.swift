@@ -138,17 +138,12 @@ internal extension SQLTypeParser {
         }
     }
 
-    /// Oracle has one numeric type, so a whole-number column is a `NUMBER(p, 0)` and its precision
-    /// is the only thing that says how wide an integer the target needs. Read as a decimal, an
-    /// Oracle primary key arrives on MySQL as `DECIMAL(10,0)` and stops being an integer.
+    /// Oracle has one numeric type, so a whole-number column is a `NUMBER` with a zero scale and its
+    /// precision is the only thing that says how wide an integer the target needs. Read as a decimal,
+    /// an Oracle primary key arrives on MySQL as `DECIMAL(10,0)` and stops being an integer.
     static func oracleKind(base: String, params: String?) -> CanonicalTypeKind {
         switch base {
-        case "NUMBER", "DECIMAL", "NUMERIC", "DEC":
-            let numbers = integers(in: params)
-            guard numbers.count > 1, numbers[1] == 0, let precision = numbers.first else {
-                return decimalKind(params)
-            }
-            return .integer(bytes: integerWidth(forDecimalDigits: precision))
+        case "NUMBER", "DECIMAL", "NUMERIC", "DEC": return oracleNumberKind(params)
         case "INT", "INTEGER", "SMALLINT": return .integer(bytes: 4)
         case "FLOAT", "BINARY_DOUBLE", "DOUBLE PRECISION": return .floatingPoint(bits: 64)
         case "BINARY_FLOAT": return .floatingPoint(bits: 32)
@@ -164,11 +159,34 @@ internal extension SQLTypeParser {
         case "TIMESTAMP": return .timestamp(precision: length(params), hasTimeZone: false)
         case "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE":
             return .timestamp(precision: length(params), hasTimeZone: true)
+        case "BOOLEAN": return .boolean
+        case "JSON": return .json
         case "XMLTYPE": return .xml
         case "SDO_GEOMETRY": return .spatial
         default:
             return base.hasPrefix("INTERVAL") ? .interval : .unsupported
         }
+    }
+
+    /// `NUMBER(p)` has a scale of zero, as `NUMBER(p,0)` does, and `NUMBER(*,s)` is 38 digits with the
+    /// scale written after the `*`. Read as bare numbers, the `*` dropped out and the scale became the
+    /// precision. A bare `NUMBER`, or `NUMBER(*)`, has no fixed scale at all.
+    private static func oracleNumberKind(_ params: String?) -> CanonicalTypeKind {
+        guard let params else { return decimalKind(nil) }
+        let parts = params.split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard (1...2).contains(parts.count) else { return decimalKind(params) }
+        let precision: Int
+        if parts[0] == "*" {
+            guard parts.count == 2 else { return decimalKind(nil) }
+            precision = undeclaredDecimalPrecision
+        } else {
+            guard let declared = Int(parts[0]) else { return decimalKind(params) }
+            precision = declared
+        }
+        guard let scale = parts.count == 2 ? Int(parts[1]) : 0 else { return decimalKind(params) }
+        guard scale == 0 else { return .decimal(precision: precision, scale: scale) }
+        return .integer(bytes: integerWidth(forDecimalDigits: precision))
     }
 
     /// `VARCHAR2(50 CHAR)` and `VARCHAR2(50 BYTE)` name the unit after the number, and read as a

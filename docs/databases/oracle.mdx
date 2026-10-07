@@ -120,24 +120,30 @@ If the connection drops while a transaction is open, the next write fails with "
 
 ## Column type support
 
+The Structure tab and the table DDL show each column's type as it was declared: `NVARCHAR2(100)`, `VARCHAR2(50 CHAR)`, `NUMBER(*,2)`, `TIMESTAMP(6) WITH TIME ZONE`, `REF "HR"."ADDRESS_T"`. `VARCHAR2` and `CHAR` always name their unit, `BYTE` or `CHAR`, so a copied definition means the same column whatever `NLS_LENGTH_SEMANTICS` the target session uses.
+
 | Oracle type | Display |
 |---|---|
-| VARCHAR2, NVARCHAR2, CHAR, NCHAR, LONG, CLOB, NCLOB, JSON | Text as stored |
-| NUMBER | Exact integer up to Int64 range; decimals up to 17 digits of precision |
+| VARCHAR2, NVARCHAR2, CHAR, NCHAR, LONG, CLOB, NCLOB | Text as stored |
+| JSON | JSON text, fields in stored order |
+| NUMBER | Exact digits as stored |
 | BINARY_FLOAT, BINARY_DOUBLE | Native Swift Float/Double |
-| DATE | `yyyy-MM-dd` |
-| TIMESTAMP | ISO-8601 in UTC with fractional seconds |
-| TIMESTAMP WITH TIME ZONE | ISO-8601 in the host's local time zone with explicit offset |
-| TIMESTAMP WITH LOCAL TIME ZONE | ISO-8601 in the host's local time zone with explicit offset |
+| DATE | `YYYY-MM-DD HH:MM:SS` |
+| TIMESTAMP(p) | `YYYY-MM-DD HH:MM:SS` plus exactly p fractional digits |
+| TIMESTAMP WITH TIME ZONE | As TIMESTAMP, followed by the value's own offset, such as `+02:00` |
+| TIMESTAMP WITH LOCAL TIME ZONE | As TIMESTAMP, in the session time zone, followed by that zone's offset |
 | INTERVAL DAY TO SECOND | `D HH:MM:SS` plus fractional seconds when non-zero (up to 9 digits, trailing zeros trimmed) |
 | INTERVAL YEAR TO MONTH | `Y-MM` |
 | RAW, LONG RAW, BLOB | Lowercase hex, truncated to 4 KB |
-| ROWID | As stored |
+| ROWID, UROWID | As Oracle prints it, including the `*` form of an index-organized table's ROWID |
 | BOOLEAN | `true` / `false` |
-| BFILE | `<bfile>` placeholder (locator only) |
-| Object types, such as SDO_GEOMETRY | `<unsupported: object>` placeholder; a NULL object shows as NULL |
+| BFILE | `BFILENAME('DIRECTORY', 'file')` |
+| REF | `<unsupported: ref>` placeholder |
+| Object types, such as XMLTYPE and SDO_GEOMETRY | `<unsupported: object>` placeholder; a NULL object shows as NULL |
 
-To read a geometry as text, select `SDO_UTIL.TO_WKTGEOMETRY(column)` instead of the column.
+To read a geometry as text, select `SDO_UTIL.TO_WKTGEOMETRY(column)` instead of the column. A `TIMESTAMP WITH TIME ZONE` stored with a region name such as `Europe/Paris` shows `<unsupported: time zone region>`; select `TO_CHAR(column, 'YYYY-MM-DD HH24:MI:SS.FF TZR')` to read it.
+
+Grid edits, deletes and filters spell dates and timestamps in a form that does not depend on the session's `NLS_DATE_FORMAT`, so they work whatever it is set to. A table without a primary key matches the row by every column, and an edit is refused when that match would need a LOB, LONG, BFILE, XMLTYPE, JSON, VECTOR or object value, since Oracle cannot compare those.
 
 Anything else renders as `<unsupported: type>`. Report those through [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
 
@@ -154,7 +160,7 @@ The SSL mode offers no certificate rows there, so **Verify Identity** checks the
 ## Limitations
 
 - No OS auth, wallets, Kerberos, or LDAP. Create a database user with a password and connect as that.
-- BFILE columns show the locator, never the file. There is no path to the contents from the app.
+- BFILE columns show the directory and file name, never the file's contents.
 - SQL*Plus commands such as `SET SERVEROUTPUT ON`, `SHOW ERRORS` and `EXEC` are not SQL and fail when sent. Delete them, and write `EXEC p` as `BEGIN p; END;`. Output needs no `SET SERVEROUTPUT ON`.
 - No Users & Roles pane. Manage accounts with `CREATE USER` and `GRANT` in the editor.
 

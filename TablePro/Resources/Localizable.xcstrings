@@ -187018,6 +187018,8 @@
       }
     },
     "The table has no primary key, so this row cannot be identified." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {

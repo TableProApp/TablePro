@@ -15,7 +15,7 @@ struct QueryTemplateTests {
     @Test("Oracle gets FETCH NEXT instead of LIMIT")
     func oracle() {
         let sql = QueryTemplate.selectAll(table: "EMP", schema: "HR", type: .oracle)
-        #expect(sql == "SELECT * FROM \"HR\".\"EMP\" ORDER BY 1 OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY")
+        #expect(sql == "SELECT * FROM \"HR\".\"EMP\" OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY")
     }
 
     @Test("MySQL keeps LIMIT")

@@ -69,6 +69,20 @@ struct OracleColumnStatementsTests {
         #expect(sql == "ALTER TABLE \"HR\".\"T\" MODIFY (\"A\" NUMBER(12,2))")
     }
 
+    /// `"Hunt_Mixed"` folded to `"HUNT_MIXED"` names no type (ORA-00902), and a lowercase built-in type is valid as typed.
+    @Test("A changed type is written as given")
+    func typeWrittenVerbatim() {
+        let object = modify(column("O", type: "\"Old_Type\""), column("O", type: "\"Hunt_Mixed\""))
+        #expect(object == "ALTER TABLE \"HR\".\"T\" MODIFY (\"O\" \"Hunt_Mixed\")")
+        let builtIn = modify(column("N", type: "NVARCHAR2(10)"), column("N", type: "nvarchar2(20)"))
+        #expect(builtIn == "ALTER TABLE \"HR\".\"T\" MODIFY (\"N\" nvarchar2(20))")
+    }
+
+    @Test("A type that differs only in case is not a change")
+    func typeCaseIsNotAChange() {
+        #expect(modify(column(type: "NUMBER(10,2)"), column(type: "number(10,2)")) == nil)
+    }
+
     /// Oracle cannot take a default away, so no default is `DEFAULT NULL`.
     @Test("Removing a default writes DEFAULT NULL")
     func removedDefault() {

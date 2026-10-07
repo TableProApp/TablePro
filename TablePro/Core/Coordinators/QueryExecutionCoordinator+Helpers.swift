@@ -350,7 +350,8 @@ extension QueryExecutionCoordinator {
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type,
                 generatedColumns: generatedColumns,
-                rowMatchPolicy: resolved.rowMatchPolicy
+                rowMatchPolicy: resolved.rowMatchPolicy,
+                columnTypeNames: newTableRows.columnTypeNames
             )
         }
 

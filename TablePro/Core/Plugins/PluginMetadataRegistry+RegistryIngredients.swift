@@ -212,7 +212,8 @@ extension PluginMetadataRegistry {
                 "BLOB", "RAW", "LONG RAW", "BFILE",
                 "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
                 "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND",
-                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY"
+                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY",
+                "INT", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION", "JSON", "VECTOR"
             ],
             tableOptions: [
                 "TABLESPACE", "PCTFREE", "INITRANS"
@@ -221,7 +222,7 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
-            offsetFetchOrderBy: "ORDER BY 1",
+            offsetFetchOrderBy: "",
             autoLimitStyle: .fetchFirst,
             caseSensitivityStyle: .caseFoldFunction
         )
@@ -235,9 +236,11 @@ extension PluginMetadataRegistry {
                 "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND"
             ],
             "Binary": ["RAW", "LONG RAW", "BLOB", "BFILE"],
-            "Boolean": [],
+            "Boolean": ["BOOLEAN"],
+            "JSON": ["JSON"],
             "XML": ["XMLTYPE"],
             "Spatial": ["SDO_GEOMETRY"],
+            "Vector": ["VECTOR"],
             "Other": ["ROWID", "UROWID"]
         ]
 

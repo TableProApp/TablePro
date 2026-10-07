@@ -53,6 +53,25 @@ final class OracleColumnDefaultTests: XCTestCase {
         XCTAssertNil(clause("\"C_ZERO\"+1", isVirtual: true))
     }
 
+    private func generationExpression(_ storedText: String?, isIdentity: Bool = false, isVirtual: Bool) -> String? {
+        OracleColumnDefault(storedText: storedText, isIdentity: isIdentity, isVirtual: isVirtual, onNull: .never)
+            .generationExpression
+    }
+
+    /// `a + 1 /* c */` is stored rewritten as `"A"+1`, and `UPPER('x' || TO_CHAR(a))` as `UPPER('x'||TO_CHAR("A"))`.
+    func testAVirtualColumnReadsItsExpression() {
+        XCTAssertEqual(generationExpression("\"A\"+1", isVirtual: true), "\"A\"+1")
+        XCTAssertEqual(generationExpression("UPPER('x'||TO_CHAR(\"A\"))\n  ", isVirtual: true), "UPPER('x'||TO_CHAR(\"A\"))")
+        XCTAssertEqual(generationExpression("\"A\"+1 -- note\n", isVirtual: true), "\"A\"+1")
+        XCTAssertNil(generationExpression(" \n", isVirtual: true))
+        XCTAssertNil(generationExpression(nil, isVirtual: true))
+    }
+
+    func testOnlyAVirtualColumnHasAnExpression() {
+        XCTAssertNil(generationExpression("5", isVirtual: false))
+        XCTAssertNil(generationExpression("\"PROBE\".\"ISEQ$$_73292\".nextval", isIdentity: true, isVirtual: false))
+    }
+
     /// A sequence named in an ordinary `DEFAULT` is a default like any other.
     func testASequenceDefaultOnAnOrdinaryColumnIsKept() {
         XCTAssertEqual(clause("\"PROBE\".\"MY_SEQ\".\"NEXTVAL\""), "\"PROBE\".\"MY_SEQ\".\"NEXTVAL\"")

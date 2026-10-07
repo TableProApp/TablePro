@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/TableProApp/oracle-nio",
-            revision: "07c12bac65a1ec5e2e3c1d0f47aaca9f8798dae8"
+            revision: "6ce655c63ccfa10ddd7784636ae495eb5a8e49dd"
         ),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.81.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.29.0"),

@@ -63,6 +63,9 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     /// never editable and never appear in a generated INSERT or UPDATE.
     @Published var generatedColumns: Set<String> = []
     @Published private(set) var rowMatchPolicy: RowMatchPolicy = .none
+    /// The type each column was read as, by column name. A driver that writes its own statements types each value by it,
+    /// so it travels with the columns rather than being looked up again when the save is built.
+    private(set) var columnTypeNames: [String: String] = [:]
     @Published var databaseType: DatabaseType?
     @Published var pluginDriver: (any PluginDatabaseDriver)?
 
@@ -147,6 +150,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
         rowMatchPolicy: RowMatchPolicy = .none,
+        columnTypeNames: [String: String] = [:],
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -156,6 +160,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
+        self.columnTypeNames = columnTypeNames
 
         discardUndoHistory()
         pending.clear()
@@ -685,6 +690,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
             rowMatchPolicy: rowMatchPolicy,
+            columnTypeNames: columnTypeNames,
             databaseType: databaseType,
             pluginDriver: pluginDriver
         )
@@ -725,7 +731,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         schemaName: String? = nil,
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
-        rowMatchPolicy: RowMatchPolicy = .none
+        rowMatchPolicy: RowMatchPolicy = .none,
+        columnTypeNames: [String: String] = [:]
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -734,6 +741,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
+        self.columnTypeNames = columnTypeNames
         discardUndoHistory()
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty

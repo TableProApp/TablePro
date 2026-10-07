@@ -183,14 +183,16 @@ extension MainContentCoordinator {
         }
         let tab = tabManager.tabs[tabIdx]
         guard tab.id == tabManager.selectedTabId else { return }
+        let rows = tabSessionRegistry.tableRows(for: tab.id)
         changeManager.configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: resultSet.resultColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
-            generatedColumns: tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
-            rowMatchPolicy: tabSessionRegistry.tableRows(for: tab.id).rowMatchPolicy
+            generatedColumns: rows.generatedColumns,
+            rowMatchPolicy: rows.rowMatchPolicy,
+            columnTypeNames: rows.columnTypeNames
         )
     }
 

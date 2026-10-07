@@ -107,6 +107,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var capturesServerOutput = false
         var close = OracleCloseRecord()
         var serverRelease: OracleServerRelease?
+        /// Read before the first statement of each session, and again before the statement after one that can
+        /// change them, so no result ever waits on them mid-stream.
+        var sessionZones: OracleSessionTimeZones?
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -183,7 +186,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 return connection
             }
 
-            let release = OracleServerRelease(major: connection.serverVersion.majorDatabaseReleaseNumber)
+            let release = OracleServerRelease(
+                major: connection.serverVersion.majorDatabaseReleaseNumber,
+                update: connection.serverVersion.databaseMaintenanceReleaseNumber
+            )
 
             /// A dial the app gave up on while it was in flight has nowhere to land: the plugin
             /// dropped this connection and built another, so installing the handle here would
@@ -195,6 +201,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 current.isConnected = true
                 current.hasEverConnected = true
                 current.serverRelease = release
+                current.sessionZones = nil
                 current.close.clearOnConnect()
                 return true
             }
@@ -728,6 +735,16 @@ public final class OracleCoreConnection: @unchecked Sendable {
     }
 
     public func executeQuery(_ query: String) async throws -> OracleRawResult {
+        try await execute(OracleStatement(unsafeSQL: query), sql: query)
+    }
+
+    /// Runs `query` with `binds` bound to `:1` through `:n` in order, through the same gate, transaction role and
+    /// error mapping as ``executeQuery(_:)``.
+    public func executeQuery(_ query: String, binds: [OracleBindValue]) async throws -> OracleRawResult {
+        try await execute(OracleStatement(unsafeSQL: query, binds: OracleBindValue.bindings(for: binds)), sql: query)
+    }
+
+    private func execute(_ statement: OracleStatement, sql query: String) async throws -> OracleRawResult {
         let role = OracleTransactionRole(of: query)
         await queryGate.acquire()
 
@@ -735,9 +752,11 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let connection = try await reconnectedConnection()
             let admitted = try admit(role)
             let result = try await withQueryDeadline { [self] in
-                try await collectRows(query, options: admitted.options, on: connection)
+                let zones = await sessionZones(on: connection)
+                return try await collectRows(statement, options: admitted.options, zones: zones, on: connection)
             }
             recordSuccess(of: role, on: admitted.session)
+            forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             return result
         } catch {
@@ -745,6 +764,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
             /// can redial and install a new connection. Marking the failure dead after that would tear
             /// down the connection the next query is already running on.
             let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: query)
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped
@@ -773,35 +793,41 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    /// The app's own session statements, none of which reads a `TIMESTAMP WITH LOCAL TIME ZONE`.
     private func collectRows(
         _ query: String,
         options: StatementOptions,
         on connection: OracleNIO.OracleConnection
     ) async throws -> OracleRawResult {
-        let statement = OracleStatement(stringLiteral: query)
+        try await collectRows(
+            OracleStatement(unsafeSQL: query),
+            options: options,
+            zones: .driverDefault,
+            on: connection
+        )
+    }
+
+    private func collectRows(
+        _ statement: OracleStatement,
+        options: StatementOptions,
+        zones: OracleSessionTimeZones,
+        on connection: OracleNIO.OracleConnection
+    ) async throws -> OracleRawResult {
         let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
-        let columnNames = stream.columns.map(\.name)
-        var columnTypeNames: [String] = []
+        let columns = stream.columns.map(OracleResultColumn.init)
+        var decoder = CellDecoder(columns: columns, zones: zones)
         var allRows: [[OracleRawCell]] = []
-        var didReadTypes = false
         var truncated = false
 
         for try await row in stream {
-            var rowValues: [OracleRawCell] = []
-            for cell in row {
-                if !didReadTypes {
-                    columnTypeNames.append(Self.oracleTypeName(cell.dataType))
-                }
-                rowValues.append(decodeCell(cell))
-            }
-            didReadTypes = true
-            allRows.append(rowValues)
+            allRows.append(decoder.decode(row))
             if allRows.count >= OracleRowLimits.emergencyMax {
                 truncated = true
                 break
             }
         }
+        await warnOnce(about: decoder.unsupportedTypeNames)
 
         // A statement that returns no rows still wrote some, and the stream carries that count once
         // it has completed. Reporting the rows read instead answered 0 for every INSERT, UPDATE and
@@ -813,17 +839,11 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
 
         return OracleRawResult(
-            columns: Self.descriptors(names: columnNames, typeNames: didReadTypes ? columnTypeNames : []),
+            columns: columns.map(\.descriptor),
             rows: allRows,
             affectedRows: affectedRows,
             isTruncated: truncated
         )
-    }
-
-    private static func descriptors(names: [String], typeNames: [String]) -> [OracleColumnDescriptor] {
-        names.enumerated().map { index, name in
-            OracleColumnDescriptor(name: name, typeName: typeNames[safe: index] ?? "unknown")
-        }
     }
 
     // MARK: - Streaming
@@ -839,13 +859,16 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let connection = try await reconnectedConnection()
             let admitted = try admit(role)
             try await withQueryDeadline { [self] in
-                try await streamRows(query, options: admitted.options, on: connection, continuation: continuation)
+                let zones = await sessionZones(on: connection)
+                try await streamRows(query, options: admitted.options, zones: zones, on: connection, continuation: continuation)
             }
             recordSuccess(of: role, on: admitted.session)
+            forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             continuation.finish()
         } catch {
             let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: query)
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped
@@ -855,171 +878,97 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private func streamRows(
         _ query: String,
         options: StatementOptions,
+        zones: OracleSessionTimeZones,
         on connection: OracleNIO.OracleConnection,
         continuation: AsyncThrowingStream<OracleStreamElement, Error>.Continuation
     ) async throws {
-        let statement = OracleStatement(stringLiteral: query)
+        let statement = OracleStatement(unsafeSQL: query)
         let stream = try await connection.execute(statement, options: options, logger: nioLogger)
 
-        let columnNames = stream.columns.map(\.name)
-        var columnTypeNames: [String] = []
-        var headerSent = false
+        let columns = stream.columns.map(OracleResultColumn.init)
+        var decoder = CellDecoder(columns: columns, zones: zones)
+        continuation.yield(.header(columns: columns.map(\.descriptor)))
 
         for try await row in stream {
             try Task.checkCancellation()
-
-            var rowValues: [OracleRawCell] = []
-            for cell in row {
-                if !headerSent {
-                    columnTypeNames.append(Self.oracleTypeName(cell.dataType))
-                }
-                rowValues.append(decodeCell(cell))
-            }
-
-            if !headerSent {
-                continuation.yield(.header(columns: Self.descriptors(names: columnNames, typeNames: columnTypeNames)))
-                headerSent = true
-            }
-
-            continuation.yield(.rows([rowValues]))
+            continuation.yield(.rows([decoder.decode(row)]))
         }
+        await warnOnce(about: decoder.unsupportedTypeNames)
+    }
 
-        if !headerSent {
-            continuation.yield(.header(columns: Self.descriptors(names: columnNames, typeNames: [])))
+    // MARK: - Session Time Zones
+
+    /// The zones a `TIMESTAMP WITH LOCAL TIME ZONE` is read in, resolved on the statement's own connection before
+    /// the statement runs: a result decodes its rows as they arrive, and the channel carries one statement at a time.
+    ///
+    /// Read once per session, through the session-setup path rather than ``executeQuery(_:)``, which takes the gate
+    /// this already holds. A failed read keeps the driver's own zones for the session, a database zone of UTC and the
+    /// session zone the driver set at login, rather than retrying before every statement.
+    private func sessionZones(on connection: OracleNIO.OracleConnection) async -> OracleSessionTimeZones {
+        if let zones = state.withLock({ $0.sessionZones }) {
+            return zones
         }
+        let zones = await readSessionZones(on: connection) ?? .driverDefault
+        state.withLock { $0.sessionZones = zones }
+        return zones
+    }
+
+    private func readSessionZones(on connection: OracleNIO.OracleConnection) async -> OracleSessionTimeZones? {
+        do {
+            let answer = try await collectRows(
+                OracleSessionTimeZones.query,
+                options: Self.sessionSetupOptions,
+                on: connection
+            )
+            guard let zones = answer.rows.first.flatMap(OracleSessionTimeZones.init(row:)) else {
+                osLogger.error("Oracle reported session time zones that could not be read")
+                return nil
+            }
+            return zones
+        } catch {
+            osLogger.error(
+                "Reading the Oracle session time zones failed: \(String(describing: type(of: error)), privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    private func forgetSessionZonesIfChanged(by query: String) {
+        guard OracleSessionTimeZones.mayChange(after: query) else { return }
+        state.withLock { $0.sessionZones = nil }
     }
 
     // MARK: - Cell Decoding
 
-    private func decodeCell(_ cell: OracleCell) -> OracleRawCell {
-        guard cell.bytes != nil else { return .null }
+    /// Decodes the cells of one result, collecting the names of the types it had to render as placeholders.
+    private struct CellDecoder {
+        let columns: [OracleResultColumn]
+        let zones: OracleSessionTimeZones
+        private(set) var unsupportedTypeNames: Set<String> = []
 
-        if cell.dataType == .raw || cell.dataType == .longRAW || cell.dataType == .blob,
-           let bytes = cell.bytes {
-            return .bytes(Data(bytes.readableBytesView))
+        init(columns: [OracleResultColumn], zones: OracleSessionTimeZones) {
+            self.columns = columns
+            self.zones = zones
         }
 
-        guard let text = decodeText(cell) else { return .null }
-        return .string(text)
-    }
-
-    private func decodeText(_ cell: OracleCell) -> String? {
-        do {
-            switch cell.dataType {
-            case .varchar, .nVarchar, .char, .nChar, .long, .longNVarchar,
-                 .clob, .nCLOB, .json, .rowID:
-                return try cell.decode(String.self)
-
-            case .number, .binaryInteger:
-                return Self.decodeNumber(cell)
-
-            case .binaryFloat:
-                return String(try cell.decode(Float.self))
-
-            case .binaryDouble:
-                return String(try cell.decode(Double.self))
-
-            case .boolean:
-                return try cell.decode(Bool.self) ? "true" : "false"
-
-            case .date:
-                return OracleCellFormatting.formatDate(try cell.decode(Date.self))
-
-            case .timestamp:
-                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .naive)
-
-            case .timestampLTZ, .timestampTZ:
-                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .local)
-
-            case .intervalDS:
-                let interval = try cell.decode(IntervalDS.self)
-                return OracleCellFormatting.formatIntervalDS(
-                    days: interval.days,
-                    hours: interval.hours,
-                    minutes: interval.minutes,
-                    seconds: interval.seconds,
-                    nanoseconds: interval.fractionalSeconds
-                )
-
-            case .intervalYM:
-                let interval = try cell.decode(IntervalYM.self)
-                return OracleCellFormatting.formatIntervalYM(
-                    years: interval.years,
-                    months: interval.months
-                )
-
-            case .bFile:
-                return "<bfile>"
-
-            case .cursor:
-                return "<cursor>"
-
-            case .vector:
-                return "<vector>"
-
-            default:
-                return unsupportedPlaceholder(for: cell.dataType)
+        mutating func decode(_ cells: some Sequence<OracleCell>) -> [OracleRawCell] {
+            var values: [OracleRawCell] = []
+            values.reserveCapacity(columns.count)
+            for (index, cell) in cells.enumerated() {
+                let column = columns.indices.contains(index)
+                    ? columns[index]
+                    : OracleResultColumn(name: cell.columnName, dataType: cell.dataType, scale: 9)
+                values.append(OracleCellDecoding.decode(cell, column: column, zones: zones) { name in
+                    unsupportedTypeNames.insert(name)
+                })
             }
-        } catch {
-            osLogger.error("Oracle decode failed for column '\(cell.columnName, privacy: .private(mask: .hash))': \(String(describing: type(of: error)), privacy: .public) \(String(describing: error), privacy: .private)")
-            return "<decode error>"
+            return values
         }
     }
 
-    private func unsupportedPlaceholder(for type: OracleDataType) -> String {
-        let name = Self.oracleTypeName(type)
-        let warner = unsupportedWarner
-        Task.detached {
-            if await warner.warnIfNew(name) {
-                osLogger.warning("Oracle column type '\(name, privacy: .public)' is not supported; rendering as placeholder")
-            }
+    private func warnOnce(about typeNames: Set<String>) async {
+        for name in typeNames where await unsupportedWarner.warnIfNew(name) {
+            osLogger.warning("Oracle column type '\(name, privacy: .public)' is not supported; rendering as placeholder")
         }
-        return OracleCellFormatting.unsupportedPlaceholder(typeName: name)
-    }
-
-    private static func decodeNumber(_ cell: OracleCell) -> String? {
-        if let value = try? cell.decode(Int.self) {
-            return String(value)
-        }
-        if let value = try? cell.decode(OracleNumber.self) {
-            return value.description
-        }
-        if let value = try? cell.decode(Double.self) {
-            return String(value)
-        }
-        return nil
-    }
-
-    static func oracleTypeName(_ dataType: OracleDataType) -> String {
-        if dataType == .varchar { return "varchar2" }
-        if dataType == .number { return "number" }
-        if dataType == .binaryFloat { return "binary_float" }
-        if dataType == .binaryDouble { return "binary_double" }
-        if dataType == .date { return "date" }
-        if dataType == .raw { return "raw" }
-        if dataType == .longRAW { return "long raw" }
-        if dataType == .char { return "char" }
-        if dataType == .nChar { return "nchar" }
-        if dataType == .nVarchar { return "nvarchar2" }
-        if dataType == .nCLOB { return "nclob" }
-        if dataType == .clob { return "clob" }
-        if dataType == .blob { return "blob" }
-        if dataType == .bFile { return "bfile" }
-        if dataType == .timestamp { return "timestamp" }
-        if dataType == .timestampTZ { return "timestamp with time zone" }
-        if dataType == .timestampLTZ { return "timestamp with local time zone" }
-        if dataType == .intervalDS { return "interval day to second" }
-        if dataType == .intervalYM { return "interval year to month" }
-        if dataType == .rowID { return "rowid" }
-        if dataType == .boolean { return "boolean" }
-        if dataType == .long { return "long" }
-        if dataType == .json { return "json" }
-        if dataType == .vector { return "vector" }
-        if dataType == .binaryInteger { return "binary_integer" }
-        if dataType == .object { return "object" }
-        if dataType == .cursor { return "cursor" }
-        /// NCLOB is the only column that arrives as LONG NVARCHAR: the driver fetches LOBs as LONGs.
-        if dataType == .longNVarchar { return "nclob" }
-        return "unknown"
     }
 }

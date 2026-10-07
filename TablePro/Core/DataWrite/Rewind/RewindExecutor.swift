@@ -134,6 +134,7 @@ struct RewindExecutor {
                 capturedAt: Date(),
                 generatedColumns: plan.record.generatedColumns,
                 identityColumns: plan.record.identityColumns,
+                columnTypeNames: plan.record.columnTypeNames,
                 operations: operations
             )
         )

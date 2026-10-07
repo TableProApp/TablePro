@@ -23,9 +23,10 @@ public enum OracleDefaultOnNull: Sendable, Equatable {
 /// comment out whatever a statement writes after the value.
 ///
 /// An identity column stores its sequence there (`"HR"."ISEQ$$_73292".nextval`) and a virtual column its expression,
-/// and neither is a default a `DEFAULT` clause can restate. A `DEFAULT ON NULL` column stores the value alone, and
-/// restating that value as `DEFAULT 'x'` switches the semantics off and makes the column nullable (measured), so the
-/// value comes back with its `ON NULL` in front of it, which is also what writes the column back as it is.
+/// and neither is a default a `DEFAULT` clause can restate; the expression comes back as ``generationExpression``. A
+/// `DEFAULT ON NULL` column stores the value alone, and restating that value as `DEFAULT 'x'` switches the semantics off
+/// and makes the column nullable (measured), so the value comes back with its `ON NULL` in front of it, which is also
+/// what writes the column back as it is.
 ///
 /// No default is SQL NULL, and an explicit `DEFAULT NULL` is the text `null` as typed, so the two stay apart: the
 /// second comes back as `NULL`, the spelling the default menu offers.
@@ -45,9 +46,7 @@ public struct OracleColumnDefault: Sendable, Equatable {
     }
 
     public var clause: String? {
-        guard !isIdentity, !isVirtual, let storedText else { return nil }
-        let value = OracleSQLCommentStripper(storedText).stripped().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return nil }
+        guard !isIdentity, !isVirtual, let value = storedExpression else { return nil }
         let expression = value.caseInsensitiveCompare("NULL") == .orderedSame ? "NULL" : value
         switch onNull {
         case .never:
@@ -57,6 +56,19 @@ public struct OracleColumnDefault: Sendable, Equatable {
         case .onInsertAndUpdate:
             return "ON NULL FOR INSERT AND UPDATE \(expression)"
         }
+    }
+
+    /// The expression of a virtual column, what follows `GENERATED ALWAYS AS`. Oracle stores it rewritten
+    /// (`"A"+1` for `a + 1 /* c */`, measured), and it gets the same trimming a default does.
+    public var generationExpression: String? {
+        guard isVirtual else { return nil }
+        return storedExpression
+    }
+
+    private var storedExpression: String? {
+        guard let storedText else { return nil }
+        let value = OracleSQLCommentStripper(storedText).stripped().trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }
 

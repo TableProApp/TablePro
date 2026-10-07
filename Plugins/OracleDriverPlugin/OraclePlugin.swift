@@ -116,17 +116,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let brandColorHex = "#C3160B"
     static let systemDatabaseNames: [String] = ["SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"]
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
-    static let columnTypesByCategory: [String: [String]] = [
-        "Integer": ["NUMBER", "INTEGER", "INT", "SMALLINT"],
-        "Float": ["FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION"],
-        "String": ["VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR", "CLOB", "NCLOB", "LONG"],
-        "Date": ["DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE", "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND"],
-        "Binary": ["RAW", "LONG RAW", "BLOB", "BFILE"],
-        "Boolean": [],
-        "XML": ["XMLTYPE"],
-        "Spatial": ["SDO_GEOMETRY"],
-        "Other": ["ROWID", "UROWID"]
-    ]
+    static let columnTypesByCategory: [String: [String]] = OracleTypeCatalog.columnTypesByCategory
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "\"",
@@ -162,14 +152,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
             "GREATEST", "LEAST", "CAST",
             "SYS_GUID", "DBMS_RANDOM.VALUE", "USER", "SYS_CONTEXT"
         ],
-        dataTypes: [
-            "NUMBER", "INTEGER", "SMALLINT", "FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE",
-            "CHAR", "VARCHAR2", "NCHAR", "NVARCHAR2", "CLOB", "NCLOB", "LONG",
-            "BLOB", "RAW", "LONG RAW", "BFILE",
-            "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
-            "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND",
-            "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY"
-        ],
+        dataTypes: OracleTypeCatalog.dataTypes,
         tableOptions: [
             "TABLESPACE", "PCTFREE", "INITRANS"
         ],
@@ -177,7 +160,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        offsetFetchOrderBy: "ORDER BY 1",
+        offsetFetchOrderBy: "",
         autoLimitStyle: .fetchFirst,
         caseSensitivityStyle: .caseFoldFunction
     )
@@ -364,20 +347,39 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         // Health monitor sends "SELECT 1" as a ping; Oracle requires FROM DUAL.
         let isBareSelectOne = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "select 1"
-        var result = try await rawQuery(isBareSelectOne ? OracleSchemaQueries.ping : query)
+        let result = try await rawQuery(isBareSelectOne ? OracleSchemaQueries.ping : query)
         try await reportCompilationErrors(of: query)
-        let executionTime = Date().timeIntervalSince(startTime)
+        return pluginResult(of: query, result, executionTime: Date().timeIntervalSince(startTime))
+    }
 
-        // OracleNIO may not populate column metadata for empty result sets.
-        if result.columns.isEmpty, result.rows.isEmpty,
-           let recovered = try? await emptyResultColumns(for: query) {
-            result = recovered
+    /// Values a literal can carry stay literals, so the host's statements read as they always have; only bytes and
+    /// text over the literal limit are bound. See ``OracleBindPlaceholders``.
+    func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        guard !parameters.isEmpty else { return try await execute(query: query) }
+        let statement = OracleBindPlaceholders.substituting(query, parameters: parameters)
+        guard !statement.binds.isEmpty else { return try await execute(query: statement.sql) }
+        guard let core else { throw OraclePluginError(core: .notConnected) }
+        let startTime = Date()
+        let result: OracleRawResult
+        do {
+            result = try await core.executeQuery(statement.sql, binds: statement.binds.map(\.oracleBindValue))
+        } catch let error as OracleCoreError {
+            throw error.asPluginError
         }
-        if OraclePLSQLUnit.isAnonymousBlock(query) {
-            result = OracleRawResult(columns: result.columns, rows: result.rows, affectedRows: 0, isTruncated: false)
-        }
+        try await reportCompilationErrors(of: query)
+        return pluginResult(of: query, result, executionTime: Date().timeIntervalSince(startTime))
+    }
 
-        return result.toPluginResult(executionTime: executionTime)
+    /// An anonymous block reports no row count of its own; whatever oracle-nio counted belongs to the statements
+    /// inside it.
+    private func pluginResult(
+        of query: String,
+        _ result: OracleRawResult,
+        executionTime: TimeInterval
+    ) -> PluginQueryResult {
+        guard OraclePLSQLUnit.isAnonymousBlock(query) else { return result.toPluginResult(executionTime: executionTime) }
+        return OracleRawResult(columns: result.columns, rows: result.rows, affectedRows: 0, isTruncated: false)
+            .toPluginResult(executionTime: executionTime)
     }
 
     /// At most this many lines are read after one statement. A loop that prints more is reported as truncated
@@ -415,24 +417,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func emptyResultColumns(for query: String) async throws -> OracleRawResult? {
-        guard let table = Self.extractTableNameFromSelect(query) else { return nil }
-        let sql = OracleSchemaQueries.columnNamesAndTypes(schema: effectiveSchema(nil), table: table)
-        let columns = try await rawQuery(sql).rows.compactMap { row -> OracleColumnDescriptor? in
-            guard let name = row.first?.stringValue else { return nil }
-            let typeName = (row.count > 1 ? row[1].stringValue : nil)?.lowercased() ?? "varchar2"
-            return OracleColumnDescriptor(name: name, typeName: typeName)
-        }
-        guard !columns.isEmpty else { return nil }
-        return OracleRawResult(columns: columns, rows: [], affectedRows: 0, isTruncated: false)
-    }
-
     // MARK: - Streaming
 
+    /// The stream header has no field for classification hints, so they are added to the collected result.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let result = try await boundedQueryFromStream(query: query, rowCap: rowCap)
         try await reportCompilationErrors(of: query)
-        return result
+        return result.withOracleClassificationHints()
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -640,24 +631,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let escaped = effectiveSchemaEscaped(schema)
-
-        // Do NOT use DBMS_METADATA.GET_DDL — if the object type is wrong
-        // (view, materialized view, etc.), Oracle returns ORA-31603 which
-        // corrupts OracleNIO's connection state machine. Build DDL manually.
-
-        let cols = try await fetchColumns(table: table, schema: schema)
-        var ddl = "CREATE TABLE \"\(escaped)\".\"\(escapedTable)\" (\n"
-        let colDefs = cols.map { col -> String in
-            var def = "    \"\(col.name)\" \(col.dataType.uppercased())"
-            if !col.isNullable { def += " NOT NULL" }
-            if let d = col.defaultValue, !d.isEmpty { def += " DEFAULT \(d)" }
-            return def
-        }
-        ddl += colDefs.joined(separator: ",\n")
-        ddl += "\n);"
-        return ddl
+        OracleTableDDL.createTable(
+            qualifiedTable: "\(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(table))",
+            columns: try await fetchColumns(table: table, schema: schema),
+            quote: quoteIdentifier
+        )
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -775,128 +753,65 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let qualifiedTable = oracleQualifiedName(schema: schema, table: table)
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateOracleInsert(qualifiedTable: qualifiedTable, columns: columns, values: values) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateOracleUpdate(qualifiedTable: qualifiedTable, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateOracleDelete(qualifiedTable: qualifiedTable, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
-        return statements.isEmpty ? nil : statements
+        let writes = (try? rowWriter(table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns)
+            .rowWrites(
+                for: changes, insertedRowData: insertedRowData,
+                deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+            )) ?? []
+        return writes.isEmpty ? nil : writes.map { (statement: $0.statement, parameters: $0.parameters) }
     }
 
-    private func escapeOracleIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private func generateOracleInsert(
-        qualifiedTable: String,
+    func generateRowWrites(
+        table: String,
+        schema: String?,
         columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var insertColumns: [String] = []
-        var valuesSQL: [String] = []
-        var parameters: [PluginCellValue] = []
-
-        for (index, value) in values.enumerated() {
-            guard index < columns.count else { continue }
-            insertColumns.append(escapeOracleIdentifier(columns[index]))
-            if value.asText == "__DEFAULT__" {
-                valuesSQL.append("DEFAULT")
-            } else {
-                valuesSQL.append("?")
-                parameters.append(value)
-            }
-        }
-
-        guard !insertColumns.isEmpty else { return nil }
-
-        let columnList = insertColumns.joined(separator: ", ")
-        let valueList = valuesSQL.joined(separator: ", ")
-        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(valueList))"
-        return (statement: sql, parameters: parameters)
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns,
+            changes: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices,
+            context: PluginRowWriteContext()
+        )
     }
 
-    private func generateOracleUpdate(
-        qualifiedTable: String,
+    /// Nothing to write is nil, never an empty list: a non-nil answer to an empty update is how a driver claims the
+    /// restore of deleted rows, and this one has no identity-preserving insert to restore them with.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
         columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty, let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = escapeOracleIdentifier(cellChange.columnName)
-            guard cellChange.newValue.asText != "__DEFAULT__" else { return "\(col) = DEFAULT" }
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        var conditions: [String] = []
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = escapeOracleIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let sql = "UPDATE \(qualifiedTable) SET \(setClauses) WHERE \(whereClause) AND ROWNUM = 1"
-        return (statement: sql, parameters: parameters)
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        var writer = rowWriter(table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns)
+        writer.context = context
+        let writes = try writer.rowWrites(
+            for: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+        return writes.isEmpty ? nil : writes
     }
 
-    private func generateOracleDelete(
-        qualifiedTable: String,
+    private func rowWriter(
+        table: String,
+        schema: String?,
         columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-        var conditions: [String] = []
-
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = escapeOracleIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let sql = "DELETE FROM \(qualifiedTable) WHERE \(whereClause) AND ROWNUM = 1"
-        return (statement: sql, parameters: parameters)
+        primaryKeyColumns: [String]
+    ) -> OracleRowWriter {
+        OracleRowWriter(
+            qualifiedTable: OracleBrowseSQL.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
     }
 
     // MARK: - Create Table DDL
@@ -1037,7 +952,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType.uppercased())"
+        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
         if let defaultValue = col.defaultValue {
             def += " DEFAULT \(defaultValue)"
         }
@@ -1125,12 +1040,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
-        ) ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
+        OracleBrowseSQL.browseQuery(
+            qualifiedTable: OracleBrowseSQL.qualifiedName(schema: schema, table: table),
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
     }
 
     func buildFilteredQuery(
@@ -1194,50 +1107,15 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        var query = "SELECT * FROM \(oracleQualifiedName(schema: schema, table: table))"
-        let whereClause = PluginSQLFilter.buildWhereClause(
+        OracleBrowseSQL.filteredQuery(
+            qualifiedTable: OracleBrowseSQL.qualifiedName(schema: schema, table: table),
             filters: queryFilters,
             logicMode: logicMode,
-            columnKinds: columnKinds,
-            caseSensitivityStyle: .caseFoldFunction,
-            quoteIdentifier: oracleQuoteIdentifier,
-            escapeTypedValue: oracleEscapeValue,
-            regexCondition: { quoted, value, ignoresCase in
-                let pattern = value.replacingOccurrences(of: "'", with: "''")
-                guard ignoresCase else { return "REGEXP_LIKE(\(quoted), '\(pattern)')" }
-                return "REGEXP_LIKE(\(quoted), '\(pattern)', 'i')"
-            }
-        )
-        if !whereClause.isEmpty {
-            query += " WHERE \(whereClause)"
-        }
-        let orderBy = PluginSQLFilter.buildOrderByClause(
-            sortColumns: sortColumns, columns: columns, quoteIdentifier: oracleQuoteIdentifier
-        ) ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
-    }
-
-    // MARK: - Query Building Helpers
-
-    private func oracleQualifiedName(schema: String?, table: String) -> String {
-        guard let schema, !schema.isEmpty else {
-            return oracleQuoteIdentifier(table)
-        }
-        return "\(oracleQuoteIdentifier(schema)).\(oracleQuoteIdentifier(table))"
-    }
-
-    private func oracleQuoteIdentifier(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-
-    private func oracleEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
-        PluginSQLLiteral.escapedLiteral(
-            value,
-            kind: kind,
-            trueLiteral: nil,
-            falseLiteral: nil,
-            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset,
+            columnKinds: columnKinds
         )
     }
 
@@ -1251,37 +1129,5 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func effectiveSchema(_ schema: String?) -> String {
         schema ?? _currentSchema ?? config.username.uppercased()
-    }
-
-    private func effectiveSchemaEscaped(_ schema: String?) -> String {
-        OracleSchemaQueries.escapeLiteral(effectiveSchema(schema))
-    }
-
-    private static let fromTableRegex = try? NSRegularExpression(
-        pattern: #"FROM\s+(?:"([^"]+)"|(\w+))"#,
-        options: .caseInsensitive
-    )
-
-    private static func extractTableNameFromSelect(_ sql: String) -> String? {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.range(of: "^SELECT\\b", options: [.regularExpression, .caseInsensitive]) != nil else {
-            return nil
-        }
-        let ns = trimmed as NSString
-        guard let match = fromTableRegex?.firstMatch(
-            in: trimmed,
-            range: NSRange(location: 0, length: ns.length)
-        ), match.numberOfRanges >= 3 else {
-            return nil
-        }
-        let quotedRange = match.range(at: 1)
-        if quotedRange.location != NSNotFound {
-            return ns.substring(with: quotedRange)
-        }
-        let unquotedRange = match.range(at: 2)
-        if unquotedRange.location != NSNotFound {
-            return ns.substring(with: unquotedRange)
-        }
-        return nil
     }
 }

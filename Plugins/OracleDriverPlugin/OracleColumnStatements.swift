@@ -10,9 +10,12 @@ import TableProPluginKit
 ///
 /// `MODIFY` names only what changed, because Oracle leaves every omitted attribute as it was and restating an unchanged
 /// one is not neutral. Measured on 23ai: restating `NOT NULL` on a column that already has it fails the whole
-/// statement with ORA-01442, so a default could never be changed on a `NOT NULL` column; restating the type writes the
-/// type the grid displays, which is built from the byte length, so `VARCHAR2(20 CHAR)` became `VARCHAR2(80)` in bytes
-/// on an edit that only touched nullability; and restating `NULL` next to a `DEFAULT ON NULL` fails with ORA-30665.
+/// statement with ORA-01442, so a default could never be changed on a `NOT NULL` column; and restating `NULL` next to
+/// a `DEFAULT ON NULL` fails with ORA-30665. Restating a type is not neutral either: a length without its unit takes
+/// the session's `NLS_LENGTH_SEMANTICS`, so an unchanged type is left out too.
+///
+/// The type is written as it was given. A type change is still detected without regard to case, but folding the
+/// written type would turn a quoted mixed-case object type such as `"Hunt_Mixed"` into a name that does not exist.
 internal enum OracleColumnStatements {
     internal static func modify(
         qualifiedTable: String,
@@ -39,14 +42,14 @@ internal enum OracleColumnStatements {
         to newColumn: PluginColumnDefinition,
         quote: (String) -> String
     ) -> String? {
-        let typeChanged = oldColumn.dataType.uppercased() != newColumn.dataType.uppercased()
+        let typeChanged = oldColumn.dataType.caseInsensitiveCompare(newColumn.dataType) != .orderedSame
         let nullabilityChanged = oldColumn.isNullable != newColumn.isNullable
         let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
         guard typeChanged || nullabilityChanged || defaultChanged else { return nil }
 
         var parts = [quote(newColumn.name)]
         if typeChanged {
-            parts.append(newColumn.dataType.uppercased())
+            parts.append(newColumn.dataType)
         }
         if defaultChanged {
             parts.append("DEFAULT \(newColumn.defaultValue ?? "NULL")")

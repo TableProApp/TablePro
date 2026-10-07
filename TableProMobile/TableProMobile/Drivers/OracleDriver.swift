@@ -245,7 +245,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 isPrimaryKey: parsed.isPrimaryKey,
                 isNullable: parsed.isNullable,
                 defaultValue: parsed.defaultValue,
-                characterMaxLength: parsed.dataLength.flatMap { Int($0) },
+                characterMaxLength: parsed.charLength,
                 ordinalPosition: index
             )
         }
