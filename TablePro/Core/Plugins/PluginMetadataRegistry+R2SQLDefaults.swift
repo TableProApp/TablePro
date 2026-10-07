@@ -40,7 +40,6 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
-                    supportsCloudflareTunnel: false,
                     pagination: .leadingRowsOnly(maximumRows: 10_000),
                     isEngineReadOnly: true
                 ),

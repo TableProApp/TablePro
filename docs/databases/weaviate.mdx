@@ -15,6 +15,8 @@ Click **New Connection…**, select **Weaviate**, enter host and port, pick an *
 
 There is no Database field. One connection reaches one Weaviate instance, and its collections are the objects.
 
+For a node on a private server, open the **Network** tab and set **Connect via** to **SSH Tunnel**, then set **Host** to the address Weaviate listens on as the SSH server sees it, usually `localhost`. See [SSH Tunneling](/connections/ssh-tunneling).
+
 ## Connection settings
 
 | Field | Description |
@@ -109,7 +111,6 @@ New connections start on **Disabled**, plain HTTP. Every other mode goes over HT
 - Cross-references are properties, not foreign keys. There are no routines, triggers, or schema edits from Structure.
 - Multi-tenancy is not exposed. Name a tenant in GraphQL if the collection requires one.
 - Paging stops at row 10,000. Weaviate refuses an offset and limit that add up past `QUERY_MAXIMUM_RESULTS`, which defaults to 10,000.
-- No [SSH tunnel](/connections/ssh-tunneling).
 - The plugin is registry-only. It is not on iPhone or iPad.
 
 ## Troubleshooting

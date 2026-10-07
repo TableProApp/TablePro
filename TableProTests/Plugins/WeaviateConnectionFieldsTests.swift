@@ -20,7 +20,7 @@ struct WeaviateRegistrySnapshotTests {
         #expect(snapshot.schema.defaultPrimaryKeyColumn == "uuid")
         #expect(snapshot.schema.immutableColumns == ["uuid", "vector"])
         #expect(!snapshot.supportsForeignKeys)
-        #expect(!snapshot.capabilities.supportsSSH)
+        #expect(snapshot.capabilities.supportsSSH)
         #expect(snapshot.capabilities.supportsSSL)
         #expect(snapshot.connection.category == .document)
         #expect(snapshot.iconName == "weaviate-icon")

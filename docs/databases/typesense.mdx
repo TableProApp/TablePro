@@ -15,6 +15,8 @@ Click **New Connection…**, select **Typesense**, enter host, port and the **AP
 
 There is no Database field. One connection reaches one cluster and its collections are the objects.
 
+For a node on a private server, open the **Network** tab and set **Connect via** to **SSH Tunnel**, then set **Host** to the address Typesense listens on as the SSH server sees it, usually `localhost`. See [SSH Tunneling](/connections/ssh-tunneling).
+
 ## Connection settings
 
 | Field | Description |
@@ -139,7 +141,6 @@ The connection's SSL mode picks the scheme: **Disabled** talks HTTP, anything el
 - No import. Load documents with `POST /collections/:name/documents/import` in the console.
 - is NULL, is not NULL, is empty, is not empty, matches regex and ends with are refused in the filter bar. Ends with needs a field created with `infix: true`, which the filter bar cannot reach.
 - A filter value containing a backtick is refused. Match on a value without one, or write the filter in the **Raw SQL** column.
-- No [SSH tunnel](/connections/ssh-tunneling), Cloudflare Tunnel, SOCKS proxy or tunnel command. Reach a private node through a reverse proxy.
 - The console takes a method and a path, not SQL. `DELETE FROM books` looks like an HTTP verb and a path, so it is refused rather than sent.
 
 ## Troubleshooting

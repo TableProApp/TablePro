@@ -32,7 +32,7 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsDatabaseSwitching = false
     static let supportsImport = false
     static let supportsExport = true
-    static let supportsSSH = false
+    static let supportsSSH = true
     static let supportsSSL = true
     static let supportsReadOnlyMode = true
     static let supportsForeignKeyDisable = false

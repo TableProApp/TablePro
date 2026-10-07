@@ -78,7 +78,6 @@ struct PluginMetadataSnapshot: Sendable {
         var tlsImpliedPorts: [Int] = []
         var verifiesServerWithSystemTrust: Bool = false
         var supportsPerConnectionCertificatePaths: Bool = true
-        var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
         /// Whether two pooled drivers for the same connection sit on one physical session. Snowflake
@@ -122,6 +121,11 @@ struct PluginMetadataSnapshot: Sendable {
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
+        /// `cloudflared access tcp` forwards a loopback port just as an SSH tunnel does. A stored flag
+        /// drifted: it defaulted to true in the built-in snapshots, so a registry type the plugin
+        /// declares without SSH offered Cloudflare Tunnel until that plugin was installed.
+        var supportsCloudflareTunnel: Bool { supportsSSH }
+
         /// A tunnel command forwards a loopback port to the server the connection names, so it
         /// applies wherever an SSH tunnel would. Computed for the same reason `supportsSOCKSProxy`
         /// is: a stored flag would need an opt-out line in every hand-written snapshot.
@@ -161,8 +165,7 @@ struct PluginMetadataSnapshot: Sendable {
             supportsDropIndex: true,
             supportsModifyPrimaryKey: true,
             defaultSSLMode: .disabled,
-            supportsOpportunisticTLS: true,
-            supportsCloudflareTunnel: true
+            supportsOpportunisticTLS: true
         )
     }
 
@@ -736,7 +739,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .verifiesServerWithSystemTrust ?? false,
                 supportsPerConnectionCertificatePaths: existingSnapshot?.capabilities
                     .supportsPerConnectionCertificatePaths ?? true,
-                supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
                 pooledDriversShareOneSession: existingSnapshot?.capabilities
