@@ -45,7 +45,7 @@
 
 TablePro는 제가 바라던 TablePlus의 모습입니다. 네이티브이고 빠르며 오픈 소스입니다.
 
-모든 플랫폼에서 네이티브 프레임워크로 제작되었습니다. Electron, JDBC, JavaScript 런타임을 사용하지 않습니다. 1초 이내에 실행되며 유휴 상태에서 약 80MB의 메모리를 사용합니다. 네이티브 드라이버로 주요 SQL 및 NoSQL 데이터베이스에 연결합니다.
+모든 플랫폼에서 네이티브 프레임워크로 제작되었습니다. Electron, JDBC, JavaScript 런타임을 사용하지 않습니다. 네이티브 드라이버로 주요 SQL 및 NoSQL 데이터베이스에 연결합니다.
 
 AI 채팅, 인라인 제안, Cursor, Raycast 또는 Claude Desktop이 데이터베이스와 통신할 수 있는 MCP 서버가 내장되어 있습니다. 원하는 API 키와 제공자를 사용하거나 Ollama로 로컬에서 실행할 수 있습니다.
 
@@ -63,39 +63,17 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 
 | 플랫폼 | 상태 |
 |----------|--------|
-| macOS 14+ | 안정 버전 |
+| macOS 13+ | 안정 버전 |
 | iOS / iPadOS 18+ | 안정 버전 |
 | Linux | 프로토타입, 아직 설치할 수 없음 |
 | Windows | 지원하지 않음 |
 
 ## 지원 데이터베이스
 
-| 데이터베이스 | 배포 방식 |
-|----------|--------------|
-| MySQL | 내장 |
-| MariaDB | 내장 |
-| PostgreSQL | 내장 |
-| Amazon Redshift | 내장 |
-| CockroachDB | 내장 |
-| SQLite | 내장 |
-| ClickHouse | 내장 |
-| Redis | 내장 |
-| Microsoft SQL Server | 플러그인 |
-| MongoDB | 플러그인 |
-| Oracle Database | 플러그인 |
-| Dameng DM8 | 플러그인 |
-| SAP HANA | 플러그인 |
-| DuckDB | 플러그인 |
-| Beancount | 플러그인 |
-| Cassandra / ScyllaDB | 플러그인 |
-| Etcd | 플러그인 |
-| Cloudflare D1 | 플러그인 |
-| DynamoDB | 플러그인 |
-| BigQuery | 플러그인 |
-| Spanner | 플러그인 |
-| libSQL / Turso | 플러그인 |
+- **내장**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
+- **플러그인**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
 
-내장 드라이버는 앱에 포함되어 있습니다. 플러그인 드라이버는 [플러그인 레지스트리](https://github.com/TableProApp/plugins)에서 필요할 때 설치됩니다.
+내장 드라이버는 앱에 포함되어 있습니다. 플러그인 드라이버는 [플러그인 레지스트리](https://github.com/TableProApp/plugins)에서 필요할 때 설치됩니다. 최신 목록과 엔진별 지원 기능은 [tablepro.app/databases](https://tablepro.app/databases)에서 확인할 수 있습니다.
 
 ## 주요 기능
 
@@ -104,10 +82,20 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 - 네이티브 윈도우 탭, 다중 윈도우와 분할 패널
 - 비밀번호 및 키 인증과 SSL/TLS를 지원하는 SSH 터널
 - 전체 텍스트 검색을 지원하는 쿼리 기록
-- 연결, 그룹, 태그, 설정과 SSH 프로필의 iCloud 동기화
 - AI 채팅, 인라인 제안, Explain/Optimize
 - Raycast, Cursor, Claude Desktop을 위한 MCP 서버와 URL 스킴
 - Swift로 직접 데이터베이스 드라이버를 만들 수 있는 플러그인 시스템
+
+## 무료와 유료
+
+위 기능은 모든 데이터베이스에서 무료이며 체험 기간이나 시간 제한이 없습니다. 라이선스는 Mac 앱에 다음 기능을 추가합니다.
+
+| 플랜 | 추가 기능 |
+|------|----------|
+| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Starter의 모든 기능과 Team Catalog, Team Library |
+
+플랜과 가격은 [tablepro.app/pricing](https://tablepro.app/pricing)에서 확인할 수 있습니다. iPhone 및 iPad 앱은 라이선스가 필요하지 않습니다.
 
 ## 설치
 
@@ -153,7 +141,7 @@ xcodebuild \
 
 ## 개발 후원
 
-TablePro는 AGPLv3에 따라 무료로 제공됩니다. 업무에 사용한다면 [라이선스](https://tablepro.app)를 구매해 주세요. 모든 구매는 다음 릴리스 개발에 사용됩니다. 라이선스를 구매하기 어렵다면 무료 버전을 그대로 사용하세요. 그래서 TablePro는 무료입니다.
+TablePro는 AGPLv3에 따라 무료로 제공됩니다. 업무에 사용한다면 [라이선스](https://tablepro.app/pricing)를 구매해 주세요. 라이선스는 유료 기능을 추가하며, 모든 구매는 다음 릴리스 개발에 사용됩니다. 라이선스를 구매하기 어렵다면 무료 버전을 그대로 사용하세요. 그래서 TablePro는 무료입니다.
 
 ## 후원자
 

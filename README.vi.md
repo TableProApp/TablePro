@@ -45,7 +45,7 @@
 
 TablePro là TablePlus mà tôi luôn muốn có: native, nhanh, mã nguồn mở.
 
-Viết bằng framework native cho từng nền tảng. Không Electron, không JDBC, không JavaScript runtime. Khởi động dưới 1 giây, chạy nền khoảng 80 MB RAM. Kết nối tới hầu hết các database SQL và NoSQL qua driver native.
+Viết bằng framework native cho từng nền tảng. Không Electron, không JDBC, không JavaScript runtime. Kết nối tới hầu hết các database SQL và NoSQL qua driver native.
 
 AI tích hợp sẵn: chat, gợi ý inline, và MCP server để Cursor, Raycast hay Claude Desktop nói chuyện trực tiếp với database của bạn. API key bạn tự cấp, provider bạn tự chọn, hoặc chạy local với Ollama.
 
@@ -63,39 +63,17 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 
 | Nền tảng | Trạng thái |
 |----------|-----------|
-| macOS 14+ | Ổn định |
+| macOS 13+ | Ổn định |
 | iOS / iPadOS 18+ | Ổn định |
 | Linux | Bản thử nghiệm, chưa có gì để cài |
 | Windows | Không |
 
 ## Database hỗ trợ
 
-| Database | Phân phối |
-|----------|-----------|
-| MySQL | Tích hợp sẵn |
-| MariaDB | Tích hợp sẵn |
-| PostgreSQL | Tích hợp sẵn |
-| Amazon Redshift | Tích hợp sẵn |
-| CockroachDB | Tích hợp sẵn |
-| SQLite | Tích hợp sẵn |
-| ClickHouse | Tích hợp sẵn |
-| Redis | Tích hợp sẵn |
-| Microsoft SQL Server | Plugin |
-| MongoDB | Plugin |
-| Oracle Database | Plugin |
-| Dameng DM8 | Plugin |
-| SAP HANA | Plugin |
-| DuckDB | Plugin |
-| Beancount | Plugin |
-| Cassandra / ScyllaDB | Plugin |
-| Etcd | Plugin |
-| Cloudflare D1 | Plugin |
-| DynamoDB | Plugin |
-| BigQuery | Plugin |
-| Spanner | Plugin |
-| libSQL / Turso | Plugin |
+- **Tích hợp sẵn**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
+- **Plugin**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
 
-Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://github.com/TableProApp/plugins).
+Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://github.com/TableProApp/plugins). Danh sách hiện tại và những gì từng engine hỗ trợ có tại [tablepro.app/databases](https://tablepro.app/databases).
 
 ## Bên trong có gì
 
@@ -104,10 +82,20 @@ Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần
 - Tab native trong cửa sổ, đa cửa sổ, split pane
 - SSH tunnel (password và key), SSL/TLS
 - Lịch sử query tìm kiếm full-text
-- iCloud sync cho connection, group, tag, cài đặt, SSH profile
 - AI chat, gợi ý inline, Explain/Optimize
 - MCP server và URL scheme cho Raycast, Cursor, Claude Desktop
 - Hệ thống plugin, tự viết driver database bằng Swift
+
+## Miễn phí và trả phí
+
+Mọi thứ ở trên đều miễn phí với mọi database, không phải bản dùng thử và không giới hạn thời gian. License bổ sung các tính năng sau cho app Mac:
+
+| Gói | Bổ sung |
+|-----|---------|
+| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Mọi thứ trong Starter, thêm Team Catalog và Team Library |
+
+Các gói và giá có tại [tablepro.app/pricing](https://tablepro.app/pricing). App cho iPhone và iPad không cần license.
 
 ## Cài đặt
 
@@ -123,7 +111,7 @@ Tài liệu đầy đủ tại [docs.tablepro.app](https://docs.tablepro.app).
 
 ## Ủng hộ phát triển
 
-App miễn phí theo AGPLv3. Nếu bạn dùng TablePro cho công việc, hãy mua [license](https://tablepro.app). Mỗi giao dịch đều giúp duy trì bản release tiếp theo. Nếu chưa có điều kiện, cứ dùng bản miễn phí. Bản miễn phí có sẵn cho bạn.
+App miễn phí theo AGPLv3. Nếu bạn dùng TablePro cho công việc, hãy mua [license](https://tablepro.app/pricing). License bổ sung các tính năng trả phí, và mỗi giao dịch đều giúp duy trì bản release tiếp theo. Nếu chưa có điều kiện, cứ dùng bản miễn phí. Bản miễn phí có sẵn cho bạn.
 
 ## Nhà tài trợ
 
