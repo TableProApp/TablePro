@@ -24,18 +24,36 @@ internal enum MySQLTableListing {
 
     /// A `SHOW FULL TABLES` row carries the name and type alone. A catalog row adds the comment and the
     /// partition count, so the same mapping reads both.
-    static func tables(from rows: [[PluginCellValue]], listsSequencesAsTables: Bool) -> [PluginTableInfo] {
+    static func tables(
+        from rows: [[PluginCellValue]],
+        listsSequencesAsTables: Bool,
+        appendsInnoDBStatus: Bool = false
+    ) -> [PluginTableInfo] {
         rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let rawType = normalized(row[safe: 1]?.asText ?? "BASE TABLE")
             guard listsSequencesAsTables || rawType != "SEQUENCE" else { return nil }
             guard !isSessionTemporary(rawType) else { return nil }
             let carriesTableDetail = !isViewLike(rawType) && rawType != "SEQUENCE"
-            let comment = carriesTableDetail ? row[safe: 2]?.asText?.nilIfEmpty : nil
+            let comment = carriesTableDetail
+                ? userComment(row[safe: 2]?.asText, appendsInnoDBStatus: appendsInnoDBStatus)
+                : nil
             let partitionCount = carriesTableDetail ? row[safe: 3]?.asText.flatMap(Int.init) : nil
             let type = kind(forRawType: rawType, isPartitioned: partitionCount != nil)
             return PluginTableInfo(name: name, type: type, comment: comment, partitionCount: partitionCount)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The comment the user wrote, without the status InnoDB appends to it: measured on 4.1.22 as
+    /// `<comment>; InnoDB free: 4096 kB; (`p`) REFER `db/t`(`id`)`, and as `InnoDB free: 4096 kB`
+    /// alone on a table with no comment. 5.0 cuts the whole value at 80 characters, so the status
+    /// can end anywhere.
+    static func userComment(_ comment: String?, appendsInnoDBStatus: Bool) -> String? {
+        guard let comment, !comment.isEmpty else { return nil }
+        guard appendsInnoDBStatus,
+              let status = comment.range(of: #"(^|; )InnoDB free: .*$"#, options: .regularExpression)
+        else { return comment }
+        return String(comment[..<status.lowerBound]).nilIfEmpty
     }
 
     /// The type the app is told about, from the type the server answered with.
@@ -88,5 +106,41 @@ internal enum MySQLTableListing {
             .uppercased()
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
+    }
+}
+
+enum MySQLTableStatusRow {
+    /// The row for this table and no other. The server compares names by its own collation, so a
+    /// case variant still answers, but a row naming a different table never does.
+    static func row(named table: String, in rows: [[PluginCellValue]]) -> [PluginCellValue]? {
+        rows.first { $0[safe: 0]?.asText == table }
+            ?? rows.first { $0[safe: 0]?.asText?.caseInsensitiveCompare(table) == .orderedSame }
+    }
+
+    /// The positions `SHOW TABLE STATUS` documents, read in one place so the per-table and
+    /// whole-schema reads cannot index the same row differently.
+    static func metadata(
+        from row: [PluginCellValue],
+        tableName: String,
+        appendsInnoDBStatus: Bool = false
+    ) -> PluginTableMetadata {
+        let dataSize = (row[safe: 6]?.asText).flatMap { Int64($0) }
+        let indexSize = (row[safe: 8]?.asText).flatMap { Int64($0) }
+
+        let totalSize: Int64? = {
+            guard let data = dataSize, let index = indexSize else { return nil }
+            return data + index
+        }()
+
+        return PluginTableMetadata(
+            tableName: tableName,
+            dataSize: dataSize,
+            indexSize: indexSize,
+            totalSize: totalSize,
+            rowCount: (row[safe: 4]?.asText).flatMap { Int64($0) },
+            comment: MySQLTableListing.userComment(row[safe: 17]?.asText, appendsInnoDBStatus: appendsInnoDBStatus),
+            engine: row[safe: 1]?.asText,
+            collation: row[safe: 14]?.asText?.nilIfEmpty
+        )
     }
 }

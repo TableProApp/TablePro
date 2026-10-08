@@ -91,6 +91,34 @@ public enum MySQLObjectQueries {
         "SHOW FULL TABLES FROM \(quoteIdentifier(schema))"
     }
 
+    /// The listing a server before 5.0.2 understands: one column of names, and every row a base
+    /// table, since views arrived with 5.0.1.
+    public static func showTables(schema: String) -> String {
+        "SHOW TABLES FROM \(quoteIdentifier(schema))"
+    }
+
+    /// The table list read the server can answer: the catalog where it exists, then `SHOW`.
+    public static func listedTables(schema: String, hasInformationSchema: Bool) -> String {
+        hasInformationSchema ? showFullTables(schema: schema) : showTables(schema: schema)
+    }
+
+    /// One table's `SHOW TABLE STATUS` row. Below 5.0.3 the statement takes `LIKE` only, so the
+    /// pattern escapes its wildcards and the caller still keeps only the row named exactly.
+    public static func tableStatus(schema: String?, table: String, acceptsWhere: Bool) -> String {
+        let from = schema.flatMap { $0.isEmpty ? nil : " FROM \(quoteIdentifier($0))" } ?? ""
+        guard acceptsWhere else {
+            return "SHOW TABLE STATUS\(from) LIKE '\(escapeLiteral(likePattern(matching: table)))'"
+        }
+        return "SHOW TABLE STATUS\(from) WHERE Name = '\(escapeLiteral(table))'"
+    }
+
+    public static func likePattern(matching name: String) -> String {
+        name
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
     /// Whether `information_schema` describes this database at all, in one scalar.
     ///
     /// A direct server always answers a scalar aggregate with one row. DBLE 3.23 answers it with no
@@ -154,19 +182,11 @@ public enum MySQLObjectQueries {
     }
 
     /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's
-    /// return value rather than a parameter.
-    public static func routineList(schema: String) -> String {
+    /// return value rather than a parameter. A server before 5.5.3 has no such table, so the list
+    /// comes back as NULL there rather than failing the whole read.
+    public static func routineList(schema: String, includesParameters: Bool = true) -> String {
         let schemaLiteral = escapeLiteral(schema)
-        return """
-            SELECT
-                r.ROUTINE_NAME,
-                r.ROUTINE_TYPE,
-                r.DTD_IDENTIFIER,
-                r.SQL_DATA_ACCESS,
-                r.IS_DETERMINISTIC,
-                r.SECURITY_TYPE,
-                r.DEFINER,
-                r.ROUTINE_SCHEMA,
+        let parameterList = includesParameters ? """
                 (
                     SELECT GROUP_CONCAT(
                         CONCAT_WS(' ', p.PARAMETER_MODE, p.PARAMETER_NAME, p.DTD_IDENTIFIER)
@@ -178,6 +198,18 @@ public enum MySQLObjectQueries {
                         AND p.ROUTINE_TYPE = r.ROUTINE_TYPE
                         AND p.ORDINAL_POSITION > 0
                 ) AS PARAMETER_LIST
+            """ : "NULL AS PARAMETER_LIST"
+        return """
+            SELECT
+                r.ROUTINE_NAME,
+                r.ROUTINE_TYPE,
+                r.DTD_IDENTIFIER,
+                r.SQL_DATA_ACCESS,
+                r.IS_DETERMINISTIC,
+                r.SECURITY_TYPE,
+                r.DEFINER,
+                r.ROUTINE_SCHEMA,
+                \(parameterList)
             FROM information_schema.ROUTINES r
             WHERE r.ROUTINE_SCHEMA = '\(schemaLiteral)'
             ORDER BY r.ROUTINE_TYPE, r.ROUTINE_NAME

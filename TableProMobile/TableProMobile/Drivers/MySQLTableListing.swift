@@ -2,9 +2,13 @@ import Foundation
 import TableProModels
 
 nonisolated internal enum MySQLTableListing {
-    static func tables(fromShowFullTables rows: [[String?]], databaseType: DatabaseType) -> [TableInfo] {
+    /// A server before 5.0.2 lists names alone through `SHOW TABLES`, and each of those rows reads as a
+    /// base table, which is all 4.1 has.
+    static func tables(fromShowTables rows: [[String?]], databaseType: DatabaseType) -> [TableInfo] {
         rows.compactMap { row in
-            guard row.count >= 2, let name = row[0], let tableType = row[1] else { return nil }
+            guard let name = row.first ?? nil,
+                  let tableType = row.count >= 2 ? row[1] : "BASE TABLE"
+            else { return nil }
             let normalizedType = normalized(tableType)
             if normalizedType == "SEQUENCE", hidesSequences(for: databaseType) {
                 return nil

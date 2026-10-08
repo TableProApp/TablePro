@@ -34,9 +34,10 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
-        let query = flavor.isTiDB
-            ? "SELECT User, Host FROM mysql.user ORDER BY User, Host"
-            : "SELECT User, Host, max_user_connections FROM mysql.user ORDER BY User, Host"
+        let readsLimit = !flavor.isTiDB && holdsForServer(MySQLServerVersion.hasUserConnectionLimit(banner:flavor:))
+        let query = readsLimit
+            ? "SELECT User, Host, max_user_connections FROM mysql.user ORDER BY User, Host"
+            : "SELECT User, Host FROM mysql.user ORDER BY User, Host"
         let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginPrincipalInfo? in
@@ -138,6 +139,7 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         matching query: String,
         limit: Int
     ) async throws -> [PluginPrivilegeScope] {
+        guard serverHasInformationSchema else { return [] }
         let pattern = escapeStringLiteral(MySQLGrantPatternEscaping.escapeDatabasePattern(query))
         let excludedSchemas = flavor.systemDatabaseNames
             .map { "'\(escapeStringLiteral($0))'" }

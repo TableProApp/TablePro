@@ -36,7 +36,7 @@ Every connection to the server except this one, sortable, one row each.
 
 On PostgreSQL 9.1 an idle session shows an empty Query: that server keeps only the running statement, not the last one.
 
-Two buttons sit on each row. **Cancel Query** stops the running statement and leaves the connection up: `pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL. **Terminate Session** ends the connection itself with `pg_terminate_backend` or `KILL`, and the server rolls back any transaction that session had open. Both confirm first, and a refusal from the server comes back as an **Action Failed** alert.
+Two buttons sit on each row. **Cancel Query** stops the running statement and leaves the connection up: `pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL. MySQL before 5.0 has no `KILL QUERY`, so those rows offer only **Terminate Session**. **Terminate Session** ends the connection itself with `pg_terminate_backend` or `KILL`, and the server rolls back any transaction that session had open. Both confirm first, and a refusal from the server comes back as an **Action Failed** alert.
 
 ## Slow Queries
 

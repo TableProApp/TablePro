@@ -100,13 +100,16 @@ extension MySQLPluginDriver {
         on connection: MariaDBPluginConnection,
         deadline: MySQLConnectDeadline
     ) async throws -> MySQLKillTarget {
-        guard flavor.isTiDB || flavor.isDatabend else { return .threadId }
+        let banner = connection.serverVersion()
+        guard flavor.isTiDB || flavor.isDatabend else {
+            return flavor.killTarget(connectionIdentifier: nil, banner: banner)
+        }
         let identifier = try await firstValue(
             of: MySQLFlavorResolution.connectionIdentifierProbe,
             on: connection,
             deadline: deadline
         )
-        return flavor.killTarget(connectionIdentifier: identifier)
+        return flavor.killTarget(connectionIdentifier: identifier, banner: banner)
     }
 
     /// The read for a server that enforces check constraints without cataloguing them: TiDB from

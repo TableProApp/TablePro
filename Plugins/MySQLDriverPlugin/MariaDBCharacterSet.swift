@@ -41,24 +41,31 @@ nonisolated internal enum MariaDBCharacterSet {
         of fields: UnsafeMutablePointer<MYSQL_FIELD>?,
         count: Int,
         encoding: MySQLConnectionEncoding,
-        flavor: MySQLServerFlavor = .mysql
+        flavor: MySQLServerFlavor = .mysql,
+        binaryStringsAreText: Bool = false
     ) -> MySQLResultColumns {
         var columns = MySQLResultColumns()
         guard let fields else { return columns }
         for index in 0..<count {
             let field = fields[index]
-            let flags = UInt(field.flags)
             let decoding = MySQLColumnDecoding(
                 typeRaw: field.type.rawValue,
                 length: field.length,
                 charsetnr: field.charsetnr,
                 characterSetName: name(forCollation: field.charsetnr),
-                flavor: flavor
+                flavor: flavor,
+                binaryStringsAreText: binaryStringsAreText
             )
+            var described = field
+            if decoding == .utf8TextOrBytes {
+                described.charsetnr = utf8Collation
+                described.flags &= ~UInt32(mysqlBinaryFlag)
+            }
+            let flags = UInt(described.flags)
             columns.append(
                 name: decodedName(of: field, encoding: encoding) ?? "column_\(index)",
-                typeCode: typeCode(of: field, flags: flags),
-                typeName: typeName(of: fields + index, decoding: decoding),
+                typeCode: typeCode(of: described, flags: flags),
+                typeName: typeName(of: &described, decoding: decoding),
                 decoding: decoding,
                 flags: flags
             )
@@ -66,12 +73,36 @@ nonisolated internal enum MariaDBCharacterSet {
         return columns
     }
 
+    /// `utf8_general_ci`, the collation 4.1 converts `SHOW` output to after `SET NAMES utf8`.
+    private static let utf8Collation: UInt32 = 33
+
     private static func typeName(
         of field: UnsafePointer<MYSQL_FIELD>,
         decoding: MySQLColumnDecoding
     ) -> String {
         guard decoding != .databendBoolean else { return DatabendResultShape.booleanTypeName }
         return mysqlTypeToString(field)
+    }
+
+    /// The directory the server reads its error messages from, mapped to the charset they are sent
+    /// in. Asked only of a server before 5.5, and best effort: no answer leaves today's decoding.
+    /// `SHOW VARIABLES` rather than `@@language`, which 4.1 and 5.0 answer with `1193`.
+    static func errorLanguage(on mysql: UnsafeMutablePointer<MYSQL>) -> String.Encoding? {
+        guard let banner = mysql_get_server_info(mysql).map({ String(cString: $0) }),
+              MySQLServerVersion.sendsErrorsInLanguageCharset(banner: banner)
+        else { return nil }
+        let statement = "SHOW VARIABLES LIKE 'language'"
+        guard statement.withCString({ mysql_real_query(mysql, $0, UInt(strlen($0))) }) == 0,
+              let result = mysql_store_result(mysql)
+        else { return nil }
+        defer { mysql_free_result(result) }
+        guard mysql_num_fields(result) >= 2,
+              let row = mysql_fetch_row(result),
+              let value = row[1],
+              let lengths = mysql_fetch_lengths(result)
+        else { return nil }
+        let bytes = UnsafeRawBufferPointer(start: value, count: Int(lengths[1]))
+        return MySQLErrorText.encoding(forLanguageDirectory: MySQLCharacterSet.decodeUTF8OrMySQLLatin1(bytes))
     }
 
     private static func typeCode(of field: MYSQL_FIELD, flags: UInt) -> UInt32 {

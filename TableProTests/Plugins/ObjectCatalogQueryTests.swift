@@ -273,6 +273,64 @@ struct MySQLObjectQueryTests {
         #expect(MySQLObjectQueries.escapeLiteral("a\\") == "a\\\\")
         #expect(MySQLObjectQueries.escapeLiteral("it's") == "it''s")
     }
+
+    /// Measured on 4.1.22: `SHOW FULL TABLES` answers 1064 and `SHOW TABLES` lists the names.
+    @Test("A server without the catalog lists its tables with SHOW TABLES")
+    func legacyTableListing() {
+        #expect(MySQLObjectQueries.showTables(schema: "ju_mijuit_new") == "SHOW TABLES FROM `ju_mijuit_new`")
+        #expect(MySQLObjectQueries.showTables(schema: "we`ird") == "SHOW TABLES FROM `we``ird`")
+        #expect(MySQLObjectQueries.listedTables(schema: "app", hasInformationSchema: true) == "SHOW FULL TABLES FROM `app`")
+        #expect(MySQLObjectQueries.listedTables(schema: "app", hasInformationSchema: false) == "SHOW TABLES FROM `app`")
+    }
+
+    /// Measured on 4.1.22: `SHOW TABLE STATUS ... WHERE` answers 1064 and `LIKE` reads the row.
+    @Test("Before 5.0.3 the status read names its table with LIKE")
+    func tableStatusUsesLikeWithoutWhere() {
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust", acceptsWhere: false)
+                == "SHOW TABLE STATUS FROM `ju_mijuit_new` LIKE 'apcust'"
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust", acceptsWhere: true)
+                == "SHOW TABLE STATUS FROM `ju_mijuit_new` WHERE Name = 'apcust'"
+        )
+        #expect(MySQLObjectQueries.tableStatus(schema: nil, table: "apcust", acceptsWhere: false) == "SHOW TABLE STATUS LIKE 'apcust'")
+        #expect(MySQLObjectQueries.tableStatus(schema: "", table: "apcust", acceptsWhere: true) == "SHOW TABLE STATUS WHERE Name = 'apcust'")
+    }
+
+    @Test("A LIKE pattern escapes its wildcards and the backslash, and nothing else")
+    func likePatternEscapesWildcards() {
+        #expect(MySQLObjectQueries.likePattern(matching: #"a\b%c_d"#) == #"a\\b\%c\_d"#)
+        #expect(MySQLObjectQueries.likePattern(matching: "it's `t`") == "it's `t`")
+    }
+
+    @Test("The LIKE pattern is escaped again as a literal, and the database as an identifier")
+    func tableStatusEscapesHostileNames() {
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "ju_mijuit_new", table: "apcust_send_history", acceptsWhere: false)
+                == #"SHOW TABLE STATUS FROM `ju_mijuit_new` LIKE 'apcust\\_send\\_history'"#
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "we`ird", table: #"a\b%c_d'e"#, acceptsWhere: false)
+                == #"SHOW TABLE STATUS FROM `we``ird` LIKE 'a\\\\b\\%c\\_d''e'"#
+        )
+        #expect(
+            MySQLObjectQueries.tableStatus(schema: "we`ird", table: #"a\b%c_d'e"#, acceptsWhere: true)
+                == #"SHOW TABLE STATUS FROM `we``ird` WHERE Name = 'a\\b%c_d''e'"#
+        )
+    }
+
+    /// `information_schema.PARAMETERS` arrived in 5.5.3; 5.1.73 answers 1109.
+    @Test("Without the PARAMETERS catalog the routine list keeps its shape with a NULL parameter list")
+    func routineListWithoutParameters() {
+        let legacy = MySQLObjectQueries.routineList(schema: "app", includesParameters: false)
+
+        #expect(legacy.contains("NULL AS PARAMETER_LIST"))
+        #expect(!legacy.contains("information_schema.PARAMETERS"))
+        #expect(legacy.contains("FROM information_schema.ROUTINES r"))
+        #expect(legacy.contains("WHERE r.ROUTINE_SCHEMA = 'app'"))
+        #expect(MySQLObjectQueries.routineList(schema: "app", includesParameters: true).contains("information_schema.PARAMETERS"))
+    }
 }
 
 struct MSSQLObjectQueryTests {

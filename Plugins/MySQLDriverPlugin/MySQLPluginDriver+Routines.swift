@@ -7,14 +7,18 @@ import Foundation
 import TableProPluginKit
 
 extension MySQLPluginDriver {
+    /// Before 5.5.3 there is no `PARAMETERS` table, so a routine's signature is unknown rather than
+    /// empty. Where the table exists, a `NULL` list is a routine that takes nothing.
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard !flavor.isDatabend, serverHasInformationSchema else { return [] }
         let resolvedSchema = routineSchema(schema)
-        let result = try await execute(ownStatement: MySQLObjectQueries.routineList(schema: resolvedSchema))
+        let includesParameters = holdsForServer(MySQLServerVersion.hasParametersCatalog(banner:flavor:))
+        let query = MySQLObjectQueries.routineList(schema: resolvedSchema, includesParameters: includesParameters)
+        let result = try await execute(ownStatement: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let isProcedure = row[safe: 1]?.asText?.uppercased() == "PROCEDURE"
-            let parameters = row[safe: 8]?.asText ?? ""
+            let signature = includesParameters ? "(\(row[safe: 8]?.asText ?? ""))" : nil
             var attributes: [PluginObjectAttribute] = []
             if let access = row[safe: 3]?.asText, !access.isEmpty {
                 attributes.append(PluginObjectAttribute(label: "Data Access", value: access))
@@ -34,7 +38,7 @@ extension MySQLPluginDriver {
                 schema: row[safe: 7]?.asText ?? resolvedSchema,
                 returnType: isProcedure ? nil : row[safe: 2]?.asText,
                 language: "SQL",
-                argumentSignature: "(\(parameters))",
+                argumentSignature: signature,
                 identity: nil,
                 attributes: attributes
             )
@@ -79,7 +83,10 @@ extension MySQLPluginDriver {
         return definition
     }
 
+    /// The sidebar list, the per-table read and the DDL lookup all come through here, and before
+    /// 5.0.10 there is no `TRIGGERS` table to ask.
     func triggerList(schema: String, table: String?) async throws -> [PluginTriggerInfo] {
+        guard holdsForServer(MySQLServerVersion.hasTriggerCatalog(banner:flavor:)) else { return [] }
         let result = try await execute(ownStatement: MySQLObjectQueries.triggerList(schema: schema, table: table))
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard let name = row[safe: 0]?.asText,
