@@ -107,7 +107,7 @@ brew install --cask tablepro
 
 ## 빌드 방법
 
-TablePro를 빌드하려면 macOS 14 이상, Xcode 26 이상과 [XcodeGen](https://github.com/yonaskolb/XcodeGen)이 필요합니다.
+TablePro를 빌드하려면 Xcode 26 이상과 [XcodeGen](https://github.com/yonaskolb/XcodeGen)이 필요합니다.
 
 저장소 루트에서 최초 설정을 실행하세요.
 

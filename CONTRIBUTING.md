@@ -2,7 +2,7 @@
 
 ## Setup
 
-Requirements: macOS 14.0+, Xcode 26.0+, [XcodeGen](https://github.com/yonaskolb/XcodeGen). Optional: SwiftLint, GitHub CLI (`gh`).
+Requirements: Xcode 26.0+, [XcodeGen](https://github.com/yonaskolb/XcodeGen). Optional: SwiftLint, GitHub CLI (`gh`).
 
 Fork the repo on GitHub, then:
 
