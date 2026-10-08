@@ -425,6 +425,10 @@
   "integrations": {
     "ga4": {
       "measurementId": "G-GQYNPKSK83"
+    },
+    "cookies": {
+      "key": "tablepro:analytics-consent",
+      "value": "granted"
     }
   }
 }
