@@ -15,8 +15,9 @@ import TableProPluginKit
 /// Every value is written for the type the host reports for its column, so nothing depends on the session's NLS
 /// settings. Measured on 23ai: a DATE or TIMESTAMP value is converted with an explicit mask, because the same text
 /// assigned or compared bare fails with ORA-01861 under the default `DD-MON-RR`; a number is written as a literal,
-/// because a bound `123.45` fails with ORA-01722 once `NLS_NUMERIC_CHARACTERS` is `,.`; and NULL is the literal,
-/// because a NULL bind into an object-type column fails with ORA-00932.
+/// because a bound `123.45` fails with ORA-01722 once `NLS_NUMERIC_CHARACTERS` is `,.`; NULL is the literal,
+/// because a NULL bind into an object-type column fails with ORA-00932; and text for an NCHAR, NVARCHAR2 or NCLOB
+/// column is `UNISTR`, because a literal or bind passes through the database character set (``OracleNationalText``).
 internal struct OracleRowWriter {
     /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
     static let defaultMarker = PluginCellValue.text("__DEFAULT__")
@@ -292,6 +293,8 @@ internal enum OracleValueKind: Equatable {
     case binaryFloat
     case binaryDouble
     case bfile
+    case nationalText
+    case nationalLOB
     case other
 
     init(typeName: String) {
@@ -306,6 +309,8 @@ internal enum OracleValueKind: Equatable {
         case "BINARY_FLOAT": self = .binaryFloat
         case "BINARY_DOUBLE": self = .binaryDouble
         case "BFILE": self = .bfile
+        case "NVARCHAR2", "NCHAR": self = .nationalText
+        case "NCLOB": self = .nationalLOB
         default: self = .other
         }
     }
@@ -313,7 +318,9 @@ internal enum OracleValueKind: Equatable {
     var isNumeric: Bool {
         switch self {
         case .number, .binaryFloat, .binaryDouble: return true
-        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .bfile, .other: return false
+        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .bfile, .nationalText,
+             .nationalLOB, .other:
+            return false
         }
     }
 
@@ -331,7 +338,7 @@ internal enum OracleValueKind: Equatable {
             return "TO_TIMESTAMP(\(operand), '\(OracleRowWriter.timestampMask)')"
         case .timestampWithTimeZone, .timestampWithLocalTimeZone:
             return "TO_TIMESTAMP_TZ(\(operand), '\(OracleRowWriter.timestampWithTimeZoneMask)')"
-        case .number, .binaryFloat, .binaryDouble, .bfile, .other:
+        case .number, .binaryFloat, .binaryDouble, .bfile, .nationalText, .nationalLOB, .other:
             return operand
         }
     }
@@ -352,6 +359,10 @@ internal enum OracleValueKind: Equatable {
         case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone:
             let keyword = text.trimmingCharacters(in: .whitespaces).uppercased()
             return Self.temporalFunctions.contains(keyword) ? keyword : nil
+        case .nationalText:
+            return OracleNationalText.sql(for: text, asLOB: false)
+        case .nationalLOB:
+            return OracleNationalText.sql(for: text, asLOB: true)
         case .bfile, .other:
             return nil
         }

@@ -496,6 +496,7 @@ targets:
       - Plugins/OracleDriverPlugin/OracleBrowseSQL.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleNationalText.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/OracleDriverPlugin/OracleRowWriter.swift
       - Plugins/OracleDriverPlugin/OracleTableDDL.swift

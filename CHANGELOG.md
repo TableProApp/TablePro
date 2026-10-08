@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cloudflare Tunnel offered for BigQuery, DuckDB, DynamoDB and other drivers that cannot use it, until their plugin was installed.
 - Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set.
+- Oracle grid saves storing NCHAR, NVARCHAR2 and NCLOB text as ¿ or editing the wrong row on a non-Unicode database.
 
 ## [0.78.0] - 2026-10-07
 
