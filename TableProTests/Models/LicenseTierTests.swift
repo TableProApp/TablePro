@@ -125,7 +125,7 @@ struct LicenseTierTests {
         #expect(LicenseManager.isLicenseKey("") == false)
     }
 
-    @Test("Pro features require the starter tier; Team features require the team tier")
+    @Test("Starter features require the starter tier; Team features require the team tier")
     func featureRequiredTiers() {
         #expect(ProFeature.iCloudSync.requiredTier == .starter)
         #expect(ProFeature.encryptedExport.requiredTier == .starter)
