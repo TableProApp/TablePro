@@ -1,7 +1,7 @@
 import XCTest
 
 /// The test sandbox carries no license, so this run sees exactly what an unlicensed user sees:
-/// `Compare & Sync Databases…` stays enabled, because a Pro feature the user can buy has to be
+/// `Compare & Sync Databases…` stays enabled, because a paid feature the user can buy has to be
 /// discoverable, and choosing it explains the gate instead of opening the window.
 ///
 /// The suite this replaces asserted on the window itself, on a `popUpButtons` value of
@@ -10,7 +10,7 @@ import XCTest
 /// pass on any machine. The window's own contract now lives in `CompareSyncSessionTests` and
 /// `DatabaseEndpointTests`, which reach it without a license.
 final class CompareSyncUITests: UITestCase {
-    private let licenseAlertMessage = "Compare & Sync requires a license"
+    private let licenseAlertMessage = "Compare & Sync requires the Starter plan"
 
     private func openCompareSyncMenuItem(in app: XCUIApplication) -> XCUIElement {
         let menuBar = app.menuBars.firstMatch

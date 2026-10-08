@@ -199,6 +199,6 @@ struct LicenseDevicesSection: View {
     }
 
     private func releaseMessage(for device: LicenseActivationInfo) -> String {
-        String(localized: "That Mac keeps working until its next check, within 7 days, and then Pro features pause there.")
+        String(localized: "That Mac keeps working until its next check, within 7 days, and then paid features pause there.")
     }
 }

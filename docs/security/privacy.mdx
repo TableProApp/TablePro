@@ -44,7 +44,7 @@ An `X-Signature` header carries an HMAC-SHA256 of the body. It proves the payloa
 
 The server stores each heartbeat with the IP address it came from. A [license check](#license-checks-and-the-team-library) sends the same `machine_id`, so heartbeats from a Mac with an activated license can be linked to that license. The [privacy policy](https://tablepro.app/privacy#mac-usage-report) says what the server keeps.
 
-**Share anonymous usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
+**Share usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
 
 On iPhone and iPad the heartbeat is off until you choose **Share Usage Data**, and its `platform` is `ios`. See [iPhone and iPad](/ios#privacy).
 

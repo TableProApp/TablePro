@@ -125,7 +125,7 @@ struct LicenseTierTests {
         #expect(LicenseManager.isLicenseKey("") == false)
     }
 
-    @Test("Pro features require the starter tier; Team features require the team tier")
+    @Test("Starter features require the starter tier; Team features require the team tier")
     func featureRequiredTiers() {
         #expect(ProFeature.iCloudSync.requiredTier == .starter)
         #expect(ProFeature.encryptedExport.requiredTier == .starter)
@@ -137,5 +137,17 @@ struct LicenseTierTests {
         #expect(ProFeature.dataRewind.requiredTier == .starter)
         #expect(ProFeature.teamCatalog.requiredTier == .team)
         #expect(ProFeature.teamLibrary.requiredTier == .team)
+    }
+
+    /// The feature's own name is taken out first: "Team Library" would satisfy a search for "Team".
+    @Test("Every gate names its feature and the plan the pricing page sells it under")
+    func gateNamesTheRequiredPlan() {
+        for feature in ProFeature.allCases {
+            let requirement = feature.planRequirement
+            #expect(requirement.contains(feature.displayName), "Got: \(requirement)")
+
+            let rest = requirement.replacingOccurrences(of: feature.displayName, with: "")
+            #expect(rest.contains(feature.requiredTier.displayName), "Got: \(requirement)")
+        }
     }
 }

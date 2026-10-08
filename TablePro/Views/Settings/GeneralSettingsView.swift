@@ -184,11 +184,16 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("Share anonymous usage data", isOn: $settings.shareAnalytics)
+                Toggle("Share usage data", isOn: $settings.shareAnalytics)
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
+                Text(
+                    """
+                    One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, \
+                    license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows.
+                    """
+                )
             }
 
             Section {

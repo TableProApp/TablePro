@@ -90,7 +90,7 @@ internal enum LicensePresentation {
         case .expired:
             return LicenseNotice(
                 title: String(localized: "License Expired"),
-                message: String(localized: "Renew it to use Pro features again. Everything else keeps working."),
+                message: String(localized: "Renew it to use paid features again. Everything else keeps working."),
                 action: .renew,
                 tone: .warning
             )
@@ -107,7 +107,7 @@ internal enum LicensePresentation {
             return LicenseNotice(
                 title: String(localized: "Could Not Check This License"),
                 message: String(
-                    localized: "TablePro has not reached the license server in 30 days, so Pro features are paused."
+                    localized: "TablePro has not reached the license server in 30 days, so paid features are paused."
                 ),
                 action: .retryValidation,
                 tone: .warning
@@ -200,8 +200,8 @@ internal enum LicensePresentation {
 
     /// What a licence is, in one line under the licensee's email.
     ///
-    /// A lifetime licence states that once. Its billing cycle is already the word "lifetime", so
-    /// taking the cycle and the absent expiry both spelled the plan "Team · Lifetime · Lifetime".
+    /// A one-time licence has no expiry and says so once. Its billing cycle is the server's word for
+    /// the same thing, "lifetime", so taking both spelled the plan "Team · Lifetime · Lifetime".
     static func planDescription(tier: String, billingCycle: String?, expiry: String?) -> String {
         var parts = [LicenseTier(rawValue: tier).displayName]
 
@@ -211,7 +211,7 @@ internal enum LicensePresentation {
             }
             parts.append(String(format: String(localized: "Expires %@"), expiry))
         } else {
-            parts.append(String(localized: "Lifetime"))
+            parts.append(String(localized: "One-time"))
         }
 
         return parts.joined(separator: " · ")

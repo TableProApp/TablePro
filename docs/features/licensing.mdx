@@ -11,10 +11,10 @@ There are two tiers, Starter and Team. Team includes everything in Starter.
 
 | Feature | Required tier | Without a license |
 |---------|---------------|-------------------|
-| [iCloud Sync](/features/icloud-sync) | Starter | Dimmed, with a **PRO** badge |
-| [Encrypted connection export](/features/connection-sharing) | Starter | Dimmed, with a **PRO** badge |
+| [iCloud Sync](/features/icloud-sync) | Starter | Dimmed, with a **STARTER** badge |
+| [Encrypted connection export](/features/connection-sharing) | Starter | Dimmed, with a **STARTER** badge |
 | [Environment variables in connection fields](/features/connection-sharing) | Starter | References stay unresolved |
-| [Linked Folders](/features/connection-sharing) | Starter | Dimmed, with a **PRO** badge |
+| [Linked Folders](/features/connection-sharing) | Starter | Dimmed, with a **STARTER** badge |
 | [Query Insights](/features/query-insights) | Starter | Overlay with **Activate License…** |
 | [Result charts](/features/data-grid#chart-mode) | Starter | Overlay with **Activate License…** |
 | [Compare & Sync](/features/compare-sync) | Starter | Dialog naming the requirement |
@@ -24,7 +24,7 @@ There are two tiers, Starter and Team. Team includes everything in Starter.
 
 On a Starter license, the two Team features offer **Upgrade Plan** instead. Everything else in the app works.
 
-Click a **PRO** badge for the pricing page, or hover it for one line on what the feature does.
+Click a badge for the pricing page, or hover it for one line on what the feature does.
 
 ## Buy a license
 
@@ -43,14 +43,14 @@ Until then, **Support TablePro** also sits at the bottom of the welcome window a
 
 Open **Settings > License** (`Cmd+,`), paste your license key (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`), and click **Activate**.
 
-The welcome window has an **Activate License** link to the same dialog, and shows a green **Pro** badge once a license is active. The badge turns orange when the license has not been checked in 30 days; the link does not come back, because activating again cannot help a Mac that is offline. The field also takes a team invite code, which TablePro tells apart from a key on its own. See [Team Plan](/features/team).
+The welcome window has an **Activate License** link to the same dialog, and shows a green **Starter** or **Team** badge once a license is active. The badge turns orange when the license has not been checked in 30 days; the link does not come back, because activating again cannot help a Mac that is offline. The field also takes a team invite code, which TablePro tells apart from a key on its own. See [Team Plan](/features/team).
 
 <Frame caption="Settings > License with a license active">
   <img className="block dark:hidden" src="/images/license-settings.png" alt="A license pane listing email, a masked key, plan and expiry above a list of activated Macs" />
   <img className="hidden dark:block" src="/images/license-settings-dark.png" alt="A license pane listing email, a masked key, plan and expiry above a list of activated Macs" />
 </Frame>
 
-Once active, the pane shows your email, a masked license key, plan, and expiry date or Lifetime. **Copy Key** puts the full key on the clipboard and marks it so clipboard-history apps skip it; the key itself stays masked on screen.
+Once active, the pane shows your email, a masked license key, plan, and expiry date or One-time. **Copy Key** puts the full key on the clipboard and marks it so clipboard-history apps skip it; the key itself stays masked on screen.
 
 A license that has expired, been suspended, or gone 30 days without reaching the server says so at the top of the pane, with the one action that state needs. The key field stays available throughout, so a renewal key goes in without deactivating first.
 
@@ -58,7 +58,7 @@ A license that has expired, been suspended, or gone 30 days without reaching the
 
 A license binds to each Mac it is activated on through a hashed hardware ID. The **Devices** section lists every activated Mac with its app and macOS version, marks the one you are sitting at, and counts them against the limit your plan sets on tablepro.app.
 
-Activating one Mac too many fails with "This license has reached its activation limit. Remove a Mac from your account, then activate again." Click **Manage Macs** under the message to open [tablepro.app/account/machines](https://tablepro.app/account/machines), sign in with the email on your license if asked, click **Remove…** beside a Mac, then click **Activate** again. On a Mac that already holds the license, **Release…** on a row in **Devices** frees a seat too, including a Mac you no longer have. A Mac you remove or release keeps working until its next check, within 7 days, and Pro features pause there.
+Activating one Mac too many fails with "This license has reached its activation limit. Remove a Mac from your account, then activate again." Click **Manage Macs** under the message to open [tablepro.app/account/machines](https://tablepro.app/account/machines), sign in with the email on your license if asked, click **Remove…** beside a Mac, then click **Activate** again. On a Mac that already holds the license, **Release…** on a row in **Devices** frees a seat too, including a Mac you no longer have. A Mac you remove or release keeps working until its next check, within 7 days, and paid features pause there.
 
 On a Team license only your own Mac carries **Release…**, because releasing a teammate's seat belongs to whoever manages the team. Seats there are handled at [tablepro.app/account](https://tablepro.app/account); see [Team Plan](/features/team).
 
@@ -70,8 +70,8 @@ Activation stores a signed license on your Mac, and the license key goes to the 
 
 - Every launch re-verifies the signature offline, with no network. Tier, status, and expiry all come from the signed license, so editing the copy on disk changes nothing.
 - Every 7 days the app re-validates with the license server in the background.
-- If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that the pane says **Could Not Check This License** and offers **Try Again**, and Pro features pause until a validation succeeds. Nothing in that state asks for a license key: the way out is a working connection.
-- If the server answers that the license is suspended, expired, or no longer activated on this Mac, Pro features pause at that check. The 30-day grace period only covers a server TablePro could not reach.
+- If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that the pane says **Could Not Check This License** and offers **Try Again**, and paid features pause until a validation succeeds. Nothing in that state asks for a license key: the way out is a working connection.
+- If the server answers that the license is suspended, expired, or no longer activated on this Mac, paid features pause at that check. The 30-day grace period only covers a server TablePro could not reach.
 
 **Refresh** in **Settings > License** re-validates with the server and reloads the device list, and a gated screen offers **Retry Validation**. Inside the last week before expiry, the pane carries a renewal notice linking to tablepro.app.
 

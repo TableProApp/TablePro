@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-/// Overlays a "Pro required" message on content when the user lacks an active license
 struct ProFeatureGateModifier: ViewModifier {
     let feature: ProFeature
 
@@ -70,7 +69,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     }
                     .buttonStyle(.borderedProminent)
                 case .unlicensed:
-                    Text("\(feature.displayName) requires a Pro license")
+                    Text(feature.planRequirement)
                         .font(.headline)
                         .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
                     Text(feature.featureDescription)
@@ -82,8 +81,8 @@ struct ProFeatureGateModifier: ViewModifier {
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
-                case .requiresUpgrade(let requiredTier):
-                    Text("\(feature.displayName) requires the \(requiredTier.displayName) plan")
+                case .requiresUpgrade:
+                    Text(feature.planRequirement)
                         .font(.headline)
                     Text(feature.featureDescription)
                         .font(.subheadline)

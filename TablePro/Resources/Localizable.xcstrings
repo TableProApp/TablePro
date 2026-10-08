@@ -4652,6 +4652,7 @@
       }
     },
     "%@ requires a Pro license" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -5583,6 +5584,7 @@
       }
     },
     "%@, Pro feature" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -43625,6 +43627,7 @@
       }
     },
     "Compare & Sync requires a license" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -85589,6 +85592,7 @@
       }
     },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -99149,6 +99153,7 @@
       }
     },
     "Lifetime" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -122259,6 +122264,46 @@
         }
       }
     },
+    "One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un rapport par jour : identifiant haché du Mac, versions, architecture, langue, types de bases de données, nombre de connexions, état de la licence, réglages de mise à jour, dates de première utilisation. Jamais de noms d’hôte, d’identifiants, de requêtes ni de lignes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하루 한 번 보고서 전송: 해시된 Mac ID, 버전, 아키텍처, 언어, 데이터베이스 유형, 연결 수, 라이선스 상태, 업데이트 설정, 최초 사용 날짜. 호스트 이름, 자격 증명, 쿼리 또는 행은 절대 포함되지 않습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Günde bir rapor: hash'lenmiş Mac kimliği, sürümler, mimari, dil, veritabanı türleri, bağlantı sayısı, lisans durumu, güncelleme ayarları, ilk kullanım tarihleri. Sunucu adları, kimlik bilgileri, sorgular veya satırlar asla gönderilmez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một báo cáo mỗi ngày: ID máy Mac đã băm, phiên bản, kiến trúc, ngôn ngữ, loại cơ sở dữ liệu, số kết nối, trạng thái giấy phép, cài đặt cập nhật, ngày sử dụng đầu tiên. Không bao giờ có tên máy chủ, thông tin đăng nhập, truy vấn hay dòng dữ liệu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一份报告：经过哈希处理的 Mac ID、版本、架构、语言、数据库类型、连接数、许可证状态、更新设置、首次使用日期。绝不包含主机名、凭证、查询或数据行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一份報告：雜湊後的 Mac ID、版本、架構、語言、資料庫類型、連線數、授權狀態、更新設定、首次使用日期。絕不包含主機名稱、憑證、查詢或資料列。"
+          }
+        }
+      }
+    },
     "One result per statement" : {
       "localizations" : {
         "fr" : {
@@ -122368,6 +122413,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Un nom d’utilisateur et un mot de passe, partagés par autant de connexions que nécessaire. Modifiez-les ici et chaque connexion qui les utilise se connecte avec les nouveaux identifiants."
+          }
+        }
+      }
+    },
+    "One-time" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paiement unique"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일회성"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek seferlik"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mua một lần"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次性"
           }
         }
       }
@@ -127102,6 +127187,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分頁"
+          }
+        }
+      }
+    },
+    "Paid features stop on this Mac right away. You can activate this license again later." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les fonctionnalités payantes cessent immédiatement de fonctionner sur ce Mac. Vous pourrez réactiver cette licence plus tard."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "유료 기능이 이 Mac에서 즉시 중지됩니다. 나중에 이 라이선스를 다시 활성화할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ücretli özellikler bu Mac'te hemen durur. Bu lisansı daha sonra yeniden etkinleştirebilirsiniz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các tính năng trả phí dừng ngay trên máy Mac này. Bạn có thể kích hoạt lại giấy phép này sau."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付费功能会在此 Mac 上立即停用。你之后可以重新激活此许可证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "付費功能會在此 Mac 上立即停用。你之後可以重新啟用此授權。"
           }
         }
       }
@@ -133720,6 +133845,7 @@
       }
     },
     "Pro" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -133760,6 +133886,7 @@
       }
     },
     "PRO" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -133841,6 +133968,7 @@
       }
     },
     "Pro features stop on this Mac right away. You can activate this license again later." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -133881,6 +134009,7 @@
       }
     },
     "Pro license required for iCloud Sync" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -143764,7 +143893,48 @@
         }
       }
     },
+    "Renew it to use paid features again. Everything else keeps working." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renouvelez-la pour utiliser à nouveau les fonctionnalités payantes. Tout le reste continue de fonctionner."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "유료 기능을 다시 사용하려면 갱신하십시오. 나머지 기능은 계속 작동합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ücretli özellikleri yeniden kullanmak için yenileyin. Geri kalan her şey çalışmayı sürdürür."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy gia hạn để dùng lại các tính năng trả phí. Mọi thứ khác vẫn hoạt động."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "续订即可再次使用付费功能。其余功能照常使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "續訂即可再次使用付費功能。其餘功能照常使用。"
+          }
+        }
+      }
+    },
     "Renew it to use Pro features again. Everything else keeps working." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -159551,6 +159721,7 @@
       }
     },
     "Share anonymous usage data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -159626,6 +159797,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "透過你的帳號與團隊共享連線和已儲存的查詢。密碼絕不會包含在內。"
+          }
+        }
+      }
+    },
+    "Share usage data" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager des données d’utilisation"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용 데이터 공유"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kullanım verilerini paylaş"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chia sẻ dữ liệu sử dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享使用数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享使用資料"
           }
         }
       }
@@ -175642,7 +175853,48 @@
         }
       }
     },
+    "TablePro has not reached the license server in 30 days, so paid features are paused." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro n’a pas pu joindre le serveur de licences depuis 30 jours : les fonctionnalités payantes sont donc suspendues."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 30일 동안 라이선스 서버에 연결하지 못해 유료 기능이 일시 중지되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 30 gündür lisans sunucusuna ulaşamadı, bu yüzden ücretli özellikler duraklatıldı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro chưa kết nối được máy chủ giấy phép trong 30 ngày, nên các tính năng trả phí đã tạm dừng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未连接许可证服务器，因此付费功能已暂停。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未連接授權伺服器，因此付費功能已暫停。"
+          }
+        }
+      }
+    },
     "TablePro has not reached the license server in 30 days, so Pro features are paused." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -178263,7 +178515,48 @@
         }
       }
     },
+    "That Mac keeps working until its next check, within 7 days, and then paid features pause there." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce Mac continue de fonctionner jusqu’à sa prochaine vérification, dans les 7 jours, puis les fonctionnalités payantes y sont suspendues."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해당 Mac은 7일 이내의 다음 확인까지 계속 작동하며, 그 후 유료 기능이 일시 중지됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Mac, 7 gün içindeki bir sonraki denetime kadar çalışmayı sürdürür, ardından ücretli özellikler orada duraklar."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy Mac đó vẫn hoạt động cho đến lần kiểm tra kế tiếp trong vòng 7 ngày, sau đó các tính năng trả phí sẽ tạm dừng ở đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那台 Mac 会持续使用到 7 天内的下次检查，之后付费功能会在该设备上暂停。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那台 Mac 會持續使用到 7 天內的下次檢查，之後付費功能會在該裝置上暫停。"
+          }
+        }
+      }
+    },
     "That Mac keeps working until its next check, within 7 days, and then Pro features pause there." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -192290,7 +192583,48 @@
         }
       }
     },
+    "This license has expired. Renew it to continue using paid features." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette licence a expiré. Renouvelez-la pour continuer à utiliser les fonctionnalités payantes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스는 만료되었습니다. 유료 기능을 계속 사용하려면 갱신하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisansın süresi doldu. Ücretli özellikleri kullanmaya devam etmek için yenileyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép này đã hết hạn. Gia hạn để tiếp tục sử dụng các tính năng trả phí."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证已过期。请续期以继续使用付费功能。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權已過期。請續訂以繼續使用付費功能。"
+          }
+        }
+      }
+    },
     "This license has expired. Renew it to continue using Pro features." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -192381,7 +192715,48 @@
         }
       }
     },
+    "This license was activated on a different Mac. Activate it here to use paid features." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette licence a été activée sur un autre Mac. Activez-la ici pour utiliser les fonctionnalités payantes."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스는 다른 Mac에서 활성화되었습니다. 여기에서 활성화하면 유료 기능을 사용할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisans başka bir Mac'te etkinleştirildi. Ücretli özellikleri kullanmak için burada etkinleştirin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép này đã được kích hoạt trên một máy Mac khác. Kích hoạt tại đây để dùng các tính năng trả phí."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证已在另一台 Mac 上激活。在此激活以使用付费功能。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權已在另一台 Mac 上啟用。在此啟用以使用付費功能。"
+          }
+        }
+      }
+    },
     "This license was activated on a different Mac. Activate it here to use Pro features." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -200508,7 +200883,48 @@
         }
       }
     },
+    "Unlock the paid features" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Débloquer les fonctionnalités payantes"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "유료 기능 잠금 해제"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ücretli özelliklerin kilidini açın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở khóa các tính năng trả phí"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解锁付费功能"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解鎖付費功能"
+          }
+        }
+      }
+    },
     "Unlock the Pro features" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
