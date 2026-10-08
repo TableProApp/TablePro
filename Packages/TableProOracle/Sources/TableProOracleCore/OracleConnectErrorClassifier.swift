@@ -78,7 +78,8 @@ public enum OracleChannelFatalCode {
              "unsupportedDataType",
              "advancedNegotiationFailed",
              "advancedNegotiationRequired",
-             "loginHandshakeTimedOut":
+             "loginHandshakeTimedOut",
+             "nationalCharsetNotSupported":
             return true
         case "server":
             return serverErrorNumber == 28 || serverErrorNumber == 600
