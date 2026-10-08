@@ -45,7 +45,7 @@
 
 TablePro is what I wanted TablePlus to be: native, fast, open source.
 
-Built with native frameworks on every platform. No Electron, no JDBC, no JavaScript runtime. Cold start under 1 second, idle around 80 MB RAM. Connects to all major SQL and NoSQL databases through native drivers.
+Built with native frameworks on every platform. No Electron, no JDBC, no JavaScript runtime. Connects to all major SQL and NoSQL databases through native drivers.
 
 AI is built in: chat, inline suggestions, and an MCP server that lets Cursor, Raycast, or Claude Desktop talk to your databases. Bring your own API key, pick your own provider, or run local with Ollama.
 
@@ -63,39 +63,17 @@ TablePro is the missing fourth: native, multi-database, and open source.
 
 | Platform | Status |
 |----------|--------|
-| macOS 14.4+ | Stable |
+| macOS 13+ | Stable |
 | iOS / iPadOS 18+ | Stable |
 | Linux | Prototype, nothing to install yet |
 | Windows | No |
 
 ## Supported Databases
 
-| Database | Distribution |
-|----------|--------------|
-| MySQL | Built-in |
-| MariaDB | Built-in |
-| PostgreSQL | Built-in |
-| Amazon Redshift | Built-in |
-| CockroachDB | Built-in |
-| SQLite | Built-in |
-| ClickHouse | Built-in |
-| Redis | Built-in |
-| Microsoft SQL Server | Plugin |
-| MongoDB | Plugin |
-| Oracle Database | Plugin |
-| Dameng DM8 | Plugin |
-| SAP HANA | Plugin |
-| DuckDB | Plugin |
-| Beancount | Plugin |
-| Cassandra / ScyllaDB | Plugin |
-| Etcd | Plugin |
-| Cloudflare D1 | Plugin |
-| DynamoDB | Plugin |
-| BigQuery | Plugin |
-| Spanner | Plugin |
-| libSQL / Turso | Plugin |
+- **Built-in**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
+- **Plugin**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
 
-Built-in drivers ship with the app. Plugin drivers install on demand from the [plugin registry](https://github.com/TableProApp/plugins).
+Built-in drivers ship with the app. Plugin drivers install on demand from the [plugin registry](https://github.com/TableProApp/plugins). [tablepro.app/databases](https://tablepro.app/databases) has the current list and what each engine supports.
 
 ## What's inside
 
@@ -104,10 +82,20 @@ Built-in drivers ship with the app. Plugin drivers install on demand from the [p
 - Native window tabs, multi-window, split panes
 - SSH tunnels with password and key authentication, SSL/TLS
 - Query history with full-text search
-- iCloud sync for connections, groups, tags, settings, and SSH profiles
 - AI chat, inline suggestions, and Explain/Optimize
 - MCP server and URL scheme for Raycast, Cursor, Claude Desktop
 - Plugin system, write your own database driver in Swift
+
+## Free and paid
+
+Everything above is free on every database, with no trial period or time limit. A license adds these to the Mac app:
+
+| Plan | Adds |
+|------|------|
+| Starter | iCloud Sync, Encrypted Export, Environment Variables, Linked Folders, Query Insights, Result Charts, Compare & Sync, Data Rewind |
+| Team | Everything in Starter, plus Team Catalog and Team Library |
+
+Plans and prices are on [tablepro.app/pricing](https://tablepro.app/pricing). The iPhone and iPad app needs no license.
 
 ## Install
 
@@ -156,7 +144,7 @@ Full docs at [docs.tablepro.app](https://docs.tablepro.app).
 
 ## Support development
 
-The app is free under AGPLv3. If you use TablePro at work, please buy a [license](https://tablepro.app). Every purchase funds the next release. If you can't afford one, just use the free version. That's why it's free.
+The app is free under AGPLv3. If you use TablePro at work, please buy a [license](https://tablepro.app/pricing). It adds the paid features, and every purchase funds the next release. If you can't afford one, just use the free version. That's why it's free.
 
 ## Sponsors
 
