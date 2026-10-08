@@ -4,6 +4,31 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="v0.79.0" description="October 8, 2026">
+  ### New Features
+
+  - **Tunnels for Weaviate, Typesense and Elasticsearch**: SSH tunnel, Cloudflare Tunnel, SOCKS proxy and Tunnel Command. Reach a server that only answers from inside a private network
+  - **Elasticsearch node list**: Several nodes per connection. When one stops answering, the connection moves to the next
+
+  ### Security
+
+  - Elasticsearch console paths starting with `//` sending the Authorization header to the host they named
+
+  ### Bug Fixes
+
+  - Kafka connections dialing a hidden localhost:9092 before the brokers listed in the form
+  - One unreachable Kafka bootstrap server using up the whole connect timeout
+  - A blank row in MongoDB **Hosts** saved as localhost:27017
+  - Elasticsearch connections to an IPv6 host failing with "Invalid host"
+  - Cloudflare Tunnel offered for BigQuery, DuckDB and other drivers that cannot use it, until their plugin was installed
+  - Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set
+  - Oracle grid saves storing NCHAR, NVARCHAR2 and NCLOB text as ¿ or editing the wrong row on a non-Unicode database
+  - MySQL 4.1 tables not listing, and opening with no columns, indexes or DDL
+  - Table Info, row counts, routines, triggers, foreign keys and the server dashboard failing on MySQL 4.1 to 5.1
+  - MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text
+  - **Stop** and the query timeout not stopping a query on MySQL 4.1
+</Update>
+
 <Update label="v0.78.0" description="October 7, 2026">
   ### New Features
 

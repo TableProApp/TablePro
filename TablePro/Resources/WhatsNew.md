@@ -1,7 +1,7 @@
-# TablePro 0.78.0
+# TablePro 0.79.0
 
-TablePro in French: pick Français in Settings > General.
+SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
 
-Switching databases on PostgreSQL, Redshift and CockroachDB keeps the open transaction and temp tables.
+An Elasticsearch connection takes several nodes and moves to the next when one stops answering.
 
-Oracle fixes for column types, dates, LOBs and saving edits.
+MySQL 4.1 to 5.1 servers list and open their tables.

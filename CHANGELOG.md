@@ -7,28 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-10-08
+
+SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
+An Elasticsearch connection takes several nodes and moves to the next when one stops answering.
+MySQL 4.1 to 5.1 servers list and open their tables.
+
 ### Added
 
-- SSH tunnel, Cloudflare Tunnel, SOCKS proxy and tunnel command for Weaviate, Typesense and Elasticsearch. (#3277)
-- Several nodes per Elasticsearch connection, moving to the next node when one stops answering. (#3281)
+- SSH tunnel, Cloudflare Tunnel, SOCKS proxy and tunnel command for Weaviate, Typesense and Elasticsearch. (#3277, #3278)
+- Several nodes per Elasticsearch connection, moving to the next node when one stops answering. (#3281, #3283)
 
 ### Fixed
 
-- Kafka connections dialing a hidden localhost:9092 before the brokers listed in the form.
-- One unreachable Kafka bootstrap server using up the whole connect timeout.
-- A blank row in MongoDB Hosts saved as localhost:27017.
-- Elasticsearch connections to an IPv6 host failing with "Invalid host".
-- Cloudflare Tunnel offered for BigQuery, DuckDB, DynamoDB and other drivers that cannot use it, until their plugin was installed.
-- Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set.
-- MySQL 4.1 tables not listing, and opening with no columns, indexes or DDL.
-- MySQL 4.1 to 5.1: Table Info, row counts, routines, triggers, foreign keys and the server dashboard failing on catalogs those versions lack.
-- MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text.
-- Stop and the query timeout not stopping a query on MySQL 4.1.
-- Oracle grid saves storing NCHAR, NVARCHAR2 and NCLOB text as ¿ or editing the wrong row on a non-Unicode database.
+- Kafka connections dialing a hidden localhost:9092 before the brokers listed in the form. (#3283)
+- One unreachable Kafka bootstrap server using up the whole connect timeout. (#3283)
+- A blank row in MongoDB Hosts saved as localhost:27017. (#3283)
+- Elasticsearch connections to an IPv6 host failing with "Invalid host". (#3283)
+- Cloudflare Tunnel offered for BigQuery, DuckDB and other drivers that cannot use it, until their plugin was installed. (#3278)
+- Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set. (#3280)
+- MySQL 4.1 tables not listing, and opening with no columns, indexes or DDL. (#3284)
+- Table Info, row counts, routines, triggers, foreign keys and the server dashboard failing on MySQL 4.1 to 5.1. (#3284)
+- MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text. (#3284)
+- Stop and the query timeout not stopping a query on MySQL 4.1. (#3284)
+- Oracle grid saves storing NCHAR, NVARCHAR2 and NCLOB text as ¿ or editing the wrong row on a non-Unicode database. (#3282)
 
 ### Security
 
-- Elasticsearch console paths starting with `//` sending the Authorization header to the host they named.
+- Elasticsearch console paths starting with `//` sending the Authorization header to the host they named. (#3283)
 
 ## [0.78.0] - 2026-10-07
 
@@ -5551,7 +5557,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.78.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.79.0...HEAD
+[0.79.0]: https://github.com/TableProApp/TablePro/compare/v0.78.0...v0.79.0
 [0.78.0]: https://github.com/TableProApp/TablePro/compare/v0.77.2...v0.78.0
 [0.77.2]: https://github.com/TableProApp/TablePro/compare/v0.77.1...v0.77.2
 [0.77.1]: https://github.com/TableProApp/TablePro/compare/v0.77.0...v0.77.1
