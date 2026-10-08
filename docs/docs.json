@@ -421,10 +421,5 @@
       "discord": "https://discord.gg/hCNmUUbnD4",
       "telegram": "https://t.me/tablepro_app"
     }
-  },
-  "integrations": {
-    "ga4": {
-      "measurementId": "G-GQYNPKSK83"
-    }
   }
 }
