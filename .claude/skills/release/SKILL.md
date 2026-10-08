@@ -243,7 +243,9 @@ To get one driver fix to users who have not updated, build it against their rele
 
 1. **Blog post**, by `references/blog-post.md`: one file in `resources/blog/` of the marketing site
    repo (`../tablepro-web` by default; confirm the path). It goes live first, because the newsletter
-   and the X posts link to it.
+   and the X posts link to it. Once it is live, link it from the version's `<Update>` block in
+   `docs/changelog.mdx`, on its own line before the first `###`:
+   `[Read the announcement](https://tablepro.app/blog/<slug>)`.
 2. **Newsletter**, by `references/newsletter.md`: 150 to 250 words that name the headline items and
    link the post.
 3. **X posts**, by `references/newsletter.md`: four to six posts plus one standalone, written from the
