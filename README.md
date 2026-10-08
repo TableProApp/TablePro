@@ -107,7 +107,7 @@ Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/relea
 
 ## How to Build
 
-Building TablePro requires macOS 14.4 or later, Xcode 26 or later, and
+Building TablePro requires Xcode 26 or later and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 Run the first-time setup from the repository root:
