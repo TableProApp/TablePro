@@ -5,8 +5,9 @@
 # Oracle allows two national character sets. AL16UTF16 sends NCHAR values as UTF-16; UTF8 sends them as CESU-8, where a
 # character outside the BMP is two 3-byte surrogates (measured on 23ai). oracle-nio converts CESU-8 to UTF-16 while it
 # reads a row, so a wrong guess about either form shows up here as a failed statement or as mojibake. This reads Lao text
-# and U+1D11E from each NCHAR type, a 20,008-character NCLOB that spans several wire chunks, and the same text written
-# back as the quoted literal the grid saves and as a bind, all through the same OracleCoreConnection the app uses.
+# and U+1D11E from each NCHAR type and a 20,008-character NCLOB that spans several wire chunks, then writes and matches the
+# same text the way a grid save does (OracleNationalText, compiled in from the plugin), all through the same
+# OracleCoreConnection the app uses.
 #
 # Usage:
 #   scripts/probes/check-oracle-national-charset.sh [host] [port] [service] [user] [password]
@@ -25,9 +26,9 @@
 #   ALTER PLUGGABLE DATABASE FREEPDB1 OPEN;
 #   SQL
 #
-# The writes send text as a plain literal or a CHAR or VARCHAR bind, which the server converts through the database
-# character set, so a database character set without Lao fails the write checks. The user needs CREATE TABLE. Every object it creates is prefixed
-# TP_NCHAR_ and dropped again. Exits non-zero on a disagreement, 3 when a prerequisite is missing.
+# A CHAR or VARCHAR bind passes through the database character set, so the bind checks run only when that character set
+# is Unicode. The user needs CREATE TABLE. Every object it creates is prefixed TP_NCHAR_ and dropped again. Exits non-zero
+# on a disagreement, 3 when a prerequisite is missing.
 
 set -uo pipefail
 
@@ -71,6 +72,8 @@ let package = Package(
     ]
 )
 EOF
+
+cp "$ROOT/Plugins/OracleDriverPlugin/OracleNationalText.swift" "$WORK/Sources/Probe/"
 
 cat > "$WORK/Sources/Probe/main.swift" <<'EOF'
 import Foundation
@@ -117,6 +120,12 @@ let charsets = await result("""
     WHERE parameter IN ('NLS_CHARACTERSET', 'NLS_NCHAR_CHARACTERSET') ORDER BY parameter
     """)
 print((charsets?.rows ?? []).map { "\($0[0].stringValue ?? "?") = \($0[1].stringValue ?? "?")" }.joined(separator: ", "))
+let databaseCharset = charsets?.rows.first { $0[0].stringValue == "NLS_CHARACTERSET" }?[1].stringValue ?? ""
+let unicodeDatabase = ["AL32UTF8", "UTF8"].contains(databaseCharset)
+
+func national(_ text: String, lob: Bool = false) -> String {
+    OracleNationalText.sql(for: text, asLOB: lob) ?? "'\(text.replacingOccurrences(of: "'", with: "''"))'"
+}
 
 let text = "ດ່ານ 𝄞"
 let escaped = "\\0E94\\0EC8\\0EB2\\0E99 \\D834\\DD1E"
@@ -151,21 +160,34 @@ if let value = await result("SELECT NL FROM TP_NCHAR_T WHERE ID = 3")?.rows.firs
 let after = await result("SELECT 1 FROM DUAL")
 check(after?.rows.first?.first?.stringValue == "1", "the connection still answers after the NCHAR reads")
 
-print("\nWrites")
-_ = await result("UPDATE TP_NCHAR_T SET NV = '\(text)' WHERE ID = 2")
-let literal = await result("SELECT NV FROM TP_NCHAR_T WHERE ID = 2")?.rows.first?.first?.stringValue
-check(literal == text, "NVARCHAR2 written as a literal reads \(String(reflecting: literal))")
-_ = await result(
-    "UPDATE TP_NCHAR_T SET NV = :1, NC = :2, NL = :3 WHERE ID = 2",
-    binds: [.text(text), .text("ລ"), .text(large)]
-)
+print("\nWrites, as a grid save writes them")
+_ = await result("UPDATE TP_NCHAR_T SET NV = \(national(text)), NC = \(national("ລ")), NL = \(national(large, lob: true)) WHERE ID = 2")
 if let rows = await result("SELECT NV, NC, NL FROM TP_NCHAR_T WHERE ID = 2")?.rows.first {
-    check(rows[0].stringValue == text, "NVARCHAR2 written through a bind reads \(String(reflecting: rows[0].stringValue))")
-    check(rows[1].stringValue == "ລ" + String(repeating: " ", count: 9), "NCHAR written through a bind reads back")
-    check(rows[2].stringValue == large, "an NCLOB written through a bind reads back whole")
+    check(rows[0].stringValue == text, "NVARCHAR2 reads back \(String(reflecting: rows[0].stringValue))")
+    check(rows[1].stringValue == "ລ" + String(repeating: " ", count: 9), "NCHAR reads back")
+    check(rows[2].stringValue == large, "a 20,008-character NCLOB reads back whole")
 }
-let matched = await result("SELECT ID FROM TP_NCHAR_T WHERE NV = :1 ORDER BY ID", binds: [.text(text)])
-check(matched?.rows.map { $0.first?.stringValue } == ["1", "2"], "a bind matches the NVARCHAR2 rows holding the text")
+let keyed = await result("UPDATE TP_NCHAR_T SET NC = NC WHERE NV = \(national(text))")
+check(keyed?.affectedRows == 2, "a row match on the NVARCHAR2 text finds both rows holding it")
+let padded = await result("UPDATE TP_NCHAR_T SET NC = NC WHERE NC = \(national("ລ" + String(repeating: " ", count: 9)))")
+check(padded?.affectedRows == 2, "a row match on the padded NCHAR value finds both rows holding it")
+
+print("\nBinds (import, Copy To, query parameters)")
+if unicodeDatabase {
+    _ = await result(
+        "UPDATE TP_NCHAR_T SET NV = :1, NC = :2, NL = :3 WHERE ID = 2",
+        binds: [.text(text), .text("ລ"), .text(large)]
+    )
+    if let rows = await result("SELECT NV, NC, NL FROM TP_NCHAR_T WHERE ID = 2")?.rows.first {
+        check(rows[0].stringValue == text, "NVARCHAR2 written through a bind reads \(String(reflecting: rows[0].stringValue))")
+        check(rows[1].stringValue == "ລ" + String(repeating: " ", count: 9), "NCHAR written through a bind reads back")
+        check(rows[2].stringValue == large, "an NCLOB written through a bind reads back whole")
+    }
+    let matched = await result("SELECT ID FROM TP_NCHAR_T WHERE NV = :1 ORDER BY ID", binds: [.text(text)])
+    check(matched?.rows.map { $0.first?.stringValue } == ["1", "2"], "a bind matches the NVARCHAR2 rows holding the text")
+} else {
+    print("skip a CHAR or VARCHAR bind passes through \(databaseCharset), which has no Lao")
+}
 
 await run("DROP TABLE TP_NCHAR_T PURGE")
 print(disagreements == 0 ? "\nall checks hold" : "\n\(disagreements) disagreement(s)")

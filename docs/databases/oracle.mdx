@@ -122,7 +122,7 @@ If the connection drops while a transaction is open, the next write fails with "
 
 The Structure tab and the table DDL show each column's type as it was declared: `NVARCHAR2(100)`, `VARCHAR2(50 CHAR)`, `NUMBER(*,2)`, `TIMESTAMP(6) WITH TIME ZONE`, `REF "HR"."ADDRESS_T"`. `VARCHAR2` and `CHAR` always name their unit, `BYTE` or `CHAR`, so a copied definition means the same column whatever `NLS_LENGTH_SEMANTICS` the target session uses.
 
-NCHAR, NVARCHAR2 and NCLOB read the same under either national character set Oracle allows, `AL16UTF16` or `UTF8`.
+NCHAR, NVARCHAR2 and NCLOB read the same under either national character set Oracle allows, `AL16UTF16` or `UTF8`. A grid save writes text that is not ASCII into them as `UNISTR('\0EA5...')`, so it keeps characters the database character set lacks.
 
 | Oracle type | Display |
 |---|---|
@@ -165,6 +165,7 @@ The SSL mode offers no certificate rows there, so **Verify Identity** checks the
 - BFILE columns show the directory and file name, never the file's contents.
 - SQL*Plus commands such as `SET SERVEROUTPUT ON`, `SHOW ERRORS` and `EXEC` are not SQL and fail when sent. Delete them, and write `EXEC p` as `BEGIN p; END;`. Output needs no `SET SERVEROUTPUT ON`.
 - No Users & Roles pane. Manage accounts with `CREATE USER` and `GRANT` in the editor.
+- On a database whose character set is not Unicode, filters, imports, Copy To and copied SQL still send NCHAR, NVARCHAR2 and NCLOB text through that character set, so a character it lacks becomes `¿`. Write such values with `UNISTR` in the editor.
 
 ## Troubleshooting
 
