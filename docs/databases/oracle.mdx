@@ -122,6 +122,8 @@ If the connection drops while a transaction is open, the next write fails with "
 
 The Structure tab and the table DDL show each column's type as it was declared: `NVARCHAR2(100)`, `VARCHAR2(50 CHAR)`, `NUMBER(*,2)`, `TIMESTAMP(6) WITH TIME ZONE`, `REF "HR"."ADDRESS_T"`. `VARCHAR2` and `CHAR` always name their unit, `BYTE` or `CHAR`, so a copied definition means the same column whatever `NLS_LENGTH_SEMANTICS` the target session uses.
 
+NCHAR, NVARCHAR2 and NCLOB read the same under either national character set Oracle allows, `AL16UTF16` or `UTF8`.
+
 | Oracle type | Display |
 |---|---|
 | VARCHAR2, NVARCHAR2, CHAR, NCHAR, LONG, CLOB, NCLOB | Text as stored |

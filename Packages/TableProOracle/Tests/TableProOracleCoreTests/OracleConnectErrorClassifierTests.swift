@@ -109,12 +109,13 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
             "unsupportedVerifierType(0x939)",
             "advancedNegotiationFailed",
             "advancedNegotiationRequired",
-            "loginHandshakeTimedOut"
+            "loginHandshakeTimedOut",
+            "nationalCharsetNotSupported"
         ] {
             XCTAssertTrue(OracleChannelFatalCode.isChannelFatal(code), code)
         }
 
-        for code in ["statementCancelled", "nationalCharsetNotSupported", "missingStatement", "malformedStatement"] {
+        for code in ["statementCancelled", "missingStatement", "malformedStatement"] {
             XCTAssertFalse(OracleChannelFatalCode.isChannelFatal(code), code)
         }
     }
