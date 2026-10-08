@@ -88,9 +88,9 @@ actor KafkaCluster {
             : connectTimeout.milliseconds
         let deadline = KafkaConnectDeadline(milliseconds: budgetMilliseconds)
         var failures: [String] = []
-        for endpoint in bootstrap {
+        for (index, endpoint) in bootstrap.enumerated() {
             try Task.checkCancellation()
-            guard let remainingMilliseconds = deadline.remainingMilliseconds() else {
+            guard let remainingMilliseconds = deadline.remainingMilliseconds(sharedBy: bootstrap.count - index) else {
                 throw KafkaError.connectionFailed(String(localized: "Timed out while connecting to the Kafka cluster"))
             }
             let connection = KafkaConnection(endpoint: endpoint, clientId: KafkaClientInfo.clientId)

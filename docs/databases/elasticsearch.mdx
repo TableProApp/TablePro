@@ -11,18 +11,28 @@ Two things share this connection. A grid browses and edits documents by `_id`, a
 
 ## Quick setup
 
-Click **New Connection…**, select **Elasticsearch**, enter host and port, pick an **Auth Method**, then click **Save & Connect**.
+Click **New Connection…**, select **Elasticsearch**, enter a node under **Hosts**, pick an **Auth Method**, then click **Save & Connect**.
 
 The form shows no Database field: a connection reaches one cluster, and its indices are the objects.
 
-For a node on a private server, open the **Network** tab and set **Connect via** to **SSH Tunnel**, then set **Host** to the address Elasticsearch listens on as the SSH server sees it, usually `localhost`. See [SSH Tunneling](/connections/ssh-tunneling).
+For a node on a private server, open the **Network** tab and set **Connect via** to **SSH Tunnel**, then enter the address Elasticsearch listens on as the SSH server sees it under **Hosts**, usually `localhost:9200`. See [SSH Tunneling](/connections/ssh-tunneling).
+
+## Clusters
+
+Add one row under **Hosts** per node of the cluster, as `host:port` or a pasted URL such as `https://10.0.0.1:9200`. **SSL Mode** decides between HTTP and HTTPS for every node, so a pasted `https://` URL needs a mode other than **Disabled**.
+
+The connection uses the first node that answers and stays on it:
+
+- A node that refuses or drops the connection sends reads to the next node at once.
+- A request that changes data moves only when it never reached the node, so it is never applied twice.
+- A request that times out is not sent again. The next request goes to the next node.
+- Over a tunnel, only the first node is used.
 
 ## Connection settings
 
 | Field | Description |
 |-------|-------------|
-| **Host** | Cluster host, `localhost` for a local node |
-| **Port** | REST port, `9200` by default |
+| **Hosts** | One or more nodes of the cluster, `localhost:9200` for a local node. A host without a port uses `9200`, a URL without one uses `443` or `80` |
 | **Auth Method** | Username & Password, API Key, or None |
 | **API Key** | Base64-encoded key. Shown when **Auth Method** is API Key |
 | **Skip TLS Verification** | Advanced section. Trusts any certificate, even under **Verify CA** or **Verify Identity** |

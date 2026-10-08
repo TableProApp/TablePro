@@ -42,6 +42,8 @@ extension DatabaseManager {
                 tunnelSSL.mode = .required
             }
             tunnelSSL.caCertificatePath = ""
+        } else if connection.tunnelForwardUsesHTTPS {
+            tunnelSSL.mode = .required
         }
 
         var effectiveFields = connection.additionalFields

@@ -496,6 +496,7 @@ targets:
       - Plugins/OracleDriverPlugin/OracleBrowseSQL.swift
       - Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleNationalText.swift
       - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/OracleDriverPlugin/OracleRowWriter.swift
       - Plugins/OracleDriverPlugin/OracleTableDDL.swift
@@ -543,8 +544,10 @@ targets:
       - Plugins/DynamoDBDriverPlugin/DynamoDBTableDefinition.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBTableSchema.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBWriteStatements.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchConnection.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchNodes.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift

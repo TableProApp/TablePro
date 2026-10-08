@@ -30715,6 +30715,10 @@
         }
       }
     },
+    "Bootstrap Servers" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Border" : {
       "localizations" : {
         "fr" : {
@@ -87078,6 +87082,8 @@
       }
     },
     "Hosts" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {

@@ -55,7 +55,9 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     private var _serverVersion: String?
     private let queryTimeout = HttpQueryTimeoutBox()
 
-    private let baseURL: URL
+    private let nodes: [ElasticsearchNode]
+    private var _activeNode = 0
+    private var _cancelGeneration = 0
     private let authHeader: String?
     private let skipTLSVerify: Bool
     private let connectTimeoutMilliseconds: Int
@@ -67,13 +69,11 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     init(config: DriverConnectionConfig) throws {
         self.config = config
 
-        let scheme = config.ssl.isEnabled ? "https" : "http"
-        let host = config.host.isEmpty ? "localhost" : config.host
-        let port = config.port > 0 ? config.port : 9_200
-        guard let url = URL(string: "\(scheme)://\(host):\(port)") else {
-            throw ElasticsearchError.connectionFailed("Invalid host: \(host):\(port)")
+        self.nodes = ElasticsearchNodes.nodes(config: config)
+        guard !nodes.isEmpty else {
+            let hosts = config.additionalFields[ElasticsearchNodes.hostsField] ?? "\(config.host):\(config.port)"
+            throw ElasticsearchError.connectionFailed("Invalid host: \(hosts)")
         }
-        self.baseURL = url
         self.authHeader = Self.resolveAuthHeader(config: config)
         self.skipTLSVerify = (config.additionalFields["esSkipTLSVerify"] == "true")
             || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
@@ -98,20 +98,62 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         let session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
         lock.withLock { _session = session }
 
-        let info = try await request(
-            method: "GET",
-            path: "/",
-            timeoutInterval: deadline.remainingSeconds(),
-            cancelsWithTask: true
-        )
-        guard info.statusCode == 200 else {
-            throw mapError(info, fallback: "Connection check failed")
+        do {
+            try await connectToFirstAvailableNode(through: session, deadline: deadline)
+        } catch {
+            disconnect()
+            throw error
         }
-        if let json = info.json as? [String: Any],
-           let version = json["version"] as? [String: Any],
-           let number = version["number"] as? String {
-            lock.withLock { _serverVersion = number }
+    }
+
+    /// Each node gets an equal share of what is left of the deadline, so a node that never
+    /// answers cannot spend the time the others need.
+    private func connectToFirstAvailableNode(
+        through session: URLSession,
+        deadline: PluginConnectDeadline
+    ) async throws {
+        var failures: [String] = []
+        for (index, node) in nodes.enumerated() {
+            if Task.isCancelled { throw ElasticsearchError.requestCancelled }
+            let share = deadline.remainingSeconds() / Double(nodes.count - index)
+            let taskBox = PluginURLSessionTaskBox()
+            // URLSession's timeout restarts whenever bytes arrive, so a node that trickles its reply
+            // would otherwise hold the connect past its share.
+            DispatchQueue.global().asyncAfter(deadline: .now() + share) { taskBox.cancel() }
+            let info: ElasticsearchResponse
+            do {
+                info = try await send(
+                    method: "GET",
+                    path: "/",
+                    body: nil,
+                    to: node,
+                    through: session,
+                    timeoutInterval: share,
+                    taskBox: taskBox
+                )
+            } catch let error as URLError {
+                failures.append("\(node.name): \(error.localizedDescription)")
+                continue
+            } catch ElasticsearchError.requestCancelled where !Task.isCancelled {
+                failures.append("\(node.name): \(URLError(.timedOut).localizedDescription)")
+                continue
+            }
+            if ElasticsearchFailover.nodeUnavailable(statusCode: info.statusCode) {
+                let reason = mapError(info, fallback: "Connection check failed").localizedDescription
+                failures.append("\(node.name): \(reason)")
+                continue
+            }
+            guard info.statusCode == 200 else {
+                throw mapError(info, fallback: "Connection check failed")
+            }
+            let number = ((info.json as? [String: Any])?["version"] as? [String: Any])?["number"] as? String
+            lock.withLock {
+                _activeNode = index
+                if let number { _serverVersion = number }
+            }
+            return
         }
+        throw ElasticsearchError.connectionFailed(failures.joined(separator: "; "))
     }
 
     func disconnect() {
@@ -134,6 +176,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         lock.withLock {
             _currentTask?.cancel()
             _currentTask = nil
+            _cancelGeneration &+= 1
         }
     }
 
@@ -183,7 +226,12 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         } else {
             body = nil
         }
-        let response = try await request(method: "POST", path: "/\(encode(index))/_count", body: body)
+        let response = try await request(
+            method: "POST",
+            path: "/\(encode(index))/_count",
+            body: body,
+            isRead: true
+        )
         guard response.statusCode == 200, let json = response.json as? [String: Any] else {
             throw mapError(response, fallback: "Count failed")
         }
@@ -193,13 +241,17 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     func search(index: String?, body: [String: Any]) async throws -> ElasticsearchResponse {
         let path = index.map { "/\(encode($0))/_search" } ?? "/_search"
         let bodyString = try serialize(body)
-        let response = try await request(method: "POST", path: path, body: bodyString)
+        let response = try await request(method: "POST", path: path, body: bodyString, isRead: true)
         guard response.statusCode == 200 else { throw mapError(response, fallback: "Search failed") }
         return response
     }
 
     func openPointInTime(index: String, keepAlive: String) async throws -> String {
-        let response = try await request(method: "POST", path: "/\(encode(index))/_pit?keep_alive=\(keepAlive)")
+        let response = try await request(
+            method: "POST",
+            path: "/\(encode(index))/_pit?keep_alive=\(keepAlive)",
+            isRead: true
+        )
         guard response.statusCode == 200,
               let json = response.json as? [String: Any],
               let id = json["id"] as? String
@@ -209,25 +261,80 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
 
     func closePointInTime(id: String) async {
         let body = try? serialize(["id": id])
-        _ = try? await request(method: "DELETE", path: "/_pit", body: body)
+        _ = try? await request(method: "DELETE", path: "/_pit", body: body, isRead: true)
     }
 
     // MARK: - Raw Request
 
+    /// Sent to the node that answered last, and on a failure to the next node when
+    /// `ElasticsearchFailover` allows it. Each node is tried at most once, and the node that
+    /// answers becomes the one later requests use.
     @discardableResult
     func request(
         method: String,
         path: String,
         body: String? = nil,
-        timeoutInterval: TimeInterval? = nil,
-        cancelsWithTask: Bool = false
+        isRead: Bool? = nil
     ) async throws -> ElasticsearchResponse {
         let session: URLSession = try lock.withLock {
             guard let session = _session else { throw ElasticsearchError.notConnected }
             return session
         }
+        let isRead = isRead ?? ElasticsearchFailover.isRead(method: Self.effectiveMethod(method, hasBody: body != nil))
+        let (start, generation) = lock.withLock { (_activeNode, _cancelGeneration) }
 
-        guard let url = URL(string: path, relativeTo: baseURL) else {
+        for attempt in 0 ..< nodes.count {
+            let index = (start + attempt) % nodes.count
+            let isLastAttempt = attempt == nodes.count - 1
+            do {
+                let response = try await send(
+                    method: method,
+                    path: path,
+                    body: body,
+                    to: nodes[index],
+                    through: session,
+                    timeoutInterval: queryTimeout.requestTimeoutInterval,
+                    taskBox: nil
+                )
+                if isLastAttempt || !isRead
+                    || !ElasticsearchFailover.nodeUnavailable(statusCode: response.statusCode) {
+                    lock.withLock { _activeNode = index }
+                    return response
+                }
+                Self.logger.notice("Elasticsearch node answered HTTP \(response.statusCode), trying the next node")
+            } catch let error as URLError {
+                guard !isLastAttempt,
+                      ElasticsearchFailover.resends(after: error.code, isRead: isRead)
+                else {
+                    if error.code == .timedOut {
+                        lock.withLock { if _activeNode == start { _activeNode = (index + 1) % nodes.count } }
+                    }
+                    throw ElasticsearchError.connectionFailed(error.localizedDescription)
+                }
+                Self.logger.notice("Elasticsearch node unreachable (\(error.code.rawValue)), trying the next node")
+            }
+            let stopped = lock.withLock { _cancelGeneration != generation }
+            if stopped || Task.isCancelled { throw ElasticsearchError.requestCancelled }
+        }
+        throw ElasticsearchError.notConnected
+    }
+
+    /// Throws `URLError` for a transport failure, so the caller can tell whether the request may
+    /// have reached the node.
+    private func send(
+        method: String,
+        path: String,
+        body: String?,
+        to node: ElasticsearchNode,
+        through session: URLSession,
+        timeoutInterval: TimeInterval,
+        taskBox: PluginURLSessionTaskBox?
+    ) async throws -> ElasticsearchResponse {
+        // A console path such as `//other.example/x` resolves to another host, which would get the
+        // Authorization header.
+        guard let url = URL(string: path, relativeTo: node.baseURL),
+              url.host == node.baseURL.host, url.port == node.baseURL.port
+        else {
             throw ElasticsearchError.connectionFailed("Invalid path: \(path)")
         }
 
@@ -241,18 +348,17 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         if let body {
             urlRequest.httpBody = Data(body.utf8)
         }
-        urlRequest.timeoutInterval = timeoutInterval ?? queryTimeout.requestTimeoutInterval
+        urlRequest.timeoutInterval = timeoutInterval
 
-        let taskBox = cancelsWithTask ? PluginURLSessionTaskBox() : nil
         let dataAndResponse: (Data, URLResponse)
         if let taskBox {
             dataAndResponse = try await withTaskCancellationHandler {
-                try await send(urlRequest, through: session, taskBox: taskBox)
+                try await perform(urlRequest, through: session, taskBox: taskBox)
             } onCancel: {
                 taskBox.cancel()
             }
         } else {
-            dataAndResponse = try await send(urlRequest, through: session, taskBox: nil)
+            dataAndResponse = try await perform(urlRequest, through: session, taskBox: nil)
         }
         let (data, response) = dataAndResponse
 
@@ -265,7 +371,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         return ElasticsearchResponse(statusCode: httpResponse.statusCode, json: json, rawText: rawText)
     }
 
-    private func send(
+    private func perform(
         _ request: URLRequest,
         through session: URLSession,
         taskBox: PluginURLSessionTaskBox?
@@ -275,8 +381,10 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
                 taskBox?.finish()
                 self?.lock.withLock { self?._currentTask = nil }
                 if let error {
-                    if (error as? URLError)?.code == .cancelled {
-                        continuation.resume(throwing: ElasticsearchError.requestCancelled)
+                    if let urlError = error as? URLError {
+                        continuation.resume(
+                            throwing: urlError.code == .cancelled ? ElasticsearchError.requestCancelled : urlError
+                        )
                     } else {
                         continuation.resume(throwing: ElasticsearchError.connectionFailed(error.localizedDescription))
                     }
