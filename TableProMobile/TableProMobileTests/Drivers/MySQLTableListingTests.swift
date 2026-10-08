@@ -13,7 +13,7 @@ struct MySQLTableListingTests {
 
     @Test("TiDB leaves sequences out of the table list")
     func tiDBSkipsSequences() {
-        let tables = MySQLTableListing.tables(fromShowFullTables: rows, databaseType: .tidb)
+        let tables = MySQLTableListing.tables(fromShowTables: rows, databaseType: .tidb)
         #expect(tables.map(\.name) == ["orders", "recent_orders"])
         #expect(tables.map(\.type) == [.table, .view])
     }
@@ -22,31 +22,40 @@ struct MySQLTableListingTests {
     /// engine refuses UPDATE, DELETE and TRUNCATE on one with ERROR 1031.
     @Test("MariaDB keeps its sequences, typed as sequences")
     func mariaDBKeepsSequences() {
-        let tables = MySQLTableListing.tables(fromShowFullTables: rows, databaseType: .mariadb)
+        let tables = MySQLTableListing.tables(fromShowTables: rows, databaseType: .mariadb)
         #expect(tables.map(\.name) == ["orders", "recent_orders", "order_seq"])
         #expect(tables.map(\.type) == [.table, .view, .sequence])
     }
 
     @Test("a lowercase sequence type is still skipped on TiDB")
     func tiDBSkipsLowercaseSequence() {
-        let tables = MySQLTableListing.tables(fromShowFullTables: [["s", "sequence"]], databaseType: .tidb)
+        let tables = MySQLTableListing.tables(fromShowTables: [["s", "sequence"]], databaseType: .tidb)
         #expect(tables.isEmpty)
     }
 
-    @Test("a row missing its name or type is dropped")
+    @Test("a row missing its name, or a type it has a column for, is dropped")
     func incompleteRowsAreDropped() {
         let tables = MySQLTableListing.tables(
-            fromShowFullTables: [["t"], [nil, "BASE TABLE"], ["u", nil]],
+            fromShowTables: [[], [nil], [nil, "BASE TABLE"], ["u", nil]],
             databaseType: .mysql
         )
         #expect(tables.isEmpty)
+    }
+
+    /// Measured on 4.1.22: `SHOW FULL TABLES` answers 1064 and `SHOW TABLES` answers one column,
+    /// `Tables_in_<db>`.
+    @Test("a one-column SHOW TABLES row is a base table")
+    func nameOnlyRowsAreTables() {
+        let tables = MySQLTableListing.tables(fromShowTables: [["apcust"], ["계정"]], databaseType: .mysql)
+        #expect(tables.map(\.name) == ["apcust", "계정"])
+        #expect(tables.map(\.type) == [.table, .table])
     }
 
     /// Measured on MySQL 8.4.11: `information_schema`'s own objects are `SYSTEM VIEW` in both
     /// channels. Typed as a table they landed in the Tables section with Truncate and Drop offered.
     @Test("a system view is a view")
     func systemViewIsAView() {
-        let tables = MySQLTableListing.tables(fromShowFullTables: [["COLUMNS", "SYSTEM VIEW"]], databaseType: .mysql)
+        let tables = MySQLTableListing.tables(fromShowTables: [["COLUMNS", "SYSTEM VIEW"]], databaseType: .mysql)
         #expect(tables.map(\.type) == [.view])
     }
 
@@ -56,7 +65,7 @@ struct MySQLTableListingTests {
     @Test("a temporary row is dropped so the table it shadows is listed once")
     func temporaryRowsAreDropped() {
         let tables = MySQLTableListing.tables(
-            fromShowFullTables: [["plain", "TEMPORARY TABLE"], ["plain", "BASE TABLE"]],
+            fromShowTables: [["plain", "TEMPORARY TABLE"], ["plain", "BASE TABLE"]],
             databaseType: .mariadb
         )
         #expect(tables.map(\.name) == ["plain"])
@@ -67,7 +76,7 @@ struct MySQLTableListingTests {
     @Test("system and virtual tables read as system tables")
     func catalogOwnedTablesAreSystemTables() {
         let tables = MySQLTableListing.tables(
-            fromShowFullTables: [["a", "SYSTEM TABLE"], ["b", "VIRTUAL TABLE"]],
+            fromShowTables: [["a", "SYSTEM TABLE"], ["b", "VIRTUAL TABLE"]],
             databaseType: .oceanbase
         )
         #expect(tables.map(\.type) == [.systemTable, .systemTable])
@@ -79,7 +88,7 @@ struct MySQLTableListingTests {
     @Test("an external table keeps its own kind and is read-only")
     func externalTableIsReadOnly() {
         let tables = MySQLTableListing.tables(
-            fromShowFullTables: [["ext_csv", "EXTERNAL TABLE"]],
+            fromShowTables: [["ext_csv", "EXTERNAL TABLE"]],
             databaseType: .oceanbase
         )
         #expect(tables.map(\.type) == [.externalTable])

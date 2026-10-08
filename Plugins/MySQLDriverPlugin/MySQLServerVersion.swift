@@ -109,4 +109,90 @@ nonisolated internal enum MySQLServerVersion {
     static func mariaDBDefaultsCanBeExpressions(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         flavor.isMariaDB && !isKnownBelow((10, 2, 1), banner: banner)
     }
+
+    // MARK: - Servers before 5.5
+
+    /// `information_schema` and `SHOW FULL TABLES` arrived in MySQL 5.0.2. Measured on 4.1.22: the
+    /// catalog answers `1146` and `SHOW FULL TABLES` answers `1064`, while `SHOW TABLES` works.
+    static func hasInformationSchema(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 2), banner: banner, flavor: flavor)
+    }
+
+    /// `information_schema.TRIGGERS` arrived in 5.0.10, after the catalog itself.
+    static func hasTriggerCatalog(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 10), banner: banner, flavor: flavor)
+    }
+
+    /// `SHOW ... WHERE` arrived in 5.0.3; 4.1.22 answers `1064` and takes only `LIKE`.
+    static func showAcceptsWhere(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 3), banner: banner, flavor: flavor)
+    }
+
+    /// `KILL QUERY` arrived in 5.0.0, and 4.1.22 answers it with `1204`. Below that the only way to
+    /// stop a statement is `KILL <id>`, which ends the session with it.
+    static func canStopStatementAlone(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 0), banner: banner, flavor: flavor)
+    }
+
+    /// Measured on 4.1.22: every string column of `SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE
+    /// TABLE`, `SHOW TABLE STATUS` and `SHOW VARIABLES` arrives as charset 63 with `BINARY_FLAG`,
+    /// although the bytes are already converted to `character_set_results`. 5.0.96 labels them utf8.
+    static func labelsShowTextAsBinary(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        isLegacy(below: (5, 0, 0), banner: banner, flavor: flavor)
+    }
+
+    /// `information_schema.PARTITIONS` and `EVENTS` arrived in 5.1.6: 5.0.96 answers `1109`.
+    static func hasPartitionAndEventCatalogs(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 1, 6), banner: banner, flavor: flavor)
+    }
+
+    /// `information_schema.REFERENTIAL_CONSTRAINTS` arrived in 5.1.10: 5.0.96 answers `1109`.
+    static func hasReferentialConstraintsCatalog(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 1, 10), banner: banner, flavor: flavor)
+    }
+
+    /// `information_schema.PARAMETERS` arrived in 5.5.3: 5.1.73 answers `1109`, 5.5.61 answers.
+    static func hasParametersCatalog(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 5, 3), banner: banner, flavor: flavor)
+    }
+
+    /// InnoDB appends its free space, and its foreign keys, to the table comment in both
+    /// `SHOW TABLE STATUS` and `information_schema.TABLES`. Measured on 4.1.22 and 5.0.96 and not on
+    /// 5.1.73; the 5.1 release that stopped is not established, so every server before 5.5 is read
+    /// this way, and a comment without the status is left alone.
+    static func appendsInnoDBStatusToComment(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        isLegacy(below: (5, 5, 0), banner: banner, flavor: flavor)
+    }
+
+    /// `CREATE USER` arrived in 5.0.2, so account management below it is `GRANT` and direct writes to
+    /// the grant tables, which the Users screen does not speak.
+    static func hasCreateUser(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 2), banner: banner, flavor: flavor)
+    }
+
+    /// `mysql.user.max_user_connections` arrived in 5.0.3; 4.1.22 answers `1054`.
+    static func hasUserConnectionLimit(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        !isLegacy(below: (5, 0, 3), banner: banner, flavor: flavor)
+    }
+
+    /// Before 5.5 the server sends an error message in the charset of its error language and ignores
+    /// `character_set_results` (MySQL 4.1 manual, "Character Set for Error Messages"). Measured EUC-KR
+    /// with `--language=korean` on 4.1.22, 5.0.96 and 5.1.73, and UTF-8 on 5.5.61.
+    ///
+    /// Read from the banner alone, because the connection needs it before the flavor is resolved. No
+    /// flavor that is not MySQL or MariaDB reports a version below 5.5.
+    static func sendsErrorsInLanguageCharset(banner: String?) -> Bool {
+        isKnownBelow((5, 5, 0), banner: banner)
+    }
+
+    /// MariaDB 5.1 to 5.3 are built on MySQL 5.1 and carry its catalog, so one set of numbers serves
+    /// both. The other flavors answer with a 5.7 or 8.0 banner and their own catalogs.
+    private static func isLegacy(below target: (Int, Int, Int), banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql, .mariadb:
+            return isKnownBelow(target, banner: banner)
+        case .tidb, .oceanbase, .databend:
+            return false
+        }
+    }
 }

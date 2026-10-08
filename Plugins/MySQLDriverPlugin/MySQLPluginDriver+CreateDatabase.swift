@@ -145,36 +145,44 @@ private extension MySQLPluginDriver {
         let collation: String?
     }
 
+    /// Before 5.0.2 the list comes from `SHOW CHARACTER SET`, whose columns are `Charset`,
+    /// `Description`, `Default collation` and `Maxlen`, in no promised order.
     func fetchCharsetDefaults() async throws -> [CharsetDefault] {
-        let query = """
+        let hasCatalog = serverHasInformationSchema
+        let query = hasCatalog ? """
             SELECT character_set_name, default_collate_name
             FROM information_schema.character_sets
             ORDER BY character_set_name
-            """
+            """ : "SHOW CHARACTER SET"
+        let collationColumn = hasCatalog ? 1 : 2
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
+        return result.rows.compactMap { row -> CharsetDefault? in
             guard let charset = row[safe: 0]?.asText,
-                  let collation = row[safe: 1]?.asText else {
+                  let collation = row[safe: collationColumn]?.asText else {
                 return nil
             }
             return CharsetDefault(charset: charset, defaultCollation: collation)
         }
+        .sorted { $0.charset < $1.charset }
     }
 
+    /// Before 5.0.2 the list comes from `SHOW COLLATION`, whose first two columns are `Collation` and
+    /// `Charset`, in no promised order.
     func fetchCollationCatalog() async throws -> [CollationEntry] {
-        let query = """
+        let query = serverHasInformationSchema ? """
             SELECT collation_name, character_set_name
             FROM information_schema.collations
             ORDER BY collation_name
-            """
+            """ : "SHOW COLLATION"
         let result = try await execute(query: query)
-        return result.rows.compactMap { row in
+        return result.rows.compactMap { row -> CollationEntry? in
             guard let collation = row[safe: 0]?.asText,
                   let charset = row[safe: 1]?.asText else {
                 return nil
             }
             return CollationEntry(collation: collation, charset: charset)
         }
+        .sorted { $0.collation < $1.collation }
     }
 
     enum SessionVariable: String {

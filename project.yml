@@ -669,6 +669,9 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
       - Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
+      - Plugins/MySQLDriverPlugin/MySQLErrorText.swift
+      - Plugins/MySQLDriverPlugin/MySQLStatementKeyword.swift
+      - Plugins/MySQLDriverPlugin/MySQLSessionLoss.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLLiteralSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift

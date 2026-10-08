@@ -1,9 +1,9 @@
 ---
 title: MySQL
-description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
+description: Connect to MySQL 4.1 and later with the bundled MariaDB Connector/C driver
 ---
 
-MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same bundled driver covers 5.7 and later, plus [MariaDB](/databases/mariadb), [TiDB](/databases/tidb), [Databend](/databases/databend), and [OceanBase](/databases/oceanbase).
+MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same bundled driver covers every release from 4.1 (see [Older servers](#older-servers)), plus [MariaDB](/databases/mariadb), [TiDB](/databases/tidb), [Databend](/databases/databend), and [OceanBase](/databases/oceanbase).
 
 ## Quick setup
 
@@ -88,7 +88,23 @@ A read that fails because the server closed the connection is run once more on a
 
 A connection with startup commands that run `SET` is holding a changed session setting from the moment it opens, so it reports the error rather than retrying. **Database > Reconnect** takes a new connection and puts back the database and the startup commands.
 
-Waiting has its own limit, and reaching it is a different case. The socket gives the server the [query timeout](/customization/general-settings#query-timeout) plus 30 seconds, and a statement that outlasts that is never sent again: the first copy is almost certainly still running there. It is stopped with `KILL QUERY` from a second connection, and the error comes back after that.
+Waiting has its own limit, and reaching it is a different case. The socket gives the server the [query timeout](/customization/general-settings#query-timeout) plus 30 seconds, and a statement that outlasts that is never sent again: the first copy is almost certainly still running there. It is stopped with `KILL QUERY` from a second connection, and the error comes back after that. MySQL 4.1 has no `KILL QUERY`; see [Older servers](#older-servers).
+
+## Older servers
+
+MySQL 4.1 to 5.1 lack catalogs that newer servers have, so TablePro reads those servers through `SHOW` statements instead. Tables, structure, data, indexes and foreign keys work on all of them. Objects a version cannot have are left out rather than shown as errors: routines before 5.0.2, triggers before 5.0.10, events and partition counts before 5.1.6. A routine's parameters are listed from 5.5.3. **Users & Roles** needs 5.0.2, the release that added `CREATE USER`.
+
+### Stopping a query on MySQL 4.1
+
+Stopping a query closes its connection, because 4.1 has no `KILL QUERY`. The query timeout stops a query the same way. Closing the connection discards the session's open transaction, table locks and variables. When the session held any of those, the next statement fails with a message saying so, and TablePro reconnects before the one after it. Run the discarded statements again.
+
+### Error messages in other languages
+
+A server before 5.5 set to a non-English language, such as Korean or Japanese, sends its error messages in that language's character set. TablePro reads the language once connected and shows them correctly. An error while connecting, such as a wrong password or an unknown database, arrives before the language can be read and still shows garbled.
+
+### Pre-4.1 password hashes
+
+An account with a pre-4.1 password hash cannot sign in: the connection fails with error 5010 naming `mysql_old_password`. The hash is 16 characters long in `mysql.user`, which servers running with `old_passwords=1` write. Set a new password with `old_passwords` off to switch the account to the 4.1 hash. MySQL 4.0 and older cannot connect at all.
 
 ## Garbled non-Latin text
 

@@ -13,18 +13,24 @@ nonisolated internal enum MySQLColumnDecoding: Equatable, Sendable {
     case text(MySQLCharacterSet)
     case databendBoolean
     case databendHexBytes
+    /// A string MySQL 4.1 labels binary although it converted it to `character_set_results`.
+    case utf8TextOrBytes
 
     private static let geometryType: UInt32 = 255
+    private static let stringTypes: Set<UInt32> = [253, 254]
 
     init(
         typeRaw: UInt32,
         length: UInt = 0,
         charsetnr: UInt32,
         characterSetName: String?,
-        flavor: MySQLServerFlavor = .mysql
+        flavor: MySQLServerFlavor = .mysql,
+        binaryStringsAreText: Bool = false
     ) {
         let isBinary = MariaDBFieldClassifier.isBinary(typeRaw: typeRaw, charset: charsetnr)
-        if flavor.isDatabend, DatabendResultShape.isBoolean(typeRaw: typeRaw, length: length) {
+        if binaryStringsAreText, isBinary, Self.stringTypes.contains(typeRaw) {
+            self = .utf8TextOrBytes
+        } else if flavor.isDatabend, DatabendResultShape.isBoolean(typeRaw: typeRaw, length: length) {
             self = .databendBoolean
         } else if flavor.isDatabend, isBinary {
             self = .databendHexBytes
@@ -55,6 +61,9 @@ nonisolated internal enum MySQLColumnDecoding: Equatable, Sendable {
             return .text(DatabendResultShape.booleanText(fromWireText: MySQLCharacterSet.utf8mb4.decode(bytes)))
         case .databendHexBytes:
             return .bytes(DatabendResultShape.binaryValue(fromWireText: Data(bytes)))
+        case .utf8TextOrBytes:
+            guard let text = String(bytes: bytes, encoding: .utf8) else { return .bytes(Data(bytes)) }
+            return .text(encoding.presentedText(text))
         }
     }
 }

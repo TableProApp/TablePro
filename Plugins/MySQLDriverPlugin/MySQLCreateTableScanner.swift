@@ -5,7 +5,7 @@
 
 import Foundation
 
-internal enum MySQLCreateTableScanner {
+nonisolated internal enum MySQLCreateTableScanner {
     /// Each column's `DEFAULT` operand as `SHOW CREATE TABLE` spells it, keyed by column name, or nil
     /// when the statement does not create a table. A column with no `DEFAULT` clause is absent.
     ///

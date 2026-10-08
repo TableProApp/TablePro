@@ -188,7 +188,7 @@ On Redis the three actions are `MULTI`, `EXEC` and `DISCARD`. Every command betw
 
 `get_server_dashboard` reads the live panels TablePro shows, and runs on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB and SQLite. Name the panels in `panels[]` or omit it for all three. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill` and `can_cancel`; a metric carries `id`, `label`, `value`, `unit`; a slow query carries `duration`, `query`, `user`, `database`. A panel the server could not answer is left out, and `errors` names it: one fixed sentence per panel, keyed by panel name. The server's own message is not sent to the client; it goes to the app's log, where the user can read it. When every requested panel fails, the call fails.
 
-`stop_server_session` takes `mode` as `cancel` (default) to stop the running query or `kill` to end the session. The user always approves this one, whatever Safe Mode says.
+`stop_server_session` takes `mode` as `cancel` (default) to stop the running query or `kill` to end the session. SQL Server, ClickHouse and MySQL before 5.0 take only `kill`: their sessions report `can_cancel` false, and `cancel` fails with `invalid_argument`. The user always approves this one, whatever Safe Mode says.
 
 `list_session_contexts` reports session-level contexts the engine exposes, such as a Snowflake warehouse or role, with the value the session currently holds.
 

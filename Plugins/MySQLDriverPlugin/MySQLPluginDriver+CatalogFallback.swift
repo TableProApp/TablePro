@@ -21,11 +21,20 @@ internal extension MySQLPluginDriver {
     /// A connection with no database selected has nothing to name in a `SHOW … FROM` clause, so it
     /// takes the catalog answer as it stands rather than falling back to a statement the server
     /// answers with `ERROR 1102`.
+    ///
+    /// `catalogExists` is false where the server version proves the catalog table is missing. That
+    /// read goes straight to `show` and leaves the ledger alone, which records what the catalog says
+    /// about one database, not that the server has no catalog.
     func catalogOrShow<Value>(
         database: String,
+        catalogExists: Bool = true,
         catalog: () async throws -> [String: Value],
         show: () async throws -> [String: Value]
     ) async throws -> [String: Value] {
+        guard catalogExists else {
+            guard !database.isEmpty else { return [:] }
+            return try await show()
+        }
         guard !database.isEmpty else { return try await catalog() }
         return try await MySQLCatalogFallback.read(
             database: database,

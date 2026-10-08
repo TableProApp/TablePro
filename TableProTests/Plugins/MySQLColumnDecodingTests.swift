@@ -9,6 +9,7 @@ import Testing
 
 struct MySQLColumnDecodingTests {
     private static let doubleEncodedMail = String(bytes: [0xC3, 0xA3, 0xC6, 0x92, 0xC2, 0xA1], encoding: .utf8) ?? ""
+    private static let koreanComment: [UInt8] = [0xEA, 0xB3, 0x84, 0xEC, 0xA0, 0x95, 0x20, 0xEA, 0xB5, 0xAC, 0xEB, 0xB6, 0x84]
 
     private func decoding(type: UInt32, charset: UInt32, name: String? = "utf8mb4") -> MySQLColumnDecoding {
         MySQLColumnDecoding(typeRaw: type, charsetnr: charset, characterSetName: name)
@@ -94,6 +95,47 @@ struct MySQLColumnDecodingTests {
 
         #expect(row == [.text("7"), .text("café"), .null])
         #expect(columns.metadata.first?.isPrimaryKey == true)
+    }
+
+    /// Measured on 4.1.22: every string column of `SHOW TABLE STATUS` is charset 63 with `BINARY_FLAG`,
+    /// and the Korean comment `계정 구분` arrives as these UTF-8 bytes.
+    @Test("A binary-labelled string reads as text when the statement asks for it")
+    func binaryLabelledShowText() {
+        for type: UInt32 in [253, 254] {
+            let flagged = MySQLColumnDecoding(typeRaw: type, charsetnr: 63, characterSetName: "binary", binaryStringsAreText: true)
+            #expect(flagged == .utf8TextOrBytes, "type \(type)")
+        }
+        #expect(decode(Self.koreanComment, with: .utf8TextOrBytes) == .text("계정 구분"))
+    }
+
+    @Test("A binary-labelled string that is not UTF-8 stays bytes")
+    func invalidUTF8StaysBytes() {
+        let eucKR: [UInt8] = [0xC5, 0xD7, 0xC0, 0xCC, 0xBA, 0xED]
+        #expect(decode(eucKR, with: .utf8TextOrBytes) == .bytes(Data(eucKR)))
+    }
+
+    @Test("UTF-8 via Latin 1 repairs a binary-labelled string read as text")
+    func legacyModeRepairsBinaryLabelledText() {
+        let stored = Array(Self.doubleEncodedMail.utf8)
+        #expect(decode(stored, with: .utf8TextOrBytes, encoding: .utf8ViaLatin1) == .text("メ"))
+    }
+
+    @Test("Without the flag a binary string stays bytes")
+    func unflaggedBinaryStringIsBytes() {
+        let unflagged = MySQLColumnDecoding(typeRaw: 253, charsetnr: 63, characterSetName: "binary", binaryStringsAreText: false)
+        #expect(unflagged == .bytes)
+        #expect(decode(Self.koreanComment, with: unflagged) == .bytes(Data(Self.koreanComment)))
+    }
+
+    @Test("The flag leaves a blob, a text column and a number as they were")
+    func flagReachesOnlyBinaryStrings() {
+        func flagged(type: UInt32, charset: UInt32, name: String) -> MySQLColumnDecoding {
+            MySQLColumnDecoding(typeRaw: type, charsetnr: charset, characterSetName: name, binaryStringsAreText: true)
+        }
+
+        #expect(flagged(type: 252, charset: 63, name: "binary") == .bytes)
+        #expect(flagged(type: 253, charset: 33, name: "utf8") == .text(MySQLCharacterSet(serverName: "utf8")))
+        #expect(flagged(type: 8, charset: 63, name: "binary") == .text(.utf8mb4))
     }
 
     @Test("Names and messages read as UTF-8, or as MySQL latin1 when a latin1 session sent them")

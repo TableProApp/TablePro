@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cloudflare Tunnel offered for BigQuery, DuckDB, DynamoDB and other drivers that cannot use it, until their plugin was installed.
 - Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set.
+- MySQL 4.1 tables not listing, and opening with no columns, indexes or DDL.
+- MySQL 4.1 to 5.1: Table Info, row counts, routines, triggers, foreign keys and the server dashboard failing on catalogs those versions lack.
+- MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text.
+- Stop and the query timeout not stopping a query on MySQL 4.1.
 
 ## [0.78.0] - 2026-10-07
 

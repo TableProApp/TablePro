@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum MySQLForeignKeyClause {
+nonisolated internal enum MySQLForeignKeyClause {
     /// One `PluginForeignKeyInfo` per column, which is the shape the catalog read produces.
     ///
     /// `database` fills `referencedSchema` for an unqualified clause, because the catalog names the

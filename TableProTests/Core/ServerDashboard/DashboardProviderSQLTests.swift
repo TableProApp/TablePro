@@ -35,7 +35,8 @@ struct DashboardProviderSQLTests {
     private static let olderServerReleases = [
         ServerRelease(databaseType: .postgresql, version: "9.1.24"),
         ServerRelease(databaseType: .postgresql, version: "9.6.24"),
-        ServerRelease(databaseType: .clickhouse, version: "21.8.15.7")
+        ServerRelease(databaseType: .clickhouse, version: "21.8.15.7"),
+        ServerRelease(databaseType: .mysql, version: "4.1.22-standard")
     ]
 
     private static let callerExclusions = ["pg_backend_pid()", "CONNECTION_ID()", "@@SPID", "queryID()"]

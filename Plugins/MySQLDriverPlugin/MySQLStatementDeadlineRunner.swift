@@ -17,13 +17,17 @@ internal typealias MySQLDeadlineCancel = () -> Void
 /// Runs one statement under a client-side deadline and classifies how it ended.
 ///
 /// The connection supplies the parts that touch libmariadb: `expire` opens the second connection
-/// and sends `KILL QUERY`, `flushInterrupt` runs a throwaway statement on the primary handle to
+/// and sends the kill, `flushInterrupt` runs a throwaway statement on the primary handle to
 /// consume a kill the statement did not, and `killOrphan` stops a statement still running on the
 /// server after the socket timeout gave up on it. Everything about the order they happen in lives
 /// here, where a test can drive it.
 internal struct MySQLStatementDeadlineRunner {
     internal let deadline: MySQLStatementDeadline?
     internal let flavor: MySQLServerFlavor
+
+    /// Set when the only kill is `KILL <id>`. Measured on 4.1.22, the killed statement then ends in
+    /// `1053`, `2013` or even success, and no session is left to flush.
+    internal let killEndsSession: Bool
     internal let socketTimeoutSeconds: UInt32
     internal let watch: MySQLStatementWatch
     internal let now: () -> ContinuousClock.Instant
@@ -44,15 +48,19 @@ internal struct MySQLStatementDeadlineRunner {
         let outcome = Result(catching: body)
         cancelSchedule()
         let killWasSent = watch.end(token)
+        let leftFlagOnSession = killWasSent && !killEndsSession
 
         switch outcome {
         case .success(let value):
-            if killWasSent { flushInterrupt() }
+            /// Measured on 4.1.22: `SELECT BENCHMARK(...)` killed with `KILL <id>` still answers a row,
+            /// so a value that arrives after a session-ending kill is not the statement's own answer.
+            if killWasSent && killEndsSession { throw deadlineExceeded(deadline.seconds) }
+            if leftFlagOnSession { flushInterrupt() }
             return value
         case .failure(let error):
             let cause = cause(of: error, waited: now() - startedAt, deadlineExpired: killWasSent)
             if cause == .deadlineExceeded { throw deadlineExceeded(deadline.seconds) }
-            if killWasSent { flushInterrupt() }
+            if leftFlagOnSession { flushInterrupt() }
             throw reported(error, cause: cause)
         }
     }
@@ -76,6 +84,7 @@ internal struct MySQLStatementDeadlineRunner {
         deadlineExpired: Bool
     ) -> MySQLStatementFailureCause {
         guard let detail = failureDetail(error) else { return .server }
+        if deadlineExpired, killEndsSession { return .deadlineExceeded }
         return mysqlStatementFailureCause(
             errno: detail.code,
             message: detail.message,

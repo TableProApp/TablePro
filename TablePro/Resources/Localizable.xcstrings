@@ -184559,6 +184559,10 @@
         }
       }
     },
+    "The query was stopped by closing its connection, because MySQL before 5.0 cannot stop a query any other way. The session's open transaction, table locks and variables were discarded. Run the statements again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The question to answer, in plain language" : {
       "localizations" : {
         "fr" : {

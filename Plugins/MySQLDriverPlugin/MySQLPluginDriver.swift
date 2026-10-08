@@ -51,9 +51,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private let idleReleaseTimer = MySQLIdleReleaseTimer()
 
-    /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased` and `lastActivity`. The
-    /// driver is `@unchecked Sendable` and the idle timer runs on its own task, so the release
-    /// decision and a query arriving would otherwise read and write them at the same time.
+    private var sessionLoss = MySQLSessionLoss()
+
+    /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss` and
+    /// `lastActivity`. The driver is `@unchecked Sendable` and the idle timer runs on its own task, so
+    /// the release decision and a query arriving would otherwise read and write them at the same time.
+    /// Nothing calls into the connection while holding it: the connection asks the driver back under
+    /// this lock from its deadline queue.
     private let sessionLock = NSLock()
 
     private var lastActivity = ContinuousClock.now
@@ -113,9 +117,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return MySQLLiteralSpelling(noBackslashEscapes: noBackslashEscapes)
     }
 
+    /// Read live by the app, after `connect()` has written the banner it is gated on.
     var capabilities: PluginCapabilities {
         guard !flavor.isDatabend else { return Self.databendCapabilities }
-        return [
+        var capabilities: PluginCapabilities = [
             .parameterizedQueries,
             .transactions,
             .alterTableDDL,
@@ -123,10 +128,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .storedProcedures,
             .userFunctions,
-            .userManagement,
             .schemaCompare,
             .dataCompare,
         ]
+        if holdsForServer(MySQLServerVersion.hasCreateUser(banner:flavor:)) {
+            capabilities.insert(.userManagement)
+        }
+        return capabilities
     }
 
     func quoteIdentifier(_ name: String) -> String {
@@ -184,6 +192,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 deadline: connectDeadline
             )
             conn.adopt(flavor: resolvedFlavor, killTarget: killTarget)
+            let connection = ObjectIdentifier(conn)
+            conn.adopt(sessionMayEnd: { [weak self] in
+                self?.noteSessionMayEnd(on: connection)
+                return true
+            })
             try await conn.completeConnect(deadline: connectDeadline)
         } catch {
             conn.disconnect()
@@ -196,6 +209,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _flavor = resolvedFlavor
             isReleased = false
             isDisconnected = false
+            sessionLoss.reset()
             lastActivity = ContinuousClock.now
         }
         await startIdleReleaseIfRequested()
@@ -214,6 +228,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             isReleased = false
             isDisconnected = true
             footprint.reset()
+            sessionLoss.reset()
             let task = reacquireTask
             reacquireTask = nil
             return task
@@ -240,11 +255,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ///
     /// It still takes an operation slot, because `release(idleFor:)` only hands the connection
     /// back while `activeOperations` is zero and would otherwise null the handle mid-ping.
+    ///
+    /// A session a stop ended is left for the next statement: it is released if it held nothing,
+    /// and otherwise that statement says what was lost before the app replaces the driver.
     func ping() async throws {
-        guard !sessionLock.withLock({ isReleased }) else { return }
+        let state = sessionLock.withLock { (released: isReleased, lost: sessionLoss.isLost, connection: mariadbConnection) }
+        guard !state.lost else { throw MariaDBPluginError.notConnected }
+        guard !state.released, state.connection?.sessionEndedByKill != true else { return }
         let conn = try requireLiveConnection()
         defer { endOperation(on: conn) }
-        _ = try await conn.executeQuery("SELECT 1", rowCap: nil)
+        do {
+            _ = try await conn.executeQuery("SELECT 1", rowCap: nil)
+        } catch let error as MariaDBPluginError where error.wasNotSentAfterSessionEnded {
+            return
+        }
     }
 
     // MARK: - Transaction Management
@@ -277,7 +301,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await executeWithReconnect(query: query, isRetry: false)
+        try await retryingAfterStop { try await self.executeWithReconnect(query: query, isRetry: false) }
     }
 
     /// A statement the plugin wrote itself, spelled with backslash escapes, run with its literals
@@ -289,31 +313,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
         let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
         guard let parameters else {
-            return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+            return try await retryingAfterStop {
+                try await self.executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+            }
         }
-        let conn = try await requireConnection()
-        defer { endOperation(on: conn) }
-        noteActivity(query)
-        let startTime = Date()
-        let result: MariaDBPluginQueryResult
-        do {
-            result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
-        } catch {
-            noteFailure(query)
-            throw error
+        return try await retryingAfterStop {
+            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: cap)
         }
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: Int(result.affectedRows),
-            timing: PluginQueryTiming(
-                total: Date().timeIntervalSince(startTime),
-                firstRow: result.firstRowTime
-            ),
-            isTruncated: result.isTruncated,
-            columnMeta: result.columnMeta
-        )
     }
 
     /// The read is already bounded at its source: the connection caps the statement with
@@ -323,19 +329,38 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        try await retryingAfterStop {
+            try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: nil)
+        }
+    }
+
+    /// A statement refused because a stop's `KILL <id>` had already ended the session never reached
+    /// the server, so once the session is settled it runs again, whatever kind of statement it is.
+    private func retryingAfterStop<T>(_ attempt: () async throws -> T) async throws -> T {
+        do {
+            return try await attempt()
+        } catch let error as MariaDBPluginError where error.wasNotSentAfterSessionEnded {
+            try settleSessionEndedByKill()
+            return try await attempt()
+        }
+    }
+
+    private func executeParameterizedOnce(
+        query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int?
+    ) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
         defer { endOperation(on: conn) }
         noteActivity(query)
-
         let startTime = Date()
         let result: MariaDBPluginQueryResult
         do {
-            result = try await conn.executeParameterizedQuery(query, parameters: parameters)
+            result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: rowCap)
         } catch {
             noteFailure(query)
             throw error
         }
-
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -351,7 +376,24 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        mariadbConnection?.cancelCurrentQuery()
+        guard let conn = sessionLock.withLock({ mariadbConnection }) else { return }
+        if conn.killTarget.endsSession {
+            noteSessionMayEnd(on: ObjectIdentifier(conn))
+        }
+        conn.cancelCurrentQuery(mayEndSession: true)
+    }
+
+    var hasLostConnection: Bool {
+        sessionLock.withLock { sessionLoss.isLost }
+    }
+
+    /// With no operation holding the connection there is no statement to stop and no kill goes out,
+    /// so nothing is noted that a later stop over a clean session would misreport.
+    private func noteSessionMayEnd(on connection: ObjectIdentifier) {
+        sessionLock.withLock {
+            guard activeOperations > 0 else { return }
+            sessionLoss.noteKill(on: connection, holding: footprint.blockingReason)
+        }
     }
 
     /// The reconnect this does is not the idle release: it is recovery from a connection the
@@ -429,8 +471,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// Takes a server connection again if the last one was handed back. A connection that was
-    /// never released costs one boolean.
+    /// never released costs a few flag reads.
     private func requireConnection() async throws -> MariaDBPluginConnection {
+        try settleSessionEndedByKill()
         let state = sessionLock.withLock { (released: isReleased, disconnected: isDisconnected) }
         guard !state.disconnected else { throw MariaDBPluginError.notConnected }
         if state.released || mariadbConnection == nil {
@@ -441,6 +484,46 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         sessionLock.withLock { activeOperations += 1 }
         return conn
+    }
+
+    /// After a `KILL <id>` every statement on the handle fails with 2013, then 2006. A session that
+    /// held nothing is handed back as the idle release does, so the next call takes a new one. One
+    /// that held something is reported once and the driver stays lost: a silent reconnect would run
+    /// the next statement without the transaction, locks or variables the user was relying on.
+    private func settleSessionEndedByKill() throws {
+        let connection = sessionLock.withLock { mariadbConnection }
+        let ended = connection?.sessionEndedByKill ?? false
+        let approved = connection?.sessionEndedByApprovedKill ?? false
+        let settled = sessionLock.withLock { () -> (verdict: MySQLSessionLoss.Verdict, retired: MariaDBPluginConnection?) in
+            guard !isDisconnected, mariadbConnection === connection else { return (.useConnection, nil) }
+            let verdict = sessionLoss.verdict(
+                for: connection.map { ObjectIdentifier($0) },
+                sessionEndedByKill: ended,
+                killWasApproved: approved,
+                holding: footprint.blockingReason
+            )
+            guard verdict == .reacquire, let dead = connection else { return (verdict, nil) }
+            mariadbConnection = nil
+            isReleased = true
+            footprint.reset()
+            /// An operation still on the dead handle keeps it, and the handle closes itself when that
+            /// operation lets go, rather than being closed under it.
+            return (verdict, activeOperations == 0 ? dead : nil)
+        }
+        switch settled.verdict {
+        case .useConnection:
+            return
+        case .reacquire:
+            settled.retired?.disconnect()
+            Self.logger.info("A stop ended a MySQL session that held nothing; the next statement takes a new one")
+        case .report(let reason):
+            Self.logger.warning("A stop ended a MySQL session that held state: \(reason, privacy: .public)")
+            // swiftlint:disable:next line_length
+            let notice = String(localized: "The query was stopped by closing its connection, because MySQL before 5.0 cannot stop a query any other way. The session's open transaction, table locks and variables were discarded. Run the statements again.")
+            throw MariaDBPluginError(code: 0, message: notice, sqlState: nil)
+        case .lost:
+            throw MariaDBPluginError.notConnected
+        }
     }
 
     /// `requireConnection` without the reacquire. It is the second reconnect door: a nil handle
@@ -569,32 +652,48 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// A session with no database selected has no tables to list, so nothing is asked of the server:
     /// `SHOW FULL TABLES FROM` an empty name is `ERROR 1102`, not an empty answer.
+    ///
+    /// A server before 5.0.2 has neither the catalog nor `SHOW FULL TABLES`, so it is asked
+    /// `SHOW TABLES` alone, and nothing is recorded about a catalog it does not have.
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let database = effectiveSchema(schema)
         let listsSequencesAsTables = flavor.listsSequencesAsTables
+        let appendsInnoDBStatus = serverAppendsInnoDBStatus
         guard !flavor.isDatabend else {
             let query = MySQLObjectQueries.tableList(schema: database, includePartitions: false)
             let result = try await execute(query: query)
-            return MySQLTableListing.tables(from: result.rows, listsSequencesAsTables: listsSequencesAsTables)
+            return MySQLTableListing.tables(
+                from: result.rows, listsSequencesAsTables: listsSequencesAsTables, appendsInnoDBStatus: appendsInnoDBStatus
+            )
         }
         guard !database.isEmpty else { return [] }
 
-        let rows = try await MySQLCatalogFallback.list(
-            database: database,
-            ledger: catalogVisibility,
-            catalog: { try await self.catalogTableRows(database: database) },
-            settlesBlindness: Self.settlesBlindness,
-            show: { try await self.listedTableRows(database: database) }
+        let rows: [[PluginCellValue]]
+        if serverHasInformationSchema {
+            let includePartitions = holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
+            rows = try await MySQLCatalogFallback.list(
+                database: database,
+                ledger: catalogVisibility,
+                catalog: { try await self.catalogTableRows(database: database, includePartitions: includePartitions) },
+                settlesBlindness: Self.settlesBlindness,
+                show: { try await self.listedTableRows(database: database, hasInformationSchema: true) }
+            )
+        } else {
+            rows = try await listedTableRows(database: database, hasInformationSchema: false)
+        }
+        return MySQLTableListing.tables(
+            from: rows, listsSequencesAsTables: listsSequencesAsTables, appendsInnoDBStatus: appendsInnoDBStatus
         )
-        return MySQLTableListing.tables(from: rows, listsSequencesAsTables: listsSequencesAsTables)
     }
 
     /// Logged where the server refused, because the answer that stands instead comes from `SHOW` and
     /// carries neither table comments nor partition counts. The error is rethrown either way: what a
     /// refusal says about the database is `MySQLCatalogFallback.list`'s to decide, not this read's.
-    private func catalogTableRows(database: String) async throws -> [[PluginCellValue]] {
+    ///
+    /// `includePartitions` is false before 5.1.6, which has no `PARTITIONS` table: 5.0.96 answers `1109`.
+    private func catalogTableRows(database: String, includePartitions: Bool) async throws -> [[PluginCellValue]] {
         do {
-            let query = MySQLObjectQueries.tableList(schema: database, includePartitions: true)
+            let query = MySQLObjectQueries.tableList(schema: database, includePartitions: includePartitions)
             return try await execute(ownStatement: query).rows
         } catch let error as MariaDBPluginError
             where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
@@ -605,8 +704,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func listedTableRows(database: String) async throws -> [[PluginCellValue]] {
-        try await execute(query: MySQLObjectQueries.showFullTables(schema: database)).rows
+    private func listedTableRows(database: String, hasInformationSchema: Bool) async throws -> [[PluginCellValue]] {
+        let query = MySQLObjectQueries.listedTables(schema: database, hasInformationSchema: hasInformationSchema)
+        return try await execute(query: query).rows
     }
 
     /// A subpartition arrives as its own row carrying its parent partition's name, so the list is
@@ -614,7 +714,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// shape, and `PARTITION_DESCRIPTION` on such a row repeats the parent's bound rather than
     /// describing the subpartition, so a subpartition reports no bound of its own.
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard !flavor.isDatabend,
+              holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
+        else { return [] }
         let query = MySQLObjectQueries.partitionList(
             schema: effectiveSchema(schema),
             table: table
@@ -705,6 +807,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        guard serverHasInformationSchema else {
+            return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
+        }
         let escapedDb = effectiveSchemaLiteral(schema)
         let escapedTable = mysqlEscapeStringLiteral(table)
 
@@ -739,7 +844,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
     /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard !flavor.isDatabend,
+              holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
+        else { return [] }
         let result = try await execute(ownStatement: """
             SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
             FROM information_schema.EVENTS
@@ -780,13 +887,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
-        let escapedTable = mysqlEscapeStringLiteral(table)
-        let result = try await execute(ownStatement: showTableStatus(matching: escapedTable, schema: schema))
-
-        guard let row = result.rows.first else {
+        guard let row = try await tableStatusRow(table: table, schema: schema) else {
             return PluginTableMetadata(tableName: table)
         }
-        return MySQLTableStatusRow.metadata(from: row, tableName: table)
+        return MySQLTableStatusRow.metadata(from: row, tableName: table, appendsInnoDBStatus: serverAppendsInnoDBStatus)
     }
 
     // MARK: - Streaming
@@ -799,11 +903,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let conn = try await requireConnection()
-                    defer { self.endOperation(on: conn) }
-                    noteActivity(query)
-                    for try await element in conn.streamQuery(query) {
-                        continuation.yield(element)
+                    try await retryingAfterStop {
+                        let conn = try await requireConnection()
+                        defer { self.endOperation(on: conn) }
+                        noteActivity(query)
+                        for try await element in conn.streamQuery(query) {
+                            continuation.yield(element)
+                        }
                     }
                     continuation.finish()
                 } catch {
@@ -821,63 +927,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row in row[safe: 0]?.asText }
     }
 
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = mysqlEscapeStringLiteral(database)
-
-        let query = """
-            SELECT COUNT(*), COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0)
-            FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = '\(escapedDb)'
-        """
-        let result = try await execute(ownStatement: query)
-        let row = result.rows.first
-        let tableCount = Int(row?[safe: 0]?.asText ?? "0") ?? 0
-        let sizeBytes = Int64(row?[safe: 1]?.asText ?? "0") ?? 0
-
-        let isSystem = systemDatabaseNamesForConnectionType.contains(database)
-
-        return PluginDatabaseMetadata(
-            name: database,
-            tableCount: tableCount,
-            sizeBytes: sizeBytes,
-            isSystemDatabase: isSystem
-        )
-    }
-
     /// Classified by the type the connection was saved as, the same list the app classifies the database list by,
     /// rather than by the flavor the banner resolves: the two used to disagree for a TiDB server saved as MySQL.
-    private var systemDatabaseNamesForConnectionType: [String] {
+    var systemDatabaseNamesForConnectionType: [String] {
         MySQLSystemDatabases.names(forVariant: config.additionalFields["driverVariant"])
-    }
-
-    func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = systemDatabaseNamesForConnectionType
-
-        let query = """
-            SELECT TABLE_SCHEMA, COUNT(*), COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0)
-            FROM information_schema.TABLES
-            GROUP BY TABLE_SCHEMA
-        """
-        let result = try await execute(query: query)
-
-        var metadataByName: [String: PluginDatabaseMetadata] = [:]
-        for row in result.rows {
-            guard let dbName = row[safe: 0]?.asText else { continue }
-            let tableCount = Int((row[safe: 1]?.asText) ?? "0") ?? 0
-            let sizeBytes = Int64((row[safe: 2]?.asText) ?? "0") ?? 0
-            let isSystem = systemDatabases.contains(dbName)
-
-            metadataByName[dbName] = PluginDatabaseMetadata(
-                name: dbName, tableCount: tableCount,
-                sizeBytes: sizeBytes, isSystemDatabase: isSystem
-            )
-        }
-
-        let allDatabases = try await fetchDatabases()
-        return allDatabases.map { dbName in
-            metadataByName[dbName]
-                ?? PluginDatabaseMetadata(name: dbName, isSystemDatabase: systemDatabases.contains(dbName))
-        }
     }
 
     func dropDatabase(name: String) async throws {
@@ -972,7 +1025,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.adopt(statementDeadline: clientDeadline)
         guard let clientDeadline else { return }
         Self.logger.info(
-            "Server has no statement timeout; a statement past \(clientDeadline.seconds, privacy: .public)s is stopped with KILL QUERY"
+            "Server has no statement timeout; a statement past \(clientDeadline.seconds, privacy: .public)s is killed from a second connection"
         )
     }
 
@@ -1180,29 +1233,5 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func foreignKeyEnableStatements() -> [String]? {
         flavor.isDatabend ? nil : ["SET FOREIGN_KEY_CHECKS=1"]
-    }
-
-    // MARK: - All Tables Metadata
-
-    func allTablesMetadataSQL(schema: String?) -> String? {
-        guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
-        return literalSpelling.respelled("""
-        SELECT
-            TABLE_SCHEMA as `schema`,
-            TABLE_NAME as name,
-            TABLE_TYPE as kind,
-            IFNULL(CCSA.CHARACTER_SET_NAME, '') as charset,
-            TABLE_COLLATION as collation,
-            TABLE_ROWS as estimated_rows,
-            CONCAT(ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2), ' MB') as total_size,
-            CONCAT(ROUND(DATA_LENGTH / 1024 / 1024, 2), ' MB') as data_size,
-            CONCAT(ROUND(INDEX_LENGTH / 1024 / 1024, 2), ' MB') as index_size,
-            TABLE_COMMENT as comment
-        FROM information_schema.TABLES
-        LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA
-            ON TABLE_COLLATION = CCSA.COLLATION_NAME
-        WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
-        ORDER BY TABLE_NAME
-        """)
     }
 }

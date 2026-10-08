@@ -33,12 +33,16 @@ internal extension MySQLPluginDriver {
         )
     }
 
-    /// `SHOW TABLE STATUS` is the one statement here that cannot take a dotted name: its grammar
-    /// puts the database in a `FROM` clause of its own, and the `WHERE` then matches the bare name.
-    func showTableStatus(matching escapedTable: String, schema: String?) -> String {
-        let database = effectiveSchema(schema).nilIfEmpty
-        let from = database.map { " FROM \(quoteIdentifier($0))" } ?? ""
-        return "SHOW TABLE STATUS\(from) WHERE Name = '\(escapedTable)'"
+    /// One table's `SHOW TABLE STATUS` row. Before 5.0.3 the statement takes a `LIKE` pattern only,
+    /// which the server matches by its own collation, so the row is picked by name from the answer.
+    func tableStatusRow(table: String, schema: String?) async throws -> [PluginCellValue]? {
+        let query = MySQLObjectQueries.tableStatus(
+            schema: effectiveSchema(schema),
+            table: table,
+            acceptsWhere: holdsForServer(MySQLServerVersion.showAcceptsWhere(banner:flavor:))
+        )
+        let result = try await execute(ownStatement: query)
+        return MySQLTableStatusRow.row(named: table, in: result.rows)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
@@ -132,7 +136,9 @@ internal extension MySQLPluginDriver {
         table: String,
         schema: String?
     ) async throws -> [String: MySQLCatalogColumnDetail] {
-        guard catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind else { return [:] }
+        guard serverHasInformationSchema,
+              catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind
+        else { return [:] }
         let identity = serverIdentity
         let readsGeneration = MySQLServerVersion.hasGenerationExpression(
             banner: identity.banner, flavor: identity.flavor
@@ -318,6 +324,7 @@ internal extension MySQLPluginDriver {
         let database = effectiveSchema(schema)
         return try await catalogOrShow(
             database: database,
+            catalogExists: serverHasInformationSchema,
             catalog: { try await self.informationSchemaColumns(schema: schema, table: nil) },
             show: { try await self.showColumnsByTable(database: database) }
         )

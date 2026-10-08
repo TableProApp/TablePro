@@ -199,7 +199,13 @@ extension MCPConnectionBridge {
         cancelOnly: Bool
     ) async throws -> String {
         let databaseType = try await ensureConnected(connectionId)
-        guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else {
+        let serverVersion = await MainActor.run {
+            DatabaseManager.shared.driver(for: connectionId)?.serverVersion
+        }
+        guard let provider = ServerDashboardQueryProviderFactory.provider(
+            for: databaseType,
+            serverVersion: serverVersion
+        ) else {
             throw DatabaseAccessError.dataSourceError(
                 String(localized: "TablePro has no server dashboard for this engine.")
             )

@@ -69,6 +69,10 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLErrorText.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLStatementKeyword.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The column default reading both apps show, plus the literal spellings it writes and the

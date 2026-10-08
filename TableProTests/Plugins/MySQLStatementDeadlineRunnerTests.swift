@@ -24,6 +24,7 @@ private final class RunnerHarness: @unchecked Sendable {
     func runner(
         deadline: MySQLStatementDeadline?,
         flavor: MySQLServerFlavor = .mysql,
+        killEndsSession: Bool = false,
         socketTimeoutSeconds: UInt32 = 31,
         elapsed: Duration = .seconds(1)
     ) -> MySQLStatementDeadlineRunner {
@@ -32,6 +33,7 @@ private final class RunnerHarness: @unchecked Sendable {
         return MySQLStatementDeadlineRunner(
             deadline: deadline,
             flavor: flavor,
+            killEndsSession: killEndsSession,
             socketTimeoutSeconds: socketTimeoutSeconds,
             watch: watch,
             now: {
@@ -137,6 +139,62 @@ struct MySQLStatementDeadlineRunnerTests {
             }
         }
         #expect(harness.orphanKills == 0)
+    }
+
+    /// Measured on 4.1.22 with `KILL <id>`: a running join ends in `1053 Server shutdown in progress`
+    /// and the handle reports `2013` after it. Past the socket timeout a `2013` would otherwise read
+    /// as the client's own and send a second kill.
+    @Test(
+        "A statement whose session the deadline ended reports the timeout, whatever code it ends in",
+        arguments: [UInt32(1_053), 2_013]
+    )
+    func sessionKillFailureBecomesTimeout(code: UInt32) {
+        let harness = RunnerHarness()
+        harness.firesImmediately = true
+        #expect(throws: StubFailure(code: 1_317, message: "stopped after 5s")) {
+            try harness.runner(deadline: deadline, killEndsSession: true, elapsed: .seconds(31)).run("SELECT SLEEP(9)") {
+                throw StubFailure(code: code, message: "Server shutdown in progress")
+            }
+        }
+        #expect(harness.interrupts == 1)
+        #expect(harness.flushes == 0)
+        #expect(harness.orphanKills == 0)
+    }
+
+    /// Measured on 4.1.22: `SELECT BENCHMARK(...)` killed with `KILL <id>` still returns its row.
+    @Test("A row that arrives after the deadline ended the session reports the timeout and flushes nothing")
+    func sessionKillSuccessReportsTheTimeout() {
+        let harness = RunnerHarness()
+        harness.firesImmediately = true
+        #expect(throws: StubFailure(code: 1_317, message: "stopped after 5s")) {
+            try harness.runner(deadline: deadline, killEndsSession: true).run("SELECT BENCHMARK(1, 1)") { 0 }
+        }
+        #expect(harness.interrupts == 1)
+        #expect(harness.flushes == 0)
+    }
+
+    @Test("A session-ending deadline that never fired leaves the server's error alone")
+    func unsentSessionKillKeepsTheError() {
+        let harness = RunnerHarness()
+        #expect(throws: StubFailure(code: 1_146, message: "Table 't' doesn't exist")) {
+            try harness.runner(deadline: deadline, killEndsSession: true).run("SELECT 1") {
+                throw StubFailure(code: 1_146, message: "Table 't' doesn't exist")
+            }
+        }
+        #expect(harness.interrupts == 0)
+        #expect(harness.flushes == 0)
+    }
+
+    @Test("A Stop that lands as the deadline ends the session stays a cancellation")
+    func stopDuringSessionKillStaysCancellation() {
+        let harness = RunnerHarness()
+        harness.firesImmediately = true
+        #expect(throws: CancellationError.self) {
+            try harness.runner(deadline: deadline, killEndsSession: true).run("SELECT SLEEP(9)") {
+                throw CancellationError()
+            }
+        }
+        #expect(harness.flushes == 0)
     }
 
     @Test("A statement outside the deadline's scope schedules nothing")

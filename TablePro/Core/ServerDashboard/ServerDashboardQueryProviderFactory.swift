@@ -35,7 +35,7 @@ enum ServerDashboardQueryProviderFactory {
                 metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
             )
         case .mysql:
-            return MySQLDashboardProvider()
+            return MySQLDashboardProvider(serverVersion: serverVersion)
         case .mssql:
             return MSSQLDashboardProvider()
         case .clickhouse:
