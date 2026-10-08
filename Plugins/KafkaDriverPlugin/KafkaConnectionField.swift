@@ -64,6 +64,16 @@ struct KafkaConnectDeadline: Sendable {
         let remaining = Int(((expiresAt - now) * 1_000).rounded(.up))
         return remaining > 0 ? remaining : nil
     }
+
+    /// An equal share of what is left for each of `attempts`, so one endpoint that never answers
+    /// cannot spend the time the others need.
+    func remainingMilliseconds(
+        sharedBy attempts: Int,
+        now: TimeInterval = ProcessInfo.processInfo.systemUptime
+    ) -> Int? {
+        guard let remaining = remainingMilliseconds(now: now) else { return nil }
+        return max(1, remaining / max(attempts, 1))
+    }
 }
 
 /// The field ids the connection form writes into `additionalFields`, and the small amount of
@@ -120,12 +130,29 @@ enum KafkaConnectionField {
         return resolved
     }
 
+    /// The form's list, else Host and Port: a tunnel clears the list and points Host and Port at
+    /// its local forward. A list saved before it replaced Host and Port named only the extra
+    /// brokers, so a Host missing from the list is still dialed, after the list.
+    static func bootstrapEndpoints(
+        host: String,
+        port: Int,
+        fields: [String: String],
+        defaultPort: Int
+    ) -> [KafkaEndpoint] {
+        let listed = (fields[bootstrapServers] ?? "")
+            .split(separator: ",")
+            .compactMap { KafkaEndpoint.parse(String($0), defaultPort: defaultPort) }
+        let primary = KafkaEndpoint(host: host.isEmpty ? "127.0.0.1" : host, port: port > 0 ? port : defaultPort)
+        if listed.isEmpty { return [primary] }
+        return host.isEmpty || listed.contains(primary) ? listed : listed + [primary]
+    }
+
     static func fields() -> [ConnectionField] {
         [
             ConnectionField(
                 id: bootstrapServers,
-                label: String(localized: "Additional Bootstrap Servers"),
-                placeholder: "broker-2:9092",
+                label: String(localized: "Bootstrap Servers"),
+                placeholder: "localhost:9092",
                 required: false,
                 fieldType: .hostList,
                 section: .connection

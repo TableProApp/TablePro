@@ -18,24 +18,12 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The config is read here and not retained. It carries the password, and nothing after
     /// this point needs it: the cluster holds only what it must to reconnect.
     init(config: DriverConnectionConfig) {
-        let defaultPort = KafkaPlugin.defaultPort
-        var endpoints: [KafkaEndpoint] = []
-        if !config.host.isEmpty {
-            endpoints.append(KafkaEndpoint(host: config.host, port: config.port > 0 ? config.port : defaultPort))
-        }
-        // Extra bootstrap servers are only meaningful when this client is dialling the cluster
-        // itself. Behind a tunnel the host has already been rewritten to the single forwarded
-        // endpoint and the others are unreachable, so the app clears the list.
-        let extra = config.additionalFields[KafkaConnectionField.bootstrapServers] ?? ""
-        for entry in extra.split(separator: ",") {
-            if let endpoint = KafkaEndpoint.parse(String(entry), defaultPort: defaultPort) {
-                endpoints.append(endpoint)
-            }
-        }
-        if endpoints.isEmpty {
-            endpoints.append(KafkaEndpoint(host: "127.0.0.1", port: defaultPort))
-        }
-
+        let endpoints = KafkaConnectionField.bootstrapEndpoints(
+            host: config.host,
+            port: config.port,
+            fields: config.additionalFields,
+            defaultPort: KafkaPlugin.defaultPort
+        )
         let mechanism = KafkaConnectionField.mechanism(from: config.additionalFields)
         cluster = KafkaCluster(
             bootstrap: endpoints,

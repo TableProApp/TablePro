@@ -10,11 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SSH tunnel, Cloudflare Tunnel, SOCKS proxy and tunnel command for Weaviate, Typesense and Elasticsearch. (#3277)
+- Several nodes per Elasticsearch connection, moving to the next node when one stops answering. (#3281)
 
 ### Fixed
 
+- Kafka connections dialing a hidden localhost:9092 before the brokers listed in the form.
+- One unreachable Kafka bootstrap server using up the whole connect timeout.
+- A blank row in MongoDB Hosts saved as localhost:27017.
+- Elasticsearch connections to an IPv6 host failing with "Invalid host".
 - Cloudflare Tunnel offered for BigQuery, DuckDB, DynamoDB and other drivers that cannot use it, until their plugin was installed.
 - Oracle NCHAR, NVARCHAR2 and NCLOB columns failing to load on databases with the UTF8 national character set.
+
+### Security
+
+- Elasticsearch console paths starting with `//` sending the Authorization header to the host they named.
 
 ## [0.78.0] - 2026-10-07
 

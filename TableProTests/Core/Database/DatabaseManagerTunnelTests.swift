@@ -203,6 +203,23 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.additionalFields["mongoParam_directConnection"] == nil)
     }
 
+    @Test("A tunneled https:// node keeps TLS with SSL Mode left on Disabled")
+    func tunnelKeepsTLSForHTTPSNode() {
+        let connection = DatabaseConnection(
+            name: "es",
+            host: "localhost",
+            port: 9_200,
+            type: .elasticsearch,
+            additionalFields: ["esHosts": "https://es1.internal:9200,https://es2.internal:9200"]
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+        #expect(tunneled.additionalFields["esHosts"] == nil)
+        #expect(tunneled.preTunnelHost == "es1.internal")
+        #expect(tunneled.sslConfig.mode == .required)
+    }
+
     @Test("Tunneled non-MongoDB connection gets no direct-connection override")
     func tunnelLeavesNonMongoUntouched() {
         let connection = DatabaseConnection(

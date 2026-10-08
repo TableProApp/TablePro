@@ -91,6 +91,13 @@ private let elasticsearchColumnTypes: [String: [String]] = [
 func elasticsearchConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(
+            id: "esHosts",
+            label: String(localized: "Hosts"),
+            placeholder: "localhost:9200",
+            fieldType: .hostList,
+            section: .connection
+        ),
+        ConnectionField(
             id: "esAuthMethod",
             label: String(localized: "Auth Method"),
             defaultValue: "basic",
