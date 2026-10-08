@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with a fresh token on each connect and no proxy.
+
 ### Changed
 
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.

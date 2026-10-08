@@ -888,7 +888,7 @@ enum DatabaseDriverFactory {
            !sslClientKeyPassphrase.isEmpty {
             additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
         }
-        if connection.usesAWSIAM {
+        if connection.usesIAMToken {
             additionalFields["enableCleartextPlugin"] = "true"
         }
         additionalFields["connectionId"] = connection.id.uuidString
@@ -1039,7 +1039,7 @@ enum DatabaseDriverFactory {
 
     private static func effectiveSSLConfiguration(for connection: DatabaseConnection) -> SSLConfiguration {
         var ssl = connection.sslConfig
-        if connection.usesAWSIAM, ssl.mode == .disabled || ssl.mode == .preferred {
+        if connection.usesIAMToken, ssl.mode == .disabled || ssl.mode == .preferred {
             ssl.mode = .required
         }
         return ssl

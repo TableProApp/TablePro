@@ -63,6 +63,28 @@ A pasted key is kept in the macOS Keychain and written to a temporary file reada
 
 <HelperPort />
 
+## IAM sign-in without the proxy
+
+When the instance is already reachable, over its private IP or an authorized network, you can skip the proxy and sign in as an IAM principal directly. This works for MySQL and PostgreSQL.
+
+On the **General** tab, set **Authentication** to one of:
+
+- **Google Cloud IAM (Application Default)**: the credentials from `gcloud auth application-default login`, or the file `GOOGLE_APPLICATION_CREDENTIALS` names.
+- **Google Cloud IAM (Service Account)**: a **Service Account Key**, as a file path or pasted JSON.
+
+Set **Host** to the instance IP and **Username** to the database user of the principal:
+
+| Engine | User account | Service account |
+|--------|--------------|-----------------|
+| PostgreSQL | `name@example.com` | `name@project.iam` |
+| MySQL | `name` | `name` |
+
+The password field disappears. Each connect and reconnect fetches a fresh token, valid for one hour, and SSL/TLS is raised to **Required** if it was lower. The principal needs the **Cloud SQL Instance User** role (`roles/cloudsql.instanceUser`), and the instance needs IAM database authentication turned on and a database user for the principal:
+
+```bash
+gcloud sql users create name@example.com --instance=INSTANCE --type=cloud_iam_user
+```
+
 ## Troubleshooting
 
 ### cloud-sql-proxy was not found

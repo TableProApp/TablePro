@@ -84165,6 +84165,14 @@
         }
       }
     },
+    "Google Cloud IAM (Application Default)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google Cloud IAM (Service Account)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Google Cloud serverless data warehouse" : {
       "localizations" : {
         "fr" : {

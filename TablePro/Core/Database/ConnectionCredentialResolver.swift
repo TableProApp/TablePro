@@ -4,16 +4,17 @@
 //
 
 import Foundation
+import TableProGoogleCloud
 import TableProPluginKit
 
 /// The one answer to "what password does this connection sign in with".
 ///
-/// A connection can get its password from five places: an AWS IAM token minted per connect, an
-/// explicit override from a prompt, a `PasswordSource` (a file, an environment variable, the stdout
-/// of a shell command, 1Password, Vault, AWS Secrets Manager), `~/.pgpass`, or the Keychain. Only
-/// the connect path knew all five. `NativeDumpService` read the Keychain directly, so a backup of a
-/// connection whose password comes from 1Password or `~/.pgpass` ran with an empty password and
-/// failed against a server the app itself was connected to.
+/// A connection can get its password from five places: an AWS or Cloud SQL IAM token minted per
+/// connect, an explicit override from a prompt, a `PasswordSource` (a file, an environment variable,
+/// the stdout of a shell command, 1Password, Vault, AWS Secrets Manager), `~/.pgpass`, or the
+/// Keychain. Only the connect path knew all five. `NativeDumpService` read the Keychain directly,
+/// so a backup of a connection whose password comes from 1Password or `~/.pgpass` ran with an empty
+/// password and failed against a server the app itself was connected to.
 @MainActor
 enum ConnectionCredentialResolver {
     static func resolvePassword(
@@ -24,6 +25,9 @@ enum ConnectionCredentialResolver {
     ) async throws -> String {
         if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
             return try await resolveIAMPassword(for: connection, fields: fields, deadline: deadline)
+        }
+        if connection.usesGoogleCloudIAM {
+            return try await resolveCloudSQLIAMPassword(fields: fields, deadline: deadline)
         }
         if let override { return override }
         if case .profile(let profileId) = connection.credentialMode,
@@ -160,6 +164,23 @@ enum ConnectionCredentialResolver {
             username: username,
             credentials: credentials
         )
+    }
+
+    private static func resolveCloudSQLIAMPassword(
+        fields: [String: String],
+        deadline: ConnectionDeadline?
+    ) async throws -> String {
+        var http: any GoogleHTTPClient = URLSessionGoogleHTTPClient()
+        if let deadline {
+            http = CloudSQLIAMDeadlineHTTPClient(base: http, timeout: credentialRequestTimeout(for: deadline))
+        }
+        let provider = try CloudSQLIAMTokenProvider.provider(
+            fields: fields,
+            readFile: { FileManager.default.contents(atPath: $0) },
+            environment: ProcessInfo.processInfo.environment,
+            http: http
+        )
+        return try await CloudSQLIAMTokenProvider.accessToken(from: provider)
     }
 
     private static func resolveAWSCredentials(

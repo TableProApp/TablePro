@@ -240,7 +240,17 @@ struct DatabaseConnection: Identifiable, Hashable {
 
     var usesAWSIAM: Bool {
         let value = additionalFields["awsAuth"] ?? "off"
-        return value != "off" && !value.isEmpty
+        return value != "off" && !value.isEmpty && !GoogleCloudSQLAuthFields.methods.contains(value)
+    }
+
+    var usesGoogleCloudIAM: Bool {
+        GoogleCloudSQLAuthFields.methods.contains(additionalFields["awsAuth"] ?? "")
+    }
+
+    /// A short-lived token stands in for the password, so it is minted on every connect and never
+    /// cached: replaying it after it expires fails the reconnect.
+    var usesIAMToken: Bool {
+        usesAWSIAM || usesGoogleCloudIAM
     }
 
     var resolvesAWSIAMInDriver: Bool {
