@@ -305,14 +305,14 @@ final class ConnectionFormCoordinator: ObservableObject {
         var resolvedHost = network.resolvedHost
         var resolvedPort = network.resolvedPort
 
-        if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = fields["mongoHosts"],
-           !mongoHosts.isEmpty
-        {
-            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            fields["mongoHosts"] = result.hosts
-            resolvedHost = result.primaryHost
-            resolvedPort = result.primaryPort
+        // An empty list means what its placeholder shows, never the Host it hid.
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {
+            let type = network.type
+            let endpoints = HostListEndpoint.parseList(fields[hostList.id] ?? "", defaultPort: type.defaultPort)
+            fields[hostList.id] = endpoints.map(\.entry).joined(separator: ",")
+            let primary = endpoints.first ?? HostListEndpoint(host: type.defaultHost ?? "localhost", port: type.defaultPort)
+            resolvedHost = primary.host
+            resolvedPort = primary.port
         }
 
         let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -915,11 +915,15 @@ final class ConnectionFormCoordinator: ObservableObject {
             }
         }
 
-        if let multiHost = parsed.multiHost, !multiHost.isEmpty {
-            network.additionalFieldValues["mongoHosts"] = multiHost
-        } else if parsed.type.pluginTypeId == "MongoDB" {
-            let portStr = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
-            network.additionalFieldValues["mongoHosts"] = "\(parsed.host):\(portStr)"
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: parsed.type).endpointHostList {
+            if let multiHost = parsed.multiHost, !multiHost.isEmpty {
+                network.additionalFieldValues[hostList.id] = multiHost
+            } else {
+                network.additionalFieldValues[hostList.id] = HostListEndpoint.parse(
+                    parsed.host,
+                    defaultPort: parsed.resolvedPort
+                )?.entry
+            }
         }
 
         let mongoKeysAuth = auth.additionalFieldValues.keys.filter {
@@ -1056,36 +1060,5 @@ final class ConnectionFormCoordinator: ObservableObject {
                 && saved.port == parsed.resolvedPort
                 && saved.username == parsed.username
         }
-    }
-
-    // MARK: - Mongo helpers
-
-    struct NormalizedHosts {
-        let hosts: String
-        let primaryHost: String
-        let primaryPort: Int
-    }
-
-    static func normalizeMongoHosts(_ raw: String, defaultPort: Int) -> NormalizedHosts {
-        let normalized = raw.split(separator: ",", omittingEmptySubsequences: false)
-            .map { segment -> String in
-                let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { return "localhost:\(defaultPort)" }
-                if !trimmed.contains(":") { return "\(trimmed):\(defaultPort)" }
-                return trimmed
-            }
-            .joined(separator: ",")
-        let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
-        let parts = firstSegment.split(separator: ":", maxSplits: 1)
-        var host = "localhost"
-        var port = defaultPort
-        if let first = parts.first {
-            let derived = String(first).trimmingCharacters(in: .whitespaces)
-            if !derived.isEmpty { host = derived }
-        }
-        if parts.count > 1, let portValue = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-            port = portValue
-        }
-        return NormalizedHosts(hosts: normalized, primaryHost: host, primaryPort: port)
     }
 }

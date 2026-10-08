@@ -130,6 +130,25 @@ final class NetworkPaneViewModel: ObservableObject {
             }
         }
         issues += connectionFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
+        issues += endpointHostListIssues
+        return issues
+    }
+
+    /// A pasted `https://` node is stored as host:port and SSL Mode picks the scheme, so Disabled
+    /// would send the request, credentials included, over plain HTTP.
+    private var endpointHostListIssues: [String] {
+        guard let hostList = connectionFields.endpointHostList else { return [] }
+        let entries = (additionalFieldValues[hostList.id] ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var issues = entries
+            .filter { HostListEndpoint.parse($0, defaultPort: type.defaultPort) == nil }
+            .map { String(format: String(localized: "“%@” is not a host or host:port"), $0) }
+        if let coordinator = coordinator?.value, coordinator.supportsSSL, coordinator.ssl.mode == .disabled,
+           let secure = entries.first(where: HostListEndpoint.usesHTTPS) {
+            issues.append(String(format: String(localized: "%@ needs an SSL Mode other than Disabled"), secure))
+        }
         return issues
     }
 
@@ -151,12 +170,14 @@ final class NetworkPaneViewModel: ObservableObject {
             host = defaultHost
         }
         var values: [String: String] = [:]
-        for field in PluginManager.shared.additionalConnectionFields(for: newType)
-            where field.section == .connection
-        {
+        let fields = PluginManager.shared.additionalConnectionFields(for: newType)
+        for field in fields where field.section == .connection {
             if let defaultValue = field.defaultValue {
                 values[field.id] = defaultValue
             }
+        }
+        if let hostList = fields.endpointHostList, values[hostList.id] == nil {
+            values[hostList.id] = HostListEndpoint.parse(host, defaultPort: newType.defaultPort)?.entry
         }
         additionalFieldValues = values
     }
@@ -191,13 +212,28 @@ final class NetworkPaneViewModel: ObservableObject {
                 values[field.id] = defaultValue
             }
         }
-        if connection.type.pluginTypeId == "MongoDB",
-           (values["mongoHosts"] ?? "").isEmpty
-        {
-            let existingHost = connection.host.isEmpty ? "localhost" : connection.host
-            values["mongoHosts"] = "\(existingHost):\(connection.port)"
+        if let hostList = allFields.endpointHostList {
+            values[hostList.id] = Self.endpointList(values[hostList.id] ?? "", including: connection)
         }
         additionalFieldValues = values
+    }
+
+    /// Host and Port seed an empty list. A list saved before it stood in for Host and Port (Kafka's
+    /// extra brokers) leaves Host out, so Host stays in, last, where the driver dials it. A Host
+    /// equal to the form's own default was filled in while hidden, not typed, and stays out.
+    static func endpointList(_ raw: String, including connection: DatabaseConnection) -> String? {
+        let port = connection.port > 0 ? connection.port : connection.type.defaultPort
+        let defaultHost = connection.type.defaultHost ?? "localhost"
+        let hasRows = raw.split(separator: ",").contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard hasRows else {
+            return HostListEndpoint.parse(connection.host.isEmpty ? defaultHost : connection.host, defaultPort: port)?.entry
+        }
+        let listed = HostListEndpoint.parseList(raw, defaultPort: connection.type.defaultPort)
+        guard connection.host != defaultHost || port != connection.type.defaultPort,
+              let primary = HostListEndpoint.parse(connection.host, defaultPort: port),
+              !listed.contains(primary)
+        else { return raw }
+        return raw + "," + primary.entry
     }
 
     func write(into fields: inout [String: String]) {

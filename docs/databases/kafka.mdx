@@ -12,8 +12,8 @@ hundred messages, or the oldest, or everything after an offset or a timestamp.
 
 ## Quick setup
 
-Click **New Connection…**, select **Kafka**, enter one broker's host and port, and connect. Any
-broker in the cluster works as the bootstrap: the rest are discovered from it. The driver speaks
+Click **New Connection…**, select **Kafka**, enter a broker under **Bootstrap Servers**, and
+connect. Any broker in the cluster works as the bootstrap: the rest are discovered from it. The driver speaks
 Kafka's binary protocol directly and needs Kafka 0.11 or later, the release that introduced the
 record format every message has used since.
 
@@ -23,8 +23,7 @@ record format every message has used since.
 
 | Field | Description |
 |-------|-------------|
-| **Host** / **Port** | One broker to bootstrap from. Default port `9092` |
-| **Additional Bootstrap Servers** | More brokers to try if the first does not answer |
+| **Bootstrap Servers** | Brokers to bootstrap from, tried in order until one answers. Default port `9092` |
 | **Security Protocol** | `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, or `SASL_SSL` |
 | **SASL Mechanism** | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, for the two SASL protocols |
 | **Username** / **Password** | The SASL credentials |

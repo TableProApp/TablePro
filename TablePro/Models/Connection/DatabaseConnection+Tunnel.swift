@@ -61,27 +61,27 @@ extension DatabaseConnection {
     /// Where a tunnel should forward to.
     ///
     /// A tunnel carries one local port to one remote address, so a connection that names its
-    /// servers in a host list rather than in Host and Port has to nominate one of them. The first
-    /// entry is the one used, which is also what makes a host-list connection reachable over SSH
-    /// at all: Host is blank whenever the form is showing a host list.
+    /// servers in a host list rather than in Host and Port has to nominate one of them: the first.
     var tunnelForwardEndpoint: (host: String, port: Int) {
+        guard let first = firstHostListEntry?.endpoint else { return (host, port) }
+        return (first.host, first.port)
+    }
+
+    /// An app that predates the form's normalizing stored rows as typed, so a row can still say
+    /// `https://` while SSL Mode is Disabled. The driver honors the scheme, and the tunnel has to
+    /// as well once it replaces the list with its local forward.
+    var tunnelForwardUsesHTTPS: Bool {
+        firstHostListEntry.map { HostListEndpoint.usesHTTPS($0.text) } ?? false
+    }
+
+    private var firstHostListEntry: (text: String, endpoint: HostListEndpoint)? {
         for fieldId in activeHostListFieldIds {
-            guard let raw = additionalFields[fieldId]?.nilIfEmpty else { continue }
-            guard let first = raw.split(separator: ",").first?.trimmingCharacters(in: .whitespaces),
-                  !first.isEmpty else { continue }
-            let bracketed = first.hasPrefix("[")
-            if bracketed, let closing = first.firstIndex(of: "]") {
-                let host = String(first[first.index(after: first.startIndex) ..< closing])
-                let rest = first[first.index(after: closing)...]
-                let parsedPort = rest.hasPrefix(":") ? Int(rest.dropFirst()) : nil
-                return (host, parsedPort ?? port)
+            for text in (additionalFields[fieldId] ?? "").split(separator: ",").map(String.init) {
+                if let endpoint = HostListEndpoint.parse(text, defaultPort: port) {
+                    return (text, endpoint)
+                }
             }
-            if let lastColon = first.lastIndex(of: ":"), !first[..<lastColon].contains(":"),
-               let parsedPort = Int(first[first.index(after: lastColon)...]) {
-                return (String(first[..<lastColon]), parsedPort)
-            }
-            return (first, port)
         }
-        return (host, port)
+        return nil
     }
 }

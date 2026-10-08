@@ -96,8 +96,8 @@ private func kafkaConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(
             id: "kafkaBootstrapServers",
-            label: String(localized: "Additional Bootstrap Servers"),
-            placeholder: "broker-2:9092",
+            label: String(localized: "Bootstrap Servers"),
+            placeholder: "localhost:9092",
             required: false,
             fieldType: .hostList,
             section: .connection

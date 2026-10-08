@@ -15,10 +15,16 @@ struct ElasticsearchConnectionFieldsTests {
         return entry.snapshot.connection.additionalConnectionFields
     }
 
-    @Test("Registry declares auth method, API key, and TLS fields")
+    @Test("Registry declares node list, auth method, API key, and TLS fields")
     func registryDeclaresAllFields() throws {
         let fields = try elasticsearchFields()
-        #expect(fields.map(\.id) == ["esAuthMethod", "esApiKey", "esSkipTLSVerify"])
+        #expect(fields.map(\.id) == ["esHosts", "esAuthMethod", "esApiKey", "esSkipTLSVerify"])
+    }
+
+    @Test("Node list stands in for Host and Port")
+    func nodeListIsTheEndpointList() throws {
+        let fields = try elasticsearchFields()
+        #expect(fields.endpointHostList?.id == "esHosts")
     }
 
     @Test("Auth method dropdown defaults to basic and offers API key and none")
