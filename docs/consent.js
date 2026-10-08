@@ -6,6 +6,8 @@
     const DENIED = 'denied';
     // The measurement ID in docs.json without its "G-", as GA names the stream cookie.
     const STREAM_COOKIE = '_ga_GQYNPKSK83';
+    // Mintlify's own visitor ID, which it writes once analytics are allowed.
+    const MINTLIFY_ID = 'mintlify_anonymous_id';
     const PRIVACY_URL = 'https://tablepro.app/privacy#cookies';
     const BAR_ID = 'tablepro-consent';
 
@@ -35,7 +37,7 @@
     }
 
     // GA cookies sit on .tablepro.app, shared with tablepro.app, whose own stream may be there with consent.
-    function clearCookies() {
+    function clearAnalytics() {
         const parent = window.location.hostname.split('.').slice(-2).join('.');
         const expire = (name) => {
             document.cookie = `${name}=; Max-Age=0; path=/; domain=.${parent}`;
@@ -47,6 +49,12 @@
         if (!cookieNames().some((name) => name !== '_ga')) {
             expire('_ga');
         }
+
+        try {
+            window.localStorage.removeItem(MINTLIFY_ID);
+        } catch {
+            // Storage is blocked: nothing was kept.
+        }
     }
 
     function choose(choice) {
@@ -56,7 +64,7 @@
         document.getElementById(BAR_ID)?.remove();
 
         if (choice === DENIED) {
-            clearCookies();
+            clearAnalytics();
         }
 
         if ((choice === GRANTED) !== (previous === GRANTED)) {
@@ -148,7 +156,7 @@ html.dark #${BAR_ID} button { border-color: #8f8f8f; }
     const answer = read();
 
     if (answer !== GRANTED) {
-        clearCookies();
+        clearAnalytics();
     }
 
     if (answer === null) {
