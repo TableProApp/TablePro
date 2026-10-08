@@ -15,7 +15,8 @@ struct ProBadge: View {
 
     var body: some View {
         Link(destination: SupportLinks.pricing(.featureGate(feature))) {
-            Text("PRO")
+            Text(feature.requiredTier.displayName)
+                .textCase(.uppercase)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(Color.legibleForeground(on: .orange))
                 .padding(.horizontal, 6)
@@ -23,7 +24,7 @@ struct ProBadge: View {
                 .background(.orange, in: Capsule())
         }
         .help(feature.featureDescription)
-        .accessibilityLabel(Text(String(format: String(localized: "%@, Pro feature"), feature.displayName)))
+        .accessibilityLabel(Text(feature.planRequirement))
         .accessibilityHint(Text("Opens the TablePro pricing page"))
     }
 }

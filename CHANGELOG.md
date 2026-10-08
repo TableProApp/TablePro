@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Starter or Team named on license gates, badges and the welcome window, in place of "Pro".
+- **One-time** in place of **Lifetime** for a license with no expiry in Settings > License.
+- **Share usage data** in place of **Share anonymous usage data** in Settings > General, with the report's fields listed.
+
 ## [0.79.0] - 2026-10-08
 
 SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.

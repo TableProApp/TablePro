@@ -42,7 +42,7 @@ An `X-Signature` header carries an HMAC-SHA256 of the body. It proves the payloa
 
 `machine_id` hashes a hardware identifier, never anything you typed, so two heartbeats from one Mac count as one Mac. Where that identifier cannot be read, a random one is stored instead and does not survive a reset.
 
-**Share anonymous usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
+**Share usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
 
 On iPhone and iPad the heartbeat is off until you choose **Share Usage Data**, and its `platform` is `ios`. See [iPhone and iPad](/ios#privacy).
 

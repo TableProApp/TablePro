@@ -168,12 +168,13 @@ struct LicensePresentationTests {
 
     // MARK: - Plan line
 
-    /// Shipped as "Team · Lifetime · Lifetime": the billing cycle is already the word, and the
-    /// absent expiry said it a second time.
-    @Test("A lifetime license says lifetime once")
-    func lifetimePlanSaysItOnce() {
+    /// Shipped as "Team · Lifetime · Lifetime": the billing cycle is the server's word for it, and
+    /// the absent expiry said it a second time. The pricing page sells this cycle as One-time.
+    @Test("A license bought once says One-time once, and never the server's word for it")
+    func oneTimePlanSaysItOnce() {
         let line = LicensePresentation.planDescription(tier: "team", billingCycle: "lifetime", expiry: nil)
-        #expect(line.components(separatedBy: "Lifetime").count - 1 == 1, "Got: \(line)")
+        #expect(line.components(separatedBy: String(localized: "One-time")).count - 1 == 1, "Got: \(line)")
+        #expect(line.localizedCaseInsensitiveContains("lifetime") == false, "Got: \(line)")
     }
 
     @Test("A recurring license states its cycle and its expiry")

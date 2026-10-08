@@ -107,7 +107,7 @@ struct SyncStatusIndicator: View {
         case .disabled(.noAccount):
             return String(localized: "Sign in to iCloud to enable sync")
         case .disabled(.licenseRequired):
-            return String(localized: "Pro license required for iCloud Sync")
+            return ProFeature.iCloudSync.planRequirement
         case .disabled(.licenseExpired):
             return String(localized: "License expired, sync paused")
         case .disabled(.licenseUnverified):

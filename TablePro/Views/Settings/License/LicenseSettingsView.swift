@@ -105,7 +105,7 @@ struct LicenseSettingsView: View {
                     let confirmed = await AlertHelper.confirmDestructive(
                         title: String(localized: "Deactivate this license?"),
                         message: String(
-                            localized: "Pro features stop on this Mac right away. You can activate this license again later."
+                            localized: "Paid features stop on this Mac right away. You can activate this license again later."
                         ),
                         confirmButton: String(localized: "Deactivate"),
                         cancelButton: String(localized: "Cancel")
@@ -137,7 +137,7 @@ struct LicenseSettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Unlock the Pro features")
+                    Text("Unlock the paid features")
                         .font(.headline)
 
                     Text("Everything else keeps working without a license, with nothing counting down.")

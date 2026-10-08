@@ -30,7 +30,7 @@ internal enum CompareSyncLauncher {
     private static func presentUpgradeAlert() {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = String(localized: "Compare & Sync requires a license")
+        alert.messageText = ProFeature.compareSync.planRequirement
         alert.informativeText = ProFeature.compareSync.featureDescription
         alert.addButton(withTitle: String(localized: "View License"))
         alert.addButton(withTitle: String(localized: "Cancel"))
