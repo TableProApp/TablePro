@@ -56,6 +56,28 @@ public enum SpatialReadFailure: Error, Equatable, Sendable {
 }
 
 public extension SpatialGeometry {
+    /// Technical terms, never localized: GeoJSON's spelling for the seven types it names.
+    var typeName: String {
+        switch self {
+        case .point:
+            return "Point"
+        case .lineString:
+            return "LineString"
+        case .polygon:
+            return "Polygon"
+        case .multiPoint:
+            return "MultiPoint"
+        case .multiLineString:
+            return "MultiLineString"
+        case .multiPolygon:
+            return "MultiPolygon"
+        case .collection:
+            return "GeometryCollection"
+        case .empty:
+            return "Empty"
+        }
+    }
+
     var isEmpty: Bool {
         switch self {
         case .empty:

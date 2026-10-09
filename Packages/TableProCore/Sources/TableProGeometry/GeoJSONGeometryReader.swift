@@ -37,33 +37,35 @@ public enum GeoJSONGeometryReader {
     private static func geometry(from object: [String: Any], depth: Int) -> SpatialGeometry? {
         guard depth <= SpatialLimits.maximumNestingDepth else { return nil }
         guard let type = object["type"] as? String else { return nil }
-        switch type {
-        case "Feature":
+        /// RFC 7946 fixes the capitalisation, but Elasticsearch documents `geo_shape` types in
+        /// lowercase (`"type": "point"`) and hands a document back as it was indexed.
+        switch type.lowercased() {
+        case "feature":
             guard let nested = object["geometry"] as? [String: Any] else { return nil }
             return geometry(from: nested, depth: depth + 1)
-        case "FeatureCollection":
+        case "featurecollection":
             guard let features = object["features"] as? [[String: Any]] else { return nil }
             let children = features.compactMap { geometry(from: $0, depth: depth + 1) }
             return children.count == 1 ? children[0] : .collection(children)
-        case "GeometryCollection":
+        case "geometrycollection":
             guard let members = object["geometries"] as? [[String: Any]] else { return nil }
             return .collection(members.compactMap { geometry(from: $0, depth: depth + 1) })
-        case "Point":
+        case "point":
             guard let point = position(object["coordinates"]) else { return nil }
             return .point(point)
-        case "MultiPoint":
+        case "multipoint":
             guard let points = positions(object["coordinates"]) else { return nil }
             return .multiPoint(points)
-        case "LineString":
+        case "linestring":
             guard let points = positions(object["coordinates"]) else { return nil }
             return .lineString(points)
-        case "MultiLineString":
+        case "multilinestring":
             guard let lines = positionRings(object["coordinates"]) else { return nil }
             return .multiLineString(lines)
-        case "Polygon":
+        case "polygon":
             guard let rings = positionRings(object["coordinates"]) else { return nil }
             return .polygon(rings: rings)
-        case "MultiPolygon":
+        case "multipolygon":
             guard let raw = object["coordinates"] as? [Any] else { return nil }
             var polygons: [[[SpatialPoint]]] = []
             polygons.reserveCapacity(raw.count)

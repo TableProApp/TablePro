@@ -3,11 +3,9 @@
 //  TableProTests
 //
 //  The row inspector, the cell popovers and the Compare row diff all render a stored value, so they
-//  follow the data grid font rather than the editor font. TablePlus was asked this exact question on
-//  its own row detail sidebar (TablePlus/TablePlus#1180) and answered "it should be the same font as
-//  table-data"; the grid's own inline cell editor already agreed. These tests pin that choice and the
-//  places that carry it, because both settings ship at the same family and size, so a regression is
-//  invisible until a user splits them.
+//  follow the data grid font rather than the editor font, as the grid's own inline cell editor
+//  already did. These tests pin that choice and the places that carry it, because both settings
+//  ship at the same family and size, so a regression is invisible until a user splits them.
 //
 
 import AppKit
@@ -88,6 +86,9 @@ struct ValueFontTests {
         /// own toolbar and presents in a pop-out window too, so each names the value font on its own
         /// value text; `standaloneValueViewsResolveTheValueFont` is what holds them to that.
         #expect(source.contains("case .json, .phpSerialized, .image:"))
+        /// A geometry field opts out on a line of its own, so the list above still reads as it did
+        /// and this kind cannot drift into the arm that inherits.
+        #expect(source.contains("case .geometry:\n            return nil"))
     }
 
     /// Everything outside the inspector has no shared root to inherit from: a popover and a pop-out
@@ -115,6 +116,9 @@ struct ValueFontTests {
             /// `.image`, which does not, so it has to name the font itself or the same dump renders
             /// monospaced down one route and proportional down the other.
             "TablePro/Views/RowInspector/FieldEditors/BlobHexEditorView.swift",
+            /// Opts out of the row's font and hosts a text editor, a JSON editor or a hex dump
+            /// under its Text segment, so the pane names the font for all three.
+            "TablePro/Views/RowInspector/FieldEditors/GeometryFieldView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",

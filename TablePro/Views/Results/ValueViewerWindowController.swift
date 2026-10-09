@@ -12,7 +12,8 @@ import SwiftUI
 internal class ValueViewerWindowController {
     private static var activeWindows: [ObjectIdentifier: ValueViewerWindowController] = [:]
     private static let defaultSize = NSSize(width: 640, height: 500)
-    private static let minSize = NSSize(width: 400, height: 300)
+    static let minSize = NSSize(width: 400, height: 300)
+    private static let styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable]
 
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
@@ -29,19 +30,7 @@ internal class ValueViewerWindowController {
         autosaveName: NSWindow.FrameAutosaveName,
         @ViewBuilder content: (@escaping () -> Void) -> Content
     ) {
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: ValueViewerWindowController.defaultSize),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.identifier = NSUserInterfaceItemIdentifier(identifier)
-        window.keepsKeyViewLoopCurrent()
-        window.title = title
-        window.isReleasedWhenClosed = false
-        window.minSize = ValueViewerWindowController.minSize
-        window.collectionBehavior = [.fullScreenPrimary]
-        window.contentView = NSHostingView(rootView: content { [weak window] in window?.close() })
+        let window = Self.makeWindow(identifier: identifier, title: title, content: content)
 
         self.window = window
 
@@ -63,5 +52,38 @@ internal class ValueViewerWindowController {
 
         window.applyAutosaveName(autosaveName)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// A hosting view that is a window's content view rewrites that window's size limits from its
+    /// SwiftUI content on every constraint pass, so `NSWindow.minSize` alone lasts until the first
+    /// one: a viewer with a small toolbar could be dragged down to it. The floor is part of the
+    /// content, which is the size the hosting view publishes.
+    static func makeWindow<Content: View>(
+        identifier: String,
+        title: String,
+        @ViewBuilder content: (@escaping () -> Void) -> Content
+    ) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: defaultSize),
+            styleMask: styleMask,
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        window.keepsKeyViewLoopCurrent()
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.minSize = minSize
+        window.collectionBehavior = [.fullScreenPrimary]
+
+        let contentFloor = NSWindow.contentRect(
+            forFrameRect: NSRect(origin: .zero, size: minSize),
+            styleMask: styleMask
+        ).size
+        window.contentView = NSHostingView(
+            rootView: content { [weak window] in window?.close() }
+                .frame(minWidth: contentFloor.width, minHeight: contentFloor.height)
+        )
+        return window
     }
 }
