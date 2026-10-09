@@ -151,6 +151,9 @@ final class IOSSyncCoordinator {
     /// The person's answer after TablePro's data was removed from iCloud: upload everything this
     /// device holds again. Never done on a trigger, which is Apple's guidance for a purged zone.
     func uploadAgain() async {
+        /// The notice, and its button, stay on screen during an automatic check of the zone, so the
+        /// person's answer waits for that check rather than being dropped.
+        await runningSync?.value
         guard status.error == .blocked(.dataDeletedFromICloud) else { return }
         prepareFullUpload()
         resetRetryState()
@@ -232,9 +235,10 @@ final class IOSSyncCoordinator {
     /// The trigger that may do the most among those that arrived during the last run.
     private func takePendingTrigger() -> SyncTrigger? {
         guard !pendingTriggers.isEmpty else { return nil }
-        let triggers = pendingTriggers
-        pendingTriggers = []
         let error = status.error
+        /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
+        let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
+        pendingTriggers = []
         let attempt = nextAttempt
         let reach: (SyncTrigger) -> Int = { trigger in
             let scope: Int
@@ -392,6 +396,9 @@ final class IOSSyncCoordinator {
         if settlement.resetsRetry {
             resetRetryState()
         }
+        if settlement.needsUpload, !pendingTriggers.contains(.scheduledRetry) {
+            pendingTriggers.append(.scheduledRetry)
+        }
         if let counted = settlement.countedFailure {
             consecutiveFailures += 1
             let delay = SyncRetryPolicy.nextAttemptDelay(
@@ -424,9 +431,17 @@ final class IOSSyncCoordinator {
         retryTask = nil
     }
 
+    /// The path can come back while a run is still retrying, before that run reports it could not
+    /// reach iCloud, and the monitor reports the return only once. So a return during a run is kept
+    /// for when it ends.
     private func networkDidReturn() {
-        guard status.error == .offline else { return }
-        Task { await sync(.networkRestored) }
+        if runningSync != nil {
+            if !pendingTriggers.contains(.networkRestored) {
+                pendingTriggers.append(.networkRestored)
+            }
+        } else if status.error == .offline {
+            Task { await sync(.networkRestored) }
+        }
     }
 
     /// Settles the status from outside a run, which retires whatever run is in flight.

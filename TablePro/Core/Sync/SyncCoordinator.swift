@@ -42,6 +42,10 @@ final class SyncCoordinator: ObservableObject {
     /// trigger cancelling it: a cancelled run reported itself as a failure.
     private var pendingTriggers: [SyncTrigger] = []
 
+    /// Upload Again pressed while an automatic check was running. The notice stays on screen during
+    /// that check, so the button does too, and the person's answer must not be lost to it.
+    private var uploadAgainRequested = false
+
     /// Failed runs in a row, which sets how far the next attempt is held back.
     private var consecutiveFailures = 0
 
@@ -163,6 +167,10 @@ final class SyncCoordinator: ObservableObject {
         let result = await performCycle(admission)
         isRunning = false
         finish(result, previousError: previousError, from: generation)
+        if uploadAgainRequested {
+            uploadAgainRequested = false
+            await uploadAgain()
+        }
         await runPendingTrigger()
     }
 
@@ -292,6 +300,9 @@ final class SyncCoordinator: ObservableObject {
         if settlement.resetsRetry {
             resetRetryState()
         }
+        if settlement.needsUpload, !pendingTriggers.contains(.scheduledRetry) {
+            pendingTriggers.append(.scheduledRetry)
+        }
         if let counted = settlement.countedFailure {
             consecutiveFailures += 1
             let delay = SyncRetryPolicy.nextAttemptDelay(
@@ -335,9 +346,10 @@ final class SyncCoordinator: ObservableObject {
     /// Runs once for whatever arrived during the last run, with the trigger that may do the most.
     private func runPendingTrigger() async {
         guard !pendingTriggers.isEmpty else { return }
-        let triggers = pendingTriggers
-        pendingTriggers = []
         let error = syncStatus.error
+        /// The network coming back mid-run matters only if the run ended unable to reach iCloud.
+        let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
+        pendingTriggers = []
         let attempt = nextAttempt
         let reach: (SyncTrigger) -> Int = { trigger in
             switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt) {
@@ -401,12 +413,18 @@ final class SyncCoordinator: ObservableObject {
     /// The person's answer after TablePro's data was removed from iCloud: upload everything on this
     /// Mac again. Never done without asking, which is Apple's guidance for a purged zone.
     func uploadAgain() async {
-        guard syncStatus.error == .blocked(.dataDeletedFromICloud), !isRunning else { return }
+        guard syncStatus.error == .blocked(.dataDeletedFromICloud) else { return }
+        guard !isRunning else {
+            uploadAgainRequested = true
+            return
+        }
         metadataStorage.zoneState = .unknown
         metadataStorage.saveToken(nil)
         recordCache.removeAll()
         markAllLocalDataDirty()
         await markSQLFavoritesDirty()
+        /// Sync may have been turned off while the favorites were read.
+        guard syncStatus.error == .blocked(.dataDeletedFromICloud) else { return }
         resetRetryState()
         decide(.idle)
         await sync(.userRequest)
@@ -1120,11 +1138,20 @@ final class SyncCoordinator: ObservableObject {
             }
     }
 
+    /// The path can come back while a run is still retrying, before that run reports it could not
+    /// reach iCloud, and the monitor reports the return only once. So a return during a run is kept
+    /// for when it ends.
     private func observeNetwork() {
         networkMonitor?.start { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, syncStatus.error == .offline else { return }
-                requestSync(.networkRestored)
+                guard let self else { return }
+                if isRunning {
+                    if !pendingTriggers.contains(.networkRestored) {
+                        pendingTriggers.append(.networkRestored)
+                    }
+                } else if syncStatus.error == .offline {
+                    requestSync(.networkRestored)
+                }
             }
         }
     }

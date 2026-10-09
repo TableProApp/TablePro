@@ -20,6 +20,7 @@ struct SyncSettlementTests {
         #expect(settlement.stampsLastSync)
         #expect(settlement.resetsRetry)
         #expect(settlement.countedFailure == nil)
+        #expect(!settlement.needsUpload)
     }
 
     /// The reported bug: the person saw the first item's raw CloudKit text, and "Last Synced" was
@@ -71,6 +72,7 @@ struct SyncSettlementTests {
         #expect(settlement.status == .idle)
         #expect(settlement.resetsRetry)
         #expect(!settlement.stampsLastSync)
+        #expect(settlement.needsUpload)
     }
 
     /// A cancelled run used to come back as no error, which the coordinator read as success.

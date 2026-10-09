@@ -240,8 +240,17 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     /// The zone is saved only while this is `.unknown`. Saving it on every run recreated a zone the
     /// person had deleted in iCloud settings before CloudKit could say so.
+    ///
+    /// Builds before this key saved the zone on every run, so a device they synced has seen it: a
+    /// stored token or Last Synced date reads as confirmed, and a zone deleted while that build was
+    /// not running is reported as gone rather than recreated on the first run after the update.
     public var zoneState: SyncZoneState {
-        get { userDefaults.string(forKey: key("zoneState")).flatMap(SyncZoneState.init(rawValue:)) ?? .unknown }
+        get {
+            if let stored = userDefaults.string(forKey: key("zoneState")).flatMap(SyncZoneState.init(rawValue:)) {
+                return stored
+            }
+            return hasStoredToken || lastSyncDate != nil ? .confirmed : .unknown
+        }
         set { userDefaults.set(newValue.rawValue, forKey: key("zoneState")) }
     }
 

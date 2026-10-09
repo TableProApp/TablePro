@@ -884,9 +884,13 @@ struct IOSSyncCoordinatorTests {
         #expect(coordinator.status == .error(.blocked(.dataDeletedFromICloud)))
     }
 
-    @Test("When another device brings deleted data back, a download finds it and sync resumes")
+    /// The changes this device held while the zone was gone go up right after the zone is found,
+    /// rather than waiting for an unrelated edit while the status already reads up to date.
+    @Test("When another device brings deleted data back, a download finds it and the held changes go up")
     func restoredZoneLiftsTheBlock() async throws {
         let box = LibraryStateBox()
+        let held = DatabaseConnection(name: "Held", type: .mysql)
+        box.connections = [held]
         metadata.lastAccountId = "account-a"
         metadata.zoneState = .confirmed
         let transport = FakeSyncTransport(remoteRecords: [], box: box)
@@ -894,12 +898,16 @@ struct IOSSyncCoordinatorTests {
         let coordinator = makeCoordinator(box: box, transport: transport)
         await coordinator.sync()
         #expect(coordinator.status == .error(.blocked(.dataDeletedFromICloud)))
+        coordinator.markDirty(held.id)
 
         await coordinator.sync(.activation)
 
         #expect(coordinator.status == .idle)
         #expect(metadata.zoneState == .confirmed)
         #expect(await transport.zoneSaves == 0)
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
+        #expect(pushed == [held.id])
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 
     @Test("Signing in to another Apple Account lifts the last account's full storage at once")

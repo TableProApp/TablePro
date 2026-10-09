@@ -18,6 +18,10 @@ public struct SyncSettlement: Equatable, Sendable {
     /// The outcome that counts as one more failure in a row and sets the next attempt.
     public let countedFailure: SyncError?
 
+    /// A full run has to follow at once: the zone came back, and the changes this device held while
+    /// it was gone have not gone up yet.
+    public let needsUpload: Bool
+
     public init(failure: SyncStepFailure?, admission: SyncAdmission, previousError: SyncError?) {
         let unchanged: SyncStatus = previousError.map { .error($0) } ?? .idle
 
@@ -26,7 +30,7 @@ public struct SyncSettlement: Equatable, Sendable {
                 self.init(status: .idle, stampsLastSync: true, resetsRetry: true, countedFailure: nil)
             } else if previousError == .blocked(.dataDeletedFromICloud) {
                 /// The zone answered a download, so another device uploaded the data again.
-                self.init(status: .idle, stampsLastSync: false, resetsRetry: true, countedFailure: nil)
+                self.init(status: .idle, stampsLastSync: false, resetsRetry: true, countedFailure: nil, needsUpload: true)
             } else {
                 /// A download while uploads were held back changes nothing about why they were held.
                 self.init(status: unchanged, stampsLastSync: false, resetsRetry: false, countedFailure: nil)
@@ -59,10 +63,17 @@ public struct SyncSettlement: Equatable, Sendable {
         )
     }
 
-    private init(status: SyncStatus, stampsLastSync: Bool, resetsRetry: Bool, countedFailure: SyncError?) {
+    private init(
+        status: SyncStatus,
+        stampsLastSync: Bool,
+        resetsRetry: Bool,
+        countedFailure: SyncError?,
+        needsUpload: Bool = false
+    ) {
         self.status = status
         self.stampsLastSync = stampsLastSync
         self.resetsRetry = resetsRetry
         self.countedFailure = countedFailure
+        self.needsUpload = needsUpload
     }
 }
