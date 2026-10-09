@@ -4,15 +4,27 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
-<Update label="v0.79.0" description="October 8, 2026">
+<Update label="v0.79.0" description="October 9, 2026">
   ### New Features
 
   - **Tunnels for Weaviate, Typesense and Elasticsearch**: SSH tunnel, Cloudflare Tunnel, SOCKS proxy and Tunnel Command. Reach a server that only answers from inside a private network
   - **Elasticsearch node list**: Several nodes per connection. When one stops answering, the connection moves to the next
 
+  ### Improvements
+
+  - Starter or Team named on license gates, badges and the welcome window, in place of "Pro"
+  - **One-time** in place of **Lifetime** for a license with no expiry in **Settings > License**
+  - **Share usage data**, with the report's fields listed, in place of **Share anonymous usage data** in **Settings > General**
+
   ### Security
 
   - Elasticsearch console paths starting with `//` sending the Authorization header to the host they named
+  - MongoDB writes hidden behind computed method names, escaped keys or a leading `--` passing as reads
+  - Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body
+  - Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read
+  - SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607
+  - MongoDB reads writing through a shell function an earlier statement redefined
+  - A MongoDB raw filter row that failed to parse running as JavaScript in a table tab, even at Read-Only
 
   ### Bug Fixes
 
@@ -27,6 +39,12 @@ rss: true
   - Table Info, row counts, routines, triggers, foreign keys and the server dashboard failing on MySQL 4.1 to 5.1
   - MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text
   - **Stop** and the query timeout not stopping a query on MySQL 4.1
+  - MongoDB, Redis, etcd and SAP HANA reads confirmed at the Alert and Safe Mode levels and blocked at Read-Only. See [Safe Mode](/features/safe-mode#what-counts-as-a-read)
+  - MongoDB reads with `$nin`, `$mergeObjects`, `.limit()` or `getCollection` refused for read-only MCP clients
+  - MongoDB `remove()` and `drop ()` running without the dangerous query warning, and a JavaScript `delete` raising it
+  - `seq.NEXTVAL` and `NEXT VALUE FOR seq`, which advance a sequence, running at Read-Only and unconfirmed at Alert
+  - MongoDB `deleteMany()`, `updateMany()` and other writes treating a missing filter as `{}` and touching every document
+  - MongoDB `count()` on an aggregate stopping at 5,000,000 and counting only the documents not yet read
 </Update>
 
 <Update label="v0.78.0" description="October 7, 2026">

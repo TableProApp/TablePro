@@ -7,40 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- Starter or Team named on license gates, badges and the welcome window, in place of "Pro".
-- **One-time** in place of **Lifetime** for a license with no expiry in Settings > License.
-- **Share usage data** in place of **Share anonymous usage data** in Settings > General, with the report's fields listed.
-
-### Fixed
-
-- MongoDB, Redis, etcd and SAP HANA reads confirmed at the Alert and Safe Mode levels and blocked at Read-Only. (#3290)
-- MongoDB reads using `$nin`, `$mergeObjects`, `.limit()` or `getCollection` refused as writes for read-only MCP clients. (#3290)
-- MongoDB `remove()` and `drop ()` running without the dangerous query warning, and a JavaScript `delete` raising it. (#3290)
-- `seq.NEXTVAL` and `NEXT VALUE FOR seq` running at Read-Only and unconfirmed at Alert, though they advance the sequence. (#3290)
-- MongoDB `deleteMany()`, `updateMany()` and other writes treating a missing filter as `{}` and touching every document. (#3293)
-- MongoDB `count()` on an aggregate stopping at 5,000,000 and counting only the documents not yet read. (#3293)
-
-### Security
-
-- MongoDB writes hidden behind computed method names, escaped keys or a leading `--` passing as reads. (#3290)
-- Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body. (#3290)
-- Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read. (#3290)
-- SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607.
-- MongoDB reads writing through a shell function an earlier statement redefined. (#3293)
-- A MongoDB raw filter row that failed to parse running as JavaScript in a table tab, even at Read-Only. (#3293)
-
-## [0.79.0] - 2026-10-08
+## [0.79.0] - 2026-10-09
 
 SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
 An Elasticsearch connection takes several nodes and moves to the next when one stops answering.
 MySQL 4.1 to 5.1 servers list and open their tables.
+MongoDB, Redis, etcd and SAP HANA reads run at Read-Only and skip the Alert prompt.
 
 ### Added
 
 - SSH tunnel, Cloudflare Tunnel, SOCKS proxy and tunnel command for Weaviate, Typesense and Elasticsearch. (#3277, #3278)
 - Several nodes per Elasticsearch connection, moving to the next node when one stops answering. (#3281, #3283)
+
+### Changed
+
+- Starter or Team named on license gates, badges and the welcome window, in place of "Pro". (#3289)
+- **One-time** in place of **Lifetime** for a license with no expiry in Settings > License. (#3289)
+- **Share usage data**, with the report's fields listed, in place of **Share anonymous usage data** in Settings > General. (#3289)
 
 ### Fixed
 
@@ -55,10 +38,22 @@ MySQL 4.1 to 5.1 servers list and open their tables.
 - MySQL before 5.5 showing Korean, Japanese, Russian and other non-English query errors as garbled text. (#3284)
 - Stop and the query timeout not stopping a query on MySQL 4.1. (#3284)
 - Oracle grid saves storing NCHAR, NVARCHAR2 and NCLOB text as ¿ or editing the wrong row on a non-Unicode database. (#3282)
+- MongoDB, Redis, etcd and SAP HANA reads confirmed at the Alert and Safe Mode levels and blocked at Read-Only. (#3290, #3292)
+- MongoDB reads with `$nin`, `$mergeObjects`, `.limit()` or `getCollection` refused for read-only MCP clients. (#3290, #3292)
+- MongoDB `remove()` and `drop ()` running without the dangerous query warning, and a JavaScript `delete` raising it. (#3290, #3292)
+- `seq.NEXTVAL` and `NEXT VALUE FOR seq`, which advance a sequence, running at Read-Only and unconfirmed at Alert. (#3290, #3292)
+- MongoDB `deleteMany()`, `updateMany()` and other writes treating a missing filter as `{}` and touching every document. (#3293, #3295)
+- MongoDB `count()` on an aggregate stopping at 5,000,000 and counting only the documents not yet read. (#3293, #3295)
 
 ### Security
 
 - Elasticsearch console paths starting with `//` sending the Authorization header to the host they named. (#3283)
+- MongoDB writes hidden behind computed method names, escaped keys or a leading `--` passing as reads. (#3290, #3292)
+- Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body. (#3290, #3292)
+- Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read. (#3290, #3292)
+- SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607. (#3294)
+- MongoDB reads writing through a shell function an earlier statement redefined. (#3293, #3295)
+- A MongoDB raw filter row that failed to parse running as JavaScript in a table tab, even at Read-Only. (#3293, #3295)
 
 ## [0.78.0] - 2026-10-07
 
