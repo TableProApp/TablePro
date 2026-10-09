@@ -240,7 +240,14 @@ final class SyncCoordinator: ObservableObject {
         if let decisive = failure {
             failure = await refined(decisive)
         }
-        metadataStorage.zoneState = zone.after(failure: failure, reachedZone: pullFailure == nil)
+        let nextZone = zone.after(failure: failure, reachedZone: pullFailure == nil)
+        /// The old zone's records went with it. Kept, their system fields would make every later
+        /// save into a zone another device recreated fail as an unknown record.
+        if nextZone == .removed, zone != .removed {
+            recordCache.removeAll()
+            metadataStorage.saveToken(nil)
+        }
+        metadataStorage.zoneState = nextZone
         return CycleResult(admission: admission, failure: failure)
     }
 

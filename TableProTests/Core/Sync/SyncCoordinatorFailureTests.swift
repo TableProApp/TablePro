@@ -138,12 +138,15 @@ struct SyncCoordinatorFailureTests {
 
     /// Apple asks apps not to resend data the person removed from iCloud, so a missing zone waits
     /// for the person instead of being recreated and refilled behind their back.
-    @Test("A zone that is gone waits for the person and is not recreated by a download")
+    @Test("A zone that is gone waits for the person, drops its cached records, and is not recreated by a download")
     func missingZoneWaitsForThePerson() async throws {
-        try tags.addTag(ConnectionTag(name: "staging"))
+        let staging = ConnectionTag(name: "staging")
+        try tags.addTag(staging)
+        let stagingID = SyncRecordMapper.toCKRecord(staging, in: Self.zoneID).recordID
         let transport = makeTransport()
         let coordinator = environment.makeCoordinator(transport: transport)
         #expect(await coordinator.runSyncCycle() == nil)
+        #expect(environment.recordCache.record(for: stagingID) != nil)
         try tags.addTag(ConnectionTag(name: "qa"))
         await transport.failEveryItem(with: .zoneNotFound)
 
@@ -151,6 +154,8 @@ struct SyncCoordinatorFailureTests {
 
         #expect(failure == .blocked(.dataDeletedFromICloud))
         #expect(metadata.zoneState == .removed)
+        #expect(environment.recordCache.record(for: stagingID) == nil)
+        #expect(metadata.loadToken() == nil)
         #expect(await coordinator.runSyncCycle(.downloadOnly) == nil)
         #expect(await transport.zoneSaveCount == 1)
     }

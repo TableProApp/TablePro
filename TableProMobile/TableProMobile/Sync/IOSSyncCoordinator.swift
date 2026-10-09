@@ -280,7 +280,15 @@ final class IOSSyncCoordinator {
         }
 
         guard let result = await pullThenPush(admission, generation: generation, using: transport) else { return nil }
-        metadata.zoneState = metadata.zoneState.after(failure: result.failure, reachedZone: false)
+        let zone = metadata.zoneState
+        let nextZone = zone.after(failure: result.failure, reachedZone: false)
+        /// The old zone's records went with it. Kept, their system fields would make every later
+        /// save into a zone another device recreated fail as an unknown record.
+        if nextZone == .removed, zone != .removed {
+            recordCache.removeAll()
+            metadata.saveToken(nil)
+        }
+        metadata.zoneState = nextZone
         return result
     }
 
