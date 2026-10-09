@@ -22,4 +22,25 @@ typedef int (*DB_DBCHKINTR_FUNC)(void *dbproc);
 typedef int (*DB_DBHNDLINTR_FUNC)(void *dbproc);
 extern void dbsetinterrupt(DBPROCESS *dbproc, DB_DBCHKINTR_FUNC chkintr, DB_DBHNDLINTR_FUNC hndlintr);
 
+// The datetimeoffset offset, missing from the same header. `_dbanydatecrack` is in libsybdb_ios-*.a (checked with nm).
+// scripts/build-freetds.sh ships the plugin's stub as this header, which declares the struct too, hence the guard.
+#ifndef TABLEPRO_DBDATEREC2
+#define TABLEPRO_DBDATEREC2
+typedef struct dbdaterec2 {
+    DBINT year;
+    DBINT quarter;
+    DBINT month;
+    DBINT day;
+    DBINT dayofyear;
+    DBINT week;
+    DBINT weekday;
+    DBINT hour;
+    DBINT minute;
+    DBINT second;
+    DBINT nanosecond;
+    DBINT tzone;
+} DBDATEREC2;
+#endif
+extern RETCODE dbanydatecrack(DBPROCESS *dbproc, DBDATEREC2 *di, int type, const void *data);
+
 #endif

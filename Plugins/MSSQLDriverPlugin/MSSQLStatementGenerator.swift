@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 
 /// The INSERT, UPDATE and DELETE statements a grid save sends to SQL Server, with `?` placeholders.
@@ -99,17 +100,28 @@ struct MSSQLStatementGenerator {
         guard let match = try rowMatch(originalRow: originalRow, rowIndex: change.rowIndex) else { return nil }
         parameters.append(contentsOf: match.parameters)
         let sql = "UPDATE \(topClause)\(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(match.sql)"
-        return (statement: sql, parameters: parameters)
+        return (statement: countReported(sql, parameters: parameters), parameters: parameters)
     }
 
     func deleteStatement(for change: PluginRowChange) throws -> (statement: String, parameters: [PluginCellValue])? {
         guard let originalRow = change.originalRow,
               let match = try rowMatch(originalRow: originalRow, rowIndex: change.rowIndex) else { return nil }
-        return (statement: "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(match.sql)", parameters: match.parameters)
+        let sql = "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(match.sql)"
+        return (statement: countReported(sql, parameters: match.parameters), parameters: match.parameters)
     }
 
     private var topClause: String {
         primaryKeyColumns.isEmpty ? "TOP (1) " : ""
+    }
+
+    /// The app holds a keyless write to the row it matched, and under `SET NOCOUNT ON` the server reports no count.
+    /// A SET inside `sp_executesql` reverts when the call returns. A bound statement already runs in one, so only an
+    /// unbound one, a row whose every column is NULL, is given its own.
+    private func countReported(_ sql: String, parameters: [PluginCellValue]) -> String {
+        guard primaryKeyColumns.isEmpty else { return sql }
+        let counted = "SET NOCOUNT OFF; \(sql)"
+        guard parameters.isEmpty else { return counted }
+        return "EXEC sp_executesql \(MSSQLStringLiteral.quoted(counted))"
     }
 
     private func rowMatch(

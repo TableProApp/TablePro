@@ -137,6 +137,27 @@ extern void dbsetinterrupt(DBPROCESS *dbproc, DB_DBCHKINTR_FUNC chkintr, DB_DBHN
 extern DBINT dbconvert(DBPROCESS *dbproc, int srctype, const BYTE *src, DBINT srclen,
                        int desttype, BYTE *dest, DBINT destlen);
 
+// dbconvert's text for a datetimeoffset leaves the offset out; dbanydatecrack reports it in tzone, in minutes.
+// FreeTDS 1.4.22 declares a Microsoft and a Sybase spelling of this struct with the same twelve DBINTs.
+#ifndef TABLEPRO_DBDATEREC2
+#define TABLEPRO_DBDATEREC2
+typedef struct dbdaterec2 {
+    DBINT year;
+    DBINT quarter;
+    DBINT month;
+    DBINT day;
+    DBINT dayofyear;
+    DBINT week;
+    DBINT weekday;
+    DBINT hour;
+    DBINT minute;
+    DBINT second;
+    DBINT nanosecond;
+    DBINT tzone;
+} DBDATEREC2;
+#endif
+extern RETCODE dbanydatecrack(DBPROCESS *dbproc, DBDATEREC2 *di, int type, const void *data);
+
 extern EHANDLEFUNC dberrhandle(EHANDLEFUNC handler);
 extern MHANDLEFUNC dbmsghandle(MHANDLEFUNC handler);
 

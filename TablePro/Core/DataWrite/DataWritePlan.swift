@@ -95,8 +95,8 @@ struct DataWriteStep: Sendable {
     let kind: Kind
     let statement: ParameterizedStatement
     /// The most rows this statement may legitimately touch, or nil when the engine's count for it
-    /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself, where
-    /// nothing tells the host which rows went into it.
+    /// carries no meaning: DDL, a session setting, or a statement a plugin wrote itself for a table
+    /// with a primary key, where nothing tells the host which rows went into it.
     let expectedRowCount: Int?
     let tableName: String?
     /// Whether this statement finds its rows by matching every column, because the table declares no

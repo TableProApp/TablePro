@@ -42,9 +42,42 @@ struct MSSQLStatementGeneratorTests {
         let statement = try #require(try generator(primaryKeys: []).updateStatement(for: update("Status", to: .text("new"))))
         #expect(
             statement.statement
-                == "UPDATE TOP (1) [dbo].[defs] SET [Status] = ? WHERE [ID] = ? AND [Status] = ? AND [Qty] = ?"
+                == "SET NOCOUNT OFF; UPDATE TOP (1) [dbo].[defs] SET [Status] = ? WHERE [ID] = ? AND [Status] = ? AND [Qty] = ?"
         )
         #expect(statement.parameters == [.text("new"), .text("1"), .text("old"), .text("1")])
+    }
+
+    @Test
+    func keylessMatchOnAnEmptyStringComparesItRatherThanAskingForNull() throws {
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(columnIndex: 1, columnName: "Status", oldValue: .text(""), newValue: .text("new"))],
+            originalRow: [.text("1"), .text(""), .null]
+        )
+        let statement = try #require(try generator(primaryKeys: []).updateStatement(for: change))
+        #expect(statement.statement.hasSuffix("WHERE [ID] = ? AND [Status] = ? AND [Qty] IS NULL"))
+        #expect(statement.parameters == [.text("new"), .text("1"), .text("")])
+    }
+
+    @Test
+    func anUnboundKeylessWriteSetsTheCountInAScopeOfItsOwn() throws {
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.null, .null, .null])
+        let statement = try #require(try generator(primaryKeys: []).deleteStatement(for: change))
+        #expect(
+            statement.statement
+                == "EXEC sp_executesql N'SET NOCOUNT OFF; DELETE TOP (1) FROM [dbo].[defs] WHERE [ID] IS NULL AND [Status] IS NULL AND [Qty] IS NULL'"
+        )
+        #expect(statement.parameters.isEmpty)
+    }
+
+    @Test
+    func keyedWritesLeaveTheSessionsCountSettingAlone() throws {
+        let change = update("Status", to: .text("new"))
+        let written = try #require(try generator().updateStatement(for: change))
+        let deleted = try #require(try generator().deleteStatement(for: change))
+        #expect(!written.statement.contains("NOCOUNT"))
+        #expect(!deleted.statement.contains("NOCOUNT"))
     }
 
     @Test
@@ -77,7 +110,10 @@ struct MSSQLStatementGeneratorTests {
             rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("1"), .null, .text("2")]
         )
         let statement = try #require(try generator(primaryKeys: []).deleteStatement(for: change))
-        #expect(statement.statement == "DELETE TOP (1) FROM [dbo].[defs] WHERE [ID] = ? AND [Status] IS NULL AND [Qty] = ?")
+        #expect(
+            statement.statement
+                == "SET NOCOUNT OFF; DELETE TOP (1) FROM [dbo].[defs] WHERE [ID] = ? AND [Status] IS NULL AND [Qty] = ?"
+        )
         #expect(statement.parameters == [.text("1"), .text("2")])
     }
 
