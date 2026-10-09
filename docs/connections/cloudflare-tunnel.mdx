@@ -5,7 +5,7 @@ description: Reach a database behind Cloudflare Access by letting TablePro manag
 
 import HelperPort from "/snippets/helper-port.mdx";
 
-The Access application is yours to create, in the Cloudflare dashboard. This pane takes the hostname of one that already fronts the database, and runs `cloudflared` against it for the life of the connection.
+The Access application is yours to create, in the Cloudflare dashboard. The **Cloudflare Tunnel** transport takes the hostname of one that already fronts the database, and runs `cloudflared` against it for the life of the connection.
 
 <Frame caption="Cloudflare Tunnel selected on the Network tab">
   <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Access hostname, authentication method and local listener fields" />
@@ -14,18 +14,18 @@ The Access application is yours to create, in the Cloudflare dashboard. This pan
 
 ## Before you start
 
-Create a self-hosted application in the [Zero Trust dashboard](https://developers.cloudflare.com/cloudflare-one/applications/non-http/) routed to the database, with a policy that admits you. Its public hostname is the only Cloudflare value this pane needs.
+Create a self-hosted application in the [Zero Trust dashboard](https://developers.cloudflare.com/cloudflare-one/applications/non-http/) routed to the database, with a policy that admits you. Its public hostname is the only Cloudflare value the form needs.
 
 ```bash
 brew install cloudflared
 ```
 
-The pane looks on your `PATH` and in `/opt/homebrew/bin` and `/usr/local/bin`, and shows what it found. Installed elsewhere, set **Path** by hand: a GUI app never sees the `PATH` your shell profile exports.
+The form looks on your `PATH` and in `/opt/homebrew/bin` and `/usr/local/bin`, and shows what it found. Installed elsewhere, set **Path** by hand: a GUI app never sees the `PATH` your shell profile exports.
 
 ## Setting up
 
 <Steps>
-  <Step title="Enable the pane">
+  <Step title="Choose the transport">
     On the **Network** tab, set **Connect via** to **Cloudflare Tunnel**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Enter the hostname and sign in">

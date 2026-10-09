@@ -3,6 +3,51 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.79.0</title>
+            <pubDate>Fri, 09 Oct 2026 08:21:57 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:version>138</sparkle:version>
+            <sparkle:shortVersionString>0.79.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.79.0
+
+SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
+
+An Elasticsearch connection takes several nodes and moves to the next when one stops answering.
+
+MySQL 4.1 to 5.1 servers list and open their tables.
+
+MongoDB, Redis, etcd and SAP HANA reads run at Read-Only and skip the Alert prompt.
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-arm64.zip" length="32992969" type="application/octet-stream" sparkle:edSignature="FpSWn1u5JRoSvlbOUl6CvyI4M8/ORlg5xH6GDwZmR1GZgo095GS2izJB1vP/GSEIMRsAisvRuqorDbKKjuj+CA=="/>
+        </item>
+        <item>
+            <title>0.79.0</title>
+            <pubDate>Fri, 09 Oct 2026 08:21:58 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:version>138</sparkle:version>
+            <sparkle:shortVersionString>0.79.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.79.0
+
+SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
+
+An Elasticsearch connection takes several nodes and moves to the next when one stops answering.
+
+MySQL 4.1 to 5.1 servers list and open their tables.
+
+MongoDB, Redis, etcd and SAP HANA reads run at Read-Only and skip the Alert prompt.
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-x86_64.zip" length="35458133" type="application/octet-stream" sparkle:edSignature="p40Xzcfm9Bo/rvt+IK2mUsCjVmFa9Y7Dzb/G/dIgyyeQDPxFPF7NLUYHAWBF8bGoarhmTqfe7G3dFdDl0M42BQ=="/>
+        </item>
+        <item>
             <title>0.78.0</title>
             <pubDate>Wed, 07 Oct 2026 08:08:34 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -311,141 +356,6 @@ Imports that remember each table's column mapping, and connect and query timeout
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.0/TablePro-0.77.0-x86_64.zip" length="34904573" type="application/octet-stream" sparkle:edSignature="upJZvoFe/d9uMwGQdN1FNR22f9O97fztvnce3nRqX8ZJzV/a9JU6+rtYLtCajLW9ZLbGJAzU05UIX17xAYqkCA=="/>
-        </item>
-        <item>
-            <title>0.76.1</title>
-            <pubDate>Mon, 28 Sep 2026 22:46:49 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>133</sparkle:version>
-            <sparkle:shortVersionString>0.76.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.76.1
-
-### Changed
-
-- No header sort, **Match any** or automatic row count on Cassandra and ScyllaDB tables. (#3164 by @yordis)
-- Read-only CQL editor results on Cassandra and ScyllaDB. (#3164 by @yordis)
-
-### Fixed
-
-- Endless reconnects after a server began requiring TLS, dropped it, or rejected the client certificate or key. (#3170 by @datlechin)
-- Reconnect status showing "The connection stopped responding" instead of the certificate error behind it. (#3170 by @datlechin)
-- ClickHouse host lookup failures reported as a TLS hostname mismatch. (#3170 by @datlechin)
-- Trino on port 443, and ClickHouse on 443 or 8443, sending plain HTTP to an HTTPS port. (#3166, #3168 by @J2TeamNNL)
-- Verify modes refusing to save without a CA file on SQL Server, and Verify Identity on Trino and ClickHouse. (#3168 by @J2TeamNNL)
-- Trino certificate failures shown as "Query was cancelled", and PEM CA files rejected. (#3168 by @J2TeamNNL)
-- Raw HTML error pages in Trino connection errors. (#3168 by @J2TeamNNL)
-- ClickHouse Verify Identity ignoring the chosen CA certificate. (#3168 by @J2TeamNNL)
-- Missing "no TLS fallback" warning under Preferred for Trino. (#3168 by @J2TeamNNL)
-- Welcome window toolbar growing and captioning its search field after choosing Icon and Text. (#3146 by @shuvroroy)
-- Syntax error on opening, paging or filtering a Cassandra or ScyllaDB table. (#3164 by @yordis)
-- Save dropping edited numbers, dates, UUIDs and booleans on Cassandra and ScyllaDB while reporting success. (#3164 by @yordis)
-- `decimal` and `varint` values shown as hex, and `time` values cut to milliseconds, on Cassandra and ScyllaDB. (#3164 by @yordis)
-- User-defined types, tuples, `duration` and `vector` values shown garbled, empty or as hex on Cassandra and ScyllaDB. (#3164 by @yordis)
-- Deleting several Cassandra or ScyllaDB rows at once, or one row with a composite key, failing with a syntax error. (#3164 by @yordis)
-- **Add Row** silently replacing a Cassandra or ScyllaDB row that had the same primary key. (#3164 by @yordis)
-- Cassandra and ScyllaDB query results stopping at 100,000 rows without saying so. (#3164 by @yordis)
-- Cassandra Structure tab offering column and index edits that failed at Save. (#3164 by @yordis)
-- Functions, aggregates and triggers missing from the sidebar on ScyllaDB. (#3164 by @yordis)
-- Cassandra trigger and function source that failed when run as CQL. (#3164 by @yordis)
-- CQL `BATCH` split at its inner semicolons in the query editor and in SQL file import. (#3164 by @yordis)
-- A CQL column named `case` making the query editor run the next statement with its `CREATE TABLE`. (#3164 by @yordis)
-- Generic icons for ScyllaDB, libSQL, Teradata, Trino and Cloudflare R2 SQL in the iOS widget, and ScyllaDB in the app. (#3164 by @yordis)
-- SSL/TLS hint recommending settings for DataStax Astra, which does not connect. (#3164 by @yordis)
-- A result on a plugin-browsed engine taking the selected tab's table when it finished in another tab. (#3164 by @yordis)
-- Saves on engines whose plugin writes the rows running changes out of order after an edit was undone. (#3164 by @yordis)
-- Trino following a proxy's redirect, sending the query and password to another address or over plain HTTP. (#3168 by @J2TeamNNL)
-- Trino and etcd mutual TLS crashing on RSA PRIVATE KEY files, rejecting other keys, and copying them to the keychain. (#3168 by @J2TeamNNL)
-- `jdbc:` URLs rejected by Import from URL, and their `user` and `password` parameters ignored. (#3168 by @J2TeamNNL)
-- Imported Trino and ClickHouse URLs with `SSL=true` skipping certificate checks, and Trino's `SSLVerification` ignored. (#3168 by @J2TeamNNL)
-- Browser and `open` links ignoring the driver's default SSL mode, such as Preferred for PostgreSQL and MySQL. (#3168 by @J2TeamNNL)
-- Copied connection URLs losing SSL Disabled. (#3168 by @J2TeamNNL)
-- ClickHouse certificate failures under Verify CA, or with a CA file, reported as a generic connection failure. (#3168 by @J2TeamNNL)
-- etcd rejecting a PEM CA certificate. (#3168 by @J2TeamNNL)
-- Teradata widening an unreadable CA file to the system trust store. (#3171 by @datlechin)
-
-### Removed
-
-- Verify CA in the SSL mode picker for new Oracle connections on iPhone and iPad. (#3171 by @datlechin)
-
-### Security
-
-- Trino password or access token sent in plain text when SSL Mode is Disabled. (#3168 by @J2TeamNNL)
-- Verify CA without a CA certificate accepting a certificate for any host on Trino, ClickHouse and etcd. (#3168 by @J2TeamNNL)
-- Verify CA without a CA certificate accepting a certificate for any host on Kafka, Oracle and Teradata. (#3171 by @datlechin)
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.76.1/TablePro-0.76.1-arm64.zip" length="31475263" type="application/octet-stream" sparkle:edSignature="lx2bZ8NLFCuVUCzi1gFCrclwdRvaD7OQa+B2wnegz2MNiWngf9EokzQIoXrxynw6U/564YFhwWPtqzE3zuw7DA=="/>
-        </item>
-        <item>
-            <title>0.76.1</title>
-            <pubDate>Mon, 28 Sep 2026 22:46:50 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>133</sparkle:version>
-            <sparkle:shortVersionString>0.76.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.76.1
-
-### Changed
-
-- No header sort, **Match any** or automatic row count on Cassandra and ScyllaDB tables. (#3164 by @yordis)
-- Read-only CQL editor results on Cassandra and ScyllaDB. (#3164 by @yordis)
-
-### Fixed
-
-- Endless reconnects after a server began requiring TLS, dropped it, or rejected the client certificate or key. (#3170 by @datlechin)
-- Reconnect status showing "The connection stopped responding" instead of the certificate error behind it. (#3170 by @datlechin)
-- ClickHouse host lookup failures reported as a TLS hostname mismatch. (#3170 by @datlechin)
-- Trino on port 443, and ClickHouse on 443 or 8443, sending plain HTTP to an HTTPS port. (#3166, #3168 by @J2TeamNNL)
-- Verify modes refusing to save without a CA file on SQL Server, and Verify Identity on Trino and ClickHouse. (#3168 by @J2TeamNNL)
-- Trino certificate failures shown as "Query was cancelled", and PEM CA files rejected. (#3168 by @J2TeamNNL)
-- Raw HTML error pages in Trino connection errors. (#3168 by @J2TeamNNL)
-- ClickHouse Verify Identity ignoring the chosen CA certificate. (#3168 by @J2TeamNNL)
-- Missing "no TLS fallback" warning under Preferred for Trino. (#3168 by @J2TeamNNL)
-- Welcome window toolbar growing and captioning its search field after choosing Icon and Text. (#3146 by @shuvroroy)
-- Syntax error on opening, paging or filtering a Cassandra or ScyllaDB table. (#3164 by @yordis)
-- Save dropping edited numbers, dates, UUIDs and booleans on Cassandra and ScyllaDB while reporting success. (#3164 by @yordis)
-- `decimal` and `varint` values shown as hex, and `time` values cut to milliseconds, on Cassandra and ScyllaDB. (#3164 by @yordis)
-- User-defined types, tuples, `duration` and `vector` values shown garbled, empty or as hex on Cassandra and ScyllaDB. (#3164 by @yordis)
-- Deleting several Cassandra or ScyllaDB rows at once, or one row with a composite key, failing with a syntax error. (#3164 by @yordis)
-- **Add Row** silently replacing a Cassandra or ScyllaDB row that had the same primary key. (#3164 by @yordis)
-- Cassandra and ScyllaDB query results stopping at 100,000 rows without saying so. (#3164 by @yordis)
-- Cassandra Structure tab offering column and index edits that failed at Save. (#3164 by @yordis)
-- Functions, aggregates and triggers missing from the sidebar on ScyllaDB. (#3164 by @yordis)
-- Cassandra trigger and function source that failed when run as CQL. (#3164 by @yordis)
-- CQL `BATCH` split at its inner semicolons in the query editor and in SQL file import. (#3164 by @yordis)
-- A CQL column named `case` making the query editor run the next statement with its `CREATE TABLE`. (#3164 by @yordis)
-- Generic icons for ScyllaDB, libSQL, Teradata, Trino and Cloudflare R2 SQL in the iOS widget, and ScyllaDB in the app. (#3164 by @yordis)
-- SSL/TLS hint recommending settings for DataStax Astra, which does not connect. (#3164 by @yordis)
-- A result on a plugin-browsed engine taking the selected tab's table when it finished in another tab. (#3164 by @yordis)
-- Saves on engines whose plugin writes the rows running changes out of order after an edit was undone. (#3164 by @yordis)
-- Trino following a proxy's redirect, sending the query and password to another address or over plain HTTP. (#3168 by @J2TeamNNL)
-- Trino and etcd mutual TLS crashing on RSA PRIVATE KEY files, rejecting other keys, and copying them to the keychain. (#3168 by @J2TeamNNL)
-- `jdbc:` URLs rejected by Import from URL, and their `user` and `password` parameters ignored. (#3168 by @J2TeamNNL)
-- Imported Trino and ClickHouse URLs with `SSL=true` skipping certificate checks, and Trino's `SSLVerification` ignored. (#3168 by @J2TeamNNL)
-- Browser and `open` links ignoring the driver's default SSL mode, such as Preferred for PostgreSQL and MySQL. (#3168 by @J2TeamNNL)
-- Copied connection URLs losing SSL Disabled. (#3168 by @J2TeamNNL)
-- ClickHouse certificate failures under Verify CA, or with a CA file, reported as a generic connection failure. (#3168 by @J2TeamNNL)
-- etcd rejecting a PEM CA certificate. (#3168 by @J2TeamNNL)
-- Teradata widening an unreadable CA file to the system trust store. (#3171 by @datlechin)
-
-### Removed
-
-- Verify CA in the SSL mode picker for new Oracle connections on iPhone and iPad. (#3171 by @datlechin)
-
-### Security
-
-- Trino password or access token sent in plain text when SSL Mode is Disabled. (#3168 by @J2TeamNNL)
-- Verify CA without a CA certificate accepting a certificate for any host on Trino, ClickHouse and etcd. (#3168 by @J2TeamNNL)
-- Verify CA without a CA certificate accepting a certificate for any host on Kafka, Oracle and Teradata. (#3171 by @datlechin)
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.76.1/TablePro-0.76.1-x86_64.zip" length="33766590" type="application/octet-stream" sparkle:edSignature="JG9SWtbYD7yPO7LWbDZLPqiR6HtHP0HOWFcoOi85x7jBU4JJSCw4N13siJhMNIuk6e9vQcxkFczKUUKzYEaKAA=="/>
         </item>
     </channel>
 </rss>

@@ -48,8 +48,8 @@ A new connection starts on the mode that matches the driver's own default, and s
 | Trino | Disabled | Sends every request over HTTPS with no fallback, again like Required |
 | SAP HANA | Verify Identity | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
 | Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. A red warning appears under the picker; use Required to enforce TCPS |
-| Snowflake, BigQuery, Spanner, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
-| SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS section |
+| Snowflake, BigQuery, Spanner, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No **SSL Mode** |
+| SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No **SSL Mode** |
 
 ## Ports that mean TLS
 

@@ -139,7 +139,7 @@ The reply comes back as a walkthrough. Optimize and Fix diff your statement agai
 
 ## Per-connection AI rules
 
-Pin plain-text context to a connection so the AI sees it every turn: open the connection's edit form and pick **AI Rules** in the sidebar. Use it for what the schema cannot show, like `Always filter orders by deleted_at IS NULL` or `Never select users.ssn`. The text joins the system prompt and syncs with the connection over iCloud.
+Pin plain-text context to a connection so the AI sees it every turn: open the connection's edit form, select **Options**, and fill in **AI Rules**. Use it for what the schema cannot show, like `Always filter orders by deleted_at IS NULL` or `Never select users.ssn`. The text joins the system prompt and syncs with the connection over iCloud.
 
 ## Inline suggestions
 
@@ -162,4 +162,4 @@ Every message carries a system prompt built from **Settings > AI > Context**, so
 
 Ollama, llama.cpp, and MLX run on your own machine, so nothing reaches a third party. Every other provider is a network call to that vendor under the terms of your account with them.
 
-Per connection, the **Advanced** pane of the connection form sets an AI policy: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**: the chat asks before its first message on a connection, and one **Allow** covers every chat and the inline suggestions on that connection until it disconnects. **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.
+Per connection, **AI Policy** under **Access** on the connection form's **Options** tab takes **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**: the chat asks before its first message on a connection, and one **Allow** covers every chat and the inline suggestions on that connection until it disconnects. **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.

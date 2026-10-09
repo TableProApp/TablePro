@@ -27,7 +27,7 @@ Click **New Connection…**, select **Trino**, enter the coordinator host and po
 | **Username** | The user the query runs as |
 | **Catalog** | Default catalog for unqualified table names. Optional; empty browses every catalog |
 | **Schema** | Default schema. Optional |
-| **Auth Method** | Authentication pane. `Username & Password` or `JWT Access Token` |
+| **Auth Method** | **Authentication** section on General. `Username & Password` or `JWT Access Token` |
 | **Password / Access Token** | The credential the chosen method needs: the account password, or the JWT in **Access Token** |
 | **Time Zone** | Options section. Optional IANA zone (`America/New_York`) for the session |
 
@@ -47,7 +47,7 @@ A password or an access token goes only over TLS, as with the Trino JDBC driver.
 | --- | --- |
 | **Username & Password** | HTTP Basic auth, for LDAP or password-file authentication |
 | **JWT Access Token** | The token as a bearer credential |
-| Client certificate | The **Client Certificate** and **Client Key** from the SSL pane, for mutual TLS. PEM or DER, with an unencrypted RSA or EC (P-256, P-384, P-521) key, and the certificate file may carry its chain. Works with any SSL mode other than Disabled. A key with no certificate is ignored |
+| Client certificate | The **Client Certificate** and **Client Key** on the Network tab, for mutual TLS. PEM or DER, with an unencrypted RSA or EC (P-256, P-384, P-521) key, and the certificate file may carry its chain. Works with any SSL mode other than Disabled. A key with no certificate is ignored |
 
 ## Catalogs, schemas, and tables
 

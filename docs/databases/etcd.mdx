@@ -21,7 +21,7 @@ Click **New Connection…**, select **etcd**, enter host and port, then click **
 | **Port** | Client port, `2379` by default |
 | **Username / Password** | The etcd user to authenticate as. Leave both empty on a server that has no authentication |
 
-### Advanced fields
+### Options tab fields
 
 | Field | Description |
 |-------|-------------|
@@ -45,7 +45,7 @@ etcd://127.0.0.1:2379
 etcds://127.0.0.1:2379
 ```
 
-Both schemes import. Neither switches TLS on by itself; set **TLS Mode** in the Advanced fields.
+Both schemes import. Neither switches TLS on by itself; set **TLS Mode** on the Options tab.
 
 ## Browsing keys
 
@@ -85,7 +85,7 @@ Lease IDs take decimal or hex, and hex is detected by its letters. Prefix an all
 
 ## SSL/TLS
 
-TLS here is set by **TLS Mode** in the Advanced fields, not by the connection's SSL mode, and it starts **Disabled**. **Required (skip verify)** encrypts without checking the certificate, **Verify CA** checks it against the **CA Certificate** you name, and **Verify Identity** adds the hostname check. **Client Certificate** and **Client Key** cover mutual TLS under either verifying mode. See [SSL/TLS](/connections/ssl) for the concepts.
+TLS here is set by **TLS Mode** on the Options tab, not by the connection's SSL mode, and it starts **Disabled**. **Required (skip verify)** encrypts without checking the certificate, **Verify CA** checks it against the **CA Certificate** you name, and **Verify Identity** adds the hostname check. **Client Certificate** and **Client Key** cover mutual TLS under either verifying mode. See [SSL/TLS](/connections/ssl) for the concepts.
 
 The **CA Certificate** may be PEM or DER. **Verify CA** needs one, since it checks no hostname, and a connection without it is refused. **Verify Identity** with no **CA Certificate** checks the system trust store. A file that cannot be read fails the connection rather than falling back to the system trust store.
 
