@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One-time** in place of **Lifetime** for a license with no expiry in Settings > License.
 - **Share usage data** in place of **Share anonymous usage data** in Settings > General, with the report's fields listed.
 
+### Security
+
+- SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607.
+
 ## [0.79.0] - 2026-10-08
 
 SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
