@@ -47,8 +47,9 @@ internal struct GeometryFieldView: View {
         /// container that lands on the picker and the caption, in place of the selected segment.
         .accessibilityElement(children: .contain)
         .onAppear { onTabStopChange?(mode == .text) }
+        /// No reset on disappear: a lazy list unmounts a row scrolled out of view while the field is
+        /// still in the list, and Tab would then stop on a map with nothing to focus.
         .onChange(of: mode) { onTabStopChange?($0 == .text) }
-        .onDisappear { onTabStopChange?(true) }
         /// Runs again when a read starts or ends, so the mode is latched by whichever preview
         /// comes first: the one read during this pass, or the large one read here.
         .task(id: resolution.pending) {
