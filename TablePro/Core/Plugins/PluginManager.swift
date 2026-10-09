@@ -119,7 +119,13 @@ final class PluginManager: ObservableObject {
     /// 35 adds `PluginRowWriteContext.columnTypeNames`, the type each column was read as. A plugin
     /// built against it reads a property a 34 host does not have, so the number moves; an
     /// already-built plugin never reads it, so the minimum stays and no bulk re-release is needed.
-    nonisolated static let currentPluginKitVersion = 35
+    ///
+    /// 36 adds `PluginStatementContext` and the `context:` variants of `execute`,
+    /// `executeParameterized`, `executeUserQuery` and `streamRows`, which tell a driver the host ran
+    /// a statement as a proven read. The defaults forward to the requirements without the context,
+    /// so an already-built plugin keeps loading and runs what it ran before; the minimum stays and no
+    /// bulk re-release is needed.
+    nonisolated static let currentPluginKitVersion = 36
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

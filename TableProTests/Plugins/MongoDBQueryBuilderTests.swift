@@ -9,6 +9,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 struct MongoDBQueryBuilderTests {
     private let builder = MongoDBQueryBuilder()
 
@@ -916,6 +918,12 @@ struct MongoDBQueryBuilderTests {
         #expect(MongoDBQueryBuilder.escapeJsonString("a\r\nb") == "a\\r\\nb")
     }
 
+    @Test("A line break the editor's statement scanner ends a string at is written as an escape")
+    func escapingCoversScannerLineBreaks() {
+        let escaped = MongoDBQueryBuilder.escapeJsonString("a\u{2028}b\u{2029}c\u{85}d")
+        #expect(escaped == "a\\u2028b\\u2029c\\u0085d")
+    }
+
     // MARK: - Raw filter normalization
 
     private static let normalizer = MongoDBRawFilterNormalizer()
@@ -940,13 +948,108 @@ struct MongoDBQueryBuilderTests {
         #expect(find == "db.users.find(\(expected)).limit(200)")
     }
 
-    @Test("A raw filter the shell cannot evaluate is kept as typed")
-    func rawFilterThatFailsToEvaluateIsKeptVerbatim() {
+    @Test("A raw filter the shell cannot evaluate is dropped, never spliced as typed")
+    func rawFilterThatFailsToEvaluateIsDropped() {
         let raw = PluginQueryFilter(
             column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{status: }"
         )
         let doc = normalizingBuilder.buildFilterDocument(from: [raw])
-        #expect(doc == "{\"$and\": [{status: }]}")
+        #expect(doc == MongoDBQueryBuilder.impossibleFilter)
+    }
+
+    @Test("A raw filter row that closes the find call reaches neither the statement nor the count")
+    func rawFilterInjectionIsDropped() {
+        let injection = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW",
+            value: "{}]}).limit(1); db.users.drop(); db.orders.find({\"$and\": [{}"
+        )
+        let status = PluginQueryFilter(column: "status", op: "=", value: "active")
+
+        let find = normalizingBuilder.buildFilteredQuery(collection: "orders", queryFilters: [injection, status])
+        #expect(find == "db.orders.find({\"status\": \"active\"}).limit(200)")
+        let count = normalizingBuilder.buildFilterDocument(from: [injection, status])
+        #expect(count == "{\"status\": \"active\"}")
+        let alone = normalizingBuilder.buildFilteredQuery(collection: "orders", queryFilters: [injection])
+        #expect(alone == "db.orders.find(\(MongoDBQueryBuilder.impossibleFilter)).limit(200)")
+        for statement in [find, count, alone] {
+            #expect(!statement.contains("drop"), "\(statement)")
+        }
+    }
+
+    @Test("A builder with no normalizer drops a raw row rather than splicing its text")
+    func rawFilterWithoutNormalizerIsDropped() {
+        let raw = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{\"status\": \"active\"}"
+        )
+        #expect(builder.buildFilterDocument(from: [raw]) == MongoDBQueryBuilder.impossibleFilter)
+    }
+
+    @Test(
+        "Normalizer output reaches the statement only when it is exactly one JSON object",
+        arguments: [
+            "{}]}); db.users.drop(); ({",
+            "{\"a\": 1}); db.users.drop(); ({",
+            "{\"a\": 1}{\"b\": 2}",
+            "{\"a\": 1} // ",
+            "[{\"a\": 1}]",
+            "\"{}\"",
+            "{a: 1}",
+            "{\"__proto__\": {\"a\": 1}}",
+            "{\"a\": [{\"__proto__\": 1}]}",
+        ]
+    )
+    func normalizerOutputMustBeOneJsonObject(output: String) {
+        let stubbed = MongoDBQueryBuilder(rawFilterNormalizer: { _ in output })
+        let raw = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{a: 1}")
+        let query = stubbed.buildFilteredQuery(collection: "users", queryFilters: [raw])
+        #expect(query == "db.users.find(\(MongoDBQueryBuilder.impossibleFilter)).limit(200)")
+    }
+
+    @Test("Normalizer output that is one JSON object is the row's document")
+    func normalizerOutputThatIsOneObjectIsUsed() {
+        let stubbed = MongoDBQueryBuilder(rawFilterNormalizer: { _ in "{\"a\":{\"$numberInt\":\"1\"}}" })
+        let raw = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{a: 1}")
+        #expect(stubbed.buildFilterDocument(from: [raw]) == "{\"$and\": [{\"a\":{\"$numberInt\":\"1\"}}]}")
+    }
+
+    @Test("A raw row that reassigns the serializer changes neither its own next run nor a later row")
+    func rawFilterCannotRedefineLaterNormalization() {
+        let normalizer = MongoDBRawFilterNormalizer()
+        let isolated = MongoDBQueryBuilder(rawFilterNormalizer: { normalizer.normalize($0) })
+        let poison = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW",
+            value: "{status: (__ejson = function () { return '{\"x\": 1}' }, \"a\")}"
+        )
+        let later = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{n: 1}")
+
+        #expect(isolated.buildFilterDocument(from: [poison]) == "{\"$and\": [{\"status\":\"a\"}]}")
+        #expect(isolated.buildFilterDocument(from: [poison]) == "{\"$and\": [{\"status\":\"a\"}]}")
+        #expect(isolated.buildFilterDocument(from: [later]) == "{\"$and\": [{\"n\":{\"$numberInt\":\"1\"}}]}")
+    }
+
+    @Test("UUID, legacy UUID and HexData rows normalize to the binary the shell sends")
+    func rawFilterBinaryConstructorsNormalize() {
+        let uuid = "3b241101-e2bb-4255-8caf-4136c566a962"
+        let expected = [
+            "{ref: UUID(\"\(uuid)\")}":
+                "{\"ref\":{\"$binary\":{\"base64\":\"OyQRAeK7QlWMr0E2xWapYg==\",\"subType\":\"04\"}}}",
+            "{ref: LegacyJavaUUID(\"\(uuid)\")}":
+                "{\"ref\":{\"$binary\":{\"base64\":\"VUK74gERJDtiqWbFNkGvjA==\",\"subType\":\"03\"}}}",
+            "{blob: HexData(0, \"00ff\")}":
+                "{\"blob\":{\"$binary\":{\"base64\":\"AP8=\",\"subType\":\"00\"}}}",
+        ]
+        for (row, document) in expected {
+            let raw = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: row)
+            #expect(normalizingBuilder.buildFilterDocument(from: [raw]) == "{\"$and\": [\(document)]}", "\(row)")
+        }
+    }
+
+    @Test("A normalized raw row keeps line breaks the statement scanner splits on as escapes")
+    func rawFilterLineBreaksAreEscaped() {
+        let raw = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{name: \"a\\u2028b\\u0085c\"}"
+        )
+        #expect(normalizingBuilder.buildFilterDocument(from: [raw]) == "{\"$and\": [{\"name\":\"a\\u2028b\\u0085c\"}]}")
     }
 
     @Test("The normalizer serializes dates and regex literals the way the shell does")
@@ -957,5 +1060,167 @@ struct MongoDBQueryBuilderTests {
         #expect(normalized == expected)
         #expect(Self.normalizer.normalize("{}") == "{}")
         #expect(Self.normalizer.normalize("{_id: ObjectId()}") == nil)
+        #expect(Self.normalizer.normalize("{ref: UUID()}") == nil)
+        #expect(Self.normalizer.normalize("{blob: HexData(0, \"0g\")}") == nil)
+    }
+}
+
+/// A table tab, its count and a collection export run what the builder writes, and the plugin
+/// refuses writes only for a statement the classifier proves a read.
+struct MongoDBQueryBuilderReadTierTests {
+    private static let normalizer = MongoDBRawFilterNormalizer()
+    private static let uuid = "3b241101-e2bb-4255-8caf-4136c566a962"
+    private static let collections = ["orders", "stats", "logs.2024.06", "say\"hi\\bye", "tên", "__proto__"]
+
+    private var builder: MongoDBQueryBuilder {
+        MongoDBQueryBuilder(
+            columnKinds: ["createdAt": .date, "price": .decimal128, "owner": .objectId, "name": .string],
+            rawFilterNormalizer: { Self.normalizer.normalize($0) }
+        )
+    }
+
+    private func raw(_ document: String) -> PluginQueryFilter {
+        PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: document)
+    }
+
+    private func scoped(_ column: String, _ op: String, _ value: String) -> PluginQueryFilter {
+        PluginQueryFilter(column: column, op: op, value: value, secondValue: nil, elementScope: "items")
+    }
+
+    private var filters: [PluginQueryFilter] {
+        [
+            PluginQueryFilter(column: "name", op: "=", value: "Alice"),
+            PluginQueryFilter(column: "status", op: "=", value: "Active", isCaseSensitive: false),
+            PluginQueryFilter(column: "ref", op: "=", value: "507f1f77bcf86cd799439011"),
+            PluginQueryFilter(column: "ref", op: "!=", value: "507f1f77bcf86cd799439011"),
+            PluginQueryFilter(column: "note", op: "!=", value: "x", isCaseSensitive: false),
+            PluginQueryFilter(column: "owner", op: "=", value: "507f1f77bcf86cd799439011"),
+            PluginQueryFilter(column: "key", op: "=", value: "UUID(\"\(Self.uuid)\")"),
+            PluginQueryFilter(column: "age", op: ">", value: "30"),
+            PluginQueryFilter(column: "age", op: ">=", value: "-1.5e3"),
+            PluginQueryFilter(column: "createdAt", op: "<", value: "2024-01-02T00:00:00Z"),
+            PluginQueryFilter(column: "price", op: "<=", value: "9.99"),
+            PluginQueryFilter(column: "name", op: "CONTAINS", value: "a.b\"c\\d/e"),
+            PluginQueryFilter(column: "name", op: "NOT CONTAINS", value: "x", isCaseSensitive: false),
+            PluginQueryFilter(column: "name", op: "STARTS WITH", value: "Al"),
+            PluginQueryFilter(column: "name", op: "ENDS WITH", value: "ce"),
+            PluginQueryFilter(column: "deletedAt", op: "IS NULL", value: ""),
+            PluginQueryFilter(column: "deletedAt", op: "IS NOT NULL", value: ""),
+            PluginQueryFilter(column: "name", op: "IS EMPTY", value: ""),
+            PluginQueryFilter(column: "name", op: "IS NOT EMPTY", value: ""),
+            PluginQueryFilter(column: "name", op: "REGEX", value: "^a[/]b$"),
+            PluginQueryFilter(column: "tag", op: "IN", value: "a, 2, true, null, 507f1f77bcf86cd799439011"),
+            PluginQueryFilter(column: "tag", op: "NOT IN", value: "a, b, UUID(\"\(Self.uuid)\")", isCaseSensitive: false),
+            PluginQueryFilter(column: "age", op: "BETWEEN", value: "18,65", secondValue: "65", elementScope: nil),
+            scoped("items.sku", "=", "A100"),
+            scoped("items.qty", ">", "2"),
+            PluginQueryFilter(column: "multi\nline\tkey", op: "=", value: "tab\there\u{1}"),
+            PluginQueryFilter(column: "name", op: "=", value: "a\u{2028})})\u{2028}x"),
+            PluginQueryFilter(column: "note\u{85})})\u{85}y", op: "CONTAINS", value: "b\u{2029}"),
+            raw("{status: 'active', _id: ObjectId(\"507f1f77bcf86cd799439011\")}"),
+            raw("{at: ISODate(\"2024-01-02T00:00:00Z\"), name: /^bo/i}"),
+            raw("{ref: LegacyJavaUUID(\"\(Self.uuid)\")}"),
+            raw("{blob: HexData(0, \"00ff\")}"),
+            raw("{name: \"a\\u2028)]})\\u2028x\"}"),
+            raw("{}]}).limit(1); db.users.drop(); db.orders.find({\"$and\": [{}"),
+            raw("{}"),
+        ]
+    }
+
+    private func expectProvenRead(_ statement: String) {
+        #expect(QueryClassifier.classifyTier(statement, databaseType: .mongodb) == .safe, "\(statement)")
+    }
+
+    @Test("A sorted, paged browse is a proven read")
+    func browseIsProvenRead() {
+        for collection in Self.collections {
+            expectProvenRead(builder.buildBaseQuery(collection: collection))
+            expectProvenRead(builder.buildBaseQuery(
+                collection: collection,
+                sortColumns: [(columnIndex: 0, ascending: true), (columnIndex: 1, ascending: false)],
+                columns: ["name", "multi\nline"],
+                limit: 50,
+                offset: 100
+            ))
+        }
+    }
+
+    @Test("Every filter row, alone and combined under either logic mode, browses as a proven read")
+    func filteredBrowseIsProvenRead() {
+        let combined = builder.buildFilteredQuery(collection: "orders", queryFilters: filters)
+        #expect(combined.contains("$elemMatch"))
+        #expect(combined.contains("{\"blob\":{\"$binary\""))
+
+        for collection in Self.collections {
+            for mode in ["and", "or"] {
+                expectProvenRead(builder.buildFilteredQuery(
+                    collection: collection,
+                    queryFilters: filters,
+                    logicMode: mode,
+                    sortColumns: [(columnIndex: 0, ascending: false)],
+                    columns: ["name"],
+                    limit: 100,
+                    offset: 300
+                ))
+                for filter in filters {
+                    expectProvenRead(builder.buildFilteredQuery(
+                        collection: collection, queryFilters: [filter], logicMode: mode
+                    ))
+                }
+            }
+        }
+    }
+
+    @Test("The count query over the same filters is a proven read")
+    func countIsProvenRead() {
+        for collection in Self.collections {
+            expectProvenRead(builder.buildCountQuery(collection: collection))
+            for mode in ["and", "or"] {
+                let filter = builder.buildFilterDocument(from: filters, logicMode: mode)
+                expectProvenRead(builder.buildCountQuery(collection: collection, filterJson: filter))
+            }
+        }
+    }
+
+    @Test("The collection export query is a proven read")
+    func exportIsProvenRead() {
+        for collection in Self.collections {
+            expectProvenRead(MongoDBQueryBuilder().buildExportQuery(collection: collection))
+        }
+    }
+
+    /// An MCP client names filter columns freely, and a browse that is not a proven read runs with the
+    /// shell allowed to write.
+    @Test(
+        "A filter or sort on an operator-like field name builds no condition and stays a proven read",
+        arguments: ["$out", "$merge", "$where", "__proto__"]
+    )
+    func operatorLikeFieldNamesStayProvenReads(field: String) {
+        let filters = [
+            PluginQueryFilter(column: field, op: "=", value: "x"),
+            PluginQueryFilter(column: "items.qty", op: ">", value: "2", secondValue: nil, elementScope: field),
+        ]
+        for filter in filters {
+            let statement = builder.buildFilteredQuery(
+                collection: "users",
+                queryFilters: [filter],
+                sortColumns: [(columnIndex: 0, ascending: true)],
+                columns: [field],
+                limit: 100,
+                offset: 0
+            )
+            expectProvenRead(statement)
+            #expect(!statement.contains("\"\(field)\""), "\(statement)")
+        }
+    }
+
+    @Test(
+        "A raw filter row holding a writing stage key builds no condition",
+        arguments: [#"{"x": {"$out": 1}}"#, #"{"$merge": "copy"}"#, #"{"a": [{"b": {"$out": "c"}}]}"#]
+    )
+    func rawRowWithWritingStageKeyIsDropped(document: String) {
+        let statement = builder.buildFilteredQuery(collection: "users", queryFilters: [raw(document)])
+        expectProvenRead(statement)
+        #expect(statement.contains(MongoDBQueryBuilder.impossibleFilter))
     }
 }

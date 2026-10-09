@@ -65,7 +65,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
         if let customQuery = pluginDriver.defaultExportQuery(table: table, schema: exportSchema(for: databaseName)) {
-            return pluginDriver.streamRows(query: customQuery)
+            // A table export only reads, whatever the statement the driver chose classifies as.
+            var context = PluginStatementContext()
+            context.readOnly = true
+            return pluginDriver.streamRows(query: customQuery, context: context)
         }
         let query = leadingRowsQuery(
             columns: "*",

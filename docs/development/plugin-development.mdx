@@ -13,7 +13,7 @@ A plugin is a macOS loadable bundle target with `WRAPPER_EXTENSION = tableplugin
 
 | Key | Type | Required | Purpose |
 |-----|------|----------|---------|
-| `TableProPluginKitVersion` | integer | Yes | The PluginKit ABI the plugin was built against. Current value: 35 |
+| `TableProPluginKitVersion` | integer | Yes | The PluginKit ABI the plugin was built against. Current value: 36 |
 | `TableProProvidesDatabaseTypeIds` | array of strings | Recommended | Database type IDs the plugin serves, which is what makes lazy loading possible |
 | `CFBundleShortVersionString` | string | Yes | Plugin version, read by registry update checks |
 | `TableProMinAppVersion` | string | No | The loader rejects the plugin on an older app |
@@ -67,6 +67,7 @@ These defaults are worth a second look before you accept them:
 - `sessionTransactionState()` answers `.unknown`, and a driver that cannot read its session leaves it there. The app treats `.idle` as permission to open a transaction of its own, so a guess hands a multi-statement batch or a grid save the power to commit work the user has not finished. Answer `.inTransaction`, `.abortedTransaction` or `.holdsSessionLocks` only from something the server said.
 - `fetchAllColumns(schema:)` and `fetchAllForeignKeys(schema:)` loop one round-trip per table. Any SQL driver should replace them with a single catalog query.
 - `quoteIdentifier`, `escapeStringLiteral`, `executeParameterized`, and `streamRows` assume generic SQL.
+- The app calls the `context:` variants of `execute`, `executeParameterized`, `executeUserQuery` and `streamRows`, and the defaults forward to the plain ones. `context.readOnly` is true when the app ran the statement as a proven read, skipping Safe Mode's write confirmation. A driver whose statements can do more than their text shows, such as one that evaluates a script with state, implements the variants and refuses every write while `readOnly` is set.
 - A non-SQL database implements `buildBrowseQuery`, `buildFilteredQuery`, and `generateRowWrites` instead, which is what makes browsing and editing work without SQL. Implement the `schema:`-aware overloads if your database has schemas; the schema-less defaults throw the schema away.
 - Name the `rowIndex` of every change a `PluginRowWrite` writes, and throw `PluginRowWriteRefusal` with a reason for a change, or a value in one, that the driver cannot write. The app refuses a save in which a pending change has no statement, but it cannot see a value left out of one, so only the driver can refuse that.
 - A database whose tables are not a list of typed columns returns a `PluginCreateTableFormSpec` from `createTableFormSpec(schema:)` and turns the filled-in form into statements in `createTableStatements(for:schema:)`. **New Table…** then shows that form in place of the column grid. The default returns `nil`, which keeps the grid.

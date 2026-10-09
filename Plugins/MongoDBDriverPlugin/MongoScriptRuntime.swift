@@ -69,7 +69,8 @@ final class MongoScriptRuntime: @unchecked Sendable {
     func evaluate(
         statement: String,
         database: String,
-        valueCeiling: Int
+        valueCeiling: Int,
+        access: MongoScriptAccess
     ) async throws -> MongoScriptStatementResult {
         let engine = try engine(startingAt: database, valueCeiling: valueCeiling)
         connection.beginScriptRun()
@@ -82,7 +83,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
             engine.queue.async {
                 gate.finish(with: Result {
                     do {
-                        return try self.run(statement, on: engine)
+                        return try self.run(statement, access: access, on: engine)
                     } catch {
                         throw MongoScriptStatementFailure.carrying(
                             error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
@@ -145,14 +146,18 @@ final class MongoScriptRuntime: @unchecked Sendable {
     /// plan and page through the collection. Anything else has already run by the time we know
     /// that, and running it a second time would repeat a write, so its result is handed back
     /// instead of re-executed.
-    func exportPlan(for statement: String, database: String) async throws -> MongoScriptExport {
+    func exportPlan(
+        for statement: String,
+        database: String,
+        access: MongoScriptAccess
+    ) async throws -> MongoScriptExport {
         let engine = try engine(startingAt: database, valueCeiling: PluginRowLimits.emergencyMax)
         connection.beginScriptRun()
         return try await withCheckedThrowingContinuation { continuation in
             engine.queue.async {
                 continuation.resume(with: Result {
                     do {
-                        return try self.runForExport(statement, on: engine)
+                        return try self.runForExport(statement, access: access, on: engine)
                     } catch {
                         throw MongoScriptStatementFailure.carrying(
                             error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
@@ -163,8 +168,13 @@ final class MongoScriptRuntime: @unchecked Sendable {
         }
     }
 
-    private func runForExport(_ statement: String, on engine: Engine) throws -> MongoScriptExport {
-        engine.host.beginStatement()
+    private func runForExport(
+        _ statement: String,
+        access: MongoScriptAccess,
+        on engine: Engine
+    ) throws -> MongoScriptExport {
+        engine.host.beginStatement(access: access)
+        defer { engine.host.endStatement() }
         engine.context.exception = nil
 
         let value = engine.context.evaluateScript(statement)
@@ -235,11 +245,26 @@ final class MongoScriptRuntime: @unchecked Sendable {
         let current = engine.flatMap { $0.isPoisoned ? nil : $0 }
         lock.unlock()
         guard let current else { return }
-        current.queue.sync {
-            guard current.host.database != database else { return }
+        let rebound: Bool = current.queue.sync {
+            guard current.host.database != database else { return true }
+            // `reset` leaves the host refusing writes, and `DB` is a global an earlier statement can
+            // have redefined.
             current.host.reset(database: database, valueCeiling: current.host.valueCeiling)
+            current.context.exception = nil
             current.context.evaluateScript("db = new DB(\(MongoScriptJson.jsonString(database)));")
+            guard current.context.exception == nil else {
+                current.context.exception = nil
+                return false
+            }
+            return true
         }
+        guard !rebound else { return }
+        // A shell whose `db` still names the old database would send the next write there while the
+        // app shows the new one, so the next statement starts a clean shell instead.
+        Self.logger.warning("Rebinding the shell's db failed; the next statement starts a new shell")
+        lock.lock()
+        if engine === current { engine = nil }
+        lock.unlock()
     }
 
     private func makeEngine(database: String, valueCeiling: Int, generation: Int) throws -> Engine {
@@ -272,8 +297,14 @@ final class MongoScriptRuntime: @unchecked Sendable {
 
     // MARK: - One Statement
 
-    private func run(_ statement: String, on engine: Engine) throws -> MongoScriptStatementResult {
-        engine.host.beginStatement()
+    private func run(
+        _ statement: String,
+        access: MongoScriptAccess,
+        on engine: Engine
+    ) throws -> MongoScriptStatementResult {
+        engine.host.beginStatement(access: access)
+        // Closes on every exit, a throw included, so nothing that runs between statements can write.
+        defer { engine.host.endStatement() }
         engine.context.exception = nil
 
         let value = engine.context.evaluateScript(statement)

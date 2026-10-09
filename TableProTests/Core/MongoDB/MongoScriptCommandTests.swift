@@ -161,6 +161,50 @@ struct MongoScriptCursorOptionsTests {
         try options.apply(key: "maxTimeMS", value: "500")
         #expect(options.findOptionsJson(limit: 10, timeoutMS: 3_000).contains("\"maxTimeMS\": 500"))
     }
+
+    @Test("A count appends the cursor's paging and a $count stage, and leaves its sort out")
+    func countedPipelineKeepsThePaging() throws {
+        var options = MongoScriptCursorOptions.none
+        try options.apply(key: "sort", value: #"{"a":1}"#)
+        try options.apply(key: "skip", value: "5")
+        try options.apply(key: "limit", value: "10")
+        #expect(options.countedPipeline(#"[{"$match":{}}]"#)
+            == #"[{"$match":{}},{"$skip": 5},{"$limit": 10},{"$count": "n"}]"#)
+    }
+
+    @Test("An empty pipeline is counted whole")
+    func emptyPipelineIsCountedWhole() {
+        #expect(MongoScriptCursorOptions.none.countedPipeline("[]") == #"[{"$count": "n"}]"#)
+        #expect(MongoScriptCursorOptions.none.countedPipeline(" [ ] ") == #"[{"$count": "n"}]"#)
+    }
+
+    @Test("A pipeline that is not an array gets no $count stage")
+    func nonArrayPipelineIsNotCounted() {
+        #expect(MongoScriptCursorOptions.none.countedPipeline(#"{"pipeline": []}"#) == nil)
+    }
+
+    @Test("The count goes out with the cursor's options but not its paging, so nothing follows $count")
+    func countingOptionsDropThePaging() throws {
+        var options = MongoScriptCursorOptions.none
+        let modifiers = [
+            ("sort", #"{"a":1}"#), ("skip", "5"), ("limit", "10"), ("hint", #"{"a":1}"#),
+            ("collation", #"{"locale":"fr"}"#), ("allowDiskUse", "true"), ("maxTimeMS", "50"), ("batchSize", "7")
+        ]
+        for (key, value) in modifiers {
+            try options.apply(key: key, value: value)
+        }
+        let counted = try #require(options.countedPipeline("[]"))
+        #expect(options.countingOptions.decoratedPipeline(counted) == counted)
+        #expect(options.countingOptions.aggregateOptionsJson(timeoutMS: 0) == options.aggregateOptionsJson(timeoutMS: 0))
+    }
+
+    @Test("$count returns no document for an empty result, which counts as zero")
+    func countedTotalReadsTheReply() {
+        #expect(MongoScriptCursorOptions.countedTotal([]) == 0)
+        #expect(MongoScriptCursorOptions.countedTotal([#"{"n": {"$numberInt": "1500"}}"#]) == 1_500)
+        #expect(MongoScriptCursorOptions.countedTotal([#"{"n": 6000000}"#]) == 6_000_000)
+        #expect(MongoScriptCursorOptions.countedTotal([#"{"n": {"$numberLong": "9000000000"}}"#]) == 9_000_000_000)
+    }
 }
 
 struct MongoScriptCommandBuilderTests {
@@ -371,6 +415,37 @@ struct MongoScriptCommandBuilderTests {
         #expect(throws: MongoScriptError.self) {
             try MongoScriptCommandBuilder.bulkOperation("{\"upsertAll\": {}}", collection: "orders", writeConcern: nil)
         }
+    }
+
+    @Test("A bulk write with no filter, or no update, is refused rather than sent as {}")
+    func bulkOperationNeedsItsDocuments() {
+        let operations = [
+            (#"{"deleteMany": {"filtr": {"a": 1}}}"#, "filter"),
+            (#"{"deleteOne": {}}"#, "filter"),
+            (#"{"deleteMany": {"filter": null}}"#, "filter"),
+            (#"{"updateMany": {"update": {"$set": {"b": 2}}}}"#, "filter"),
+            (#"{"updateOne": {"filter": {"a": 1}}}"#, "update"),
+            (#"{"updateOne": {"filter": {"a": 1}, "update": null}}"#, "update"),
+            (#"{"replaceOne": {"filter": {"a": 1}}}"#, "replacement")
+        ]
+        for (operation, missing) in operations {
+            #expect(throws: MongoScriptError(MongoScriptText.missingArgument(missing)), "\(operation)") {
+                try MongoScriptCommandBuilder.bulkOperation(operation, collection: "orders", writeConcern: nil)
+            }
+        }
+    }
+
+    @Test("A bulk write given {} as its filter still means every document")
+    func bulkOperationKeepsAnExplicitEmptyFilter() throws {
+        let delete = try MongoScriptCommandBuilder.bulkOperation(
+            #"{"deleteMany": {"filter": {}}}"#, collection: "orders", writeConcern: nil
+        )
+        #expect(delete.document.contains(#""q": {}"#))
+        let replace = try MongoScriptCommandBuilder.bulkOperation(
+            #"{"replaceOne": {"filter": {}, "replacement": {"a": 1}}}"#, collection: "orders", writeConcern: nil
+        )
+        #expect(replace.document.contains(#""q": {}"#))
+        #expect(replace.document.contains(#""u": {"a": 1}"#))
     }
 }
 

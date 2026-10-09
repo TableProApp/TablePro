@@ -22,7 +22,7 @@ struct MongoDBQueryBuilder {
     let columnKinds: [String: BsonValueKind]
 
     /// Rewrites a raw filter row into canonical Extended JSON, so `find` and `countDocuments`
-    /// receive the same document. Without one the row's text is used as typed.
+    /// receive the same document. Without one, raw filter rows are dropped.
     let rawFilterNormalizer: (@Sendable (String) -> String?)?
 
     init(
@@ -159,12 +159,60 @@ struct MongoDBQueryBuilder {
     /// The row's text is a whole filter document. `{}` is left to stand: it is MongoDB's own
     /// spelling for "match everything", so refusing it would invert what the user asked for.
     /// It is wrapped rather than returned bare so it can be combined with the other rows.
+    ///
+    /// The statement runs as JavaScript, so the row's own text never reaches it: a row could close
+    /// the call and run anything. Only normalized output that is exactly one JSON object does.
     private func rawFilterClause(for filter: PluginQueryFilter) -> MongoDBFilterClause? {
         guard filter.column == Self.rawFilterColumn else { return nil }
         let trimmed = filter.value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else { return nil }
-        let document = rawFilterNormalizer?(trimmed) ?? trimmed
-        return MongoDBFilterClause(key: "$and", body: "[\(document)]")
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}"),
+              let document = rawFilterNormalizer?(trimmed),
+              Self.isPlainJsonObject(document) else { return nil }
+        return MongoDBFilterClause(key: "$and", body: "[\(Self.escapingStringOnlyBreaks(document))]")
+    }
+
+    /// `JSON.stringify` leaves U+0085, U+2028 and U+2029 raw, and the editor's statement scanner
+    /// splits a statement there. JSON allows them only inside a string, where an escape means the same.
+    private static func escapingStringOnlyBreaks(_ json: String) -> String {
+        var result = String.UnicodeScalarView()
+        for scalar in json.unicodeScalars {
+            if scalar.value >= 0x7F, let escape = MongoScriptJson.lineBreakingEscape(scalar) {
+                result.append(contentsOf: escape.unicodeScalars)
+            } else {
+                result.append(scalar)
+            }
+        }
+        return String(result)
+    }
+
+    private static func isPlainJsonObject(_ text: String) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
+            return false
+        }
+        return !containsUnreadableKey(object)
+    }
+
+    /// Keys that keep a browse from being a proven read, which is what lets the driver refuse a write
+    /// while it runs: JavaScript reads a `__proto__` key as the prototype, so `find` would drop a field
+    /// `countDocuments` keeps, and `$out` or `$merge` anywhere reads as a writing stage.
+    private static let unreadableKeys: Set<String> = ["__proto__", "$out", "$merge"]
+
+    private static func containsUnreadableKey(_ value: Any) -> Bool {
+        if let object = value as? [String: Any] {
+            return object.keys.contains(where: unreadableKeys.contains)
+                || object.values.contains(where: containsUnreadableKey)
+        }
+        if let array = value as? [Any] {
+            return array.contains(where: containsUnreadableKey)
+        }
+        return false
+    }
+
+    /// A name that filters or sorts as a plain field. One that starts with `$` reads as an operator
+    /// rather than a field, and `__proto__` as the prototype, so neither builds a condition; a filter
+    /// column comes from an MCP client as well as the grid.
+    static func isPlainFieldName(_ name: String) -> Bool {
+        !name.hasPrefix("$") && name != "__proto__"
     }
 
     /// One `$elemMatch` per array prefix. Every condition is re-keyed to its path relative to the
@@ -177,6 +225,7 @@ struct MongoDBQueryBuilder {
         filters: [PluginQueryFilter],
         logicMode: String
     ) -> MongoDBFilterClause? {
+        guard Self.isPlainFieldName(scope) else { return nil }
         let inner = filters.compactMap { filter -> MongoDBFilterClause? in
             buildClause(for: filter, field: Self.relativePath(filter.column, under: scope))
         }
@@ -207,6 +256,7 @@ struct MongoDBQueryBuilder {
     }
 
     private func buildClause(for filter: PluginQueryFilter, field rawField: String) -> MongoDBFilterClause? {
+        guard Self.isPlainFieldName(rawField), Self.isPlainFieldName(filter.column) else { return nil }
         let kind = columnKinds[filter.column]
         let field = Self.escapeJsonString(rawField)
         let ignoresCase = !filter.isCaseSensitive && MongoDBFilterValue.supportsRegexMatching(kind)
@@ -325,7 +375,8 @@ struct MongoDBQueryBuilder {
         guard !sortColumns.isEmpty else { return nil }
 
         let parts = sortColumns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
+            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count,
+                  Self.isPlainFieldName(columns[sortCol.columnIndex]) else { return nil }
             let columnName = Self.escapeJsonString(columns[sortCol.columnIndex])
             let direction = sortCol.ascending ? 1 : -1
             return "\"\(columnName)\": \(direction)"
@@ -386,6 +437,8 @@ struct MongoDBQueryBuilder {
         return MongoDBFilterClause(key: logicOp, body: "[\(clauses.joined(separator: ", "))]")
     }
 
+    /// The editor's statement scanner ends a string at U+0085, U+2028 and U+2029 where JavaScript
+    /// reads on, so a raw one can split a built statement and it no longer classifies as a read.
     static func escapeJsonString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity((value as NSString).length)
@@ -393,12 +446,9 @@ struct MongoDBQueryBuilder {
             switch scalar {
             case "\\": result += "\\\\"
             case "\"": result += "\\\""
-            case "\n": result += "\\n"
-            case "\r": result += "\\r"
-            case "\t": result += "\\t"
             default:
-                if scalar.value < 0x20 {
-                    result += String(format: "\\u%04X", scalar.value)
+                if let escape = MongoScriptJson.lineBreakingEscape(scalar) {
+                    result += escape
                 } else {
                     result.unicodeScalars.append(scalar)
                 }

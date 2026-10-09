@@ -360,14 +360,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func execute(query: String) async throws -> QueryResult {
         try StatementTextValidator.validate(query)
-        let pluginResult = try await pluginDriver.execute(query: query)
+        let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query))
         return mapQueryResult(pluginResult)
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
         try StatementTextValidator.validate(query)
         let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
-        let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
+        let pluginResult = try await pluginDriver.executeParameterized(
+            query: query,
+            parameters: cellParams,
+            context: statementContext(query)
+        )
         return mapQueryResult(pluginResult)
     }
 
@@ -382,7 +386,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let pluginResult = try await pluginDriver.executeUserQuery(
             query: query,
             rowCap: rowCap,
-            parameters: cellParams
+            parameters: cellParams,
+            context: statementContext(query)
         )
         return mapQueryResult(pluginResult)
     }
@@ -391,7 +396,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         if let error = StatementTextValidator.error(for: query) {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        return pluginDriver.streamRows(query: query)
+        return pluginDriver.streamRows(query: query, context: statementContext(query))
+    }
+
+    private func statementContext(_ query: String) -> PluginStatementContext {
+        .statement(query, databaseType: connection.type)
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {

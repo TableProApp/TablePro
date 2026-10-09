@@ -72,12 +72,45 @@ struct MongoScriptCursorOptions: Equatable, Sendable {
     func decoratedPipeline(_ pipeline: String) -> String {
         var stages: [String] = []
         if let sort { stages.append("{\"$sort\": \(sort)}") }
+        stages += pagingStages
+        guard !stages.isEmpty else { return pipeline }
+        return Self.appending(stages, to: pipeline) ?? pipeline
+    }
+
+    static let countedField = "n"
+
+    /// The pipeline counted on the server: its paging, then a `$count` stage. The sort is left out,
+    /// since it cannot change how many documents there are. Nil when the pipeline is not an array a
+    /// stage can be appended to.
+    func countedPipeline(_ pipeline: String) -> String? {
+        Self.appending(pagingStages + ["{\"$count\": \"\(Self.countedField)\"}"], to: pipeline)
+    }
+
+    /// The options a count of `countedPipeline` runs with. Its paging is already in the pipeline, and
+    /// `decoratedPipeline` must not append it again after the `$count`.
+    var countingOptions: MongoScriptCursorOptions {
+        var options = self
+        options.sort = nil
+        options.skip = nil
+        options.limit = nil
+        return options
+    }
+
+    /// `$count` returns no document at all when nothing matched.
+    static func countedTotal(_ documents: [String]) -> Int64 {
+        documents.first.flatMap { MongoScriptJson.number(in: $0, key: countedField) } ?? 0
+    }
+
+    private var pagingStages: [String] {
+        var stages: [String] = []
         if let skip, skip > 0 { stages.append("{\"$skip\": \(skip)}") }
         if let limit, limit > 0 { stages.append("{\"$limit\": \(limit)}") }
-        guard !stages.isEmpty else { return pipeline }
+        return stages
+    }
 
+    private static func appending(_ stages: [String], to pipeline: String) -> String? {
         let trimmed = pipeline.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("["), trimmed.hasSuffix("]") else { return pipeline }
+        guard trimmed.hasPrefix("["), trimmed.hasSuffix("]") else { return nil }
         let inner = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         let appended = stages.joined(separator: ",")
         return inner.isEmpty ? "[\(appended)]" : "[\(inner),\(appended)]"

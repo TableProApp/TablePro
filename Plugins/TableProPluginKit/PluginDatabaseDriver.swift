@@ -86,7 +86,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult
 
+    /// The same statement with what the host decided about it. This is what the host calls. The default ignores the
+    /// context and runs the requirement above, so a driver built before it runs exactly what it ran before.
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult
+
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
+
+    /// The same statement with what the host decided about it. This is what the host calls; the default forwards to
+    /// the requirement above.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult
 
     /// Runs a read and stops once `rowCap` rows are known to be exceeded, instead of materializing
     /// the whole result and discarding the tail. Optional: return nil when the driver cannot bound
@@ -288,6 +301,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// edited as text.
     func fetchDocument(table: String, schema: String?, locator: String) async throws -> String?
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
+
+    /// The same statement with what the host decided about it. This is what the host calls; the default forwards to
+    /// the requirement above.
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
@@ -622,6 +643,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
+
+    /// The same stream with what the host decided about the statement. This is what the host calls; the default
+    /// forwards to the requirement above.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error>
 }
 
 public extension PluginDatabaseDriver {
@@ -1236,6 +1261,31 @@ public extension PluginDatabaseDriver {
             rowCap: rowCap,
             startedAt: Date()
         )
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await execute(query: query)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeParameterized(query: query, parameters: parameters)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

@@ -20,6 +20,9 @@ final class MongoScriptHost {
     private var activity = Date()
     private var cancelled = false
     private var ledger = MongoWriteLedger()
+    /// Closed between statements, so JavaScript that runs outside one, such as a rebind's `new DB`,
+    /// cannot write. Only touched on the engine's queue.
+    private var access = MongoScriptAccess.read
     private(set) var database: String
     private(set) var printedLines: [String] = []
     private(set) var databaseSwitch: String?
@@ -89,7 +92,8 @@ final class MongoScriptHost {
     ///
     /// Cursors are pruned rather than dropped: a shell lets you keep one in a variable and read it
     /// in the next statement, so only the oldest go, and only past the ceiling.
-    func beginStatement() {
+    func beginStatement(access: MongoScriptAccess) {
+        self.access = access
         cursors.prune(keeping: Self.retainedCursors)
         printedLines.removeAll()
         databaseSwitch = nil
@@ -100,11 +104,16 @@ final class MongoScriptHost {
         touch()
     }
 
+    func endStatement() {
+        access = .read
+    }
+
     func prepare(valueCeiling: Int) {
         self.valueCeiling = valueCeiling
     }
 
     func reset(database: String, valueCeiling: Int) {
+        access = .read
         cursors.removeAll()
         printedLines.removeAll()
         databaseSwitch = nil
@@ -157,6 +166,11 @@ final class MongoScriptHost {
     }
 
     private func perform(op: String, request: [String: Any]) throws -> String {
+        guard MongoScriptAccessPolicy.allows(op: op, request: request, access: access) else {
+            throw MongoScriptError(
+                MongoScriptText.refusedUnderRead(MongoScriptAccessPolicy.refusedName(op: op, request: request))
+            )
+        }
         switch op {
         case "currentDatabase": return MongoScriptJson.jsonString(database)
         case "useDatabase": return try useDatabase(request)
@@ -277,10 +291,7 @@ final class MongoScriptHost {
             throw MongoScriptError(MongoScriptText.unknownCursor)
         }
         let cursor = try cursors.cursor(for: handle)
-        guard cursor.isFind else {
-            let drained = try cursor.remaining { try load($0, ceiling: iterationCeiling) }
-            return String(drained.json.count)
-        }
+        guard cursor.isFind else { return try countAggregate(cursor) }
         let reply = try withClient {
             try connection.scriptRunCommand(
                 client: $0,
@@ -307,13 +318,37 @@ final class MongoScriptHost {
             : MongoScriptCommandBuilder.aggregate(
                 collection: cursor.collection, pipeline: cursor.pipelineJson, options: cursor.options
             )
+        let command = "{\"explain\": \(inner), \"verbosity\": \(MongoScriptJson.jsonString(verbosity))}"
+        if access == .read, MongoScriptAccessPolicy.writesThroughPipeline(command) {
+            throw MongoScriptError(MongoScriptText.refusedWritingPipelineUnderRead)
+        }
         return try withClient {
-            try connection.scriptRunCommand(
+            try connection.scriptRunCommand(client: $0, command: command, database: cursor.database)
+        }
+    }
+
+    /// Counted on the server, so the answer is the whole result however far the script has read and
+    /// however large it is. Nothing can follow `$out` or `$merge`, so such a pipeline is drained.
+    private func countAggregate(_ cursor: MongoScriptCursor) throws -> String {
+        let decorated = cursor.options.decoratedPipeline(cursor.pipelineJson)
+        guard !MongoScriptAccessPolicy.writesThroughPipeline(decorated),
+              let counted = cursor.options.countedPipeline(cursor.pipelineJson) else {
+            let drained = try cursor.remaining { try load($0, ceiling: iterationCeiling) }
+            return String(drained.json.count)
+        }
+        let options = cursor.options.countingOptions
+        try refuseWritingAggregate(pipeline: counted, options: options)
+        let batch = try withClient {
+            try connection.scriptAggregate(
                 client: $0,
-                command: "{\"explain\": \(inner), \"verbosity\": \(MongoScriptJson.jsonString(verbosity))}",
-                database: cursor.database
+                database: cursor.database,
+                collection: cursor.collection,
+                pipeline: counted,
+                options: options,
+                limit: 1
             )
         }
+        return String(MongoScriptCursorOptions.countedTotal(batch.json))
     }
 
     private func closeCursor(_ request: [String: Any]) -> String {
@@ -335,7 +370,10 @@ final class MongoScriptHost {
     }
 
     private func load(_ cursor: MongoScriptCursor, ceiling: Int) throws -> MongoScriptDocumentBatch {
-        try withClient { client in
+        if !cursor.isFind {
+            try refuseWritingAggregate(pipeline: cursor.pipelineJson, options: cursor.options)
+        }
+        return try withClient { client in
             if cursor.isFind {
                 return try connection.scriptFind(
                     client: client,
@@ -355,6 +393,19 @@ final class MongoScriptHost {
                 limit: ceiling
             )
         }
+    }
+
+    /// Checks the texts `scriptAggregate` builds from these, so a stage spliced in through a modifier
+    /// or an option is seen too. A cursor can outlive the statement that opened it, so a read can
+    /// reach one a write opened.
+    private func refuseWritingAggregate(pipeline: String, options: MongoScriptCursorOptions) throws {
+        guard access == .read else { return }
+        let writes = MongoScriptAccessPolicy.writes(
+            pipeline: options.decoratedPipeline(pipeline),
+            options: options.aggregateOptionsJson(timeoutMS: connection.queryTimeoutMS)
+        )
+        guard writes else { return }
+        throw MongoScriptError(MongoScriptText.refusedWritingPipelineUnderRead)
     }
 
     // MARK: - Commands
@@ -506,11 +557,13 @@ final class MongoScriptHost {
 
     private func update(_ request: [String: Any], isReplace: Bool) throws -> String {
         let multi = !isReplace && (request["multi"] as? Bool ?? false)
+        let filter = try requiredDocument(request, "filter")
+        let change = try requiredDocument(request, "update")
         let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.update(
             collection: collectionName(request),
-            filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
-            update: MongoScriptJson.rawJson(request["update"]) ?? "{}",
+            filter: filter,
+            update: change,
             multi: multi,
             options: MongoScriptJson.options(request["options"]),
             writeConcern: concern
@@ -523,10 +576,11 @@ final class MongoScriptHost {
 
     private func delete(_ request: [String: Any]) throws -> String {
         let multi = request["multi"] as? Bool ?? false
+        let filter = try requiredDocument(request, "filter")
         let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.delete(
             collection: collectionName(request),
-            filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
+            filter: filter,
             multi: multi,
             options: MongoScriptJson.options(request["options"]),
             writeConcern: concern
@@ -540,10 +594,11 @@ final class MongoScriptHost {
     /// Unlike an insert, update or delete, a `findAndModify` sent with `w: 0` is answered in full,
     /// its document and its count included, so its reply is read whatever the write concern.
     private func findAndModify(_ request: [String: Any]) throws -> String {
+        let filter = try requiredDocument(request, "filter")
         let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.findAndModify(
             collection: collectionName(request),
-            filter: MongoScriptJson.rawJson(request["filter"]) ?? "{}",
+            filter: filter,
             update: MongoScriptJson.rawJson(request["update"]),
             remove: request["remove"] as? Bool ?? false,
             options: MongoScriptJson.options(request["options"]),
@@ -686,5 +741,13 @@ final class MongoScriptHost {
 
     private func collectionName(_ request: [String: Any]) -> String {
         (request["collection"] as? String) ?? ""
+    }
+
+    /// A missing filter is refused rather than read as `{}`, which would match every document.
+    private func requiredDocument(_ request: [String: Any], _ key: String) throws -> String {
+        guard let document = MongoScriptJson.rawJson(request[key]), document != "null" else {
+            throw MongoScriptError(MongoScriptText.missingArgument(key))
+        }
+        return document
     }
 }
