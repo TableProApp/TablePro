@@ -105,6 +105,13 @@ extension JSONTreeNode: FilterableTreeNode {
         }
     }
 
+    internal var copyableValueIncludesDescendants: Bool {
+        switch valueType {
+        case .object, .array: return true
+        case .string, .number, .boolean, .null, .truncated: return false
+        }
+    }
+
     internal var rowContent: TreeRowContent {
         TreeRowContent(
             key: key,
@@ -159,11 +166,15 @@ internal enum JSONTreeParser {
     private static let maxInputLength = 100_000
     private static let maxDisplayLength = 300
 
+    static func fitsSizeCap(_ jsonString: String) -> Bool {
+        (jsonString as NSString).length <= maxInputLength
+    }
+
     static func parse(
         _ jsonString: String,
         formats: TreeSummaryFormats = .localized
     ) -> Result<JSONTreeNode, JSONTreeParseError> {
-        guard (jsonString as NSString).length <= maxInputLength else {
+        guard fitsSizeCap(jsonString) else {
             return .failure(.tooLarge)
         }
         guard let node = JsonSyntaxParser.parse(jsonString) else {

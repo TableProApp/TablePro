@@ -8,7 +8,34 @@ import Foundation
 import Testing
 
 struct TreeSelectionTextTests {
+    private static var account: PhpValue {
+        .array([
+            PhpKeyValue(
+                key: .string("user"),
+                value: .object(
+                    className: "User",
+                    properties: [
+                        PhpProperty(name: "name", visibility: .publicVisibility, value: .string("Ada")),
+                        PhpProperty(name: "age", visibility: .publicVisibility, value: .int(36))
+                    ]
+                )
+            ),
+            PhpKeyValue(
+                key: .string("tags"),
+                value: .array([
+                    PhpKeyValue(key: .int(0), value: .string("admin")),
+                    PhpKeyValue(key: .int(1), value: .string("Ada's"))
+                ])
+            )
+        ])
+    }
+
     private func noSource(_ path: TreeNodePath) -> JSONTreeNode? { nil }
+
+    /// Every row of a fully expanded outline, in the order it draws them.
+    private func displayed<Node: FilterableTreeNode>(_ nodes: [Node]) -> [Node] {
+        nodes.flatMap { [$0] + displayed($0.children) }
+    }
 
     @Test("Values are joined one per line in the order the rows are given")
     func valuesKeepDisplayOrder() throws {
@@ -68,6 +95,53 @@ struct TreeSelectionTextTests {
         let text = TreeSelectionText.values(of: [visibleInvoice]) { cache.sourceNode(at: $0, in: root) }
 
         #expect(text == #"{"no":"INV-9","lines":[{"sku":"apple","n":2},{"sku":"pear","n":5}],"paid":false}"#)
+    }
+
+    @Test("A JSON selection of every row on screen under a filter copies the parsed container once")
+    @MainActor
+    func filteredJSONSelectAllCopiesTheContainerOnce() throws {
+        let root = try TreeOutlineFixture.parse(TreeOutlineFixture.invoice)
+        let cache = TreeProjectionCache<JSONTreeNode>()
+        let rows = displayed(cache.projection(for: root, searchText: "pear").nodes)
+        #expect(rows.map { $0.key ?? "" } == ["invoice", "lines", "[1]", "sku"])
+
+        let text = TreeSelectionText.values(of: rows) { cache.sourceNode(at: $0, in: root) }
+
+        #expect(text == #"{"no":"INV-9","lines":[{"sku":"apple","n":2},{"sku":"pear","n":5}],"paid":false}"#)
+    }
+
+    // MARK: - PHP
+
+    @Test("A PHP container copies its summary, so a selected child under it is copied too")
+    func phpContainerAndChild() throws {
+        let root = PhpTreeBuilder.build(from: Self.account, formats: .english)
+        let user = try #require(root.children.first)
+        let name = try #require(user.children.first)
+
+        #expect(TreeSelectionText.values(of: [user, name]) { _ in nil } == "User {2 properties}\nAda")
+    }
+
+    @Test("Selecting every PHP row copies every value, containers as their summaries")
+    func phpSelectAll() {
+        let root = PhpTreeBuilder.build(from: Self.account, formats: .english)
+        let rows = displayed(root.children)
+
+        let text = TreeSelectionText.values(of: rows) { _ in nil }
+
+        #expect(text == "User {2 properties}\nAda\n36\n[2 items]\nadmin\nAda's")
+    }
+
+    @Test("Under a filter, selecting every PHP row copies the matching children with their containers")
+    @MainActor
+    func phpFilteredSelectAll() {
+        let root = PhpTreeBuilder.build(from: Self.account, formats: .english)
+        let cache = TreeProjectionCache<PhpTreeNode>()
+        let rows = displayed(cache.projection(for: root, searchText: "ada").nodes)
+        #expect(rows.map { $0.key ?? "" } == ["user", "name", "tags", "[1]"])
+
+        let text = TreeSelectionText.values(of: rows) { cache.sourceNode(at: $0, in: root) }
+
+        #expect(text == "User {2 properties}\nAda\n[2 items]\nAda's")
     }
 
     @Test("Key paths and keys are joined the same way, leaving out rows that have none")

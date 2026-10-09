@@ -7,14 +7,14 @@ import Foundation
 
 internal enum TreeSelectionText {
     /// `source` gives the parsed node, because a filtered container holds only its matching
-    /// children. A selected container already carries its descendants.
+    /// children. A row is left out only when a selected ancestor's copy already holds it.
     static func values<Node: FilterableTreeNode>(
         of rows: [Node],
         source: (TreeNodePath) -> Node?
     ) -> String? {
-        let selected = Set(rows.map(\.path))
+        let carriers = Set(rows.lazy.filter(\.copyableValueIncludesDescendants).map(\.path))
         let values = rows.compactMap { row -> String? in
-            guard !row.isTruncationMarker, !row.path.hasAncestor(in: selected) else { return nil }
+            guard !row.isTruncationMarker, !row.path.hasAncestor(in: carriers) else { return nil }
             return (source(row.path) ?? row).copyableValue
         }
         return joined(values)

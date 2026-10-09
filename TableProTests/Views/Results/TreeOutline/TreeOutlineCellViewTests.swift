@@ -60,6 +60,20 @@ struct TreeOutlineCellViewTests {
         #expect(cell.accessibilityCustomActions()?.map(\.name) == [String(localized: "Open Link")])
     }
 
+    @Test("A link cut inside its host is drawn as plain text, with no tooltip and no accessibility action")
+    func linkCutInsideItsHostIsPlain() throws {
+        let json = #"{"site":"\#(TreeOutlineFixture.link(hostEndingAt: 301))"}"#
+        let cell = try cell("site", in: json)
+        let field = cell.valueField
+
+        #expect(field.linkURL == nil)
+        #expect(field.linkRange == nil)
+        #expect(field.toolTip == nil)
+        #expect(!field.allowsEditingTextAttributes)
+        #expect(field.stringValue.hasSuffix("…\""))
+        #expect(cell.accessibilityCustomActions()?.isEmpty ?? true)
+    }
+
     @Test("A plain value is plain text with no tooltip and no accessibility action")
     func plainRow() throws {
         let cell = try cell("name")

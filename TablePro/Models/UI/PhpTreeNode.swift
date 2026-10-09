@@ -119,6 +119,11 @@ extension PhpTreeNode: FilterableTreeNode {
         rawValue ?? displayValue
     }
 
+    /// An array or an object copies its summary: there is no serializer to write its members back out.
+    internal var copyableValueIncludesDescendants: Bool {
+        false
+    }
+
     internal var rowContent: TreeRowContent {
         TreeRowContent(
             key: key,

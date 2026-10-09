@@ -352,4 +352,34 @@ struct DataLinkPolicyTests {
 
         #expect(opened.isEmpty)
     }
+
+    // MARK: - Cut values
+
+    @Test("A cut head shows the destination once it runs through the host, port or not")
+    func headThroughTheHostShowsTheDestination() throws {
+        let url = try #require(DataLinkPolicy.openableURL(from: "https://example.com:8443/a/b"))
+
+        #expect(DataLinkPolicy.showsDestination(of: url, in: "https://example.com"))
+        #expect(DataLinkPolicy.showsDestination(of: url, in: "https://example.com:84"))
+        #expect(DataLinkPolicy.showsDestination(of: url, in: "https://example.com:8443/a/b"))
+    }
+
+    @Test("A cut head that stops inside the host, or is not the start of the link, does not")
+    func headInsideTheHostHidesTheDestination() throws {
+        let url = try #require(DataLinkPolicy.openableURL(from: "https://example.com.attacker.example/a"))
+
+        #expect(!DataLinkPolicy.showsDestination(of: url, in: "https://example.com"))
+        #expect(!DataLinkPolicy.showsDestination(of: url, in: "https://"))
+        #expect(!DataLinkPolicy.showsDestination(of: url, in: ""))
+        #expect(!DataLinkPolicy.showsDestination(of: url, in: "http://example.com.attacker.example/a"))
+        #expect(DataLinkPolicy.showsDestination(of: url, in: "https://example.com.attacker.example"))
+    }
+
+    @Test("A link with no host, like mailto, needs its whole address shown")
+    func mailtoNeedsTheWholeAddress() throws {
+        let url = try #require(DataLinkPolicy.openableURL(from: "mailto:ceo@example.com.attacker.example"))
+
+        #expect(!DataLinkPolicy.showsDestination(of: url, in: "mailto:ceo@example.com"))
+        #expect(DataLinkPolicy.showsDestination(of: url, in: "mailto:ceo@example.com.attacker.example"))
+    }
 }

@@ -83,6 +83,22 @@ struct JSONTreeDocumentTests {
         #expect(outcome(JSONTreeDocument(displayText: text)) == .emptyValue)
     }
 
+    @Test(
+        "blank text over the size cap is too large, so the blank check never reads all of it",
+        arguments: [25_001, 2_500_000]
+    )
+    func oversizedBlankTextIsTooLarge(repeats: Int) {
+        let text = String(repeating: " \t\n\u{00A0}", count: repeats)
+        #expect(length(text) > 100_000)
+
+        #expect(outcome(JSONTreeDocument(displayText: text)) == .tooLarge)
+    }
+
+    @Test("blank text at the size cap is still an empty value")
+    func blankTextAtTheCapIsEmpty() {
+        #expect(outcome(JSONTreeDocument(displayText: String(repeating: " ", count: 100_000))) == .emptyValue)
+    }
+
     @Test("JSON null, an empty object and an empty string are values, not an empty cell")
     func emptyLookingDocumentsAreTrees() {
         #expect(outcome(JSONTreeDocument(displayText: "null")) == .tree)

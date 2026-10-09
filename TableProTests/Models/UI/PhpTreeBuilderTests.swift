@@ -25,6 +25,30 @@ struct PhpTreeBuilderTests {
         #expect(blob.displayValue.hasSuffix("…"))
     }
 
+    @Test("an array or object copies its summary, which does not hold its members")
+    func containerCopyIsASummary() throws {
+        let root = build(
+            .array([
+                PhpKeyValue(key: .int(0), value: .array([PhpKeyValue(key: .int(0), value: .int(1))])),
+                PhpKeyValue(
+                    key: .int(1),
+                    value: .object(
+                        className: "Cart",
+                        properties: [PhpProperty(name: "n", visibility: .publicVisibility, value: .int(2))]
+                    )
+                )
+            ])
+        )
+        let array = try #require(root.children.first)
+        let object = try #require(root.children.last)
+
+        #expect(array.copyableValue == "[1 item]")
+        #expect(object.copyableValue == "Cart {1 property}")
+        #expect(!root.copyableValueIncludesDescendants)
+        #expect(!array.copyableValueIncludesDescendants)
+        #expect(!object.copyableValueIncludesDescendants)
+    }
+
     // MARK: - Key path
 
     @Test("a string key or property that is not an identifier is quoted in the key path")
@@ -153,6 +177,30 @@ struct PhpTreeBuilderTests {
         #expect(name.tone == .string)
         #expect(name.typeBadge == "str")
         #expect(name.decoration == .none)
+    }
+
+    @Test("a link cut inside its host is plain text, and its copy is still the whole value")
+    func linkCutInsideItsHostIsPlain() throws {
+        let target = TreeOutlineFixture.link(hostEndingAt: 81)
+        let node = try #require(build(.array([PhpKeyValue(key: .int(0), value: .string(target))])).children.first)
+
+        #expect(node.isDisplayCut)
+        #expect(node.rowContent.valueContentRange == NSRange(location: 1, length: 80))
+        #expect(node.rowContent.decoration == .none)
+        #expect(node.copyableValue == target)
+    }
+
+    @Test("a link cut where its host ends stays a link")
+    func linkCutAtTheEndOfItsHostStaysALink() throws {
+        let target = TreeOutlineFixture.link(hostEndingAt: 80)
+        let node = try #require(build(.array([PhpKeyValue(key: .int(0), value: .string(target))])).children.first)
+
+        #expect(node.isDisplayCut)
+        guard case .link(let url) = node.rowContent.decoration else {
+            Issue.record("Expected a link, got \(node.rowContent.decoration)")
+            return
+        }
+        #expect(url.absoluteString == target)
     }
 
     @Test("the visibility badge and the type badge are separate")

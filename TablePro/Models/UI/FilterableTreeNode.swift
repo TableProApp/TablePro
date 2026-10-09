@@ -14,6 +14,8 @@ internal protocol FilterableTreeNode: Identifiable {
     var searchableKey: String? { get }
     var searchableText: String { get }
     var copyableValue: String { get }
+    /// False where the copy is a summary, so a selected descendant still has to be copied on its own.
+    var copyableValueIncludesDescendants: Bool { get }
     var badgeLabel: String { get }
     var isTruncationMarker: Bool { get }
     var rowContent: TreeRowContent { get }
@@ -221,10 +223,15 @@ internal extension TreeRowContent {
             )
             return
         }
+        let contentRange = NSRange(location: 1, length: length - wrapping)
+        var decoration = TreeValueClassifier.classify(string)
+        if isCut, case .link(let url) = decoration,
+           !DataLinkPolicy.showsDestination(of: url, in: (value as NSString).substring(with: contentRange)) {
+            decoration = .none
+        }
         self.init(
-            key: key, value: value, valueContentRange: NSRange(location: 1, length: length - wrapping),
-            tone: tone, typeBadge: typeBadge, visibilityBadge: visibilityBadge,
-            decoration: TreeValueClassifier.classify(string)
+            key: key, value: value, valueContentRange: contentRange,
+            tone: tone, typeBadge: typeBadge, visibilityBadge: visibilityBadge, decoration: decoration
         )
     }
 }

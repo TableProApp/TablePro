@@ -51,6 +51,16 @@ struct JSONTreeParserTests {
         }
     }
 
+    @Test("an object or array copies its members, and no other value has any")
+    func containerCopyHoldsItsDescendants() throws {
+        let root = try parse(#"{"obj":{"a":1},"arr":[true],"s":"x","n":2,"b":false,"z":null}"#)
+
+        #expect(root.copyableValueIncludesDescendants)
+        #expect(root.children.map(\.copyableValueIncludesDescendants) == [true, true, false, false, false, false])
+        #expect(root.children.first?.copyableValue == #"{"a":1}"#)
+        #expect(!TreeOutlineFixture.marker().copyableValueIncludesDescendants)
+    }
+
     // MARK: - Key path
 
     // `$."a.b"` reads the key `a.b` in SQLite, DuckDB, MariaDB and PostgreSQL. `$.a.b` reads the
@@ -256,6 +266,30 @@ struct JSONTreeParserTests {
         }
         #expect(url.absoluteString == target)
         #expect(content.valueContentRange == NSRange(location: 1, length: 300))
+    }
+
+    @Test("a link cut inside its host is plain text, and its copy is still the whole value")
+    func linkCutInsideItsHostIsPlain() throws {
+        let target = TreeOutlineFixture.link(hostEndingAt: 301)
+        let node = try stringNode(target)
+
+        #expect(node.isDisplayCut)
+        #expect(node.rowContent.valueContentRange == NSRange(location: 1, length: 300))
+        #expect(node.rowContent.decoration == .none)
+        #expect(node.copyableValue == target)
+    }
+
+    @Test("a link cut where its host ends stays a link")
+    func linkCutAtTheEndOfItsHostStaysALink() throws {
+        let target = TreeOutlineFixture.link(hostEndingAt: 300)
+        let node = try stringNode(target)
+
+        #expect(node.isDisplayCut)
+        guard case .link(let url) = node.rowContent.decoration else {
+            Issue.record("Expected a link, got \(node.rowContent.decoration)")
+            return
+        }
+        #expect(url.absoluteString == target)
     }
 
     @Test("a color string is decorated and a number that reads like one is not")

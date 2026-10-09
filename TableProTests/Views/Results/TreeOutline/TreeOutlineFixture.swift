@@ -66,6 +66,17 @@ internal enum TreeOutlineFixture {
         return try body(opened)
     }
 
+    /// An https link whose host starts with a trusted-looking name and ends `offset` UTF-16 units
+    /// into the value, on a domain someone else owns.
+    static func link(hostEndingAt offset: Int) -> String {
+        let scheme = "https://"
+        let trusted = "login.example-bank.com."
+        let owner = "attacker.example"
+        let filler = offset - scheme.count - trusted.count - owner.count
+        let labels = String(repeating: "a.", count: filler / 2) + String(repeating: "b", count: filler % 2)
+        return scheme + trusted + labels + owner + "/signin?next=" + String(repeating: "c", count: 400)
+    }
+
     static func marker(under parent: TreeNodePath = .root) -> JSONTreeNode {
         JSONTreeNode(
             key: nil, keyPath: "", path: parent.appending(.truncationMarker), valueType: .truncated,

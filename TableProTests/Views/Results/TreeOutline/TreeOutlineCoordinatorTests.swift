@@ -252,6 +252,31 @@ struct TreeOutlineCoordinatorTests {
         }
     }
 
+    @Test("A link cut inside its host does not open and has no link commands, and Copy Value copies all of it")
+    func linkCutInsideItsHost() throws {
+        let hidden = TreeOutlineFixture.link(hostEndingAt: 301)
+        let shown = TreeOutlineFixture.link(hostEndingAt: 300)
+        try TreeOutlineFixture.withClipboard { clipboard in
+            try TreeOutlineFixture.withOpener { opened in
+                let harness = try TreeOutlineHarness(json: #"{"hidden":"\#(hidden)","shown":"\#(shown)"}"#)
+                let menu = try #require(
+                    harness.coordinator.fieldEditorMenu(forRow: try harness.row("hidden"), hasTextSelection: false)
+                )
+
+                try harness.select("hidden")
+                #expect(!harness.coordinator.openSelectedLink())
+                harness.coordinator.copySelection()
+                try harness.select("shown")
+                #expect(harness.coordinator.openSelectedLink())
+
+                #expect(!menu.items.contains { $0.title == TreeOutlineMenuCommand.openLink.title })
+                #expect(!menu.items.contains { $0.title == TreeOutlineMenuCommand.copyLink.title })
+                #expect(clipboard.writes == [hidden])
+                #expect(opened.urls.map(\.absoluteString) == [shown])
+            }
+        }
+    }
+
     // MARK: - Menu
 
     @Test("A menu on a selected row acts on the selection, and on any other row acts on that row")

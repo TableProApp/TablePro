@@ -10,13 +10,19 @@ internal enum JSONTreeDocument {
     case tree(JSONTreeNode)
     case unavailable(JSONTreeParseError)
 
-    /// A blank value holds nothing, which is not broken JSON, so it never reaches the parser.
+    /// A blank value holds nothing, which is not broken JSON, so it never reaches the parser. The
+    /// cap comes first because the blank check reads every character.
     init(displayText: String) {
-        if displayText.unicodeScalars.allSatisfy(\.properties.isWhitespace) {
+        let document = JsonReindenter.normalize(displayText)
+        guard JSONTreeParser.fitsSizeCap(document) else {
+            self = .unavailable(.tooLarge)
+            return
+        }
+        if document.unicodeScalars.allSatisfy(\.properties.isWhitespace) {
             self = .emptyValue
             return
         }
-        switch Self.parse(displayText) {
+        switch JSONTreeParser.parse(document) {
         case .success(let root):
             self = .tree(root)
         case .failure(let error):

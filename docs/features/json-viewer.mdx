@@ -58,7 +58,7 @@ For part of a value, select its row, drag across the text or double-click a word
 
 A string that is one whole `http`, `https` or `mailto` address is drawn as a link. The first click selects its row. Click the link in a selected row and it opens in your browser or mail app. `Space` opens the link of a single selected row, the right-click menu has **Open Link** and **Copy Link**, and holding the pointer over the link shows the address in full.
 
-Everything else stays text: `file:` and every other scheme, `www.example.com` with no scheme, an address inside a longer string or with a space beside it, an address carrying a user name and password, and a `mailto:` with anything after the address. An address has to be plain ASCII with the rest percent-escaped, so `/wiki/Vi%E1%BB%87t_Nam` links and `/wiki/Việt_Nam` does not.
+Everything else stays text: `file:` and every other scheme, `www.example.com` with no scheme, an address inside a longer string or with a space beside it, an address carrying a user name and password, a `mailto:` with anything after the address, and an address too long for its row that is cut off before the end of its host name, since the part shown could name another site. **Copy Value** still copies that address whole. An address has to be plain ASCII with the rest percent-escaped, so `/wiki/Vi%E1%BB%87t_Nam` links and `/wiki/Việt_Nam` does not.
 
 A string that is a CSS color carries a swatch of that color beside it.
 
@@ -93,7 +93,7 @@ Set **Display As > PHP Serialized** on a text column, then double-click or press
 
 **Tree** mode is the JSON tree with PHP's types: it filters, [selects, copies](#selecting-and-copying-in-a-tree) and draws [links and color swatches](#links-and-color-swatches) the same way, with type badges on the nodes (`str`, `int`, `arr`, `obj`, `ser`, `ref`) and visibility badges on object members (`protected`, `private (ClassName)`). A custom-serialized class (the `C:` token) is one opaque leaf that copies as its whole payload, and a reference (`r:`/`R:`) shows as `→ #N` and is not followed. **Raw** mode shows the original string with text selection.
 
-An array or object row copies as its summary, such as `[2 items]`, not as its contents. Copy the serialized text from **Raw** mode instead.
+An array or object row copies as its summary, such as `[2 items]`, not as its contents, so each row you select inside it copies its own value after the summary. Copy the serialized text from **Raw** mode instead.
 
 ## Blob and hex
 

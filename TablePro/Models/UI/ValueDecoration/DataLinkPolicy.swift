@@ -27,6 +27,17 @@ internal enum DataLinkPolicy {
         return url.absoluteString == raw ? url : nil
     }
 
+    /// Whether the head of a cut value runs through the link's host, or through all of it when the
+    /// link has no host. A head that stops inside the host reads as one address and opens another.
+    static func showsDestination(of url: URL, in shown: String) -> Bool {
+        let raw = url.absoluteString
+        var destinationLength = raw.utf16.count
+        if let host = URLComponents(string: raw)?.rangeOfHost {
+            destinationLength = raw.utf16.distance(from: raw.startIndex, to: host.upperBound)
+        }
+        return shown.utf16.starts(with: raw.utf16.prefix(destinationLength))
+    }
+
     /// Vetted again, because a caller can hand over a URL the policy never produced.
     @MainActor static func open(_ url: URL) {
         guard let vetted = openableURL(from: url.absoluteString) else { return }
