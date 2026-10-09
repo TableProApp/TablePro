@@ -168,6 +168,7 @@ final class MainContentCoordinator: ObservableObject {
         toolbarState.safeModeLevel = services.databaseManager.session(for: connectionId)?.safeModeLevel ?? level
     }
     let selectionState = GridSelectionState()
+    let selectionSummary = SelectionSummaryState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
     let toolbarState: ConnectionToolbarState

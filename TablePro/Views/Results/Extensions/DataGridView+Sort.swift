@@ -104,6 +104,17 @@ extension TableViewCoordinator {
             menu.addItem(NSMenuItem.separator())
         }
 
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+            let selectItem = NSMenuItem(
+                title: String(localized: "Select Column"),
+                action: #selector(selectColumnFromHeaderMenu(_:)),
+                keyEquivalent: ""
+            )
+            selectItem.representedObject = dataColumnIndex
+            selectItem.target = self
+            menu.addItem(selectItem)
+        }
+
         let copyItem = NSMenuItem(title: String(localized: "Copy Column Name"), action: #selector(copyColumnName(_:)), keyEquivalent: "")
         copyItem.representedObject = baseName
         copyItem.target = self
@@ -305,6 +316,16 @@ extension TableViewCoordinator {
     /// from being written straight back over Don't Sort on the next load.
     @objc func clearSortAction() {
         delegate?.dataGridSortStateChanged(SortState(columns: [], source: .user))
+    }
+
+    /// Focuses the grid too, so the Copy that usually follows acts on the column rather than on
+    /// whatever held focus before the header was right-clicked.
+    @objc func selectColumnFromHeaderMenu(_ sender: NSMenuItem) {
+        guard let dataColumnIndex = sender.representedObject as? Int else { return }
+        selectColumn(dataColumnIndex)
+        if let tableView {
+            tableView.window?.makeFirstResponder(tableView)
+        }
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

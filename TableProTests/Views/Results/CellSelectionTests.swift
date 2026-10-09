@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
+import SwiftUI
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct GridRectTests {
@@ -178,6 +180,235 @@ struct GridSelectionColumnMarkerTests {
         let merged = GridSelection.column(0, totalRows: 4).union(.column(2, totalRows: 4))
 
         #expect(merged.columns == IndexSet([0, 2]))
+    }
+}
+
+struct GridSelectionCellCountTests {
+    private func bruteForceCount(_ selection: GridSelection) -> Int {
+        var cells = Set<GridCoord>()
+        for rect in selection.rectangles {
+            for row in rect.rows {
+                for column in rect.columns {
+                    cells.insert(GridCoord(row: row, displayColumn: column))
+                }
+            }
+        }
+        return cells.count
+    }
+
+    @Test("three overlapping rectangles count each cell once")
+    func overlappingRectanglesCountOnce() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 0...4, columns: 0...2),
+                GridRect(rows: 2...6, columns: 1...3),
+                GridRect(rows: 3...3, columns: 0...5)
+            ],
+            activeCell: nil,
+            anchor: nil
+        )
+
+        #expect(selection.uniqueCellCount == 26)
+        #expect(selection.uniqueCellCount == bruteForceCount(selection))
+    }
+
+    @Test("disjoint and identical rectangles count like the cells they cover")
+    func disjointAndIdenticalRectangles() {
+        let selection = GridSelection(
+            rectangles: [
+                GridRect(rows: 0...1, columns: 0...1),
+                GridRect(rows: 0...1, columns: 0...1),
+                GridRect(rows: 5...5, columns: 3...3),
+                GridRect(rows: 9...10, columns: 2...4)
+            ],
+            activeCell: nil,
+            anchor: nil
+        )
+
+        #expect(selection.uniqueCellCount == 11)
+        #expect(selection.uniqueCellCount == bruteForceCount(selection))
+        #expect(GridSelection.empty.uniqueCellCount == 0)
+    }
+
+    @Test("picked columns over a million rows count without a walk per row")
+    func wholeColumnsCountByBand() {
+        let rows = 1_000_000
+        var selection = GridSelection.column(3, totalRows: rows).union(.column(4, totalRows: rows))
+        selection.rectangles.append(GridRect(rows: 10...500_000, columns: 3...5))
+
+        #expect(selection.uniqueCellCount == 2 * rows + 499_991)
+    }
+
+    @Test("hasMultipleCells is false for one cell however many times it is listed")
+    func hasMultipleCellsIgnoresDuplicates() {
+        let cell = GridRect(rows: 2...2, columns: 1...1)
+        #expect(!GridSelection.empty.hasMultipleCells)
+        #expect(!GridSelection(rectangles: [cell], activeCell: nil, anchor: nil).hasMultipleCells)
+        #expect(!GridSelection(rectangles: [cell, cell], activeCell: nil, anchor: nil).hasMultipleCells)
+        #expect(GridSelection(rectangles: [cell, GridRect(rows: 3...3, columns: 1...1)], activeCell: nil, anchor: nil).hasMultipleCells)
+        #expect(GridSelection(rectangles: [GridRect(rows: 2...2, columns: 1...2)], activeCell: nil, anchor: nil).hasMultipleCells)
+    }
+
+    @Test("removing a cell from the middle of a block leaves the cells around it")
+    func removingCellSplitsBlock() {
+        let center = GridCoord(row: 1, displayColumn: 1)
+        let block = GridSelection.single(
+            GridRect(rows: 0...2, columns: 0...2),
+            anchor: GridCoord(row: 0, displayColumn: 0),
+            active: GridCoord(row: 2, displayColumn: 2)
+        )
+
+        let result = block.removing(cell: center)
+
+        #expect(!result.contains(center))
+        #expect(result.uniqueCellCount == 8)
+        #expect(result.uniqueCellCount == bruteForceCount(result))
+        #expect(result.anchor == GridCoord(row: 0, displayColumn: 0))
+        #expect(result.activeCell == GridCoord(row: 2, displayColumn: 2))
+    }
+
+    @Test("removing a cell from every rectangle that covers it")
+    func removingCellFromOverlappingRectangles() {
+        let cell = GridCoord(row: 3, displayColumn: 0)
+        let selection = GridSelection(
+            rectangles: [GridRect(rows: 0...4, columns: 0...0), GridRect(rows: 2...6, columns: 0...0)],
+            activeCell: cell,
+            anchor: GridCoord(row: 0, displayColumn: 0)
+        )
+
+        let result = selection.removing(cell: cell)
+
+        #expect(!result.contains(cell))
+        #expect(result.uniqueCellCount == 6)
+        if let active = result.activeCell {
+            #expect(result.contains(active))
+        } else {
+            Issue.record("the active cell was dropped")
+        }
+    }
+
+    @Test("removing a cell of a picked column drops its marker")
+    func removingCellBreaksPickedColumn() {
+        let picked = GridSelection.column(1, totalRows: 4).union(.column(3, totalRows: 4))
+
+        let result = picked.removing(cell: GridCoord(row: 2, displayColumn: 1))
+
+        #expect(result.columns == IndexSet(integer: 3))
+        #expect(result.uniqueCellCount == 7)
+    }
+
+    @Test("removing the only cell empties the selection")
+    func removingOnlyCellEmpties() {
+        let cell = GridCoord(row: 4, displayColumn: 2)
+        let selection = GridSelection.single(GridRect(cell: cell), anchor: cell, active: cell)
+
+        #expect(selection.removing(cell: cell) == .empty)
+        #expect(selection.removing(cell: GridCoord(row: 0, displayColumn: 0)) == selection)
+    }
+}
+
+struct GridSelectionRowShiftTests {
+    private let block = GridSelection.single(
+        GridRect(rows: 2...4, columns: 1...1),
+        anchor: GridCoord(row: 2, displayColumn: 1),
+        active: GridCoord(row: 4, displayColumn: 1)
+    )
+
+    @Test("a row inserted inside a block grows it")
+    func insertInsideGrows() {
+        let result = block.insertingRows(IndexSet(integer: 3), newRowCount: 11)
+
+        #expect(result.rectangles == [GridRect(rows: 2...5, columns: 1...1)])
+        #expect(result.anchor == GridCoord(row: 2, displayColumn: 1))
+        #expect(result.activeCell == GridCoord(row: 5, displayColumn: 1))
+    }
+
+    @Test("rows inserted at or above a block push it down")
+    func insertAboveShifts() {
+        #expect(block.insertingRows(IndexSet(integer: 2), newRowCount: 11).rectangles == [GridRect(rows: 3...5, columns: 1...1)])
+        #expect(block.insertingRows(IndexSet([0, 1]), newRowCount: 12).rectangles == [GridRect(rows: 4...6, columns: 1...1)])
+    }
+
+    @Test("a row inserted below a block leaves it alone")
+    func insertBelowKeeps() {
+        #expect(block.insertingRows(IndexSet(integer: 5), newRowCount: 11) == block)
+    }
+
+    @Test("a picked column grows over appended rows and keeps its marker")
+    func pickedColumnGrowsOnAppend() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        let result = picked.insertingRows(IndexSet(integersIn: 4...6), newRowCount: 7)
+
+        #expect(result.rectangles == [GridRect(rows: 0...6, columns: 1...1)])
+        #expect(result.columns == IndexSet(integer: 1))
+    }
+
+    @Test("a picked column covers a row inserted at the top")
+    func pickedColumnCoversInsertAtTop() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        let result = picked.insertingRows(IndexSet(integer: 0), newRowCount: 5)
+
+        #expect(result.rectangles == [GridRect(rows: 0...4, columns: 1...1)])
+        #expect(result.columns == IndexSet(integer: 1))
+    }
+
+    @Test("a swept block that reaches every row does not grow over appended rows")
+    func sweptBlockDoesNotGrow() {
+        let corner = GridCoord(row: 0, displayColumn: 1)
+        let swept = GridSelection.single(GridRect(rows: 0...3, columns: 1...1), anchor: corner, active: corner)
+
+        let result = swept.insertingRows(IndexSet(integersIn: 4...5), newRowCount: 6)
+
+        #expect(result.rectangles == [GridRect(rows: 0...3, columns: 1...1)])
+        #expect(result.columns.isEmpty)
+    }
+
+    @Test("removed rows shift a block up and shrink it")
+    func removeShiftsAndShrinks() {
+        let selection = GridSelection.single(
+            GridRect(rows: 2...6, columns: 0...1),
+            anchor: GridCoord(row: 2, displayColumn: 0),
+            active: GridCoord(row: 6, displayColumn: 1)
+        )
+
+        let result = selection.removingRows(IndexSet([0, 3, 8]), newRowCount: 7)
+
+        #expect(result.rectangles == [GridRect(rows: 1...4, columns: 0...1)])
+        #expect(result.anchor == GridCoord(row: 1, displayColumn: 0))
+        #expect(result.activeCell == GridCoord(row: 4, displayColumn: 1))
+    }
+
+    @Test("a block whose rows are all removed is dropped and the cursor moves to what is left")
+    func removeDropsEmptiedRectangle() {
+        let selection = GridSelection(
+            rectangles: [GridRect(rows: 0...1, columns: 0...0), GridRect(rows: 5...6, columns: 0...0)],
+            activeCell: GridCoord(row: 6, displayColumn: 0),
+            anchor: GridCoord(row: 5, displayColumn: 0)
+        )
+
+        let result = selection.removingRows(IndexSet([5, 6]), newRowCount: 8)
+
+        #expect(result.rectangles == [GridRect(rows: 0...1, columns: 0...0)])
+        #expect(result.activeCell == GridCoord(row: 0, displayColumn: 0))
+        #expect(result.anchor == GridCoord(row: 0, displayColumn: 0))
+    }
+
+    @Test("removing every selected row empties the selection")
+    func removeEverythingEmpties() {
+        #expect(block.removingRows(IndexSet(integersIn: 2...4), newRowCount: 8) == .empty)
+        #expect(block.removingRows(IndexSet(integersIn: 0...10), newRowCount: 0) == .empty)
+    }
+
+    @Test("a picked column keeps its marker after a removal")
+    func pickedColumnSurvivesRemoval() {
+        let picked = GridSelection.column(0, totalRows: 5)
+
+        let result = picked.removingRows(IndexSet(integer: 1), newRowCount: 4)
+
+        #expect(result.rectangles == [GridRect(rows: 0...3, columns: 0...0)])
+        #expect(result.columns == IndexSet(integer: 0))
     }
 }
 
@@ -497,5 +728,342 @@ struct GridSelectionControllerTests {
         controller.endDrag(dragged: false, originalCoord: coord)
         controller.clear()
         #expect(controller.selection.isEmpty)
+    }
+
+    /// A plain click leaves no cell selection behind, only a focused cell, so Shift+click used to
+    /// select the target alone.
+    @Test("Shift+click after a plain click ranges from the clicked cell")
+    func shiftClickAfterPlainClickAnchorsAtFocus() {
+        let controller = GridSelectionController()
+        let first = GridCoord(row: 0, displayColumn: 1)
+        let target = GridCoord(row: 4, displayColumn: 1)
+        _ = controller.beginDrag(at: first, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: first)
+        #expect(controller.selection.isEmpty)
+
+        _ = controller.beginDrag(at: target, modifiers: .shift, focus: first)
+        controller.endDrag(dragged: false, originalCoord: target)
+
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...4, columns: 1...1)])
+        #expect(controller.selection.anchor == first)
+        #expect(controller.selection.activeCell == target)
+    }
+
+    @Test("Cmd+click after a plain click keeps the clicked cell")
+    func cmdClickAfterPlainClickKeepsFocus() {
+        let controller = GridSelectionController()
+        let first = GridCoord(row: 0, displayColumn: 0)
+        let second = GridCoord(row: 2, displayColumn: 0)
+        let third = GridCoord(row: 4, displayColumn: 0)
+        _ = controller.beginDrag(at: first, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: first)
+
+        _ = controller.beginDrag(at: second, modifiers: .command, focus: first)
+        controller.endDrag(dragged: false, originalCoord: second)
+        _ = controller.beginDrag(at: third, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: third)
+
+        #expect(controller.selection.rectangles == [GridRect(cell: first), GridRect(cell: second), GridRect(cell: third)])
+        #expect(controller.selection.uniqueCellCount == 3)
+        #expect(controller.selection.activeCell == third)
+    }
+
+    @Test("Cmd+drag after a plain click keeps the clicked cell")
+    func cmdDragAfterPlainClickKeepsFocus() {
+        let controller = GridSelectionController()
+        let first = GridCoord(row: 0, displayColumn: 0)
+        let start = GridCoord(row: 3, displayColumn: 2)
+        _ = controller.beginDrag(at: first, modifiers: [])
+        controller.endDrag(dragged: false, originalCoord: first)
+
+        _ = controller.beginDrag(at: start, modifiers: .command, focus: first)
+        controller.continueDrag(to: GridCoord(row: 4, displayColumn: 2))
+        controller.endDrag(dragged: true, originalCoord: start)
+
+        #expect(controller.selection.rectangles == [GridRect(cell: first), GridRect(rows: 3...4, columns: 2...2)])
+    }
+
+    @Test("the focus is ignored once a cell selection exists")
+    func focusIgnoredWithSelection() {
+        let controller = GridSelectionController()
+        let origin = GridCoord(row: 1, displayColumn: 1)
+        let stale = GridCoord(row: 9, displayColumn: 9)
+        _ = controller.beginDrag(at: origin, modifiers: [])
+        controller.continueDrag(to: GridCoord(row: 2, displayColumn: 1))
+        controller.endDrag(dragged: true, originalCoord: origin)
+
+        let target = GridCoord(row: 5, displayColumn: 1)
+        _ = controller.beginDrag(at: target, modifiers: .shift, focus: stale)
+        controller.endDrag(dragged: false, originalCoord: target)
+        #expect(controller.selection.rectangles == [GridRect(rows: 1...5, columns: 1...1)])
+
+        let added = GridCoord(row: 7, displayColumn: 3)
+        _ = controller.beginDrag(at: added, modifiers: .command, focus: stale)
+        controller.endDrag(dragged: false, originalCoord: added)
+        #expect(!controller.selection.contains(stale))
+        #expect(controller.selection.contains(added))
+    }
+
+    @Test("Cmd+click on the only selected cell clears the selection")
+    func cmdClickOnOnlyCellClears() {
+        let controller = GridSelectionController()
+        let cell = GridCoord(row: 3, displayColumn: 2)
+        _ = controller.beginDrag(at: cell, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: cell)
+        #expect(controller.selection.rectangles == [GridRect(cell: cell)])
+
+        _ = controller.beginDrag(at: cell, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: cell)
+        #expect(controller.selection.isEmpty)
+
+        _ = controller.beginDrag(at: cell, modifiers: .command, focus: cell)
+        controller.endDrag(dragged: false, originalCoord: cell)
+        #expect(controller.selection.isEmpty)
+    }
+
+    /// The toggle used to remove only a rectangle equal to the clicked cell and otherwise append
+    /// one, so the cell stayed selected and was counted twice.
+    @Test("Cmd+click inside a dragged block removes only that cell")
+    func cmdClickInsideBlockRemovesCell() {
+        let controller = GridSelectionController()
+        let top = GridCoord(row: 0, displayColumn: 0)
+        let bottom = GridCoord(row: 4, displayColumn: 0)
+        let middle = GridCoord(row: 2, displayColumn: 0)
+        _ = controller.beginDrag(at: top, modifiers: [])
+        controller.continueDrag(to: bottom)
+        controller.endDrag(dragged: true, originalCoord: top)
+
+        _ = controller.beginDrag(at: middle, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: middle)
+
+        #expect(!controller.selection.contains(middle))
+        #expect(controller.selection.uniqueCellCount == 4)
+        for row in [0, 1, 3, 4] {
+            #expect(controller.selection.contains(row: row, displayColumn: 0))
+        }
+        #expect(controller.selection.activeCell == bottom)
+    }
+
+    @Test("Cmd+click inside a picked column gives the heading back")
+    func cmdClickInsidePickedColumnDropsMarker() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+        let cell = GridCoord(row: 2, displayColumn: 1)
+
+        _ = controller.beginDrag(at: cell, modifiers: .command)
+        controller.endDrag(dragged: false, originalCoord: cell)
+
+        #expect(controller.selectedFullColumns().isEmpty)
+        #expect(!controller.selection.contains(cell))
+        #expect(controller.selection.uniqueCellCount == 3)
+    }
+
+    @Test("the announcement counts overlapping cells once")
+    func announcementCountsUniqueCells() {
+        let controller = GridSelectionController()
+        let top = GridCoord(row: 0, displayColumn: 0)
+        let overlapStart = GridCoord(row: 2, displayColumn: 0)
+        _ = controller.beginDrag(at: top, modifiers: [])
+        controller.continueDrag(to: GridCoord(row: 4, displayColumn: 0))
+        controller.endDrag(dragged: true, originalCoord: top)
+        _ = controller.beginDrag(at: overlapStart, modifiers: .command)
+        controller.continueDrag(to: GridCoord(row: 6, displayColumn: 0))
+        controller.endDrag(dragged: true, originalCoord: overlapStart)
+
+        #expect(controller.selection.rectangles.count == 2)
+        #expect(controller.selection.uniqueCellCount == 7)
+        let expected = String(
+            format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
+            7, 1, 7, 1, 1
+        )
+        #expect(GridSelectionController.accessibilityAnnouncement(for: controller.selection) == expected)
+        #expect(GridSelectionController.accessibilityAnnouncement(for: .empty) == String(localized: "Cell selection cleared"))
+    }
+
+    @Test("inserted rows go through update and grow a picked column")
+    func applyInsertedRowsPublishes() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+        var published: [GridSelection] = []
+        controller.onSelectionChange = { published.append($0) }
+
+        controller.applyInsertedRows(IndexSet(integersIn: 4...9), newRowCount: 10)
+
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...9, columns: 1...1)])
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+        #expect(published == [controller.selection])
+    }
+
+    @Test("removed rows go through update and can empty the selection")
+    func applyRemovedRowsPublishes() {
+        let controller = GridSelectionController()
+        let top = GridCoord(row: 2, displayColumn: 0)
+        _ = controller.beginDrag(at: top, modifiers: [])
+        controller.continueDrag(to: GridCoord(row: 3, displayColumn: 1))
+        controller.endDrag(dragged: true, originalCoord: top)
+        var published: [GridSelection] = []
+        controller.onSelectionChange = { published.append($0) }
+
+        controller.applyRemovedRows(IndexSet(integer: 0), newRowCount: 9)
+        #expect(controller.selection.rectangles == [GridRect(rows: 1...2, columns: 0...1)])
+
+        controller.applyRemovedRows(IndexSet(integersIn: 1...2), newRowCount: 7)
+        #expect(controller.selection.isEmpty)
+        #expect(published.count == 2)
+    }
+}
+
+@MainActor
+private final class PointerSeedLayoutPersister: ColumnLayoutPersisting {
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
+    func clear(for key: ColumnLayoutTableKey) {}
+}
+
+@MainActor
+private struct PointerSeedGrid {
+    let coordinator: TableViewCoordinator
+    let tableView: KeyHandlingTableView
+    let gutter: DataGridRowGutterView
+
+    init(rowCount: Int = 10) {
+        let columns = ["id", "name", "age", "city"]
+        let columnTypes = Array(repeating: ColumnType.text(rawType: "TEXT"), count: columns.count)
+        let tableRows = TableRows.from(
+            queryRows: (0..<rowCount).map { row in columns.map { PluginCellValue.text("\($0)-\(row)") } },
+            columns: columns,
+            columnTypes: columnTypes
+        )
+        coordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: PointerSeedLayoutPersister()
+        )
+        coordinator.tableRowsProvider = { tableRows }
+
+        tableView = KeyHandlingTableView()
+        tableView.coordinator = coordinator
+        tableView.delegate = coordinator
+        tableView.dataSource = coordinator
+        tableView.allowsMultipleSelection = true
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.addTableColumn(DataGridView.makeRowNumberColumn())
+        coordinator.tableView = tableView
+        coordinator.rebuildColumnMetadataCache(from: tableRows)
+        coordinator.columnPool.reconcile(
+            tableView: tableView,
+            schema: coordinator.identitySchema,
+            columnTypes: columnTypes,
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
+            widthCalculator: { _, _ in 100 }
+        )
+        coordinator.updateCache()
+        tableView.reloadData()
+
+        gutter = DataGridRowGutterView(frame: .zero)
+        gutter.coordinator = coordinator
+    }
+
+    /// A gutter click as the grid sees it: the row selection, then the cursor the selection change
+    /// seeds. Delivered by hand as well, so the seed does not depend on how the notification arrives.
+    func clickGutter(row: Int) {
+        gutter.selectRows(clickedRow: row, modifiers: [])
+        coordinator.tableViewSelectionDidChange(
+            Notification(name: NSTableView.selectionDidChangeNotification, object: tableView)
+        )
+    }
+
+    func press(_ key: KeyCode, modifiers: NSEvent.ModifierFlags = []) throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: key.rawValue
+        ))
+        tableView.keyDown(with: event)
+    }
+}
+
+@MainActor
+struct GridPointerSeedTests {
+    /// The gutter clears the cursor, and the selection change it makes seeds one again on the first
+    /// column. Seeding a click from that cursor made it a selected cell the user never picked.
+    @Test("Cmd+click after a gutter row selection selects only the clicked cell")
+    func cmdClickAfterGutterSelectsOnlyClickedCell() {
+        let grid = PointerSeedGrid()
+        grid.clickGutter(row: 6)
+        #expect(grid.tableView.focusedRow == 6)
+        #expect(grid.tableView.presentsDataColumn(at: grid.tableView.focusedColumn))
+
+        #expect(grid.tableView.pointerSelectionSeed() == nil)
+
+        let controller = grid.coordinator.selectionController
+        let target = GridCoord(row: 8, displayColumn: 3)
+        _ = controller.beginDrag(at: target, modifiers: .command, focus: grid.tableView.pointerSelectionSeed())
+        controller.endDrag(dragged: false, originalCoord: target)
+        #expect(controller.selection.rectangles == [GridRect(cell: target)])
+    }
+
+    @Test("Shift+click after a gutter row selection does not range from the seeded cursor")
+    func shiftClickAfterGutterIgnoresSeededCursor() {
+        let grid = PointerSeedGrid()
+        grid.clickGutter(row: 6)
+
+        let controller = grid.coordinator.selectionController
+        let target = GridCoord(row: 8, displayColumn: 3)
+        _ = controller.beginDrag(at: target, modifiers: .shift, focus: grid.tableView.pointerSelectionSeed())
+        controller.endDrag(dragged: false, originalCoord: target)
+        #expect(controller.selection.rectangles == [GridRect(cell: target)])
+    }
+
+    @Test("Shift+Arrow after a gutter row selection still starts a range at the cursor")
+    func shiftArrowAfterGutterStillExtends() throws {
+        let grid = PointerSeedGrid()
+        grid.clickGutter(row: 6)
+
+        try grid.press(.downArrow, modifiers: .shift)
+
+        #expect(grid.coordinator.selectionController.selection.rectangles == [GridRect(rows: 6...7, columns: 0...0)])
+    }
+
+    @Test("moving the cursor with an arrow key after a gutter row selection makes it the user's")
+    func arrowAfterGutterMakesCursorSeedable() throws {
+        let grid = PointerSeedGrid()
+        grid.clickGutter(row: 6)
+
+        try grid.press(.rightArrow)
+
+        #expect(grid.tableView.pointerSelectionSeed() == GridCoord(row: 6, displayColumn: 1))
+    }
+
+    @Test("a cursor moved by Tab seeds a click")
+    func keyboardCursorSeeds() throws {
+        let grid = PointerSeedGrid()
+        let column = try #require(grid.coordinator.tableColumnIndex(for: 2))
+
+        grid.tableView.focusCell(row: 3, column: column)
+
+        #expect(grid.tableView.pointerSelectionSeed() == GridCoord(row: 3, displayColumn: 2))
+    }
+
+    @Test("Select All leaves no cursor to seed a click from")
+    func selectAllLeavesNoSeed() {
+        let grid = PointerSeedGrid()
+        grid.tableView.focusCell(row: 3, column: grid.coordinator.tableColumnIndex(for: 1) ?? -1)
+
+        grid.tableView.selectAll(nil)
+
+        #expect(grid.tableView.pointerSelectionSeed() == nil)
     }
 }

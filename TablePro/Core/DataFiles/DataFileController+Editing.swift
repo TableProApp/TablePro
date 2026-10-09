@@ -221,6 +221,7 @@ extension DataFileController {
         } else {
             kindOverrides[id] = nil
         }
+        gridCoordinator?.selectionSummaryTracker.rulesDidChange()
         if sortState.isSorting || !filterState.appliedFilters.isEmpty {
             runQuery()
         }

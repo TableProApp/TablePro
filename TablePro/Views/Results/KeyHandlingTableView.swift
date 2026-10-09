@@ -141,6 +141,16 @@ final class KeyHandlingTableView: NSTableView {
         set { selection.focusedColumn = newValue }
     }
 
+    /// Set while the cursor is the one a row selection seeded for the keyboard, not one the user put
+    /// on a cell. A cell click, an arrow key or Tab clears it.
+    var isCursorSeededByRowSelection = false
+
+    /// The cell a Shift+click or Cmd+click starts from when no cell selection exists yet.
+    func pointerSelectionSeed() -> GridCoord? {
+        guard gridSelection?.isEmpty == true, !isCursorSeededByRowSelection else { return nil }
+        return focusedGridCoord()
+    }
+
     private var gridSelection: GridSelectionController? { coordinator?.selectionController }
 
     private func withProgrammaticRowSelection(_ work: () -> Void) {
@@ -211,7 +221,9 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
+        let focus = pointerSelectionSeed()
+        isCursorSeededByRowSelection = false
+        let disposition = controller.beginDrag(at: coord, modifiers: modifiers, focus: focus)
         switch disposition {
         case .replaceFocus(let activeCoord):
             withProgrammaticRowSelection {
@@ -526,6 +538,7 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func handleArrow(_ direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int, event: NSEvent) {
+        isCursorSeededByRowSelection = false
         if modifiers.contains(.shift) {
             if extendGridSelection(direction: direction, jumpToEdge: modifiers.contains(.command)) {
                 return
@@ -768,6 +781,7 @@ final class KeyHandlingTableView: NSTableView {
     /// inline editor's own Tab and arrow navigation.
     internal func focusCell(row: Int, column: Int) {
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        isCursorSeededByRowSelection = false
         focusedRow = row
         focusedColumn = column
         scrollRowToVisible(row)

@@ -109,6 +109,13 @@ final class DataFileGridDelegate: DataGridViewDelegate {
         guard controller.isEditable else { return [] }
         return DataFileColumnMenuBuilder.rowItems(forPageRow: displayRow)
     }
+
+    func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? {
+        SelectionSummaryColumnPolicy(
+            rules: controller.columnNames.ids.map { DataFileColumnTypes.summaryRule(for: controller.kind(of: $0)) },
+            emptyTextIsEmpty: true
+        )
+    }
 }
 
 enum DataFilePasteParser {
@@ -127,6 +134,13 @@ enum DataFileColumnTypes {
         case .boolean: return .boolean(rawType: "BOOLEAN")
         case .date: return .date(rawType: "DATE")
         case .text: return .text(rawType: "TEXT")
+        }
+    }
+
+    static func summaryRule(for kind: TabularInferredKind) -> SelectionSummaryColumnRule {
+        switch kind {
+        case .integer, .decimal: return .numeric
+        case .boolean, .date, .text: return .countOnly
         }
     }
 }

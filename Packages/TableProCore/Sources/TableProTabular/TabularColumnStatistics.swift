@@ -1,4 +1,5 @@
 import Foundation
+import TableProNumberFormatting
 import TableProTabularIO
 
 public struct TabularValueCount: Sendable, Equatable {
@@ -15,11 +16,12 @@ public struct TabularValueCount: Sendable, Equatable {
 
 public struct TabularNumericSummary: Sendable, Equatable {
     public let count: Int
-    public let minimum: Double
-    public let maximum: Double
-    public let sum: Double
-    public let mean: Double
-    public let median: Double
+    public let minimum: ExactNumber
+    public let maximum: ExactNumber
+    public let sum: ExactNumber
+    public let mean: ExactNumber
+    public let median: ExactNumber
+    public let scale: Int
 }
 
 public struct TabularColumnSummary: Sendable, Equatable {
@@ -38,6 +40,7 @@ public struct TabularColumnSummary: Sendable, Equatable {
 public enum TabularColumnStatistics {
     public static let defaultTopValueLimit = 1_000
     static let partitionCount = 16
+    private static let maximumExactMedianDigits = 15
 
     private struct Occurrence: Sendable {
         var count: Int
@@ -55,9 +58,8 @@ public enum TabularColumnStatistics {
         var emptyCount = 0
         var counts = [[ValueHash: Occurrence]](repeating: [:], count: partitionCount)
         var numbers: [Double] = []
-        var numberSum = 0.0
-        var minimum: Double?
-        var maximum: Double?
+        var numberSummary = NumericSummaryAccumulator()
+        var medianIsExact = true
         var nonNumericCount = 0
         var earliestDate: String?
         var latestDate: String?
@@ -136,11 +138,11 @@ public enum TabularColumnStatistics {
         partial.shortest = min(partial.shortest ?? length, length)
         partial.longest = max(partial.longest ?? length, length)
         if numeric {
-            if let number = TabularValueGrammar.number(bytes) {
+            if let number = TabularValueGrammar.number(bytes), number.isFinite, addNumber(bytes, to: &partial.numberSummary) {
                 partial.numbers.append(number)
-                partial.numberSum += number
-                partial.minimum = min(partial.minimum ?? number, number)
-                partial.maximum = max(partial.maximum ?? number, number)
+                if partial.medianIsExact, TabularValueGrammar.significantDigitCount(bytes) > maximumExactMedianDigits {
+                    partial.medianIsExact = false
+                }
             } else {
                 partial.nonNumericCount += 1
             }
@@ -159,9 +161,8 @@ public enum TabularColumnStatistics {
             merged.rowCount += partial.rowCount
             merged.emptyCount += partial.emptyCount
             merged.numbers.append(contentsOf: partial.numbers)
-            merged.numberSum += partial.numberSum
-            if let value = partial.minimum { merged.minimum = min(merged.minimum ?? value, value) }
-            if let value = partial.maximum { merged.maximum = max(merged.maximum ?? value, value) }
+            merged.numberSummary.merge(partial.numberSummary)
+            merged.medianIsExact = merged.medianIsExact && partial.medianIsExact
             merged.nonNumericCount += partial.nonNumericCount
             if let value = partial.earliestDate, merged.earliestDate.map({ value < $0 }) ?? true {
                 merged.earliestDate = value
@@ -202,26 +203,47 @@ public enum TabularColumnStatistics {
     }
 
     private static func numericSummary(_ partial: inout Partial) -> TabularNumericSummary? {
-        guard let minimum = partial.minimum, let maximum = partial.maximum, !partial.numbers.isEmpty else {
-            return nil
-        }
-        let count = partial.numbers.count
+        guard !partial.numbers.isEmpty, let summary = partial.numberSummary.summary() else { return nil }
         return TabularNumericSummary(
-            count: count,
-            minimum: minimum,
-            maximum: maximum,
-            sum: partial.numberSum,
-            mean: partial.numberSum / Double(count),
-            median: median(of: &partial.numbers)
+            count: summary.count,
+            minimum: summary.minimum,
+            maximum: summary.maximum,
+            sum: summary.sum,
+            mean: summary.mean,
+            median: median(of: &partial.numbers, isExact: partial.medianIsExact),
+            scale: summary.scale
         )
     }
 
-    static func median(of numbers: inout [Double]) -> Double {
+    /// The accumulator trims only ASCII blanks; a cell padded with other Unicode spaces counted
+    /// as a number before and still does.
+    private static func addNumber(_ bytes: UnsafeBufferPointer<UInt8>, to summary: inout NumericSummaryAccumulator) -> Bool {
+        if summary.add(bytes) { return true }
+        guard !TabularValueGrammar.isASCII(bytes) else { return false }
+        return summary.add(TabularTextCodec.utf8String(bytes).trimmingCharacters(in: .whitespaces))
+    }
+
+    /// A literal of at most 15 significant digits survives the trip through `Double`, so its
+    /// shortest description is the value that was in the cell.
+    static func median(of numbers: inout [Double], isExact: Bool) -> ExactNumber {
+        let middle = middleValues(of: &numbers)
+        guard isExact else {
+            let value = middle.lower == middle.upper ? middle.upper : middle.lower / 2 + middle.upper / 2
+            return ExactNumber(approximation: value)
+        }
+        var accumulator = NumericSummaryAccumulator()
+        _ = accumulator.add(middle.lower.description)
+        if numbers.count.isMultiple(of: 2) {
+            _ = accumulator.add(middle.upper.description)
+        }
+        return accumulator.summary()?.mean ?? ExactNumber(approximation: middle.upper)
+    }
+
+    static func middleValues(of numbers: inout [Double]) -> (lower: Double, upper: Double) {
         let middle = numbers.count / 2
         let upper = select(middle, in: &numbers)
-        guard numbers.count.isMultiple(of: 2) else { return upper }
-        let lower = numbers[0..<middle].max() ?? upper
-        return (lower + upper) / 2
+        guard numbers.count.isMultiple(of: 2) else { return (upper, upper) }
+        return (numbers[0..<middle].max() ?? upper, upper)
     }
 
     private static func select(_ rank: Int, in numbers: inout [Double]) -> Double {

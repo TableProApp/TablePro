@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProNumberFormatting
 import TableProPluginKit
 import Testing
 
@@ -31,7 +32,9 @@ struct ResultStatusBarLayoutTests {
         viewMode: ResultsViewMode,
         pagination: PaginationState = PaginationState(),
         statusMessage: String? = nil,
-        structureFooter: StructureFooterCapability = StructureFooterCapability()
+        structureFooter: StructureFooterCapability = StructureFooterCapability(),
+        selectionSummary: SelectionSummaryState? = nil,
+        lastTiming: PluginQueryTiming? = nil
     ) -> ResultStatusBar {
         let snapshot = StatusBarSnapshot(
             tabId: UUID(),
@@ -87,9 +90,10 @@ struct ResultStatusBarLayoutTests {
             execution: ExecutionReadout(
                 tabId: UUID(),
                 execution: TabExecutionRegistry(),
-                lastTiming: nil,
+                lastTiming: lastTiming,
                 onCancel: {}
             ),
+            selectionSummary: selectionSummary ?? SelectionSummaryState(),
             isRefreshingSchema: false,
             viewMode: .constant(viewMode),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
@@ -358,6 +362,7 @@ struct ResultStatusBarLayoutTests {
             ),
             structureFooter: StructureFooterCapability(),
             execution: ExecutionReadout(tabId: tab.id, execution: registry, lastTiming: timing, onCancel: {}),
+            selectionSummary: SelectionSummaryState(),
             isRefreshingSchema: false,
             viewMode: .constant(.data),
             resultSetMenu: ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0),
@@ -532,6 +537,106 @@ struct ResultStatusBarLayoutTests {
             statusMessage: Self.wordyDriverMessage
         )
         #expect(idealWidth(of: wordy) == idealWidth(of: plain))
+    }
+
+    // MARK: - Selection summary
+
+    /// Wide figures with a fraction, so the full line is the longest the ladder can draw.
+    private static func publishedSummary(coversWholeColumn: Bool = false) -> SelectionSummaryState {
+        var accumulator = NumericSummaryAccumulator()
+        for value in ["98765432109.875", "12345678901.5", "-4.25"] {
+            let accepted = accumulator.add(value)
+            #expect(accepted, "\(value) was not read as a number")
+        }
+        let state = SelectionSummaryState()
+        let owner = UUID()
+        state.activate(owner)
+        state.publish(
+            SelectionSummary(
+                valueCount: 4,
+                emptyCount: 1,
+                notANumberCount: 1,
+                numbers: accumulator.summary(),
+                coversWholeColumn: coversWholeColumn
+            ),
+            from: owner
+        )
+        return state
+    }
+
+    private var pagedTable: PaginationState {
+        PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+    }
+
+    @Test("The readout draws nothing until there is a summary")
+    func selectionSummaryReadoutDrawsOnlyWithASummary() {
+        func width(of state: SelectionSummaryState) -> CGFloat {
+            let host = NSHostingView(rootView: SelectionSummaryReadout(
+                state: state,
+                scopeNote: nil,
+                isPopoverPresented: .constant(false),
+                leadsWithSeparator: true
+            ))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.width
+        }
+
+        #expect(width(of: SelectionSummaryState()) == 0)
+        #expect(width(of: Self.publishedSummary()) > 0)
+    }
+
+    /// The Count Exactly treatment would drop the bar a tier every time a drag starts and bring it
+    /// back on the click that ends it, taking the titles off Columns and Filters mid-gesture.
+    @Test("A selection summary adds nothing to the width the bar asks for")
+    func selectionSummaryLeavesTheIdealWidthAlone() {
+        let plain = makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: pagedTable)
+        let summarized = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: pagedTable,
+            selectionSummary: Self.publishedSummary(coversWholeColumn: true)
+        )
+        #expect(summarized.model.controls.showsSelectionSummary)
+        #expect(idealWidth(of: summarized) == idealWidth(of: plain))
+    }
+
+    @Test("A selection summary leaves the bar's height alone")
+    func heightIsConstantWithASelectionSummary() {
+        let plain = measuredHeight(of: makeBar(
+            rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: pagedTable
+        ))
+        let summarized = measuredHeight(of: makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: pagedTable,
+            selectionSummary: Self.publishedSummary()
+        ))
+        #expect(summarized == plain)
+        #expect(summarized >= StatusBarChrome.height)
+    }
+
+    /// Every element the readout zone can hold, at once: the sentence beside Count Exactly, then the
+    /// summary, a wordy driver message and the last run's timing in the report slot.
+    @Test("A bar carrying every readout element is never wider than its host", arguments: statusBarHostWidths)
+    func crowdedReadoutNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 22,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: Self.estimatedPagination,
+            statusMessage: Self.wordyDriverMessage,
+            selectionSummary: Self.publishedSummary(),
+            lastTiming: PluginQueryTiming(total: 3.421, firstRow: 0.012)
+        )
+        #expect(bar.model.controls.showsExactCountAction)
+        #expect(bar.model.controls.showsSelectionSummary)
+        #expect(bar.model.statusMessage != nil)
+        expectFills(bar, at: width)
     }
 
     private func idealWidth(of bar: ResultStatusBar) -> CGFloat {

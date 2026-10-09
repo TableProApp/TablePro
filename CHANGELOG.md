@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Map preview of a geometry value in the row inspector, with Text and Map segments, Fit to Geometry and Open in Window.
+- Sum, Average and Count of the selected cells in the status bar, with Minimum, Maximum and Copy in its popover.
+- Select Column in the column header menu.
 
 ### Changed
 
@@ -38,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy Value on a JSON object or array copying only the rows a tree filter left on screen.
 - The JSON tree filter matching array positions such as `[1]`, counts such as `{2 keys}` and the `…` row.
 - "JSON Too Large" in Tree mode for a minified value under the 100,000 character cap.
+- Shift-click or Cmd-click after clicking a cell selecting only the cell clicked last.
+- Cmd-click on a cell inside a selected block not deselecting it.
+- MySQL and MariaDB DECIMAL columns in results treated as text in charts, sorting and JSON copy.
+- Column Statistics showing very small values as 0 and rounding long integers.
+- Copying more than 50,000 rows of selected cells cutting the text without saying so.
 - Disclosure arrows in the inspector's JSON tab doing nothing under a filter, then collapsing rows once it was cleared.
 - Copy Key Path leaving keys such as `a.b` and `content-type` unquoted, so the path named another value or failed to parse.
 - "Invalid JSON" in Tree mode for a NULL or empty JSON cell.

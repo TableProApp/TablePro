@@ -538,6 +538,7 @@ class DataGridRowView: NSTableRowView {
         let copyAsItem = NSMenuItem(title: String(localized: "Copy as"), action: nil, keyEquivalent: "")
         copyAsItem.submenu = copyAsMenu
         menu.addItem(copyAsItem)
+        addSelectionSummaryCopyItems(to: menu, coordinator: coordinator)
 
         if coordinator.isEditable {
             let pasteItem = NSMenuItem(
@@ -761,6 +762,26 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func pasteRows() {
         coordinator?.delegate?.dataGridPasteRows()
+    }
+
+    private func addSelectionSummaryCopyItems(to menu: NSMenu, coordinator: TableViewCoordinator) {
+        guard let numbers = coordinator.selectionSummaryTracker.currentSummary?.numbers else { return }
+        for figure in [SelectionSummaryFigures.Figure.sum, .average] {
+            guard let text = SelectionSummaryFigures.copyText(figure, of: numbers) else { continue }
+            let item = NSMenuItem(
+                title: figure.copyTitle,
+                action: #selector(copySelectionSummaryFigure(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = text
+            item.target = self
+            menu.addItem(item)
+        }
+    }
+
+    @objc private func copySelectionSummaryFigure(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        ClipboardService.shared.writeText(text)
     }
 
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
