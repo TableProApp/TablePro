@@ -20,12 +20,17 @@ struct TristateCheckbox: NSViewRepresentable {
     }
 
     let state: State
+    var title: String?
     var accessibilityLabel: String?
     var accessibilityValue: String?
     let action: () -> Void
 
     func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.clicked))
+        let button = NSButton(
+            checkboxWithTitle: title ?? "",
+            target: context.coordinator,
+            action: #selector(Coordinator.clicked(_:))
+        )
         button.allowsMixedState = true
         button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         button.setContentHuggingPriority(.defaultHigh, for: .vertical)
@@ -33,33 +38,49 @@ struct TristateCheckbox: NSViewRepresentable {
     }
 
     func updateNSView(_ button: NSButton, context: Context) {
-        switch state {
-        case .unchecked: button.state = .off
-        case .checked: button.state = .on
-        case .mixed: button.state = .mixed
+        button.state = state.controlState
+        if let title, button.title != title {
+            button.title = title
         }
+        button.isEnabled = context.environment.isEnabled
         if let accessibilityLabel {
             button.setAccessibilityLabel(accessibilityLabel)
         }
         if let accessibilityValue {
             button.setAccessibilityValue(accessibilityValue)
         }
+        context.coordinator.state = state
         context.coordinator.action = action
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
+        Coordinator(state: state, action: action)
     }
 
     class Coordinator: NSObject {
+        var state: State
         var action: () -> Void
 
-        init(action: @escaping () -> Void) {
+        init(state: State, action: @escaping () -> Void) {
+            self.state = state
             self.action = action
         }
 
-        @objc func clicked() {
+        /// AppKit has already moved the box to its next state (on, off, mixed). Putting the model's
+        /// state back means a click that changes nothing cannot leave a dash or a check nobody holds.
+        @objc func clicked(_ sender: NSButton) {
+            sender.state = state.controlState
             action()
+        }
+    }
+}
+
+private extension TristateCheckbox.State {
+    var controlState: NSControl.StateValue {
+        switch self {
+        case .unchecked: .off
+        case .checked: .on
+        case .mixed: .mixed
         }
     }
 }

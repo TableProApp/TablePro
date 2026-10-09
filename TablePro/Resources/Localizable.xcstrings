@@ -156652,6 +156652,9 @@
         }
       }
     },
+    "Select All Results" : {
+
+    },
     "Select an activity entry to see its details." : {
       "localizations" : {
         "fr" : {
@@ -205195,6 +205198,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "來自已載入的 %d 列的值"
+          }
+        }
+      }
+    },
+    "Values from ^[%lld loaded row](inflect: true)" : {
+      "localizations" : {
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Valeurs de %lld lignes chargées"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Valeurs de %lld ligne chargée"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Valeurs de %lld lignes chargées"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "불러온 행 %lld개의 값"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yüklenen %lld satırdan gelen değerler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giá trị từ %lld dòng đã tải"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自已加载的 %lld 行的值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來自已載入的 %lld 列的值"
           }
         }
       }

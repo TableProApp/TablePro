@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Searching in Filter Values… not narrowing the selection, so Apply and Return kept every value.
+- Return in Filter Values… hiding every row when no value was selected.
+- Clicks on the Select All label in Filter Values… doing nothing.
+- "Values from 1 loaded rows" in Filter Values….
+
 ## [0.79.0] - 2026-10-09
 
 SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.
