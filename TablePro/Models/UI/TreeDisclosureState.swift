@@ -6,74 +6,74 @@
 import Foundation
 
 internal struct TreeDisclosureState {
-    private var expandedKeyPaths: Set<String> = []
-    private var collapsedKeyPaths: Set<String> = []
-    private var filterExpandedKeyPaths: Set<String> = []
-    private var filterCollapsedKeyPaths: Set<String> = []
+    private var expandedPaths: Set<TreeNodePath> = []
+    private var collapsedPaths: Set<TreeNodePath> = []
+    private var filterExpandedPaths: Set<TreeNodePath> = []
+    private var filterCollapsedPaths: Set<TreeNodePath> = []
 
     internal init() {}
 
     internal func isExpanded(
-        _ keyPath: String,
-        autoRevealedKeyPaths: Set<String>,
-        defaultExpandedKeyPaths: Set<String>,
+        _ path: TreeNodePath,
+        autoRevealedPaths: Set<TreeNodePath>,
+        defaultExpandedPaths: Set<TreeNodePath>,
         isFiltered: Bool
     ) -> Bool {
         if isFiltered {
-            if filterExpandedKeyPaths.contains(keyPath) { return true }
-            if filterCollapsedKeyPaths.contains(keyPath) { return false }
-            if autoRevealedKeyPaths.contains(keyPath) { return true }
+            if filterExpandedPaths.contains(path) { return true }
+            if filterCollapsedPaths.contains(path) { return false }
+            if autoRevealedPaths.contains(path) { return true }
         }
-        if expandedKeyPaths.contains(keyPath) { return true }
-        if collapsedKeyPaths.contains(keyPath) { return false }
-        return defaultExpandedKeyPaths.contains(keyPath)
+        if expandedPaths.contains(path) { return true }
+        if collapsedPaths.contains(path) { return false }
+        return defaultExpandedPaths.contains(path)
     }
 
-    internal mutating func setExpanded(_ expanded: Bool, keyPath: String, isFiltered: Bool) {
+    internal mutating func setExpanded(_ expanded: Bool, path: TreeNodePath, isFiltered: Bool) {
         guard isFiltered else {
-            apply(expanded, keyPath: keyPath, expandedSet: &expandedKeyPaths, collapsedSet: &collapsedKeyPaths)
+            apply(expanded, path: path, expandedSet: &expandedPaths, collapsedSet: &collapsedPaths)
             return
         }
-        apply(expanded, keyPath: keyPath, expandedSet: &filterExpandedKeyPaths, collapsedSet: &filterCollapsedKeyPaths)
+        apply(expanded, path: path, expandedSet: &filterExpandedPaths, collapsedSet: &filterCollapsedPaths)
     }
 
-    internal mutating func expandAll(containerKeyPaths: Set<String>, isFiltered: Bool) {
+    internal mutating func expandAll(containerPaths: Set<TreeNodePath>, isFiltered: Bool) {
         guard isFiltered else {
-            expandedKeyPaths = containerKeyPaths
-            collapsedKeyPaths = []
+            expandedPaths = containerPaths
+            collapsedPaths = []
             return
         }
-        filterExpandedKeyPaths = containerKeyPaths
-        filterCollapsedKeyPaths = []
+        filterExpandedPaths = containerPaths
+        filterCollapsedPaths = []
     }
 
-    internal mutating func collapseAll(containerKeyPaths: Set<String>, isFiltered: Bool) {
+    internal mutating func collapseAll(containerPaths: Set<TreeNodePath>, isFiltered: Bool) {
         guard isFiltered else {
-            collapsedKeyPaths = containerKeyPaths
-            expandedKeyPaths = []
+            collapsedPaths = containerPaths
+            expandedPaths = []
             return
         }
-        filterCollapsedKeyPaths = containerKeyPaths
-        filterExpandedKeyPaths = []
+        filterCollapsedPaths = containerPaths
+        filterExpandedPaths = []
     }
 
     internal mutating func endFiltering() {
-        filterExpandedKeyPaths.removeAll()
-        filterCollapsedKeyPaths.removeAll()
+        filterExpandedPaths.removeAll()
+        filterCollapsedPaths.removeAll()
     }
 
     private func apply(
         _ expanded: Bool,
-        keyPath: String,
-        expandedSet: inout Set<String>,
-        collapsedSet: inout Set<String>
+        path: TreeNodePath,
+        expandedSet: inout Set<TreeNodePath>,
+        collapsedSet: inout Set<TreeNodePath>
     ) {
         guard expanded else {
-            collapsedSet.insert(keyPath)
-            expandedSet.remove(keyPath)
+            collapsedSet.insert(path)
+            expandedSet.remove(path)
             return
         }
-        expandedSet.insert(keyPath)
-        collapsedSet.remove(keyPath)
+        expandedSet.insert(path)
+        collapsedSet.remove(path)
     }
 }

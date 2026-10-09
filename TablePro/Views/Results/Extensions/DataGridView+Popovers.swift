@@ -55,7 +55,7 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
         let cellValue = cellValue(at: row, column: columnIndex)
-        guard let databaseType, let connectionId else { return }
+        guard let databaseType, connectionId != nil else { return }
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         guard let scope = gridOriginScope else { return }
@@ -160,8 +160,11 @@ extension TableViewCoordinator {
                 onPopOut: { currentText in
                     dismiss()
                     self?.dismissPoppedOutCellEditor()
+                    /// The popover's text can hold an edit its own Save never wrote, so the window
+                    /// compares against the cell rather than against the text it opens on.
                     self?.activePoppedOutEditor = JSONViewerWindowController.open(
                         text: currentText,
+                        baseline: currentValue,
                         columnName: columnName,
                         isEditable: true,
                         onCommit: { newValue in
@@ -307,7 +310,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard let connectionId,
+        guard connectionId != nil,
               let databaseType,
               let fkInfo = tableRows.columnForeignKeys[columnName],
               canStartInlineEdit(row: row, columnIndex: columnIndex),

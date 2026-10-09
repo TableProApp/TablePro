@@ -10311,6 +10311,9 @@
         }
       }
     },
+    "%lld keys" : {
+
+    },
     "%lld large object values were longer than 64 MiB and were cut short." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -10914,6 +10917,9 @@
           }
         }
       }
+    },
+    "%lld properties" : {
+
     },
     "%lld roles own database objects" : {
       "localizations" : {
@@ -12932,6 +12938,9 @@
         }
       }
     },
+    "1 key" : {
+
+    },
     "1 line has unreadable characters" : {
       "localizations" : {
         "fr" : {
@@ -13078,6 +13087,9 @@
           }
         }
       }
+    },
+    "1 property" : {
+
     },
     "1 row" : {
       "localizations" : {
@@ -41749,6 +41761,9 @@
         }
       }
     },
+    "Color preview" : {
+
+    },
     "Color the whole row, or only the matching cell" : {
       "localizations" : {
         "fr" : {
@@ -49350,6 +49365,9 @@
           }
         }
       }
+    },
+    "Copy Link" : {
+
     },
     "Copy Name" : {
       "localizations" : {
@@ -68555,6 +68573,9 @@
           }
         }
       }
+    },
+    "Empty Value" : {
+
     },
     "Empty response" : {
       "extractionState" : "manual",
@@ -123757,6 +123778,9 @@
           }
         }
       }
+    },
+    "Open Link" : {
+
     },
     "Open or focus a TablePro window for a saved connection. Returns once the window has a tab, with the window id that list_recent_tabs reports." : {
       "localizations" : {
@@ -202884,6 +202908,9 @@
           }
         }
       }
+    },
+    "Use text mode to enter JSON." : {
+
     },
     "Use IAM database authentication" : {
       "localizations" : {

@@ -10,22 +10,23 @@ import Foundation
 enum JSONRowFlattener {
     /// `visiblePaths` is the filter's answer. A filter run expands everything it kept, so a match
     /// nested inside a collapsed object is on screen without the reader opening its way down.
+    /// `closedUnderFilter` is kept apart from `expanded` so it goes with the query. `matcher` lets a
+    /// foreign key keep its control under a filter only where the filter would show the fetched row.
     static func rows(
         root: JSONRowNode,
         expanded: Set<JSONNodePath>,
         states: JSONForeignKeyStates,
-        visiblePaths: Set<JSONNodePath>? = nil
+        visiblePaths: Set<JSONNodePath>? = nil,
+        closedUnderFilter: Set<JSONNodePath> = [],
+        matcher: JSONRowMatcher? = nil
     ) -> [JSONDisplayRow] {
-        var rows: [JSONDisplayRow] = []
-        append(
-            node: root,
-            depth: 0,
-            needsComma: false,
+        let run = Run(
             expanded: expanded,
             states: states,
-            visiblePaths: visiblePaths,
-            into: &rows
+            filter: visiblePaths.map { Filter(visiblePaths: $0, closed: closedUnderFilter, matcher: matcher) }
         )
+        var rows: [JSONDisplayRow] = []
+        append(node: root, depth: 0, needsComma: false, isUnderMatchedKey: false, run: run, into: &rows)
         return rows
     }
 
@@ -34,6 +35,18 @@ enum JSONRowFlattener {
         var paths: Set<JSONNodePath> = []
         collectExpandable(node: root, states: states, into: &paths)
         return paths
+    }
+
+    private struct Filter {
+        let visiblePaths: Set<JSONNodePath>
+        let closed: Set<JSONNodePath>
+        let matcher: JSONRowMatcher?
+    }
+
+    private struct Run {
+        let expanded: Set<JSONNodePath>
+        let states: JSONForeignKeyStates
+        let filter: Filter?
     }
 
     private static func collectExpandable(
@@ -53,18 +66,27 @@ enum JSONRowFlattener {
         node: JSONRowNode,
         depth: Int,
         needsComma: Bool,
-        expanded: Set<JSONNodePath>,
-        states: JSONForeignKeyStates,
-        visiblePaths: Set<JSONNodePath>?,
+        isUnderMatchedKey: Bool,
+        run: Run,
         into rows: inout [JSONDisplayRow]
     ) {
-        if let visiblePaths, !visiblePaths.contains(node.path) { return }
+        if let filter = run.filter, !filter.visiblePaths.contains(node.path) { return }
 
-        let children = JSONRowFilter.children(of: node, fetched: states.fetched)
-        let visibleChildren = children.filter { visiblePaths?.contains($0.path) ?? true }
-        let isFiltering = visiblePaths != nil
-        let isExpanded = isFiltering ? !visibleChildren.isEmpty : expanded.contains(node.path)
-        let status = status(for: node, states: states)
+        let children = JSONRowFilter.children(of: node, fetched: run.states.fetched)
+        let shownChildren = run.filter.map { filter in
+            children.filter { filter.visiblePaths.contains($0.path) }
+        } ?? children
+        /// Whether a row fetched here would show whole: `JSONRowFilter` keeps all under a matching
+        /// key. Only a foreign key asks, and only the row and other foreign keys sit above one.
+        let keepsWholeSubtree = isUnderMatchedKey
+            || (node.foreignKey != nil && keyMatches(node, filter: run.filter))
+        let isExpanded: Bool
+        if let filter = run.filter {
+            isExpanded = !shownChildren.isEmpty && !filter.closed.contains(node.path)
+        } else {
+            isExpanded = run.expanded.contains(node.path)
+        }
+        let status = status(for: node, states: run.states)
 
         guard !children.isEmpty, isExpanded else {
             rows.append(
@@ -73,11 +95,16 @@ enum JSONRowFlattener {
                     path: node.path,
                     depth: depth,
                     key: node.key,
-                    token: collapsedToken(for: node, childCount: children.count),
+                    token: collapsedToken(for: node, childCount: shownChildren.count),
                     needsComma: needsComma,
                     scalar: node.scalar,
                     foreignKey: node.foreignKey,
-                    isExpandable: isExpandable(node, states: states),
+                    isExpandable: isExpandable(
+                        node,
+                        shownChildren: shownChildren,
+                        keepsWholeSubtree: keepsWholeSubtree,
+                        run: run
+                    ),
                     isExpanded: false,
                     status: status
                 )
@@ -104,14 +131,13 @@ enum JSONRowFlattener {
             )
         )
 
-        for (index, child) in visibleChildren.enumerated() {
+        for (index, child) in shownChildren.enumerated() {
             append(
                 node: child,
                 depth: depth + 1,
-                needsComma: index < visibleChildren.count - 1,
-                expanded: expanded,
-                states: states,
-                visiblePaths: visiblePaths,
+                needsComma: index < shownChildren.count - 1,
+                isUnderMatchedKey: keepsWholeSubtree,
+                run: run,
                 into: &rows
             )
         }
@@ -133,6 +159,11 @@ enum JSONRowFlattener {
         )
     }
 
+    private static func keyMatches(_ node: JSONRowNode, filter: Filter?) -> Bool {
+        guard let matcher = filter?.matcher, let key = node.key.text else { return false }
+        return matcher.matches(key)
+    }
+
     private static func collapsedToken(for node: JSONRowNode, childCount: Int) -> JSONDisplayRow.Token {
         if let scalar = node.scalar { return .scalar(scalar) }
         switch node.value {
@@ -142,14 +173,19 @@ enum JSONRowFlattener {
         }
     }
 
-    /// A foreign key with a NULL value references nothing, so it offers no control. An empty object
-    /// or array has nothing to open either.
-    private static func isExpandable(_ node: JSONRowNode, states: JSONForeignKeyStates) -> Bool {
-        if let scalar = node.scalar, node.foreignKey != nil {
-            if case .null = scalar { return false }
-            return true
-        }
-        return !JSONRowFilter.children(of: node, fetched: states.fetched).isEmpty
+    /// A control is offered only where using it changes what is printed. Under a filter that rules
+    /// out a key kept for its value alone: the fetched row would be filtered out, a query for nothing.
+    private static func isExpandable(
+        _ node: JSONRowNode,
+        shownChildren: [JSONRowNode],
+        keepsWholeSubtree: Bool,
+        run: Run
+    ) -> Bool {
+        guard let scalar = node.scalar, node.foreignKey != nil else { return !shownChildren.isEmpty }
+        if case .null = scalar { return false }
+        guard run.filter != nil else { return true }
+        if !shownChildren.isEmpty { return true }
+        return run.states.fetched[node.path] == nil && keepsWholeSubtree
     }
 
     private static func status(for node: JSONRowNode, states: JSONForeignKeyStates) -> JSONDisplayRow.Status {

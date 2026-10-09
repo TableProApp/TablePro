@@ -31,7 +31,7 @@ Id-like binary and character columns, integer columns whose names read as timest
 
 A JSON-typed column opens on the chevron; double-click or `Enter` edits it inline instead. A text column holding JSON needs **Display As > JSON** first.
 
-The popover has two modes. **Text** is syntax-highlighted and pretty-printed, and editable when the cell is. **Tree** is collapsible, with a search field, and navigation only. Both keep your key order and exact number values, integers larger than JavaScript can represent included.
+The popover has two modes. **Text** is syntax-highlighted and pretty-printed, and editable when the cell is. **Tree** is a collapsible outline with a search field. It never edits, but its rows and the text in them select and copy. Both keep your key order and exact number values, integers larger than JavaScript can represent included.
 
 <Frame caption="JSON editor popover with Text and Tree modes">
   <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON editor popover" />
@@ -42,12 +42,41 @@ The mode you switch to becomes the default for the next value, which is the same
 
 Opening a value and seeing it pretty-printed is not an edit: the row is marked changed only once you alter the content. **Save** commits a compact value, key order and numbers preserved, through the [change tracking](/features/change-tracking) queue. Text that is not valid JSON prompts first.
 
+A NULL or empty cell reads **Empty Value** in **Tree** mode. On an editable cell, switch to **Text** to enter JSON.
+
+### Selecting and copying in a tree
+
+Click a row to select it. The arrow keys move the selection, `Shift` and `Cmd` extend it, and `Cmd+A` selects every row. `Cmd+C` copies the selected values, one per line: a string without its quotes, an object or array as compact JSON. A row inside a selected object or array is already part of that JSON and is not copied a second time.
+
+For part of a value, select its row, drag across the text or double-click a word, then press `Cmd+C`. Text copies as the row shows it: a long string shortened, a line break written as `\n`. **Copy Value** on the right-click menu copies the whole value.
+
+**Copy Key** and **Copy Key Path** sit on the same menu. A path reads `$.user.emails[0]`. A key that is not a plain identifier is quoted, as in `$."content-type"`, the form SQLite, PostgreSQL, MariaDB and DuckDB read in a JSON path.
+
+`Escape` ends a text selection first, then clears the row selection. Pressed once more, it closes the popover and drops an edit you have not saved.
+
+### Links and color swatches
+
+A string that is one whole `http`, `https` or `mailto` address is drawn as a link. The first click selects its row. Click the link in a selected row and it opens in your browser or mail app. `Space` opens the link of a single selected row, the right-click menu has **Open Link** and **Copy Link**, and holding the pointer over the link shows the address in full.
+
+Everything else stays text: `file:` and every other scheme, `www.example.com` with no scheme, an address inside a longer string or with a space beside it, an address carrying a user name and password, a `mailto:` with anything after the address, and an address too long for its row that is cut off before the end of its host name, since the part shown could name another site. **Copy Value** still copies that address whole. An address has to be plain ASCII with the rest percent-escaped, so `/wiki/Vi%E1%BB%87t_Nam` links and `/wiki/Việt_Nam` does not.
+
+A string that is a CSS color carries a swatch of that color beside it.
+
+| Format | Examples |
+| --- | --- |
+| Hex, 3, 6 or 8 digits | `#f80`, `#ff8800`, `#ff880080` |
+| `rgb()` and `rgba()` | `rgb(255, 136, 0)`, `rgb(255 136 0 / 50%)` |
+| `hsl()` and `hsla()` | `hsl(32, 100%, 50%)`, `hsl(32deg 100% 50% / 0.5)` |
+
+Any 3, 6 or 8 hex digits after `#` count, so an order number stored as `#404` gets a swatch too. Four-digit hex such as `#f80c` and color names such as `orange` get none.
+
 ### Filtering a tree
 
 The search field above the tree filters keys and values as you type. The [PHP serialized tree](#php-serialized-viewer) works the same way.
 
 - Matching ignores case and accents, so `cafe` finds `café`. Full-width and half-width differ: `ABC` does not find `ＡＢＣ`.
 - A row matches on its whole value, not the shortened form shown, so a match deep inside a long string counts. A match under a collapsed parent opens its parents, and a key that matches keeps its contents and stays expandable.
+- Only text from the document matches. A JSON array position such as `[1]`, a count such as `{2 keys}` and the `…` row are the tree's own labels, and no filter finds them.
 - A filter that matches nothing says so, and says separately when the document was cut at 5,000 nodes, since the rows past the cut were never searched.
 
 ### Arrays of JSON
@@ -62,7 +91,9 @@ Reading an element does not change it. Only an element whose JSON you alter is r
 
 Set **Display As > PHP Serialized** on a text column, then double-click or press `Enter`. The viewer is read-only: PHP serialized values round-trip through PHP itself.
 
-**Tree** mode filters the same way as the JSON tree, with type badges on the nodes (`str`, `int`, `arr`, `obj`, `ser`, `ref`) and visibility badges on object members (`protected`, `private (ClassName)`). A custom-serialized class (the `C:` token) is one opaque leaf, and a reference (`r:`/`R:`) shows as `→ #N` and is not followed. **Raw** mode shows the original string with text selection.
+**Tree** mode is the JSON tree with PHP's types: it filters, [selects, copies](#selecting-and-copying-in-a-tree) and draws [links and color swatches](#links-and-color-swatches) the same way, with type badges on the nodes (`str`, `int`, `arr`, `obj`, `ser`, `ref`) and visibility badges on object members (`protected`, `private (ClassName)`). A custom-serialized class (the `C:` token) is one opaque leaf that copies as its whole payload, and a reference (`r:`/`R:`) shows as `→ #N` and is not followed. **Raw** mode shows the original string with text selection.
+
+An array or object row copies as its summary, such as `[2 items]`, not as its contents, so each row you select inside it copies its own value after the summary. Copy the serialized text from **Raw** mode instead.
 
 ## Blob and hex
 
@@ -92,7 +123,7 @@ A value that refuses to open in one mode still opens in another.
 | Viewer | Cap | Past the cap |
 | --- | --- | --- |
 | JSON pretty-printing | 500,000 characters | The value shows as stored |
-| JSON tree | 100,000 characters | "JSON Too Large". Read it in Text mode |
+| JSON tree | 100,000 characters, indentation not counted | "JSON Too Large". Read it in Text mode |
 | JSON and PHP trees | 5,000 nodes | The first 5,000 load, and a `…` row marks the cut |
 | PHP serialized | 5,000,000 characters, 256 levels deep | Tree shows a placeholder, Raw still works |
 | Hex dump and hex editor | 10 KB | The dump is truncated, and the editor opens read-only |
@@ -162,8 +193,12 @@ A foreign key carries a disclosure control. Click it and the referenced row is f
 
 The filter field takes text, or a regular expression wrapped in slashes such as `/^rental/`. It matches keys and values, keeps the keys that lead to a match along with everything under a key that matches, and opens what was collapsed. `Escape` clears it. An invalid expression outlines the field in red and filters nothing.
 
-Editing stays on **Fields**. Right-click a line for **Copy Value** and **Copy Key**; a foreign key line adds **Open** for the referenced table, filtered to that row.
+Under a filter, the disclosure controls close and reopen what the filter kept. A foreign key that matches only by its value has no control until you clear the filter.
 
-Caps: a document over 100,000 characters prints as a string rather than as nested keys, the same cap the [JSON tree](#limits) has. A binary value shows its first 64 bytes followed by an ellipsis, the same cap the grid's own **Copy** applies.
+A string value carries the same [links and color swatches](#links-and-color-swatches) as the tree. A line here has no selection, so a link opens on the first click.
 
-For whole-row JSON, switch the result to JSON mode with the switcher at the leading edge of the status bar, or from **View > Result View**. It shows what the [grid](/features/data-grid) shows, in the same order, minus hidden columns and rows marked for deletion, which the count line reports separately. Select rows in Data mode first to narrow it, then click **Copy JSON**.
+Editing stays on **Fields**. Right-click the empty part of a line, before its text or past its end, for **Copy Value** and **Copy Key**; a link adds **Open Link** and **Copy Link**, and a foreign key line adds **Open** for the referenced table, filtered to that row. A right-click on the text itself shows the text menu instead.
+
+Caps: a document stored as more than 100,000 characters prints as a string rather than as nested keys. The [JSON tree](#limits) has the same cap, counted without indentation. A binary value shows its first 64 bytes followed by an ellipsis, the same cap the grid's own **Copy** applies.
+
+For whole-row JSON, switch the result to JSON mode with the switcher at the leading edge of the status bar, or from **View > Result View**. It shows what the [grid](/features/data-grid) shows, in the same order, minus hidden columns and rows marked for deletion, which the count line reports separately. Select rows in Data mode first to narrow it, then click **Copy JSON**. Its **Tree** mode is the cell viewer's tree, where `Cmd+A` then `Cmd+C` copies one row object per line.

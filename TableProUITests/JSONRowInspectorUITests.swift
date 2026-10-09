@@ -2,8 +2,9 @@
 //  JSONRowInspectorUITests.swift
 //  TableProUITests
 //
-//  The JSON tab shows the selected row as JSON, and a foreign key in it fetches the row it
-//  references. Chinook's Album.ArtistId is the reference this drives.
+//  The JSON tab shows the selected row as JSON, a foreign key in it fetches the row it
+//  references, and a value that is a link offers to open it. Chinook's Album.ArtistId is the
+//  reference this drives.
 //
 
 import AppKit
@@ -47,6 +48,58 @@ final class JSONRowInspectorUITests: UITestCase {
             waitForPredicate(timeout: 30) { window.staticTexts["\"Name\""].exists },
             "Expanding Album.ArtistId must fetch the Artist row, whose columns include Name"
         )
+    }
+
+    /// Chinook holds no address, so the row comes from a database the test builds. Six rows, so
+    /// the point `openRowAsJSON` clicks lands on one whichever row that is.
+    private static let bookmarks = """
+    CREATE TABLE bookmark (id INTEGER PRIMARY KEY, site TEXT);
+    INSERT INTO bookmark (site) VALUES
+        ('https://example.com/docs/1'), ('https://example.com/docs/2'), ('https://example.com/docs/3'),
+        ('https://example.com/docs/4'), ('https://example.com/docs/5'), ('https://example.com/docs/6');
+    """
+
+    func testALinkValueOffersOpenLinkInItsRowMenu() throws {
+        try seedSQLiteSession(connectionNames: ["Bookmarks"], databaseSQL: Self.bookmarks)
+        let app = try launchApp()
+        let window = app.windows.firstMatch
+
+        let table = objectBrowserRow("bookmark", in: window)
+        XCTAssertTrue(table.waitToExist(timeout: 60), "The restored connection must list bookmark")
+        clickAtCenter(table)
+
+        let grid = window.tables.matching(identifier: "data-grid").firstMatch
+        XCTAssertTrue(grid.waitToExist(timeout: 30), "bookmark produced no data grid")
+        XCTAssertTrue(
+            waitForClickableRows(in: grid),
+            "bookmark must load rows before a row can be inspected"
+        )
+
+        openRowAsJSON(in: window, grid: grid)
+
+        /// Selectable text publishes the key twice, nested, so a coordinate needs one of them.
+        let key = window.staticTexts["\"site\""].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { key.exists },
+            "The JSON tab must print the site column"
+        )
+
+        /// A right-click on selectable text raises the text's own menu, measured. The row's menu
+        /// answers on the row around it, and the gutter left of the key is row and nothing else.
+        key.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: -7, dy: 0))
+            .rightClick()
+
+        /// Found, never clicked: the default opener would hand the address to the browser.
+        XCTAssertTrue(
+            contextMenuItem("Open Link", in: app).waitToExist(timeout: 15),
+            "A value that is a link must offer Open Link in its row's menu"
+        )
+        XCTAssertTrue(
+            contextMenuItem("Copy Link", in: app).exists,
+            "A value that is a link must offer Copy Link beside Open Link"
+        )
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     // MARK: - Helpers

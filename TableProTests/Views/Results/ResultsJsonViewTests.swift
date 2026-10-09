@@ -182,6 +182,33 @@ struct ResultsJsonViewTests {
         #expect(numberNode.displayValue == value)
     }
 
+    @Test("the tree size cap counts the document, not the indentation of the rendered text")
+    func treeSizeCapCountsTheCompactDocument() {
+        let rows = ContiguousArray((0..<2_000).map { index in
+            Row(id: .existing(index), values: [.text("active"), .text("name-\(1_000 + index)")])
+        })
+        let tableRows = TableRows(
+            rows: rows,
+            columns: ["status", "name"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+        )
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect((result.json as NSString).length > 100_000)
+        #expect((JsonReindenter.normalize(result.json) as NSString).length < 100_000)
+        guard case .success(let root) = result.parseResult else {
+            Issue.record("expected a tree for a result under the cap in compact form")
+            return
+        }
+        #expect(root.children.first?.children.last?.rawValue == "name-1000")
+    }
+
     @Test("a selection narrows the output to the selected rows")
     func selectionNarrowsTheOutput() {
         let result = compute(selectedIndices: [1])
