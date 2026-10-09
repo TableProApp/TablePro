@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB writes hidden behind computed method names, escaped keys or a leading `--` passing as reads. (#3290)
 - Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body. (#3290)
 - Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read. (#3290)
+- SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607.
 
 ## [0.79.0] - 2026-10-08
 

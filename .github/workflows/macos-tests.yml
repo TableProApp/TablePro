@@ -217,8 +217,9 @@ jobs:
 
       # Only the helper's own tests, none of which needs a HANA server. Run from the bridge
       # directory so the go command reads its go.mod and builds with the toolchain it pins.
-      # staticcheck and govulncheck are pinned here and fetched by `go run`, so they never
-      # enter the helper's go.mod.
+      # staticcheck and govulncheck never enter the helper's go.mod. staticcheck is pinned in
+      # tools.mod, where its golang.org/x/tools can be newer than the release requires: v0.8.1's
+      # own cannot read the export data Go 1.27.2 writes. govulncheck is fetched by `go run`.
       - name: Test the SAP HANA helper
         working-directory: Native/HanaBridge
         run: |
@@ -232,7 +233,7 @@ jobs:
           go mod tidy -diff
           go vet ./...
           go test -race ./...
-          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go tool -modfile=tools.mod staticcheck ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, and the project only
