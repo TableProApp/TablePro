@@ -710,6 +710,9 @@
         }
       }
     },
+    "%lld changes could not be uploaded to iCloud. They stay on this device and go again on the next sync." : {
+
+    },
     "%lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -799,6 +802,9 @@
           }
         }
       }
+    },
+    "1 change could not be uploaded to iCloud. It stays on this device and goes again on the next sync." : {
+
     },
     "1 connection imported." : {
       "localizations" : {
@@ -2528,6 +2534,9 @@
         }
       }
     },
+    "Cannot reach iCloud. Changes sync when this device is back online." : {
+
+    },
     "Certificate" : {
       "localizations" : {
         "ko" : {
@@ -2611,6 +2620,12 @@
           }
         }
       }
+    },
+    "Changes Not Saved" : {
+
+    },
+    "Changes from iCloud could not be saved on this device. They download again on the next sync." : {
+
     },
     "Check your %@ username and password." : {
       "localizations" : {
@@ -10247,6 +10262,9 @@
         }
       }
     },
+    "Not Signed In to iCloud" : {
+
+    },
     "Not connected to SQL Server" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10500,6 +10518,9 @@
           }
         }
       }
+    },
+    "Offline" : {
+
     },
     "One report a day: hashed device ID, versions, language, database types, first-use dates. Never hostnames, credentials, queries, or data." : {
       "localizations" : {
@@ -13845,6 +13866,9 @@
         }
       }
     },
+    "Screen Time or device management does not allow iCloud on this device, so TablePro cannot sync." : {
+
+    },
     "Search Connections" : {
       "localizations" : {
         "ko" : {
@@ -14580,6 +14604,9 @@
         }
       }
     },
+    "Some Changes Not Uploaded" : {
+
+    },
     "Some credentials could not be saved to the keychain. You may need to re-enter them later." : {
       "localizations" : {
         "ko" : {
@@ -14973,6 +15000,12 @@
           }
         }
       }
+    },
+    "Sync Failed" : {
+
+    },
+    "Sync Is Unavailable" : {
+
     },
     "Sync Now" : {
       "extractionState" : "stale",
@@ -15376,6 +15409,9 @@
         }
       }
     },
+    "TablePro Data Was Removed from iCloud" : {
+
+    },
     "TablePro Is Locked" : {
       "localizations" : {
         "ko" : {
@@ -15515,6 +15551,9 @@
           }
         }
       }
+    },
+    "TablePro cannot upload changes until there is space in iCloud. Changes on this device are kept here and upload once you free up space or add storage." : {
+
     },
     "TablePro could not read that file." : {
       "localizations" : {
@@ -15692,6 +15731,9 @@
           }
         }
       }
+    },
+    "TablePro's data is no longer in iCloud. It may have been deleted in iCloud settings. Upload what this device has again, or turn off iCloud Sync to keep it here only." : {
+
     },
     "Tables" : {
       "localizations" : {
@@ -18240,6 +18282,9 @@
         }
       }
     },
+    "This version of TablePro can no longer sync with iCloud. Update TablePro in the App Store to resume." : {
+
+    },
     "This will insert a row into %@. Continue?" : {
       "localizations" : {
         "ko" : {
@@ -18410,6 +18455,9 @@
           }
         }
       }
+    },
+    "To free up space, open Settings, tap your name, then tap iCloud." : {
+
     },
     "Too many rows. Add up to %lld rows at a time." : {
       "localizations" : {
@@ -18606,6 +18654,9 @@
           }
         }
       }
+    },
+    "Turn Off iCloud Sync" : {
+
     },
     "Turn On iCloud Sync" : {
       "localizations" : {
@@ -18972,6 +19023,12 @@
           }
         }
       }
+    },
+    "Update Required" : {
+
+    },
+    "Upload Again" : {
+
     },
     "Use Default" : {
       "localizations" : {
@@ -19426,6 +19483,9 @@
           }
         }
       }
+    },
+    "Waiting to Retry" : {
+
     },
     "Welcome to TablePro" : {
       "localizations" : {
@@ -20130,6 +20190,15 @@
         }
       }
     },
+    "iCloud Is Not Ready" : {
+
+    },
+    "iCloud Is Restricted" : {
+
+    },
+    "iCloud Storage Is Full" : {
+
+    },
     "iCloud Sync" : {
       "localizations" : {
         "ko" : {
@@ -20214,6 +20283,15 @@
           }
         }
       }
+    },
+    "iCloud asked TablePro to wait. It tries again on its own shortly." : {
+
+    },
+    "iCloud could not complete the sync. TablePro tries again on the next sync." : {
+
+    },
+    "iCloud is not ready on this device yet. Sync resumes on its own when it is." : {
+
     },
     "iCloud rejected %d change(s). They stay on this device and will retry: %@" : {
       "extractionState" : "stale",
@@ -20307,6 +20385,9 @@
           }
         }
       }
+    },
+    "iCloud sync is not available in this build of TablePro." : {
+
     },
     "import" : {
       "localizations" : {

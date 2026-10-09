@@ -9,12 +9,11 @@ struct SyncStatusTests {
     func onlySyncingIsSyncing() {
         #expect(SyncStatus.syncing.isSyncing)
         #expect(!SyncStatus.idle.isSyncing)
-        #expect(!SyncStatus.error(.tokenExpired).isSyncing)
-        #expect(!SyncStatus.disabled(.noAccount).isSyncing)
+        #expect(!SyncStatus.error(.offline).isSyncing)
+        #expect(!SyncStatus.disabled(.userDisabled).isSyncing)
     }
 
     @Test("Only disabled reports itself as not enabled", arguments: [
-        DisableReason.noAccount,
         DisableReason.licenseRequired,
         DisableReason.licenseExpired,
         DisableReason.licenseUnverified,
@@ -24,28 +23,30 @@ struct SyncStatusTests {
         #expect(!SyncStatus.disabled(reason).isEnabled)
     }
 
-    @Test("Every other case reports itself as enabled")
-    func otherCasesAreEnabled() {
+    /// Sync stays on while it waits for the account or the storage, so the triggers keep reaching
+    /// the gate that decides what each one may do.
+    @Test("A blocked or failed sync is still enabled")
+    func blockedIsEnabled() {
         #expect(SyncStatus.idle.isEnabled)
         #expect(SyncStatus.syncing.isEnabled)
-        #expect(SyncStatus.error(.networkUnavailable).isEnabled)
+        #expect(SyncStatus.error(.offline).isEnabled)
+        #expect(SyncStatus.error(.blocked(.storageFull)).isEnabled)
+        #expect(SyncStatus.error(.blocked(.signedOut)).isEnabled)
     }
 
-    @Test("A status carries its error so the UI can describe it")
-    func statusCarriesItsError() {
-        guard case .error(let error) = SyncStatus.error(.quotaExceeded) else {
-            Issue.record("Expected an error status")
-            return
-        }
-        #expect(error == .quotaExceeded)
-        #expect(error.errorDescription?.isEmpty == false)
+    @Test("A status exposes its error and nothing else does")
+    func statusExposesItsError() {
+        #expect(SyncStatus.error(.blocked(.storageFull)).error == .blocked(.storageFull))
+        #expect(SyncStatus.idle.error == nil)
+        #expect(SyncStatus.syncing.error == nil)
+        #expect(SyncStatus.disabled(.userDisabled).error == nil)
     }
 
     @Test("Statuses with different reasons are not equal")
     func statusesCompareByPayload() {
-        #expect(SyncStatus.disabled(.noAccount) != .disabled(.userDisabled))
-        #expect(SyncStatus.error(.tokenExpired) != .error(.networkUnavailable))
-        #expect(SyncStatus.disabled(.noAccount) == .disabled(.noAccount))
+        #expect(SyncStatus.disabled(.licenseExpired) != .disabled(.userDisabled))
+        #expect(SyncStatus.error(.blocked(.storageFull)) != .error(.blocked(.signedOut)))
+        #expect(SyncStatus.disabled(.userDisabled) == .disabled(.userDisabled))
         #expect(SyncStatus.disabled(.licenseUnverified) != .disabled(.licenseRequired))
     }
 }

@@ -37,10 +37,3 @@ nonisolated enum ConnectionListState: Equatable, Sendable {
         return syncStatus == .syncing ? .checkingICloud : .empty(syncsWithICloud: true)
     }
 }
-
-nonisolated private extension SyncStatus {
-    var error: SyncError? {
-        guard case .error(let error) = self else { return nil }
-        return error
-    }
-}

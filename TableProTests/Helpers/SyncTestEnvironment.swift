@@ -36,6 +36,9 @@ final class SyncTestEnvironment {
         metadata = SyncMetadataStorage(
             userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.\(label).sync.\(unique)"))
         )
+        /// The account the scripted transport reports, recorded as already adopted so a run does not
+        /// start the server side over as it would for a new account.
+        metadata.lastAccountId = ScriptedSyncTransport.accountId
         tracker = SyncChangeTracker(metadataStorage: metadata)
         recordCache = SyncRecordCache(
             directory: directory.appendingPathComponent("SyncRecordCache", isDirectory: true),
@@ -127,12 +130,15 @@ final class SyncTestEnvironment {
             services: services,
             recordCache: recordCache,
             transport: transport,
+            networkMonitor: nil,
             columnLayouts: self.columnLayouts
         )
     }
 }
 
 actor ScriptedSyncTransport: SyncTransport {
+    static let accountId = "tests"
+
     let currentZoneID: CKRecordZone.ID
     private let rejectedRecordIDs: Set<CKRecord.ID>
     private let missingRecordIDs: Set<CKRecord.ID>
@@ -142,6 +148,31 @@ actor ScriptedSyncTransport: SyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private(set) var pushCount = 0
+    private(set) var zoneSaveCount = 0
+
+    /// What the account reads as, what every pushed item fails with, and what a pull throws. Each
+    /// is changeable mid-test, the way the account or the storage changes under a running app.
+    private(set) var accountStatusValue: CKAccountStatus = .available
+    private(set) var accountIdValue = ScriptedSyncTransport.accountId
+    private(set) var everyItemFails: (code: CKError.Code, retryAfter: TimeInterval?)?
+    private(set) var pullError: (any Error)?
+
+    func setAccountStatus(_ status: CKAccountStatus) {
+        accountStatusValue = status
+    }
+
+    func setAccountId(_ accountId: String) {
+        accountIdValue = accountId
+    }
+
+    func failEveryItem(with code: CKError.Code?, retryAfter: TimeInterval? = nil) {
+        everyItemFails = code.map { (code: $0, retryAfter: retryAfter) }
+    }
+
+    func failPulls(with error: (any Error)?) {
+        pullError = error
+    }
 
     init(
         zoneID: CKRecordZone.ID,
@@ -180,20 +211,38 @@ actor ScriptedSyncTransport: SyncTransport {
     }
 
     func accountStatus() async throws -> CKAccountStatus {
-        .available
+        accountStatusValue
     }
 
     func currentAccountId() async throws -> String {
-        "tests"
+        accountIdValue
     }
 
-    func ensureZoneExists() async throws {}
+    func ensureZoneExists() async throws {
+        zoneSaveCount += 1
+    }
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
+        pushCount += 1
         pushedRecords.append(contentsOf: records)
         pushedDeletions.append(contentsOf: deletions)
         await duringPush()
         var outcome = PushOutcome()
+        if let everyItemFails {
+            for recordID in records.map(\.recordID) + deletions {
+                outcome.recordFailure(
+                    SyncItemFailure(
+                        code: everyItemFails.code,
+                        serverRecord: nil,
+                        clientRecord: nil,
+                        retryAfter: everyItemFails.retryAfter,
+                        message: "Error saving record <CKRecordID: \(recordID.recordName)>: scripted failure"
+                    ),
+                    for: recordID
+                )
+            }
+            return outcome
+        }
         for record in records {
             guard rejectedRecordIDs.contains(record.recordID) else {
                 outcome.recordSave(record)
@@ -222,6 +271,9 @@ actor ScriptedSyncTransport: SyncTransport {
 
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pullCount += 1
+        if let pullError {
+            throw pullError
+        }
         return pulled(pushedRecords, pushedDeletions)
     }
 }

@@ -19,7 +19,6 @@ final class SyncCoordinator: ObservableObject {
 
     @Published private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     @Published private(set) var lastSyncDate: Date?
-    @Published private(set) var iCloudAccountAvailable: Bool = false
 
     let services: AppServices
     private let transport: any SyncTransport
@@ -27,14 +26,27 @@ final class SyncCoordinator: ObservableObject {
     let metadataStorage: SyncMetadataStorage
     let recordCache: SyncRecordCache
     let columnLayouts: () -> FileColumnLayoutPersister
+    private let networkMonitor: SyncNetworkMonitor?
     private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var changeCancellable: AnyCancellable?
     private var licenseCancellable: AnyCancellable?
-    private var syncTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
     private var hasStarted = false
+    private var isRunning = false
     private var isRunningCycle = false
     private var hasDeferredNotificationPull = false
     private var notificationPull: Task<Void, Never>?
+
+    /// Triggers that arrived while a run was in flight. One more run follows it rather than the
+    /// trigger cancelling it: a cancelled run reported itself as a failure.
+    private var pendingTriggers: [SyncTrigger] = []
+
+    /// Failed runs in a row, which sets how far the next attempt is held back.
+    private var consecutiveFailures = 0
+
+    /// When the upload that failed may be tried again by a trigger that does not change the situation.
+    private var nextAttempt: Date?
 
     /// Bumped every time something other than a sync run decides the status, so a run that has been
     /// suspended across the network can tell whether its outcome is still the current answer.
@@ -44,10 +56,12 @@ final class SyncCoordinator: ObservableObject {
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
         transport: any SyncTransport = CloudKitSyncEngine(),
+        networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor(),
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared
     ) {
         self.services = services
         self.transport = transport
+        self.networkMonitor = networkMonitor
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
         self.recordCache = recordCache
@@ -65,7 +79,8 @@ final class SyncCoordinator: ObservableObject {
 
     deinit {
         if let observer = accountObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
-        syncTask?.cancel()
+        debounceTask?.cancel()
+        retryTask?.cancel()
     }
 
     // MARK: - Lifecycle
@@ -78,6 +93,7 @@ final class SyncCoordinator: ObservableObject {
         observeAccountChanges()
         observeLocalChanges()
         observeLicenseChanges()
+        observeNetwork()
 
         // If local storage is empty (fresh install or wiped), clear the sync token
         // to force a full fetch instead of a delta that returns nothing
@@ -96,82 +112,165 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
         }
 
-        Task {
-            await checkAccountStatus()
-            evaluateStatus()
-
-            if syncStatus.isEnabled {
-                await syncNow()
-            }
-        }
+        evaluateStatus()
+        guard syncStatus.isEnabled else { return }
+        Task { await sync(.launch) }
     }
 
     /// Called when the app comes to the foreground
     func syncIfNeeded() {
-        guard syncStatus.isEnabled, !syncStatus.isSyncing else { return }
-
-        Task {
-            await syncNow()
-        }
+        requestSync(.activation)
     }
 
-    /// Manual full sync (push then pull)
+    /// Sync Now: the person asked, so it runs whatever held the last attempt back.
     func syncNow() async {
+        await sync(.userRequest)
+    }
+
+    func requestSync(_ trigger: SyncTrigger) {
+        guard syncStatus.isEnabled else { return }
+        Task { await sync(trigger) }
+    }
+
+    /// Runs as much of a sync as `trigger` is admitted to, given how the last run ended.
+    func sync(_ trigger: SyncTrigger) async {
         guard canSync() else {
-            Self.logger.info("syncNow: canSync() returned false, skipping")
+            Self.logger.info("Sync skipped: not allowed for \(String(describing: trigger), privacy: .public)")
             return
         }
-        guard !syncStatus.isSyncing else {
-            Self.logger.info("syncNow: another sync is already in progress, skipping")
+        guard !isRunning else {
+            if !pendingTriggers.contains(trigger) {
+                pendingTriggers.append(trigger)
+            }
+            return
+        }
+
+        let previousError = syncStatus.error
+        let admission = SyncAdmission.decide(for: trigger, after: previousError, nextAttempt: nextAttempt)
+        guard admission != .none else {
+            Self.logger.info("Sync held back for \(String(describing: trigger), privacy: .public)")
             return
         }
 
         let generation = statusGeneration
-        syncStatus = .syncing
-
-        if let syncError = await runSyncCycle() {
-            settle(.error(syncError), from: generation)
-            return
+        isRunning = true
+        /// A standing condition stays on screen through the automatic runs that check on it, so the
+        /// notice does not blink away at every activation. Only the person's own request shows
+        /// progress over it.
+        if previousError == nil || trigger == .userRequest {
+            syncStatus = .syncing
         }
-
-        lastSyncDate = Date()
-        metadataStorage.lastSyncDate = lastSyncDate
-        settle(.idle, from: generation)
-
-        Self.logger.info("Sync completed successfully")
+        let result = await performCycle(admission)
+        isRunning = false
+        finish(result, previousError: previousError, from: generation)
+        await runPendingTrigger()
     }
 
-    internal func runSyncCycle() async -> SyncError? {
+    internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
+        await performCycle(admission).failure?.error
+    }
+
+    private struct CycleResult {
+        var admission: SyncAdmission
+        var failure: SyncStepFailure?
+    }
+
+    private func performCycle(_ admission: SyncAdmission) async -> CycleResult {
         isRunningCycle = true
         await notificationPull?.value
-        let failure = await pushThenPull()
+        let result = await accountThenPushThenPull(admission)
         isRunningCycle = false
         if hasDeferredNotificationPull {
             hasDeferredNotificationPull = false
             await pullForRemoteNotification()
         }
-        return failure
+        return result
     }
 
-    private func pushThenPull() async -> SyncError? {
-        do {
-            try await transport.ensureZoneExists()
-        } catch {
-            Self.logger.error("Sync failed: \(error.localizedDescription)")
-            return SyncError.from(error)
+    private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
+        var admission = requested
+        switch await confirmAccount() {
+        case .unavailable(let failure):
+            return CycleResult(admission: admission, failure: failure)
+        case .ready(let isNewAccount):
+            /// A condition the last account was under says nothing about this one.
+            if isNewAccount {
+                admission = .full
+            }
         }
 
-        let push = await performPush()
-        let pullError = await performPull(echoGuard: push.echoGuard)
+        /// Only a run that may upload creates the zone. A download looks for it, and finding it
+        /// again is how this Mac learns another device brought deleted data back.
+        if metadataStorage.zoneState.createsZone(in: admission) {
+            do {
+                try await transport.ensureZoneExists()
+                metadataStorage.zoneState = .confirmed
+            } catch {
+                Self.logger.error("Sync failed: \(error.localizedDescription)")
+                return CycleResult(admission: admission, failure: await refined(SyncStepFailure(error)))
+            }
+        }
+
+        let push = admission == .full ? await performPush() : PushReport()
+        let pullFailure = await performPull(echoGuard: push.echoGuard)
         while hasDeferredNotificationPull {
             hasDeferredNotificationPull = false
             await performPull(echoGuard: push.echoGuard)
         }
 
-        if let pushError = push.error {
-            return SyncError.from(pushError)
+        let zone = metadataStorage.zoneState
+        let download = zone.reconciled(downloadFailure: pullFailure)
+        var failure = SyncStepFailure.decisive(upload: push.failure, download: download)
+        if let decisive = failure {
+            failure = await refined(decisive)
         }
-        return pullError
+        metadataStorage.zoneState = zone.after(failure: failure, reachedZone: pullFailure == nil)
+        return CycleResult(admission: admission, failure: failure)
+    }
+
+    /// Reads the account before any request, so a signed-out or restricted account is reported as
+    /// itself rather than as whatever the first request fails with. Adopting its id is what keeps
+    /// another account's token, tombstones and cached records from being used against this one.
+    private func confirmAccount() async -> AccountCheck {
+        do {
+            if let blocker = SyncBlocker(accountStatus: try await transport.accountStatus()) {
+                return .unavailable(SyncStepFailure(failure: .blocked(blocker), error: .blocked(blocker), retryAfter: nil))
+            }
+            return .ready(isNewAccount: adoptAccount(try await transport.currentAccountId()))
+        } catch {
+            Self.logger.error("Could not read the iCloud account: \(error.localizedDescription)")
+            return .unavailable(await refined(SyncStepFailure(error)))
+        }
+    }
+
+    private enum AccountCheck {
+        /// Whether the account differs from the one this Mac last synced with.
+        case ready(isNewAccount: Bool)
+        case unavailable(SyncStepFailure)
+    }
+
+    private func adoptAccount(_ accountId: String) -> Bool {
+        switch metadataStorage.adoptAccount(accountId) {
+        case .firstSeen, .unchanged:
+            return false
+        case .switched:
+            Self.logger.notice("The iCloud account changed, so sync starts over and pending edits go to the new account")
+        case .previousAccountUnknown:
+            Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
+        }
+        recordCache.removeAll()
+        lastSyncDate = metadataStorage.lastSyncDate
+        return true
+    }
+
+    /// CloudKit fails an operation with `notAuthenticated` for every account state that is not
+    /// available, so a fresh status read says which one it is. Signed in by that read, the account
+    /// is not ready yet rather than signed out.
+    private func refined(_ failure: SyncStepFailure) async -> SyncStepFailure {
+        guard case .blocked(let blocker) = failure.failure, blocker.isAccountState else { return failure }
+        let status = try? await transport.accountStatus()
+        let actual = status.flatMap { SyncBlocker(accountStatus: $0) } ?? .accountNotReady
+        return SyncStepFailure(failure: .blocked(actual), error: .blocked(actual), retryAfter: failure.retryAfter)
     }
 
     /// Publishes the outcome of a sync run, unless something decided the status while it was in
@@ -181,12 +280,74 @@ final class SyncCoordinator: ObservableObject {
     /// trip, so turning sync off, or losing the license, used to be overwritten by the returning
     /// run: the indicator went back to "Synced" for a sync that would now be refused. Whoever
     /// decided last wins, and a stale run reports nothing.
-    private func settle(_ outcome: SyncStatus, from generation: Int) {
+    private func finish(_ result: CycleResult, previousError: SyncError?, from generation: Int) {
         guard generation == statusGeneration else {
             Self.logger.info("Discarding a sync outcome the status moved on from")
             return
         }
-        syncStatus = outcome
+        let settlement = SyncSettlement(failure: result.failure, admission: result.admission, previousError: previousError)
+        if settlement.stampsLastSync {
+            stampLastSync()
+        }
+        if settlement.resetsRetry {
+            resetRetryState()
+        }
+        if let counted = settlement.countedFailure {
+            consecutiveFailures += 1
+            let delay = SyncRetryPolicy.nextAttemptDelay(
+                after: counted,
+                consecutiveFailures: consecutiveFailures,
+                retryAfter: result.failure?.retryAfter
+            )
+            nextAttempt = delay.map { Date().addingTimeInterval($0) }
+            scheduleRetry(after: delay)
+        }
+        syncStatus = settlement.status
+        if settlement.status == .idle, result.admission == .full {
+            Self.logger.info("Sync completed successfully")
+        }
+    }
+
+    private func stampLastSync() {
+        lastSyncDate = Date()
+        metadataStorage.lastSyncDate = lastSyncDate
+    }
+
+    private func scheduleRetry(after delay: TimeInterval?) {
+        retryTask?.cancel()
+        retryTask = nil
+        guard let delay else { return }
+        Self.logger.info("Next sync attempt in \(Int(delay), privacy: .public) s")
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay), tolerance: .seconds(delay / 10))
+            guard !Task.isCancelled else { return }
+            await self?.sync(.scheduledRetry)
+        }
+    }
+
+    private func resetRetryState() {
+        consecutiveFailures = 0
+        nextAttempt = nil
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
+    /// Runs once for whatever arrived during the last run, with the trigger that may do the most.
+    private func runPendingTrigger() async {
+        guard !pendingTriggers.isEmpty else { return }
+        let triggers = pendingTriggers
+        pendingTriggers = []
+        let error = syncStatus.error
+        let attempt = nextAttempt
+        let reach: (SyncTrigger) -> Int = { trigger in
+            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt) {
+            case .full: return 2
+            case .downloadOnly: return 1
+            case .none: return 0
+            }
+        }
+        guard let next = triggers.max(by: { reach($0) < reach($1) }), reach(next) > 0 else { return }
+        await sync(next)
     }
 
     /// Triggered by remote push notification
@@ -221,21 +382,34 @@ final class SyncCoordinator: ObservableObject {
 
         // Clear token to force a full fetch on first sync after enabling
         metadataStorage.saveToken(nil)
+        /// Turning sync on is the person's choice to upload, a removed zone included.
+        metadataStorage.zoneState = .unknown
 
         // Mark ALL existing local data as dirty so it gets pushed on first sync
         markAllLocalDataDirty()
         let dirtyCount = changeTracker.dirtyRecords(for: .connection).count
         Self.logger.info("enableSync() dirty marking done, dirty connections: \(dirtyCount)")
 
+        evaluateStatus()
+        guard syncStatus.isEnabled else { return }
         Task {
-            await checkAccountStatus()
-            evaluateStatus()
-
-            if syncStatus.isEnabled {
-                await markSQLFavoritesDirty()
-                await syncNow()
-            }
+            await markSQLFavoritesDirty()
+            await sync(.userRequest)
         }
+    }
+
+    /// The person's answer after TablePro's data was removed from iCloud: upload everything on this
+    /// Mac again. Never done without asking, which is Apple's guidance for a purged zone.
+    func uploadAgain() async {
+        guard syncStatus.error == .blocked(.dataDeletedFromICloud), !isRunning else { return }
+        metadataStorage.zoneState = .unknown
+        metadataStorage.saveToken(nil)
+        recordCache.removeAll()
+        markAllLocalDataDirty()
+        await markSQLFavoritesDirty()
+        resetRetryState()
+        decide(.idle)
+        await sync(.userRequest)
     }
 
     /// Marks existing SQL favorites and folders dirty. Separate from `markAllLocalDataDirty`
@@ -251,9 +425,9 @@ final class SyncCoordinator: ObservableObject {
     /// Marks every synced record dirty so the first sync after enabling pushes the lot.
     ///
     /// Every type is marked as one batch. Marking record by record posted a change notification per
-    /// record, and the observer cancels the in-flight sync and awaits it before scheduling the next,
-    /// so an account with a few hundred saved column layouts built a chain of hundreds of tasks each
-    /// waiting on its predecessor and the app stopped responding to the switch that started it.
+    /// record, and an account with a few hundred saved column layouts built a chain of hundreds of
+    /// tasks each waiting on its predecessor until the app stopped responding to the switch that
+    /// started it.
     private func markAllLocalDataDirty() {
         let connections = services.connectionStorage.loadConnections()
         changeTracker.markDirty(
@@ -308,7 +482,6 @@ final class SyncCoordinator: ObservableObject {
 
     /// Called when user disables sync in settings
     func disableSync() {
-        syncTask?.cancel()
         decide(.disabled(.userDisabled))
     }
 
@@ -328,14 +501,10 @@ final class SyncCoordinator: ObservableObject {
             return
         }
 
-        guard iCloudAccountAvailable else {
-            decide(.disabled(.noAccount))
-            return
-        }
-
-        // If we were in an error or disabled state, transition to idle
-        if !syncStatus.isSyncing {
-            decide(.idle)
+        /// Only a move out of disabled is decided here. An error stays until a run clears it: a
+        /// license or account notification is no evidence that storage was freed.
+        if case .disabled = syncStatus {
+            decide(metadataStorage.zoneState.initialStatus)
         }
     }
 
@@ -347,6 +516,11 @@ final class SyncCoordinator: ObservableObject {
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
         syncStatus = status
+        guard !status.isEnabled else { return }
+        resetRetryState()
+        pendingTriggers = []
+        debounceTask?.cancel()
+        debounceTask = nil
     }
 
     /// Why sync is off, for a license that does not currently unlock it.
@@ -379,11 +553,6 @@ final class SyncCoordinator: ObservableObject {
             return false
         }
 
-        guard iCloudAccountAvailable else {
-            Self.logger.trace("Sync skipped: no iCloud account")
-            return false
-        }
-
         return true
     }
 
@@ -391,7 +560,7 @@ final class SyncCoordinator: ObservableObject {
 
     private struct PushReport {
         var echoGuard: SyncEchoGuard?
-        var error: Error?
+        var failure: SyncStepFailure?
     }
 
     private func performPush() async -> PushReport {
@@ -416,7 +585,7 @@ final class SyncCoordinator: ObservableObject {
             interruption = interrupted.cause
         } catch {
             Self.logger.error("Push failed: \(error.localizedDescription)")
-            return PushReport(error: error)
+            return PushReport(failure: SyncStepFailure(error))
         }
         outcome.acceptMissingDeletions(of: deletions)
 
@@ -438,17 +607,19 @@ final class SyncCoordinator: ObservableObject {
         Self.logger.info("Push completed: \(savedCount) saved, \(deletedCount) deleted, \(rejectedCount) rejected")
 
         let echoGuard = SyncEchoGuard(snapshot: snapshot, savedRecords: savedRecords, deletedRecords: deletedRecords)
+        let itemFailure = SyncStepFailure(outcome)
         if let interruption {
             Self.logger.error("Push stopped part way: \(interruption.localizedDescription)")
-            return PushReport(echoGuard: echoGuard, error: interruption)
+            /// A blocker an earlier batch hit explains the interruption too; anything less does not.
+            let failure = itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
+            return PushReport(echoGuard: echoGuard, failure: failure)
         }
-        guard outcome.hasFailures, let firstFailure = outcome.failures.values.first else {
+        guard let itemFailure else {
             pruneTombstones(within: boundary)
             return PushReport(echoGuard: echoGuard)
         }
-        let rejection = SyncError.pushRejected(count: outcome.failures.count, detail: firstFailure.message)
-        Self.logger.error("Push failed: \(rejection.localizedDescription)")
-        return PushReport(echoGuard: echoGuard, error: rejection)
+        Self.logger.error("Push left \(rejectedCount, privacy: .public) items pending: \(String(describing: itemFailure.failure), privacy: .public)")
+        return PushReport(echoGuard: echoGuard, failure: itemFailure)
     }
 
     private func settleSavedRecords(
@@ -484,11 +655,13 @@ final class SyncCoordinator: ObservableObject {
     // MARK: - Pull
 
     nonisolated static func isTokenExpired(_ error: Error) -> Bool {
-        (error as? SyncError) == .tokenExpired
+        SyncFailure(error) == .tokenExpired
     }
 
+    /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
+    /// this Mac up to date, and must not say Synced or move Last Synced.
     @discardableResult
-    private func performPull(echoGuard: SyncEchoGuard? = nil) async -> SyncError? {
+    private func performPull(echoGuard: SyncEchoGuard? = nil) async -> SyncStepFailure? {
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
@@ -504,11 +677,11 @@ final class SyncCoordinator: ObservableObject {
                 return await applyPullResult(result, echoGuard: echoGuard) ? nil : .pullNotSaved
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
-                return nil
+                return SyncStepFailure(error)
             }
         } catch {
             Self.logger.error("Pull failed: \(error.localizedDescription)")
-            return nil
+            return SyncStepFailure(error)
         }
     }
 
@@ -901,6 +1074,8 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Observers
 
+    /// The run that follows reads the account and adopts its id, so a sign-out, a switch to another
+    /// account, and an account becoming ready are all handled where every other run handles them.
     private func observeAccountChanges() {
         let observer = NotificationCenter.default.addObserver(
             forName: .CKAccountChanged,
@@ -908,37 +1083,29 @@ final class SyncCoordinator: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                await checkAccountStatus()
-                evaluateStatus()
-
-                let currentAccountId = metadataStorage.lastAccountId
-                if let newAccountId = try? await self.currentAccountId(),
-                   currentAccountId != nil, currentAccountId != newAccountId {
-                    Self.logger.warning("iCloud account changed, clearing sync metadata")
-                    metadataStorage.clearAll()
-                    metadataStorage.lastAccountId = newAccountId
-                }
+                self?.requestSync(.accountChange)
             }
         }
         accountObserver.withLockUnchecked { $0 = observer }
     }
 
+    /// A debounce that has elapsed is never cancelled: an edit made while its run is in flight queues
+    /// one more run instead, because cancelling the run mid-request reported a failure.
     private func observeLocalChanges() {
         changeCancellable = services.appEvents.syncChangeTracked
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let self else { return }
-                guard syncStatus.isEnabled else { return }
-                let previousTask = syncTask
-                previousTask?.cancel()
-                syncTask = Task {
-                    // Wait for the cancelled previous task to unwind before scheduling
-                    // the new debounce window, so we never have two sync tasks live.
-                    _ = await previousTask?.value
-                    try? await Task.sleep(for: .seconds(2))
-                    guard !Task.isCancelled else { return }
-                    await self.syncNow()
+                guard let self, syncStatus.isEnabled else { return }
+                debounceTask?.cancel()
+                debounceTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(for: .seconds(2))
+                    } catch {
+                        return
+                    }
+                    guard let self else { return }
+                    debounceTask = nil
+                    await sync(.localChange)
                 }
             }
     }
@@ -949,31 +1116,16 @@ final class SyncCoordinator: ObservableObject {
             .sink { [weak self] _ in
                 guard let self else { return }
                 evaluateStatus()
-                if syncStatus.isEnabled {
-                    Task { await self.syncNow() }
-                }
+                requestSync(.launch)
             }
     }
 
-    // MARK: - Account
-
-    private func checkAccountStatus() async {
-        do {
-            let status = try await transport.accountStatus()
-            iCloudAccountAvailable = (status == .available)
-
-            if iCloudAccountAvailable {
-                if let accountId = try? await currentAccountId() {
-                    metadataStorage.lastAccountId = accountId
-                }
+    private func observeNetwork() {
+        networkMonitor?.start { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, syncStatus.error == .offline else { return }
+                requestSync(.networkRestored)
             }
-        } catch {
-            iCloudAccountAvailable = false
-            Self.logger.warning("Failed to check iCloud account: \(error.localizedDescription)")
         }
-    }
-
-    private func currentAccountId() async throws -> String? {
-        try await transport.currentAccountId()
     }
 }

@@ -232,13 +232,24 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     private func forgetServerPosition() {
         saveToken(nil)
+        zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
+    }
+
+    // MARK: - Zone
+
+    /// The zone is saved only while this is `.unknown`. Saving it on every run recreated a zone the
+    /// person had deleted in iCloud settings before CloudKit could say so.
+    public var zoneState: SyncZoneState {
+        get { userDefaults.string(forKey: key("zoneState")).flatMap(SyncZoneState.init(rawValue:)) ?? .unknown }
+        set { userDefaults.set(newValue.rawValue, forKey: key("zoneState")) }
     }
 
     // MARK: - Reset
 
     public func clearAll() {
         saveToken(nil)
+        zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))
 

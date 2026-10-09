@@ -8,20 +8,19 @@
 import CloudKit
 import Foundation
 
-/// Pure, so the two decisions a retry makes can be checked without a container.
+/// Pure, so the decisions a retry makes can be checked without a container.
 ///
-/// Both were private to the engine and reachable only through a real `CKError` off a real network,
-/// which is to say untested. The distinction that matters is the first one: retrying an error the
-/// server has already decided just fails three more times and reports the last attempt's reason,
-/// while not retrying a transient one drops a sync the server was only asking us to slow down.
+/// Two horizons. Inside one run the engine retries a request CloudKit only asked it to repeat. Across
+/// runs the coordinator holds the next attempt back for the conditions a quick retry cannot clear,
+/// because sending the same changes on every trigger just fails the same way each time.
 public enum SyncRetryPolicy: Sendable {
-    /// CloudKit asks to be tried again through these and only these.
+    /// Whether the engine repeats the request inside the same run. Read off the one classification
+    /// the rest of sync uses, so the retry and the message can never disagree about a code.
     public static func isTransient(_ code: CKError.Code) -> Bool {
-        switch code {
-        case .networkUnavailable, .networkFailure, .serviceUnavailable,
-             .requestRateLimited, .zoneBusy:
+        switch SyncFailure(code: code) {
+        case .offline, .busy:
             return true
-        default:
+        case .blocked, .failed, .tokenExpired, .cancelled:
             return false
         }
     }
@@ -34,5 +33,31 @@ public enum SyncRetryPolicy: Sendable {
             return retryAfterSeconds
         }
         return Double(1 << max(0, attempt))
+    }
+
+    /// How long a run that ended in `error` holds the next upload back, or nil when only a trigger
+    /// that changes the situation can help: the network returning, the account changing, the person
+    /// choosing. `consecutiveFailures` counts this one, so the first failure passes 1.
+    ///
+    /// Full storage starts at five minutes and doubles to an hour. Nothing tells an app that space
+    /// was freed, so a timer and the person's own Sync Now are the only ways back, and the server's
+    /// wait is honored when it names a longer one.
+    public static func nextAttemptDelay(
+        after error: SyncError,
+        consecutiveFailures: Int,
+        retryAfter: TimeInterval?
+    ) -> TimeInterval? {
+        let backoff: (base: TimeInterval, cap: TimeInterval)
+        switch error {
+        case .blocked(.storageFull):
+            backoff = (base: 300, cap: 3_600)
+        case .busy:
+            backoff = (base: 30, cap: 900)
+        case .blocked, .offline, .recordsRejected, .pullNotSaved, .unexpected:
+            return nil
+        }
+        let doublings = min(max(0, consecutiveFailures - 1), 16)
+        let local = min(backoff.base * Double(1 << doublings), backoff.cap)
+        return max(local, retryAfter ?? 0)
     }
 }
