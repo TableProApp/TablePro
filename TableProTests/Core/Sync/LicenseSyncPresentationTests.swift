@@ -36,7 +36,6 @@ struct LicenseSyncPresentationTests {
         let reasons = Self.everyStatus.map { SyncCoordinator.licenseDisableReason(for: $0) }
 
         #expect(reasons.count == Self.everyStatus.count)
-        #expect(!reasons.contains(.noAccount))
         #expect(!reasons.contains(.userDisabled))
     }
 

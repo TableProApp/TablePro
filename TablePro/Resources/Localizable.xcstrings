@@ -10176,6 +10176,12 @@
         }
       }
     },
+    "%lld change could not be uploaded to iCloud. It stays on this Mac and goes again on the next sync. Everything else is up to date." : {
+
+    },
+    "%lld changes could not be uploaded to iCloud. They stay on this Mac and go again on the next sync. Everything else is up to date." : {
+
+    },
     "%lld connection(s) use this profile. They keep this configuration as their own SSH tunnel." : {
       "localizations" : {
         "fr" : {
@@ -16422,48 +16428,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "超級使用者會略過所有權限檢查。"
-          }
-        }
-      }
-    },
-    "A sync conflict was detected and needs to be resolved." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un conflit de synchronisation a été détecté et doit être résolu."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "동기화 충돌이 감지되어 해결이 필요합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir eşitleme çakışması tespit edildi ve çözülmesi gerekiyor."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Phát hiện xung đột đồng bộ và cần được giải quyết."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检测到同步冲突，需要解决。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "偵測到同步衝突，需要解決。"
           }
         }
       }
@@ -23826,48 +23790,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Une cible SSM est obligatoire, par exemple i-0123456789abcdef0"
-          }
-        }
-      }
-    },
-    "An unknown sync error occurred: %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une erreur de synchronisation inconnue s’est produite : %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "알 수 없는 동기화 오류가 발생했습니다: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bilinmeyen bir eşitleme hatası oluştu: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã xảy ra lỗi đồng bộ không xác định: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "发生未知同步错误：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "發生未知的同步錯誤：%@"
           }
         }
       }
@@ -32926,6 +32848,9 @@
         }
       }
     },
+    "Cannot reach iCloud. Changes sync when this Mac is back online." : {
+
+    },
     "Cannot read ~/.aws/config." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -34650,47 +34575,11 @@
         }
       }
     },
-    "Changes from iCloud could not be saved on this device. They will download again on the next sync." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les modifications provenant d’iCloud n’ont pas pu être enregistrées sur cet appareil. Elles seront de nouveau téléchargées lors de la prochaine synchronisation."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud의 변경 사항을 이 기기에 저장하지 못했습니다. 다음 동기화 때 다시 다운로드됩니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud'daki değişiklikler bu cihaza kaydedilemedi. Bir sonraki eşitlemede yeniden indirilecek."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể lưu các thay đổi từ iCloud trên thiết bị này. Chúng sẽ được tải lại ở lần đồng bộ tiếp theo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法在本设备上保存来自 iCloud 的更改。下次同步时会重新下载。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法在本裝置上儲存來自 iCloud 的變更。下次同步時會重新下載。"
-          }
-        }
-      }
+    "Changes from iCloud could not be saved on this Mac. They download again on the next sync." : {
+
+    },
+    "Changes Not Saved" : {
+
     },
     "Changes saved" : {
       "localizations" : {
@@ -76940,48 +76829,6 @@
         }
       }
     },
-    "Failed to encode sync data: %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible d’encoder les données de synchronisation : %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "동기화 데이터를 인코딩하지 못했습니다: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eşitleme verisi kodlanamadı: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể mã hoá dữ liệu đồng bộ: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同步数据编码失败：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同步資料編碼失敗：%@"
-          }
-        }
-      }
-    },
     "Failed to establish connection" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -87501,47 +87348,8 @@
         }
       }
     },
-    "iCloud account is not available. Sign in to iCloud in System Settings." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le compte iCloud n’est pas disponible. Connectez-vous à iCloud dans Réglages Système."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 계정을 사용할 수 없습니다. 시스템 설정에서 iCloud에 로그인하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud hesabı kullanılamıyor. Sistem Ayarları'ndan iCloud'a giriş yapın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tài khoản iCloud không khả dụng. Đăng nhập iCloud trong Cài đặt hệ thống."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 账户不可用。请在系统设置中登录 iCloud。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 帳號無法使用。請在「系統設定」中登入 iCloud。"
-          }
-        }
-      }
+    "iCloud asked TablePro to wait. It tries again on its own shortly." : {
+
     },
     "iCloud Connected" : {
       "localizations" : {
@@ -87583,137 +87391,23 @@
         }
       }
     },
-    "iCloud rejected %d change(s). They stay on this device and will retry: %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "iCloud rejected %1$d change(s). They stay on this device and will retry: %2$@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud a refusé %1$d modification(s). Elles restent sur cet appareil et seront renvoyées : %2$@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud에서 변경 사항 %d개를 거부했습니다. 변경 사항은 이 기기에 유지되며 다시 시도됩니다: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud %1$d değişikliği reddetti. Bunlar bu cihazda kalır ve yeniden denenir: %2$@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud đã từ chối %1$d thay đổi. Chúng vẫn ở trên thiết bị này và sẽ thử lại: %2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 拒绝了 %1$d 项更改。它们保留在本设备上，稍后会重试：%2$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 拒絕了 %1$d 項變更。它們保留在本裝置上，稍後會重試：%2$@"
-          }
-        }
-      }
+    "iCloud could not complete the sync. TablePro tries again on the next sync." : {
+
     },
-    "iCloud server error: %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erreur du serveur iCloud : %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 서버 오류: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud sunucu hatası: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lỗi máy chủ iCloud: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 服务器错误：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 伺服器錯誤：%@"
-          }
-        }
-      }
+    "iCloud Full" : {
+
     },
-    "iCloud storage is full. Free up space in iCloud and try again." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le stockage iCloud est plein. Libérez de l’espace dans iCloud et réessayez."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 저장 공간이 가득 찼습니다. iCloud에서 공간을 확보한 후 다시 시도하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud depolama alanı dolu. iCloud'da yer açıp yeniden deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dung lượng iCloud đã đầy. Hãy giải phóng dung lượng trong iCloud rồi thử lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 存储空间已满。请在 iCloud 中释放空间后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 儲存空間已滿。請在 iCloud 中釋放空間後重試。"
-          }
-        }
-      }
+    "iCloud Is Not Ready" : {
+
+    },
+    "iCloud is not ready on this Mac yet. Sync resumes on its own when it is." : {
+
+    },
+    "iCloud Is Restricted" : {
+
+    },
+    "iCloud Storage Is Full" : {
+
     },
     "iCloud Sync" : {
       "localizations" : {
@@ -87794,6 +87488,9 @@
           }
         }
       }
+    },
+    "iCloud sync is not available in this build of TablePro." : {
+
     },
     "Icons" : {
       "localizations" : {
@@ -103508,6 +103205,9 @@
         }
       }
     },
+    "Manage Storage…" : {
+
+    },
     "Manage Tags" : {
       "localizations" : {
         "fr" : {
@@ -109843,48 +109543,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "網路錯誤：%@"
-          }
-        }
-      }
-    },
-    "Network is unavailable. Changes will sync when connectivity is restored." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le réseau n’est pas disponible. Les modifications seront synchronisées dès que la connexion réseau sera rétablie."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "네트워크를 사용할 수 없습니다. 연결이 복원되면 변경 사항이 동기화됩니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ağ kullanılamıyor. Bağlantı sağlandığında değişiklikler eşitlenecek."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mạng không khả dụng. Các thay đổi sẽ được đồng bộ khi có kết nối trở lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "网络不可用。恢复连接后将自动同步更改。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "網路無法使用。連線恢復後將自動同步變更。"
           }
         }
       }
@@ -119406,6 +119064,9 @@
         }
       }
     },
+    "Not Signed In to iCloud" : {
+
+    },
     "Not signed in to xAI." : {
       "localizations" : {
         "fr" : {
@@ -121608,6 +121269,9 @@
           }
         }
       }
+    },
+    "Offline" : {
+
     },
     "Offset" : {
       "extractionState" : "stale",
@@ -124641,6 +124305,9 @@
           }
         }
       }
+    },
+    "Open System Settings…" : {
+
     },
     "Open Table" : {
       "comment" : "A context menu option to open a table in the main view.",
@@ -154604,6 +154271,9 @@
         }
       }
     },
+    "Screen Time or device management does not allow iCloud on this Mac, so TablePro cannot sync." : {
+
+    },
     "Script" : {
       "localizations" : {
         "fr" : {
@@ -163025,6 +162695,9 @@
         }
       }
     },
+    "Sign in with your Apple Account in System Settings to sync connections and settings between your Macs." : {
+
+    },
     "Sign in with your Google account to use this connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -164887,6 +164560,9 @@
           }
         }
       }
+    },
+    "Some Changes Not Uploaded" : {
+
     },
     "Some columns in this preset don't exist in the current table" : {
       "localizations" : {
@@ -172675,6 +172351,9 @@
         }
       }
     },
+    "Sync Delayed" : {
+
+    },
     "Sync Error" : {
       "localizations" : {
         "fr" : {
@@ -172714,6 +172393,12 @@
           }
         }
       }
+    },
+    "Sync Failed" : {
+
+    },
+    "Sync Is Unavailable" : {
+
     },
     "Sync Now" : {
       "localizations" : {
@@ -172921,90 +172606,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將此 Mac 與 iCloud 同步"
-          }
-        }
-      }
-    },
-    "Sync token expired. A full sync will be performed." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le jeton de synchronisation a expiré. Une synchronisation complète va être effectuée."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "동기화 토큰이 만료되었습니다. 전체 동기화를 수행합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eşitleme belirtecinin süresi doldu. Tam eşitleme yapılacak."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token đồng bộ đã hết hạn. Sẽ thực hiện đồng bộ toàn bộ."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同步令牌已过期。将执行一次完整同步。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同步權杖已過期。將執行一次完整同步。"
-          }
-        }
-      }
-    },
-    "Sync zone not found. A full sync will be performed." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zone de synchronisation introuvable. Une synchronisation complète va être effectuée."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "동기화 영역을 찾을 수 없습니다. 전체 동기화를 수행합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eşitleme bölgesi bulunamadı. Tam eşitleme yapılacak."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không tìm thấy vùng đồng bộ. Sẽ thực hiện đồng bộ toàn bộ."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到同步区域。将执行完整同步。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到同步區域。將執行完整同步。"
           }
         }
       }
@@ -175337,6 +174938,9 @@
         }
       }
     },
+    "TablePro cannot upload changes until there is space in iCloud. Changes from this Mac are kept here and upload once you free up space or add storage. To manage storage, open System Settings, click your name, then click iCloud." : {
+
+    },
     "TablePro cannot use this pattern, so the rule matches nothing" : {
       "localizations" : {
         "fr" : {
@@ -175616,6 +175220,9 @@
           }
         }
       }
+    },
+    "TablePro Data Was Removed from iCloud" : {
+
     },
     "TablePro did not open a window for that connection in time." : {
       "localizations" : {
@@ -176325,6 +175932,9 @@
           }
         }
       }
+    },
+    "TablePro's data is no longer in iCloud. It may have been deleted in iCloud settings. Upload what this Mac has again, or turn off sync to keep it on this Mac only." : {
+
     },
     "TablePro's MCP server does not provide this endpoint." : {
       "localizations" : {
@@ -194662,6 +194272,9 @@
         }
       }
     },
+    "This version of TablePro can no longer sync with iCloud. Update TablePro to resume." : {
+
+    },
     "This view can be refreshed concurrently." : {
       "localizations" : {
         "fr" : {
@@ -198884,6 +198497,9 @@
         }
       }
     },
+    "Turn Off Sync" : {
+
+    },
     "Turn Off Time to Live" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201814,6 +201430,9 @@
         }
       }
     },
+    "Up to Date" : {
+
+    },
     "Update" : {
       "localizations" : {
         "fr" : {
@@ -201956,6 +201575,9 @@
         }
       }
     },
+    "Update Needed" : {
+
+    },
     "Update Now" : {
       "localizations" : {
         "fr" : {
@@ -202045,6 +201667,9 @@
           }
         }
       }
+    },
+    "Update Required" : {
+
     },
     "Update row %@ in %@" : {
       "localizations" : {
@@ -202585,6 +202210,9 @@
           }
         }
       }
+    },
+    "Upload Again" : {
+
     },
     "Upper bound, for BETWEEN" : {
       "localizations" : {
@@ -206508,6 +206136,9 @@
           }
         }
       }
+    },
+    "Waiting to Retry" : {
+
     },
     "Warehouse" : {
       "extractionState" : "manual",

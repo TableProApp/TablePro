@@ -12,109 +12,35 @@ struct SyncStatusIndicator: View {
     @ObservedObject private var syncCoordinator = SyncCoordinator.shared
 
     var body: some View {
-        if shouldShow {
+        let presentation = SyncStatusPresentation(
+            status: syncCoordinator.syncStatus,
+            lastSyncDate: syncCoordinator.lastSyncDate
+        )
+        if presentation.showsIndicator {
             Button {
                 handleTap()
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: iconName)
+                    Image(systemName: presentation.symbolName)
                         .symbolReplaceTransition()
                         .pulsingSymbol(isActive: syncCoordinator.syncStatus.isSyncing)
-                    Text(statusLabel)
+                    Text(presentation.indicatorLabel)
                         .contentTransition(.numericText())
                 }
                 .font(.subheadline)
-                .foregroundStyle(foregroundStyle)
+                .foregroundStyle(foregroundStyle(for: presentation))
                 .motionAnimation(.default, value: syncCoordinator.syncStatus)
             }
             .buttonStyle(.plain)
-            .help(helpText)
+            .help(presentation.helpText)
         }
     }
 
-    private var shouldShow: Bool {
-        if case .disabled(.userDisabled) = syncCoordinator.syncStatus {
-            return false
-        }
-        return true
-    }
-
-    private var iconName: String {
-        switch syncCoordinator.syncStatus {
-        case .idle:
-            return "cloud.fill"
-        case .syncing:
-            return "arrow.triangle.2.circlepath"
-        case .error:
-            return "exclamationmark.icloud"
-        case .disabled(.noAccount):
-            return "icloud.slash"
-        case .disabled(.licenseRequired), .disabled(.licenseExpired):
-            return "xmark.icloud"
-        case .disabled(.licenseUnverified):
-            return "exclamationmark.icloud"
-        case .disabled(.userDisabled):
-            return "icloud.slash"
-        }
-    }
-
-    private var statusLabel: String {
-        switch syncCoordinator.syncStatus {
-        case .idle:
-            return String(localized: "Synced")
-        case .syncing:
-            return String(localized: "Syncing…")
-        case .error:
-            return String(localized: "Sync Error")
-        case .disabled(.noAccount):
-            return String(localized: "No iCloud")
-        case .disabled(.licenseRequired), .disabled(.licenseExpired):
-            return String(localized: "Sync Off")
-        case .disabled(.licenseUnverified):
-            return String(localized: "Sync Paused")
-        case .disabled(.userDisabled):
-            return ""
-        }
-    }
-
-    private var foregroundStyle: some ShapeStyle {
-        switch syncCoordinator.syncStatus {
-        case .idle:
-            return AnyShapeStyle(.tertiary)
-        case .syncing:
-            return AnyShapeStyle(.secondary)
-        case .error:
+    private func foregroundStyle(for presentation: SyncStatusPresentation) -> AnyShapeStyle {
+        if presentation.isWarning {
             return AnyShapeStyle(.orange)
-        case .disabled:
-            return AnyShapeStyle(.tertiary)
         }
-    }
-
-    private var helpText: String {
-        switch syncCoordinator.syncStatus {
-        case .idle:
-            if let lastSync = syncCoordinator.lastSyncDate {
-                let formatter = RelativeDateTimeFormatter()
-                formatter.unitsStyle = .full
-                let relative = formatter.localizedString(for: lastSync, relativeTo: Date())
-                return String(format: String(localized: "Last synced %@"), relative)
-            }
-            return String(localized: "iCloud Sync is active")
-        case .syncing:
-            return String(localized: "Syncing with iCloud…")
-        case .error(let error):
-            return error.localizedDescription
-        case .disabled(.noAccount):
-            return String(localized: "Sign in to iCloud to enable sync")
-        case .disabled(.licenseRequired):
-            return ProFeature.iCloudSync.planRequirement
-        case .disabled(.licenseExpired):
-            return String(localized: "License expired, sync paused")
-        case .disabled(.licenseUnverified):
-            return String(localized: "License not verified in 30 days, sync paused. Click to check again.")
-        case .disabled(.userDisabled):
-            return ""
-        }
+        return syncCoordinator.syncStatus.isSyncing ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
     }
 
     /// An unverified license is the one degraded state activation cannot mend, so it retries the
@@ -125,7 +51,7 @@ struct SyncStatusIndicator: View {
             onActivateLicense()
         case .disabled(.licenseUnverified):
             Task { await LicenseManager.shared.revalidate() }
-        default:
+        case .idle, .syncing, .error, .disabled(.userDisabled):
             WindowOpener.shared.openSettings(tab: .sync)
         }
     }

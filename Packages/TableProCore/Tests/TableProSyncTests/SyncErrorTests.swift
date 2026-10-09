@@ -4,73 +4,46 @@ import Testing
 
 import TableProSyncTransport
 
-@Suite("Sync error classification")
+@Suite("Sync error")
 struct SyncErrorTests {
-    @Test("A CloudKit code maps to the matching sync error", arguments: [
-        (CKError.Code.networkUnavailable, SyncError.networkUnavailable),
-        (CKError.Code.networkFailure, SyncError.networkUnavailable),
-        (CKError.Code.notAuthenticated, SyncError.accountUnavailable),
-        (CKError.Code.quotaExceeded, SyncError.quotaExceeded),
-        (CKError.Code.zoneNotFound, SyncError.zoneNotFound),
-        (CKError.Code.changeTokenExpired, SyncError.tokenExpired)
+    @Test("A classified failure becomes the outcome the person is shown", arguments: [
+        (SyncFailure.blocked(.storageFull), SyncError.blocked(.storageFull)),
+        (SyncFailure.blocked(.signedOut), SyncError.blocked(.signedOut)),
+        (SyncFailure.offline, SyncError.offline),
+        (SyncFailure.busy, SyncError.busy),
+        (SyncFailure.failed, SyncError.unexpected),
+        (SyncFailure.tokenExpired, SyncError.unexpected)
     ])
-    func cloudKitCodesMap(_ code: CKError.Code, _ expected: SyncError) {
-        #expect(SyncError.from(CKError(code)) == expected)
+    func failureMapsToOutcome(_ failure: SyncFailure, _ expected: SyncError) {
+        #expect(SyncError(failure) == expected)
     }
 
-    @Test("An unmapped CloudKit code becomes a server error")
-    func unmappedCodeBecomesServerError() {
-        guard case .serverError = SyncError.from(CKError(.internalError)) else {
-            Issue.record("Expected a server error")
-            return
-        }
+    /// A debounced run cancelled by the next edit used to settle as an unknown error and flash
+    /// "Sync Error" until the next run replaced it.
+    @Test("A cancellation is not an outcome")
+    func cancellationIsNotAnOutcome() {
+        #expect(SyncError(SyncFailure.cancelled) == nil)
+        #expect(SyncError(CancellationError()) == nil)
+        #expect(SyncError(CKError(.operationCancelled)) == nil)
     }
 
-    @Test("A sync error passes through unchanged")
-    func syncErrorPassesThrough() {
-        #expect(SyncError.from(SyncError.conflictDetected) == .conflictDetected)
-        #expect(SyncError.from(SyncError.tokenExpired) == .tokenExpired)
+    @Test("A thrown CloudKit error is classified the same way")
+    func thrownErrorIsClassified() {
+        #expect(SyncError(CKError(.quotaExceeded)) == .blocked(.storageFull))
+        #expect(SyncError(CKError(.requestRateLimited)) == .busy)
+        #expect(SyncError(CKError(.internalError)) == .unexpected)
     }
 
-    @Test("A foreign error becomes an unknown error")
-    func foreignErrorBecomesUnknown() {
-        struct Foreign: Error {}
-        guard case .unknown = SyncError.from(Foreign()) else {
-            Issue.record("Expected an unknown error")
-            return
-        }
-    }
-
-    @Test("Every case describes itself")
-    func everyCaseHasADescription() {
-        let all: [SyncError] = [
-            .networkUnavailable,
-            .accountUnavailable,
-            .quotaExceeded,
-            .zoneNotFound,
-            .serverError("detail"),
-            .conflictDetected,
-            .encodingFailed("detail"),
-            .pushRejected(count: 2, detail: "detail"),
-            .tokenExpired,
-            .pullNotSaved,
-            .unknown("detail")
-        ]
-        for error in all {
-            #expect(error.errorDescription?.isEmpty == false)
-        }
-    }
-
-    @Test("A rejection reports its count and detail")
-    func rejectionReportsCountAndDetail() {
-        let description = SyncError.pushRejected(count: 3, detail: "schema").errorDescription
-        #expect(description?.contains("3") == true)
-        #expect(description?.contains("schema") == true)
+    @Test("Only a blocked outcome names a blocker")
+    func blockerIsExposed() {
+        #expect(SyncError.blocked(.accountRestricted).blocker == .accountRestricted)
+        #expect(SyncError.offline.blocker == nil)
+        #expect(SyncError.recordsRejected(count: 2).blocker == nil)
     }
 
     @Test("Rejections with different counts are not equal")
     func rejectionsCompareByPayload() {
-        #expect(SyncError.pushRejected(count: 1, detail: "a") != .pushRejected(count: 2, detail: "a"))
-        #expect(SyncError.pushRejected(count: 1, detail: "a") == .pushRejected(count: 1, detail: "a"))
+        #expect(SyncError.recordsRejected(count: 1) != .recordsRejected(count: 2))
+        #expect(SyncError.recordsRejected(count: 1) == .recordsRejected(count: 1))
     }
 }

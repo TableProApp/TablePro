@@ -17,7 +17,8 @@ struct SyncRetryPolicyTests {
     @Test("The errors CloudKit asks to be retried are retried")
     func transientCodesAreRetried() {
         let transient: [CKError.Code] = [
-            .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy
+            .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy,
+            .serverResponseLost
         ]
 
         for code in transient {
@@ -66,5 +67,43 @@ struct SyncRetryPolicyTests {
     @Test("A negative attempt still produces the first wait")
     func negativeAttemptIsFloored() {
         #expect(SyncRetryPolicy.delay(retryAfterSeconds: nil, attempt: -1) == 1)
+    }
+
+    /// Nothing tells an app that iCloud storage was freed, so the timer is one of only two ways back.
+    @Test("Full storage waits five minutes, doubling to an hour")
+    func storageFullBacksOff() {
+        let waits = (1 ... 6).map {
+            SyncRetryPolicy.nextAttemptDelay(after: .blocked(.storageFull), consecutiveFailures: $0, retryAfter: nil)
+        }
+
+        #expect(waits == [300, 600, 1_200, 2_400, 3_600, 3_600])
+    }
+
+    @Test("The server's longer wait wins over the backoff")
+    func serverWaitWinsAcrossRuns() {
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .blocked(.storageFull), consecutiveFailures: 1, retryAfter: 316) == 316)
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .busy, consecutiveFailures: 1, retryAfter: 90) == 90)
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .busy, consecutiveFailures: 1, retryAfter: 5) == 30)
+    }
+
+    @Test("A throttle waits thirty seconds, doubling to fifteen minutes")
+    func busyBacksOff() {
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .busy, consecutiveFailures: 1, retryAfter: nil) == 30)
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .busy, consecutiveFailures: 3, retryAfter: nil) == 120)
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: .busy, consecutiveFailures: 40, retryAfter: nil) == 900)
+    }
+
+    @Test("A condition only a trigger can clear has no timer", arguments: [
+        SyncError.blocked(.signedOut),
+        .blocked(.accountNotReady),
+        .blocked(.dataDeletedFromICloud),
+        .blocked(.appUpdateRequired),
+        .offline,
+        .recordsRejected(count: 2),
+        .pullNotSaved,
+        .unexpected
+    ])
+    func noTimerWithoutABackoff(_ error: SyncError) {
+        #expect(SyncRetryPolicy.nextAttemptDelay(after: error, consecutiveFailures: 1, retryAfter: 60) == nil)
     }
 }

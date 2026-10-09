@@ -1,76 +1,52 @@
-import CloudKit
 import Foundation
 
-public enum SyncError: Error, LocalizedError, Equatable, Sendable {
-    case networkUnavailable
-    case accountUnavailable
-    case quotaExceeded
-    case zoneNotFound
-    case serverError(String)
-    case conflictDetected
-    case encodingFailed(String)
-    case pushRejected(count: Int, detail: String)
-    case tokenExpired
-    case pullNotSaved
-    case unknown(String)
+/// How the last sync run ended, in terms the person can act on.
+///
+/// Carries no text. Each app words it for its own platform ("this Mac", "the Settings app"), and
+/// CloudKit's own descriptions never reach the screen: they are untranslated English with record ids
+/// in them.
+public enum SyncError: Equatable, Sendable {
+    /// A condition outside the sync stops it until it changes.
+    case blocked(SyncBlocker)
 
-    public var errorDescription: String? {
-        switch self {
-        case .networkUnavailable:
-            return String(localized: "Network is unavailable. Changes will sync when connectivity is restored.")
-        case .accountUnavailable:
-            return String(localized: "iCloud account is not available. Sign in to iCloud in System Settings.")
-        case .quotaExceeded:
-            return String(localized: "iCloud storage is full. Free up space in iCloud and try again.")
-        case .zoneNotFound:
-            return String(localized: "Sync zone not found. A full sync will be performed.")
-        case .serverError(let message):
-            return String(format: String(localized: "iCloud server error: %@"), message)
-        case .conflictDetected:
-            return String(localized: "A sync conflict was detected and needs to be resolved.")
-        case .encodingFailed(let detail):
-            return String(format: String(localized: "Failed to encode sync data: %@"), detail)
-        case .pushRejected(let count, let detail):
-            return String(
-                format: String(localized: "iCloud rejected %d change(s). They stay on this device and will retry: %@"),
-                count,
-                detail
-            )
-        case .tokenExpired:
-            return String(localized: "Sync token expired. A full sync will be performed.")
-        case .pullNotSaved:
-            return String(localized: "Changes from iCloud could not be saved on this device. They will download again on the next sync.")
-        case .unknown(let message):
-            return String(format: String(localized: "An unknown sync error occurred: %@"), message)
+    /// iCloud could not be reached.
+    case offline
+
+    /// iCloud asked TablePro to slow down; the next attempt waits for the time it named.
+    case busy
+
+    /// iCloud refused these items one by one. They stay on the device and go again on the next run;
+    /// everything else synced.
+    case recordsRejected(count: Int)
+
+    /// Downloaded changes could not be saved on this device. They download again next time.
+    case pullNotSaved
+
+    /// Anything else CloudKit refused. The detail goes to the log, not the screen.
+    case unexpected
+
+    /// Nil for a cancellation, which ends a run without an outcome to report.
+    public init?(_ failure: SyncFailure) {
+        switch failure {
+        case .blocked(let blocker):
+            self = .blocked(blocker)
+        case .offline:
+            self = .offline
+        case .busy:
+            self = .busy
+        case .failed, .tokenExpired:
+            self = .unexpected
+        case .cancelled:
+            return nil
         }
     }
 
-    public static func from(_ error: Error) -> SyncError {
-        if let syncError = error as? SyncError {
-            return syncError
-        }
+    public init?(_ error: any Error) {
+        self.init(SyncFailure(error))
+    }
 
-        if let interruption = error as? SyncPushInterruption {
-            return from(interruption.cause)
-        }
-
-        if let ckError = error as? CKError {
-            switch ckError.code {
-            case .networkUnavailable, .networkFailure:
-                return .networkUnavailable
-            case .notAuthenticated:
-                return .accountUnavailable
-            case .quotaExceeded:
-                return .quotaExceeded
-            case .zoneNotFound:
-                return .zoneNotFound
-            case .changeTokenExpired:
-                return .tokenExpired
-            default:
-                return .serverError(ckError.localizedDescription)
-            }
-        }
-
-        return .unknown(error.localizedDescription)
+    public var blocker: SyncBlocker? {
+        guard case .blocked(let blocker) = self else { return nil }
+        return blocker
     }
 }

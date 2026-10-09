@@ -187,7 +187,7 @@ struct PushOutcomeTests {
     func interruptionMapsToItsCause() {
         let interruption = SyncPushInterruption(completed: PushOutcome(), cause: CKError(.networkFailure))
 
-        #expect(SyncError.from(interruption) == .networkUnavailable)
+        #expect(SyncError(interruption) == .offline)
     }
 
     @Test("An outcome with nothing saved, deleted or rejected is empty")
@@ -198,5 +198,75 @@ struct PushOutcomeTests {
         outcome.recordDeletion(recordID("Connection_Gone"))
 
         #expect(!outcome.isEmpty)
+    }
+
+    /// The reported bug: 250 items failed with full storage and the person saw the first item's
+    /// raw CloudKit text instead of the condition.
+    @Test("Items that all hit full storage report the condition, not a count of rejections")
+    func storageFullIsTheOutcome() {
+        var outcome = PushOutcome()
+        for index in 0 ..< 250 {
+            outcome.recordFailure(
+                SyncItemFailure(
+                    code: .quotaExceeded,
+                    serverRecord: nil,
+                    clientRecord: nil,
+                    retryAfter: 316,
+                    message: "Error deleting record <CKRecordID>: Quota exceeded"
+                ),
+                for: recordID("Settings_columnLayout.\(index)")
+            )
+        }
+
+        #expect(outcome.failure == .blocked(.storageFull))
+        #expect(outcome.error == .blocked(.storageFull))
+        #expect(outcome.retryAfter == 316)
+    }
+
+    @Test("Items refused one by one are counted")
+    func recordRejectionsAreCounted() {
+        var outcome = PushOutcome()
+        outcome.recordSave(makeRecord("Connection_A"))
+        for name in ["Connection_B", "Connection_C"] {
+            outcome.recordFailure(
+                SyncItemFailure(code: .invalidArguments, serverRecord: nil, clientRecord: nil, message: "unknown field"),
+                for: recordID(name)
+            )
+        }
+
+        #expect(outcome.failure == .failed)
+        #expect(outcome.error == .recordsRejected(count: 2))
+        #expect(outcome.retryAfter == nil)
+    }
+
+    @Test("A blocker among record rejections decides the outcome")
+    func blockerOutweighsRejections() {
+        var outcome = PushOutcome()
+        outcome.recordFailure(
+            SyncItemFailure(code: .invalidArguments, serverRecord: nil, clientRecord: nil, message: "unknown field"),
+            for: recordID("Connection_A")
+        )
+        outcome.recordFailure(
+            SyncItemFailure(code: .quotaExceeded, serverRecord: nil, clientRecord: nil, message: "Quota exceeded"),
+            for: recordID("Connection_B")
+        )
+
+        #expect(outcome.error == .blocked(.storageFull))
+    }
+
+    @Test("A clean push has no outcome to report")
+    func cleanPushHasNoError() {
+        var outcome = PushOutcome()
+        outcome.recordSave(makeRecord("Connection_A"))
+
+        #expect(outcome.failure == nil)
+        #expect(outcome.error == nil)
+    }
+
+    @Test("A per-item wait read from CloudKit is kept")
+    func retryAfterIsReadFromTheError() {
+        let error = CKError(.quotaExceeded, userInfo: [CKErrorRetryAfterKey: NSNumber(value: 316)])
+
+        #expect(SyncItemFailure(error: error).retryAfter == 316)
     }
 }
