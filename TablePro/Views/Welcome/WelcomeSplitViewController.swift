@@ -28,8 +28,7 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
 
         let sidebar = NSHostingController(rootView: WelcomeSidebarPane(viewModel: viewModel))
         sidebar.sizingOptions = []
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.canCollapse = false
+        let sidebarItem = NSSplitViewItem.navigationSidebar(sidebar)
         sidebarItem.minimumThickness = Self.sidebarWidth
         sidebarItem.maximumThickness = Self.sidebarWidth
         sidebarItem.holdingPriority = .splitPaneHolding
