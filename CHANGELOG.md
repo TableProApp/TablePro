@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+
 ### Fixed
 
+- iCloud Sync errors shown as raw CloudKit text with record IDs, on Mac and iPhone.
+- Every pending change resent on each edit and app switch while iCloud storage is full or iCloud is signed out.
+- Synced and a new Last Synced time after a sync whose download failed.
+- A restricted or not yet ready iCloud account told to sign in.
+- Signing in to another iCloud account on a Mac reusing the previous account's sync state.
+- TablePro data deleted in iCloud settings uploaded again without asking.
+- Sync not resuming on its own when the network comes back.
+- iPhone and iPad downloading the same changes again on every sync while uploads failed.
 - Searching in Filter Values… not narrowing the selection, so Apply and Return kept every value.
 - Return in Filter Values… hiding every row when no value was selected.
 - Clicks on the Select All label in Filter Values… doing nothing.

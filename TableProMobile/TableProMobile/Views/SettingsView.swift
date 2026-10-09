@@ -57,7 +57,10 @@ struct SettingsView: View {
             Toggle(String(localized: "iCloud Sync"), isOn: cloudSyncBinding)
             if appState.onboarding.isCloudSyncEnabled {
                 LabeledContent(String(localized: "Last Sync")) {
-                    syncStatusLabel
+                    lastSyncLabel
+                }
+                if let problem = appState.syncCoordinator.status.error {
+                    syncProblemRows(SyncStatusPresentation(problem))
                 }
                 Toggle(String(localized: "Sync Passwords"), isOn: $syncPasswords)
             }
@@ -72,8 +75,10 @@ struct SettingsView: View {
         }
     }
 
+    /// Last Sync keeps the last run that finished, even while a problem stands below it: the date
+    /// is how long this device has gone without syncing.
     @ViewBuilder
-    private var syncStatusLabel: some View {
+    private var lastSyncLabel: some View {
         switch appState.syncCoordinator.status {
         case .syncing:
             HStack(spacing: 6) {
@@ -81,18 +86,39 @@ struct SettingsView: View {
                 Text(String(localized: "Syncing\u{2026}"))
                     .foregroundStyle(.secondary)
             }
-        case .error(let error):
-            Text(ConnectionListSyncMessage.text(for: error))
-                .foregroundStyle(.red)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(3)
-        case .idle, .disabled:
+        case .idle, .error, .disabled:
             if let date = appState.syncCoordinator.lastSyncDate {
                 Text(date, style: .relative)
                     .foregroundStyle(.secondary)
             } else {
                 Text(String(localized: "Never"))
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func syncProblemRows(_ presentation: SyncStatusPresentation) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(presentation.title)
+                Text(presentation.message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let guidance = presentation.guidance {
+                    Text(guidance)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } icon: {
+            Image(systemName: presentation.systemImage)
+                .foregroundStyle(.orange)
+        }
+        /// The iCloud Sync toggle above is already the way to turn sync off.
+        ForEach(presentation.actions.filter { $0 != .turnOffSync }) { action in
+            Button(action.title) {
+                appState.performSyncAction(action)
             }
         }
     }

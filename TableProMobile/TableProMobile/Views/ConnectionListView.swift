@@ -237,7 +237,7 @@ struct ConnectionListView: View {
             openSample: openSampleDatabase,
             turnOnICloud: !isSyncEnabled && iCloudAccountAvailable ? { appState.setCloudSyncEnabled(true) } : nil,
             importConnections: { showingFileImporter = true },
-            retrySync: { Task { await appState.syncCoordinator.sync() } },
+            performSyncAction: { appState.performSyncAction($0) },
             retryLoad: { appState.retryLoadIfFailed() }
         )
     }
@@ -251,8 +251,8 @@ struct ConnectionListView: View {
         return List(selection: $selection) {
             if let syncProblem {
                 Section {
-                    ConnectionListSyncProblemRow(error: syncProblem) {
-                        Task { await appState.syncCoordinator.sync() }
+                    ConnectionListSyncProblemRow(error: syncProblem) { action in
+                        appState.performSyncAction(action)
                     }
                 }
             }
@@ -306,7 +306,7 @@ struct ConnectionListView: View {
             Label(token.name, systemImage: "tag")
         }
         .modifier(SyncRefreshModifier(isEnabled: isSyncEnabled) {
-            await appState.syncCoordinator.sync()
+            await appState.syncCoordinator.sync(.userRequest)
         })
         .confirmationDialog(deletionTitle, isPresented: deletionPresented, titleVisibility: .visible) {
             Button(String(localized: "Delete"), role: .destructive) {

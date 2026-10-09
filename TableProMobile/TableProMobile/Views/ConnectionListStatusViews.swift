@@ -6,7 +6,7 @@ struct ConnectionListEmptyActions {
     let openSample: () -> Void
     let turnOnICloud: (() -> Void)?
     let importConnections: () -> Void
-    let retrySync: () -> Void
+    let performSyncAction: (SyncStatusAction) -> Void
     let retryLoad: () -> Void
 }
 
@@ -57,15 +57,31 @@ struct ConnectionListStatusView: View {
     }
 
     private func unavailableView(_ error: SyncError) -> some View {
-        ContentUnavailableView {
-            Label("iCloud Unavailable", systemImage: "exclamationmark.icloud")
+        let presentation = SyncStatusPresentation(error)
+        return ContentUnavailableView {
+            Label(presentation.title, systemImage: presentation.systemImage)
         } description: {
-            Text(ConnectionListSyncMessage.text(for: error))
+            VStack(spacing: 8) {
+                Text(presentation.message)
+                if let guidance = presentation.guidance {
+                    Text(guidance)
+                }
+            }
         } actions: {
-            Button("Try Again", action: actions.retrySync)
-                .buttonStyle(.borderedProminent)
-            Button("Add Connection", action: actions.addConnection)
-                .buttonStyle(.bordered)
+            ForEach(presentation.actions) { action in
+                SyncActionButton(
+                    action: action,
+                    isPrimary: action == presentation.actions.first,
+                    perform: actions.performSyncAction
+                )
+            }
+            if presentation.actions.isEmpty {
+                Button("Add Connection", action: actions.addConnection)
+                    .buttonStyle(.borderedProminent)
+            } else {
+                Button("Add Connection", action: actions.addConnection)
+                    .buttonStyle(.bordered)
+            }
         }
     }
 
@@ -100,32 +116,54 @@ struct ConnectionListStatusView: View {
 
 struct ConnectionListSyncProblemRow: View {
     let error: SyncError
-    let retry: () -> Void
+    let perform: (SyncStatusAction) -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Label {
-                Text(ConnectionListSyncMessage.text(for: error))
+        let presentation = SyncStatusPresentation(error)
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(presentation.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(presentation.message)
                     .font(.subheadline)
-            } icon: {
-                Image(systemName: "exclamationmark.icloud")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
+                if let guidance = presentation.guidance {
+                    Text(guidance)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if !presentation.actions.isEmpty {
+                    HStack(spacing: 20) {
+                        ForEach(presentation.actions) { action in
+                            /// Borderless, so each button takes its own taps inside the list row.
+                            Button(action.title) { perform(action) }
+                                .buttonStyle(.borderless)
+                                .font(.subheadline)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Try Again", action: retry)
-                .buttonStyle(.borderless)
-                .font(.subheadline)
+        } icon: {
+            Image(systemName: presentation.systemImage)
+                .foregroundStyle(.orange)
         }
     }
 }
 
-enum ConnectionListSyncMessage {
-    static func text(for error: SyncError) -> String {
-        switch error {
-        case .accountUnavailable:
-            return String(localized: "Sign in to iCloud in the Settings app to sync your connections.")
-        default:
-            return error.localizedDescription
+private struct SyncActionButton: View {
+    let action: SyncStatusAction
+    let isPrimary: Bool
+    let perform: (SyncStatusAction) -> Void
+
+    var body: some View {
+        if isPrimary {
+            Button(action.title) { perform(action) }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button(action.title) { perform(action) }
+                .buttonStyle(.bordered)
         }
     }
 }

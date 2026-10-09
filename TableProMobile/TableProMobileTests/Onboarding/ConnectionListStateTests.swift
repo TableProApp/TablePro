@@ -45,16 +45,21 @@ struct ConnectionListStateTests {
 
     @Test("iCloud trouble before anything arrived is said, not hidden")
     func unavailable() {
-        #expect(state(syncEnabled: true, status: .error(.accountUnavailable)) == .iCloudUnavailable(.accountUnavailable))
+        #expect(state(syncEnabled: true, status: .error(.blocked(.signedOut))) == .iCloudUnavailable(.blocked(.signedOut)))
+    }
+
+    @Test("Full storage before the first sync is reported as itself, not as an account problem")
+    func storageFullBeforeFirstSync() {
+        #expect(state(syncEnabled: true, status: .error(.blocked(.storageFull))) == .iCloudUnavailable(.blocked(.storageFull)))
     }
 
     @Test("A sync problem over a loaded library keeps the rows and reports it")
     func problemWithContent() {
-        #expect(state(hasItems: true, syncEnabled: true, status: .error(.networkUnavailable)) == .content(syncProblem: .networkUnavailable))
+        #expect(state(hasItems: true, syncEnabled: true, status: .error(.offline)) == .content(syncProblem: .offline))
     }
 
     @Test("A stale sync error is ignored once sync is off")
     func errorIgnoredWhenOff() {
-        #expect(state(hasItems: true, status: .error(.networkUnavailable)) == .content(syncProblem: nil))
+        #expect(state(hasItems: true, status: .error(.offline)) == .content(syncProblem: nil))
     }
 }

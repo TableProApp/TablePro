@@ -393,7 +393,7 @@ struct SyncCoordinatorEchoTests {
 
         let failure = await makeCoordinator(transport: transport).runSyncCycle()
 
-        #expect(failure == .networkUnavailable)
+        #expect(failure == .offline)
         #expect(tags.tag(for: tag.id)?.name == "stage")
         #expect(tracker.dirtyRecords(for: .tag) == [tag.id.uuidString])
     }

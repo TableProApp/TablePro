@@ -45,26 +45,26 @@ struct SyncSection: View {
 
     // MARK: - Status
 
+    /// A blocked state is explained by the notice at the top of the pane, so this section names it
+    /// in the Status row and leaves the long message there.
     private var statusSection: some View {
-        Section("Sync Status") {
-            if syncCoordinator.iCloudAccountAvailable {
-                LabeledContent(String(localized: "Account")) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                        Text(String(localized: "iCloud Connected"))
+        let presentation = SyncStatusPresentation(
+            status: syncCoordinator.syncStatus,
+            lastSyncDate: syncCoordinator.lastSyncDate
+        )
+        return Section("Sync Status") {
+            LabeledContent(String(localized: "Status")) {
+                HStack(spacing: 4) {
+                    if syncCoordinator.syncStatus.isSyncing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: presentation.symbolName)
+                            .foregroundStyle(presentation.isWarning ? Color.orange : Color.secondary)
+                            .accessibilityHidden(true)
                     }
+                    Text(presentation.statusTitle)
                 }
-            } else {
-                LabeledContent(String(localized: "Account")) {
-                    Text(String(localized: "Not Available"))
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("Sign in to iCloud in System Settings to enable sync.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
             }
 
             if let lastSync = syncCoordinator.lastSyncDate {
@@ -73,21 +73,18 @@ struct SyncSection: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            if presentation.offersSyncNow {
                 Button(String(localized: "Sync Now")) {
                     Task { await syncCoordinator.syncNow() }
                 }
-                .disabled(syncCoordinator.syncStatus.isSyncing || !syncCoordinator.iCloudAccountAvailable)
-
-                if syncCoordinator.syncStatus.isSyncing {
-                    ProgressView().controlSize(.small)
-                }
+                .disabled(syncCoordinator.syncStatus.isSyncing)
             }
 
-            if case .error(let error) = syncCoordinator.syncStatus {
-                Text(error.localizedDescription)
+            if let detail = presentation.statusDetail {
+                Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

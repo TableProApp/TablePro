@@ -214,11 +214,16 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         guard let recorded = lastAccountId else {
             lastAccountId = accountId
             guard hasStoredToken else { return .firstSeen }
+            /// Read before the token goes, since the token is what says an earlier build saw the
+            /// zone. Forgetting that would let the next run recreate a zone the person deleted.
+            let zone = zoneState
             forgetServerPosition()
+            zoneState = zone
             return .previousAccountUnknown
         }
         guard recorded != accountId else { return .unchanged }
         forgetServerPosition()
+        zoneState = .unknown
         for type in SyncRecordType.allCases {
             clearTombstones(type: type)
         }
@@ -235,10 +240,29 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         userDefaults.removeObject(forKey: key("lastSyncDate"))
     }
 
+    // MARK: - Zone
+
+    /// The zone is saved only while this is `.unknown`. Saving it on every run recreated a zone the
+    /// person had deleted in iCloud settings before CloudKit could say so.
+    ///
+    /// Builds before this key saved the zone on every run, so a device they synced has seen it: a
+    /// stored token or Last Synced date reads as confirmed, and a zone deleted while that build was
+    /// not running is reported as gone rather than recreated on the first run after the update.
+    public var zoneState: SyncZoneState {
+        get {
+            if let stored = userDefaults.string(forKey: key("zoneState")).flatMap(SyncZoneState.init(rawValue:)) {
+                return stored
+            }
+            return hasStoredToken || lastSyncDate != nil ? .confirmed : .unknown
+        }
+        set { userDefaults.set(newValue.rawValue, forKey: key("zoneState")) }
+    }
+
     // MARK: - Reset
 
     public func clearAll() {
         saveToken(nil)
+        zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))
 
