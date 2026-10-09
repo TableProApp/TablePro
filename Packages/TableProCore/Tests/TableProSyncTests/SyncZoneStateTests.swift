@@ -65,6 +65,21 @@ struct SyncZoneStateTests {
         #expect(fresh.zoneState == .unknown)
     }
 
+    /// An earlier build that never recorded its account still saved the zone on every run, so the
+    /// zone stays known while the token it left behind is dropped.
+    @Test("Adopting an account an earlier build never recorded keeps the zone it saw")
+    func unrecordedAccountKeepsTheZone() throws {
+        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))
+        let storage = SyncMetadataStorage(userDefaults: defaults)
+        storage.lastSyncDate = Date(timeIntervalSince1970: 1_000)
+        defaults.set(Data([0x01]), forKey: "com.TablePro.sync.serverChangeToken")
+
+        #expect(storage.adoptAccount("a") == .previousAccountUnknown)
+
+        #expect(storage.zoneState == .confirmed)
+        #expect(storage.lastSyncDate == nil)
+    }
+
     @Test("Another account forgets the zone")
     func accountSwitchForgetsTheZone() throws {
         let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.zone.\(UUID().uuidString)"))

@@ -54,6 +54,9 @@ final class IOSSyncCoordinator {
     /// When an upload held back by the last failure may be tried by a trigger that changes nothing.
     @ObservationIgnored private var nextAttempt: Date?
 
+    /// The end of the wait CloudKit named on its last throttle. No automatic run starts before it.
+    @ObservationIgnored private var throttledUntil: Date?
+
     /// Bumped whenever something other than a run decides the status, so a run that suspended
     /// across the network can tell its outcome is no longer the current answer.
     @ObservationIgnored private var statusGeneration = 0
@@ -212,7 +215,12 @@ final class IOSSyncCoordinator {
             return
         }
         let previousError = status.error
-        let admission = SyncAdmission.decide(for: trigger, after: previousError, nextAttempt: nextAttempt)
+        let admission = SyncAdmission.decide(
+            for: trigger,
+            after: previousError,
+            nextAttempt: nextAttempt,
+            throttledUntil: throttledUntil
+        )
         guard admission != .none else {
             Self.logger.info("Sync held back for \(String(describing: trigger), privacy: .public)")
             return
@@ -240,9 +248,10 @@ final class IOSSyncCoordinator {
         let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
         pendingTriggers = []
         let attempt = nextAttempt
+        let throttle = throttledUntil
         let reach: (SyncTrigger) -> Int = { trigger in
             let scope: Int
-            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt) {
+            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt, throttledUntil: throttle) {
             case .full: scope = 2
             case .downloadOnly: scope = 1
             case .none: return 0
@@ -409,6 +418,22 @@ final class IOSSyncCoordinator {
             nextAttempt = delay.map { Date().addingTimeInterval($0) }
             scheduleRetry(after: delay)
         }
+        if settlement.throttles {
+            let wait = SyncRetryPolicy.nextAttemptDelay(
+                after: .busy,
+                consecutiveFailures: 1,
+                retryAfter: result.failure?.retryAfter
+            ) ?? 30
+            let until = Date().addingTimeInterval(wait)
+            throttledUntil = until
+            /// A held upload's own timer must not fire inside the throttle.
+            if let next = nextAttempt, next < until {
+                nextAttempt = until
+                scheduleRetry(after: wait)
+            }
+        } else {
+            throttledUntil = nil
+        }
         status = settlement.status
     }
 
@@ -427,6 +452,7 @@ final class IOSSyncCoordinator {
     private func resetRetryState() {
         consecutiveFailures = 0
         nextAttempt = nil
+        throttledUntil = nil
         retryTask?.cancel()
         retryTask = nil
     }

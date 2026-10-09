@@ -53,6 +53,17 @@ struct SyncSettlementTests {
         #expect(settlement.countedFailure == nil)
     }
 
+    @Test("A throttled download keeps the blocker on screen and still records the throttle")
+    func throttledDownloadWhileHeld() {
+        let busy = SyncStepFailure(failure: .busy, error: .busy, retryAfter: 120)
+        let settlement = SyncSettlement(failure: busy, admission: .downloadOnly, previousError: .blocked(.storageFull))
+
+        #expect(settlement.status == .error(.blocked(.storageFull)))
+        #expect(settlement.throttles)
+        #expect(settlement.countedFailure == nil)
+        #expect(!SyncSettlement(failure: nil, admission: .full, previousError: .busy).throttles)
+    }
+
     @Test("A blocker found by a download replaces the one it ran under")
     func downloadFindsAnotherBlocker() {
         let signedOut = SyncStepFailure(failure: .blocked(.signedOut), error: .blocked(.signedOut), retryAfter: nil)

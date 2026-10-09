@@ -31,12 +31,20 @@ public enum SyncAdmission: Equatable, Sendable {
     /// A condition a retry cannot clear keeps the automatic triggers from resending every pending
     /// change: an edit, an activation and a network change do not fix full storage or a signed-out
     /// account. What can is the wait running out, the account changing, or the person asking.
+    ///
+    /// `throttledUntil` is the wait CloudKit named on the last throttle, from an upload or a
+    /// download alike. It holds the automatic triggers whatever else stands, because asking early
+    /// only extends the throttle.
     public static func decide(
         for trigger: SyncTrigger,
         after error: SyncError?,
         nextAttempt: Date?,
+        throttledUntil: Date? = nil,
         now: Date = Date()
     ) -> SyncAdmission {
+        if let throttledUntil, now < throttledUntil, trigger != .userRequest, trigger != .accountChange {
+            return .none
+        }
         let isDue = nextAttempt.map { now >= $0 } ?? true
         switch error {
         case nil, .offline, .recordsRejected, .pullNotSaved, .unexpected:

@@ -665,6 +665,28 @@ struct IOSSyncCoordinatorTests {
         #expect(!metadata.dirtyIds(for: .connection).contains(local.id.uuidString))
     }
 
+    /// The download was throttled while uploads were held, and with the status still on the
+    /// blocker nothing kept the wait, so the next foreground asked again at once.
+    @Test("A download throttled while iCloud is full keeps the notice and waits out the throttle")
+    func throttledDownloadWaitsOutTheThrottle() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Prod", type: .postgresql)
+        box.connections = [local]
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        await transport.failEveryItem(with: .quotaExceeded, retryAfter: 316)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        coordinator.markDirty(local.id)
+        await coordinator.sync()
+        let throttle = CKError(.requestRateLimited, userInfo: [CKErrorRetryAfterKey: NSNumber(value: 600)])
+        await transport.failNextPulls(with: [throttle])
+
+        await coordinator.sync(.activation)
+        await coordinator.sync(.activation)
+
+        #expect(await transport.pullCount == 2)
+        #expect(coordinator.status == .error(.blocked(.storageFull)))
+    }
+
     @Test("A standing problem stays on screen while an automatic run checks on it, and the person's request shows progress")
     func standingProblemDoesNotFlicker() async throws {
         let box = LibraryStateBox()

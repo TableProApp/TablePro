@@ -22,8 +22,14 @@ public struct SyncSettlement: Equatable, Sendable {
     /// it was gone have not gone up yet.
     public let needsUpload: Bool
 
+    /// CloudKit asked to slow down. Kept apart from the status, because a download that was
+    /// throttled while uploads are held still has to wait, though the notice keeps the reason the
+    /// uploads are held.
+    public let throttles: Bool
+
     public init(failure: SyncStepFailure?, admission: SyncAdmission, previousError: SyncError?) {
         let unchanged: SyncStatus = previousError.map { .error($0) } ?? .idle
+        let throttles = failure?.error == .busy
 
         guard let failure else {
             if admission == .full {
@@ -47,7 +53,7 @@ public struct SyncSettlement: Equatable, Sendable {
         /// A download that stumbles while uploads are held keeps the reason they are held; losing
         /// it would let the next edit resend everything into the same wall.
         if admission == .downloadOnly, error.blocker == nil, previousError != nil {
-            self.init(status: unchanged, stampsLastSync: false, resetsRetry: false, countedFailure: nil)
+            self.init(status: unchanged, stampsLastSync: false, resetsRetry: false, countedFailure: nil, throttles: throttles)
             return
         }
 
@@ -59,7 +65,8 @@ public struct SyncSettlement: Equatable, Sendable {
             status: .error(error),
             stampsLastSync: admission == .full && onlyRecordsRejected,
             resetsRetry: false,
-            countedFailure: error
+            countedFailure: error,
+            throttles: throttles
         )
     }
 
@@ -68,12 +75,14 @@ public struct SyncSettlement: Equatable, Sendable {
         stampsLastSync: Bool,
         resetsRetry: Bool,
         countedFailure: SyncError?,
-        needsUpload: Bool = false
+        needsUpload: Bool = false,
+        throttles: Bool = false
     ) {
         self.status = status
         self.stampsLastSync = stampsLastSync
         self.resetsRetry = resetsRetry
         self.countedFailure = countedFailure
         self.needsUpload = needsUpload
+        self.throttles = throttles
     }
 }

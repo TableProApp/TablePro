@@ -214,11 +214,16 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         guard let recorded = lastAccountId else {
             lastAccountId = accountId
             guard hasStoredToken else { return .firstSeen }
+            /// Read before the token goes, since the token is what says an earlier build saw the
+            /// zone. Forgetting that would let the next run recreate a zone the person deleted.
+            let zone = zoneState
             forgetServerPosition()
+            zoneState = zone
             return .previousAccountUnknown
         }
         guard recorded != accountId else { return .unchanged }
         forgetServerPosition()
+        zoneState = .unknown
         for type in SyncRecordType.allCases {
             clearTombstones(type: type)
         }
@@ -232,7 +237,6 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     private func forgetServerPosition() {
         saveToken(nil)
-        zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
     }
 

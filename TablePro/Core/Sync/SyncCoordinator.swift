@@ -52,6 +52,9 @@ final class SyncCoordinator: ObservableObject {
     /// When the upload that failed may be tried again by a trigger that does not change the situation.
     private var nextAttempt: Date?
 
+    /// The end of the wait CloudKit named on its last throttle. No automatic run starts before it.
+    private var throttledUntil: Date?
+
     /// Bumped every time something other than a sync run decides the status, so a run that has been
     /// suspended across the network can tell whether its outcome is still the current answer.
     private var statusGeneration = 0
@@ -150,7 +153,12 @@ final class SyncCoordinator: ObservableObject {
         }
 
         let previousError = syncStatus.error
-        let admission = SyncAdmission.decide(for: trigger, after: previousError, nextAttempt: nextAttempt)
+        let admission = SyncAdmission.decide(
+            for: trigger,
+            after: previousError,
+            nextAttempt: nextAttempt,
+            throttledUntil: throttledUntil
+        )
         guard admission != .none else {
             Self.logger.info("Sync held back for \(String(describing: trigger), privacy: .public)")
             return
@@ -313,6 +321,22 @@ final class SyncCoordinator: ObservableObject {
             nextAttempt = delay.map { Date().addingTimeInterval($0) }
             scheduleRetry(after: delay)
         }
+        if settlement.throttles {
+            let wait = SyncRetryPolicy.nextAttemptDelay(
+                after: .busy,
+                consecutiveFailures: 1,
+                retryAfter: result.failure?.retryAfter
+            ) ?? 30
+            let until = Date().addingTimeInterval(wait)
+            throttledUntil = until
+            /// A held upload's own timer must not fire inside the throttle.
+            if let next = nextAttempt, next < until {
+                nextAttempt = until
+                scheduleRetry(after: wait)
+            }
+        } else {
+            throttledUntil = nil
+        }
         syncStatus = settlement.status
         if settlement.status == .idle, result.admission == .full {
             Self.logger.info("Sync completed successfully")
@@ -339,6 +363,7 @@ final class SyncCoordinator: ObservableObject {
     private func resetRetryState() {
         consecutiveFailures = 0
         nextAttempt = nil
+        throttledUntil = nil
         retryTask?.cancel()
         retryTask = nil
     }
@@ -351,8 +376,9 @@ final class SyncCoordinator: ObservableObject {
         let triggers = pendingTriggers.filter { $0 != .networkRestored || error == .offline }
         pendingTriggers = []
         let attempt = nextAttempt
+        let throttle = throttledUntil
         let reach: (SyncTrigger) -> Int = { trigger in
-            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt) {
+            switch SyncAdmission.decide(for: trigger, after: error, nextAttempt: attempt, throttledUntil: throttle) {
             case .full: return 2
             case .downloadOnly: return 1
             case .none: return 0

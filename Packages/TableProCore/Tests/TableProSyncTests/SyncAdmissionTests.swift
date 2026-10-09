@@ -76,6 +76,18 @@ struct SyncAdmissionTests {
         }
     }
 
+    /// A download throttled while uploads were held for full storage left the status on the
+    /// blocker, and with it no record of the wait, so the next activation asked again at once.
+    @Test("A throttle holds every automatic trigger whatever else stands, but not the person")
+    func throttleHoldsAutomaticTriggers() {
+        for error in [SyncError?.none, .blocked(.storageFull), .blocked(.dataDeletedFromICloud)] {
+            #expect(SyncAdmission.decide(for: .activation, after: error, nextAttempt: nil, throttledUntil: later, now: now) == .none)
+            #expect(SyncAdmission.decide(for: .scheduledRetry, after: error, nextAttempt: nil, throttledUntil: later, now: now) == .none)
+            #expect(SyncAdmission.decide(for: .userRequest, after: error, nextAttempt: nil, throttledUntil: later, now: now) != .none)
+        }
+        #expect(SyncAdmission.decide(for: .activation, after: nil, nextAttempt: nil, throttledUntil: earlier, now: now) == .full)
+    }
+
     @Test("A throttle holds automatic triggers until its wait is over")
     func busyHoldsUntilDue() {
         #expect(SyncAdmission.decide(for: .activation, after: .busy, nextAttempt: later, now: now) == .none)
