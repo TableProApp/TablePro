@@ -40,6 +40,31 @@ private func typedRows(_ values: [String?], type: ColumnType, columnName: String
     )
 }
 
+private func cellRows(_ cells: [PluginCellValue], columnName: String = "geom") -> TableRows {
+    let built = cells.enumerated().map { index, cell in
+        Row(id: .existing(index), values: [cell])
+    }
+    return TableRows(
+        rows: ContiguousArray(built),
+        columns: [columnName],
+        columnTypes: [.spatial(rawType: "geometry")]
+    )
+}
+
+private func bytes(hex: String) -> PluginCellValue {
+    var data = Data()
+    var index = hex.startIndex
+    while index < hex.endIndex {
+        let next = hex.index(index, offsetBy: 2)
+        data.append(UInt8(hex[index ..< next], radix: 16) ?? 0)
+        index = next
+    }
+    return .bytes(data)
+}
+
+/// The point `hexIsDrawn` reads as text, here as the bytes a driver hands over.
+private let ewkbPoint = "0101000020E610000050FC1873D79A5EC0D0D556EC2FE34240"
+
 /// Names the fixture's column directly rather than going through `SpatialColumn.columns(in:)`.
 ///
 /// The projector's job is to project whatever column it is handed, and which columns are offered is
@@ -123,6 +148,73 @@ struct SpatialColumnTests {
             type: .json(rawType: "JSON")
         )
         #expect(SpatialColumn.columns(in: documents).isEmpty)
+    }
+
+    /// A curve is the reader recognizing geometry it cannot draw, which is not the same as text no
+    /// reader knows. Counting the two together took the Map segment away from a column of curves,
+    /// so the pane never got to say which type it holds.
+    @Test("A spatial column of a type the map cannot draw keeps the segment")
+    func undrawableTypeKeepsTheSegment() {
+        let curves = typedRows(
+            Array(repeating: "CIRCULARSTRING(0 0,1 1,2 0)", count: 4),
+            type: .spatial(rawType: "geometry")
+        )
+        #expect(SpatialColumn.hasSpatialColumn(in: curves))
+        #expect(SpatialColumn.columns(in: curves).count == 1)
+
+        let curvesThenAPoint = typedRows(
+            Array(repeating: "CIRCULARSTRING(0 0,1 1,2 0)", count: 4) + ["POINT(1 2)"],
+            type: .spatial(rawType: "geometry")
+        )
+        #expect(SpatialColumn.hasSpatialColumn(in: curvesThenAPoint))
+    }
+
+    @Test("A column of curves reaches the pane's explanation of which type it holds")
+    func undrawableTypeIsExplained() async throws {
+        let curves = typedRows(
+            Array(repeating: "CIRCULARSTRING(0 0,1 1,2 0)", count: 4),
+            type: .spatial(rawType: "geometry")
+        )
+        let column = try #require(SpatialColumn.columns(in: curves).first)
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: curves,
+            displayIDs: nil,
+            column: column
+        )
+        #expect(projection.isEmpty)
+        #expect(projection.diagnostics.emptyReason.contains("CIRCULARSTRING"))
+    }
+
+    /// A JSON column still has to hold a value that reads, and the wide reader still decides that:
+    /// MongoDB's legacy coordinate pairs draw through it. An undrawable type is not a reading.
+    @Test("The JSON gate is unchanged")
+    func jsonGateIsUnchanged() {
+        let pairs = typedRows(["[-73.97, 40.77]", "[-73.88, 40.78]"], type: .json(rawType: "JSON"))
+        #expect(SpatialColumn.hasSpatialColumn(in: pairs))
+
+        let curves = typedRows(["CIRCULARSTRING(0 0,1 1,2 0)"], type: .json(rawType: "JSON"))
+        #expect(!SpatialColumn.hasSpatialColumn(in: curves))
+    }
+
+    /// Bytes used to be read through their hex spelling, and the hex of one to four bytes is a
+    /// valid geohash: a column of short blobs earned the segment and drew a marker per row.
+    @Test("A short blob in a spatial column is not read as a geohash")
+    func shortBlobsAreNotGeohashes() {
+        let blobs = cellRows([bytes(hex: "12"), bytes(hex: "1234"), bytes(hex: "12345678")])
+        #expect(!SpatialColumn.hasSpatialColumn(in: blobs))
+        #expect(SpatialColumn.columns(in: blobs).isEmpty)
+    }
+
+    @Test("A spatial column of WKB bytes is offered")
+    func wkbBytesAreOffered() {
+        let binary = cellRows([.null, bytes(hex: ewkbPoint)])
+        #expect(SpatialColumn.hasSpatialColumn(in: binary))
+        #expect(SpatialColumn.columns(in: binary).count == 1)
+    }
+
+    @Test("An empty blob says nothing about the column")
+    func emptyBlobIsNotJudged() {
+        #expect(SpatialColumn.hasSpatialColumn(in: cellRows([.bytes(Data())])))
     }
 
     /// A result can hold two columns of the same name, so the id carries the occurrence and the
@@ -348,6 +440,22 @@ struct SpatialResultProjectorTests {
         #expect(projection.shapes.count == 1)
         #expect(projection.diagnostics.drawnSRID == wgs84)
     }
+
+    @Test("WKB bytes are drawn and a short blob beside them is counted as unreadable")
+    func bytesAreReadAsWKB() async {
+        let table = cellRows([bytes(hex: "1234"), bytes(hex: ewkbPoint), bytes(hex: "12345678"), .bytes(Data())])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: table,
+            displayIDs: nil,
+            column: onlyColumn(table)
+        )
+        #expect(projection.shapes.count == 1)
+        #expect(projection.shapes.first?.rowID == .existing(1))
+        #expect(projection.diagnostics.drawnSRID == wgs84)
+        #expect(projection.diagnostics.unreadableRows == 2)
+        #expect(projection.diagnostics.emptyRows == 1)
+    }
+
     /// The budget used to be checked once per row, so the first row alone could put any number of
     /// shapes on the map: one MULTIPOINT or GEOMETRYCOLLECTION is a single row and has no bound of
     /// its own.
@@ -377,6 +485,43 @@ struct SpatialResultProjectorTests {
         )
         #expect(projection.shapes.count == 1)
         #expect(projection.diagnostics.cappedRows == 1)
+    }
+
+    /// The first polygon crosses longitude 181, which a geographic system does not have. It used to
+    /// be skipped with the row reported as drawn and nothing said about the missing half.
+    @Test("A member the map cannot place is counted while the rest of the row is drawn")
+    func droppedPartsAreCounted() async {
+        let table = rows([
+            "SRID=4326;MULTIPOLYGON(((179 50,181 50,181 51,179 50)),((10 10,11 10,11 11,10 10)))",
+            "SRID=4326;POINT(1 2)",
+        ])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: table,
+            displayIDs: nil,
+            column: onlyColumn(table)
+        )
+        #expect(projection.shapes.count == 2)
+        #expect(projection.diagnostics.drawnRows == 2)
+        #expect(projection.diagnostics.droppedParts == 1)
+        #expect(projection.diagnostics.unreadableRows == 0)
+        #expect(projection.diagnostics.hasAnythingToReport)
+    }
+
+    /// Such a row is already counted whole. Counting its parts too would report it twice.
+    @Test("A row that draws nothing is counted as a row, not as parts")
+    func undrawnRowIsNotCountedAsParts() async {
+        let table = rows([
+            "SRID=4326;MULTIPOINT(181 50,182 50)",
+            "SRID=4326;POINT(1 2)",
+        ])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: table,
+            displayIDs: nil,
+            column: onlyColumn(table)
+        )
+        #expect(projection.shapes.count == 1)
+        #expect(projection.diagnostics.unreadableRows == 1)
+        #expect(projection.diagnostics.droppedParts == 0)
     }
 
     /// The pane asks `readableRows` before it blames the coordinate system, because

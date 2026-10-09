@@ -45,4 +45,40 @@ struct FieldExpansionPolicyTests {
         #expect(FieldEditorContent.canExpand(kind: .json, state: .null))
         #expect(FieldEditorContent.canExpand(kind: .multiLine, state: .multipleValues))
     }
+
+    // MARK: - Geometry
+
+    private func geometry(_ editor: GeometryTextEditor, _ source: GeometryFieldSource) -> FieldEditorKind {
+        .geometry(GeometryFieldDescriptor(textEditor: editor, source: source))
+    }
+
+    /// The control is decided without knowing which segment is showing, so it follows the editor
+    /// under Text: that one has to grow too, or the control would resize nothing on that segment.
+    @Test("A geometry field expands when the editor under its Text segment does")
+    func geometryFollowsItsTextEditor() {
+        let value = FieldValueState.value("POINT(1 2)")
+        #expect(FieldEditorContent.canExpand(kind: geometry(.multiLine, .spatialColumn), state: value))
+        #expect(FieldEditorContent.canExpand(kind: geometry(.json, .spatialColumn), state: value))
+        #expect(FieldEditorContent.canExpand(kind: geometry(.json, .jsonColumn), state: value))
+        #expect(FieldEditorContent.canExpand(kind: geometry(.multiLine, .spatialColumn), state: .null))
+    }
+
+    @Test("A binary geometry field carries no expand control")
+    func binaryGeometryDoesNotExpand() {
+        let value = FieldValueState.value("x")
+        #expect(FieldEditorContent.canExpand(kind: geometry(.hex, .binary), state: value) == false)
+    }
+
+    @Test("A geometry field showing a pending pill has nothing to expand")
+    func pendingGeometryDoesNotExpand() {
+        #expect(FieldEditorContent.canExpand(kind: geometry(.multiLine, .spatialColumn), state: .pendingNull) == false)
+        #expect(FieldEditorContent.canExpand(kind: geometry(.json, .jsonColumn), state: .pendingDefault) == false)
+    }
+
+    @Test("A geometry field stands in for the editor under its Text segment")
+    func geometryNamesItsTextEditorKind() {
+        #expect(GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn).textEditorKind == .multiLine)
+        #expect(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn).textEditorKind == .json)
+        #expect(GeometryFieldDescriptor(textEditor: .hex, source: .binary).textEditorKind == .blobHex)
+    }
 }

@@ -156,9 +156,8 @@ internal struct RowInspectorView: View {
     /// no competitor ships an in-panel takeover and neither does this any more.
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        /// Captured here rather than looked up on each keystroke: the field's id is reissued on
-        /// every selection change, so a window left open over a new selection used to fail its own
-        /// lookup and drop everything typed into it without a word.
+        /// Captured, not looked up per keystroke: the field's id is reissued on every selection
+        /// change, and a window left open over a new selection dropped what was typed into it.
         let columnIndex = field.columnIndex
         let rowIDs = state.editState.rowIDs
         let commit: ((String) -> Void)? = isEditable
@@ -167,7 +166,7 @@ internal struct RowInspectorView: View {
             }
             : nil
 
-        switch kind {
+        switch InspectorPopOutWindow.resolve(for: kind) {
         case .json:
             JSONViewerWindowController.open(
                 text: text,
@@ -175,16 +174,37 @@ internal struct RowInspectorView: View {
                 isEditable: isEditable,
                 onCommit: commit
             )
-        case .phpSerialized:
+        case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
-        case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
-             .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker:
+        case .text:
             TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
                 isEditable: isEditable,
                 onCommit: commit
             )
+        }
+    }
+}
+
+/// The window a field's text opens in. A geometry field's map opens its own window from the field;
+/// what reaches here is its Text segment, which goes where that editor's kind would.
+internal enum InspectorPopOutWindow: Equatable {
+    case json
+    case php
+    case text
+
+    internal static func resolve(for kind: FieldEditorKind) -> InspectorPopOutWindow {
+        switch kind {
+        case .json:
+            return .json
+        case .phpSerialized:
+            return .php
+        case .geometry(let descriptor):
+            return resolve(for: descriptor.textEditorKind)
+        case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
+             .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker:
+            return .text
         }
     }
 }

@@ -144,12 +144,15 @@ public enum SpatialValueReader {
         static func parse(_ text: String) -> TupleNode? {
             var bytes = Array(text.utf8)
             var index = 0
-            guard let node = parseNode(&bytes, &index) else { return nil }
+            guard let node = parseNode(&bytes, &index, depth: 1) else { return nil }
             skipWhitespace(bytes, &index)
             return index == bytes.count ? node : nil
         }
 
-        private static func parseNode(_ bytes: inout [UInt8], _ index: inout Int) -> TupleNode? {
+        private static func parseNode(_ bytes: inout [UInt8], _ index: inout Int, depth: Int) -> TupleNode? {
+            /// Each bracket is one more frame and the wire puts no limit on them, so a value of
+            /// nothing but brackets overflows the stack. A MultiPolygon, the deepest real one, uses five.
+            guard depth <= SpatialLimits.maximumNestingDepth else { return nil }
             skipWhitespace(bytes, &index)
             guard index < bytes.count else { return nil }
             if bytes[index] == 0x28 || bytes[index] == 0x5B {
@@ -162,7 +165,7 @@ public enum SpatialValueReader {
                     return .group([])
                 }
                 while true {
-                    guard let child = parseNode(&bytes, &index) else { return nil }
+                    guard let child = parseNode(&bytes, &index, depth: depth + 1) else { return nil }
                     children.append(child)
                     skipWhitespace(bytes, &index)
                     guard index < bytes.count else { return nil }

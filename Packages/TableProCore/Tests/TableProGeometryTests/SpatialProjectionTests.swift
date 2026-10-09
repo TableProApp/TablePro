@@ -14,6 +14,30 @@ final class SpatialProjectionTests: XCTestCase {
         }
     }
 
+    /// ETRS89, GDA94, GDA2020, CGCS2000, SIRGAS 2000, NAD83(2011) and JGD2011: degrees on a datum
+    /// within a few metres of WGS84, so they draw as they are stored.
+    func testRegionalGeographicDatumsDrawDirectly() {
+        for srid: Int32 in [4_258, 4_283, 7_844, 4_490, 4_674, 6_318, 6_668] {
+            XCTAssertEqual(
+                SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
+                .geographic,
+                "SRID \(srid) should draw directly"
+            )
+        }
+    }
+
+    func testRegionalGeographicDatumReadsThroughEWKT() {
+        guard case .success(let value) = WKTGeometryReader.read("SRID=4258;POINT(10.5 52.3)") else {
+            return XCTFail("expected a geometry")
+        }
+        let projectability = SpatialProjection.projectability(srid: value.srid, geometry: value.geometry)
+        XCTAssertEqual(projectability, .geographic)
+        XCTAssertEqual(
+            SpatialProjection.project(SpatialPoint(x: 10.5, y: 52.3), using: projectability),
+            GeographicCoordinate(longitude: 10.5, latitude: 52.3)
+        )
+    }
+
     func testWebMercatorAliases() {
         for srid: Int32 in [3_857, 900_913, 102_100, 102_113, 3_785] {
             XCTAssertEqual(

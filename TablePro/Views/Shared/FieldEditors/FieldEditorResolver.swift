@@ -3,6 +3,7 @@
 //  TablePro
 
 import Foundation
+import TableProGeometry
 import TableProPluginKit
 
 @MainActor
@@ -15,7 +16,8 @@ internal enum FieldEditorResolver {
         return resolve(
             for: field.columnTypeEnum,
             isLongText: field.isLongText,
-            originalValue: field.originalValue
+            originalValue: field.originalValue,
+            isBinaryValue: field.isBinaryValue
         )
     }
 
@@ -32,7 +34,8 @@ internal enum FieldEditorResolver {
         for type: ColumnType,
         isLongText: Bool,
         originalValue: String?,
-        displayFormatOverride: ValueDisplayFormat? = nil
+        displayFormatOverride: ValueDisplayFormat? = nil,
+        isBinaryValue: Bool = false
     ) -> FieldEditorKind {
         let structuredAllowed: Bool
         if let override = displayFormatOverride {
@@ -53,6 +56,13 @@ internal enum FieldEditorResolver {
         if structuredAllowed {
             if let elementEditor = arrayElementEditor(for: type, originalValue: originalValue) {
                 return .arrayElements(element: elementEditor, values: type.enumValues ?? [])
+            }
+            if let geometryEditor = geometryEditor(
+                for: type,
+                originalValue: originalValue,
+                isBinaryValue: isBinaryValue
+            ) {
+                return geometryEditor
             }
             if type.isJsonType || (originalValue ?? "").looksLikeJson {
                 return .json
@@ -106,6 +116,76 @@ internal enum FieldEditorResolver {
               ) != nil
         else { return nil }
         return elementEditor
+    }
+
+    /// Runs ahead of the JSON rule, which would claim GeoJSON in a spatial column. The readers are
+    /// the ones `GeometryFieldPreview` draws with, so the kind and the Map segment cannot disagree.
+    ///
+    /// This runs on every selection change, so a value too long for the preview to read on the main
+    /// actor is classified by how it opens instead.
+    private static func geometryEditor(
+        for type: ColumnType,
+        originalValue: String?,
+        isBinaryValue: Bool
+    ) -> FieldEditorKind? {
+        switch type {
+        case .spatial:
+            return isBinaryValue ? binaryGeometryEditor(originalValue) : spatialTextEditor(originalValue)
+        case .json:
+            guard let originalValue, isGeoJSON(originalValue) else { return nil }
+            return .geometry(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn))
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .enumType, .set, .array:
+            return nil
+        }
+    }
+
+    /// GeoJSON only: the sniffing reader takes any pair of numbers, and any document with `lat` and
+    /// `lon`, for a point. The parse goes first because on a large document it is cheaper.
+    private static func isGeoJSON(_ value: String) -> Bool {
+        guard GeometryFieldPreview.readsSynchronously(value) else {
+            return GeometryValueSniffer.opensGeoJSON(value)
+        }
+        guard case .success = GeometryFieldPreview.read(value, source: .jsonColumn) else { return false }
+        return GeoJSONGeometryReader.looksLikeGeoJSON(value)
+    }
+
+    /// Bytes never fall through to a text editor: they arrive as one character per byte, and one
+    /// keystroke in a text field would stage that string over the blob. A type the map names but
+    /// cannot draw is still a geometry field, as it is for text.
+    private static func binaryGeometryEditor(_ originalValue: String?) -> FieldEditorKind {
+        guard let originalValue else { return .blobHex }
+        let geometry = FieldEditorKind.geometry(GeometryFieldDescriptor(textEditor: .hex, source: .binary))
+        guard GeometryFieldPreview.readsSynchronously(originalValue) else {
+            return GeometryValueSniffer.opensWKB(binary: originalValue) ? geometry : .blobHex
+        }
+        switch GeometryFieldPreview.read(originalValue, source: .binary) {
+        case .success, .failure(.unsupportedGeometryType):
+            return geometry
+        case .failure(.notGeometry), .failure(.malformed):
+            return .blobHex
+        }
+    }
+
+    /// A value with nothing to read yet is still a geometry field, and so is a type the map names
+    /// but cannot draw. Text no reader takes, as SQL Server, Oracle and Teradata send, is not.
+    private static func spatialTextEditor(_ originalValue: String?) -> FieldEditorKind? {
+        guard let originalValue, !originalValue.isEmpty else {
+            return .geometry(GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn))
+        }
+        guard GeometryFieldPreview.readsSynchronously(originalValue) else {
+            return GeometryValueSniffer.spatialTextEditor(originalValue).map {
+                FieldEditorKind.geometry(GeometryFieldDescriptor(textEditor: $0, source: .spatialColumn))
+            }
+        }
+        switch GeometryFieldPreview.read(originalValue, source: .spatialColumn) {
+        case .success, .failure(.unsupportedGeometryType):
+            return .geometry(GeometryFieldDescriptor(
+                textEditor: originalValue.looksLikeJson ? .json : .multiLine,
+                source: .spatialColumn
+            ))
+        case .failure(.notGeometry), .failure(.malformed):
+            return nil
+        }
     }
 
     /// `isLongText` only matches six exact type names, so a large value in `VARCHAR(MAX)`,

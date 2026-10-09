@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Map preview of a geometry value in the row inspector, with Text and Map segments, Fit to Geometry and Open in Window.
+
 ### Changed
 
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
@@ -27,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Values from 1 loaded rows" in Filter Values….
 - The connection form, Acknowledgements and Integrations Activity sidebars dragged shut with no way to bring them back.
 - The Users & Roles list and the server dashboard's slow queries staying hidden for good once dragged shut.
+- Binary geometry values shown as garbled text in the row inspector, where typing replaced the bytes with text.
+- Binary values saved as text after Set NULL or Set DEFAULT was cleared in the row inspector.
+- Crash when a spatial or JSON column held a value with thousands of nested brackets.
+- Parts of a multi-part geometry missing from the map with nothing saying so.
+- Geographic SRIDs such as 4258, 4283 and 7844 refused by the map as projected coordinate systems.
+- GeoJSON with a lowercase type name such as `point` not drawn on the map.
+- A column holding only curved geometry losing the Map view, and `CIRCULARSTRINGM` called unreadable instead of named.
 
 ## [0.79.0] - 2026-10-09
 

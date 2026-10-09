@@ -219,7 +219,8 @@ extension MainContentView {
             primaryKeyColumns: pkColumns,
             foreignKeyColumns: fkColumns,
             serverOwnedColumns: tableRows.generatedColumns.union(changeManager.unwritableColumns(among: tableRows.columns)),
-            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes)
+            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes),
+            binaryColumns: MultiRowEditState.binaryColumns(in: allRows)
         )
 
         guard isSidebarEditable else {
