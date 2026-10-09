@@ -90,6 +90,8 @@ The sidebar nests tables under their schema, hides the built-in role schemas (`d
 
 INSERTs from the data grid leave IDENTITY columns out, so the server assigns them, and `TEXTSIZE` is raised at connect, so `nvarchar(max)` and `text` values arrive whole rather than cut to FreeTDS's 2048-byte default.
 
+A `datetimeoffset` keeps its offset, `2024-01-15T10:30:45.1234567+07:00`, so edit it in that form. A `geography`, `geometry` or `hierarchyid` value shows as its bytes in hex; select `col.ToString()` to read it as text.
+
 ## Session options
 
 Every connection opens with the SET profile SQL Server requires for filtered indexes, indexes on computed columns, indexed views and XML data type methods:
@@ -144,6 +146,7 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 ## Limitations
 
 - Named instances are not supported. Give the host and the TCP port that instance listens on.
+- A `sql_variant` value shows as NULL, because FreeTDS does not report its base type. Select `CAST(col AS nvarchar(4000))` to read it.
 - NTLM is not supported: Windows Authentication on macOS is Kerberos only.
 - Entra ID connections are created on the Mac only, through the device code flow only. iPhone and iPad take them over sync and prompt to sign in when you open one.
 - The Network tab offers no certificate fields here, and your own `freetds.conf` is not read. A server certificate from a private CA fails Verify CA and Verify Identity: use **Required (skip verify)** for that server.

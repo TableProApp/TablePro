@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
+- Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
+- SQL Server `datetimeoffset` values shown, copied and exported without their offset.
+- SQL Server `geography`, `geometry` and `hierarchyid` values shown as NULL.
+- A possible crash when a result holds a SQL Server `sql_variant` value.
 - iCloud Sync errors shown as raw CloudKit text with record IDs, on Mac and iPhone.
 - Every pending change resent on each edit and app switch while iCloud storage is full or iCloud is signed out.
 - Synced and a new Last Synced time after a sync whose download failed.

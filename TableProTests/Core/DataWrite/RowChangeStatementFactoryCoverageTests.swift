@@ -19,6 +19,7 @@ struct RowChangeStatementFactoryCoverageTests {
     private func factory(
         table: String = "items",
         columns: [String]? = nil,
+        primaryKeyColumns: [String] = ["_id"],
         databaseType: DatabaseType = DatabaseType(rawValue: "MongoDB"),
         driver: (any PluginDatabaseDriver)?
     ) -> RowChangeStatementFactory {
@@ -26,7 +27,7 @@ struct RowChangeStatementFactoryCoverageTests {
             tableName: table,
             schemaName: nil,
             columns: columns ?? self.columns,
-            primaryKeyColumns: ["_id"],
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             pluginDriver: driver
         )
@@ -400,8 +401,8 @@ struct RowChangeStatementFactoryCoverageTests {
 
     // MARK: - The save plan
 
-    @Test("A driver's statements run with no row count to hold the server to")
-    func buildRowWritesNeverCountsADriverStatement() throws {
+    @Test("A driver's statements on a keyed table run with no row count to hold the server to")
+    func buildRowWritesDoesNotCountAKeyedDriverStatement() throws {
         let manager = DataChangeManager()
         manager.configureForTable(
             tableName: "items", columns: columns, primaryKeyColumns: ["_id"],
@@ -417,6 +418,105 @@ struct RowChangeStatementFactoryCoverageTests {
 
         #expect(build.steps.map(\.statement.sql) == ["updateOne(0)"])
         #expect(build.steps.allSatisfy { $0.expectedRowCount == nil })
+    }
+
+    private func sqlServerDriver(primaryKeyColumns: [String]) -> RowWriteStubDriver {
+        let generator = MSSQLStatementGenerator(
+            qualifiedTable: "[dbo].[items]", columns: columns, primaryKeyColumns: primaryKeyColumns
+        )
+        return RowWriteStubDriver { changes, insertedRowData, deletedRowIndices, insertedRowIndices in
+            try generator.rowWrites(
+                for: changes,
+                insertedRowData: insertedRowData,
+                deletedRowIndices: deletedRowIndices,
+                insertedRowIndices: insertedRowIndices
+            )
+        }
+    }
+
+    private func keylessManager(databaseType: DatabaseType, driver: any PluginDatabaseDriver) -> DataChangeManager {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "items", columns: columns, primaryKeyColumns: [],
+            databaseType: databaseType, generatedColumns: []
+        )
+        manager.pluginDriver = driver
+        return manager
+    }
+
+    @Test("A SQL Server save to a table with no primary key is held to the row it matches")
+    func keylessDriverStatementsAreHeldToTheirRow() throws {
+        let manager = keylessManager(databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: []))
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "", newValue: "z", originalRow: ["0", ""]
+        )
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: ["1", "b"])
+
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+
+        #expect(build.steps.count == 2)
+        #expect(build.steps.allSatisfy { $0.expectedRowCount == 1 && $0.matchesRowsWithoutKey })
+    }
+
+    @Test("A new row on a table with no primary key is not held to a count")
+    func keylessDriverInsertIsNotHeld() throws {
+        let inserted = RowID.inserted(UUID())
+        let written = try factory(
+            primaryKeyColumns: [], databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: [])
+        ).rowWriteStatements(
+            for: [RowChange(rowID: inserted, type: .insert)],
+            insertedRowData: [inserted: ["1", "n"]],
+            insertedRowIDs: [inserted]
+        )
+
+        guard case .driverWritten(let statements) = written else {
+            Issue.record("the driver's statements came back as the host's")
+            return
+        }
+        #expect(statements.count == 1)
+        #expect(statements.allSatisfy { $0.keylessRowCount == nil })
+    }
+
+    @Test("A SQL Server save to a keyed table is not held to a lower bound")
+    func keyedDriverStatementIsNotHeld() throws {
+        let written = try factory(
+            databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: ["_id"])
+        ).rowWriteStatements(for: [nameEdit()])
+
+        guard case .driverWritten(let statements) = written else {
+            Issue.record("the driver's statements came back as the host's")
+            return
+        }
+        #expect(statements.map(\.keylessRowCount) == [nil])
+    }
+
+    @Test("A keyless driver statement is not held where the engine reports no real count")
+    func keylessDriverStatementOnAnEngineWithoutCountsIsNotHeld() throws {
+        let written = try factory(
+            primaryKeyColumns: [], databaseType: .snowflake, driver: writesOnlyUpdates()
+        ).rowWriteStatements(for: [nameEdit()])
+
+        guard case .driverWritten(let statements) = written else {
+            Issue.record("the driver's statements came back as the host's")
+            return
+        }
+        #expect(statements.map(\.keylessRowCount) == [nil])
+    }
+
+    /// The PluginKit default puts every row a legacy driver wrote on its first statement, so that list is not a count.
+    @Test("A driver statement that names several rows is not held to them")
+    func driverStatementNamingSeveralRowsIsNotHeld() throws {
+        let driver = LegacyStatementStubDriver(generator: DocumentStyleGenerator.statements)
+        let written = try factory(primaryKeyColumns: [], databaseType: .mssql, driver: driver)
+            .rowWriteStatements(for: [nameEdit(row: 0), nameEdit(row: 1)])
+
+        guard case .driverWritten(let statements) = written else {
+            Issue.record("the driver's statements came back as the host's")
+            return
+        }
+        #expect(statements.count == 2)
+        #expect(statements.allSatisfy { $0.keylessRowCount == nil })
     }
 
     @Test("Preview SQL and Save both refuse the same mixed set")
