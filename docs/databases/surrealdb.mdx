@@ -103,7 +103,7 @@ The Explain button offers **Explain** and **Explain Full**, which rerun the curr
 - An edit to `in` or `out` cannot be saved from the grid, on any table: the save stops, names the field, and keeps every edit pending. An `UPDATE` does not move a relation either, so delete it and `RELATE` the new pair. On any other record, change the field with an `UPDATE` in the editor.
 - Multi-request transactions are not available over HTTP. Send `BEGIN TRANSACTION; … COMMIT TRANSACTION;` as one editor query instead.
 - Live queries (`LIVE SELECT`) are not supported. Rerun the query to see new records.
-- A CA certificate file set in the **SSL/TLS** pane is ignored; verification goes through the system trust store, so install a private CA there.
+- A CA certificate file set on the **Network** tab is ignored; verification goes through the system trust store, so install a private CA there.
 - Import is not available. Export works, see [Import and Export](/features/import-export).
 - Range values display but cannot be edited.
 - The editor treats SurrealQL as plain text, with no syntax coloring.

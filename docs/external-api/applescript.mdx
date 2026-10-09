@@ -27,8 +27,8 @@ end tell
 | Read & Write | Read and write, subject to Safe Mode |
 
 Read Only is the default and the right level for most connections: reporting and export scripts
-need nothing more. Raise a connection to Read & Write in its **Advanced** pane only when a script has
-to write to it.
+need nothing more. Raise a connection to Read & Write with **External Clients** on its **Options**
+tab only when a script has to write to it.
 
 Read & Write is not a way past Safe Mode. A statement that drops or truncates always raises a
 confirmation naming the app that sent it, whatever the level says, and Safe Mode's authentication

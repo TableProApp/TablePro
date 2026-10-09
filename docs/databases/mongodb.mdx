@@ -28,14 +28,14 @@ The query tab is a JavaScript shell. Write `db.orders.find({status: "new"})` the
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
 | **Database** | - | Opens straight into that database. Leave it empty to browse them all |
-| **Auth Database** | - | Advanced. Where your user account lives, usually `admin` |
+| **Auth Database** | - | Options tab. Where your user account lives, usually `admin` |
 | **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM, under Authentication |
 
 Naming a **Database** skips listing every database on the server, which is worth doing on a cluster with hundreds. Leave it empty and the first non-system database opens instead. `Cmd+K` switches either way, on the same connection, with no reconnect.
 
 **Auth Database** is a separate question: it says where your account is defined, not what you browse. Left empty, it follows the **Database** field. An account defined in `admin` needs **Auth Database** set to `admin` whenever **Database** names something else, or authentication fails. SRV connections authenticate against `admin` regardless, unless told otherwise. Switching databases in the app never changes it, so browsing a database your user has no account in is fine.
 
-Also in Advanced: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. The server has to be MongoDB 4.0 or later; the driver refuses to connect to anything older.
+Also on the Options tab: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. The server has to be MongoDB 4.0 or later; the driver refuses to connect to anything older.
 
 **Write Concern** covers every insert, update and delete, from a query tab or from a save in the data grid, unless the statement passes its own `writeConcern`. Index, collection and database commands, and `db.runCommand`, go to the server as written. On a server that is not a replica set, pick **Default**, **Majority** or **1**: with **2** or **3** every write fails with `cannot use 'w' > 1 when a host is not replicated`. `journal` and `wtimeoutMS` in a pasted connection URL go out with every write too.
 
@@ -61,7 +61,7 @@ An Atlas connection needs the cluster hostname, a username, and a password. Atla
 
 ## Replica sets
 
-The **Hosts** field takes comma-separated pairs (`host1:27017,host2:27017,host3:27017`), the primary is discovered, and writes are routed to it. Set the replica set name in Advanced. A multi-host URI pastes in directly:
+The **Hosts** field takes comma-separated pairs (`host1:27017,host2:27017,host3:27017`), the primary is discovered, and writes are routed to it. Set the replica set name on the Options tab. A multi-host URI pastes in directly:
 
 ```text
 mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
@@ -367,7 +367,7 @@ valid at the cursor; see [Autocomplete](/features/autocomplete#mongodb). For a q
 
 ## SSL/TLS
 
-New connections default to **Disabled**, and the driver has no TLS fallback: **Preferred** behaves exactly as **Required**, which is what the SSL pane warns about. For an unencrypted local instance use **Disabled** or [SSH tunneling](/connections/ssh-tunneling). See [SSL/TLS](/connections/ssl).
+New connections default to **Disabled**, and the driver has no TLS fallback: **Preferred** behaves exactly as **Required**, which is what the Network tab warns about. For an unencrypted local instance use **Disabled** or [SSH tunneling](/connections/ssh-tunneling). See [SSL/TLS](/connections/ssl).
 
 ## Limitations
 
@@ -407,7 +407,7 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 
 **Connection refused**: check MongoDB is running (`brew services start mongodb-community`) and that the port and `bindIp` in `mongod.conf` match what you entered.
 
-**Authentication fails on connect**: the error names the database that was authenticated against. If your user does not live there, set **Auth Database** in Advanced; otherwise check the username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; read users with `db.runCommand({"usersInfo": 1})`.
+**Authentication fails on connect**: the error names the database that was authenticated against. If your user does not live there, set **Auth Database** on the Options tab; otherwise check the username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; read users with `db.runCommand({"usersInfo": 1})`.
 
 **Timeout**: for Atlas, add your IP to the cluster's access list first. Otherwise verify host and port and check the network and firewall.
 

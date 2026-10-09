@@ -24,7 +24,7 @@ Click **Create Connection…**, select **Spanner**, pick an auth method, fill in
 | **Service Account Key** | Service account only | A `.json` key file path, or the key JSON itself |
 | **OAuth Client ID**, **OAuth Client Secret** | OAuth only | From Google Cloud Console > APIs & Services > Credentials |
 | **OAuth Refresh Token** | No | OAuth only. Tried before the token saved by sign-in |
-| **REST Endpoint** | No | Advanced tab. Empty means `https://spanner.googleapis.com` |
+| **REST Endpoint** | No | Options tab. Empty means `https://spanner.googleapis.com` |
 
 A custom **REST Endpoint** has to be an `https` address under `googleapis.com`, such as a regional or Private Service Connect endpoint. Credentials are never sent anywhere else. Any Spanner version works; it is a managed service.
 
@@ -94,7 +94,7 @@ Grid edits, inserts and deletes become `INSERT`, `UPDATE` and `DELETE` keyed on 
 
 ## SSL/TLS
 
-Traffic to Google is always HTTPS. There is no SSL pane. The emulator is plain HTTP on your own Mac.
+Traffic to Google is always HTTPS. There is no **SSL Mode**. The emulator is plain HTTP on your own Mac.
 
 ## Limitations
 

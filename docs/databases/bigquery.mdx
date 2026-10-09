@@ -23,7 +23,7 @@ Click **New Connection…**, select **BigQuery**, pick an auth method, enter you
 | **OAuth Client ID**, **OAuth Client Secret** | OAuth only | From GCP Console > APIs & Services > Credentials |
 | **OAuth Refresh Token** | No | OAuth only. Tried before the token saved by sign-in |
 | **Location** | No | Processing location (`US`, `EU`, `us-central1`), sent with every job |
-| **Max Bytes Billed** | No | Advanced tab. A query over the cap fails instead of billing |
+| **Max Bytes Billed** | No | Options tab. A query over the cap fails instead of billing |
 
 There is no Database field and no URL scheme. Datasets stand in for databases: the sidebar lists them as expandable nodes, `Cmd+K` and **Database > Open Database…** move between them, and **Database > New Database…** runs `CREATE SCHEMA`. Switching does not move tabs you already have open; each stays on its own dataset. See [Tabs](/features/tabs#where-a-tab-points).
 
