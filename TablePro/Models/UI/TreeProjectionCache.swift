@@ -9,12 +9,15 @@ import Foundation
 internal final class TreeProjectionCache<Node: FilterableTreeNode> {
     internal private(set) var documentComputations = 0
     internal private(set) var projectionComputations = 0
+    internal private(set) var sourceIndexComputations = 0
 
     private var documentID: Node.ID?
     private var cachedDocumentInfo = TreeDocumentInfo.empty
     private var projectionID: Node.ID?
     private var projectionQuery: String?
     private var cachedProjection: TreeProjection<Node>?
+    private var sourceIndexID: Node.ID?
+    private var sourceIndex: [TreeNodePath: Node] = [:]
 
     internal init() {}
 
@@ -36,5 +39,16 @@ internal final class TreeProjectionCache<Node: FilterableTreeNode> {
         cachedProjection = projection
         projectionComputations += 1
         return projection
+    }
+
+    /// A filtered projection keeps only the matching children of an ancestor, so what a row
+    /// copies has to come from the node the document parsed.
+    internal func sourceNode(at path: TreeNodePath, in rootNode: Node) -> Node? {
+        if sourceIndexID != rootNode.id {
+            sourceIndexID = rootNode.id
+            sourceIndex = TreeFilter.nodesByPath(rootNode: rootNode)
+            sourceIndexComputations += 1
+        }
+        return sourceIndex[path]
     }
 }

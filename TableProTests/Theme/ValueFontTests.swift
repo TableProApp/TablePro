@@ -118,8 +118,8 @@ struct ValueFontTests {
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",
-            "TablePro/Views/Results/JSONTreeView.swift",
-            "TablePro/Views/Results/PhpTreeView.swift",
+            /// The JSON and PHP trees both draw their rows through this outline.
+            "TablePro/Views/Results/TreeOutline/TreeOutlineRepresentable.swift",
             "TablePro/Views/Results/PhpViewerView.swift",
         ]
 

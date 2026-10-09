@@ -15,6 +15,19 @@ internal final class JSONViewerWindowController: ValueViewerWindowController {
         isEditable: Bool,
         onCommit: ((String) -> Void)?
     ) -> JSONViewerWindowController {
+        open(text: text, baseline: text, columnName: columnName, isEditable: isEditable, onCommit: onCommit)
+    }
+
+    /// `baseline` is the stored value Save compares against. It differs from `text` when the window
+    /// opens on an edit nothing has committed, which Save would otherwise read as no change.
+    @discardableResult
+    static func open(
+        text: String?,
+        baseline: String?,
+        columnName: String?,
+        isEditable: Bool,
+        onCommit: ((String) -> Void)?
+    ) -> JSONViewerWindowController {
         let title: String
         if let columnName {
             title = String(format: String(localized: "JSON: %@"), columnName)
@@ -30,6 +43,7 @@ internal final class JSONViewerWindowController: ValueViewerWindowController {
         ) { dismiss in
             JSONViewerWindowContent(
                 initialValue: text,
+                baseline: baseline,
                 isEditable: isEditable,
                 onCommit: onCommit,
                 onDismiss: dismiss
@@ -37,12 +51,18 @@ internal final class JSONViewerWindowController: ValueViewerWindowController {
         }
         return controller
     }
+
+    /// Nil when Save would write back what is stored. A NULL baseline reads as empty text, so an
+    /// empty Save leaves the cell NULL rather than writing an empty string over it.
+    nonisolated static func valueToCommit(saved: String, baseline: String?) -> String? {
+        saved == JsonReindenter.normalize(baseline ?? "") ? nil : saved
+    }
 }
 
 // MARK: - Window Content
 
 private struct JSONViewerWindowContent: View {
-    let initialValue: String?
+    let baseline: String?
     let isEditable: Bool
     let onCommit: ((String) -> Void)?
     let onDismiss: (() -> Void)?
@@ -51,11 +71,12 @@ private struct JSONViewerWindowContent: View {
 
     init(
         initialValue: String?,
+        baseline: String?,
         isEditable: Bool,
         onCommit: ((String) -> Void)?,
         onDismiss: (() -> Void)?
     ) {
-        self.initialValue = initialValue
+        self.baseline = baseline
         self.isEditable = isEditable
         self.onCommit = onCommit
         self.onDismiss = onDismiss
@@ -68,9 +89,8 @@ private struct JSONViewerWindowContent: View {
             isEditable: isEditable,
             onDismiss: onDismiss,
             onCommit: isEditable ? { newValue in
-                if newValue.isEmpty && initialValue == nil { return }
-                if newValue != JsonReindenter.normalize(initialValue ?? "") {
-                    onCommit?(newValue)
+                if let value = JSONViewerWindowController.valueToCommit(saved: newValue, baseline: baseline) {
+                    onCommit?(value)
                 }
             } : nil
         )

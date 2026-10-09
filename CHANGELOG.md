@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Row and text selection in the JSON and PHP viewer trees, with `Cmd+C` copying the selected values.
+- Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
+- Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
+
 ### Changed
 
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
@@ -27,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Values from 1 loaded rows" in Filter Values….
 - The connection form, Acknowledgements and Integrations Activity sidebars dragged shut with no way to bring them back.
 - The Users & Roles list and the server dashboard's slow queries staying hidden for good once dragged shut.
+- A JSON cell edit made in the popover lost on Save after Open in Window.
+- Copy Value on a JSON object or array copying only the rows a tree filter left on screen.
+- The JSON tree filter matching array positions such as `[1]`, counts such as `{2 keys}` and the `…` row.
+- "JSON Too Large" in Tree mode for a minified value under the 100,000 character cap.
+- Disclosure arrows in the inspector's JSON tab doing nothing under a filter, then collapsing rows once it was cleared.
+- Copy Key Path leaving keys such as `a.b` and `content-type` unquoted, so the path named another value or failed to parse.
+- "Invalid JSON" in Tree mode for a NULL or empty JSON cell.
+- "{1 keys}" and "[1 items]" for a one-member object or array in the JSON and PHP viewer trees.
+- A broken character before the `…` of a long string in the JSON and PHP viewer trees.
 
 ## [0.79.0] - 2026-10-09
 

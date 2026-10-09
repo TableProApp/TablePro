@@ -7,11 +7,25 @@
 //  against a node path is the wrong row the moment the values do.
 //
 
+import AppKit
 import Foundation
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
+
+private final class JSONInspectorClipboard: ClipboardProvider {
+    var texts: [String] = []
+
+    func readText() -> String? { texts.last }
+    func readGridRows() -> GridRowsClipboardPayload? { nil }
+    func writeText(_ text: String) { texts.append(text) }
+    func writeCsv(_ csv: String) {}
+    func writeImage(_ image: NSImage) {}
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
+    var hasText: Bool { !texts.isEmpty }
+    var hasGridRows: Bool { false }
+}
 
 @MainActor
 struct JSONRowInspectorViewModelTests {
@@ -81,8 +95,29 @@ struct JSONRowInspectorViewModelTests {
         )
     }
 
+    /// A row with one nested document, so there is a container to close besides the root.
+    private static func documentSnapshot(rowIdentity: String = "tab\u{001F}existing(0)") -> JSONRowSnapshot {
+        JSONRowSnapshot(
+            rowIdentity: rowIdentity,
+            columns: ["id", "meta"],
+            columnTypes: [.integer(rawType: "INT"), .json(rawType: "JSON")],
+            values: [.text("7"), .text("{\"color\": \"teal\", \"size\": \"xl\"}")],
+            foreignKeys: [:],
+            scope: DatabaseScope(connectionId: connectionId, database: "main", schema: nil),
+            databaseType: .sqlite
+        )
+    }
+
     private func makeModel(gate: FetchGate) -> JSONRowInspectorViewModel {
         JSONRowInspectorViewModel { _, _, _, _ in try await gate.fetch() }
+    }
+
+    private func metaRow(in model: JSONRowInspectorViewModel) throws -> JSONDisplayRow {
+        try #require(model.displayRows.first { $0.key == .name("meta") && $0.token != .closeObject })
+    }
+
+    private func keys(in model: JSONRowInspectorViewModel) -> [String] {
+        model.displayRows.filter { $0.showsKey }.compactMap { $0.key.text }
     }
 
     private func foreignKeyRow(in model: JSONRowInspectorViewModel) throws -> JSONDisplayRow {
@@ -227,5 +262,180 @@ struct JSONRowInspectorViewModelTests {
 
         #expect(model.states.failures[nested.path] == .cycle)
         #expect(gate.callCount == 1, "A cycle is refused before it costs a query")
+    }
+
+    // MARK: - Under a filter
+
+    @Test("A click under a filter closes the line it was made on and leaves the stored expansion alone")
+    func toggleUnderAFilterDoesNotReachTheStoredExpansion() throws {
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        let unfiltered = model.displayRows
+
+        model.filterText = "teal"
+        #expect(keys(in: model) == ["meta", "color"])
+
+        model.toggle(row: try metaRow(in: model))
+        #expect(try metaRow(in: model).token == .collapsedObject(count: 1), "The click has to do something")
+        #expect(keys(in: model) == ["meta"])
+
+        model.filterText = ""
+        #expect(model.displayRows == unfiltered, "What was open before the filter is open after it")
+    }
+
+    @Test("A line closed under a filter opens again on the next click")
+    func toggleUnderAFilterReopens() throws {
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        model.filterText = "teal"
+        let filtered = model.displayRows
+
+        model.toggle(row: try metaRow(in: model))
+        #expect(try metaRow(in: model).isExpandable, "A closed line keeps the control that opens it")
+        #expect(model.displayRows != filtered)
+        model.toggle(row: try metaRow(in: model))
+
+        #expect(model.displayRows == filtered)
+    }
+
+    /// A filter opens everything it kept. A line closed under the last query would hide the
+    /// match the new one found.
+    @Test("A new query forgets what was closed under the last one")
+    func newQueryForgetsWhatWasClosed() throws {
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        model.filterText = "te"
+        model.toggle(row: try metaRow(in: model))
+        #expect(keys(in: model) == ["meta"])
+
+        model.filterText = "teal"
+
+        #expect(keys(in: model) == ["meta", "color"])
+    }
+
+    @Test("Another row forgets what was closed under the filter")
+    func anotherRowForgetsWhatWasClosed() throws {
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        model.filterText = "teal"
+        model.toggle(row: try metaRow(in: model))
+        #expect(keys(in: model) == ["meta"])
+
+        model.update(snapshot: Self.documentSnapshot(rowIdentity: "tab\u{001F}existing(1)"))
+
+        #expect(keys(in: model) == ["meta", "color"])
+    }
+
+    @Test("Collapse All and Expand All under a filter act on what the filter shows")
+    func collapseAndExpandAllUnderAFilter() throws {
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        let unfiltered = model.displayRows
+        model.filterText = "teal"
+        let filtered = model.displayRows
+
+        model.collapseAll()
+        #expect(model.displayRows.map { $0.token } == [.collapsedObject(count: 1)])
+
+        model.expandAll()
+        #expect(model.displayRows == filtered)
+
+        model.collapseAll()
+        model.filterText = ""
+        #expect(model.displayRows == unfiltered, "Collapse All under a filter must not close the unfiltered tree")
+    }
+
+    /// The fetched row would be filtered out again, so the click would cost a query to show nothing.
+    @Test("A foreign key the filter kept for its value costs no query")
+    func valueMatchedForeignKeyDoesNotFetch() async throws {
+        let gate = FetchGate()
+        let model = makeModel(gate: gate)
+        model.update(snapshot: Self.snapshot(artistId: .text("1")))
+        model.filterText = "1"
+
+        let row = try foreignKeyRow(in: model)
+        #expect(!row.isExpandable)
+        model.toggle(row: row)
+        await settle()
+
+        #expect(gate.callCount == 0)
+        #expect(model.states.loading.isEmpty)
+    }
+
+    @Test("A foreign key the filter kept for its key still fetches, and its row is shown")
+    func keyMatchedForeignKeyFetchesUnderAFilter() async throws {
+        let gate = FetchGate()
+        let model = makeModel(gate: gate)
+        model.update(snapshot: Self.snapshot(artistId: .text("1")))
+        model.filterText = "artist"
+
+        model.toggle(row: try foreignKeyRow(in: model))
+        await settle()
+        gate.releaseFirst(with: Self.artistRow(name: "AC/DC"))
+        await settle()
+
+        #expect(gate.callCount == 1)
+        #expect(keys(in: model) == ["ArtistId", "ArtistId", "Name"])
+    }
+
+    @Test("A foreign key fetched under a filter can be closed there and is still open without it")
+    func fetchedForeignKeyClosesUnderAFilter() async throws {
+        let gate = FetchGate()
+        let model = makeModel(gate: gate)
+        model.update(snapshot: Self.snapshot(artistId: .text("1")))
+        model.filterText = "artist"
+        model.toggle(row: try foreignKeyRow(in: model))
+        await settle()
+        gate.releaseFirst(with: Self.artistRow(name: "AC/DC"))
+        await settle()
+
+        model.toggle(row: try foreignKeyRow(in: model))
+        #expect(keys(in: model) == ["ArtistId"])
+        #expect(gate.callCount == 1, "Closing a fetched key is not another query")
+
+        model.filterText = ""
+        #expect(keys(in: model) == ["AlbumId", "ArtistId", "ArtistId", "Name"])
+    }
+
+    /// A rerun drops the fetched row and keeps the row's identity, so the key is back to
+    /// unfetched with the reader's close still recorded against its path.
+    @Test("A key closed under a filter shows its row when it is fetched again")
+    func refetchedForeignKeyOpensUnderAFilter() async throws {
+        let gate = FetchGate()
+        let model = makeModel(gate: gate)
+        model.update(snapshot: Self.snapshot(artistId: .text("1")))
+        model.filterText = "artist"
+        model.toggle(row: try foreignKeyRow(in: model))
+        await settle()
+        gate.releaseFirst(with: Self.artistRow(name: "AC/DC"))
+        await settle()
+        model.toggle(row: try foreignKeyRow(in: model))
+        #expect(keys(in: model) == ["ArtistId"])
+
+        model.update(snapshot: Self.snapshot(artistId: .text("2")))
+        model.toggle(row: try foreignKeyRow(in: model))
+        await settle()
+        gate.releaseFirst(with: Self.artistRow(name: "Accept"))
+        await settle()
+
+        #expect(keys(in: model) == ["ArtistId", "ArtistId", "Name"])
+    }
+
+    // MARK: - Clipboard
+
+    @Test("Copy Visible writes the lines on screen through the clipboard service")
+    func copyVisibleWritesTheFilteredLines() throws {
+        let original = ClipboardService.shared
+        defer { ClipboardService.shared = original }
+        let clipboard = JSONInspectorClipboard()
+        ClipboardService.shared = clipboard
+
+        let model = makeModel(gate: FetchGate())
+        model.update(snapshot: Self.documentSnapshot())
+        model.filterText = "teal"
+        model.toggle(row: try metaRow(in: model))
+        model.copyVisible()
+
+        #expect(clipboard.texts == ["{\n  \"meta\": {…}\n}"])
     }
 }
