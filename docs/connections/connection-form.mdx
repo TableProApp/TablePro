@@ -17,7 +17,7 @@ The editor's sidebar lists the same four sections whatever the driver. Only Netw
 | **Options** | Timeouts, driver options, startup SQL, Safe Mode, external and AI access, iCloud |
 | **Appearance** | Color, tags, group |
 
-The bar along the bottom carries **Test Connection**, **Cancel** and **Save**. When **Save** is dimmed, the reason sits to its left, prefixed with the tab that holds the empty field.
+The bar along the bottom carries **Test Connection**, **Cancel** and **Save**, plus **Save & Connect** on a new connection and **Delete** on a saved one. When **Save** is dimmed, the reason sits to its left, prefixed with the tab that holds the empty field.
 
 ## General
 
@@ -43,7 +43,7 @@ SQLite, DuckDB, libSQL, and Beancount replace the host fields with a file path. 
 |--------|--------------|
 | **Direct** | Connects straight to the host and port on General |
 | **SSH Tunnel** | Forwards a local port through an SSH server. See [SSH Tunneling](/connections/ssh-tunneling) |
-| **Remote Database File** | SQLite only. Copies the file from an SSH server and opens the copy read-only. See [Remote Database Files](/connections/remote-database-files) |
+| **Remote Database File** | SQLite only. Reaches a database file over SSH. **Open** picks **On the Server**, which runs statements there, or **As a Read-Only Copy**. See [Remote Database Files](/connections/remote-database-files) |
 | **Cloudflare Tunnel** | Runs `cloudflared access tcp`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
 | **Cloud SQL Auth Proxy** | MySQL, PostgreSQL, and SQL Server. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
 | **SOCKS Proxy** | Routes through a SOCKS5 proxy, which also resolves the hostname. See [SOCKS Proxy](/connections/socks-proxy) |
@@ -57,19 +57,21 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 
 ## Options
 
+**Safe Mode**, **AI Policy** and **External Clients** share the **Access** section.
+
 | Field | Description |
 |-------|-------------|
+| Plugin fields | Driver-specific options, such as MongoDB's `replicaSet`, in a section named after the database type |
+| **Extensions** | SQLite, and libSQL in Local File mode. Libraries loaded into the database file on every connect. See [Extensions](/databases/sqlite#extensions) |
 | **Connect timeout** | Maximum seconds for the network transport and remote database to finish connecting. Empty uses 30 seconds; valid values are 1 to 600 |
 | **Query timeout** | Override of **Settings > General** for this connection. Empty inherits the global value; `0` means no limit. Only drivers that support query timeouts enforce it |
 | **Startup Commands** | SQL to run after every connect. See [Startup commands](#startup-commands) |
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
-| **Extensions** | SQLite, and libSQL in Local File mode. Libraries loaded into the database file on every connect. See [Extensions](/databases/sqlite#extensions) |
-| **Safe Mode** | Confirmation prompts before writes. See [Safe Mode](/features/safe-mode) |
-| **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients |
-| **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. See [AI Assistant](/features/ai-assistant) |
+| **Safe Mode** | Confirms, authenticates or refuses queries before they run. See [Safe Mode](/features/safe-mode) |
+| **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients. Shown while **Enable AI Features** is on |
 | **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
-| **Local only** | Keeps this connection off iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
-| Plugin fields | Driver-specific options, such as MongoDB's `replicaSet` |
+| **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. Shown while **Enable AI Features** is on. See [AI Assistant](/features/ai-assistant) |
+| **Local only** | Keeps this connection off iCloud Sync. Shown while **Sync this Mac with iCloud** is on. See [iCloud Sync](/features/icloud-sync) |
 
 The connect timeout is one deadline for the whole network attempt, not a new timeout for each step.
 It includes the selected SSH tunnel or proxy, TCP, TLS and database authentication. Local SQLite and

@@ -3,7 +3,7 @@ title: Safe Mode
 description: Per-connection query execution controls, from no restrictions to full read-only lockdown
 ---
 
-Six levels, one per connection, set in the **Customization** pane of its edit form. The level decides what stands between a query and the server: nothing, a confirmation, Touch ID, or a refusal.
+Six levels, one per connection. In the [connection form](/connections/connection-form#options), open the **Options** tab and set **Safe Mode** under **Access**. The level decides what stands between a query and the server: nothing, a confirmation, Touch ID, or a refusal.
 
 ## Levels
 
@@ -28,13 +28,13 @@ Four things the table cannot carry. The confirmation dialog shows the whole stat
 
 ## Connections that are always read-only
 
-A connection that cannot take a write runs at **Read-Only** whatever level it was given. Its edit form shows the level as fixed text, and **Read-Only** is the only level the padlock and **Database > Safe Mode Level** offer. The level you chose stays saved and applies again once the condition no longer holds.
+A connection that cannot take a write runs at **Read-Only** whatever level it was given. The connection form shows the level as fixed text, and **Read-Only** is the only level the padlock and **Database > Safe Mode Level** offer. The level you chose stays saved and applies again once the condition no longer holds.
 
 | Connection | Condition |
 |------------|-----------|
 | [Beancount](/databases/beancount) | The ledger is a projection of text files, and nothing writes it back |
 | [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) | The engine runs read queries only |
-| [SQLite](/databases/sqlite) with **Remote File** | The file is a copy fetched over SFTP, and nothing writes it back |
+| [SQLite](/databases/sqlite) on **Remote Database File**, opened **As a Read-Only Copy** | The file is a copy fetched over SFTP, and nothing writes it back |
 
 ## Agent mode raises the level
 
@@ -66,14 +66,14 @@ Where a string, a quoted name or a comment ends depends on the engine. A backsla
 
 A padlock in the toolbar carries the current level: open for **Silent**, closed for **Read-Only**, a warning triangle for the two Alert levels and a shield for the two Safe Mode levels. The icon is filled at the two **Full** levels, the ones that also ask before a read. Click it for the levels this connection may run at, with the current one ticked. **Database > Safe Mode Level** is the same list.
 
-Four things can hold the level above the one you chose: a read-only engine, a [remote database file](/connections/remote-database-files), a [managed policy](#managed-by-an-organization), and [Agent mode](/features/agent-mode). The weaker levels are then left out of both lists, the reason sits under them, and the padlock's tooltip carries the same sentence. Picking the level already in force writes nothing.
+Four things can hold the level above the one you chose: a read-only engine, a read-only copy of a [remote database file](/connections/remote-database-files), a [managed policy](#managed-by-an-organization), and [Agent mode](/features/agent-mode). The weaker levels are then left out of both lists, the reason sits under them, and the padlock's tooltip carries the same sentence. Picking the level already in force writes nothing.
 
 <Frame caption="The padlock reads the level without opening the menu">
   <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Toolbar padlock with the six Safe Mode levels listed beneath it" />
   <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Toolbar padlock with the six Safe Mode levels listed beneath it" />
 </Frame>
 
-There is no session-only override. A change here writes back to the saved connection, so it holds across tables and tabs, shows up on the Options section, and reaches your other Macs when iCloud Sync is on. Editing the level in the form works the same way round and reaches an open connection right away.
+There is no session-only override. A change here writes back to the saved connection, so it holds across tables and tabs, shows up in the connection form, and reaches your other Macs when iCloud Sync is on. Editing the level in the form works the same way round and reaches an open connection right away.
 
 ## Server read-only is not Safe Mode
 
@@ -120,7 +120,7 @@ This is a floor on TablePro's own behavior, not on the database. It stops the ap
 
 A write from an external client (Raycast, Cursor, Claude Desktop, any MCP client) clears three locks in order:
 
-1. **External Clients** (per connection: **Blocked** / **Read Only** / **Read & Write**), in the connection form's **Advanced** pane. A Read Only connection rejects a write before the request reaches the database.
+1. **External Clients** (per connection: **Blocked** / **Read Only** / **Read & Write**), next to **Safe Mode** under **Access** on the connection form's **Options** tab. A Read Only connection rejects a write before the request reaches the database.
 2. **Token scope** (per integration: `readOnly` / `readWrite` / `fullAccess`), issued by the [pairing flow](/external-api/pairing). The effective permission is `MIN(token.scope, connection.externalAccess)`.
 3. **Safe Mode**, per query. Everything on this page then applies, Touch ID prompts and confirmation dialogs included.
 
