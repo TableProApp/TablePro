@@ -126,6 +126,40 @@ struct SyncSettlementTests {
         #expect(SyncStepFailure.decisive(upload: nil, download: nil) == nil)
     }
 
+    /// Full storage decided the run and the download's throttle went with the other step, so the
+    /// next activation asked again before CloudKit's wait was over.
+    @Test("A throttle and the longest wait carry over from the step that does not decide the run")
+    func throttleSurvivesTheDecisiveStep() {
+        let throttled = SyncStepFailure(failure: .busy, error: .busy, retryAfter: 600)
+
+        let decisive = SyncStepFailure.decisive(upload: Self.storageFull, download: throttled)
+
+        #expect(decisive?.error == .blocked(.storageFull))
+        #expect(decisive?.throttled == true)
+        #expect(decisive?.retryAfter == 600)
+        #expect(SyncSettlement(failure: decisive, admission: .full, previousError: nil).throttles)
+    }
+
+    @Test("An upload throttled on some items is throttled, even when another item decides it")
+    func itemThrottleIsKept() {
+        let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
+        var outcome = PushOutcome()
+        outcome.recordFailure(
+            SyncItemFailure(code: .zoneBusy, serverRecord: nil, clientRecord: nil, retryAfter: 45, message: "busy"),
+            for: CKRecord.ID(recordName: "Connection_A", zoneID: zoneID)
+        )
+        outcome.recordFailure(
+            SyncItemFailure(code: .quotaExceeded, serverRecord: nil, clientRecord: nil, message: "full"),
+            for: CKRecord.ID(recordName: "Connection_B", zoneID: zoneID)
+        )
+
+        let failure = SyncStepFailure(outcome)
+
+        #expect(failure?.error == .blocked(.storageFull))
+        #expect(failure?.throttled == true)
+        #expect(failure?.retryAfter == 45)
+    }
+
     @Test("A step failure reads the wait CloudKit named, including inside a partial failure")
     func stepFailureReadsRetryAfter() {
         let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)

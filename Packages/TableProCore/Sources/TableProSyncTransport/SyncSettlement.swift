@@ -29,7 +29,7 @@ public struct SyncSettlement: Equatable, Sendable {
 
     public init(failure: SyncStepFailure?, admission: SyncAdmission, previousError: SyncError?) {
         let unchanged: SyncStatus = previousError.map { .error($0) } ?? .idle
-        let throttles = failure?.error == .busy
+        let throttles = failure?.throttled ?? false
 
         guard let failure else {
             if admission == .full {

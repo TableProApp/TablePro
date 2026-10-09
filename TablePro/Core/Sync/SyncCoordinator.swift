@@ -329,8 +329,9 @@ final class SyncCoordinator: ObservableObject {
             ) ?? 30
             let until = Date().addingTimeInterval(wait)
             throttledUntil = until
-            /// A held upload's own timer must not fire inside the throttle.
-            if let next = nextAttempt, next < until {
+            /// The next attempt comes once the throttle is over, never inside it, and also when
+            /// nothing else was going to try again.
+            if nextAttempt.map({ $0 < until }) ?? true {
                 nextAttempt = until
                 scheduleRetry(after: wait)
             }
