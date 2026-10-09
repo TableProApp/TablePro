@@ -5340,6 +5340,9 @@
         }
       }
     },
+    "%@ with no SRID, read as longitude and latitude." : {
+
+    },
     "%@_name" : {
       "localizations" : {
         "fr" : {
@@ -6863,6 +6866,9 @@
           }
         }
       }
+    },
+    "%1$@ in SRID %2$d." : {
+
     },
     "%1$@ is a capped collection, and a longer field name makes MongoDB delete its oldest documents. Choose a name no longer than %2$@." : {
       "extractionState" : "manual",
@@ -9373,6 +9379,12 @@
         }
       }
     },
+    "%d parts of multi-part geometries cannot be drawn and are left out." : {
+
+    },
+    "%d parts of this geometry cannot be drawn and are left out." : {
+
+    },
     "%d plugins could not be loaded." : {
       "localizations" : {
         "fr" : {
@@ -10299,6 +10311,9 @@
         }
       }
     },
+    "%lld keys" : {
+
+    },
     "%lld large object values were longer than 64 MiB and were cut short." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -10902,6 +10917,9 @@
           }
         }
       }
+    },
+    "%lld properties" : {
+
     },
     "%lld roles own database objects" : {
       "localizations" : {
@@ -12920,6 +12938,9 @@
         }
       }
     },
+    "1 key" : {
+
+    },
     "1 line has unreadable characters" : {
       "localizations" : {
         "fr" : {
@@ -12980,6 +13001,12 @@
           }
         }
       }
+    },
+    "1 part of a multi-part geometry cannot be drawn and is left out." : {
+
+    },
+    "1 part of this geometry cannot be drawn and is left out." : {
+
     },
     "1 plugin could not be loaded." : {
       "localizations" : {
@@ -13060,6 +13087,9 @@
           }
         }
       }
+    },
+    "1 property" : {
+
     },
     "1 row" : {
       "localizations" : {
@@ -41731,6 +41761,9 @@
         }
       }
     },
+    "Color preview" : {
+
+    },
     "Color the whole row, or only the matching cell" : {
       "localizations" : {
         "fr" : {
@@ -49332,6 +49365,9 @@
           }
         }
       }
+    },
+    "Copy Link" : {
+
     },
     "Copy Name" : {
       "localizations" : {
@@ -68538,6 +68574,9 @@
         }
       }
     },
+    "Empty Value" : {
+
+    },
     "Empty response" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -81049,6 +81088,9 @@
         }
       }
     },
+    "Fit to Geometry" : {
+
+    },
     "Fit to Result" : {
       "localizations" : {
         "fr" : {
@@ -83365,6 +83407,9 @@
           }
         }
       }
+    },
+    "Geometry: %@" : {
+
     },
     "Get by key" : {
       "extractionState" : "manual",
@@ -97410,6 +97455,9 @@
           }
         }
       }
+    },
+    "Latitude %1$.5f, longitude %2$.5f." : {
+
     },
     "Layout" : {
       "extractionState" : "manual",
@@ -119498,6 +119546,12 @@
         }
       }
     },
+    "Nothing in this column can be drawn. The coordinates are out of range for their coordinate system, or a line or ring has too few points." : {
+
+    },
+    "Nothing in this geometry can be drawn. Its coordinates are out of range for its coordinate system, or a line or ring has too few points." : {
+
+    },
     "Nothing in this script destroys data in %@." : {
       "localizations" : {
         "fr" : {
@@ -123732,6 +123786,9 @@
           }
         }
       }
+    },
+    "Open Link" : {
+
     },
     "Open or focus a TablePro window for a saved connection. Returns once the window has a tab, with the window id that list_recent_tabs reports." : {
       "localizations" : {
@@ -136532,6 +136589,9 @@
           }
         }
       }
+    },
+    "Query ST_Transform(geom, 4326) to see these shapes." : {
+
     },
     "Query review on %@" : {
       "localizations" : {
@@ -156127,6 +156187,9 @@
           }
         }
       }
+    },
+    "Select a single row to map this field." : {
+
     },
     "Select a step in the plan to see what it does." : {
       "comment" : "A description of the view's body.",
@@ -182908,6 +182971,12 @@
         }
       }
     },
+    "The map cannot draw %@." : {
+
+    },
+    "The map cannot place SRID %d. It reads longitude and latitude, such as SRID 4326, and Web Mercator." : {
+
+    },
     "The MCP server could not bind a port (%@)" : {
       "localizations" : {
         "fr" : {
@@ -191213,6 +191282,9 @@
         }
       }
     },
+    "This field is NULL." : {
+
+    },
     "This file can’t be opened" : {
       "localizations" : {
         "fr" : {
@@ -191553,6 +191625,15 @@
           }
         }
       }
+    },
+    "This geometry has more points than the map draws." : {
+
+    },
+    "This geometry is empty." : {
+
+    },
+    "This geometry is past 85 degrees of latitude, where the map ends." : {
+
     },
     "This Host header is not allowed to reach TablePro's MCP server." : {
       "localizations" : {
@@ -193375,6 +193456,9 @@
         }
       }
     },
+    "This row has no value for this field." : {
+
+    },
     "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -194151,6 +194235,9 @@
         }
       }
     },
+    "This value has no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place it." : {
+
+    },
     "This value is %@. The source is still readable." : {
       "localizations" : {
         "fr" : {
@@ -194160,6 +194247,9 @@
           }
         }
       }
+    },
+    "This value is not in a format the map can read." : {
+
     },
     "This value is not one of the type's current labels" : {
       "comment" : "A tooltip for a warning icon in the array value editor.",
@@ -202826,6 +202916,9 @@
           }
         }
       }
+    },
+    "Use text mode to enter JSON." : {
+
     },
     "Use IAM database authentication" : {
       "localizations" : {

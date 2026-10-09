@@ -8,8 +8,9 @@ import TableProPluginKit
 
 extension PluginMetadataRegistry {
     /// SQL Server refuses `=` on these (Msg 402 for `ntext`, `text`, `image` and `xml`, 403 for the spatial types), so
-    /// a keyless match compares them through a cast, which is exact for each. `hierarchyid` compares as it is.
-    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY"]
+    /// a keyless match compares them through a cast, which is exact for each. A `hierarchyid` reads as its bytes, which
+    /// the cast to `varbinary(max)` compares without an implicit conversion back to the type.
+    static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID"]
 
     /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
     /// cast to the same text, so a keyless match on it could pick either row.

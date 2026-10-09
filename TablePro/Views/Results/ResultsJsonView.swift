@@ -274,7 +274,7 @@ internal struct ResultsJsonView: View {
             pretty: output.json.prettyPrintedAsJson() ?? output.json,
             resolvedCount: output.rowCount,
             skippedDeletedCount: output.skippedDeletedCount,
-            parseResult: JSONTreeParser.parse(output.json)
+            parseResult: JSONTreeDocument.parse(output.json)
         )
     }
 }

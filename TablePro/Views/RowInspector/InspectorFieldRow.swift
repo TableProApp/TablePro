@@ -5,13 +5,8 @@
 
 import SwiftUI
 
-/// One field of the inspected row.
-///
-/// The row owns its own chrome and its own value menu. The menu used to be rendered only inside
-/// `.overlay { if isHovered { ... } }`, so the one route to Set NULL, Set DEFAULT and the SQL
-/// functions was to put a pointer on the field: invisible to the keyboard, invisible to VoiceOver
-/// and invisible to anyone who does not happen to hover. It is drawn unconditionally now, which is
-/// what Postico does and what a control that is the only way to reach a command has to do.
+/// One field of the inspected row. Its value menu is always drawn: it is the only route to Set
+/// NULL, Set DEFAULT and the SQL functions, and a hover-gated one hid them from the keyboard.
 internal struct InspectorFieldRow: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
@@ -29,6 +24,7 @@ internal struct InspectorFieldRow: View {
     internal var onRemoveField: (() -> Void)?
     internal var onToggleExpand: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
+    internal var onTabStopChange: ((Bool) -> Void)?
 
     @FocusState.Binding internal var focusedField: UUID?
     internal let fieldID: UUID
@@ -209,24 +205,21 @@ internal struct InspectorFieldRow: View {
             onSetNull: context.canMutate ? onSetNull : nil,
             onSetDefault: context.canMutate ? onSetDefault : nil,
             onPopOut: onPopOut,
-            isExpanded: isExpanded
+            isExpanded: isExpanded,
+            onTabStopChange: onTabStopChange
         )
             .font(Self.valueFont(for: kind))
             .focused($focusedField, equals: fieldID)
             .accessibilityValue(context.valueState.placeholder ?? context.value.wrappedValue)
     }
 
-    /// One exhaustive switch, so a new editor kind has to be classified rather than inheriting the
-    /// arm that happened to be written first. Two `default`-armed switches over this enum are what
-    /// let `.typePicker` escape the value-font domain and render a structure row's Name and Type
-    /// fields in two different fonts side by side.
-    ///
-    /// The three structured editors opt out because each carries a toolbar and its own placeholders
-    /// alongside the value, and each presents the same way in a pop-out window where there is no
-    /// ambient font to inherit; they name the value font on their own value text instead.
+    /// Exhaustive, so a new kind is classified instead of inheriting an arm. The structured editors
+    /// opt out: each carries a toolbar beside the value and names the value font on its own text.
     private static func valueFont(for kind: FieldEditorKind) -> Font? {
         switch kind {
         case .json, .phpSerialized, .image:
+            return nil
+        case .geometry:
             return nil
         case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
              .schemaText, .multiLine, .singleLine:

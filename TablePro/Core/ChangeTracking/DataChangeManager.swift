@@ -673,7 +673,13 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             }
         case .driverWritten(let statements):
             steps = statements.map {
-                DataWriteStep(kind: .rowWrite, statement: $0, expectedRowCount: nil, tableName: tableName)
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: $0.statement,
+                    expectedRowCount: $0.keylessRowCount,
+                    tableName: tableName,
+                    matchesRowsWithoutKey: $0.keylessRowCount != nil
+                )
             }
         }
         return RowWriteBuild(steps: steps, operations: operations)

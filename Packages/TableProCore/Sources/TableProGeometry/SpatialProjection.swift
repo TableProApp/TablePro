@@ -34,12 +34,16 @@ public enum SpatialProjectability: Equatable, Sendable {
 }
 
 public enum SpatialProjection {
-    /// Geographic systems whose coordinates are already WGS84-compatible degrees.
+    /// Geographic systems drawn as WGS84 degrees with no datum transform.
     ///
-    /// 4269 is NAD83: its datum shift against WGS84 is under a metre, far below one tile pixel at
-    /// any zoom a map offers. 4979 is WGS84 in three dimensions, whose horizontal components are
-    /// identical to 4326.
-    public static let geographicSRIDs: Set<Int32> = [4_326, 4_269, 4_979]
+    /// Each datum sits within a few metres of WGS84, far below what the map shows at the zoom a
+    /// geometry is fitted to: NAD83 (4269), NAD83(2011) (6318), ETRS89 (4258), GDA94 (4283),
+    /// GDA2020 (7844), CGCS2000 (4490), SIRGAS 2000 (4674) and JGD2011 (6668). 4979 is WGS84 in
+    /// three dimensions, whose horizontal components are identical to 4326.
+    public static let geographicSRIDs: Set<Int32> = [
+        4_326, 4_269, 4_979,
+        4_258, 4_283, 7_844, 4_490, 4_674, 6_318, 6_668,
+    ]
 
     /// The spherical Mercator aliases. 900913 is the original Google code, 102100 and 102113 are
     /// the Esri ones, 3785 the deprecated EPSG code, and 3857 the one that stuck.

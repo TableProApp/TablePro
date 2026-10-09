@@ -32,8 +32,14 @@ struct RestoreStatements {
 enum RowWriteStatements {
     /// The host's, each carrying the rows it should touch.
     case counted([AttributedStatement])
-    /// A driver's, which carry no count the host can hold the server to.
-    case driverWritten([ParameterizedStatement])
+    /// A driver's, held to a count only where the host can tell how many rows it should touch.
+    case driverWritten([DriverWrittenStatement])
+}
+
+struct DriverWrittenStatement {
+    let statement: ParameterizedStatement
+    /// The rows a match without a primary key has to find, or nil when nothing vouches for the count.
+    let keylessRowCount: Int?
 }
 
 @MainActor
@@ -91,14 +97,14 @@ struct RowChangeStatementFactory {
         case .counted(let statements):
             return statements.map(\.statement)
         case .driverWritten(let statements):
-            return statements
+            return statements.map(\.statement)
         }
     }
 
     /// Every statement the changes need, or a throw naming the changes that would be left out.
     ///
     /// The host's statements carry the rows they touch, so the executor can hold the server to that
-    /// count. A driver's do not, because nothing tells the host how many rows its statements reach.
+    /// count. A driver's carry one only for a keyless update or delete of one row.
     func rowWriteStatements(
         for changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]] = [:],
@@ -304,7 +310,7 @@ struct RowChangeStatementFactory {
         insertedRowData: [RowID: [PluginCellValue]],
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
-    ) throws -> [ParameterizedStatement]? {
+    ) throws -> [DriverWrittenStatement]? {
         guard let pluginDriver else { return nil }
         let keyed = PluginKeyedChanges(
             changes: changes,
@@ -344,7 +350,24 @@ struct RowChangeStatementFactory {
             throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
         }
         return writes.map {
-            ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
+            DriverWrittenStatement(
+                statement: ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny)),
+                keylessRowCount: keylessRowCount(of: $0, keyed: keyed)
+            )
+        }
+    }
+
+    /// A keyless match can find nothing and still succeed, so it is held to its row where the engine's count is real.
+    /// Only a statement naming one row: the default `generateRowWrites` puts every row on its first statement.
+    private func keylessRowCount(of write: PluginRowWrite, keyed: PluginKeyedChanges) -> Int? {
+        guard primaryKeyColumns.isEmpty,
+              DataWriteRowCounts.areMeaningful(for: databaseType),
+              write.rowIndices.count == 1,
+              let row = write.rowIndices.first
+        else { return nil }
+        switch keyed.writeKind(ofRowIndex: row) {
+        case .update, .delete: return 1
+        case .insert, nil: return nil
         }
     }
 

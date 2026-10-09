@@ -681,6 +681,10 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         case 42: return .dateTime2
         case 43: return .dateTimeOffset
         case Int32(SYBUNIQUE): return .uniqueIdentifier
+        case 98: return .sqlVariant
+        // db-lib has no conversion for a CLR type (geography, geometry, hierarchyid), whose value on the wire is the
+        // type's serialized bytes.
+        case 240: return .varbinary
         default: return .unknown(token)
         }
     }
@@ -708,6 +712,14 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         guard converted > 0,
               let raw = String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
         else { return nil }
+        if type == .dateTimeOffset {
+            var parts = DBDATEREC2()
+            if dbanydatecrack(proc, &parts, srcToken, ptr) == SUCCEED,
+               let value = MSSQLDatetimeFormatter.dateTimeOffset(raw, offsetMinutes: Int(parts.tzone)) {
+                return value
+            }
+            freetdsLogger.warning("dbanydatecrack failed on a datetimeoffset, so the value reads without its offset")
+        }
         if type.isDateOrTime {
             return MSSQLDatetimeFormatter.reformat(raw, type: type) ?? raw
         }
@@ -1014,21 +1026,28 @@ nonisolated private struct FreeTDSBatchReader {
     private func readRow(_ descriptors: [MSSQLColumnDescriptor]) -> [MSSQLRawCell] {
         descriptors.indices.map { offset in
             let column = Int32(offset + 1)
+            let pointer = dbdata(proc, column)
             let length = dbdatlen(proc, column)
-            let token = dbcoltype(proc, column)
             let type = descriptors[offset].type
-            guard length > 0 || token == Int32(SYBBIT), let pointer = dbdata(proc, column) else { return .null }
-            if type.isBinary {
+            let reading = MSSQLCellReading(type: type, hasData: pointer != nil, length: Int(length))
+            guard let pointer else { return .null }
+            switch reading {
+            case .null, .unreadable:
+                return .null
+            case .emptyText:
+                return .string("")
+            case .bytes:
                 return .bytes(Data(bytes: pointer, count: Int(length)))
+            case .text:
+                guard let text = FreeTDSConnection.columnValueAsString(
+                    proc: proc,
+                    ptr: pointer,
+                    srcToken: dbcoltype(proc, column),
+                    srcLen: length,
+                    type: type
+                ) else { return .null }
+                return .string(text)
             }
-            guard let text = FreeTDSConnection.columnValueAsString(
-                proc: proc,
-                ptr: pointer,
-                srcToken: token,
-                srcLen: length,
-                type: type
-            ) else { return .null }
-            return .string(text)
         }
     }
 

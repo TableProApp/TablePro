@@ -8,6 +8,29 @@ import Foundation
 @testable import TablePro
 import Testing
 
+/// What a binary cell is handed to the inspector as: one character per stored byte.
+private func binaryText(hex: String) -> String {
+    var bytes: [UInt8] = []
+    var rest = Substring(hex)
+    while rest.count >= 2 {
+        bytes.append(UInt8(rest.prefix(2), radix: 16) ?? 0)
+        rest = rest.dropFirst(2)
+    }
+    return String(data: Data(bytes), encoding: .isoLatin1) ?? ""
+}
+
+private enum GeometrySample {
+    static let wkbPoint = "0101000000000000000000F03F0000000000000040"
+    static let ewkbPoint = "0101000020E6100000000000000000F03F0000000000000040"
+    static let geoJsonPoint = #"{"type":"Point","coordinates":[-122.4194,37.7749]}"#
+    /// A GeoPackage blob: the `GP` header and SRS id ahead of the same WKB point.
+    static let geoPackagePoint = "47500001E6100000" + wkbPoint
+    /// A SpatiaLite blob: start byte, byte order, SRID, bounding box, then the point and an end byte.
+    static let spatiaLitePoint = "0001E6100000"
+        + "000000000000F03F0000000000000040000000000000F03F0000000000000040"
+        + "7C01000000000000000000F03F0000000000000040FE"
+}
+
 @MainActor
 struct FieldEditorResolverTests {
     @Test("JSON column resolves to .json")
@@ -193,6 +216,308 @@ struct FieldEditorResolverTests {
             originalValue: "short"
         )
         #expect(kind == .singleLine)
+    }
+
+    // MARK: - Geometry
+
+    private func geometry(_ textEditor: GeometryTextEditor, _ source: GeometryFieldSource) -> FieldEditorKind {
+        .geometry(GeometryFieldDescriptor(textEditor: textEditor, source: source))
+    }
+
+    private func resolveSpatial(_ value: String?, isBinaryValue: Bool = false) -> FieldEditorKind {
+        FieldEditorResolver.resolve(
+            for: .spatial(rawType: "GEOMETRY"),
+            isLongText: false,
+            originalValue: value,
+            isBinaryValue: isBinaryValue
+        )
+    }
+
+    private func resolveJson(_ value: String?) -> FieldEditorKind {
+        FieldEditorResolver.resolve(for: .json(rawType: "JSON"), isLongText: false, originalValue: value)
+    }
+
+    @Test("WKT in a spatial column resolves to the geometry field over the text editor")
+    func spatialWktResolvesToGeometry() {
+        let values = [
+            "POINT(1 2)",
+            "POINT (1 2)",
+            "SRID=4326;POINT(-122.4194 37.7749)",
+            "SRID=4326;POLYGON((0 0,10 0,10 10,0 10,0 0))",
+            "(-122.4194,37.7749)"
+        ]
+        for value in values {
+            #expect(resolveSpatial(value) == geometry(.multiLine, .spatialColumn), "\(value)")
+        }
+    }
+
+    /// PostgreSQL hands the raw EWKB hex over as text when its `ST_AsEWKT` rewrite fails.
+    @Test("EWKB hex text in a spatial column resolves to the geometry field")
+    func spatialEwkbHexTextResolvesToGeometry() {
+        #expect(resolveSpatial(GeometrySample.ewkbPoint) == geometry(.multiLine, .spatialColumn))
+        #expect(resolveSpatial(GeometrySample.wkbPoint) == geometry(.multiLine, .spatialColumn))
+    }
+
+    /// The JSON rule used to answer first, so a spatial column holding GeoJSON was a JSON field
+    /// and nothing downstream knew it was a geometry.
+    @Test("JSON-shaped geometry in a spatial column is a geometry field over the JSON editor")
+    func spatialJsonShapedValueKeepsTheJsonEditor() {
+        let values = [
+            GeometrySample.geoJsonPoint,
+            #"{"lat":41.12,"lon":-71.34}"#,
+            "[-71.34,41.12]"
+        ]
+        for value in values {
+            #expect(resolveSpatial(value) == geometry(.json, .spatialColumn), "\(value)")
+        }
+    }
+
+    @Test("A spatial field with no value to read is still a geometry field")
+    func nullSpatialIsStillGeometry() {
+        #expect(resolveSpatial(nil) == geometry(.multiLine, .spatialColumn))
+        #expect(resolveSpatial("") == geometry(.multiLine, .spatialColumn))
+    }
+
+    @Test("A type the map names but cannot draw is still a geometry field")
+    func unsupportedTypeIsStillGeometry() {
+        for value in ["CIRCULARSTRING(0 0,1 1,2 0)", "SRID=4326;CURVEPOLYGONM((0 0 1,1 1 1,2 0 1,0 0 1))"] {
+            #expect(resolveSpatial(value) == geometry(.multiLine, .spatialColumn), "\(value)")
+        }
+    }
+
+    /// SQL Server, Oracle and Teradata send text no reader takes, and MySQL falls back to `0x` hex.
+    @Test("Spatial text no reader takes keeps the editor it had")
+    func unreadableSpatialTextKeepsItsEditor() {
+        #expect(resolveSpatial("0xE61000000101000000000000000000F03F0000000000000040") == .singleLine)
+        #expect(resolveSpatial("POINT(1 2") == .singleLine)
+        #expect(resolveSpatial("point") == .singleLine)
+        #expect(resolveSpatial(#"{"name":"depot","open":true}"#) == .json)
+        let objectText = "MDSYS.SDO_GEOMETRY(2001, 4326, MDSYS.SDO_POINT_TYPE(-122.4194, 37.7749, NULL), NULL, NULL)"
+        #expect(resolveSpatial(objectText) == .multiLine)
+    }
+
+    @Test("WKB bytes in a spatial column resolve to the geometry field over the hex editor")
+    func binarySpatialResolvesToGeometry() {
+        for hex in [GeometrySample.wkbPoint, GeometrySample.ewkbPoint] {
+            #expect(
+                resolveSpatial(binaryText(hex: hex), isBinaryValue: true) == geometry(.hex, .binary),
+                "\(hex)"
+            )
+        }
+    }
+
+    /// WKB type 8 is CIRCULARSTRING and 10 is CURVEPOLYGON. The reader names the type from the
+    /// header, so the Map segment can say which one it cannot draw, as it does for text.
+    @Test("WKB of a type the map cannot draw is still a geometry field over the hex editor")
+    func unsupportedBinaryTypeIsStillGeometry() {
+        let zero = "0000000000000000"
+        let one = "000000000000F03F"
+        let two = "0000000000000040"
+        let curves = [
+            "0108000000" + "03000000" + zero + zero + one + one + two + zero,
+            "0108000020" + "E6100000",
+            "000000000A"
+        ]
+        for hex in curves {
+            #expect(
+                resolveSpatial(binaryText(hex: hex), isBinaryValue: true) == geometry(.hex, .binary),
+                "\(hex)"
+            )
+        }
+    }
+
+    /// The field was a text field over the Latin-1 spelling of the bytes, where one keystroke
+    /// staged that string over the blob.
+    @Test("Bytes in a spatial column that are not WKB get the hex editor, never a text field")
+    func unreadableBinarySpatialIsHex() {
+        let blobs = [
+            GeometrySample.geoPackagePoint,
+            GeometrySample.spatiaLitePoint,
+            "1234",
+            "12345678",
+            "DEADBEEF00"
+        ]
+        for hex in blobs {
+            #expect(resolveSpatial(binaryText(hex: hex), isBinaryValue: true) == .blobHex, "\(hex)")
+        }
+        #expect(resolveSpatial("", isBinaryValue: true) == .blobHex)
+        #expect(resolveSpatial(nil, isBinaryValue: true) == .blobHex)
+    }
+
+    /// The text readers never see a blob: its bytes can spell WKT, and the hex of a short one is a
+    /// valid geohash.
+    @Test("A binary cell is read as bytes, not as the text its bytes spell")
+    func binarySpatialIsNotReadAsText() {
+        #expect(resolveSpatial("POINT(1 2)", isBinaryValue: true) == .blobHex)
+        #expect(resolveSpatial(GeometrySample.wkbPoint, isBinaryValue: true) == .blobHex)
+    }
+
+    @Test("The binary flag changes nothing outside a spatial column")
+    func binaryFlagIsScopedToSpatialColumns() {
+        let bytes = binaryText(hex: GeometrySample.wkbPoint)
+        #expect(
+            FieldEditorResolver.resolve(
+                for: .blob(rawType: "BLOB"),
+                isLongText: false,
+                originalValue: bytes,
+                isBinaryValue: true
+            ) == .blobHex
+        )
+    }
+
+    @Test("GeoJSON in a JSON column resolves to the geometry field over the JSON editor")
+    func geoJsonInJsonColumnResolvesToGeometry() {
+        let values = [
+            GeometrySample.geoJsonPoint,
+            #"{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,0]]]}"#,
+            #"{"type":"Feature","properties":{"name":"depot"},"geometry":{"type":"Point","coordinates":[1,2]}}"#
+        ]
+        for value in values {
+            #expect(resolveJson(value) == geometry(.json, .jsonColumn), "\(value)")
+        }
+    }
+
+    /// The sniffing reader takes each of these for a point. A JSON column is held to GeoJSON, or
+    /// every pair of numbers and every document with `lat` and `lon` would open on a map.
+    @Test("JSON that is not GeoJSON stays a JSON field")
+    func jsonThatIsNotGeoJsonStaysJson() {
+        let values = [
+            "[10,20]",
+            "[[1,2],[3,4],[5,6]]",
+            #"{"lat":37.7,"lon":-122.4,"city":"SF"}"#,
+            #"{"type":"user","coordinates":"none"}"#,
+            #"{"type":"Point"}"#,
+            "{}"
+        ]
+        for value in values {
+            #expect(resolveJson(value) == .json, "\(value)")
+        }
+        #expect(resolveJson(nil) == .json)
+    }
+
+    @Test("A value that reads as geometry outside a spatial or JSON column keeps its editor")
+    func geometryIsGatedOnTheColumn() {
+        let text = ColumnType.text(rawType: "TEXT")
+        for value in ["test", "POINT(1 2)", "12.5,45.25", GeometrySample.ewkbPoint] {
+            #expect(
+                FieldEditorResolver.resolve(for: text, isLongText: false, originalValue: value) == .singleLine,
+                "\(value)"
+            )
+        }
+        #expect(
+            FieldEditorResolver.resolve(for: text, isLongText: false, originalValue: GeometrySample.geoJsonPoint)
+                == .json
+        )
+    }
+
+    @Test("Raw Value suppresses the geometry field the way it suppresses JSON")
+    func rawOverrideSkipsGeometry() {
+        let kind = FieldEditorResolver.resolve(
+            for: .spatial(rawType: "GEOMETRY"),
+            isLongText: false,
+            originalValue: "POINT(1 2)",
+            displayFormatOverride: .raw
+        )
+        #expect(kind == .singleLine)
+    }
+
+    @Test("A field resolved late carries its binary flag to the resolver")
+    func fieldCarriesTheBinaryFlag() {
+        var field = FieldEditState(
+            columnIndex: 0,
+            columnName: "geom",
+            columnTypeEnum: .spatial(rawType: "POINT"),
+            isLongText: false,
+            isJson: false,
+            originalValue: binaryText(hex: GeometrySample.wkbPoint),
+            hasMultipleValues: false,
+            pendingValue: nil,
+            isPendingNull: false,
+            isPendingDefault: false
+        )
+        #expect(FieldEditorResolver.resolve(field: field) != geometry(.hex, .binary))
+
+        field.isBinaryValue = true
+        #expect(FieldEditorResolver.resolve(field: field) == geometry(.hex, .binary))
+    }
+
+    // MARK: - Large geometry values
+
+    /// No reader accepts this after any opening, so a large value that still resolves to a
+    /// geometry field was classified by how it opens, not read in full.
+    private static let unreadableTail = String(repeating: "x", count: 2_000_000)
+
+    @Test("A large spatial value is classified by how it opens")
+    func largeSpatialValueIsSniffed() {
+        let tail = Self.unreadableTail
+        let multiLine = [
+            "POINT(" + tail,
+            "  \n\tPOINT (" + tail,
+            "SRID=4326;" + tail,
+            "srid = 3857;MULTIPOLYGON(((" + tail,
+            "circularstring(" + tail,
+            "CURVEPOLYGONM((" + tail,
+            "0101000020E6100000" + String(repeating: "AB", count: 1_000_000),
+            "[[(-122.4194,37.7749)," + tail
+        ]
+        for value in multiLine {
+            #expect(resolveSpatial(value) == geometry(.multiLine, .spatialColumn), "\(value.prefix(32))")
+        }
+        #expect(resolveSpatial(#"{"type":"Polygon","coordinates":"# + tail) == geometry(.json, .spatialColumn))
+    }
+
+    @Test("A value at the preview's limit is still read in full")
+    func valueAtTheLimitIsRead() {
+        let limit = GeometryFieldPreview.synchronousLimit
+        let atLimit = "POINT(" + String(repeating: "x", count: limit - 6)
+        #expect(resolveSpatial(atLimit) == .multiLine)
+        #expect(resolveSpatial(atLimit + "x") == geometry(.multiLine, .spatialColumn))
+    }
+
+    @Test("A large spatial value that does not open like geometry keeps its editor")
+    func largeSpatialValueThatOpensOtherwiseKeepsItsEditor() {
+        let tail = Self.unreadableTail
+        let values = [
+            "MDSYS.SDO_GEOMETRY(2001, 4326, " + tail,
+            "0xE61000000101000000" + String(repeating: "AB", count: 1_000_000),
+            "FFFF" + String(repeating: "AB", count: 1_000_000),
+            "pointless " + tail,
+            "[{\"a\":" + tail
+        ]
+        for value in values {
+            #expect(resolveSpatial(value) == .multiLine, "\(value.prefix(32))")
+        }
+    }
+
+    @Test("A large binary value is classified by its first byte")
+    func largeBinaryValueIsSniffed() {
+        let tail = Self.unreadableTail
+        #expect(resolveSpatial("\u{01}" + tail, isBinaryValue: true) == geometry(.hex, .binary))
+        #expect(resolveSpatial("\u{00}" + tail, isBinaryValue: true) == geometry(.hex, .binary))
+        #expect(resolveSpatial(binaryText(hex: "47500001") + tail, isBinaryValue: true) == .blobHex)
+    }
+
+    @Test("A large JSON value is a geometry field when its type member names a GeoJSON type")
+    func largeJsonValueIsSniffed() {
+        let tail = Self.unreadableTail
+        let geoJson = [
+            #"{"type":"Polygon","coordinates":"# + tail,
+            #"{ "type" : "featurecollection", "features": "# + tail,
+            #"{"id":7,"properties":{"name":"depot"},"type":"Feature","geometry":"# + tail
+        ]
+        for value in geoJson {
+            #expect(resolveJson(value) == geometry(.json, .jsonColumn), "\(value.prefix(40))")
+        }
+
+        let notGeoJson = [
+            #"{"type":"user","coordinates":"# + tail,
+            #"{"kind":"Point","coordinates":"# + tail,
+            #"{"padding":""# + String(repeating: "p", count: 10_000) + #"","type":"Point","coordinates":"# + tail,
+            #"[{"type":"Point","coordinates":"# + tail
+        ]
+        for value in notGeoJson {
+            #expect(resolveJson(value) == .json, "\(value.prefix(40))")
+        }
     }
 }
 

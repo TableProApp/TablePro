@@ -39,6 +39,19 @@ final class ResizableFieldMetricsTests: XCTestCase {
         XCTAssertTrue(ResizableFieldMetrics.textHeightRange.contains(ResizableFieldMetrics.defaultTextHeight))
     }
 
+    func testDefaultGeometryHeightIsWithinGeometryRange() {
+        XCTAssertTrue(
+            ResizableFieldMetrics.geometryHeightRange.contains(ResizableFieldMetrics.defaultGeometryHeight)
+        )
+    }
+
+    /// MapKit drops its logo and legal link from a map under 100pt tall.
+    func testAMapNeverShrinksUnderTheHeightThatKeepsItsLogo() {
+        let mapRange = ResizableFieldMetrics.geometryHeightRange
+        XCTAssertEqual(ResizableFieldMetrics.resolve(base: 160, delta: -500, range: mapRange), 100)
+        XCTAssertEqual(ResizableFieldMetrics.resolve(base: 160, delta: 5_000, range: mapRange), 600)
+    }
+
     func testTextHeightResolvesWithinItsOwnRange() {
         let textRange = ResizableFieldMetrics.textHeightRange
         XCTAssertEqual(ResizableFieldMetrics.resolve(base: 110, delta: -500, range: textRange), textRange.lowerBound)

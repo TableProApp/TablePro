@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with a fresh token on each connect and no proxy.
+- Row and text selection in the JSON and PHP viewer trees, with `Cmd+C` copying the selected values.
+- Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
+- Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
+- Map preview of a geometry value in the row inspector, with Text and Map segments, Fit to Geometry and Open in Window.
 
 ### Changed
 
@@ -17,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
+- Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
+- SQL Server `datetimeoffset` values shown, copied and exported without their offset.
+- SQL Server `geography`, `geometry` and `hierarchyid` values shown as NULL.
+- A possible crash when a result holds a SQL Server `sql_variant` value.
 - iCloud Sync errors shown as raw CloudKit text with record IDs, on Mac and iPhone.
 - Every pending change resent on each edit and app switch while iCloud storage is full or iCloud is signed out.
 - Synced and a new Last Synced time after a sync whose download failed.
@@ -31,6 +40,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Values from 1 loaded rows" in Filter Values….
 - The connection form, Acknowledgements and Integrations Activity sidebars dragged shut with no way to bring them back.
 - The Users & Roles list and the server dashboard's slow queries staying hidden for good once dragged shut.
+- A JSON cell edit made in the popover lost on Save after Open in Window.
+- Copy Value on a JSON object or array copying only the rows a tree filter left on screen.
+- The JSON tree filter matching array positions such as `[1]`, counts such as `{2 keys}` and the `…` row.
+- "JSON Too Large" in Tree mode for a minified value under the 100,000 character cap.
+- Disclosure arrows in the inspector's JSON tab doing nothing under a filter, then collapsing rows once it was cleared.
+- Copy Key Path leaving keys such as `a.b` and `content-type` unquoted, so the path named another value or failed to parse.
+- "Invalid JSON" in Tree mode for a NULL or empty JSON cell.
+- "{1 keys}" and "[1 items]" for a one-member object or array in the JSON and PHP viewer trees.
+- A broken character before the `…` of a long string in the JSON and PHP viewer trees.
+- Binary geometry values shown as garbled text in the row inspector, where typing replaced the bytes with text.
+- Binary values saved as text after Set NULL or Set DEFAULT was cleared in the row inspector.
+- Crash when a spatial or JSON column held a value with thousands of nested brackets.
+- Parts of a multi-part geometry missing from the map with nothing saying so.
+- Geographic SRIDs such as 4258, 4283 and 7844 refused by the map as projected coordinate systems.
+- GeoJSON with a lowercase type name such as `point` not drawn on the map.
+- A column holding only curved geometry losing the Map view, and `CIRCULARSTRINGM` called unreadable instead of named.
 
 ## [0.79.0] - 2026-10-09
 

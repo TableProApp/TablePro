@@ -5,7 +5,43 @@
 
 import SwiftUI
 
+internal enum JSONTreeDocument {
+    case emptyValue
+    case tree(JSONTreeNode)
+    case unavailable(JSONTreeParseError)
+
+    /// A blank value holds nothing, which is not broken JSON, so it never reaches the parser. The
+    /// cap comes first because the blank check reads every character.
+    init(displayText: String) {
+        let document = JsonReindenter.normalize(displayText)
+        guard JSONTreeParser.fitsSizeCap(document) else {
+            self = .unavailable(.tooLarge)
+            return
+        }
+        if document.unicodeScalars.allSatisfy(\.properties.isWhitespace) {
+            self = .emptyValue
+            return
+        }
+        switch JSONTreeParser.parse(document) {
+        case .success(let root):
+            self = .tree(root)
+        case .failure(let error):
+            self = .unavailable(error)
+        }
+    }
+
+    /// The size cap counts the document, not the indentation a viewer added to show it.
+    static func parse(_ displayText: String) -> Result<JSONTreeNode, JSONTreeParseError> {
+        JSONTreeParser.parse(JsonReindenter.normalize(displayText))
+    }
+}
+
 internal struct JSONViewerView: View {
+    private struct ParsedTree {
+        let source: String
+        let document: JSONTreeDocument
+    }
+
     @Binding var text: String
     let isEditable: Bool
     var onDismiss: (() -> Void)?
@@ -14,8 +50,7 @@ internal struct JSONViewerView: View {
 
     @State private var viewMode: JSONViewMode
     @State private var treeSearchText = ""
-    @State private var parsedTree: JSONTreeNode?
-    @State private var parseError: JSONTreeParseError?
+    @State private var parsedTree: ParsedTree?
     @State private var displayText: String
     @State private var showInvalidAlert = false
 
@@ -25,8 +60,7 @@ internal struct JSONViewerView: View {
         onDismiss: (() -> Void)? = nil,
         onCommit: ((String) -> Void)? = nil,
         onPopOut: ((String) -> Void)? = nil,
-        initialViewMode: JSONViewMode? = nil,
-        initialParseError: JSONTreeParseError? = nil
+        initialViewMode: JSONViewMode? = nil
     ) {
         self._text = text
         self.isEditable = isEditable
@@ -37,11 +71,22 @@ internal struct JSONViewerView: View {
         self._viewMode = State(
             initialValue: initialViewMode ?? AppSettingsManager.shared.editor.jsonViewerPreferredMode
         )
-        self._parseError = State(initialValue: initialParseError)
     }
 
     private var isLiveBinding: Bool {
         isEditable && onCommit == nil
+    }
+
+    /// The tree is parsed only while it is on screen, so typing in Text mode never pays for it.
+    /// Entering Tree mode parses in the same update that shows it, or the last tree would draw first.
+    private var viewModeSelection: Binding<JSONViewMode> {
+        Binding(
+            get: { viewMode },
+            set: { mode in
+                if mode == .tree { parseTree(from: displayText) }
+                viewMode = mode
+            }
+        )
     }
 
     var body: some View {
@@ -73,7 +118,7 @@ internal struct JSONViewerView: View {
 
     private var viewerToolbar: some View {
         HStack(spacing: 8) {
-            Picker("View Mode", selection: $viewMode) {
+            Picker("View Mode", selection: viewModeSelection) {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
@@ -102,12 +147,25 @@ internal struct JSONViewerView: View {
         case .text:
             JSONCodeEditor(text: $displayText, isEditable: isEditable)
         case .tree:
-            if let tree = parsedTree {
+            switch parsedTree?.document {
+            case .emptyValue?:
+                emptyValueView
+            case .tree(let tree)?:
                 JSONTreeView(rootNode: tree, searchText: $treeSearchText)
-            } else if let error = parseError {
+            case .unavailable(let error)?:
                 treeErrorView(error)
-            } else {
-                treeErrorView(.invalidJSON)
+            case nil:
+                Color.clear
+            }
+        }
+    }
+
+    private var emptyValueView: some View {
+        UnavailableStateView {
+            Label(String(localized: "Empty Value"), systemImage: "curlybraces")
+        } description: {
+            if isEditable {
+                Text(String(localized: "Use text mode to enter JSON."))
             }
         }
     }
@@ -146,8 +204,9 @@ internal struct JSONViewerView: View {
     // MARK: - Logic
 
     private func initializeView() {
-        displayText = JsonReindenter.reindent(text)
-        parseTree()
+        let pretty = JsonReindenter.reindent(text)
+        displayText = pretty
+        if viewMode == .tree { parseTree(from: pretty) }
     }
 
     private func syncFromExternal() {
@@ -156,21 +215,17 @@ internal struct JSONViewerView: View {
     }
 
     private func handleDisplayTextChange() {
-        parseTree()
+        if viewMode == .tree { parseTree(from: displayText) }
         guard isLiveBinding,
               JsonReindenter.normalize(displayText) != JsonReindenter.normalize(text) else { return }
         text = displayText
     }
 
-    private func parseTree() {
-        switch JSONTreeParser.parse(displayText) {
-        case .success(let tree):
-            parsedTree = tree
-            parseError = nil
-        case .failure(let error):
-            parsedTree = nil
-            parseError = error
-        }
+    /// A pane that is added back runs `onAppear` again over the same text. Parsing it a second time
+    /// would hand the tree a new root, which drops its selection.
+    private func parseTree(from displayText: String) {
+        guard parsedTree?.source != displayText else { return }
+        parsedTree = ParsedTree(source: displayText, document: JSONTreeDocument(displayText: displayText))
     }
 
     private func saveJSON() {

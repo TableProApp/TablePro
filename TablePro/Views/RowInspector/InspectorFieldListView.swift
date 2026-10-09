@@ -3,6 +3,8 @@
 //  TablePro
 //
 
+import AppKit
+import Combine
 import SwiftUI
 
 /// The inspected row's fields.
@@ -26,6 +28,7 @@ internal struct InspectorFieldListView: View {
     @State private var searchText = ""
     @State private var showsModifiedOnly = false
     @State private var expandedFieldID: UUID?
+    @StateObject private var tabStops = InspectorTabStopRegistry()
     @FocusState private var focusedField: UUID?
 
     var body: some View {
@@ -164,6 +167,7 @@ internal struct InspectorFieldListView: View {
                 ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },
+            onTabStopChange: { [tabStops] in tabStops.record($0, for: field.id) },
             focusedField: $focusedField,
             fieldID: field.id
         )
@@ -206,25 +210,34 @@ internal struct InspectorFieldListView: View {
 
     // MARK: - Keyboard
 
-    /// Tab has to be intercepted rather than left to AppKit. Measured: the key view loop inside a
-    /// SwiftUI `List` has exactly one stop, so `nextValidKeyView` never leaves the field it starts
-    /// in and Tab moved between fields not at all.
-    /// Handled while there is another field to reach, ignored at either end so the key falls
-    /// through and focus can leave the list for the search field, the filter and the view-mode
-    /// control. Wrapping around instead trapped the keyboard inside the row for good.
+    /// Tab is intercepted because the key view loop inside a SwiftUI `List` has one stop, measured.
+    /// Ignored at either end so the key falls through and focus can leave the list, not wrap.
     private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPressResultCompat {
         guard !fields.isEmpty else { return .ignored }
-        guard let current = focusedField, let index = fields.firstIndex(where: { $0.id == current }) else {
-            focusedField = forward ? fields.first?.id : fields.last?.id
-            return .handled
+        let order = fields.map(\.id)
+        tabStops.forget(allBut: order)
+        /// With Full Keyboard Access on, the controls of a field showing a map are key views.
+        let skipped = NSApplication.shared.isFullKeyboardAccessEnabled ? [] : tabStops.fieldsWithoutTabStop
+        let destination = Self.focusDestination(from: focusedField, in: order, forward: forward, skipping: skipped)
+        focusedField = destination
+        return destination == nil ? .ignored : .handled
+    }
+
+    /// The field Tab lands on, or nil to let the key leave the list. A field with nothing to focus
+    /// is passed over, so focus is never sent where no view can take it.
+    internal static func focusDestination(
+        from current: UUID?,
+        in order: [UUID],
+        forward: Bool,
+        skipping fieldsWithoutTabStop: Set<UUID>
+    ) -> UUID? {
+        let candidates: [UUID]
+        if let current, let index = order.firstIndex(of: current) {
+            candidates = forward ? Array(order[(index + 1)...]) : Array(order[..<index].reversed())
+        } else {
+            candidates = forward ? order : order.reversed()
         }
-        let next = forward ? index + 1 : index - 1
-        guard fields.indices.contains(next) else {
-            focusedField = nil
-            return .ignored
-        }
-        focusedField = fields[next].id
-        return .handled
+        return candidates.first { !fieldsWithoutTabStop.contains($0) }
     }
 
     private func applyStateShortcut(_ key: Character) -> KeyPressResultCompat {
@@ -241,6 +254,26 @@ internal struct InspectorFieldListView: View {
             editState.setFieldToDefault(at: field.columnIndex)
         }
         return .handled
+    }
+}
+
+/// Fields whose editor holds nothing Tab can land on. A reference that publishes nothing, so a
+/// field reporting in does not redraw the list.
+@MainActor
+internal final class InspectorTabStopRegistry: ObservableObject {
+    internal private(set) var fieldsWithoutTabStop: Set<UUID> = []
+
+    internal func record(_ hasTabStop: Bool, for fieldID: UUID) {
+        if hasTabStop {
+            fieldsWithoutTabStop.remove(fieldID)
+        } else {
+            fieldsWithoutTabStop.insert(fieldID)
+        }
+    }
+
+    /// Field ids are reissued on every selection change, so the old ones are dropped.
+    internal func forget(allBut fieldIDs: [UUID]) {
+        fieldsWithoutTabStop.formIntersection(fieldIDs)
     }
 }
 
