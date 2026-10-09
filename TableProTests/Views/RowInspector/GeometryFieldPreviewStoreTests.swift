@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import Testing
 
@@ -130,6 +131,44 @@ struct GeometryFieldPreviewStoreTests {
         #expect(store.token == token)
     }
 
+    @Test("Two loads of the same value while it is being read share one read")
+    func concurrentLoadsShareOneRead() async {
+        let reads = ReadCounter()
+        let store = GeometryFieldPreviewStore { request, source in
+            reads.increment()
+            return GeometryFieldPreview.make(text: request.text, source: source, state: request.state)
+        }
+        let large = request(largeLine)
+        _ = store.resolve(large, source: .spatialColumn)
+
+        async let first = store.load(large, source: .spatialColumn)
+        async let second = store.load(large, source: .spatialColumn)
+        let results = await [first, second]
+
+        #expect(reads.count == 1)
+        #expect(results.allSatisfy { isDrawable($0) })
+    }
+
+    @Test("A read whose caller was cancelled is still kept for the pane that comes back")
+    func cancelledCallerStillCommits() async {
+        let reads = ReadCounter()
+        let store = GeometryFieldPreviewStore { request, source in
+            reads.increment()
+            return GeometryFieldPreview.make(text: request.text, source: source, state: request.state)
+        }
+        let large = request(largeLine)
+        _ = store.resolve(large, source: .spatialColumn)
+
+        let abandoned = Task { await store.load(large, source: .spatialColumn) }
+        abandoned.cancel()
+        _ = await abandoned.value
+
+        let after = store.resolve(large, source: .spatialColumn)
+        #expect(after.pending == nil)
+        #expect(isDrawable(after.preview))
+        #expect(reads.count == 1)
+    }
+
     @Test("A read the value has moved on from commits nothing")
     func overtakenReadIsDropped() async {
         let store = GeometryFieldPreviewStore()
@@ -142,5 +181,15 @@ struct GeometryFieldPreviewStoreTests {
         #expect(loaded == nil)
         #expect(store.token == token)
         #expect(store.preview == current.preview)
+    }
+}
+
+private final class ReadCounter: Sendable {
+    private let lock = OSAllocatedUnfairLock(initialState: 0)
+
+    var count: Int { lock.withLock { $0 } }
+
+    func increment() {
+        lock.withLock { $0 += 1 }
     }
 }

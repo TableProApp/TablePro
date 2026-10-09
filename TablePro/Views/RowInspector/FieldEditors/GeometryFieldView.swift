@@ -290,11 +290,23 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
         let pending: Request?
     }
 
+    internal typealias Reader = @Sendable (Request, GeometryFieldSource) -> GeometryFieldPreview
+
     internal private(set) var preview: GeometryFieldPreview?
     /// Moves with the shapes, so the canvas can tell new ones from the ones it already drew.
     internal private(set) var token = 0
     private var loaded: Request?
     private var pending: Request?
+    /// A parse runs to the end once started, so a pane re-added mid-read joins it instead of
+    /// starting a second copy of the same work.
+    private var inFlight: (request: Request, task: Task<GeometryFieldPreview, Never>)?
+    private let reader: Reader
+
+    internal init(reader: @escaping Reader = { request, source in
+        GeometryFieldPreview.make(text: request.text, source: source, state: request.state)
+    }) {
+        self.reader = reader
+    }
 
     internal func resolve(_ request: Request, source: GeometryFieldSource) -> Resolution {
         if request == loaded { return Resolution(preview: preview, pending: nil) }
@@ -303,18 +315,26 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
             pending = request
             return Resolution(preview: preview, pending: request)
         }
-        commit(GeometryFieldPreview.make(text: request.text, source: source, state: request.state), for: request)
+        commit(reader(request, source), for: request)
         return Resolution(preview: preview, pending: nil)
     }
 
-    /// Nil when the value moved on while this one was being read.
+    /// Nil when the value moved on while this one was being read. A finished read is committed even
+    /// when its caller was cancelled, so a pane that comes back finds it done.
     internal func load(_ request: Request, source: GeometryFieldSource) async -> GeometryFieldPreview? {
-        /// A re-added pane restarts its tasks with an unchanged id.
         if request == loaded { return preview }
-        let made = await Task.detached(priority: .userInitiated) {
-            GeometryFieldPreview.make(text: request.text, source: source, state: request.state)
-        }.value
-        guard !Task.isCancelled, request == pending else { return nil }
+        let task: Task<GeometryFieldPreview, Never>
+        if let inFlight, inFlight.request == request {
+            task = inFlight.task
+        } else {
+            let reader = reader
+            task = Task.detached(priority: .userInitiated) { reader(request, source) }
+            inFlight = (request, task)
+        }
+        let made = await task.value
+        if inFlight?.request == request { inFlight = nil }
+        if request == loaded { return preview }
+        guard request == pending else { return nil }
         objectWillChange.send()
         commit(made, for: request)
         return made
