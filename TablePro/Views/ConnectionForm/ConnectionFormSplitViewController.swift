@@ -37,13 +37,12 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
         super.viewDidLoad()
         splitView.isVertical = true
 
-        /// `sidebarWithViewController:` is what makes the pane an actual sidebar: full window
-        /// height behind the titlebar, the vibrant material, and the divider a tracking separator
-        /// can align to. A plain split item gets none of it.
+        /// A sidebar item is what makes the pane an actual sidebar: full window height behind the
+        /// titlebar, the vibrant material, and the divider a tracking separator can align to. A
+        /// plain split item gets none of it.
         let sidebar = NSHostingController(rootView: ConnectionFormSidebar(coordinator: coordinator))
         sidebar.sizingOptions = []
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.canCollapse = true
+        let sidebarItem = NSSplitViewItem.navigationSidebar(sidebar)
         sidebarItem.minimumThickness = Self.sidebarMinThickness
         sidebarItem.maximumThickness = Self.sidebarMaxThickness
         addSplitViewItem(sidebarItem)
@@ -87,10 +86,8 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
 /// The tracking separator alone: it keeps the titlebar's own divider on the split divider as that
 /// divider is dragged, which is what makes the titlebar read as part of a sidebar window.
 ///
-/// No `.toggleSidebar`. The four sections are the window's only navigation, so a button whose job is
-/// to hide them earns nothing in the titlebar. Collapsing stays reachable, because
-/// `NSSplitViewController.toggleSidebar(_:)` is on the responder chain and the View menu's Show
-/// Sidebar sends exactly that, so a sidebar dragged shut can always be brought back.
+/// No `.toggleSidebar`: the sections are the window's only navigation, so the sidebar cannot be
+/// hidden and a button to hide it would do nothing.
 ///
 /// `.sidebarTrackingSeparator` is supplied by AppKit whenever the window's contentViewController is
 /// an `NSSplitViewController`, which is why this window has no wrapper around it.

@@ -51,7 +51,9 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 
         let primaryItem = NSSplitViewItem(viewController: primaryController)
         primaryItem.minimumThickness = primaryMinimum
-        primaryItem.canCollapse = collapsesPrimaryWhenTight
+        /// Never by a drag: a collapsed outer pane loses its divider, so a list dragged shut has no
+        /// handle to come back by. The collapse while tight is set in code, which this does not stop.
+        primaryItem.canCollapse = false
         primaryItem.holdingPriority = primaryHoldingPriority
         if let primaryMaximum {
             primaryItem.maximumThickness = primaryMaximum
@@ -103,13 +105,14 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 internal final class CollapsingSplitViewController: ResizeCursorSplitViewController {
     var collapsesPrimaryWhenTight = false
 
-    private var didAutoCollapsePrimary = false
-
     override func viewDidLayout() {
         super.viewDidLayout()
         applyAutomaticCollapse()
     }
 
+    /// Collapsed exactly while the width cannot hold both minimums. Deciding from the width alone,
+    /// rather than undoing only a collapse made here, also reopens a list that an autosaved record
+    /// brought back collapsed.
     private func applyAutomaticCollapse() {
         guard collapsesPrimaryWhenTight, splitView.isVertical else { return }
         guard splitViewItems.count == 2 else { return }
@@ -124,15 +127,8 @@ internal final class CollapsingSplitViewController: ResizeCursorSplitViewControl
             + secondaryItem.minimumThickness
             + splitView.dividerThickness
 
-        guard available >= required else {
-            guard !primaryItem.isCollapsed else { return }
-            primaryItem.isCollapsed = true
-            didAutoCollapsePrimary = true
-            return
-        }
-
-        guard didAutoCollapsePrimary, primaryItem.isCollapsed else { return }
-        primaryItem.isCollapsed = false
-        didAutoCollapsePrimary = false
+        let isTight = available < required
+        guard primaryItem.isCollapsed != isTight else { return }
+        primaryItem.isCollapsed = isTight
     }
 }

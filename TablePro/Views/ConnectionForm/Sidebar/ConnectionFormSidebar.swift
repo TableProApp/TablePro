@@ -7,10 +7,6 @@ import SwiftUI
 
 /// The editor's section list.
 ///
-/// Follows the app's own `NavigationSplitView` pattern (`IntegrationsActivityView`): a
-/// `List(selection:)` of `Label` rows at `.listStyle(.sidebar)`, with the column width declared on
-/// the sidebar rather than the detail.
-///
 /// The badge is the part the old eleven-pane sidebar got wrong. It showed the same red triangle with
 /// no text anywhere in the window, so a dimmed Save had no explanation. The strings existed the
 /// whole time; `ConnectionFormTab.validationIssues(for:)` returns them, and the action bar spells
@@ -27,7 +23,6 @@ struct ConnectionFormSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
     }
 
     @ViewBuilder

@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Return in Filter Values… hiding every row when no value was selected.
 - Clicks on the Select All label in Filter Values… doing nothing.
 - "Values from 1 loaded rows" in Filter Values….
+- The connection form, Acknowledgements and Integrations Activity sidebars dragged shut with no way to bring them back.
+- The Users & Roles list and the server dashboard's slow queries staying hidden for good once dragged shut.
 
 ## [0.79.0] - 2026-10-09
 
