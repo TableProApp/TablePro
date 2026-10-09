@@ -126,7 +126,7 @@ Without filters this returns the engine's fast estimate unless `exact` is set. W
 
 ### `execute_query`
 
-One statement, 100 KB at most. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. When the request carries a `progressToken`, the tool emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done).
+One statement, 100 KB at most. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. On MongoDB, a statement is a read only when it is one call with literal arguments, as [Safe Mode](/features/safe-mode#what-counts-as-a-read) describes; any other JavaScript is a write and needs `tools:write`. When the request carries a `progressToken`, the tool emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done).
 
 On SQL Server, send the whole script instead. A variable exists only in the batch that declares it, so a `DECLARE` and the `SELECT`s that read it belong in one call. The script is cut into batches at its `GO` lines, as the query editor cuts it, and `GO 5` runs a batch five times. The gates judge the script by its worst statement: one write anywhere needs `tools:write` and Safe Mode, and one `DROP` refuses the call. `DECLARE` counts as a write.
 

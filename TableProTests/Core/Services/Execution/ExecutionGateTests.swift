@@ -400,10 +400,80 @@ struct ExecutionGateTests {
         let gate = makeGate(level: .readOnly, forcesWrite: true, confirm: confirm, auth: auth)
 
         let decision = await gate.authorize(
-            makeRequest(sql: "db.users.find({})", kind: .readQuery, databaseType: .mongodb)
+            makeRequest(sql: "SELECT 1", kind: .readQuery, databaseType: DatabaseType(rawValue: "FutureStore"))
         )
 
         #expect(decision.deniedReason?.contains("read-only") == true)
+    }
+
+    // MARK: - Engines without a read-only mode
+
+    @Test("Only an engine the classifier cannot prove reads on is forced to write")
+    func forcedWriteFallsBackToTheDeclaration() {
+        for databaseType in [DatabaseType.mongodb, .redis, .etcd, .sapHana] {
+            #expect(!ExecutionGateProvider.forcesWrite(databaseType, supportsReadOnlyMode: false))
+        }
+        let unknown = DatabaseType(rawValue: "FutureStore")
+        #expect(ExecutionGateProvider.forcesWrite(unknown, supportsReadOnlyMode: false))
+        #expect(!ExecutionGateProvider.forcesWrite(unknown, supportsReadOnlyMode: true))
+    }
+
+    @Test("Read-only runs a MongoDB read and blocks a MongoDB write")
+    func readOnlyRunsMongoReads() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let forcesWrite = ExecutionGateProvider.forcesWrite(.mongodb, supportsReadOnlyMode: false)
+        let gate = makeGate(level: .readOnly, forcesWrite: forcesWrite, confirm: confirm, auth: auth)
+
+        let read = await gate.authorize(makeRequest(
+            sql: #"db.c.find({}, {"_id": 1}).limit(1)"#,
+            kind: .readQuery,
+            databaseType: .mongodb
+        ))
+        let write = await gate.authorize(
+            makeRequest(sql: "db.c.insertOne({a: 1})", kind: .writeQuery, databaseType: .mongodb)
+        )
+
+        #expect(read.isAuthorized)
+        #expect(write.deniedReason?.contains("read-only") == true)
+    }
+
+    /// A run of several statements reaches the gate as one text.
+    @Test("Alert confirms a MongoDB write but not a run of reads")
+    func alertConfirmsOnlyMongoWrites() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let forcesWrite = ExecutionGateProvider.forcesWrite(.mongodb, supportsReadOnlyMode: false)
+        let gate = makeGate(level: .alert, forcesWrite: forcesWrite, confirm: confirm, auth: auth)
+
+        let reads = await gate.authorize(makeRequest(
+            sql: "db.orders.find({status: \"open\"})\ndb.orders.aggregate([{$group: {_id: \"$region\"}}])",
+            kind: .readQuery,
+            databaseType: .mongodb
+        ))
+        #expect(reads.isAuthorized)
+        #expect(confirm.callCount == 0)
+
+        let write = await gate.authorize(makeRequest(
+            sql: "db.orders.find({})\ndb.orders.updateOne({_id: 1}, {$set: {a: 1}})",
+            kind: .writeQuery,
+            databaseType: .mongodb
+        ))
+        #expect(write.isAuthorized)
+        #expect(confirm.callCount == 1)
+    }
+
+    @Test("Read-only runs reads on Redis, etcd and SAP HANA")
+    func readOnlyRunsReadsOnEnginesWithoutReadOnlyMode() async {
+        let confirm = StubConfirming(answer: true)
+        let auth = StubAuthenticating(answer: true)
+        let reads: [(DatabaseType, String)] = [(.redis, "GET session:1"), (.etcd, "get config/app"), (.sapHana, "SELECT * FROM DUMMY")]
+        for (databaseType, sql) in reads {
+            let forcesWrite = ExecutionGateProvider.forcesWrite(databaseType, supportsReadOnlyMode: false)
+            let gate = makeGate(level: .readOnly, forcesWrite: forcesWrite, confirm: confirm, auth: auth)
+            let decision = await gate.authorize(makeRequest(sql: sql, kind: .readQuery, databaseType: databaseType))
+            #expect(decision.isAuthorized, "\(databaseType.rawValue): \(sql)")
+        }
     }
 
     // MARK: - Alert

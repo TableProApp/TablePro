@@ -382,6 +382,12 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("runCommand", databaseType: .mongodb))
     }
 
+    /// XAUTOCLAIM moves pending entries to another consumer and drops deleted ones from the PEL.
+    @Test("Redis XAUTOCLAIM is a write")
+    func redisAutoclaimIsWrite() {
+        #expect(QueryClassifier.isWriteQuery("XAUTOCLAIM orders workers mallory 0 0-0 COUNT 10", databaseType: .redis))
+    }
+
     @Test("Redis reads come from an allowlist and everything else is a write")
     func redisAllowlist() {
         for command in ["GET key", "HGETALL hash", "LRANGE list 0 -1", "SCAN 0", "TTL key"] {
@@ -526,10 +532,42 @@ struct QueryClassifierNonSqlTests {
     @Test("Elasticsearch separates read verbs from writes and deletes")
     func elasticsearchTiers() {
         #expect(!QueryClassifier.isWriteQuery("GET /index/_search", databaseType: .elasticsearch))
-        #expect(!QueryClassifier.isWriteQuery("POST /index/_search {}", databaseType: .elasticsearch))
+        #expect(!QueryClassifier.isWriteQuery("POST /index/_search\n{}", databaseType: .elasticsearch))
         #expect(QueryClassifier.isWriteQuery("PUT /index/_doc/1", databaseType: .elasticsearch))
         #expect(QueryClassifier.isWriteQuery("POST /index/_doc", databaseType: .elasticsearch))
         #expect(QueryClassifier.classifyTier("DELETE /index", databaseType: .elasticsearch) == .destructive)
+    }
+
+    @Test(
+        "An Elasticsearch request reads only when the request the driver sends reads",
+        arguments: [
+            "GET /orders/_search\n{\"query\": {\"match_all\": {}}}",
+            "POST /orders/_search/template\n{}",
+            "POST /_sql?format=txt\n{\"query\": \"SELECT 1\"}",
+            "POST /orders,archive/_count",
+            "GET /_cat/indices"
+        ]
+    )
+    func elasticsearchReads(request: String) {
+        #expect(QueryClassifier.classifyTier(request, databaseType: .elasticsearch) == .safe)
+    }
+
+    /// The driver sends a GET or HEAD with a body as a POST, and resolves dot segments in the path.
+    @Test(
+        "An Elasticsearch write is not read off an index name, the body or a GET",
+        arguments: [
+            "POST /site_search/_delete_by_query\n{\"query\": {\"match_all\": {}}}",
+            "POST /orders/_mapping\n{\"properties\": {}}",
+            "POST /orders/_doc\n{\"note\": \"_search\"}",
+            "GET /orders/_delete_by_query\n{\"query\": {\"match_all\": {}}}",
+            "GET /orders/_doc/1\n{\"a\": 1}",
+            "POST /_search/../orders/_update_by_query\n{}",
+            "POST /orders/_search /../_delete_by_query\n{}",
+            "POST /orders/%5Fsearch\n{}"
+        ]
+    )
+    func elasticsearchWrites(request: String) {
+        #expect(QueryClassifier.classifyTier(request, databaseType: .elasticsearch) != .safe)
     }
 
     @Test("Typesense separates search from writes and deletes")
