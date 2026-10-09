@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with a fresh token on each connect and no proxy.
+- Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, without the Cloud SQL Auth Proxy.
 - Row and text selection in the JSON and PHP viewer trees, with `Cmd+C` copying the selected values.
 - Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An AWS IAM sign-in to MySQL failing to reconnect after an idle release, and Stop failing, once its token expired.
 - SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
 - Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
 - SQL Server `datetimeoffset` values shown, copied and exported without their offset.

@@ -10,7 +10,7 @@ import TableProPluginKit
 /// The one answer to "what password does this connection sign in with".
 ///
 /// A connection can get its password from five places: an AWS or Cloud SQL IAM token minted per
-/// connect, an explicit override from a prompt, a `PasswordSource` (a file, an environment variable,
+/// sign-in, an explicit override from a prompt, a `PasswordSource` (a file, an environment variable,
 /// the stdout of a shell command, 1Password, Vault, AWS Secrets Manager), `~/.pgpass`, or the
 /// Keychain. Only the connect path knew all five. `NativeDumpService` read the Keychain directly,
 /// so a backup of a connection whose password comes from 1Password or `~/.pgpass` ran with an empty
@@ -23,11 +23,8 @@ enum ConnectionCredentialResolver {
         override: String? = nil,
         deadline: ConnectionDeadline? = nil
     ) async throws -> String {
-        if connection.usesAWSIAM, !connection.resolvesAWSIAMInDriver {
-            return try await resolveIAMPassword(for: connection, fields: fields, deadline: deadline)
-        }
-        if connection.usesGoogleCloudIAM {
-            return try await resolveCloudSQLIAMPassword(fields: fields, deadline: deadline)
+        if let minter = iamPasswordMinter(for: connection, fields: fields) {
+            return try await minter.mint(deadline: deadline)
         }
         if let override { return override }
         if case .profile(let profileId) = connection.credentialMode,
@@ -109,98 +106,34 @@ enum ConnectionCredentialResolver {
         ) ?? ""
     }
 
-    /// AWS validates the username inside the token against the one used to connect, so this signs
-    /// with the resolved username rather than `connection.username`, which can lag behind the
-    /// profile until a write-through lands.
-    static func resolveIAMPassword(
+    /// What mints the password of a connection that signs in with a token, or nil when the host does
+    /// not: a plain password, or an AWS IAM sign-in its driver resolves itself. The AWS token is signed
+    /// for the resolved username rather than `connection.username`, which can lag behind the profile
+    /// until a write-through lands.
+    static func iamPasswordMinter(
         for connection: DatabaseConnection,
-        fields: [String: String],
-        deadline: ConnectionDeadline? = nil
-    ) async throws -> String {
-        let username = resolveUsername(for: connection)
-        let source = fields["awsAuth"] ?? "accessKey"
-        let credentials = try await resolveAWSCredentials(source: source, fields: fields, deadline: deadline)
-
-        if connection.type == .redis {
-            guard let region = fields["awsRegion"].flatMap({ $0.isEmpty ? nil : $0 }) else {
-                throw AWSAuthError.regionUnknown(host: connection.host)
-            }
-            guard connection.sslConfig.mode != .disabled else {
-                throw AWSAuthError.missingConfiguration(
-                    String(localized: "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings.")
-                )
-            }
-            guard let replicationGroupId = fields["awsReplicationGroupId"].flatMap({ $0.isEmpty ? nil : $0 }) else {
-                throw AWSAuthError.missingConfiguration(
-                    String(localized: "Enter the ElastiCache cache name (replication group ID) to use IAM authentication.")
-                )
-            }
-            return ElastiCacheAuthTokenGenerator.generateToken(
-                replicationGroupId: replicationGroupId,
-                region: region,
-                userId: username,
-                credentials: credentials
-            )
+        fields: [String: String]
+    ) -> IAMPasswordMinter? {
+        switch connection.iamSignIn {
+        case .aws(let source):
+            guard !connection.resolvesAWSIAMInDriver else { return nil }
+            return .aws(AWSIAMTokenSigner(
+                connection: connection,
+                source: source,
+                username: resolveUsername(for: connection),
+                fields: fields
+            ))
+        case .googleCloud(.applicationDefault):
+            return .googleCloud(CloudSQLIAMLogin(connectionId: connection.id, source: .applicationDefault))
+        case .googleCloud(.serviceAccount):
+            let key = fields[GoogleCloudSQLAuthFields.serviceAccountKeyFieldId] ?? ""
+            return .googleCloud(CloudSQLIAMLogin(connectionId: connection.id, source: .serviceAccountKey(key)))
+        case nil:
+            return nil
         }
-
-        let endpoint = try RDSSigningEndpointResolver.resolve(
-            configuredHost: connection.host,
-            configuredPort: connection.port,
-            preTunnelHost: connection.preTunnelHost,
-            preTunnelPort: connection.preTunnelPort,
-            override: fields["awsRDSEndpoint"],
-            defaultPort: PluginMetadataRegistry.shared
-                .snapshot(for: connection.type)?.defaultPort ?? connection.port
-        )
-
-        let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
-        guard let region = explicitRegion ?? RDSEndpoint.region(forHost: endpoint.host) else {
-            throw AWSAuthError.regionUnknown(host: endpoint.host)
-        }
-        return RDSAuthTokenGenerator.generateToken(
-            host: endpoint.host,
-            port: endpoint.port,
-            region: region,
-            username: username,
-            credentials: credentials
-        )
     }
 
-    private static func resolveCloudSQLIAMPassword(
-        fields: [String: String],
-        deadline: ConnectionDeadline?
-    ) async throws -> String {
-        var http: any GoogleHTTPClient = URLSessionGoogleHTTPClient()
-        if let deadline {
-            http = CloudSQLIAMDeadlineHTTPClient(base: http, timeout: credentialRequestTimeout(for: deadline))
-        }
-        let provider = try CloudSQLIAMTokenProvider.provider(
-            fields: fields,
-            readFile: { FileManager.default.contents(atPath: $0) },
-            environment: ProcessInfo.processInfo.environment,
-            http: http
-        )
-        return try await CloudSQLIAMTokenProvider.accessToken(from: provider)
-    }
-
-    private static func resolveAWSCredentials(
-        source: String,
-        fields: [String: String],
-        deadline: ConnectionDeadline?
-    ) async throws -> AWSCredentials {
-        guard let deadline else {
-            return try await AWSCredentialResolver.resolve(source: source, fields: fields)
-        }
-        let timeout = credentialRequestTimeout(for: deadline)
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel() }
-        return try await AWSCredentialResolver.resolve(source: source, fields: fields, session: session)
-    }
-
-    static func credentialRequestTimeout(
+    nonisolated static func credentialRequestTimeout(
         for deadline: ConnectionDeadline,
         at now: ContinuousClock.Instant = .now
     ) -> TimeInterval {

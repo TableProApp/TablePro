@@ -218,7 +218,8 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
-        /// Cloud SQL runs only MySQL and PostgreSQL, so their forks keep the AWS-only picker.
+        /// Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
+        /// MySQL and PostgreSQL forks keep the AWS-only picker.
         let cloudIAMFields = GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()]
 
         /// The MySQL plugin's types only. PostgreSQL shares the IAM fields and must not pick this up:

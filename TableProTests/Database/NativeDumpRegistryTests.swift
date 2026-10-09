@@ -489,6 +489,32 @@ struct NativeDumpRegistryTests {
         #expect(NativeDumpService.sizeQuery(for: .sqlite) == nil)
     }
 
+    @Test("A MySQL dump signed in with a token requires TLS, and MySQL's tools send the token in cleartext")
+    func mysqlTokenDump() throws {
+        var iam = connection(type: .mysql)
+        iam.additionalFields["awsAuth"] = "gcpServiceAccount"
+        for kind in [NativeDumpKind.backup, .restore] {
+            let mysql = try command(.mysql, kind: kind, connection: iam, flavor: .mysql)
+            #expect(mysql.arguments.contains("--ssl-mode=REQUIRED"))
+            #expect(mysql.arguments.contains("--enable-cleartext-plugin"))
+
+            let maria = try command(.mysql, kind: kind, connection: iam, flavor: .mariadb)
+            #expect(maria.arguments.contains("--ssl-verify-server-cert"))
+            #expect(!maria.arguments.contains("--enable-cleartext-plugin"))
+        }
+        let password = try command(.mysql, flavor: .mysql)
+        #expect(!password.arguments.contains("--enable-cleartext-plugin"))
+    }
+
+    @Test("A PostgreSQL dump signed in with a token requires TLS when the connection has SSL off")
+    func postgresTokenDump() throws {
+        for auth in ["gcpApplicationDefault", "profile"] {
+            var iam = connection(type: .postgresql)
+            iam.additionalFields["awsAuth"] = auth
+            #expect(try command(.postgresql, connection: iam).environment["PGSSLMODE"] == "require")
+        }
+    }
+
     @Test("Every install hint is plain text")
     func installHintsArePlainText() throws {
         for type in [DatabaseType.postgresql, .redshift, .mysql, .mongodb, .sqlite] {

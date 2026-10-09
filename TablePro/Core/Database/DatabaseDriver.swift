@@ -967,6 +967,7 @@ enum DatabaseDriverFactory {
             effective: connection.additionalFields
         )
         let credentialFields = additionalFields
+        let passwordMinter = ConnectionCredentialResolver.iamPasswordMinter(for: connection, fields: credentialFields)
         let password: String
         if requiresHostDeadline {
             password = try await resolvePasswordWithinDeadline(
@@ -1011,8 +1012,9 @@ enum DatabaseDriverFactory {
             username: preparedConfiguration.username,
             password: password,
             database: connection.database,
-            ssl: effectiveSSLConfiguration(for: connection),
-            additionalFields: additionalFields
+            ssl: connection.transportSSLConfiguration,
+            additionalFields: additionalFields,
+            refreshPassword: passwordMinter?.refreshPassword
         )
         let pluginDriver = plugin.createDriver(config: config)
         return PluginDriverAdapter(
@@ -1035,14 +1037,6 @@ enum DatabaseDriverFactory {
             merged[key] = effective[key]
         }
         return merged
-    }
-
-    private static func effectiveSSLConfiguration(for connection: DatabaseConnection) -> SSLConfiguration {
-        var ssl = connection.sslConfig
-        if connection.usesIAMToken, ssl.mode == .disabled || ssl.mode == .preferred {
-            ssl.mode = .required
-        }
-        return ssl
     }
 
     static func timeoutAdditionalFields(
@@ -1128,7 +1122,7 @@ enum DatabaseDriverFactory {
         /// The superset, not the rendered form's list. A connection saved while a variant was
         /// still being offered its primary's whole form holds those values in the Keychain, and
         /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
-        /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
+        /// `AWSIAMTokenSigner`, which reads `awsSecretAccessKey` from here. Loading only what the
         /// form renders today would leave that secret behind and fail the connect, with no AWS
         /// section left in the form to turn it off.
         let credentialProfile = connection.credentialMode.profileId

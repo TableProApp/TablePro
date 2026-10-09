@@ -16,7 +16,7 @@ public enum GoogleCloudSQLAuthFields {
             ConnectionField(
                 id: serviceAccountKeyFieldId,
                 label: String(localized: "Service Account Key"),
-                placeholder: "File path or paste JSON",
+                placeholder: String(localized: "File path or paste JSON"),
                 required: true,
                 fieldType: .secure,
                 section: .authentication,

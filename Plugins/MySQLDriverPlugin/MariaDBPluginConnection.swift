@@ -106,6 +106,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let queryTimeoutSeconds: Int
     private let connectionEncoding: MySQLConnectionEncoding
     private let connectTimeoutMilliseconds: Int
+    private let refreshPassword: (@Sendable () async throws -> String)?
 
     /// How long a read may go silent before libmariadb reports the connection lost, which is the
     /// only thing separating its own timeout from a server-side drop.
@@ -309,7 +310,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         enableCleartextPlugin: Bool = false,
         queryTimeoutSeconds: Int = 0,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
-        connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds
+        connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
+        refreshPassword: (@Sendable () async throws -> String)? = nil
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -321,6 +323,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.connectionEncoding = connectionEncoding
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
+        self.refreshPassword = refreshPassword
         self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
     }
 
@@ -667,7 +670,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let killConn = mysql_init(nil)
         guard let killConn = killConn else { return nil }
 
-        var killTimeout: UInt32 = 5
+        var killTimeout = Self.killTimeoutSeconds
         mysql_options(killConn, MYSQL_OPT_CONNECT_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
@@ -699,9 +702,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_options(killConn, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &killEnableCleartext)
         }
 
+        let killPassword = sideConnectionPassword()
         let killResult = host.withCString { hostPtr in
             user.withCString { userPtr in
-                if let pass = password {
+                if let pass = killPassword {
                     return pass.withCString { passPtr in
                         mysql_real_connect(killConn, hostPtr, userPtr, passPtr, nil, port, nil, 0)
                     }
@@ -717,6 +721,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             return nil
         }
         return killConn
+    }
+
+    private static let killTimeoutSeconds: UInt32 = 5
+
+    /// The kill is a new sign-in, which an expired IAM token cannot make, so it asks the host for a
+    /// current one. Every caller is on a dispatch queue that is about to block for the kill's own
+    /// connect, so waiting for the token holds no thread the connect would not.
+    private func sideConnectionPassword() -> String? {
+        guard let refreshPassword else { return password }
+        return MySQLBlockingPasswordRefresh.wait(
+            for: refreshPassword,
+            timeout: .seconds(Int(Self.killTimeoutSeconds))
+        ) ?? password
     }
 
     /// Whether the kill went out. The caller records an interrupt only on `true`, so a refused or

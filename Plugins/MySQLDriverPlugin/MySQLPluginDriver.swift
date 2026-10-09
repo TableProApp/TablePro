@@ -161,6 +161,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await open(password: config.password)
+    }
+
+    private func open(password: String) async throws {
         let sslConfig = config.ssl
         let connectTimeout = MySQLConnectTimeout(additionalFields: config.additionalFields)
         let connectDeadline = MySQLConnectDeadline(timeout: connectTimeout)
@@ -169,13 +173,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host,
             port: config.port,
             user: config.username,
-            password: config.password,
+            password: password,
             database: activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
-            connectTimeoutMilliseconds: connectTimeout.milliseconds
+            connectTimeoutMilliseconds: connectTimeout.milliseconds,
+            refreshPassword: config.refreshPassword
         )
 
         try await conn.connect(deadline: connectDeadline)
@@ -568,8 +573,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await attempt.value
     }
 
+    /// An IAM token signs in once, so the new server connection asks the host for a current one.
     private func reacquire() async throws {
-        try await connect()
+        try await open(password: try await config.passwordForNewSignIn())
         if let seconds = sessionLock.withLock({ appliedQueryTimeoutSeconds }) {
             try await applyQueryTimeout(seconds)
         }
