@@ -106792,6 +106792,10 @@
         }
       }
     },
+    "Missing required argument: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Missing required parameter: %@" : {
       "localizations" : {
         "fr" : {
@@ -141266,6 +141270,18 @@
           }
         }
       }
+    },
+    "Refused %@: this statement ran as a read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused a pipeline with $out or $merge: an export only reads." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused a pipeline with $out or $merge: this statement ran as a read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Regenerate" : {
       "localizations" : {

@@ -46,6 +46,22 @@ enum MongoScriptText {
         String(localized: "This cursor has already been closed.")
     }
 
+    static func refusedUnderRead(_ operation: String) -> String {
+        String(format: String(localized: "Refused %@: this statement ran as a read."), operation)
+    }
+
+    static var refusedWritingPipelineUnderRead: String {
+        String(localized: "Refused a pipeline with $out or $merge: this statement ran as a read.")
+    }
+
+    static var refusedWritingPipelineInExport: String {
+        String(localized: "Refused a pipeline with $out or $merge: an export only reads.")
+    }
+
+    static func missingArgument(_ name: String) -> String {
+        String(format: String(localized: "Missing required argument: %@"), name)
+    }
+
     static func cursorAlreadyStarted(_ key: String) -> String {
         String(format: String(localized: ".%@() cannot be set once the cursor has started."), key)
     }

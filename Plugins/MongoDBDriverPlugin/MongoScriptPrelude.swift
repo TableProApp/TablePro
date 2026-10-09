@@ -44,6 +44,14 @@ enum MongoScriptPrelude {
         }
     }
 
+    // A filter left undefined, say by a misspelt property, would otherwise match every document.
+    // The message is mongosh's.
+    function __required(value, position, caller) {
+        if (value === undefined) {
+            throw new Error("Missing required argument at position " + position + " (Collection." + caller + ")");
+        }
+    }
+
     function __document(value) {
         var document = {};
         for (var key in value) {
@@ -574,30 +582,31 @@ enum MongoScriptPrelude {
             upsertedId: upserted.length ? upserted[0]._id : null
         };
     }
-    DBCollection.prototype.__write = function (op, filter, change, options, multi) {
+    DBCollection.prototype.__write = function (op, filter, change, options, multi, caller) {
+        __required(filter, 0, caller);
         if (change === undefined || change === null) {
             throw new Error(op === "replace"
                 ? "replaceOne needs a replacement document"
                 : "update needs an update document or pipeline");
         }
         return __updateResult(this.__reply(op, {
-            filter: __ejson(filter === undefined ? {} : filter),
+            filter: __ejson(filter),
             update: __ejson(change),
             options: options === undefined ? null : __ejson(options),
             multi: multi === true
         }));
     };
     DBCollection.prototype.updateOne = function (filter, update, options) {
-        return this.__write("update", filter, update, options, false);
+        return this.__write("update", filter, update, options, false, "updateOne");
     };
     DBCollection.prototype.updateMany = function (filter, update, options) {
-        return this.__write("update", filter, update, options, true);
+        return this.__write("update", filter, update, options, true, "updateMany");
     };
     DBCollection.prototype.update = function (filter, update, options) {
-        return this.__write("update", filter, update, options, !!(options && options.multi));
+        return this.__write("update", filter, update, options, !!(options && options.multi), "update");
     };
     DBCollection.prototype.replaceOne = function (filter, replacement, options) {
-        return this.__write("replace", filter, replacement, options, false);
+        return this.__write("replace", filter, replacement, options, false, "replaceOne");
     };
     DBCollection.prototype.save = function (document) {
         if (document && document._id !== undefined) {
@@ -605,9 +614,10 @@ enum MongoScriptPrelude {
         }
         return this.insertOne(document);
     };
-    DBCollection.prototype.__delete = function (filter, options, multi) {
+    DBCollection.prototype.__delete = function (filter, options, multi, caller) {
+        __required(filter, 0, caller);
         var reply = this.__reply("delete", {
-            filter: __ejson(filter === undefined ? {} : filter),
+            filter: __ejson(filter),
             options: options === undefined ? null : __ejson(options),
             multi: multi
         });
@@ -615,24 +625,26 @@ enum MongoScriptPrelude {
         return { acknowledged: true, deletedCount: reply.n || 0 };
     };
     DBCollection.prototype.deleteOne = function (filter, options) {
-        return this.__delete(filter, options, false);
+        return this.__delete(filter, options, false, "deleteOne");
     };
     DBCollection.prototype.deleteMany = function (filter, options) {
-        return this.__delete(filter, options, true);
+        return this.__delete(filter, options, true, "deleteMany");
     };
     DBCollection.prototype.remove = function (filter, justOneOrOptions) {
+        __required(filter, 0, "remove");
         if (typeof justOneOrOptions === "boolean") {
             return justOneOrOptions ? this.deleteOne(filter) : this.deleteMany(filter);
         }
         var options = justOneOrOptions === null ? undefined : justOneOrOptions;
         return options && options.justOne ? this.deleteOne(filter, options) : this.deleteMany(filter, options);
     };
-    DBCollection.prototype.__findAndModify = function (filter, change, options, remove) {
+    DBCollection.prototype.__findAndModify = function (filter, change, options, remove, caller) {
+        __required(filter, 0, caller);
         if (!remove && (change === undefined || change === null)) {
             throw new Error("findOneAndUpdate needs an update document or pipeline");
         }
         var reply = this.__call("findAndModify", {
-            filter: __ejson(filter === undefined ? {} : filter),
+            filter: __ejson(filter),
             update: change === undefined ? null : __ejson(change),
             options: options === undefined ? null : __ejson(options),
             remove: remove
@@ -640,13 +652,13 @@ enum MongoScriptPrelude {
         return reply.value === undefined || reply.value === null ? null : __document(reply.value);
     };
     DBCollection.prototype.findOneAndUpdate = function (filter, update, options) {
-        return this.__findAndModify(filter, update, options, false);
+        return this.__findAndModify(filter, update, options, false, "findOneAndUpdate");
     };
     DBCollection.prototype.findOneAndReplace = function (filter, replacement, options) {
-        return this.__findAndModify(filter, replacement, options, false);
+        return this.__findAndModify(filter, replacement, options, false, "findOneAndReplace");
     };
     DBCollection.prototype.findOneAndDelete = function (filter, options) {
-        return this.__findAndModify(filter, undefined, options, true);
+        return this.__findAndModify(filter, undefined, options, true, "findOneAndDelete");
     };
     DBCollection.prototype.bulkWrite = function (operations, options) {
         var reply = this.__reply("bulkWrite", {

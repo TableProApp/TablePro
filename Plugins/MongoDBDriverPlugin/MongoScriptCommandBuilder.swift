@@ -197,15 +197,15 @@ enum MongoScriptCommandBuilder {
         }
         for name in ["updateOne", "updateMany", "replaceOne"] {
             guard let body = MongoScriptJson.member(of: operation, key: name) else { continue }
-            let filter = MongoScriptJson.member(of: body, key: "filter") ?? "{}"
-            let change = MongoScriptJson.member(of: body, key: name == "replaceOne" ? "replacement" : "update")
+            let filter = try requiredMember(of: body, key: "filter")
+            let change = try requiredMember(of: body, key: name == "replaceOne" ? "replacement" : "update")
             return BulkStatement(
                 kind: .update,
                 touchesMany: name == "updateMany",
                 document: update(
                     collection: collection,
                     filter: filter,
-                    update: change ?? "{}",
+                    update: change,
                     multi: name == "updateMany",
                     options: MongoScriptJson.options(body),
                     writeConcern: writeConcern
@@ -214,12 +214,13 @@ enum MongoScriptCommandBuilder {
         }
         for name in ["deleteOne", "deleteMany"] {
             guard let body = MongoScriptJson.member(of: operation, key: name) else { continue }
+            let filter = try requiredMember(of: body, key: "filter")
             return BulkStatement(
                 kind: .delete,
                 touchesMany: name == "deleteMany",
                 document: delete(
                     collection: collection,
-                    filter: MongoScriptJson.member(of: body, key: "filter") ?? "{}",
+                    filter: filter,
                     multi: name == "deleteMany",
                     options: MongoScriptJson.options(body),
                     writeConcern: writeConcern
@@ -230,6 +231,15 @@ enum MongoScriptCommandBuilder {
     }
 
     // MARK: - Helpers
+
+    /// A missing or null filter is refused rather than read as `{}`, which would match every document,
+    /// and a missing update rather than sent as an empty replacement.
+    private static func requiredMember(of body: String, key: String) throws -> String {
+        guard let value = presentMember(of: body, key: key) else {
+            throw MongoScriptError(MongoScriptText.missingArgument(key))
+        }
+        return value
+    }
 
     /// The name MongoDB gives an index the script did not name, which is the key names and their
     /// directions joined with underscores, in the order the key document declares them.

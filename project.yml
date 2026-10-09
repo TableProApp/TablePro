@@ -650,6 +650,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoFieldDependent.swift
       - Plugins/MongoDBDriverPlugin/MongoFieldReferences.swift
       - Plugins/MongoDBDriverPlugin/MongoWriteConcern.swift
+      - Plugins/MongoDBDriverPlugin/MongoScriptAccessPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptCommandBuilder.swift
       - Plugins/MongoDBDriverPlugin/MongoShellCommandLine.swift
       - Plugins/MongoDBDriverPlugin/MongoScriptContext.swift

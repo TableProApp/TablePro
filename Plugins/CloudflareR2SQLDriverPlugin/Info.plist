@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>35</integer>
+	<integer>36</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Cloudflare R2 SQL</string>

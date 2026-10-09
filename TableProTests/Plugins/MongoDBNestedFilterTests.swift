@@ -13,6 +13,12 @@ import Testing
 @testable import TablePro
 
 struct MongoDBNestedFilterTests {
+    private static let normalizer = MongoDBRawFilterNormalizer()
+
+    private var rawFilterBuilder: MongoDBQueryBuilder {
+        MongoDBQueryBuilder(rawFilterNormalizer: { Self.normalizer.normalize($0) })
+    }
+
     private func filter(
         _ column: String,
         _ op: String,
@@ -158,16 +164,16 @@ struct MongoDBNestedFilterTests {
 
     @Test("A raw filter row is used as the filter document, not as a field named __RAW__")
     func rawFilterIsUsedAsDocument() {
-        let doc = MongoDBQueryBuilder().buildFilterDocument(
+        let doc = rawFilterBuilder.buildFilterDocument(
             from: [filter(MongoDBQueryBuilder.rawFilterColumn, "=", "{\"customer.country\": \"US\"}")]
         )
         #expect(!doc.contains("__RAW__"))
-        #expect(doc.contains("{\"customer.country\": \"US\"}"))
+        #expect(doc == "{\"$and\": [{\"customer.country\":\"US\"}]}")
     }
 
     @Test("A raw filter row that is not a document is dropped rather than matching everything")
     func rawFilterRejectsNonDocument() {
-        let doc = MongoDBQueryBuilder().buildFilterDocument(
+        let doc = rawFilterBuilder.buildFilterDocument(
             from: [filter(MongoDBQueryBuilder.rawFilterColumn, "=", "customer.country = 'US'")]
         )
         #expect(!doc.contains("__RAW__"))
@@ -176,7 +182,7 @@ struct MongoDBNestedFilterTests {
 
     @Test("A raw filter of {} keeps MongoDB's own meaning of match everything")
     func rawFilterEmptyDocumentMatchesAll() {
-        let doc = MongoDBQueryBuilder().buildFilterDocument(
+        let doc = rawFilterBuilder.buildFilterDocument(
             from: [filter(MongoDBQueryBuilder.rawFilterColumn, "=", "{}")]
         )
         #expect(doc == "{\"$and\": [{}]}")
@@ -185,14 +191,14 @@ struct MongoDBNestedFilterTests {
 
     @Test("A raw filter combines with a column row under the logic operator")
     func rawFilterCombinesWithColumnRow() {
-        let doc = MongoDBQueryBuilder().buildFilterDocument(
+        let doc = rawFilterBuilder.buildFilterDocument(
             from: [
                 filter(MongoDBQueryBuilder.rawFilterColumn, "=", "{\"items.sku\": \"A100\"}"),
                 filter("customer.country", "=", "US"),
             ]
         )
         #expect(doc.hasPrefix("{\"$and\": ["))
-        #expect(doc.contains("{\"items.sku\": \"A100\"}"))
+        #expect(doc.contains("{\"items.sku\":\"A100\"}"))
         #expect(doc.contains("\"customer.country\": \"US\""))
     }
 

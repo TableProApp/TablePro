@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB reads using `$nin`, `$mergeObjects`, `.limit()` or `getCollection` refused as writes for read-only MCP clients. (#3290)
 - MongoDB `remove()` and `drop ()` running without the dangerous query warning, and a JavaScript `delete` raising it. (#3290)
 - `seq.NEXTVAL` and `NEXT VALUE FOR seq` running at Read-Only and unconfirmed at Alert, though they advance the sequence. (#3290)
+- MongoDB `deleteMany()`, `updateMany()` and other writes treating a missing filter as `{}` and touching every document. (#3293)
+- MongoDB `count()` on an aggregate stopping at 5,000,000 and counting only the documents not yet read. (#3293)
 
 ### Security
 
@@ -26,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body. (#3290)
 - Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read. (#3290)
 - SAP HANA helper built with Go 1.27.2, which fixes the crypto/tls flaw GO-2026-6607.
+- MongoDB reads writing through a shell function an earlier statement redefined. (#3293)
+- A MongoDB raw filter row that failed to parse running as JavaScript in a table tab, even at Read-Only. (#3293)
 
 ## [0.79.0] - 2026-10-08
 

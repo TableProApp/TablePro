@@ -22,6 +22,10 @@ struct MongoScriptPreludeTests {
         var refusal: (message: String, code: Int)?
         var refusals: [String: String] = [:]
         var database = "shop"
+        /// Held to the driver's policy, so a test sees what the real host would refuse.
+        var access = MongoScriptAccess.readWrite
+        var repliesByOp: [String: String] = [:]
+        private(set) var refused: [String] = []
 
         func handle(_ requestJson: String) -> String {
             guard let data = requestJson.data(using: .utf8),
@@ -29,6 +33,16 @@ struct MongoScriptPreludeTests {
                 return "{\"ok\":false,\"e\":{\"m\":\"bad request\",\"c\":0}}"
             }
             requests.append(request)
+
+            let op = request["op"] as? String ?? ""
+            guard MongoScriptAccessPolicy.allows(op: op, request: request, access: access) else {
+                refused.append(op)
+                let name = MongoScriptAccessPolicy.refusedName(op: op, request: request)
+                return MongoScriptJson.failure(message: MongoScriptText.refusedUnderRead(name), code: 0)
+            }
+            if let reply = repliesByOp[op] {
+                return "{\"ok\":true,\"v\":\(reply)}"
+            }
 
             switch request["op"] as? String {
             case "currentDatabase":
@@ -538,6 +552,68 @@ struct MongoScriptPreludeTests {
         }
         #expect(host.requests(op: "update").isEmpty)
         #expect(host.requests(op: "insertOne").isEmpty)
+    }
+
+    /// mongosh refuses these too. Reading an undefined filter as `{}` turned a misspelt property into
+    /// a write to every document.
+    @Test("A write whose filter is undefined throws mongosh's error and sends nothing")
+    func writesNeedAFilter() throws {
+        let host = RecordingHost()
+        let context = try makeContext(host)
+
+        let statements = [
+            ("db.orders.deleteMany(undefined)", "deleteMany"),
+            ("db.orders.deleteOne()", "deleteOne"),
+            ("db.orders.remove()", "remove"),
+            ("db.orders.remove(undefined, true)", "remove"),
+            ("var opts = {filter: {status: 'old'}}; db.orders.deleteMany(opts.filtr)", "deleteMany"),
+            ("db.orders.updateOne(undefined, {$set: {a: 1}})", "updateOne"),
+            ("db.orders.updateMany(undefined, {$set: {a: 1}})", "updateMany"),
+            ("db.orders.update(undefined, {$set: {a: 1}})", "update"),
+            ("db.orders.replaceOne(undefined, {a: 1})", "replaceOne"),
+            ("db.orders.findOneAndUpdate(undefined, {$set: {a: 1}})", "findOneAndUpdate"),
+            ("db.orders.findOneAndReplace(undefined, {a: 1})", "findOneAndReplace"),
+            ("db.orders.findOneAndDelete()", "findOneAndDelete")
+        ]
+        for (statement, method) in statements {
+            context.exception = nil
+            context.evaluateScript(statement)
+            #expect(
+                context.exception?.objectForKeyedSubscript("message")?.toString()
+                    == "Missing required argument at position 0 (Collection.\(method))",
+                "\(statement)"
+            )
+        }
+        for op in ["delete", "update", "replace", "findAndModify"] {
+            #expect(host.requests(op: op).isEmpty, "\(op)")
+        }
+    }
+
+    @Test("An explicit {} filter still reaches the host, meaning every document")
+    func explicitEmptyFilterStillWrites() throws {
+        let host = RecordingHost()
+        host.repliesByOp = [
+            "delete": "{\"n\": 0}",
+            "update": "{\"n\": 0, \"nModified\": 0}",
+            "replace": "{\"n\": 0, \"nModified\": 0}",
+            "findAndModify": "{\"value\": null}"
+        ]
+        let context = try makeContext(host)
+
+        for statement in [
+            "db.orders.deleteMany({})",
+            "db.orders.remove({})",
+            "db.orders.updateMany({}, {$set: {a: 1}})",
+            "db.orders.replaceOne({}, {a: 1})",
+            "db.orders.findOneAndDelete({})"
+        ] {
+            context.evaluateScript(statement)
+            #expect(context.exception == nil, "\(statement) threw")
+        }
+        #expect(host.requests(op: "delete").map { $0["filter"] as? String } == ["{}", "{}"])
+        #expect(host.requests(op: "update").first?["filter"] as? String == "{}")
+        #expect(host.requests(op: "replace").first?["filter"] as? String == "{}")
+        #expect(host.requests(op: "findAndModify").first?["filter"] as? String == "{}")
     }
 
     @Test("insertOne, insertMany and bulkWrite pass their options on, and send null without them")

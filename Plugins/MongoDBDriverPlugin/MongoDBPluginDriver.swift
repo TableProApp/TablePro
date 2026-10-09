@@ -142,6 +142,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = mongoConnection else {
@@ -166,17 +170,34 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        return try await runScript(trimmed, rowCap: nil, startTime: startTime)
+        return try await runScript(trimmed, rowCap: nil, access: MongoScriptAccess(context), startTime: startTime)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await execute(query: query, context: context)
+    }
+
     func executeUserQuery(
         query: String,
         rowCap: Int?,
         parameters: [PluginCellValue]?
+    ) async throws -> PluginQueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
     ) async throws -> PluginQueryResult {
         let startTime = Date()
 
@@ -186,15 +207,16 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased() != "select 1" else {
-            return try await execute(query: query)
+            return try await execute(query: query, context: context)
         }
-        return try await runScript(trimmed, rowCap: rowCap, startTime: startTime)
+        return try await runScript(trimmed, rowCap: rowCap, access: MongoScriptAccess(context), startTime: startTime)
     }
 
     /// Runs one statement of the connection's shell and turns what it evaluated to into a result.
     private func runScript(
         _ statement: String,
         rowCap: Int?,
+        access: MongoScriptAccess,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let runtime = scriptRuntime else { throw MongoDBPluginError.notConnected }
@@ -204,7 +226,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let outcome = try await runtime.evaluate(
                 statement: MongoShellCommandLine.rewrite(statement),
                 database: currentDb,
-                valueCeiling: ceiling
+                valueCeiling: ceiling,
+                access: access
             )
             if let switched = outcome.databaseSwitch { currentDb = switched }
             let declared = try await declaredColumns(for: outcome)
@@ -816,6 +839,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, context: PluginStatementContext())
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = mongoConnection else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
@@ -824,6 +851,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             query.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         let db = currentDb
+        let access = MongoScriptAccess(context)
 
         guard let runtime = scriptRuntime else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
@@ -833,12 +861,19 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let work = Task {
                 do {
-                    switch try await runtime.exportPlan(for: trimmed, database: db) {
+                    switch try await runtime.exportPlan(for: trimmed, database: db, access: access) {
                     case .cursor(let plan, let databaseSwitch, let writes):
                         if let databaseSwitch { self.currentDb = databaseSwitch }
                         let census = MongoFieldCensus.request(
                             for: plan, limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
                         )
+                        guard !Self.exportWrites(plan, census: census, timeoutMS: timeout) else {
+                            throw MongoScriptStatementFailure.carrying(
+                                MongoScriptError(MongoScriptText.refusedWritingPipelineInExport),
+                                databaseSwitch: databaseSwitch,
+                                writes: writes
+                            )
+                        }
                         let inner = plan.isFind
                             ? conn.streamFind(
                                 database: plan.database, collection: plan.collection,
@@ -877,6 +912,20 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             // whole query and holds the leased driver busy.
             continuation.onTermination = { @Sendable _ in work.cancel() }
         }
+    }
+
+    /// An export only reads, whatever the statement was sent as, and its plan runs outside the
+    /// host's checks, so every pipeline it would send is checked here.
+    private static func exportWrites(
+        _ plan: MongoScriptCursorPlan,
+        census: MongoFieldCensus.Request?,
+        timeoutMS: Int32
+    ) -> Bool {
+        var sent = [census?.pipeline, census?.optionsJson]
+        if !plan.isFind {
+            sent += [plan.pipeline, plan.options.aggregateOptionsJson(timeoutMS: timeoutMS)]
+        }
+        return sent.compactMap { $0 }.contains(where: MongoScriptAccessPolicy.writesThroughPipeline)
     }
 
     /// Hands over a statement that had already run by the time the export asked, rather than
@@ -1090,5 +1139,11 @@ extension MongoDBPluginError: PluginDriverError {
         case .notConnected: return String(localized: "Not connected to MongoDB")
         case .viewNotFound(let name): return String(format: String(localized: "No view named %@ in this database"), name)
         }
+    }
+}
+
+private extension MongoScriptAccess {
+    init(_ context: PluginStatementContext) {
+        self = context.readOnly ? .read : .readWrite
     }
 }
