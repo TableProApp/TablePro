@@ -146,7 +146,7 @@ SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connecti
 - Named instances are not supported. Give the host and the TCP port that instance listens on.
 - NTLM is not supported: Windows Authentication on macOS is Kerberos only.
 - Entra ID connections are created on the Mac only, through the device code flow only. iPhone and iPad take them over sync and prompt to sign in when you open one.
-- The SSL pane offers no certificate fields here, and your own `freetds.conf` is not read. A server certificate from a private CA fails Verify CA and Verify Identity: use **Required (skip verify)** for that server.
+- The Network tab offers no certificate fields here, and your own `freetds.conf` is not read. A server certificate from a private CA fails Verify CA and Verify Identity: use **Required (skip verify)** for that server.
 - A result set from a batch offers **Fetch All**, and sorts on the server, only when its query can run again on its own. One that reads a variable, or comes from a procedure call or a loop, stays at the row limit and sorts the rows already shown: raise **Row cap** in [Settings](/customization/settings), or run the query by itself.
 - A batch keeps its first 100 result sets. The statements behind the rest still run, and the status bar says how many result sets were not kept.
 - With a transaction open under `SET XACT_ABORT ON`, a query cut at the row limit reads its whole result before any rows appear. Stop ends it, and SQL Server then rolls the transaction back.

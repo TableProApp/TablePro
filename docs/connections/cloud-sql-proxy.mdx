@@ -14,13 +14,13 @@ One field carries the whole setup: the instance connection name, `project:region
 
 ## Before you start
 
-The pane appears for Cloud SQL instances running MySQL, PostgreSQL, or SQL Server. The account you connect with needs the **Cloud SQL Client** role (`roles/cloudsql.client`) on the project, and for Application Default Credentials, one run of:
+The transport appears for Cloud SQL instances running MySQL, PostgreSQL, or SQL Server. The account you connect with needs the **Cloud SQL Client** role (`roles/cloudsql.client`) on the project, and for Application Default Credentials, one run of:
 
 ```bash
 gcloud auth application-default login
 ```
 
-Install the binary, or click **Download cloud-sql-proxy…** in the pane, which fetches 2.23.0 and checks its SHA-256 against the value pinned for your CPU architecture.
+Install the binary, or click **Download cloud-sql-proxy…** on the Network tab, which fetches 2.23.0 and checks its SHA-256 against the value pinned for your CPU architecture.
 
 ```bash
 brew install cloud-sql-proxy
@@ -31,13 +31,13 @@ Auto-detection covers your `PATH`, `/opt/homebrew/bin`, `/usr/local/bin`, and `~
 ## Setting up
 
 <Steps>
-  <Step title="Enable the pane">
+  <Step title="Choose the transport">
     On the **Network** tab, set **Connect via** to **Cloud SQL Auth Proxy**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Name the instance and pick credentials">
     Enter the **Instance connection name**, then choose **Application Default Credentials** or **Service Account Key**.
   </Step>
-  <Step title="Leave the SSL pane alone">
+  <Step title="Leave SSL Mode alone">
     The proxy encrypts the leg to Cloud SQL and hands the driver plain loopback, so SSL/TLS stays off.
   </Step>
   <Step title="Test it">
@@ -67,7 +67,7 @@ A pasted key is kept in the macOS Keychain and written to a temporary file reada
 
 ### cloud-sql-proxy was not found
 
-Install it with `brew install cloud-sql-proxy`, download it from the pane, or set **Path**.
+Install it with `brew install cloud-sql-proxy`, download it from the Network tab, or set **Path**.
 
 ### The proxy did not become ready in time
 
