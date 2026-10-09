@@ -63,11 +63,11 @@ enum QueryClassifier {
         databaseType: DatabaseType,
         readings: SQLLexicalReadings
     ) -> QueryClassification {
+        if let document = documentStoreClassification(sql, databaseType: databaseType) { return document }
         let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         guard !trimmed.isEmpty else { return .safe }
         if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
         if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
-        if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
         return readings.distinct(for: sql).reduce(QueryClassification.safe) { worst, grammar in
             runnableStatements(of: sql, grammar: grammar).reduce(worst) { partial, statement in
                 partial.escalated(with: statementClassification(statement, grammar: grammar, databaseType: databaseType))
@@ -86,9 +86,10 @@ enum QueryClassifier {
     static func isDangerousQuery(_ sql: String, databaseType: DatabaseType, readings: SQLLexicalReadings) -> Bool {
         let classification = classify(sql, databaseType: databaseType, readings: readings)
         if classification.tier == .destructive { return true }
-        guard databaseType != .redis else { return false }
+        // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
+        guard databaseType != .redis, databaseType != .mongodb else { return false }
         let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
-        guard documentStoreClassification(trimmed, databaseType: databaseType) == nil else {
+        guard documentStoreClassification(sql, databaseType: databaseType) == nil else {
             let code = SQLCodeProjection.code(of: trimmed, grammar: readings.execution).uppercased()
             return leadingKeyword(of: trimmed) == "DELETE" && !hasWhereClause(code: code)
         }
@@ -240,6 +241,28 @@ private extension QueryClassifier {
 
     static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
 
+    /// `NEXT VALUE FOR seq` (SQL Server, MariaDB, Db2) and `NEXTVAL FOR seq` (Db2) advance a sequence with no call for
+    /// the function scanner to see, the way `nextval('seq')` does on PostgreSQL.
+    static let sequenceAdvanceRegex = try? NSRegularExpression(
+        pattern: "\\bNEXT(?:\\s+VALUE|VAL)\\s+FOR\\b",
+        options: []
+    )
+
+    /// `seq.NEXTVAL` does the same on the engines that have the pseudo-column. Elsewhere `t.nextval` is a column.
+    static let sequencePseudoColumnRegex = try? NSRegularExpression(
+        pattern: "\\.\\s*NEXTVAL\\b",
+        options: []
+    )
+
+    static let enginesWithSequencePseudoColumns: Set<DatabaseType> = [.oracle, .sapHana, .snowflake, .dameng, .mariadb]
+
+    static func advancesSequence(_ body: String, databaseType: DatabaseType) -> Bool {
+        let range = NSRange(body.startIndex..., in: body)
+        if sequenceAdvanceRegex?.firstMatch(in: body, options: [], range: range) != nil { return true }
+        guard enginesWithSequencePseudoColumns.contains(databaseType) else { return false }
+        return sequencePseudoColumnRegex?.firstMatch(in: body, options: [], range: range) != nil
+    }
+
     static let destructiveKeywords: Set<String> = ["DROP", "TRUNCATE"]
 
     static let conditionalCommentOpeners: [String] = ["/*!", "/*M!"]
@@ -303,7 +326,7 @@ private extension QueryClassifier {
         let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
         let keywordTier = keywordClassification(projection, grammar: grammar, databaseType: databaseType)
         let base = keywordTier.tier == .safe
-            ? keywordTier.escalated(to: stateChangingCallTier(projection))
+            ? keywordTier.escalated(to: stateChangingCallTier(projection, databaseType: databaseType))
             : keywordTier
         var classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
         if let dynamic = dynamicSQLClassification(projection, grammar: grammar, databaseType: databaseType) {
@@ -379,8 +402,9 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
     }
 
-    static func stateChangingCallTier(_ projection: StatementProjection) -> QueryTier {
+    static func stateChangingCallTier(_ projection: StatementProjection, databaseType: DatabaseType) -> QueryTier {
         guard !explainPrefixes.contains(leadingCodeKeyword(projection.body)) else { return .safe }
+        if advancesSequence(projection.body, databaseType: databaseType) { return .write }
         let calls = SQLFunctionCallScanner.calls(
             in: projection.statement as NSString,
             code: projection.code as NSString
@@ -733,7 +757,7 @@ private extension QueryClassifier {
         "ZRANGE", "ZRANGEBYSCORE", "ZRANGEBYLEX", "ZREVRANGE", "ZREVRANGEBYSCORE",
         "ZREVRANGEBYLEX", "ZRANK", "ZREVRANK", "ZSCORE", "ZMSCORE", "ZCARD", "ZCOUNT",
         "ZLEXCOUNT", "ZSCAN", "ZRANDMEMBER", "ZDIFF", "ZINTER", "ZUNION", "ZINTERCARD",
-        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING", "XAUTOCLAIM",
+        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING",
         "PFCOUNT", "BITCOUNT", "BITPOS", "GETBIT", "BITFIELD_RO",
         "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH", "GEORADIUS_RO", "GEORADIUSBYMEMBER_RO",
         "SORT_RO", "OBJECT", "COMMAND", "INFO", "TIME", "LASTSAVE", "PING", "ECHO", "LOLWUT",
@@ -800,22 +824,6 @@ private extension QueryClassifier {
         return rest
     }
 
-    static let mongoReadMethods: Set<String> = [
-        "find", "findone", "aggregate", "count", "countdocuments", "estimateddocumentcount",
-        "distinct", "explain", "getindexes", "listindexes", "listcollections", "getcollectionnames",
-        "getcollectioninfos", "stats", "totalsize", "datasize", "watch", "getindexkeys", "help",
-        "hello", "ismaster", "serverstatus", "dbstats", "collstats", "validate", "getshardversion"
-    ]
-
-    static let mongoDestructiveMethods: Set<String> = [
-        "drop", "dropdatabase", "dropindex", "dropindexes", "dropcollection", "deletemany",
-        "removeall", "renamecollection"
-    ]
-
-    static let mongoCodeExecutionMarkers: [String] = [
-        "$where", "$function", "$accumulator", "mapreduce", ".eval(", "$out", "$merge"
-    ]
-
     /// Beancount answers BQL, whose statements (`SELECT`, `BALANCES`, `JOURNAL`, `PRINT`) only
     /// read, and the two `PRAGMA` forms its driver accepts. Anything else falls through to SQL.
     static func beancountClassification(
@@ -830,128 +838,79 @@ private extension QueryClassifier {
 
     private static let beancountReadPrefixes = ["bql:", "bql ", "pragma table_info", "pragma database_list"]
 
+    /// MongoDB and Elasticsearch read the text the way their drivers do. A SQL comment is not a
+    /// comment to either: `--` is a JavaScript decrement, and a console request's first line is its
+    /// method, so stripping one would classify text the driver never runs.
     static func documentStoreClassification(
-        _ trimmed: String,
+        _ sql: String,
         databaseType: DatabaseType
     ) -> QueryClassification? {
+        let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         switch databaseType {
         case .mongodb:
-            return mongoClassification(trimmed)
-        case .etcd:
-            return etcdClassification(trimmed)
+            return mongoClassification(StatementBlank.trimming(sql))
         case .elasticsearch:
-            return elasticsearchClassification(trimmed)
+            return StatementBlank.hasContent(sql) ? elasticsearchClassification(sql) : .safe
+        case .etcd:
+            return trimmed.isEmpty ? .safe : etcdClassification(trimmed)
         case .typesense:
-            return typesenseClassification(trimmed)
+            return trimmed.isEmpty ? .safe : typesenseClassification(trimmed)
         case .weaviate:
-            return weaviateClassification(trimmed)
+            return trimmed.isEmpty ? .safe : weaviateClassification(trimmed)
         default:
             return nil
         }
     }
 
-    static func mongoClassification(_ trimmed: String) -> QueryClassification {
-        let lowered = trimmed.lowercased()
-        let touchesUnsafeSurface = mongoCodeExecutionMarkers.contains { lowered.contains($0) }
-        let methods = invokedMethodNames(in: lowered)
-        guard !methods.isEmpty else {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-        }
-        if methods.contains(where: { mongoDestructiveMethods.contains($0) }) {
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-        }
-        let allRead = methods.allSatisfy { mongoReadMethods.contains($0) }
-        let writesThroughPipeline = lowered.contains("$out") || lowered.contains("$merge")
-        guard allRead, !writesThroughPipeline else {
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-        }
-        return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-    }
-
-    /// Every method a MongoDB statement invokes, by either spelling.
-    ///
-    /// The query language is JavaScript, so `db.users.deleteMany({})` and
-    /// `db.users["deleteMany"]({})` are the same call. Reading only the dotted form let the bracket
-    /// form past the destructive gate, which is what decides whether an external or assistant
-    /// client has to confirm before it runs.
-    static func invokedMethodNames(in lowered: String) -> [String] {
-        dottedMethodNames(in: lowered) + bracketedMethodNames(in: lowered)
-    }
-
-    private static func dottedMethodNames(in lowered: String) -> [String] {
-        var names: [String] = []
-        var current = ""
-        var sawDot = false
-        for character in lowered {
-            if character == "." {
-                sawDot = true
-                current = ""
-                continue
-            }
-            if character.isLetter || character.isNumber || character == "_" || character == "$" {
-                current.append(character)
-                continue
-            }
-            if character == "(", sawDot, !current.isEmpty {
-                names.append(current)
-            }
-            if !character.isWhitespace {
-                sawDot = false
-            }
-            current = ""
-        }
-        return names
-    }
-
-    /// Names taken through bracket access, whether or not they are called on the spot.
-    ///
-    /// A name is counted even without a following `(`, because `var drop = db.c["drop"]; drop()`
-    /// reaches the same command and no scan of the text can follow the binding.
-    private static func bracketedMethodNames(in lowered: String) -> [String] {
-        var names: [String] = []
-        var index = lowered.startIndex
-
-        while let open = lowered[index...].firstIndex(of: "[") {
-            var cursor = lowered.index(after: open)
-            while cursor < lowered.endIndex, lowered[cursor].isWhitespace {
-                cursor = lowered.index(after: cursor)
-            }
-            guard cursor < lowered.endIndex, lowered[cursor] == "\"" || lowered[cursor] == "'" else {
-                index = lowered.index(after: open)
-                continue
-            }
-            let quote = lowered[cursor]
-            var name = ""
-            cursor = lowered.index(after: cursor)
-            while cursor < lowered.endIndex, lowered[cursor] != quote {
-                name.append(lowered[cursor])
-                cursor = lowered.index(after: cursor)
-            }
-            if !name.isEmpty { names.append(name) }
-            index = cursor < lowered.endIndex ? lowered.index(after: cursor) : lowered.endIndex
-        }
-        return names
-    }
-
-    static let elasticsearchReadPaths: [String] = [
-        "_SEARCH", "_COUNT", "_MSEARCH", "_EXPLAIN", "_ANALYZE", "_FIELD_CAPS",
-        "_VALIDATE", "_RENDER", "_MAPPING", "_SETTINGS", "_STATS", "_CAT", "_SQL"
+    /// The APIs a POST may reach and still only read. `POST /orders/_mapping` changes the mapping.
+    static let elasticsearchReadEndpoints: Set<String> = [
+        "_search", "_count", "_msearch", "_explain", "_analyze", "_field_caps", "_validate", "_render", "_sql"
     ]
 
-    static func elasticsearchClassification(_ trimmed: String) -> QueryClassification {
-        let upper = trimmed.uppercased()
-        let verb = upper.prefix { !$0.isWhitespace }
+    /// Read the way `ElasticsearchConsoleParser` reads a console request: the method and path on the
+    /// first line, the rest a body. The driver sends a GET or HEAD that carries a body as a POST, so
+    /// `GET /orders/_delete_by_query` with a query under it deletes, and it is classified as that POST.
+    static func elasticsearchClassification(_ sql: String) -> QueryClassification {
+        let request = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lines = request.components(separatedBy: "\n")
+        let header = lines.removeFirst().trimmingCharacters(in: .whitespaces)
+        let hasBody = !lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        let declared = parts.first.map { $0.uppercased() } ?? ""
+        let method = hasBody && (declared == "GET" || declared == "HEAD") ? "POST" : declared
+        let upper = request.uppercased()
         let touchesUnsafeSurface = upper.contains("_SCRIPTS") || upper.contains("_PAINLESS_EXECUTE")
-        if verb == "GET" || verb == "HEAD" {
-            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+
+        let tier: QueryTier
+        switch method {
+        case "GET", "HEAD":
+            tier = .safe
+        case "POST":
+            let path = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
+            if path.lowercased().contains("_delete_by_query") {
+                tier = .destructive
+            } else {
+                let readsOnly = elasticsearchEndpoint(of: path).map(elasticsearchReadEndpoints.contains) ?? false
+                tier = readsOnly ? .safe : .write
+            }
+        case "DELETE":
+            tier = .destructive
+        default:
+            tier = .write
         }
-        if verb == "POST", elasticsearchReadPaths.contains(where: { upper.contains($0) }) {
-            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-        }
-        if verb == "DELETE" {
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
-        }
-        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    /// The first path segment naming an API, `_search` in `/orders/_search/template`, since an index
+    /// name cannot start with `_` and the body or an index may spell `_search` anywhere. Nil when the
+    /// URL the driver builds could reach another path: a `.` or `..` segment resolves away, and a
+    /// space, `%` or `\` is encoded or decoded on the way.
+    static func elasticsearchEndpoint(of path: String) -> String? {
+        let route = path.prefix { $0 != "?" && $0 != "#" }
+        guard !route.contains(where: { $0.isWhitespace || $0 == "%" || $0 == "\\" }) else { return nil }
+        let segments = route.split(separator: "/")
+        guard !segments.contains(where: { $0 == "." || $0 == ".." }) else { return nil }
+        return segments.first { $0.hasPrefix("_") }.map(String.init)
     }
 
     static let typesenseReadPaths: [String] = ["/MULTI_SEARCH", "/DOCUMENTS/SEARCH", "/DOCUMENTS/EXPORT"]

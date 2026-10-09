@@ -115,6 +115,7 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("SET user:1 bob", .redis))
         #expect(isWrite("DEL user:1", .redis))
         #expect(isWrite("FLUSHALL", .redis))
+        #expect(isWrite("XAUTOCLAIM orders workers mallory 0 0-0 COUNT 10", .redis))
         #expect(isWrite("CONFIG SET maxmemory 0", .redis))
         #expect(isWrite("SOMETHINGNEW key", .redis))
     }

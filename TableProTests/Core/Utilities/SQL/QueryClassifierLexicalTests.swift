@@ -237,9 +237,24 @@ struct QueryClassifierLexicalTests {
         (DatabaseType.duckdb, "SELECT nextval('orders_seq')"),
         (DatabaseType.snowflake, "SELECT SYSTEM$ABORT_SESSION(1)"),
         (DatabaseType.teradata, "SELECT SYSLIB.AbortSessions(1, 'u', 0, 'Y', 'Y')"),
+        (DatabaseType.oracle, "SELECT orders_seq.NEXTVAL FROM DUAL"),
+        (DatabaseType.sapHana, "SELECT MY_SEQ.NEXTVAL FROM DUMMY"),
+        (DatabaseType.snowflake, "SELECT orders_seq.nextval"),
+        (DatabaseType.mssql, "SELECT NEXT VALUE FOR dbo.orders_seq"),
+        (DatabaseType.mariadb, "SELECT NEXT VALUE FOR orders_seq"),
     ])
     func stateChangingCallIsAWrite(engine: DatabaseType, sql: String) {
         #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .write)
+    }
+
+    @Test("Reading a sequence's current value, NEXTVAL in a string, or a column named nextval stays a read", arguments: [
+        (DatabaseType.oracle, "SELECT orders_seq.CURRVAL FROM DUAL"),
+        (DatabaseType.oracle, "SELECT 'orders_seq.NEXTVAL' FROM DUAL"),
+        (DatabaseType.postgresql, "SELECT t.nextval FROM t"),
+        (DatabaseType.sqlite, "SELECT t.nextval FROM t"),
+    ])
+    func sequenceReadStaysSafe(engine: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .safe)
     }
 
     @Test("A call that runs SQL text passed as a literal is a write, measured on PostgreSQL 17.11", arguments: [

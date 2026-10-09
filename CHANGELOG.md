@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One-time** in place of **Lifetime** for a license with no expiry in Settings > License.
 - **Share usage data** in place of **Share anonymous usage data** in Settings > General, with the report's fields listed.
 
+### Fixed
+
+- MongoDB, Redis, etcd and SAP HANA reads confirmed at the Alert and Safe Mode levels and blocked at Read-Only. (#3290)
+- MongoDB reads using `$nin`, `$mergeObjects`, `.limit()` or `getCollection` refused as writes for read-only MCP clients. (#3290)
+- MongoDB `remove()` and `drop ()` running without the dangerous query warning, and a JavaScript `delete` raising it. (#3290)
+- `seq.NEXTVAL` and `NEXT VALUE FOR seq` running at Read-Only and unconfirmed at Alert, though they advance the sequence. (#3290)
+
+### Security
+
+- MongoDB writes hidden behind computed method names, escaped keys or a leading `--` passing as reads. (#3290)
+- Elasticsearch writes passing Read-Only when the index name held `_search` or a GET carried a body. (#3290)
+- Redis XAUTOCLAIM passing Read-Only and read-only MCP clients as a read. (#3290)
+
 ## [0.79.0] - 2026-10-08
 
 SSH tunnel, Cloudflare Tunnel and SOCKS proxy for Weaviate, Typesense and Elasticsearch.

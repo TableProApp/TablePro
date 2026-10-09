@@ -48,9 +48,13 @@ Safe Mode sits in front of query execution, saving cell edits, structure and tab
 
 It does not sit in front of reading metadata. Loading the sidebar, opening a table's structure, and exporting data are never confirmed, which is why a backup stays available on a Read-Only connection.
 
-## What always counts as a write
+## What counts as a read
 
-The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mode treats every query on those connections as a write: the Alert and Safe Mode levels confirm everything, and Read-Only blocks everything. Every other driver classifies reads and writes normally.
+A statement runs as a read only when TablePro can tell for certain that it reads. Anything it cannot tell counts as a write: confirmed at the Alert and Safe Mode levels, blocked at Read-Only.
+
+On MongoDB, a read is one call on a collection or database with literal arguments, such as `db.orders.find({status: "open"}).sort({at: -1}).limit(50)`, an `aggregate` pipeline without `$out` or `$merge`, `countDocuments`, `distinct`, `explain`, `show collections` and `use`. Any other JavaScript counts as a write: a variable, a function, `forEach`, `runCommand`. Run several reads at once and each one is checked. Shell state lasts as long as the connection, so a function you redefine in one statement runs redefined in every later one, reads included.
+
+Redis reads come from a fixed list of read commands. etcd reads are `get`, `watch`, and the commands that only list or report, such as `member list` and `endpoint health`. SAP HANA is read like any other SQL database.
 
 The server runs the text inside a MySQL conditional comment, `/*! ... */` or MariaDB's `/*M! ... */`, so a statement holding one counts as a write even when the rest of it only reads. Remove the comment to run the statement on a Read-Only connection.
 

