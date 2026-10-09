@@ -11,6 +11,7 @@ final class ValueFilterEditUITests: UITestCase {
     private static let filteredColumn = "Title"
     private static let keptTitle = "IT Staff"
     private static let editedColumnPosition = 2
+    private static let titleColumnPosition = 4
     private static let editedValue = "Edited Under Filter"
 
     func testDiscardingAnEditMadeUnderAValueFilterRestoresTheEditedRow() throws {
@@ -21,10 +22,7 @@ final class ValueFilterEditUITests: UITestCase {
         let secondRowBefore = try cellValue(row: 2, in: grid)
         let lastRowBefore = try cellValue(row: 8, in: grid)
 
-        rightClickHeader(Self.filteredColumn, in: grid)
-        let filterValues = contextMenuItem("Filter Values…", in: app)
-        XCTAssertTrue(filterValues.waitToExist(timeout: 10), "The header menu must offer Filter Values…")
-        filterValues.click()
+        openValueFilter(on: Self.filteredColumn, in: grid, app: app)
         keepOnly(Self.keptTitle, in: window)
 
         XCTAssertTrue(
@@ -60,6 +58,55 @@ final class ValueFilterEditUITests: UITestCase {
         )
     }
 
+    func testReturnInTheSearchKeepsOnlyTheValuesItFound() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
+        let grid = openTable(in: window)
+
+        openValueFilter(on: Self.filteredColumn, in: grid, app: app)
+        let popover = window.popovers.firstMatch
+        let search = popover.searchFields["value-filter-search"].firstMatch
+        XCTAssertTrue(search.waitToExist(timeout: 10), "Filter Values… must open the value filter")
+        let caption = popover.staticTexts
+            .matching(NSPredicate(format: "value == %@ OR label == %@", "Values from 8 loaded rows", "Values from 8 loaded rows"))
+            .firstMatch
+        XCTAssertTrue(
+            caption.waitToExist(timeout: 10),
+            "The caption must be resolved from the String Catalog, not print its inflection markup"
+        )
+
+        search.typeText("zzz")
+        let selectAllResults = popover.checkBoxes
+            .matching(NSPredicate(format: "title == %@ OR label == %@", "Select All Results", "Select All Results"))
+            .firstMatch
+        XCTAssertTrue(selectAllResults.waitToExist(timeout: 10), "A search must scope Select All to its results")
+        search.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertFalse(
+            popover.waitForNonExistence(timeout: 3),
+            "Return must not apply a search that found nothing"
+        )
+
+        search.typeKey("a", modifierFlags: .command)
+        search.typeText("Manager")
+        search.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(popover.waitForNonExistence(timeout: 10), "Return must apply the search and close the value filter")
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) {
+                self.currentCellValue(row: 3, column: Self.titleColumnPosition, in: grid) == "IT Manager"
+            },
+            "The three managers must be the rows left"
+        )
+        XCTAssertEqual(currentCellValue(row: 1, column: Self.titleColumnPosition, in: grid), "General Manager")
+        XCTAssertEqual(currentCellValue(row: 2, column: Self.titleColumnPosition, in: grid), "Sales Manager")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) {
+                !self.cellElement(row: 4, column: Self.titleColumnPosition, in: grid).exists
+            },
+            "No row that is not a manager may stay"
+        )
+    }
+
     // MARK: - Helpers
 
     private func openTable(in window: XCUIElement) -> XCUIElement {
@@ -81,19 +128,22 @@ final class ValueFilterEditUITests: UITestCase {
         point(at: header.frame, in: grid).rightClick()
     }
 
+    private func openValueFilter(on column: String, in grid: XCUIElement, app: XCUIApplication) {
+        rightClickHeader(column, in: grid)
+        let filterValues = contextMenuItem("Filter Values…", in: app)
+        XCTAssertTrue(filterValues.waitToExist(timeout: 10), "The header menu must offer Filter Values…")
+        filterValues.click()
+    }
+
+    /// `value` must match one title only: Apply keeps every value the search finds.
     private func keepOnly(_ value: String, in window: XCUIElement) {
         let popover = window.popovers.firstMatch
         let search = popover.searchFields["value-filter-search"].firstMatch
         XCTAssertTrue(search.waitToExist(timeout: 10), "Filter Values… must open the value filter")
         search.typeText(value)
 
-        let selectAll = popover.checkBoxes.matching(NSPredicate(format: "label == %@", "Select All")).firstMatch
-        XCTAssertTrue(waitUntilHittable(selectAll, timeout: 10), "The value filter must offer Select All")
-        selectAll.click()
-
         let valueToggle = popover.checkBoxes.matching(identifier: "value-filter-value").firstMatch
         XCTAssertTrue(waitUntilHittable(valueToggle, timeout: 10), "The search must leave \(value) in the list")
-        valueToggle.click()
 
         let apply = popover.buttons["Apply"].firstMatch
         XCTAssertTrue(waitUntilHittable(apply, timeout: 10), "The value filter must offer Apply")
@@ -133,17 +183,22 @@ final class ValueFilterEditUITests: UITestCase {
             .withOffset(CGVector(dx: frame.midX - origin.x, dy: frame.midY - origin.y))
     }
 
-    private func cellElement(row: Int, in grid: XCUIElement) -> XCUIElement {
+    private func cellElement(
+        row: Int,
+        column: Int = ValueFilterEditUITests.editedColumnPosition,
+        in grid: XCUIElement
+    ) -> XCUIElement {
         grid.staticTexts
-            .matching(NSPredicate(
-                format: "label BEGINSWITH %@",
-                "Row \(row), column \(Self.editedColumnPosition): "
-            ))
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Row \(row), column \(column): "))
             .firstMatch
     }
 
-    private func currentCellValue(row: Int, in grid: XCUIElement) -> String? {
-        let cell = cellElement(row: row, in: grid)
+    private func currentCellValue(
+        row: Int,
+        column: Int = ValueFilterEditUITests.editedColumnPosition,
+        in grid: XCUIElement
+    ) -> String? {
+        let cell = cellElement(row: row, column: column, in: grid)
         guard cell.exists else { return nil }
         return cell.value as? String
     }

@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TablePro data deleted in iCloud settings uploaded again without asking.
 - Sync not resuming on its own when the network comes back.
 - iPhone and iPad downloading the same changes again on every sync while uploads failed.
+- Searching in Filter Values… not narrowing the selection, so Apply and Return kept every value.
+- Return in Filter Values… hiding every row when no value was selected.
+- Clicks on the Select All label in Filter Values… doing nothing.
+- "Values from 1 loaded rows" in Filter Values….
 
 ## [0.79.0] - 2026-10-09
 
