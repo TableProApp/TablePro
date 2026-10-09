@@ -16,6 +16,7 @@ extension TableViewCoordinator {
     func undoDeleteRow(at index: Int) {
         guard let rowID = rowID(forDisplayRow: index) else { return }
         changeManager.undoRowDeletion(rowID: rowID)
+        selectionSummaryTracker.dataDidChange()
         visualIndex.updateRow(rowID, from: changeManager)
         repaintRows(IndexSet(integer: index))
         refreshRowVisualState(at: index)
@@ -387,15 +388,21 @@ extension TableViewCoordinator {
         /// Select All that keeps its rectangle now arrives here instead of on the row path, and
         /// without this a Fetch All over millions of rows builds the whole string on the main
         /// thread. (#2667)
+        let maxRows = RowOperationsManager.maxClipboardRows
+        let selectedRowCount = min(rect.rows.upperBound, rowCount - 1) - rect.rows.lowerBound + 1
         let lastRow = min(
             rect.rows.upperBound,
             max(0, rowCount - 1),
-            rect.rows.lowerBound + RowOperationsManager.maxClipboardRows - 1
+            rect.rows.lowerBound + maxRows - 1
         )
         let rowRange = rect.rows.lowerBound...lastRow
         let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
             .filter { $0 >= 0 && $0 < presentedColumnCount }
         guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
+        let isTruncated = selectedRowCount > maxRows
+        if isTruncated {
+            rowActionsLogger.warning("Clipboard copy truncated: \(selectedRowCount) rows selected, capping at \(maxRows)")
+        }
 
         var lines: [String] = []
         lines.reserveCapacity(rowRange.count)
@@ -420,6 +427,10 @@ extension TableViewCoordinator {
             lines.append(fields.joined(separator: "\t"))
         }
 
-        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+        var text = lines.joined(separator: "\n")
+        if isTruncated {
+            text.append("\n(truncated, showing first \(maxRows) of \(selectedRowCount) rows)")
+        }
+        ClipboardService.shared.writeText(text)
     }
 }

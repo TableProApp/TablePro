@@ -146,6 +146,88 @@ final class ResultStatusBarUITests: UITestCase {
         expectInsideTheWindow(grid, window, named: "the grid")
     }
 
+    /// The sample's first three Track rows run 343719, 342562 and 230619 milliseconds.
+    func testDraggingDownANumberColumnSumsTheCellsItSwept() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+        let grid = runMillisecondsQuery(in: app)
+
+        millisecondsCell(row: 0, in: grid, of: window)
+            .click(forDuration: 0.3, thenDragTo: millisecondsCell(row: 2, in: grid, of: window))
+
+        let summary = expectSummary(in: window, count: 3, digits: "916900", after: "a drag over three cells")
+
+        summary.click()
+        let popover = window.popovers.firstMatch
+        XCTAssertTrue(popover.waitToExist(timeout: 10), "Clicking the summary must open its detail")
+        let average = popover.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", "Average", "Average"))
+        XCTAssertTrue(average.firstMatch.waitToExist(timeout: 5), "The detail must list the average")
+        XCTAssertTrue(popover.buttons["Copy Average"].firstMatch.exists, "Every figure in the detail must be copyable")
+    }
+
+    /// A plain click selects a row, not a cell, so Shift-click has to take its anchor from the
+    /// focused cell. Anchored on nothing, it selected the one cell it landed on.
+    func testShiftClickAfterAClickSelectsTheCellsBetween() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+        let grid = runMillisecondsQuery(in: app)
+
+        millisecondsCell(row: 0, in: grid, of: window).click()
+        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
+        let third = millisecondsCell(row: 2, in: grid, of: window)
+        XCUIElement.perform(withKeyModifiers: .shift) {
+            third.click()
+        }
+
+        expectSummary(in: window, count: 3, digits: "916900", after: "Shift-click from row 1 to row 3")
+    }
+
+    func testCommandClickAfterAClickAddsOneCell() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+        let grid = runMillisecondsQuery(in: app)
+
+        millisecondsCell(row: 0, in: grid, of: window).click()
+        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
+        let third = millisecondsCell(row: 2, in: grid, of: window)
+        XCUIElement.perform(withKeyModifiers: .command) {
+            third.click()
+        }
+
+        expectSummary(in: window, count: 2, digits: "574338", after: "Command-click on row 3 after a click on row 1")
+    }
+
+    private func runMillisecondsQuery(in app: XCUIApplication) -> XCUIElement {
+        let grid = runQuery("SELECT Milliseconds, Name FROM Track ORDER BY TrackId LIMIT 12;", in: app)
+        XCTAssertTrue(waitForClickableRows(in: grid), "The query must have its rows in before one can be clicked")
+        XCTAssertTrue(grid.tableRows.element(boundBy: 2).waitToExist(timeout: 10), "The result must lay out three rows")
+        return grid
+    }
+
+    /// Milliseconds is the first data column, which is where `gridPoint` lands.
+    private func millisecondsCell(row: Int, in grid: XCUIElement, of window: XCUIElement) -> XCUICoordinate {
+        let frame = grid.tableRows.element(boundBy: row).frame
+        return gridPoint(in: grid, of: window, dy: frame.midY - grid.frame.minY)
+    }
+
+    @discardableResult
+    private func expectSummary(in window: XCUIElement, count: Int, digits: String, after gesture: String) -> XCUIElement {
+        let summary = window.buttons["result-status-selection-summary"].firstMatch
+        XCTAssertTrue(summary.waitToExist(timeout: 15), "\(gesture) must put a summary on the bar")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) {
+                summary.label.hasSuffix("Count \(count)") && Self.withoutGrouping(summary.label).contains(digits)
+            },
+            "\(gesture) must sum \(count) cells to \(digits), got \(summary.label)"
+        )
+        return summary
+    }
+
+    /// The separator follows the locale the runner happens to use, so only the digits are compared.
+    private static func withoutGrouping(_ text: String) -> String {
+        text.filter { !$0.isPunctuation && !$0.isWhitespace }
+    }
+
     /// The defect this guards was 163pt of overhang. `XCUIElement.frame` rounds, and a split
     /// divider can leave a control a point over the edge on a window whose origin is not on a whole
     /// point, so a point of slack keeps the assertion about the defect rather than about rounding.
@@ -182,12 +264,15 @@ final class ResultStatusBarUITests: UITestCase {
     }
 
     @discardableResult
-    private func runQuery(in app: XCUIApplication) -> XCUIElement {
+    private func runQuery(
+        _ sql: String = "SELECT Name, Milliseconds FROM Track ORDER BY TrackId LIMIT 12;",
+        in app: XCUIApplication
+    ) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
         XCTAssertTrue(editor.waitToExist(timeout: 10))
         editor.click()
-        app.typeText("SELECT Name, Milliseconds FROM Track ORDER BY TrackId LIMIT 12;")
+        app.typeText(sql)
         app.typeKey(.return, modifierFlags: .command)
 
         let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch

@@ -1,4 +1,5 @@
 import Foundation
+import TableProNumberFormatting
 @testable import TableProTabular
 import TableProTabularIO
 import XCTest
@@ -32,10 +33,10 @@ final class TabularEditingTests: XCTestCase {
         XCTAssertEqual(summary.emptyCount, 1)
         XCTAssertEqual(summary.distinctCount, 4)
         XCTAssertEqual(summary.nonNumericCount, 1)
-        XCTAssertEqual(summary.numeric?.minimum, 1)
-        XCTAssertEqual(summary.numeric?.maximum, 3)
-        XCTAssertEqual(summary.numeric?.median, 3)
-        XCTAssertEqual(summary.numeric?.sum, 7)
+        XCTAssertEqual(summary.numeric?.minimum, ExactNumber(decimal: 1))
+        XCTAssertEqual(summary.numeric?.maximum, ExactNumber(decimal: 3))
+        XCTAssertEqual(summary.numeric?.median, ExactNumber(decimal: 3))
+        XCTAssertEqual(summary.numeric?.sum, ExactNumber(decimal: 7))
         XCTAssertEqual(summary.topValues.first, TabularValueCount(value: "3", isEmpty: false, count: 2))
     }
 
@@ -46,8 +47,10 @@ final class TabularEditingTests: XCTestCase {
                 var numbers = (0..<count).map { _ in Double(Int.random(in: -50...50, using: &generator)) }
                 let sorted = numbers.sorted()
                 let middle = count / 2
-                let expected = count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
-                XCTAssertEqual(TabularColumnStatistics.median(of: &numbers), expected, "\(sorted)")
+                let expected = count.isMultiple(of: 2) ? (sorted[middle - 1], sorted[middle]) : (sorted[middle], sorted[middle])
+                let found = TabularColumnStatistics.middleValues(of: &numbers)
+                XCTAssertEqual(found.lower, expected.0, "\(sorted)")
+                XCTAssertEqual(found.upper, expected.1, "\(sorted)")
             }
         }
     }

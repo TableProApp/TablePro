@@ -8,6 +8,7 @@ import TableProTabularIO
 
 struct DataFileStatusBar: View {
     @ObservedObject var controller: DataFileController
+    @State private var showsSelectionSummaryPopover = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -17,6 +18,11 @@ struct DataFileStatusBar: View {
                 if !controller.selectedRowIndices.isEmpty {
                     Text("\(controller.selectedRowIndices.count) selected")
                 }
+                SelectionSummaryReadout(
+                    state: controller.selectionSummary,
+                    scopeNote: selectionSummaryScopeNote,
+                    isPopoverPresented: $showsSelectionSummaryPopover
+                )
                 if controller.raggedRowCount > 0 {
                     Text(DataFileCountPhrase.raggedRows(controller.raggedRowCount))
                         .help(String(localized: "Those rows have more or fewer fields than the first row. Missing fields read as empty."))
@@ -53,6 +59,11 @@ struct DataFileStatusBar: View {
         .monospacedDigit()
         .lineLimit(1)
         .statusBarChrome()
+    }
+
+    private var selectionSummaryScopeNote: String? {
+        guard controller.pageCount > 1 else { return nil }
+        return String(localized: "Covers this page only. Column Statistics covers the whole file.")
     }
 
     @ViewBuilder

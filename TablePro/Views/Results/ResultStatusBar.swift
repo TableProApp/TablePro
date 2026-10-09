@@ -40,6 +40,8 @@ struct ResultStatusBar: View {
     let paginationCallbacks: PaginationCallbacks
     let structureFooter: StructureFooterCapability
     let execution: ExecutionReadout
+    /// Held, not observed: only the readout inside the report slot re-renders when it changes.
+    let selectionSummary: SelectionSummaryState
     /// The object tree's own reload, reported where every other piece of background activity in
     /// this window is. It had no surface at all between the centred toolbar item going and this.
     let isRefreshingSchema: Bool
@@ -63,6 +65,7 @@ struct ResultStatusBar: View {
     /// user actually opened it from.
     @State private var highlightPopoverTabId: UUID?
     @State private var revealedExecutionTabId: UUID?
+    @State private var showSelectionSummaryPopover = false
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -80,6 +83,7 @@ struct ResultStatusBar: View {
         .onChange(of: snapshot.tabId) { _ in
             showColumnPopover = false
             showHighlightPopover = false
+            showSelectionSummaryPopover = false
         }
         .onChange(of: showHighlightPopover) { isShown in
             guard !isShown else {
@@ -168,6 +172,14 @@ struct ResultStatusBar: View {
                 }
             }
             HStack(spacing: Self.readoutSpacing) {
+                if model.controls.showsSelectionSummary {
+                    SelectionSummaryReadout(
+                        state: selectionSummary,
+                        scopeNote: selectionSummaryScopeNote,
+                        isPopoverPresented: $showSelectionSummaryPopover,
+                        leadsWithSeparator: true
+                    )
+                }
                 if model.controls.showsReadout {
                     readoutMessage
                 }
@@ -263,6 +275,10 @@ struct ResultStatusBar: View {
                 onCancel: execution.onCancel
             )
         }
+    }
+
+    private var selectionSummaryScopeNote: String? {
+        model.selectionSummaryCoversLoadedRowsOnly ? String(localized: "Covers the loaded rows only.") : nil
     }
 
     /// No `idealWidth` here: `ReadoutZoneLayout` reports the zone's ideal itself, and a frame that
@@ -453,9 +469,10 @@ struct ResultStatusBar: View {
 ///
 /// It exists for the ideal width it reports, which is the width `ViewThatFits` picks a tier by. The
 /// sentence and the report count as one constant, `StatusBarLayoutMetrics.readoutIdealWidth`, so
-/// neither a long count nor a wordy driver message drops the bar a tier by itself. The actions add
-/// their own width on top. Counted inside the constant, they left a table with an estimate on the
-/// regular tier with no room for both, and the bar drew "1-22 of ~22 r…" beside "Count Ex…".
+/// neither a long count, a wordy driver message nor a selection summary drops the bar a tier by
+/// itself. The actions add their own width on top. Counted inside the constant, they left a table
+/// with an estimate on the regular tier with no room for both, and the bar drew "1-22 of ~22 r…"
+/// beside "Count Ex…".
 ///
 /// Placed, the actions keep their width and the report keeps what it cannot give up. The sentence
 /// takes the rest up to its own width, and whatever is left after that goes to the report, whose

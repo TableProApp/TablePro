@@ -76,7 +76,8 @@ struct DataFileContentView: View {
                 get: { controller.sortState },
                 set: { controller.updateSort($0) }
             ),
-            columnLayout: $controller.columnLayout
+            columnLayout: $controller.columnLayout,
+            selectionSummary: controller.selectionSummary
         )
         .accessibilityIdentifier("data-grid")
     }

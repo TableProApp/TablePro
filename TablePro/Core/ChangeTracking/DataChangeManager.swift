@@ -53,6 +53,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIDs: Set<RowID> { pending.insertedRowIDs }
     var deletedRowIDs: Set<RowID> { pending.deletedRowIDs }
+    var modifiedCells: [RowID: Set<Int>] { pending.modifiedCells }
 
     @Published var tableName: String = ""
     @Published var schemaName: String?

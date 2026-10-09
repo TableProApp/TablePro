@@ -241,17 +241,23 @@ final class DataGridRowGutterView: NSView {
 
         tableView.window?.makeFirstResponder(tableView)
 
-        /// The same reset the attached column's click performs, so the two routes leave the grid in
-        /// one state: a whole-row selection owns the grid, and no cell cursor survives it.
-        coordinator.selectionController.clear()
-        tableView.focusedRow = -1
-        tableView.focusedColumn = -1
-
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        applySelection(row: row, modifiers: modifiers, tableView: tableView)
+        selectRows(clickedRow: row, modifiers: modifiers)
 
         guard event.clickCount == 1 else { return }
         trackDrag(from: row, modifiers: modifiers, tableView: tableView, coordinator: coordinator, event: event)
+    }
+
+    /// The same reset the attached column's click performs, so the two routes leave the grid in one
+    /// state: a whole-row selection owns the grid. The selection change then seeds a cursor for the
+    /// keyboard, and the mark keeps a Shift+click or Cmd+click from selecting it as a cell.
+    func selectRows(clickedRow row: Int, modifiers: NSEvent.ModifierFlags) {
+        guard let tableView, let coordinator else { return }
+        coordinator.selectionController.clear()
+        tableView.focusedRow = -1
+        tableView.focusedColumn = -1
+        tableView.isCursorSeededByRowSelection = true
+        applySelection(row: row, modifiers: modifiers, tableView: tableView)
     }
 
     private func applySelection(row: Int, modifiers: NSEvent.ModifierFlags, tableView: NSTableView) {
@@ -333,6 +339,7 @@ final class DataGridRowGutterView: NSView {
 
         if !tableView.selectedRowIndexes.contains(row) {
             coordinator.selectionController.clear()
+            tableView.isCursorSeededByRowSelection = true
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             selectionAnchorRow = row
         }

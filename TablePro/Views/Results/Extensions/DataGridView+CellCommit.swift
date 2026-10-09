@@ -149,6 +149,7 @@ extension TableViewCoordinator {
                 tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue, isAbsent: removesField)
             }
         }
+        selectionSummaryTracker.dataDidChange()
         /// A record the display order is hiding has no row to report, and every delegate reads that
         /// argument as a display position.
         if let displayRow {

@@ -131,6 +131,7 @@ struct DataGridView: NSViewRepresentable {
     var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
     var viewportPlacementProvider: (@MainActor () -> GridViewportPlacement?)?
     var contentRevision: Int = 0
+    var selectionSummary: SelectionSummaryState?
 
     // MARK: - NSViewRepresentable
 
@@ -254,6 +255,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
+        coordinator.selectionSummaryTracker.attach(selectionSummary)
 
         // The owner can change the filter while the grid is unmounted, so adopt and re-resolve
         // before the snapshot is built. A snapshot taken from the stale order would report no
@@ -675,6 +677,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.dismissPoppedOutCellEditor()
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
+        coordinator.selectionSummaryTracker.cancel()
+        coordinator.selectionSummaryTracker.attach(nil)
         coordinator.flushPendingColumnLayoutPersistence()
         /// The mount's own registrations, taken off with it. `NotificationCenter` retains a block
         /// observer's closure and a coordinator is built fresh per mount, so anything left here is
@@ -700,7 +704,9 @@ struct DataGridView: NSViewRepresentable {
         /// `GridSelectionController.update(_:)`, so this is the one hook that sees a drag widen.
         coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
             coordinator?.publishRowSelection()
+            coordinator?.selectionSummaryTracker.selectionDidChange()
         }
+        coordinator.selectionSummaryTracker.attach(selectionSummary)
         coordinator.onSelectionTeardown = onSelectionTeardown
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in

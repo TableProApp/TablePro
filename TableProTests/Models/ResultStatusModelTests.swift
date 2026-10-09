@@ -307,6 +307,83 @@ struct ResultStatusModelTests {
         #expect(!model(noResult, viewMode: .data).controls.showsHighlightRules)
     }
 
+    // MARK: - Selection summary
+
+    @Test("The selection summary is offered only where the data grid draws the result")
+    func selectionSummaryFollowsTheDataGrid() {
+        let table = makeSnapshot(rowCount: 10)
+        #expect(model(table, viewMode: .data).controls.showsSelectionSummary)
+        for mode in ResultsViewMode.allCases where mode != .data {
+            #expect(!model(table, viewMode: mode).controls.showsSelectionSummary, "offered in \(mode)")
+        }
+
+        let query = makeSnapshot(tabType: .query, rowCount: 3, hasTableName: false)
+        #expect(model(query, viewMode: .data).controls.showsSelectionSummary)
+    }
+
+    @Test("A tab with no result and a query plan offer no selection summary")
+    func selectionSummaryNeedsAResult() {
+        let noResult = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
+        #expect(!model(noResult).controls.showsSelectionSummary)
+
+        let plan = model(queryTabSnapshot(hasResult: true, isFetching: false, isQueryPlan: true))
+        #expect(!plan.controls.showsSelectionSummary)
+        #expect(!plan.selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("A table's summary covers only the loaded rows while the table has more")
+    func tableSummaryScopeFollowsTheTotal() {
+        let paged = makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
+        #expect(model(paged).selectionSummaryCoversLoadedRowsOnly)
+
+        let whole = makeSnapshot(rowCount: 12, pagination: PaginationState(totalRowCount: 12, pageSize: 1_000))
+        #expect(!model(whole).selectionSummaryCoversLoadedRowsOnly)
+
+        let laterPageOfUnknownTotal = makeSnapshot(
+            rowCount: 50,
+            pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 2, currentOffset: 50)
+        )
+        #expect(model(laterPageOfUnknownTotal).selectionSummaryCoversLoadedRowsOnly)
+
+        let shortPageOfUnknownTotal = makeSnapshot(rowCount: 12, pagination: PaginationState(pageSize: 1_000))
+        #expect(!model(shortPageOfUnknownTotal).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    /// MySQL's `TABLE_ROWS` under-reports InnoDB, so an estimate below a full page says nothing about
+    /// the rows past it.
+    @Test("An estimated total is not trusted to say every row is loaded")
+    func summaryScopeIgnoresAnEstimate() {
+        var underReported = PaginationState(totalRowCount: 900, pageSize: 1_000)
+        underReported.isApproximateRowCount = true
+        #expect(model(makeSnapshot(rowCount: 1_000, pagination: underReported)).selectionSummaryCoversLoadedRowsOnly)
+
+        var overReported = PaginationState(totalRowCount: 5_000_000, pageSize: 1_000)
+        overReported.isApproximateRowCount = true
+        #expect(!model(makeSnapshot(rowCount: 12, pagination: overReported)).selectionSummaryCoversLoadedRowsOnly)
+
+        var laterPage = PaginationState(totalRowCount: 10, pageSize: 50, currentPage: 2, currentOffset: 50)
+        laterPage.isApproximateRowCount = true
+        #expect(model(makeSnapshot(rowCount: 7, pagination: laterPage)).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("A query's summary covers only the loaded rows while the row cap left some behind")
+    func querySummaryScopeFollowsTheRowCap() {
+        var truncated = PaginationState(pageSize: 1_000)
+        truncated.hasMoreRows = true
+        let capped = makeSnapshot(tabType: .query, rowCount: 1_000, hasTableName: false, pagination: truncated)
+        #expect(model(capped).selectionSummaryCoversLoadedRowsOnly)
+
+        let complete = makeSnapshot(tabType: .query, rowCount: 3, hasTableName: false)
+        #expect(!model(complete).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("Only a mode that shows a summary says what it covers")
+    func summaryScopeIsWithheldOutsideTheDataGrid() {
+        let paged = makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
+        #expect(!model(paged, viewMode: .json).selectionSummaryCoversLoadedRowsOnly)
+        #expect(!model(paged, viewMode: .chart).selectionSummaryCoversLoadedRowsOnly)
+    }
+
     @Test("A query tab never offers table-only controls")
     func queryTabHasNoTableControls() {
         var pagination = PaginationState(pageSize: 1_000)
@@ -394,6 +471,7 @@ struct ResultStatusModelTests {
             controls.showsPagination,
             controls.showsFetchAll,
             controls.showsStructureActions,
+            controls.showsSelectionSummary,
         ]
     }
 

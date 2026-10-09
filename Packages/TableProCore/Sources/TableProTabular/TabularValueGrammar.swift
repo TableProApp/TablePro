@@ -94,6 +94,24 @@ public enum TabularValueGrammar {
         return hasDigit
     }
 
+    /// Digits from the first non-zero one to the last non-zero one, ignoring any exponent.
+    static func significantDigitCount(_ bytes: UnsafeBufferPointer<UInt8>) -> Int {
+        var first: Int?
+        var last = 0
+        var position = 0
+        for byte in bytes {
+            if byte == 0x65 || byte == 0x45 { break }
+            guard isDigit(byte) else { continue }
+            if byte != 0x30 {
+                if first == nil { first = position }
+                last = position
+            }
+            position += 1
+        }
+        guard let first else { return 0 }
+        return last - first + 1
+    }
+
     @inline(__always)
     public static func isDigit(_ byte: UInt8) -> Bool {
         byte >= 0x30 && byte <= 0x39
