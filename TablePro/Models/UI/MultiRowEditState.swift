@@ -10,7 +10,6 @@ import Combine
 import Foundation
 import TableProPluginKit
 
-/// Represents the edit state for a single field across multiple rows
 struct FieldEditState: Identifiable {
     var id = UUID()
     let columnIndex: Int
@@ -18,6 +17,10 @@ struct FieldEditState: Identifiable {
     let columnTypeEnum: ColumnType
     let isLongText: Bool
     let isJson: Bool
+
+    /// Every selected cell that has a value holds bytes, one character per byte in `originalValue`.
+    /// The column type cannot say so: a spatial column is text on one engine and a blob on another.
+    var isBinaryValue: Bool = false
 
     var isPrimaryKey: Bool = false
     var isForeignKey: Bool = false
@@ -132,7 +135,6 @@ final class MultiRowEditState: ObservableObject {
         fields.contains { $0.hasEdit }
     }
 
-    /// Configure state for the given selection
     func configure(
         selectedRowIndices: Set<Int>,
         rowIDs: [RowID] = [],
@@ -144,7 +146,8 @@ final class MultiRowEditState: ObservableObject {
         primaryKeyColumns: Set<String> = [],
         foreignKeyColumns: Set<String> = [],
         serverOwnedColumns: Set<String> = [],
-        displayFormats: [ValueDisplayFormat?] = []
+        displayFormats: [ValueDisplayFormat?] = [],
+        binaryColumns: Set<Int> = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
@@ -221,6 +224,7 @@ final class MultiRowEditState: ObservableObject {
                 columnTypeEnum: columnTypeEnum,
                 isLongText: isLongText,
                 isJson: isJson,
+                isBinaryValue: binaryColumns.contains(colIndex),
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
                 isServerOwned: serverOwnedColumns.contains(columnName),
@@ -243,12 +247,38 @@ final class MultiRowEditState: ObservableObject {
                 for: columnTypeEnum,
                 isLongText: isLongText,
                 originalValue: originalValue,
-                displayFormatOverride: colIndex < displayFormats.count ? displayFormats[colIndex] : nil
+                displayFormatOverride: colIndex < displayFormats.count ? displayFormats[colIndex] : nil,
+                isBinaryValue: newField.isBinaryValue
             )
             newFields.append(newField)
         }
 
         self.fields = newFields
+    }
+
+    /// The columns whose selected cells are bytes. One text cell rules a column out, because a
+    /// binary field commits bytes to every selected row, and a column of NULLs alone has none.
+    static func binaryColumns(in rows: [[PluginCellValue]]) -> Set<Int> {
+        var holdsBytes: [Bool] = []
+        var holdsText: [Bool] = []
+        for row in rows {
+            if row.count > holdsBytes.count {
+                let added = row.count - holdsBytes.count
+                holdsBytes.append(contentsOf: repeatElement(false, count: added))
+                holdsText.append(contentsOf: repeatElement(false, count: added))
+            }
+            for (column, cell) in row.enumerated() {
+                switch cell {
+                case .bytes:
+                    holdsBytes[column] = true
+                case .text:
+                    holdsText[column] = true
+                case .null:
+                    break
+                }
+            }
+        }
+        return Set(holdsBytes.indices.filter { holdsBytes[$0] && !holdsText[$0] })
     }
 
     /// Configure state for a single schema row supplied by the grid that owns the selection.
@@ -303,7 +333,6 @@ final class MultiRowEditState: ObservableObject {
         return FieldValueState.resolve(fields[index]).editableText
     }
 
-    /// Update a field's pending value
     func updateField(at index: Int, value: String?) {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
@@ -324,7 +353,7 @@ final class MultiRowEditState: ObservableObject {
             if fields[index].hasMultipleValues || !absentRows.isEmpty {
                 onFieldReverted?(index, configuredValues(atColumn: index), absentRows)
             } else {
-                onFieldChanged?(index, PluginCellValue.fromOptional(original), .typing)
+                onFieldChanged?(index, storedCell(original, atColumn: index), .typing)
             }
         }
     }
@@ -334,9 +363,17 @@ final class MultiRowEditState: ObservableObject {
     private func configuredValues(atColumn index: Int) -> [RowID: PluginCellValue] {
         var values: [RowID: PluginCellValue] = [:]
         for (rowID, row) in zip(rowIDs, allRows) where row.indices.contains(index) {
-            values[rowID] = PluginCellValue.fromOptional(row[index])
+            values[rowID] = storedCell(row[index], atColumn: index)
         }
         return values
+    }
+
+    /// A binary field holds its bytes one character per byte. Sent back as text, that string is
+    /// staged over the blob as a real change, and SQLite cuts it at the first NUL.
+    private func storedCell(_ value: String?, atColumn index: Int) -> PluginCellValue {
+        guard let value else { return .null }
+        guard fields.indices.contains(index), fields[index].isBinaryValue else { return .text(value) }
+        return .bytes(value.storedBytes)
     }
 
     private func configuredAbsentRows(atColumn index: Int) -> Set<RowID> {
@@ -425,15 +462,14 @@ final class MultiRowEditState: ObservableObject {
     func setFieldToEmpty(at index: Int) {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
-        if fields[index].originalValue == "" {
-            fields[index].pendingValue = nil
-        } else {
-            fields[index].pendingValue = ""
-        }
+        let isStoredValue = fields[index].originalValue == ""
+        fields[index].pendingValue = isStoredValue ? nil : ""
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         fields[index].isPendingRemoval = false
-        if fields[index].pendingValue != nil || hadPendingEdit {
+        if isStoredValue, hadPendingEdit {
+            onFieldChanged?(index, storedCell("", atColumn: index), .discrete)
+        } else if !isStoredValue {
             onFieldChanged?(index, .text(""), .discrete)
         }
     }

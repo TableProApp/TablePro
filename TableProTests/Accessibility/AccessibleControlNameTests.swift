@@ -27,6 +27,8 @@ struct AccessibleControlNameTests {
         ("TablePro/Views/Results/PhpViewerView.swift", "Open in Window"),
         ("TablePro/Views/RowInspector/FieldEditors/JsonEditorView.swift", "Open in Window"),
         ("TablePro/Views/RowInspector/FieldEditors/MultiLineEditorView.swift", "Open in Window"),
+        ("TablePro/Views/RowInspector/FieldEditors/GeometryFieldView.swift", "Open in Window"),
+        ("TablePro/Views/RowInspector/FieldEditors/GeometryFieldView.swift", "Fit to Geometry"),
         ("TablePro/Views/Editor/QueryParameterPanelView.swift", "Close parameter panel"),
         ("TablePro/Views/DataFiles/DataFileFindBar.swift", "Find Options"),
         ("TablePro/Views/DataFiles/DataFileContentView.swift", "Sheet"),

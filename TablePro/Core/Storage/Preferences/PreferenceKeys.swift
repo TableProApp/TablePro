@@ -11,6 +11,9 @@ enum PreferenceKeys {
     static let selectedSettingsPane = DefaultsKey<String>("com.TablePro.settings.selectedPane")
     static let rowInspectorJsonFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.jsonFieldHeight")
     static let rowInspectorTextFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.textFieldHeight")
+    static let rowInspectorGeometryFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.geometryFieldHeight")
+    /// Text or Map, as the field's picker last left it. Device-local, like the heights beside it.
+    static let rowInspectorGeometryFieldMode = DefaultsKey<String>("com.TablePro.rightSidebar.geometryFieldMode")
     static let workspaceRailOrder = DefaultsKey<[WorkspaceID]>("com.TablePro.workspaceRail.order")
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
     static let queryPlanBarMetric = DefaultsKey<String>("com.TablePro.queryPlan.barMetric")
@@ -33,6 +36,8 @@ enum PreferenceKeys {
         selectedSettingsPane.name,
         rowInspectorJsonFieldHeight.name,
         rowInspectorTextFieldHeight.name,
+        rowInspectorGeometryFieldHeight.name,
+        rowInspectorGeometryFieldMode.name,
         workspaceRailOrder.name,
         queryPlanRawFontSize.name,
         queryPlanBarMetric.name,

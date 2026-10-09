@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row and text selection in the JSON and PHP viewer trees, with `Cmd+C` copying the selected values.
 - Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
+- Map preview of a geometry value in the row inspector, with Text and Map segments, Fit to Geometry and Open in Window.
 
 ### Changed
 
@@ -42,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Invalid JSON" in Tree mode for a NULL or empty JSON cell.
 - "{1 keys}" and "[1 items]" for a one-member object or array in the JSON and PHP viewer trees.
 - A broken character before the `…` of a long string in the JSON and PHP viewer trees.
+- Binary geometry values shown as garbled text in the row inspector, where typing replaced the bytes with text.
+- Binary values saved as text after Set NULL or Set DEFAULT was cleared in the row inspector.
+- Crash when a spatial or JSON column held a value with thousands of nested brackets.
+- Parts of a multi-part geometry missing from the map with nothing saying so.
+- Geographic SRIDs such as 4258, 4283 and 7844 refused by the map as projected coordinate systems.
+- GeoJSON with a lowercase type name such as `point` not drawn on the map.
+- A column holding only curved geometry losing the Map view, and `CIRCULARSTRINGM` called unreadable instead of named.
 
 ## [0.79.0] - 2026-10-09
 

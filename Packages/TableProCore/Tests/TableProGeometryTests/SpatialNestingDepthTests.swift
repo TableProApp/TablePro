@@ -47,6 +47,31 @@ final class SpatialNestingDepthTests: XCTestCase {
         XCTAssertEqual(WKBGeometryReader.read(bytes: bytes), .failure(.malformed))
     }
 
+    /// A ClickHouse tuple nests by bracket alone, so 200 KB of brackets is all it takes. Far past
+    /// the bound on purpose: a reader that recursed into this would overflow the stack.
+    func testTupleRefusesDeepNestingWithoutRecursingIntoIt() {
+        for (open, close) in [("[", "]"), ("(", ")")] {
+            let text = Self.nestedTuple(depth: 100_000, open: open, close: close)
+            XCTAssertNil(SpatialValueReader.readClickHouseTuple(text))
+            XCTAssertEqual(SpatialValueReader.read(text), .failure(.notGeometry))
+        }
+    }
+
+    func testTupleRefusesDeepNestingAroundAPoint() {
+        let text = String(repeating: "[", count: 100_000) + "(1,2)" + String(repeating: "]", count: 100_000)
+        XCTAssertEqual(SpatialValueReader.read(text), .failure(.notGeometry))
+    }
+
+    /// The deepest value ClickHouse writes is a MultiPolygon, five levels with its numbers.
+    func testTupleStillReadsTheDeepestRealValue() {
+        let text = "[[[(0,0),(1,0),(1,1),(0,0)],[(0.2,0.2),(0.4,0.2),(0.4,0.4),(0.2,0.2)]]]"
+        guard case .multiPolygon(let polygons)? = SpatialValueReader.readClickHouseTuple(text)?.geometry else {
+            return XCTFail("expected a multipolygon")
+        }
+        XCTAssertEqual(polygons.count, 1)
+        XCTAssertEqual(polygons[0].count, 2)
+    }
+
     private static func nestedWKT(depth: Int) -> String {
         String(repeating: "GEOMETRYCOLLECTION(", count: depth)
             + "POINT(1 2)"
@@ -57,5 +82,9 @@ final class SpatialNestingDepthTests: XCTestCase {
         String(repeating: #"{"type":"GeometryCollection","geometries":["#, count: depth)
             + #"{"type":"Point","coordinates":[1,2]}"#
             + String(repeating: "]}", count: depth)
+    }
+
+    private static func nestedTuple(depth: Int, open: String, close: String) -> String {
+        String(repeating: open, count: depth) + String(repeating: close, count: depth)
     }
 }

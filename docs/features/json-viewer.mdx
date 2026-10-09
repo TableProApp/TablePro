@@ -130,6 +130,7 @@ A value that refuses to open in one mode still opens in another.
 | Blob cell in the grid | First 64 bytes | Rendered as `0x48656C…` |
 | Image preview | 16 MB | "Too Large to Preview". The source still opens |
 | SVG rasterizing | 3 seconds | "Could Not Render This Image". The markup still opens |
+| Geometry map | 100,000 shapes or 2,000,000 points in one value | "This geometry has more points than the map draws." **Text** still opens |
 
 ## Row details inspector
 
@@ -137,11 +138,12 @@ A value that refuses to open in one mode still opens in another.
 
 | Content | Editor |
 | --- | --- |
+| A spatial column whose value the map reads, or GeoJSON in a JSON column | [Map](#geometry-fields), stored value behind **Text** |
 | A JSON column, or text that parses as JSON | JSON editor |
 | A PHP serialized value | Read-only [PHP viewer](#php-serialized-viewer) |
 | An image, in any column | [Image viewer](#image-viewer), source behind the second segment |
 | An enum, set, or boolean column | Picker |
-| A blob column | Hex editor |
+| A blob column, or other bytes in a spatial column | Hex editor |
 | A `TEXT` variant, `CLOB` or `NTEXT` column, or any value with a line break or over 80 characters | Scrolling text box |
 | Anything else | Single-line field |
 
@@ -154,13 +156,25 @@ Type in a field and the grid cell beside it follows, tinted as a pending change 
 
 The hex editor shows the first 10 KB of a blob. Past that it reads **Truncated, read only** and refuses edits, rather than saving back the part it could show.
 
-The text box and the JSON editor each carry a drag handle under them, with separate remembered heights that survive a relaunch.
+The text box, the JSON editor and the map each carry a drag handle under them, with separate remembered heights that survive a relaunch.
 
-**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. An image detaches read-only. The expand button on a JSON, PHP or long text field grows it to fill the inspector's height with the other fields still listed around it; click it again to shrink it back. Binary and image fields draw at a fixed height and carry no expand button.
+**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. An image and a map detach read-only. The expand button on a JSON, PHP, long text or geometry field grows it to fill the inspector's height with the other fields still listed around it; click it again to shrink it back. Binary and image fields draw at a fixed height and carry no expand button, and neither does a geometry field stored as bytes, whose map still takes the drag handle.
 
 Every field carries a menu at its trailing edge, and right-clicking the field opens the same one. **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions** need an editable field; `Ctrl+Option+N` and `Ctrl+Option+D` reach the first two from the keyboard. **Copy Value** is always there, and a read-only field keeps its text selectable.
 
 With no row selected, the inspector describes the table the tab is bound to: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. A tab with no table of its own, such as a query, leaves it empty. On a Structure tab it follows the structure grid and names the selected column.
+
+### Geometry fields
+
+Select a row with a spatial column and its field opens on a map of that one value: a marker for a point, the path of a line, a polygon with its holes, and every member of a multi-part value or a collection. GeoJSON in a JSON column gets the same field.
+
+**Text**, the other segment, holds the stored value in the editor it would otherwise have: the text box for WKT, the JSON editor for GeoJSON, the hex editor for WKB bytes. Edit it there and **Map** draws the edited value before any save. Typing never switches the segment. The segment picked last is the one the next geometry field opens on, remembered on this Mac.
+
+Drag the map to pan it; pinch, double-click or Cmd + scroll to zoom. A plain scroll moves the inspector. **Fit to Geometry** frames the value again, and **Open in Window** on the **Map** segment opens the map alone in a resizable window.
+
+The caption under the map names the geometry type and its SRID, adds the latitude and longitude of a single point, and counts any parts left out because the map could not place them.
+
+A value with nothing to draw opens on **Text**, and **Map** says why in a sentence: NULL, an empty geometry, an SRID the map does not place, a curve type, coordinates out of range for their SRID, a shape wholly past 85 degrees of latitude, or several selected rows that hold different values. [Map mode](/features/data-grid#map-mode) lists the formats and SRIDs the map reads. A value in none of those formats keeps the editor it had, with no **Map** segment: a text editor for text, the hex editor for bytes.
 
 ## Row as JSON
 

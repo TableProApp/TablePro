@@ -182,6 +182,19 @@ final class SpatialValueReaderTests: XCTestCase {
         )
     }
 
+    /// `CIRCULARSTRINGM` does not open like a type the WKT reader takes, so it reaches the last read
+    /// by falling through every other reader, and has to come out named.
+    func testUnsupportedKeywordWithAFusedTagSurvivesTheSniff() {
+        XCTAssertEqual(
+            SpatialValueReader.read("CIRCULARSTRINGM(0 0 1,1 1 1,2 0 1)"),
+            .failure(.unsupportedGeometryType("CIRCULARSTRING"))
+        )
+        XCTAssertEqual(
+            SpatialValueReader.read("SRID=4326;TINZM(((0 0 0 1,0 0 1 1,0 1 0 1,0 0 0 1)))"),
+            .failure(.unsupportedGeometryType("TIN"))
+        )
+    }
+
     func testSurroundingWhitespaceIsIgnored() {
         XCTAssertEqual(geometry("  POINT(1 2)\n"), .point(SpatialPoint(x: 1, y: 2)))
     }

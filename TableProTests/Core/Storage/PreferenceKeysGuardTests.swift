@@ -17,6 +17,20 @@ struct PreferenceKeysGuardTests {
         }
     }
 
+    @Test("The inspector's field preferences are registered under their own names")
+    func inspectorFieldKeysAreRegistered() {
+        let keys = [
+            PreferenceKeys.rowInspectorJsonFieldHeight.name,
+            PreferenceKeys.rowInspectorTextFieldHeight.name,
+            PreferenceKeys.rowInspectorGeometryFieldHeight.name,
+            PreferenceKeys.rowInspectorGeometryFieldMode.name,
+        ]
+        #expect(Set(keys).count == keys.count)
+        for key in keys {
+            #expect(PreferenceKeys.registeredKeyNames.contains(key), "\(key) is not registered")
+        }
+    }
+
     @Test("No off-namespace forKey: literals outside the frozen baseline")
     func noNewRawForKeyLiterals() throws {
         let offenders = try Self.scan(pattern: #"forKey:\s*"([^"\\]+)""#, ignoringCalls: Self.nonPreferenceCalls)
