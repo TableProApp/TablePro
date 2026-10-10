@@ -42,6 +42,10 @@ struct ParsedConnectionURL {
     let multiHost: String?
     let additionalFields: [String: String]
 
+    var localSocketPath: String? {
+        MySQLLocalSocket.path(in: additionalFields)
+    }
+
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
             return connectionName
@@ -65,6 +69,7 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
     case unsupportedScheme(String)
     case missingHost
     case invalidRedisDatabaseIndex(String)
+    case invalidSocketPath(MySQLLocalSocket.PathIssue)
 
     var errorDescription: String? {
         switch self {
@@ -78,6 +83,8 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
             return String(localized: "Connection URL must include a host")
         case .invalidRedisDatabaseIndex(let path):
             return String(format: String(localized: "%@ is not a Redis database index."), path)
+        case .invalidSocketPath(let issue):
+            return issue.message
         }
     }
 }
@@ -172,8 +179,10 @@ struct ConnectionURLParser {
             return .failure(.invalidURL)
         }
 
-        guard let host = components.host, !host.isEmpty else {
-            return .failure(.missingHost)
+        let endpoint: (host: String, socketFields: [String: String])
+        switch resolveEndpoint(components, type: dbType) {
+        case .success(let resolved): endpoint = resolved
+        case .failure(let error): return .failure(error)
         }
 
         var ext = parseQueryItems(components.queryItems, dbType: dbType)
@@ -230,7 +239,7 @@ struct ConnectionURLParser {
 
         return .success(ParsedConnectionURL(
             type: dbType,
-            host: host,
+            host: endpoint.host,
             port: effectivePort,
             database: database,
             username: username,
@@ -262,8 +271,55 @@ struct ConnectionURLParser {
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
-            additionalFields: tls.additionalFields
+            additionalFields: tls.additionalFields.merging(endpoint.socketFields) { _, socket in socket }
         ))
+    }
+
+    private static func resolveEndpoint(
+        _ components: URLComponents,
+        type: DatabaseType
+    ) -> Result<(host: String, socketFields: [String: String]), ConnectionURLParseError> {
+        localSocketPath(in: components, type: type).flatMap { socketPath in
+            if let socketPath {
+                return .success(("localhost", [MySQLLocalSocket.fieldKey: socketPath]))
+            }
+            guard let host = components.host, !host.isEmpty else {
+                return .failure(.missingHost)
+            }
+            return .success((host, [:]))
+        }
+    }
+
+    private static let socketParameterNames = ["socket", "unix_socket"]
+
+    // The mysql client's rule: only `localhost` or no host uses the socket. A bad path fails the URL,
+    // since falling back to TCP on localhost can reach a different server with the same credentials.
+    private static func localSocketPath(
+        in components: URLComponents,
+        type: DatabaseType
+    ) -> Result<String?, ConnectionURLParseError> {
+        let host = components.host ?? ""
+        guard type.supportsLocalSocket, host.isEmpty || host.lowercased() == "localhost" else {
+            return .success(nil)
+        }
+        let items = components.percentEncodedQueryItems ?? []
+        let raw = socketParameterNames.lazy.compactMap { name in
+            items.first { $0.name.lowercased() == name && !($0.value ?? "").isEmpty }?.value
+        }.first
+        guard let raw else { return .success(nil) }
+        // Form-decoded, as URLSearchParams writes a space as `+`. MySQL's URI syntax may wrap the path in ().
+        guard var path = raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding else {
+            return .failure(.invalidURL)
+        }
+        path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.count >= 2, path.hasPrefix("("), path.hasSuffix(")") {
+            path = String(path.dropFirst().dropLast())
+        }
+        guard !path.isEmpty else { return .success(nil) }
+        if let issue = MySQLLocalSocket.issue(for: path) {
+            return .failure(.invalidSocketPath(issue))
+        }
+        return .success(path)
     }
 
     private static func resolveDBType(from scheme: String) -> DatabaseType? {

@@ -36,9 +36,17 @@ struct DeeplinkImportSheet: View {
                     TextField(String(localized: "Name"), text: $editableName)
                         .onChange(of: editableName) { _ in checkDuplicate() }
 
-                    LabeledContent(String(localized: "Host")) {
-                        Text(hostDisplay)
-                            .foregroundStyle(.secondary)
+                    if let socketPath {
+                        LabeledContent(String(localized: "Socket")) {
+                            Text(socketPath)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        LabeledContent(String(localized: "Host")) {
+                            Text(hostDisplay)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     if !connection.database.isEmpty {
@@ -101,6 +109,18 @@ struct DeeplinkImportSheet: View {
         .frame(width: 420)
         .frame(maxHeight: 560)
         .onAppear { checkDuplicate() }
+    }
+
+    private var socketPath: String? {
+        guard connection.sshConfig == nil, DatabaseType(rawValue: connection.type).supportsLocalSocket else {
+            return nil
+        }
+        return MySQLLocalSocket.path(in: connection.additionalFields ?? [:])
+    }
+
+    private var driverOptions: [String: String] {
+        guard socketPath != nil else { return connection.additionalFields ?? [:] }
+        return (connection.additionalFields ?? [:]).filter { $0.key != MySQLLocalSocket.fieldKey }
     }
 
     private var hostDisplay: String {
@@ -191,7 +211,8 @@ struct DeeplinkImportSheet: View {
 
     @ViewBuilder
     private var optionsSection: some View {
-        if let fields = connection.additionalFields, !fields.isEmpty {
+        let fields = driverOptions
+        if !fields.isEmpty {
             Section(String(localized: "Driver Options")) {
                 ForEach(fields.keys.sorted(), id: \.self) { key in
                     LabeledContent(key) {
@@ -267,10 +288,18 @@ struct DeeplinkImportSheet: View {
         let existing = ConnectionStorage.shared.loadConnections()
         isDuplicate = existing.contains {
             $0.name.lowercased() == trimmed.lowercased()
-                && $0.host.lowercased() == connection.host.lowercased()
-                && $0.port == connection.port
                 && $0.type.rawValue.lowercased() == connection.type.lowercased()
+                && hasSameEndpoint($0)
         }
+    }
+
+    private func hasSameEndpoint(_ saved: DatabaseConnection) -> Bool {
+        guard let socketPath else {
+            return saved.localSocketPath == nil
+                && saved.host.lowercased() == connection.host.lowercased()
+                && saved.port == connection.port
+        }
+        return saved.localSocketPath == socketPath
     }
 
     private func performImport() {

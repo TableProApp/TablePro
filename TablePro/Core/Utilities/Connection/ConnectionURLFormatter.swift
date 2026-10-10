@@ -151,7 +151,10 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        if connection.type.pluginTypeId == "MongoDB",
+        let socketPath = connection.localSocketPath
+        if socketPath != nil {
+            result += "localhost"
+        } else if connection.type.pluginTypeId == "MongoDB",
            let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
             result += mongoHosts
         } else {
@@ -167,14 +170,32 @@ struct ConnectionURLFormatter {
         if connection.type == .redis {
             pathComponent = redisPath(for: connection)
         }
-        result += "/\(pathComponent)"
+        // Unencoded, a `#` or `?` in the name would swallow the query, socket included.
+        result += "/\(pathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pathComponent)"
 
+        var params: [String] = []
+        if let socketPath {
+            params.append("socket=\(percentEncodeSocketPath(socketPath))")
+        }
         let query = buildQueryString(connection)
         if !query.isEmpty {
-            result += "?\(query)"
+            params.append(query)
+        }
+        if !params.isEmpty {
+            result += "?\(params.joined(separator: "&"))"
         }
 
         return result
+    }
+
+    private static let socketPathAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+
+    // MySQL's documented form, `socket=%2Ftmp%2Fmysql.sock`. Only unreserved characters stay
+    // literal, so `+` and a space survive both percent and form decoding.
+    private static func percentEncodeSocketPath(_ path: String) -> String {
+        path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed) ?? path
     }
 
     private static func redisPath(for connection: DatabaseConnection) -> String {

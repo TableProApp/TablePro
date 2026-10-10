@@ -11,9 +11,10 @@ Both schemes open a connection; `mariadb://` creates a MariaDB connection, `mysq
 
 ```text
 mariadb://user:password@host:3306/database
+mariadb://user:password@localhost/database?socket=%2Ftmp%2Fmysql.sock
 ```
 
-See [Connection URL Reference](/connections/urls).
+`socket` works as it does on [MySQL](/databases/mysql#connection-url). See [Connection URL Reference](/connections/urls).
 
 ## Differences from MySQL
 

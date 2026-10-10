@@ -592,12 +592,14 @@ enum ConnectionExportService {
         components.scheme = "tablepro"
         components.host = "import"
 
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "name", value: exportable.name),
-            URLQueryItem(name: "host", value: exportable.host),
-            URLQueryItem(name: "port", value: String(exportable.port)),
-            URLQueryItem(name: "type", value: exportable.type)
-        ]
+        var queryItems = [URLQueryItem(name: "name", value: exportable.name)]
+        if let socketPath = connection.localSocketPath {
+            queryItems.append(URLQueryItem(name: "socket", value: socketPath))
+        } else {
+            queryItems.append(URLQueryItem(name: "host", value: exportable.host))
+            queryItems.append(URLQueryItem(name: "port", value: String(exportable.port)))
+        }
+        queryItems.append(URLQueryItem(name: "type", value: exportable.type))
 
         if !exportable.username.isEmpty {
             queryItems.append(URLQueryItem(name: "username", value: exportable.username))
@@ -696,7 +698,7 @@ enum ConnectionExportService {
         }
 
         if let fields = exportable.additionalFields {
-            for (key, value) in fields.sorted(by: { $0.key < $1.key }) {
+            for (key, value) in fields.sorted(by: { $0.key < $1.key }) where key != MySQLLocalSocket.fieldKey {
                 queryItems.append(URLQueryItem(name: "af_\(key)", value: value))
             }
         }

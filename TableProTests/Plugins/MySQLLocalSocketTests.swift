@@ -34,6 +34,20 @@ struct MySQLLocalSocketTests {
         #expect(MySQLLocalSocket.issue(for: MySQLLocalSocket.defaultPath) == nil)
     }
 
+    @Test(
+        "A NUL, control or invisible character is rejected",
+        arguments: ["/tmp/prod.sock\u{0}/../dev.sock", "/tmp/a\nb.sock", "/tmp/\u{202E}kcos.b", "/tmp/a\u{200B}.sock", "/tmp/a\u{7F}.sock"]
+    )
+    func hiddenCharacters(_ path: String) {
+        #expect(MySQLLocalSocket.issue(for: path) == .hiddenCharacter)
+    }
+
+    @Test("A space or non-ASCII letter is still a valid path")
+    func visibleCharacters() {
+        #expect(MySQLLocalSocket.issue(for: "/Users/me/Library/Application Support/Local/mysqld.sock") == nil)
+        #expect(MySQLLocalSocket.issue(for: "/tmp/caf\u{E9}.sock") == nil)
+    }
+
     @Test("The limit is 103 UTF-8 bytes, not 103 characters")
     func byteLimit() {
         let twoByte = "\u{E9}"

@@ -137,4 +137,66 @@ struct ConnectionFormClipboardTests {
         let candidate = try #require(ClipboardConnectionCandidate(clipboardText: url))
         #expect(ClipboardConnectionBanner.summary(for: candidate) == url)
     }
+
+    @Test(
+        "A socket URL opens the form on Socket with its path, from the clipboard or Import from URL",
+        arguments: [
+            "mysql://root@localhost/local?socket=%2Ftmp%2Fmysql.sock",
+            "mariadb://root@/local?unix_socket=/tmp/mysql.sock"
+        ]
+    )
+    func socketURLSelectsSocket(_ url: String) throws {
+        for coordinator in [try formApplyingClipboard(url), try formImporting(url)] {
+            #expect(coordinator.network.endpoint == .localSocket)
+            #expect(coordinator.network.localSocketPath == "/tmp/mysql.sock")
+            #expect(coordinator.transport == nil)
+            #expect(coordinator.advanced.additionalFieldValues[MySQLLocalSocket.fieldKey] == nil)
+
+            let edits = coordinator.buildEdits()
+            #expect(edits.additionalFields[MySQLLocalSocket.fieldKey] == "/tmp/mysql.sock")
+            #expect(edits.applied(to: DatabaseConnection(name: "")).localSocketPath == "/tmp/mysql.sock")
+        }
+    }
+
+    @Test("A socket URL pasted over an SSH form drops the tunnel")
+    func socketURLClearsTheTransport() throws {
+        let candidate = try #require(
+            ClipboardConnectionCandidate(clipboardText: "mysql://root@localhost/local?socket=/tmp/mysql.sock")
+        )
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.start()
+        coordinator.transport = .ssh
+        coordinator.ssh.state.host = "bastion.example.com"
+
+        coordinator.applyClipboardCandidate(candidate)
+
+        #expect(coordinator.network.endpoint == .localSocket)
+        #expect(coordinator.transport == nil)
+        #expect(coordinator.availableTransports == [nil])
+    }
+
+    @Test("A TCP URL pasted after a socket one goes back to Host and Port")
+    func tcpURLLeavesSocket() throws {
+        let socket = try #require(
+            ClipboardConnectionCandidate(clipboardText: "mysql://root@localhost/local?socket=/tmp/mysql.sock")
+        )
+        let tcp = try #require(ClipboardConnectionCandidate(clipboardText: "mysql://root@db.example.com/shop"))
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.start()
+
+        coordinator.applyClipboardCandidate(socket)
+        coordinator.applyClipboardCandidate(tcp)
+
+        #expect(coordinator.network.endpoint == .hostAndPort)
+        #expect(coordinator.network.host == "db.example.com")
+        #expect(coordinator.buildEdits().additionalFields[MySQLLocalSocket.fieldKey] == nil)
+    }
+
+    @Test("The banner summary names the socket and no port")
+    func summaryShowsTheSocket() throws {
+        let candidate = try #require(
+            ClipboardConnectionCandidate(clipboardText: "mysql://root:pw@localhost/db?socket=/tmp/my.sock")
+        )
+        #expect(ClipboardConnectionBanner.summary(for: candidate) == "mysql://root:***@localhost/db?socket=/tmp/my.sock")
+    }
 }
