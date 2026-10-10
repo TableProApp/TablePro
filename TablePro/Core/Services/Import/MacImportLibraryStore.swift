@@ -155,7 +155,8 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                         port: connection.port,
                         database: connection.database,
                         username: connection.username,
-                        redisDatabase: connection.redisDatabase
+                        redisDatabase: connection.redisDatabase,
+                        socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                     )
                 )
             },

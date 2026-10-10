@@ -75,6 +75,31 @@ struct ConnectionImportAnalyzerTests {
         #expect(preview.connections[1].duplicate != nil)
     }
 
+    @Test("Socket connections differ by socket path and from a TCP connection to the same database")
+    func socketPathDistinguishesDuplicates() throws {
+        var local = Fixtures.settings(
+            name: "Local MySQL", host: "localhost", port: 3_306, database: "app", username: "root", type: "MySQL"
+        )
+        local.additionalFields = ["localSocketPath": "/tmp/mysql.sock"]
+        var otherSocket = local
+        otherSocket.additionalFields = ["localSocketPath": "/opt/homebrew/var/mysql/mysql.sock"]
+        var tcp = local
+        tcp.additionalFields = nil
+        let library = ImportLibrarySnapshot(connections: [Fixtures.existing(local)])
+        let preview = Fixtures.makePreview(
+            try Fixtures.makeBundle(connections: [
+                BundleConnection(ref: "c1", settings: otherSocket),
+                BundleConnection(ref: "c2", settings: tcp),
+                BundleConnection(ref: "c3", settings: local)
+            ]),
+            library: library
+        )
+
+        #expect(preview.connections[0].duplicate == nil)
+        #expect(preview.connections[1].duplicate == nil)
+        #expect(preview.connections[2].duplicate != nil)
+    }
+
     @Test("An unknown type is unsupported, kept as written and not selected")
     func unknownTypeIsUnsupported() throws {
         let preview = Fixtures.makePreview(

@@ -1,12 +1,24 @@
 import Foundation
 
 public struct ConnectionMatchKey: Hashable, Sendable {
+    // MySQLLocalSocket.fieldKey, which this package cannot import.
+    private static let socketPathFieldKey = "localSocketPath"
+
     private let host: String
     private let port: Int
     private let database: String
     private let username: String
+    // Compared exactly, since the driver passes the path to connect(2) as written.
+    private let socketPath: String?
 
-    public init(host: String, port: Int, database: String, username: String, redisDatabase: Int?) {
+    public init(
+        host: String,
+        port: Int,
+        database: String,
+        username: String,
+        redisDatabase: Int?,
+        socketPath: String?
+    ) {
         self.host = Self.normalized(host)
         self.port = port
         let databaseKey = Self.normalized(database)
@@ -16,6 +28,8 @@ public struct ConnectionMatchKey: Hashable, Sendable {
             self.database = databaseKey
         }
         self.username = Self.normalized(username)
+        let socketKey = socketPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.socketPath = socketKey?.isEmpty == false ? socketKey : nil
     }
 
     public init(_ settings: ExportableConnection) {
@@ -24,7 +38,8 @@ public struct ConnectionMatchKey: Hashable, Sendable {
             port: settings.port,
             database: settings.database,
             username: settings.username,
-            redisDatabase: settings.redisDatabase
+            redisDatabase: settings.redisDatabase,
+            socketPath: settings.additionalFields?[Self.socketPathFieldKey]
         )
     }
 

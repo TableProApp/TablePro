@@ -158,7 +158,8 @@ struct RDSDiscoveryReconcilerTests {
             port: 5_432,
             database: "orders",
             username: "app_ro",
-            redisDatabase: nil
+            redisDatabase: nil,
+            socketPath: nil
         ))
     }
 

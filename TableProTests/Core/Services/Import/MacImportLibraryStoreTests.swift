@@ -65,6 +65,28 @@ struct MacImportLibraryStoreTests {
         #expect(snapshot.savedQueries.map(\.name) == ["Locks"])
     }
 
+    @Test("A saved socket connection matches its exported settings, not a TCP connection to the same database")
+    func snapshotKeysSocketConnectionsBySocketPath() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var saved = DatabaseConnection(
+            name: "Local", host: "localhost", port: 3_306, database: "app", username: "root", type: .mysql
+        )
+        saved.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+        #expect(library.connections.addConnection(saved))
+
+        let snapshot = try await library.store.snapshot()
+
+        var exported = ExportableConnection(
+            name: "Local", host: "localhost", port: 3_306, database: "app", username: "root", type: "MySQL"
+        )
+        let tcpKey = ConnectionMatchKey(exported)
+        exported.additionalFields = [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        let key = try #require(snapshot.connections.first?.matchKey)
+        #expect(key == ConnectionMatchKey(exported))
+        #expect(key != tcpKey)
+    }
+
     @Test("An unreadable connections file refuses the import and stays byte for byte")
     func unreadableConnectionsRefuse() async throws {
         let library = try ImportLibraryFixture(damage: [.connections])

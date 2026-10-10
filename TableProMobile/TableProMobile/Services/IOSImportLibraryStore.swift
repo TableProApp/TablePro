@@ -23,7 +23,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     port: connection.port,
                     database: connection.database,
                     username: connection.username,
-                    redisDatabase: nil
+                    redisDatabase: nil,
+                    socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 )
             )
         })
