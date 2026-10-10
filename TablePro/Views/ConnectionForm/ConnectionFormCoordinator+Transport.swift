@@ -52,6 +52,7 @@ extension ConnectionFormCoordinator {
     /// stored in `ssh.state`, so only one of them can be offered: the getter decides which by
     /// capability, and offering both would let the picker select `.ssh` and read back `.remoteFile`.
     var availableTransports: [ConnectionTunnelKind?] {
+        guard !network.usesLocalSocket else { return [nil] }
         var transports: [ConnectionTunnelKind?] = [nil]
         if supportsRemoteDatabaseFile {
             transports.append(.remoteFile)
@@ -71,6 +72,16 @@ extension ConnectionFormCoordinator {
             transports.append(.tunnelCommand)
         }
         return transports
+    }
+
+    // No tunnel reaches a socket file on this Mac, so Socket clears the transport in the same edit.
+    func selectEndpoint(_ endpoint: NetworkPaneViewModel.Endpoint) {
+        guard endpoint != network.endpoint else { return }
+        network.endpoint = endpoint
+        if network.usesLocalSocket {
+            transport = nil
+        }
+        testSucceeded = false
     }
 
     var supportsRemoteDatabaseFile: Bool {

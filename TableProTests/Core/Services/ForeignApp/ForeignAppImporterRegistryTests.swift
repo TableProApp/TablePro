@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProImport
 import TableProPluginKit
 import Testing
 
@@ -111,5 +112,61 @@ struct ForeignAppImporterRegistryTests {
         #expect(ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: TablePlusImporter()))
         #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: DBeaverImporter()))
         #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: false, importer: TablePlusImporter()))
+    }
+
+    @Test("Every importer but Navicat reads saved queries, each with its caption")
+    func testSavedQuerySupport() {
+        for importer in ForeignAppImporterRegistry.all {
+            switch importer.savedQuerySupport {
+            case .reads(let caption):
+                #expect(importer.id != "navicat", "\(importer.id) should not read saved queries")
+                #expect(!caption.isEmpty)
+            case .unavailable(let reason):
+                #expect(importer.id == "navicat", "\(importer.id) should read saved queries")
+                #expect(!reason.isEmpty)
+            }
+        }
+    }
+
+    @Test("inventory runs off the main actor and finds nothing in empty sources")
+    func testInventoryOffMainActor() async throws {
+        let empty = try ForeignFixture.makeTempDirectory("ForeignAppImporterRegistryTests")
+        let importers = Self.importers(rootedAt: empty)
+
+        let inventories = await withTaskGroup(of: ForeignAppInventory.self) { group in
+            for importer in importers {
+                group.addTask { importer.inventory() }
+            }
+            var collected: [ForeignAppInventory] = []
+            for await inventory in group {
+                collected.append(inventory)
+            }
+            return collected
+        }
+
+        #expect(inventories.count == importers.count)
+        #expect(inventories.allSatisfy { $0 == ForeignAppInventory(connections: 0, savedQueries: 0) })
+    }
+
+    private static func importers(rootedAt root: URL) -> [any ForeignAppImporter] {
+        var tablePlus = TablePlusImporter()
+        tablePlus.dataDirectoryOverride = root
+        tablePlus.readViewSetting = { _ in nil }
+        tablePlus.resolveAppURL = { _ in nil }
+
+        var sequelAce = SequelAceImporter()
+        sequelAce.favoritesFileURL = root.appendingPathComponent("Favorites.plist")
+        sequelAce.queryFavoritesFileURL = root.appendingPathComponent("com.sequel-ace.sequel-ace.plist")
+
+        var dbeaver = DBeaverImporter()
+        dbeaver.dbeaverDataRoot = root
+
+        var dataGrip = DataGripImporter()
+        dataGrip.jetBrainsRoot = root
+
+        var beekeeper = BeekeeperStudioImporter()
+        beekeeper.dataDirectoryURL = root
+
+        return [tablePlus, sequelAce, dbeaver, dataGrip, beekeeper, NavicatImporter()]
     }
 }

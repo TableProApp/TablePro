@@ -2,10 +2,6 @@
 //  TeamLibrarySyncCoordinator.swift
 //  TablePro
 //
-//  Owns the app-side team library lifecycle: pulls the shared set on the license revalidation cadence,
-//  caches it, and publishes secret-free content through the existing export envelope. License access
-//  and credentials are injected so the coordinator is unit-testable without the license singleton.
-//
 
 import Combine
 import Foundation
@@ -23,6 +19,7 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     private let isFeatureAvailable: @MainActor () -> Bool
     private let credentialsProvider: @MainActor () -> (key: String, machineId: String)?
     private let licenseStatusChanges: AnyPublisher<Void, Never>
+    private let makeExporter: @MainActor () -> ConnectionBundleExporter
     private var licenseCancellable: AnyCancellable?
     private var wasFeatureAvailable = false
 
@@ -39,13 +36,15 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         },
         licenseStatusChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange
             .receive(on: RunLoop.main)
-            .eraseToAnyPublisher()
+            .eraseToAnyPublisher(),
+        makeExporter: @escaping @MainActor () -> ConnectionBundleExporter = { ConnectionBundleExporter() }
     ) {
         self.apiClient = apiClient
         self.store = store
         self.isFeatureAvailable = isFeatureAvailable
         self.credentialsProvider = credentialsProvider
         self.licenseStatusChanges = licenseStatusChanges
+        self.makeExporter = makeExporter
     }
 
     func start() {
@@ -122,9 +121,12 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         isPublishing = true
         defer { isPublishing = false }
 
-        let envelope = ConnectionExportService.buildEnvelope(for: connections)
-        let connectionPayloads = zip(connections, envelope.connections).map { connection, exportable in
-            TeamLibraryConnectionPayload(sourceConnectionId: connection.id.uuidString, payload: exportable)
+        let exporter = makeExporter()
+        let connectionPayloads = connections.map { connection in
+            TeamLibraryConnectionPayload(
+                sourceConnectionId: connection.id.uuidString,
+                payload: exporter.portableSettings(for: connection)
+            )
         }
         let folderPayloads = folders.map { folder in
             TeamLibraryQueryFolderPayload(

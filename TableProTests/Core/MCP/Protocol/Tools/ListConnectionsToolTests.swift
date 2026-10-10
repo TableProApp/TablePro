@@ -85,12 +85,34 @@ struct ListConnectionsToolTests {
         let connections = try #require(result.structuredContent?["connections"]?.arrayValue)
         let allowed: Set<String> = [
             "id", "name", "type", "host", "port", "database",
-            "is_connected", "ai_policy", "external_access", "safe_mode"
+            "is_connected", "ai_policy", "external_access", "safe_mode",
+            "color", "group", "tags"
         ]
         for entry in connections {
             let fields = try #require(entry.objectValue)
             #expect(Set(fields.keys).isSubset(of: allowed), "unexpected field in \(fields.keys.sorted())")
             #expect(fields["id"]?.stringValue != nil)
+            #expect(fields["tags"]?.arrayValue != nil)
         }
+    }
+
+    @Test("The output schema declares color, group and tags, and requires tags")
+    func outputSchemaDeclaresLabels() throws {
+        let output = try #require(ListConnectionsTool.outputSchema)
+        let entry = try #require(output["properties"]?["connections"]?["items"])
+        let fields = try #require(entry["properties"]?.objectValue)
+        let required = Set(entry["required"]?.arrayValue?.compactMap(\.stringValue) ?? [])
+
+        let colors: [JsonValue] = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray"].map { .string($0) }
+        #expect(fields["color"]?["enum"] == .array(colors))
+        #expect(fields["group"]?["type"]?.stringValue == "object")
+        #expect(fields["group"]?["properties"]?["path"]?["type"]?.stringValue == "array")
+        #expect(fields["group"]?["properties"]?["color"]?["enum"] == .array(colors))
+        #expect(fields["tags"]?["type"]?.stringValue == "array")
+        #expect(fields["tags"]?["items"]?["properties"]?["name"] != nil)
+        #expect(fields["tags"]?["items"]?["properties"]?["color"]?["enum"] == .array(colors))
+        #expect(required.contains("tags"))
+        #expect(!required.contains("color"))
+        #expect(!required.contains("group"))
     }
 }

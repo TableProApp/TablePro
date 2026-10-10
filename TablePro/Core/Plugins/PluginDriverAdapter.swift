@@ -128,7 +128,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         self.connection = connection
         self.pluginDriver = pluginDriver
         self.connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
-        self.timeoutEndpoint = timeoutEndpoint ?? .database(connection.host.nilIfEmpty ?? connection.name)
+        self.timeoutEndpoint = timeoutEndpoint ?? .database(connection.timeoutEndpointName)
         self.requiresHostDeadline = requiresHostDeadline
             ?? ConnectionTimeoutPolicy.requiresHostDeadline(for: connection)
         self.effectiveQueryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(

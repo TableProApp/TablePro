@@ -933,7 +933,7 @@ enum DatabaseDriverFactory {
             throw DatabaseError.connectionFailed(String(localized: "The prepared connection no longer matches this driver."))
         }
         let connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
-        let endpoint = timeoutEndpoint ?? .database(connection.host.nilIfEmpty ?? connection.name)
+        let endpoint = timeoutEndpoint ?? .database(connection.timeoutEndpointName)
         let requiresHostDeadline = ConnectionTimeoutPolicy.requiresHostDeadline(for: connection)
         if requiresHostDeadline {
             try connectionDeadline.check(endpoint: endpoint)

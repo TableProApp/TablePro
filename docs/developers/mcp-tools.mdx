@@ -15,7 +15,7 @@ In the tables below, required arguments come first and optional ones follow in p
 - The result comes back twice: as JSON text in `content[0]`, and as a typed object in `structuredContent`. Read `structuredContent`.
 - Timestamps are ISO 8601, error text is redacted, and "a result set" means `columns[]`, `rows[][]`, `row_count`, `rows_affected`, `execution_time_ms`, `is_truncated`, plus `status_message`, `database` and `schema` when they apply.
 
-Row limits default to the server's **Default row limit** setting (500) and are capped by **Maximum row limit** (10,000). Timeouts default to **Query timeout** (30 seconds) and are capped at 300. Both live in **Settings > Integrations**.
+Row limits default to the server's **Default row limit** setting (500) and are capped by **Maximum row limit** (10,000). Timeouts default to **Query timeout** (30 seconds) and are capped at 300. Both live in **Settings > MCP**.
 
 ## Tool index
 
@@ -36,7 +36,7 @@ Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `
 Past the scope, a call clears three more gates:
 
 1. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
-2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. Otherwise the first call that touches a connection asks the user, as often as **Settings > Integrations > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
+2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. Otherwise the first call that touches a connection asks the user, as often as **Settings > MCP > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
 3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/developers/mcp-protocol#approvals-and-input-required).
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
@@ -47,7 +47,7 @@ Statements that read or write files, or that run server-side code, are refused o
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`. `is_connected` is false once a connection stops answering, before it is disconnected |
+| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`, `tags`, plus `color` and `group` when set. `is_connected` is false once a connection stops answering, before it is disconnected |
 | `connect` | `connection_id` | `status` (`connected`), `connection_id`, `current_database`, plus `current_schema` and `server_version` when known. Returns once the driver is up |
 | `disconnect` | `connection_id` | `status` (`disconnected`), `connection_id` |
 | `get_connection_status` | `connection_id` | `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply |
@@ -55,6 +55,16 @@ Statements that read or write files, or that run server-side code, are refused o
 | `switch_schema` | `connection_id`, `schema` | `status` (`switched`), `connection_id`, `current_schema` |
 
 `list_connections` omits connections blocked for external clients, connections whose AI policy is **Never**, and connections outside the token's allowlist. Its `database` is the session's browsed database when connected, the saved default otherwise.
+
+The labels the user gave a connection come with it, so a client can show the list the way the app does:
+
+| Field | Shape |
+|-------|-------|
+| `color` | `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink` or `gray`. Omitted when the connection has no color |
+| `group` | `{ id, name, path[], color }`. `path` holds the group names from the top-level group down, ending with `name`. `color` is omitted when the group has none. The whole field is omitted when the connection is in no group |
+| `tags` | `[{ id, name, color }]` in the order the user added them, `color` omitted when the tag has none. Always present, empty when there are no tags |
+
+Entries are sorted by name, Finder style (`db2` before `db10`), then by `id`.
 
 The two `switch_` tools move what the user sees in TablePro. To run one statement elsewhere, pass `database` or `schema` to that tool instead.
 

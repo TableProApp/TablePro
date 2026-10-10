@@ -95,13 +95,11 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             return .deny(.rateLimited(retryAfterSeconds: retry))
         }
 
+        // Not counted: it carries no guess, and every local client shares the loopback key.
         guard let header = authorizationHeader, !header.isEmpty else {
-            return await denyAttempt(
-                addressKey: addressKey,
-                ip: ipString,
-                reason: "missing_authorization_header",
-                denial: .unauthenticated(reason: "missing_authorization_header")
-            )
+            Self.logger.info("Auth denied: reason=missing_authorization_header")
+            MCPAuditLogger.logAuthFailure(reason: "missing_authorization_header", ip: ipString)
+            return .deny(.unauthenticated(reason: "missing_authorization_header"))
         }
 
         guard let token = Self.parseBearerToken(header) else {

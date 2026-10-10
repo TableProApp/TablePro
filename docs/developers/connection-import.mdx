@@ -29,7 +29,7 @@ values that contain spaces: `sslMode=Verify%20CA`.
 | `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Gray` or `None`. Falls back to `None`. |
 | `icon` | SF Symbol name to draw instead of the type's icon, such as `server.rack`. Lowercase letters, digits and dots, up to 100 characters; anything else is dropped. A name this macOS lacks is kept and draws the type's icon. |
 | `tagName` | Tag to assign. Repeat the parameter for more than one tag. |
-| `groupName` | Group to place the connection in. |
+| `groupName` | Group to place the connection in. Repeat the parameter for a nested group, outermost first. |
 | `safeModeLevel` | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull` or `readOnly`. Falls back to `silent`. |
 | `aiPolicy` | `alwaysAllow`, `askEachTime` or `never`. Falls back to the app default. |
 | `redisDatabase` | Redis database index to select on connect. |
@@ -60,7 +60,7 @@ Set `ssh=1`, or none of these are read.
 
 | Parameter | Description |
 |-----------|-------------|
-| `sslMode` | `Disabled`, `Preferred`, `Required`, `Verify CA` or `Verify Identity`. Falls back to `Disabled`. |
+| `sslMode` | `Disabled`, `Preferred`, `Required`, `Verify CA` or `Verify Identity`. Falls back to `Required`, and the review sheet says so. |
 | `sslCaCertPath` | CA certificate file path. |
 | `sslClientCertPath` | Client certificate file path. |
 | `sslClientKeyPath` | Client key file path. |
@@ -81,9 +81,9 @@ editor afterwards.
 ## What the user sees
 
 The review sheet shows the type, host and port, database, username, SSH auth method, SSL mode, color,
-icon, tag, group, driver fields, and startup SQL. Only the name is editable. **Add Connection** saves it;
-when a connection with the same name, host, port and type is already there, the sheet warns
-*"A connection with this name, host, and type already exists."* and the button becomes
+icon, tags, group path, driver fields, and startup SQL. Only the name is editable. **Add Connection**
+saves it; when a connection to the same host, port, database and username is already saved, the sheet
+warns *"A connection to this server is already saved as “…”."* and the button becomes
 **Add as Copy**.
 
 The saved connection has no password, so open it in the connection editor and add one before

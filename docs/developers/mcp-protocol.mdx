@@ -61,7 +61,7 @@ The `Host` header must name a loopback host (`localhost`, `127.0.0.1`, `::1`) an
 
 `Origin`, when present, must be `https://claude.ai` or `https://app.cursor.com`. Any other origin answers `403 forbidden_origin`. A request with no `Origin` is fine, which is the normal case for a local client.
 
-Read the port from the handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Do not hardcode it.
+The port is `23508` by default. Make it a setting: when that port is busy the server binds another one, and the **Status** row in **Settings > MCP** shows the port in use. The handshake file is [not under the contract](/developers/versioning#what-is-not-under-the-contract).
 
 ## Protocol versions
 

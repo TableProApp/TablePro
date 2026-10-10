@@ -25,7 +25,7 @@ Anonymous loopback is the floor and cannot be raised: the scope check refuses `t
 
 ## Require authentication
 
-**Settings > Integrations > Authentication > Require authentication** is on by default. Turning it on for the first time with no tokens yet mints a **Read & Write** token named "Default token" and reveals the plaintext once.
+**Settings > MCP > Authentication > Require authentication** is on by default. Turning it on for the first time with no tokens yet mints a **Read & Write** token named "Default token" and reveals the plaintext once.
 
 With the toggle off, a request from your own machine with no `Authorization` header is accepted as the anonymous loopback caller in the table above. Presenting an `Authorization` header still goes through normal token validation, so an invalid token is rejected either way. The server is loopback only, with no remote mode.
 
@@ -47,7 +47,7 @@ The effective permission is the lower of the token's scope and the connection's 
 
 ## Creating a token
 
-Pairing is the usual route: see [Pairing](/developers/pairing). To mint one by hand, open **Settings > Integrations > Authentication**, click **Generate Token**, and pick a name, permission level, connection allowlist and expiry. The plaintext is shown once.
+Pairing is the usual route: see [Pairing](/developers/pairing). To mint one by hand, open **Settings > MCP > Authentication**, click **Generate Token**, and pick a name, permission level, connection allowlist and expiry. The plaintext is shown once.
 
 ## Expiry
 
@@ -59,7 +59,7 @@ Mint the replacement before you retire the old one; two tokens for one client ar
 
 ## Revocation
 
-The token list in **Settings > Integrations > Authentication** shows prefix, name, permission level, allowlist, last use, and expiry. Each row offers:
+The token list in **Settings > MCP > Authentication** shows prefix, name, permission level, allowlist, last use, and expiry. Each row offers:
 
 - **Revoke**: marks the token inactive. It stays in the list and cannot be reactivated.
 - **Delete…**: removes the row entirely.
@@ -91,7 +91,7 @@ The plaintext is `tp_` followed by 32 base64url-encoded random bytes. Tokens liv
 
 ## Activity log
 
-Every authentication, tool call, resource read, and query is recorded in `~/Library/Application Support/TablePro/mcp-audit.db` with the token id, never the plaintext. Open it with **Settings > Integrations > View Activity…**.
+Every authentication, tool call, resource read, and query is recorded in `~/Library/Application Support/TablePro/mcp-audit.db` with the token id, never the plaintext. Open it with **Settings > MCP > View Activity…**.
 
 | Field | Values |
 |-------|--------|
@@ -117,7 +117,7 @@ Entries are chained: each row's hash covers the previous one, so a row cannot be
 | Failed pairing exchanges | 5 per 5 minutes |
 | Pairing lockout | 15 minutes |
 
-Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Auth failures count against both the client address and the token, so one misbehaving client cannot lock out another on the same loopback address, and a successful auth clears the bucket. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/developers/mcp-protocol#transport-limits).
+Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Failed auth attempts are counted per client address, and every client on the Mac shares one, so a client that keeps sending a bad token locks the others out too. A malformed `Authorization` header, a scheme other than `Bearer`, and an unknown, expired or revoked token each count. A request with no `Authorization` header gets the `401` challenge and does not count. A successful auth clears the count. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/developers/mcp-protocol#transport-limits).
 
 ## What a token cannot do
 

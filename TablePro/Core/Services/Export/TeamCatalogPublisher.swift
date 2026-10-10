@@ -2,11 +2,10 @@
 //  TeamCatalogPublisher.swift
 //  TablePro
 //
-//  Publishes connection definitions to a shared team folder, without credentials.
-//
 
 import Foundation
 import os
+import TableProImport
 
 enum TeamCatalogError: LocalizedError {
     case noConnections
@@ -22,15 +21,16 @@ enum TeamCatalogError: LocalizedError {
     }
 }
 
-/// Writes secret-free connection definitions into a shared folder so teammates whose linked folders
-/// point at the same location see them. Credentials are never written: the plaintext export envelope
-/// already strips passwords, passphrases, TOTP secrets, and secure plugin fields.
 @MainActor
 internal enum TeamCatalogPublisher {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamCatalogPublisher")
 
     @discardableResult
-    static func publish(_ connections: [DatabaseConnection], to folderURL: URL) throws -> [URL] {
+    static func publish(
+        _ connections: [DatabaseConnection],
+        to folderURL: URL,
+        exporter: ConnectionBundleExporter = .init()
+    ) throws -> [URL] {
         guard !connections.isEmpty else { throw TeamCatalogError.noConnections }
 
         var isDirectory: ObjCBool = false
@@ -41,7 +41,7 @@ internal enum TeamCatalogPublisher {
 
         var written: [URL] = []
         for connection in connections {
-            let data = try ConnectionExportService.exportData([connection])
+            let data = try ConnectionBundleCodec.encode(exporter.connectionsOnlyBundle(for: [connection]))
             let fileURL = folderURL.appendingPathComponent(filename(for: connection))
             try data.write(to: fileURL, options: .atomic)
             removeEarlierFiles(of: connection, keeping: fileURL, in: folderURL)

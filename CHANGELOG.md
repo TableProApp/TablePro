@@ -25,12 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
 - Custom icons for connections and groups on Mac and iPhone, chosen from a searchable set of symbols and synced through iCloud. (#3309)
 - Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
+- Group, tags and color in the MCP connection list and on the AppleScript connection class.
+- Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
+- MySQL and MariaDB connections through a local Unix socket.
+- `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
+- Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
+- Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 
 ### Changed
 
+- Settings > Integrations is now Settings > MCP, and TablePro > Integrations… is now MCP Activity….
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
 - Value filters stay through sorting, paging and the filter bar, and clear when the tab shows another table or query.
 - Save, Refresh and sorting keep the selected rows, matched by primary key.
+- Connection files keep the full path of nested groups, and import rebuilds that path.
+- Connection files written by this version, Team Catalog files included, open only in this version or later.
+- **Keep Existing, Add Queries** in place of **Skip** for a duplicate connection on import.
+- Importing connections asks before adding their startup SQL, the same way it asks about tunnel commands.
+
+### Deprecated
+
+- Pairing links without `response_mode`, which wrap the code in `context` for `raycast://` redirects.
 
 ### Fixed
 
@@ -105,6 +120,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The toolbar keeping a connection's old name after it was renamed while connected. (#3309)
 - The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
 - No icon for a connection to a database type no installed plugin describes. (#3309)
+- MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
+- A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
+- Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
+- Saving or importing connections while the connection library could not be read replacing every saved connection.
+- Import counting connections it could not save and storing their passwords in the Keychain.
+- Import creating the groups, tags and credential profiles of connections left unselected.
+- An unpredictable password when two imported rows replaced the same connection.
+- TablePlus import reading the default folder instead of the data location set in TablePlus.
 
 ### Security
 
@@ -112,6 +135,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
 - A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
 - A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.
+- Pairing accepting a redirect that opens TablePro, a web browser, a database URL or another remote resource.
+- A refused or unrecognized deep link writing its query values, SQL included, to the system log.
 
 ## [0.79.0] - 2026-10-09
 

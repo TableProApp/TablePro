@@ -32,8 +32,8 @@ internal final class LaunchIntentRouter {
                 Self.logger.debug("LaunchIntentRouter.route(.openDataFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
                 try await openDataFileDocument(at: url)
 
-            case .importConnection(let exportable):
-                WelcomeRouter.shared.routeImport(exportable)
+            case .importConnection(let bundle):
+                WelcomeRouter.shared.routeImport(bundle)
 
             case .openConnectionShare(let url):
                 WelcomeRouter.shared.routeShare(url)
@@ -43,6 +43,9 @@ internal final class LaunchIntentRouter {
 
             case .startMCPServer:
                 await MCPServerManager.shared.lazyStart()
+
+            case .openSettings(let pane):
+                WindowOpener.shared.openSettings(tab: pane)
 
             case .installPlugin(let url):
                 try await installPlugin(url)
@@ -143,7 +146,7 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openDataFile:
             title = String(localized: "Could Not Open File")
-        case .importConnection, .openConnectionShare, .startMCPServer:
+        case .importConnection, .openConnectionShare, .startMCPServer, .openSettings:
             title = String(localized: "Action Failed")
         }
         if presentRecoverableError(error, for: intent, title: title) { return }

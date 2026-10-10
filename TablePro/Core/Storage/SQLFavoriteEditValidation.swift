@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import Observation
+import TableProImport
 
 internal enum SQLFavoriteKeywordValidation: Equatable {
     case valid
@@ -33,27 +34,19 @@ internal enum SQLFavoriteKeywordValidation: Equatable {
 }
 
 internal enum SQLFavoriteKeywordValidator {
-    static let reservedSQLKeywords: Set<String> = [
-        "select", "from", "where", "insert", "update", "delete",
-        "create", "drop", "alter", "join", "on", "and", "or",
-        "not", "in", "like", "between", "order", "group", "having",
-        "limit", "set", "values", "into", "as", "is", "null",
-        "true", "false", "case", "when", "then", "else", "end"
-    ]
-
     static func requiresAvailabilityCheck(_ trimmedKeyword: String) -> Bool {
-        !trimmedKeyword.isEmpty && !trimmedKeyword.contains(" ")
+        !trimmedKeyword.isEmpty && SavedQueryKeyword.isValid(trimmedKeyword)
     }
 
     static func classify(trimmedKeyword: String, isAvailable: Bool) -> SQLFavoriteKeywordValidation {
         guard !trimmedKeyword.isEmpty else { return .valid }
-        guard !trimmedKeyword.contains(" ") else {
+        guard SavedQueryKeyword.isValid(trimmedKeyword) else {
             return .error(String(localized: "Keyword cannot contain spaces"))
         }
         guard isAvailable else {
             return .error(String(localized: "This keyword is already in use"))
         }
-        guard !reservedSQLKeywords.contains(trimmedKeyword.lowercased()) else {
+        guard !SavedQueryKeyword.shadowsSQLKeyword(trimmedKeyword) else {
             return .warning(String(
                 format: String(localized: "Shadows the SQL keyword '%@'"),
                 trimmedKeyword.uppercased()
@@ -105,10 +98,10 @@ internal enum SQLFavoriteSizeValidation: Equatable {
     case valid
     case tooLarge
 
-    static let maximumSyncableByteCount = 900_000
+    static let maximumSyncableByteCount = SavedQuerySize.maximumSyncableByteCount
 
     static func validate(name: String, query: String, keyword: String?) -> SQLFavoriteSizeValidation {
-        let byteCount = name.utf8.count + query.utf8.count + (keyword?.utf8.count ?? 0)
+        let byteCount = SavedQuerySize.byteCount(name: name, sql: query, keyword: keyword)
         return byteCount > maximumSyncableByteCount ? .tooLarge : .valid
     }
 

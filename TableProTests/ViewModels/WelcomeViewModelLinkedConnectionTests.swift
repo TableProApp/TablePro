@@ -57,17 +57,12 @@ struct WelcomeViewModelLinkedConnectionTests {
     }
 
     private func linkedFromFile(_ exportable: ExportableConnection) throws -> LinkedConnection {
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: ConnectionImportDecoder.currentFormatVersion,
-            exportedAt: Date(),
+        let bundle = try ConnectionBundle(
             appVersion: "1.0",
-            connections: [exportable],
-            groups: nil,
-            tags: nil,
-            credentials: nil
+            connections: [BundleConnection(ref: "c1", settings: exportable)]
         )
-        let decoded = try ConnectionImportDecoder.decodeData(ConnectionImportDecoder.encode(envelope))
-        let shared = try #require(decoded.connections.first)
+        let decoded = try ConnectionBundleCodec.decode(ConnectionBundleCodec.encode(bundle))
+        let shared = try #require(decoded.connections.first?.settings)
         return LinkedFolderWatcher.linkedConnection(
             folderId: UUID(),
             sourceFileURL: URL(fileURLWithPath: "/tmp/shared.tablepro"),
@@ -89,18 +84,7 @@ struct WelcomeViewModelLinkedConnectionTests {
             database: database,
             username: username,
             type: type.rawValue,
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: additionalFields,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            additionalFields: additionalFields
         )
     }
 }

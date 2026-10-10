@@ -106,7 +106,14 @@ struct GeneralPaneView: View {
             }
         case .network:
             Section {
-                hostFieldsView
+                if coordinator.network.supportsLocalSocket {
+                    LocalSocketEndpointPicker(coordinator: coordinator)
+                }
+                if coordinator.network.usesLocalSocket {
+                    LocalSocketPathField(coordinator: coordinator)
+                } else {
+                    hostFieldsView
+                }
                 if showsBuiltInDatabaseField {
                     TextField(
                         containerEntityName,
@@ -117,7 +124,9 @@ struct GeneralPaneView: View {
             } header: {
                 Text(String(localized: "Connection"))
             } footer: {
-                if usesForwardSocket {
+                if coordinator.network.usesLocalSocket {
+                    LocalSocketFooter(status: coordinator.network.localSocketFileStatus)
+                } else if usesForwardSocket {
                     Text(String(localized: """
                     Host and Port are unused. The SSH tunnel forwards to the socket path set \
                     on the Network tab.

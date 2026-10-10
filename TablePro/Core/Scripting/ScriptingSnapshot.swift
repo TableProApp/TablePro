@@ -13,22 +13,13 @@ import Foundation
 /// can see, which for a database client is the question that matters.
 ///
 /// A connection whose **External Clients** level is Blocked is not listed at all, so a script cannot
-/// discover its name, host or database, let alone read from it. That mirrors what the MCP surface
-/// already does, and it is the reason `connections` is filtered rather than annotated.
+/// discover its name, host or database. `ExternalConnectionDirectory` drops it, the same list MCP reads.
 @MainActor
 internal enum ScriptingSnapshot {
     // MARK: - Connections
 
     internal static func connections() -> [ScriptConnection] {
-        let sessions = DatabaseManager.shared.activeSessions
-        return ConnectionStorage.shared.loadConnections()
-            .filter { $0.externalAccess != .blocked }
-            .sorted { lhs, rhs in
-                lhs.name == rhs.name
-                    ? lhs.id.uuidString < rhs.id.uuidString
-                    : lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-            .map { ScriptConnection(connection: $0, session: sessions[$0.id]) }
+        ExternalConnectionDirectory.listings().map(ScriptConnection.init(listing:))
     }
 
     internal static func connection(withId id: UUID) -> ScriptConnection? {

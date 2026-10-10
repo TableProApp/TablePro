@@ -6,20 +6,11 @@
 import AppKit
 import Foundation
 
-/// One saved connection, as a script sees it.
+/// A value snapshot rebuilt on every event, so it is always current. `objectSpecifier` is by
+/// unique ID because a name is editable and need not be unique.
 ///
-/// A value snapshot rather than a live handle. Cocoa re-resolves `connection "prod"` on every event,
-/// so a fresh instance per event is always current, and nothing here outlives the event that built
-/// it. Identity across events comes from `uniqueId`, which is why `objectSpecifier` is a unique-ID
-/// specifier: a name is editable and need not be unique, so a reference built on one would start
-/// pointing somewhere else the moment the user renamed a connection.
-///
-/// Nothing on this object is a credential, and the account name is absent too. A password, an SSH
-/// key, a password command and every plugin secure field would obviously not belong here; the user
-/// name is the less obvious one, and it is left out because `list_connections` leaves it out and
-/// `MCPErrorRedactor` treats it as a secret. Handing it to every app with Automation permission,
-/// for every connection the user has never opened, would complete the target tuple for a password
-/// spray against those servers on a weaker gate than the one MCP asks for.
+/// No credential and no user name. With host and port, a user name would hand any app with
+/// Automation permission the target of a password spray; `list_connections` leaves it out too.
 @objc(TPScriptConnection)
 internal final class ScriptConnection: NSObject, ScriptCommandReceiving {
     @objc internal let uniqueId: String
@@ -32,21 +23,29 @@ internal final class ScriptConnection: NSObject, ScriptCommandReceiving {
     @objc internal let isConnected: Bool
     @objc internal let safeMode: FourCharCode
     @objc internal let externalAccess: FourCharCode
+    @objc internal let color: FourCharCode
+    @objc internal let groupPath: ScriptTextList
+    @objc internal let groupColor: FourCharCode
+    @objc internal let tagNames: ScriptTextList
 
     internal let connectionId: UUID
 
-    internal init(connection: DatabaseConnection, session: ConnectionSession?) {
-        self.connectionId = connection.id
-        self.uniqueId = connection.id.uuidString
-        self.name = connection.name
-        self.databaseType = connection.type.rawValue
-        self.host = connection.host
-        self.port = connection.port
-        self.currentDatabase = session?.resolvedBrowseDatabase ?? connection.database
-        self.currentSchema = session?.browseSchema
-        self.isConnected = session?.reportedStatus.isConnected ?? false
-        self.safeMode = ScriptEnumerations.code(for: connection.safeModeLevel)
-        self.externalAccess = ScriptEnumerations.code(for: connection.externalAccess)
+    internal init(listing: ExternalConnectionListing) {
+        self.connectionId = listing.id
+        self.uniqueId = listing.id.uuidString
+        self.name = listing.name
+        self.databaseType = listing.databaseType
+        self.host = listing.host
+        self.port = listing.port
+        self.currentDatabase = listing.database
+        self.currentSchema = listing.schema
+        self.isConnected = listing.isConnected
+        self.safeMode = ScriptEnumerations.code(for: listing.safeModeLevel)
+        self.externalAccess = ScriptEnumerations.code(for: listing.externalAccess)
+        self.color = ScriptEnumerations.code(for: listing.color)
+        self.groupPath = ScriptTextList(listing.group?.path ?? [])
+        self.groupColor = ScriptEnumerations.code(for: listing.group?.color ?? .none)
+        self.tagNames = ScriptTextList(listing.tags.map(\.name))
         super.init()
     }
 

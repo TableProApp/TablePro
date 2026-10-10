@@ -861,6 +861,9 @@
         }
       }
     },
+    "“%@” is not a host or host:port" : {
+
+    },
     "\"%@\" is not a library." : {
       "localizations" : {
         "fr" : {
@@ -1492,6 +1495,10 @@
           }
         }
       }
+    },
+    "“%1$@” refers to “%2$@”, which is not in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "(%@)" : {
       "localizations" : {
@@ -4319,6 +4326,9 @@
           }
         }
       }
+    },
+    "%@ needs an SSL Mode other than Disabled" : {
+
     },
     "%@ needs every key in the same hash slot. Give the keys a shared hash tag, like {user}:1 and {user}:2." : {
       "extractionState" : "manual",
@@ -9246,6 +9256,16 @@
         }
       }
     },
+    "%d of %d connections selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d connections selected"
+          }
+        }
+      }
+    },
     "%d of %d rows" : {
       "localizations" : {
         "en" : {
@@ -9335,6 +9355,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已選取 %1$d / %2$d 列"
+          }
+        }
+      }
+    },
+    "%d of %d saved queries selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d saved queries selected"
           }
         }
       }
@@ -9821,6 +9851,21 @@
           }
         }
       }
+    },
+    "%d saved queries found" : {
+
+    },
+    "%d saved queries that belong to these connections, with their folders and keywords." : {
+
+    },
+    "%d saved queries that every connection shows." : {
+
+    },
+    "%d saved queries were added." : {
+
+    },
+    "%d saved queries were not imported." : {
+
     },
     "%d selected" : {
       "localizations" : {
@@ -13123,6 +13168,21 @@
         }
       }
     },
+    "1 saved query found" : {
+
+    },
+    "1 saved query that belongs to these connections, with its folder and keyword." : {
+
+    },
+    "1 saved query that every connection shows." : {
+
+    },
+    "1 saved query was added." : {
+
+    },
+    "1 saved query was not imported." : {
+
+    },
     "1 statement" : {
       "localizations" : {
         "fr" : {
@@ -14926,7 +14986,11 @@
         }
       }
     },
+    "A connection to this server is already saved as “%@”." : {
+
+    },
     "A connection with this name, host, and type already exists." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -16073,6 +16137,9 @@
           }
         }
       }
+    },
+    "A saved query with this name exists." : {
+
     },
     "A schema with this name already exists." : {
       "localizations" : {
@@ -21675,6 +21742,9 @@
         }
       }
     },
+    "All connections" : {
+
+    },
     "All Connections" : {
       "localizations" : {
         "fr" : {
@@ -21967,6 +22037,7 @@
       }
     },
     "All selected connections were skipped." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -22652,6 +22723,9 @@
         }
       }
     },
+    "already saved" : {
+
+    },
     "Also handles" : {
       "localizations" : {
         "fr" : {
@@ -22691,6 +22765,9 @@
           }
         }
       }
+    },
+    "Also include global saved queries" : {
+
     },
     "Alternate Row" : {
       "localizations" : {
@@ -23728,6 +23805,10 @@
         }
       }
     },
+    "an item has an empty reference" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "An item must be a JSON object" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -24241,6 +24322,9 @@
           }
         }
       }
+    },
+    "Another selected row adds the same query." : {
+
     },
     "Another source column is mapped to the same destination column." : {
       "localizations" : {
@@ -34459,11 +34543,52 @@
       }
     },
     "Change this in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modifiez ce réglage dans Réglages > Intégrations."
+          }
+        }
+      }
+    },
+    "Change this in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifiez ce réglage dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 > MCP에서 변경할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu Ayarlar > MCP bölümünden değiştirin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thay đổi trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在“设置 > MCP”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在「設定 > MCP」中變更。"
           }
         }
       }
@@ -41925,6 +42050,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Colorer toute la ligne ou seulement la cellule correspondante"
+          }
+        }
+      }
+    },
+    "Color, omitted when none" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couleur, omise s’il n’y en a pas"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "색상이며 없으면 생략됩니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renk, yoksa atlanır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Màu, bỏ qua khi không có"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "颜色，未设置时省略"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顏色，未設定時省略"
           }
         }
       }
@@ -54341,6 +54506,9 @@
           }
         }
       }
+    },
+    "Credential profiles can't be read right now, so connections keep their own credentials." : {
+
     },
     "Credentials" : {
       "localizations" : {
@@ -67644,10 +67812,10 @@
         }
       }
     },
-    "Edit Group…" : {
+    "Edit Group" : {
 
     },
-    "Edit Group" : {
+    "Edit Group…" : {
 
     },
     "Edit Index" : {
@@ -72460,6 +72628,9 @@
           }
         }
       }
+    },
+    "Everything selected was already in your library." : {
+
     },
     "Exact value" : {
       "localizations" : {
@@ -85418,6 +85589,46 @@
         }
       }
     },
+    "Group names from the top-level group down to this one" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noms des groupes, du groupe de premier niveau jusqu’à celui-ci"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최상위 그룹부터 이 그룹까지의 그룹 이름"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En üst düzey gruptan bu gruba kadar grup adları"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên các nhóm, từ nhóm cấp cao nhất đến nhóm này"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从顶层分组到此分组的分组名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從頂層群組到此群組的群組名稱"
+          }
+        }
+      }
+    },
     "Group results by difference or object type" : {
       "localizations" : {
         "fr" : {
@@ -85454,6 +85665,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依差異或物件類型將結果分組"
+          }
+        }
+      }
+    },
+    "Group UUID" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UUID du groupe"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 UUID"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grup UUID'si"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UUID nhóm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分组 UUID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組 UUID"
           }
         }
       }
@@ -88669,6 +88920,9 @@
         }
       }
     },
+    "Import Commands?" : {
+
+    },
     "Import Complete" : {
       "localizations" : {
         "fr" : {
@@ -89043,6 +89297,9 @@
           }
         }
       }
+    },
+    "Import Failed" : {
+
     },
     "Import failed at line %lld: %@" : {
       "extractionState" : "stale",
@@ -89471,6 +89728,9 @@
         }
       }
     },
+    "Import Incomplete" : {
+
+    },
     "Import into" : {
       "localizations" : {
         "fr" : {
@@ -89672,6 +89932,7 @@
       }
     },
     "Import Tunnel Commands?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -90749,6 +91010,12 @@
           }
         }
       }
+    },
+    "Include saved queries" : {
+
+    },
+    "Include Saved Queries" : {
+
     },
     "Include the version segment your server uses, such as /v1 or /v4." : {
       "localizations" : {
@@ -93142,6 +93409,7 @@
       }
     },
     "Integrations" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93182,6 +93450,7 @@
       }
     },
     "Integrations Activity" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93263,6 +93532,7 @@
       }
     },
     "Integrations…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93923,6 +94193,9 @@
           }
         }
       }
+    },
+    "Invalid parameter: %@" : {
+
     },
     "Invalid path: %@" : {
       "extractionState" : "manual",
@@ -94742,6 +95015,9 @@
         }
       }
     },
+    "Its connection is not imported." : {
+
+    },
     "Its definition is written in %1$@'s own SQL, which %2$@ does not parse." : {
       "localizations" : {
         "fr" : {
@@ -95487,6 +95763,9 @@
           }
         }
       }
+    },
+    "Keep Existing, Add Queries" : {
+
     },
     "Keep leading zeros in ZIP codes, phone numbers, and IDs by outputting all values as strings" : {
       "extractionState" : "stale",
@@ -96586,6 +96865,15 @@
           }
         }
       }
+    },
+    "Keyword “%@”" : {
+
+    },
+    "Keyword “%@” is in use, so it imports without one." : {
+
+    },
+    "Keyword “%@” is not valid, so it imports without one." : {
+
     },
     "Keyword cannot contain spaces" : {
       "localizations" : {
@@ -104386,6 +104674,9 @@
         }
       }
     },
+    "Matches “%@”" : {
+
+    },
     "matches regex" : {
       "localizations" : {
         "fr" : {
@@ -105488,6 +105779,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MCP 存取要求"
+          }
+        }
+      }
+    },
+    "MCP Activity" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activité MCP"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 활동"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP Etkinliği"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoạt động MCP"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活動"
+          }
+        }
+      }
+    },
+    "MCP Activity…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activité MCP…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 활동…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP Etkinliği…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoạt động MCP…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活动…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活動…"
           }
         }
       }
@@ -109795,6 +110166,9 @@
         }
       }
     },
+    "Navicat's export file has no saved queries." : {
+
+    },
     "Navigating to another page will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -112897,6 +113271,7 @@
       }
     },
     "No Connections Imported" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -120050,6 +120425,9 @@
           }
         }
       }
+    },
+    "Nothing Imported" : {
+
     },
     "Nothing in this column can be drawn. The coordinates are out of range for their coordinate system, or a line or ring has too few points." : {
 
@@ -136344,6 +136722,9 @@
         }
       }
     },
+    "Query consoles import with their data source. Consoles with a default name start unchecked." : {
+
+    },
     "Query executed successfully" : {
       "localizations" : {
         "fr" : {
@@ -151485,6 +151866,7 @@
       }
     },
     "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -151520,6 +151902,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "執行 claude 命令列工具，因此聊天會計入你的 Claude 訂閱。資料庫工具需要在「設定 > 整合」中開啟 MCP 伺服器。"
+          }
+        }
+      }
+    },
+    "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exécute l’outil en ligne de commande claude pour que la discussion soit facturée sur votre abonnement Claude. Les outils de base de données nécessitent d’activer le serveur MCP dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "claude 명령줄 도구를 실행하므로 채팅 사용량은 Claude 구독에 청구됩니다. 데이터베이스 도구를 사용하려면 설정 > MCP에서 MCP 서버를 켜야 합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "claude komut satırı aracını çalıştırır, böylece sohbet Claude aboneliğinizden düşer. Veritabanı araçları için Ayarlar > MCP altında MCP sunucusunun açık olması gerekir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạy công cụ dòng lệnh claude nên phần chat sẽ tính vào gói đăng ký Claude của bạn. Các công cụ cơ sở dữ liệu cần bật máy chủ MCP trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行 claude 命令行工具，因此聊天会计入你的 Claude 订阅。数据库工具需要在“设置 > MCP”中开启 MCP 服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行 claude 命令列工具，因此聊天會計入你的 Claude 訂閱。資料庫工具需要在「設定 > MCP」中開啟 MCP 伺服器。"
           }
         }
       }
@@ -153255,6 +153677,10 @@
         }
       }
     },
+    "Saved passwords can only be exported to an encrypted file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Saved Queries" : {
       "localizations" : {
         "fr" : {
@@ -153334,6 +153760,15 @@
           }
         }
       }
+    },
+    "Saved queries are written as readable text unless the file is encrypted." : {
+
+    },
+    "Saved queries can't be read right now, so they are not imported." : {
+
+    },
+    "Saved queries import for every connection, in a folder named “%@”." : {
+
     },
     "Saved Query" : {
       "localizations" : {
@@ -155060,6 +155495,9 @@
         }
       }
     },
+    "Scripts import with the connection they run on. Scripts with a default name start unchecked." : {
+
+    },
     "Scroll them" : {
       "localizations" : {
         "fr" : {
@@ -155534,6 +155972,9 @@
         }
       }
     },
+    "Search Icons" : {
+
+    },
     "Search index %1$@ uses %2$@. Change or drop that search index first, then save again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -155545,9 +155986,6 @@
           }
         }
       }
-    },
-    "Search Icons" : {
-
     },
     "Search Latency" : {
       "localizations" : {
@@ -168398,6 +168836,10 @@
         }
       }
     },
+    "SSL mode “%@” is not recognized, so the connection imports with SSL required." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SSL/TLS" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -168966,6 +169408,9 @@
           }
         }
       }
+    },
+    "Startup SQL: %@" : {
+
     },
     "State" : {
       "localizations" : {
@@ -175978,6 +176423,12 @@
         }
       }
     },
+    "TablePro could not read your connection library, so nothing was imported." : {
+
+    },
+    "TablePro could not read your saved connections, so it did not save over them." : {
+
+    },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -177537,6 +177988,46 @@
         }
       }
     },
+    "Tag UUID" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UUID du tag"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "태그 UUID"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etiket UUID'si"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UUID thẻ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签 UUID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標籤 UUID"
+          }
+        }
+      }
+    },
     "Tags" : {
       "localizations" : {
         "fr" : {
@@ -177573,6 +178064,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標籤"
+          }
+        }
+      }
+    },
+    "Tags on the connection" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags de la connexion"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결에 지정된 태그"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıdaki etiketler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các thẻ của kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接上的标签"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線上的標籤"
           }
         }
       }
@@ -179339,6 +179870,8 @@
       }
     },
     "The %@ plugin is not installed. TablePro offers to install it on connect." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -181468,6 +182001,9 @@
         }
       }
     },
+    "The connections could not be saved." : {
+
+    },
     "the copy failed its integrity check: %@" : {
       "localizations" : {
         "fr" : {
@@ -183022,6 +183558,9 @@
         }
       }
     },
+    "The icon and color mark this connection in the connection list and its window." : {
+
+    },
     "the IdentityAgent line for this host in ~/.ssh/config" : {
       "localizations" : {
         "fr" : {
@@ -183031,9 +183570,6 @@
           }
         }
       }
-    },
-    "The icon and color mark this connection in the connection list and its window." : {
-
     },
     "The index %@ is left out" : {
       "localizations" : {
@@ -184527,6 +185063,10 @@
         }
       }
     },
+    "the passwords for “%@” belong to no connection in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The path \"%@\" is too long." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185412,6 +185952,18 @@
         }
       }
     },
+    "the reference “%@” is inside itself" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the reference “%@” is nested too deeply" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the reference “%@” is used more than once" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the replica is not available on this broker" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185895,6 +186447,12 @@
           }
         }
       }
+    },
+    "The saved queries could not be read. Nothing was exported." : {
+
+    },
+    "The saved queries could not be saved." : {
+
     },
     "The saved tags could not be read. Nothing was changed." : {
       "localizations" : {
@@ -189592,6 +190150,9 @@
         }
       }
     },
+    "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
+
+    },
     "These databases have open transactions: %@. Closing rolls them back and discards their uncommitted changes." : {
       "localizations" : {
         "fr" : {
@@ -190394,6 +190955,9 @@
         }
       }
     },
+    "This connection link could not be read: %@" : {
+
+    },
     "This connection loads SQLite extensions that have not been approved on this Mac." : {
       "localizations" : {
         "fr" : {
@@ -190477,6 +191041,10 @@
           }
         }
       }
+    },
+    "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
@@ -192220,6 +192788,10 @@
           }
         }
       }
+    },
+    "This file is not a valid TablePro export: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This file is not in a Git repository." : {
       "localizations" : {
@@ -194420,11 +194992,52 @@
       }
     },
     "This server has no credential. Add its token in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce serveur n’a pas d’identifiant. Ajoutez son jeton dans Réglages > Intégrations."
+          }
+        }
+      }
+    },
+    "This server has no credential. Add its token in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur n’a pas d’identifiant. Ajoutez son jeton dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에 자격 증명이 없습니다. 설정 > MCP에서 토큰을 추가하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucunun kimlik bilgisi yok. Token'ını Ayarlar > MCP bölümünden ekleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ này chưa có thông tin xác thực. Hãy thêm token của nó trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器没有凭据。请在“设置 > MCP”中添加其令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器沒有憑證。請在「設定 > MCP」中加入其權杖。"
           }
         }
       }
@@ -197195,6 +197808,9 @@
           }
         }
       }
+    },
+    "Too large to save (%@)" : {
+
     },
     "Too many lines differ to compare line by line." : {
       "localizations" : {
@@ -202288,6 +202904,8 @@
       }
     },
     "Untitled" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {

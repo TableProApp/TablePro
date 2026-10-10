@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProConnectionLibrary
+import TableProImport
 import TableProSyncTransport
 
 internal enum GroupStorageError: LocalizedError, Equatable {
@@ -101,8 +102,8 @@ internal final class GroupStorage {
         return groups
     }
 
-    /// Save all groups. Callers that go on to write related state must check the result: a save
-    /// that failed leaves the store holding the previous set.
+    /// Callers that go on to write related state must check the result: a save that failed leaves
+    /// the store holding the previous set.
     @discardableResult
     internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
         let previous = loadGroups()
@@ -331,6 +332,35 @@ internal final class GroupStorage {
         }
         notifyChanged()
         return true
+    }
+
+    /// Matches inside this write rather than in the plan, so a group a sync pull added between
+    /// preview and import is reused instead of duplicated.
+    internal func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?] {
+        guard paths.contains(where: { !$0.isEmpty }) else { return paths.map { _ in nil } }
+        var groups = loadGroups()
+        guard !storeIsUnreadable else { throw GroupStorageError.storeUnreadable }
+
+        let existing = groups.map { PathNode(id: $0.id, name: $0.name, parentId: $0.parentId, scope: nil) }
+        let resolved = PathTreeResolver.resolve(paths, existing: existing)
+        guard !resolved.created.isEmpty else { return resolved.leaves }
+
+        for node in resolved.created {
+            let sortOrder = LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == node.parentId }.map(\.sortOrder)
+            )
+            groups.append(ConnectionGroup(
+                id: node.id,
+                name: node.name,
+                color: node.color.map(ConnectionColor.init(storedValue:)) ?? .none,
+                iconName: LibrarySymbolCatalog.normalizedName(node.iconName),
+                parentId: node.parentId,
+                sortOrder: sortOrder
+            ))
+        }
+        guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
+        notifyChanged()
+        return resolved.leaves
     }
 
     internal func group(for id: UUID) -> ConnectionGroup? {

@@ -69,9 +69,7 @@ extension DatabaseManager {
         )
 
         let deadline = ConnectionDeadline(configuredSeconds: resolvedConnection.connectTimeoutSeconds)
-        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
-            resolvedConnection.host.nilIfEmpty ?? resolvedConnection.name
-        )
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(resolvedConnection.timeoutEndpointName)
         let effectiveConnection: DatabaseConnection
         do {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
