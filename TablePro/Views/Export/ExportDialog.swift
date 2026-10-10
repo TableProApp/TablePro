@@ -52,6 +52,7 @@ struct ExportDialog: View {
     @State private var profiles: [ExportProfile] = []
     @State private var profileName = ""
     @State private var isNamingProfile = false
+    @State private var profileApplication = 0
 
     /// The window this dialog is hosted in, used for presenting its alerts and panels.
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
@@ -380,10 +381,14 @@ struct ExportDialog: View {
     /// are read before it is matched against the tree.
     @MainActor
     private func applyProfile(_ profile: ExportProfile) async {
+        profileApplication &+= 1
+        let application = profileApplication
         let named = Set(profile.entries.map(\.container))
         for item in databaseItems where item.hasUnloadedObjects && named.contains(item.name) {
             await loadUnloadedObjects(databaseID: item.id)
         }
+        // A profile picked while this one waited for its reads is the user's latest choice.
+        guard application == profileApplication else { return }
         config.formatId = profile.formatId
         databaseItems = normalizedForCurrentFormat(
             ExportProfileStorage.apply(profile, to: databaseItems)
