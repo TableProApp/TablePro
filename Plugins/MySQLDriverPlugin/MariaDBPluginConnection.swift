@@ -96,8 +96,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     internal let statementWatch = MySQLStatementWatch()
 
-    private let host: String
-    private let port: UInt32
+    private let transport: MySQLTransport
     private let user: String
     private let password: String?
     private let database: String
@@ -301,8 +300,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     init(
-        host: String,
-        port: Int,
+        transport: MySQLTransport,
         user: String,
         password: String?,
         database: String,
@@ -313,8 +311,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
         refreshPassword: (@Sendable () async throws -> String)? = nil
     ) {
-        self.host = host
-        self.port = UInt32(port)
+        self.transport = transport
         self.user = user
         self.password = password
         self.database = database
@@ -344,11 +341,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let deadline = suppliedDeadline
             ?? MySQLConnectDeadline(timeout: MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds))
         try await pluginDispatchAsync(on: queue) { [self] in
+            if let issue = self.transport.pathIssue {
+                throw MariaDBPluginError(issue)
+            }
             let mode = self.sslConfig.mode
+            let startsWithTLS = MySQLLocalSocket.attemptsTLS(mode, overSocket: self.transport.isUnixSocket)
             let session: EstablishedSession
             do {
-                session = try self.attemptConnect(enforceSSL: mode != .disabled, deadline: deadline)
-            } catch let error as MariaDBPluginError where mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
+                session = try self.attemptConnect(enforceSSL: startsWithTLS, deadline: deadline)
+            } catch let error as MariaDBPluginError where startsWithTLS && mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
                     session = try self.attemptConnect(enforceSSL: false, deadline: deadline)
@@ -411,8 +412,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var writeTimeout = timeout
         mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
 
-        var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
-        mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
+        transport.configureProtocol(on: mysql)
 
         var allowLocalInfile: UInt32 = 0
         mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
@@ -423,14 +423,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var sslVerify: my_bool = sslConfig.verifiesCertificate ? 1 : 0
         mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
 
-        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-            _ = sslConfig.caCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CA, $0) }
-        }
-        if !sslConfig.clientCertificatePath.isEmpty {
-            _ = sslConfig.clientCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CERT, $0) }
-        }
-        if !sslConfig.clientKeyPath.isEmpty {
-            _ = sslConfig.clientKeyPath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_KEY, $0) }
+        // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
+        if enforceSSL {
+            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+                _ = sslConfig.caCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CA, $0) }
+            }
+            if !sslConfig.clientCertificatePath.isEmpty {
+                _ = sslConfig.clientCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CERT, $0) }
+            }
+            if !sslConfig.clientKeyPath.isEmpty {
+                _ = sslConfig.clientKeyPath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_KEY, $0) }
+            }
         }
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
@@ -440,43 +443,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_options(mysql, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
         }
 
-        let dbToUse = database.isEmpty ? nil : database
-        let passToUse = password
-
-        let result: UnsafeMutablePointer<MYSQL>?
-        if let db = dbToUse, let pass = passToUse {
-            result = host.withCString { hostPtr in
-                user.withCString { userPtr in
-                    pass.withCString { passPtr in
-                        db.withCString { dbPtr in
-                            mysql_real_connect(mysql, hostPtr, userPtr, passPtr, dbPtr, port, nil, 0)
-                        }
-                    }
-                }
-            }
-        } else if let db = dbToUse {
-            result = host.withCString { hostPtr in
-                user.withCString { userPtr in
-                    db.withCString { dbPtr in
-                        mysql_real_connect(mysql, hostPtr, userPtr, nil, dbPtr, port, nil, 0)
-                    }
-                }
-            }
-        } else if let pass = passToUse {
-            result = host.withCString { hostPtr in
-                user.withCString { userPtr in
-                    pass.withCString { passPtr in
-                        mysql_real_connect(mysql, hostPtr, userPtr, passPtr, nil, port, nil, 0)
-                    }
-                }
-            }
-        } else {
-            result = host.withCString { hostPtr in
-                user.withCString { userPtr in
-                    mysql_real_connect(mysql, hostPtr, userPtr, nil, nil, port, nil, 0)
-                }
-            }
-        }
+        let result = transport.realConnect(
+            mysql,
+            user: user,
+            password: password,
+            database: database.isEmpty ? nil : database
+        )
 
         guard result != nil else {
             let error = readError(from: mysql)
@@ -675,8 +647,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
 
-        var killProtocol = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
-        mysql_options(killConn, MYSQL_OPT_PROTOCOL, &killProtocol)
+        transport.configureProtocol(on: killConn)
 
         var killAllowLocalInfile: UInt32 = 0
         mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
@@ -702,18 +673,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_options(killConn, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &killEnableCleartext)
         }
 
-        let killPassword = sideConnectionPassword()
-        let killResult = host.withCString { hostPtr in
-            user.withCString { userPtr in
-                if let pass = killPassword {
-                    return pass.withCString { passPtr in
-                        mysql_real_connect(killConn, hostPtr, userPtr, passPtr, nil, port, nil, 0)
-                    }
-                } else {
-                    return mysql_real_connect(killConn, hostPtr, userPtr, nil, nil, port, nil, 0)
-                }
-            }
-        }
+        let killResult = transport.realConnect(
+            killConn,
+            user: user,
+            password: sideConnectionPassword(),
+            database: nil
+        )
 
         guard killResult != nil else {
             logger.warning("KILL QUERY could not connect: \(self.errorMessage(from: killConn))")

@@ -245,7 +245,11 @@ enum NativeDumpRegistry {
         _ request: NativeDumpDescriptor.Request,
         _ resolved: NativeDumpResolvedTool
     ) throws -> [String] {
-        var flags = ["--protocol=TCP", "-h", request.host, "-P", String(request.connection.port)]
+        var flags = MySQLClientArguments.endpoint(
+            host: request.host,
+            port: request.connection.port,
+            socketPath: MySQLLocalSocket.path(in: request.connection.additionalFields)
+        )
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-u", request.connection.username])
         }

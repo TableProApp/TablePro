@@ -170,6 +170,9 @@ targets:
       # The etcd plugin's own command parser, so the app tiers an etcd statement by the operation
       # the driver parses it into.
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
+      # exactly as the driver reads it.
+      - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -672,6 +675,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLCharacterSet.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
       - Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
+      - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - Plugins/MySQLDriverPlugin/MySQLErrorText.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementKeyword.swift

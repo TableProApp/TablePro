@@ -49,6 +49,8 @@ extension DatabaseManager {
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
+        // The MySQL driver dials this Mac's socket instead of the forwarded port when the key is set.
+        effectiveFields[MySQLLocalSocket.fieldKey] = nil
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
