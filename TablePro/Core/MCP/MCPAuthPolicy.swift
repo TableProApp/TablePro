@@ -469,25 +469,28 @@ public actor MCPAuthPolicy {
 
     private static let defaultConnectionResolver: MCPConnectionSnapshotResolver = { connectionId in
         await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
-            case .live(_, let session):
-                let conn = session.connection
-                return MCPConnectionAuthSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
-                    externalAccess: conn.externalAccess,
-                    name: conn.name,
-                    databaseType: conn.type.rawValue
-                )
-            case .stored(let conn):
-                return MCPConnectionAuthSnapshot(
-                    policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
-                    externalAccess: conn.externalAccess,
-                    name: conn.name,
-                    databaseType: conn.type.rawValue
-                )
-            case .unknown:
-                return nil
-            }
+            MCPAuthPolicy.snapshot(
+                for: connectionId,
+                saved: ConnectionStorage.shared.loadConnections(),
+                defaultPolicy: AppSettingsManager.shared.ai.defaultConnectionPolicy
+            )
         }
+    }
+
+    /// Read from the saved record, never from a live session: a session keeps the AI policy and
+    /// External Clients level it connected with, so setting an open connection to Never or Blocked
+    /// would not reach it until a reconnect. A connection with no saved record is refused.
+    static func snapshot(
+        for connectionId: UUID,
+        saved: [DatabaseConnection],
+        defaultPolicy: AIConnectionPolicy
+    ) -> MCPConnectionAuthSnapshot? {
+        guard let connection = saved.first(where: { $0.id == connectionId }) else { return nil }
+        return MCPConnectionAuthSnapshot(
+            policy: connection.aiPolicy ?? defaultPolicy,
+            externalAccess: connection.externalAccess,
+            name: connection.name,
+            databaseType: connection.type.rawValue
+        )
     }
 }

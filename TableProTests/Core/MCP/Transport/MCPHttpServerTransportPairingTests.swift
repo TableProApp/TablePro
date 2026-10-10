@@ -24,13 +24,15 @@ struct MCPHttpServerTransportPairingTests {
         code: String,
         plaintextToken: String,
         verifier: String,
-        expiresIn: TimeInterval
+        expiresIn: TimeInterval,
+        grantedScopes: Set<MCPScope> = MCPScope.readOnlySet
     ) async throws {
         try await store().insert(
             code: code,
             record: PairingExchangeRecord(
                 plaintextToken: plaintextToken,
                 tokenId: UUID(),
+                grantedScopes: grantedScopes,
                 challenge: PairingExchangeStore.sha256Base64Url(of: verifier),
                 expiresAt: Date.now.addingTimeInterval(expiresIn)
             )
@@ -125,9 +127,32 @@ struct MCPHttpServerTransportPairingTests {
 
             #expect(response.statusCode == 200)
             #expect(try response.plainJsonField("token") == plaintext)
+            #expect(try response.plainJsonField("scope") == "resources:read tools:read")
 
             let stillPending = await store().contains(code: code)
             #expect(!stillPending, "a pairing code is single-use")
+        }
+    }
+
+    @Test("The exchange names every granted scope, the display scope included")
+    func exchangeReportsGrantedScopes() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let code = uniqueCode()
+            let verifier = uniqueVerifier()
+            try await insertPairingCode(
+                code: code,
+                plaintextToken: "tp_test-token-\(UUID().uuidString)",
+                verifier: verifier,
+                expiresIn: 60,
+                grantedScopes: MCPScope.readWriteSet.union([.connectionsDisplay])
+            )
+
+            let payload = ["code": code, "code_verifier": verifier]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 200)
+            #expect(try response.plainJsonField("scope") == "connections:display resources:read tools:read tools:write")
         }
     }
 

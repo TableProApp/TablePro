@@ -198,6 +198,7 @@ final class AlertHelper {
             rootView: PairingApprovalSheet(
                 request: request,
                 codeExpiresAt: codeExpiresAt,
+                allowsHiddenConnectionListing: AppSettingsManager.shared.mcp.allowsHiddenConnectionListing,
                 onComplete: { result in gate.deliver(result) }
             )
         )

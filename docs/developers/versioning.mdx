@@ -59,6 +59,8 @@ Within a major TablePro version every covered surface is additive only. Per surf
 - A new tool input field can appear when it is optional and has a default.
 - A new tool output field can appear.
 - A new pairing parameter can appear when it is optional.
+- A token scope keeps its name and what it grants. `connections:display` only ever widens what
+  `list_connections` returns for `purpose: "display"`, never what any tool can run.
 
 And within a major version, none of these happen:
 
@@ -68,6 +70,7 @@ And within a major version, none of these happen:
 - A resource is removed.
 - `/mcp` or `/v1/integrations/exchange` moves.
 - A pairing parameter is removed, or the redirect changes how it delivers the code.
+- A scope is removed or renamed, or the exchange response drops `scope`.
 - The default port changes from `23508`.
 
 Error codes are the one place this already moved. TablePro's own codes left the `-32000` block, which

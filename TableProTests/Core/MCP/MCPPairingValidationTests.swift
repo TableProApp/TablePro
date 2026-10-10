@@ -198,6 +198,7 @@ struct MCPPairingValidationTests {
         let record = PairingExchangeRecord(
             plaintextToken: "tp_secret",
             tokenId: UUID(),
+            grantedScopes: MCPScope.readOnlySet,
             challenge: PairingExchangeStore.sha256Base64Url(of: verifier),
             expiresAt: Date.now.addingTimeInterval(300)
         )
@@ -223,6 +224,7 @@ struct MCPPairingValidationTests {
             record: PairingExchangeRecord(
                 plaintextToken: "tp_secret",
                 tokenId: tokenId,
+                grantedScopes: MCPScope.readOnlySet,
                 challenge: PairingExchangeStore.sha256Base64Url(of: verifier),
                 expiresAt: Date.now.addingTimeInterval(300)
             )

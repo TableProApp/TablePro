@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
 - Group, tags and color in the MCP connection list and on the AppleScript connection class.
 - Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
+- A `connections:display` pairing scope, off by default, that lets a launcher list connections hidden from AI.
 - MySQL and MariaDB connections through a local Unix socket.
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
 

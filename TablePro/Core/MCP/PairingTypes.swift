@@ -36,6 +36,47 @@ struct PairingRequest: Sendable, Equatable {
     var redirectDisplayValue: String {
         redirectTarget?.displayValue ?? redirectURL.scheme.map { "\($0)://" } ?? redirectURL.absoluteString
     }
+
+    var scopeRequest: PairingScopeRequest {
+        PairingScopeRequest.parse(requestedScopes)
+    }
+}
+
+/// `scopes` names one permission level plus optional grants, separated by commas or spaces.
+/// Unknown entries are skipped (RFC 6749 §3.3), and when several levels are named the lowest wins.
+struct PairingScopeRequest: Sendable, Equatable {
+    let permissions: TokenPermissions
+    let optionalGrants: Set<MCPScope>
+
+    static func parse(_ raw: String?) -> PairingScopeRequest {
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ","))
+        let entries = (raw ?? "").lowercased().components(separatedBy: separators).filter { !$0.isEmpty }
+        let levels = Set(entries.compactMap(permissions(named:)))
+        return PairingScopeRequest(
+            permissions: TokenPermissions.allCases.first(where: levels.contains) ?? .readOnly,
+            optionalGrants: Set(entries.compactMap(MCPScope.init(rawValue:))).intersection(MCPScope.optionalGrants)
+        )
+    }
+
+    /// A grant needs all three: the client asked for it, the user ticked it on the sheet, and the
+    /// setting allows it.
+    func grantedOptionalScopes(approved: Set<MCPScope>, allowsHiddenConnectionListing: Bool) -> Set<MCPScope> {
+        guard allowsHiddenConnectionListing else { return [] }
+        return optionalGrants.intersection(approved)
+    }
+
+    private static func permissions(named entry: String) -> TokenPermissions? {
+        switch entry {
+        case "readonly", "read_only", "read-only":
+            return .readOnly
+        case "readwrite", "read_write", "read-write":
+            return .readWrite
+        case "fullaccess", "full_access", "full-access", "full":
+            return .fullAccess
+        default:
+            return nil
+        }
+    }
 }
 
 /// `legacy` is a link without `response_mode`: deprecated, and kept byte for byte for the clients

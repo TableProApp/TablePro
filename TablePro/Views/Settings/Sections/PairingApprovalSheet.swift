@@ -5,14 +5,17 @@ struct PairingApproval: Sendable {
     let grantedPermissions: TokenPermissions
     let allowedConnectionIds: Set<UUID>?
     let expiresAt: Date?
+    let extraScopes: Set<MCPScope>
 }
 
 struct PairingApprovalSheet: View {
     let request: PairingRequest
     let codeExpiresAt: Date
+    let allowsHiddenConnectionListing: Bool
     let onComplete: (Result<PairingApproval, Error>) -> Void
 
     @State private var permissions: TokenPermissions
+    @State private var grantsHiddenConnections = false
     @State private var connectionAccess: ConnectionAccessMode = .all
     @State private var selectedConnectionIds: Set<UUID> = []
     @State private var expiry: ExpiryOption = .never
@@ -25,13 +28,14 @@ struct PairingApprovalSheet: View {
     init(
         request: PairingRequest,
         codeExpiresAt: Date,
+        allowsHiddenConnectionListing: Bool,
         onComplete: @escaping (Result<PairingApproval, Error>) -> Void
     ) {
         self.request = request
         self.codeExpiresAt = codeExpiresAt
+        self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
         self.onComplete = onComplete
-        let initialPermissions = Self.initialPermissions(from: request)
-        _permissions = State(initialValue: initialPermissions)
+        _permissions = State(initialValue: request.scopeRequest.permissions)
         if let requested = request.requestedConnectionIds, !requested.isEmpty {
             _connectionAccess = State(initialValue: .selected)
             _selectedConnectionIds = State(initialValue: requested)
@@ -45,6 +49,9 @@ struct PairingApprovalSheet: View {
             Form {
                 permissionsSection
                 connectionAccessSection
+                if requestsHiddenConnections {
+                    hiddenConnectionsSection
+                }
                 expirySection
             }
             .formStyle(.grouped)
@@ -223,6 +230,31 @@ struct PairingApprovalSheet: View {
         }
     }
 
+    private var requestsHiddenConnections: Bool {
+        request.scopeRequest.optionalGrants.contains(.connectionsDisplay)
+    }
+
+    /// Starts off even when the setting allows it: an agent with a shell can open a pairing link to
+    /// its own loopback redirect, and one click on Approve must not hand it these connections.
+    private var hiddenConnectionsSection: some View {
+        Section(String(localized: "Connections Hidden from AI")) {
+            if allowsHiddenConnectionListing {
+                Toggle(String(localized: "List connections hidden from AI"), isOn: $grantsHiddenConnections)
+                    .accessibilityIdentifier("pairing-hidden-connections-toggle")
+                // swiftlint:disable:next line_length
+                Text(String(localized: "Adds connections whose AI Policy is Never to this app's list, with each user name. The app still cannot query them. Blocked connections stay hidden."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                // swiftlint:disable:next line_length
+                Text(String(localized: "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pairing-hidden-connections-refusal")
+            }
+        }
+    }
+
     private var expirySection: some View {
         Section(String(localized: "Expiration")) {
             Picker(String(localized: "Expires"), selection: $expiry) {
@@ -245,7 +277,8 @@ struct PairingApprovalSheet: View {
                 let approval = PairingApproval(
                     grantedPermissions: permissions,
                     allowedConnectionIds: connectionAccess == .selected ? selectedConnectionIds : nil,
-                    expiresAt: expiry.resolvedDate
+                    expiresAt: expiry.resolvedDate,
+                    extraScopes: grantsHiddenConnections && allowsHiddenConnectionListing ? [.connectionsDisplay] : []
                 )
                 onComplete(.success(approval))
             }
@@ -282,18 +315,6 @@ struct PairingApprovalSheet: View {
             String(localized: "Read schema and run any non-destructive query, including INSERT, UPDATE, and DELETE.")
         case .fullAccess:
             String(localized: "Full access including destructive DDL after explicit confirmation.")
-        }
-    }
-
-    private static func initialPermissions(from request: PairingRequest) -> TokenPermissions {
-        guard let raw = request.requestedScopes?.lowercased() else { return .readOnly }
-        switch raw {
-        case "readwrite", "read_write", "read-write":
-            return .readWrite
-        case "fullaccess", "full_access", "full-access", "full":
-            return .fullAccess
-        default:
-            return .readOnly
         }
     }
 }

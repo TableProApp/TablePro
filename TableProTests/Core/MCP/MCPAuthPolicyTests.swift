@@ -503,4 +503,51 @@ struct MCPAuthPolicyTests {
 
         #expect(readable == [visible])
     }
+
+    @Test("A token holding connections:display is still refused every tool on a connection hidden from AI")
+    func displayScopeOpensNoToolOnAHiddenConnection() async throws {
+        let policy = makePolicy(makeSnapshot(policy: .never), connectionIds: [connectionA])
+        let launcher = makePrincipal(scopes: MCPScope.fullAccessSet.union([.connectionsDisplay]))
+
+        for tool in ["list_tables", "execute_query", "describe_table", "connect", "open_connection_window", "export_data"] {
+            let decision = try await policy.authorize(
+                principal: launcher,
+                tool: tool,
+                connectionId: connectionA,
+                sql: tool == "execute_query" ? "SELECT 1" : nil
+            )
+            guard case .denied = decision else {
+                Issue.record("Expected \(tool) denied on a hidden connection, got \(decision)")
+                continue
+            }
+        }
+
+        let readable = await policy.readableConnectionIds(principal: launcher)
+        #expect(readable.isEmpty)
+    }
+
+    @Test("Access settings come from the saved record, and a connection with none is refused")
+    func snapshotReadsTheSavedRecord() throws {
+        var hidden = DatabaseConnection(name: "Prod", type: .postgresql)
+        hidden.aiPolicy = .never
+        hidden.externalAccess = .readOnly
+        var inheriting = DatabaseConnection(name: "Staging", type: .mysql)
+        inheriting.aiPolicy = nil
+
+        let hiddenSnapshot = try #require(MCPAuthPolicy.snapshot(
+            for: hidden.id,
+            saved: [hidden, inheriting],
+            defaultPolicy: .alwaysAllow
+        ))
+        let inheritingSnapshot = try #require(MCPAuthPolicy.snapshot(
+            for: inheriting.id,
+            saved: [hidden, inheriting],
+            defaultPolicy: .askEachTime
+        ))
+
+        #expect(hiddenSnapshot.policy == .never)
+        #expect(hiddenSnapshot.externalAccess == .readOnly)
+        #expect(inheritingSnapshot.policy == .askEachTime)
+        #expect(MCPAuthPolicy.snapshot(for: UUID(), saved: [hidden], defaultPolicy: .alwaysAllow) == nil)
+    }
 }

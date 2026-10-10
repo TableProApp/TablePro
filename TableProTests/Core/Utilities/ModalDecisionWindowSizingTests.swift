@@ -113,6 +113,7 @@ struct ModalDecisionWindowSizingTests {
                 requestedConnectionIds: nil
             ),
             codeExpiresAt: Date(timeIntervalSinceNow: 300),
+            allowsHiddenConnectionListing: false,
             onComplete: { _ in }
         )
     }

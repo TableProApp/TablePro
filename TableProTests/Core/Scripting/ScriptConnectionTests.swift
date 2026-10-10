@@ -19,6 +19,7 @@ struct ScriptConnectionTests {
             databaseType: "PostgreSQL",
             host: "db.acme.io",
             port: 5_432,
+            username: "app_ro",
             database: "app",
             schema: "public",
             isConnected: true,
@@ -77,6 +78,15 @@ struct ScriptConnectionTests {
         #expect((value("groupPath", of: connection) as? [String])?.isEmpty == true)
         #expect((value("groupColor", of: connection) as? NSNumber)?.uint32Value == none)
         #expect((value("tagNames", of: connection) as? [String])?.isEmpty == true)
+    }
+
+    @Test("The listing's user name never reaches AppleScript")
+    func userNameStaysOut() {
+        let connection = ScriptConnection(listing: listing())
+
+        for key in ["userName", "username", "user"] {
+            #expect(!connection.responds(to: NSSelectorFromString(key)), "\(key) is scriptable")
+        }
     }
 
     @Test("Every color has its own enumerator code")

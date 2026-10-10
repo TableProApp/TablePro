@@ -9,6 +9,7 @@ struct MCPSettings: Codable, Equatable {
     var logQueriesInHistory: Bool
     var requireAuthentication: Bool
     var connectionApproval: MCPConnectionApproval
+    var allowsHiddenConnectionListing: Bool
 
     static let `default` = MCPSettings(
         enabled: false,
@@ -18,7 +19,8 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds: 30,
         logQueriesInHistory: true,
         requireAuthentication: true,
-        connectionApproval: .oncePerConnection
+        connectionApproval: .oncePerConnection,
+        allowsHiddenConnectionListing: false
     )
 
     init(
@@ -29,7 +31,8 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 30,
         logQueriesInHistory: Bool = true,
         requireAuthentication: Bool = true,
-        connectionApproval: MCPConnectionApproval = .oncePerConnection
+        connectionApproval: MCPConnectionApproval = .oncePerConnection,
+        allowsHiddenConnectionListing: Bool = false
     ) {
         self.enabled = enabled
         self.port = port
@@ -39,6 +42,7 @@ struct MCPSettings: Codable, Equatable {
         self.logQueriesInHistory = logQueriesInHistory
         self.requireAuthentication = requireAuthentication
         self.connectionApproval = connectionApproval
+        self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +58,9 @@ struct MCPSettings: Codable, Equatable {
         connectionApproval = try container.decodeIfPresent(
             MCPConnectionApproval.self, forKey: .connectionApproval
         ) ?? .oncePerConnection
+        allowsHiddenConnectionListing = try container.decodeIfPresent(
+            Bool.self, forKey: .allowsHiddenConnectionListing
+        ) ?? false
 
         maxRowLimit = validatedMaxRowLimit
         defaultRowLimit = validatedDefaultRowLimit

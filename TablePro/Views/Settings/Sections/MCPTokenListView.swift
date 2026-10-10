@@ -145,6 +145,12 @@ private struct MCPTokenRow: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
+
+                if token.extraScopes.contains(.connectionsDisplay) {
+                    Text(String(localized: "Lists connections hidden from AI"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()

@@ -6,6 +6,7 @@ import os
 struct PairingExchangeRecord: Sendable, Equatable {
     let plaintextToken: String
     let tokenId: UUID
+    let grantedScopes: Set<MCPScope>
     let challenge: String
     let expiresAt: Date
 }
@@ -164,12 +165,17 @@ final class MCPPairingService {
         }
 
         let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
+        let extraScopes = request.scopeRequest.grantedOptionalScopes(
+            approved: approval.extraScopes,
+            allowsHiddenConnectionListing: AppSettingsManager.shared.mcp.allowsHiddenConnectionListing
+        )
         let result = try await tokenStore.generate(
             name: request.clientName,
             permissions: approval.grantedPermissions,
             connectionAccess: connectionAccess,
             expiresAt: approval.expiresAt,
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: extraScopes
         )
 
         let code = UUID().uuidString
@@ -179,6 +185,7 @@ final class MCPPairingService {
                 record: PairingExchangeRecord(
                     plaintextToken: result.plaintext,
                     tokenId: result.token.id,
+                    grantedScopes: result.token.scopes,
                     challenge: request.challenge,
                     expiresAt: Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
                 )
@@ -209,7 +216,10 @@ final class MCPPairingService {
         NSWorkspace.shared.open(redirect)
     }
 
-    func exchange(_ exchange: PairingExchange, clientAddress: MCPClientAddress) async throws -> String {
+    func exchange(
+        _ exchange: PairingExchange,
+        clientAddress: MCPClientAddress
+    ) async throws -> PairingExchangeRecord {
         let key = MCPRateLimitKey.pairingExchange(address: clientAddress)
         if let unlockDate = await rateLimiter.lockedUntil(key: key) {
             let retry = await rateLimiter.retryAfterSeconds(until: unlockDate)
@@ -237,7 +247,7 @@ final class MCPPairingService {
                 tokenId: record.tokenId,
                 ip: clientAddress.displayValue
             )
-            return record.plaintextToken
+            return record
         } catch {
             _ = await rateLimiter.recordAttempt(key: key, success: false)
             throw error

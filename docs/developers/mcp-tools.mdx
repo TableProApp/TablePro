@@ -36,7 +36,7 @@ Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `
 Past the scope, a call clears three more gates:
 
 1. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
-2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. Otherwise the first call that touches a connection asks the user, as often as **Settings > MCP > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
+2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same, except that [`purpose: "display"`](#listing-for-display) still lists it. Otherwise the first call that touches a connection asks the user, as often as **Settings > MCP > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
 3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/developers/mcp-protocol#approvals-and-input-required).
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
@@ -47,7 +47,7 @@ Statements that read or write files, or that run server-side code, are refused o
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`, `tags`, plus `color` and `group` when set. `is_connected` is false once a connection stops answering, before it is disconnected |
+| `list_connections` | `purpose` (optional) | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`, `tags`, plus `color` and `group` when set. `is_connected` is false once a connection stops answering, before it is disconnected |
 | `connect` | `connection_id` | `status` (`connected`), `connection_id`, `current_database`, plus `current_schema` and `server_version` when known. Returns once the driver is up |
 | `disconnect` | `connection_id` | `status` (`disconnected`), `connection_id` |
 | `get_connection_status` | `connection_id` | `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply |
@@ -65,6 +65,19 @@ The labels the user gave a connection come with it, so a client can show the lis
 | `tags` | `[{ id, name, color }]` in the order the user added them, `color` omitted when the tag has none. Always present, empty when there are no tags |
 
 Entries are sorted by name, Finder style (`db2` before `db10`), then by `id`.
+
+### Listing for display
+
+A launcher that shows the user their connections passes `purpose: "display"`. Leaving `purpose` out, or sending `"agent"`, gives the list described here.
+
+`purpose: "display"` needs two things, or it fails with `-33007` and `data.requiredScopes` set to `["connections:display"]`:
+
+- a token issued with the `connections:display` scope, which only [pairing](/developers/pairing#scopes) grants;
+- **Allow apps to list connections hidden from AI** turned on under **Settings > MCP > Connection Access**. Turning it off stops every token at once.
+
+The display list adds connections whose AI policy is **Never**. Blocked connections and connections outside the token's allowlist stay out. Each entry has `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `tags`, `color`, `group` and `username`, and no `ai_policy`, `external_access` or `safe_mode`.
+
+The scope only widens this list. Every other tool still refuses a connection whose AI policy is **Never**, so a launcher opens one with [`tablepro://connect/<id>`](/developers/url-scheme), not over MCP. Keep the display list away from models: an AI feature in the same client calls `list_connections` without `purpose`.
 
 The two `switch_` tools move what the user sees in TablePro. To run one statement elsewhere, pass `database` or `schema` to that tool instead.
 

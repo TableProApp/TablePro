@@ -113,7 +113,7 @@ one-time code to `redirect`.
 | `redirect` | yes | Where the code is delivered. A loopback `http(s)` URL or a private-use scheme registered by an installed app; anything else is refused, including `tablepro://` and any scheme a web browser handles. |
 | `response_mode` | no | `query` for flat `code` and `state` parameters, `context` for one JSON `context` parameter. Any other value refuses the link. Leaving it out is deprecated: see [Response modes](/developers/pairing#response-modes). |
 | `state` | no | Opaque value of up to 1,024 UTF-8 bytes, returned unchanged with the code or the error. A longer one refuses the link. |
-| `scopes` | no | One value: `readWrite` or `fullAccess`. Matching is case-insensitive and takes `read_write`, `read-write`, `full_access`, `full-access` and `full`. Any other value, or none, requests `readOnly`. |
+| `scopes` | no | A permission level, `readWrite` or `fullAccess`, plus `connections:display` for a launcher, separated by spaces or commas. Matching is case-insensitive and takes `read_write`, `read-write`, `full_access`, `full-access` and `full`. Unknown entries are skipped; no level requests `readOnly`, and several start at the lowest. See [Scopes](/developers/pairing#scopes). |
 | `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Only omitting it means every connection: an empty value, or one entry that is not a UUID, refuses the link. |
 
 `scopes` and `connection-ids` are a request, not a grant: the sheet lets the user raise or lower

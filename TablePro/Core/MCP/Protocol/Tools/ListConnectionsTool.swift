@@ -18,7 +18,20 @@ public struct ListConnectionsTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    public static let inputSchema = MCPToolSchema.empty
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "purpose": MCPToolSchema.string(
+                String(
+                    localized: """
+                    Leave out, or send agent, for the connections an AI client may use. display is for a \
+                    launcher showing the list to the user: it needs the connections:display scope and adds \
+                    connections hidden from AI, with user names.
+                    """
+                ),
+                enumValues: MCPConnectionListPurpose.allCases.map(\.rawValue)
+            )
+        ]
+    )
 
     public static let outputSchema: JsonValue? = MCPToolSchema.object(
         properties: [
@@ -36,6 +49,7 @@ public struct ListConnectionsTool: MCPToolImplementation {
                         "ai_policy": MCPToolSchema.string(String(localized: "AI access policy")),
                         "external_access": MCPToolSchema.string(String(localized: "External client access level")),
                         "safe_mode": MCPToolSchema.string(String(localized: "Safe mode level")),
+                        "username": MCPToolSchema.string(String(localized: "User name, sent only for purpose display")),
                         "color": colorSchema,
                         "group": MCPToolSchema.object(
                             properties: [
@@ -80,8 +94,33 @@ public struct ListConnectionsTool: MCPToolImplementation {
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: [])
-        let payload = await services.connectionBridge.listConnections(principal: context.principal)
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: ["purpose"])
+        let purpose = try MCPArgumentDecoder.optionalEnum(
+            arguments,
+            key: "purpose",
+            allowed: MCPConnectionListPurpose.allCases.map(\.rawValue)
+        ).flatMap(MCPConnectionListPurpose.init(rawValue:)) ?? .agent
+
+        if purpose == .display {
+            try await Self.requireDisplayGrant(context: context, services: services)
+        }
+
+        let payload = await services.connectionBridge.listConnections(principal: context.principal, purpose: purpose)
         return .structured(payload)
+    }
+
+    /// The scope is granted per token at pairing; the setting is the user's switch for all of them,
+    /// so turning it off stops every token at once.
+    private static func requireDisplayGrant(context: MCPRequestContext, services: MCPToolServices) async throws {
+        try context.principal.requireScopes(
+            [.connectionsDisplay],
+            reason: "Listing connections for display needs the connections:display scope"
+        )
+        guard await services.settingsProvider().allowsHiddenConnectionListing else {
+            throw MCPProtocolError.insufficientScope(
+                required: [.connectionsDisplay],
+                reason: "Listing connections hidden from AI is turned off in Settings > MCP"
+            )
+        }
     }
 }

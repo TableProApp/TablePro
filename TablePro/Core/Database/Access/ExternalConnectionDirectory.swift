@@ -25,6 +25,8 @@ internal struct ExternalConnectionListing: Sendable, Equatable {
     internal let databaseType: String
     internal let host: String
     internal let port: Int
+    /// Only the MCP display listing sends it. AppleScript never does.
+    internal let username: String
     internal let database: String
     internal let schema: String?
     internal let isConnected: Bool
@@ -83,6 +85,7 @@ internal enum ExternalConnectionDirectory {
                     databaseType: connection.type.rawValue,
                     host: connection.host,
                     port: connection.port,
+                    username: connection.username,
                     database: session?.database ?? connection.database,
                     schema: session?.schema,
                     isConnected: session?.isConnected ?? false,
