@@ -5,7 +5,7 @@ final class ExternalLinkFilterUITests: UITestCase {
         guard #available(macOS 13.3, *) else {
             throw XCTSkip("XCUIApplication.open(_:) needs macOS 13.3")
         }
-        let app = try launchApp()
+        let app = try launchApp(arguments: ["-AppleLanguages", "(en)"])
         XCTAssertTrue(app.windows["welcome"].waitToExist(timeout: 10))
 
         let condition = "status = 'pending' AND total > 1000"
