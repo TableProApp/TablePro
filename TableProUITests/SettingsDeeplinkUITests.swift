@@ -5,14 +5,11 @@ final class SettingsDeeplinkUITests: UITestCase {
     private let englishArguments = ["-AppleLanguages", "(en)"]
 
     func testASettingsLinkOpensItsPane() throws {
-        let app = try launchOpeningURL("tablepro://settings/license", arguments: englishArguments)
+        try assertLink("tablepro://settings/license", opensPaneTitled: "License")
+    }
 
-        let settingsWindow = app.windows["settings"]
-        XCTAssertTrue(settingsWindow.waitToExist(timeout: 10))
-        XCTAssertTrue(
-            waitForPredicate(timeout: 5) { settingsWindow.title == "License" },
-            "The link has to open the License pane, the window is titled \(settingsWindow.title)"
-        )
+    func testTheMCPLinkOpensTheMCPPane() throws {
+        try assertLink("tablepro://settings/mcp", opensPaneTitled: "MCP")
     }
 
     func testAnUnknownPaneOpensTheLastUsedPane() throws {
@@ -23,6 +20,24 @@ final class SettingsDeeplinkUITests: UITestCase {
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { settingsWindow.title == "General" },
             "A fresh sandbox has no last-used pane, so Settings opens on General, not \(settingsWindow.title)"
+        )
+    }
+
+    private func assertLink(
+        _ link: String,
+        opensPaneTitled title: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let app = try launchOpeningURL(link, arguments: englishArguments)
+
+        let settingsWindow = app.windows["settings"]
+        XCTAssertTrue(settingsWindow.waitToExist(timeout: 10), file: file, line: line)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { settingsWindow.title == title },
+            "\(link) has to open the \(title) pane, the window is titled \(settingsWindow.title)",
+            file: file,
+            line: line
         )
     }
 }
