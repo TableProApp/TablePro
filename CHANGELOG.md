@@ -25,10 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
 - Custom icons for connections and groups on Mac and iPhone, chosen from a searchable set of symbols and synced through iCloud. (#3309)
 - Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
+- Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
 
 ### Changed
 
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+
+### Deprecated
+
+- Pairing links without `response_mode`, which wrap the code in `context` for `raycast://` redirects.
 
 ### Fixed
 
@@ -97,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The toolbar keeping a connection's old name after it was renamed while connected. (#3309)
 - The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
 - No icon for a connection to a database type no installed plugin describes. (#3309)
+- A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
 
 ### Security
 
@@ -104,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
 - A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
 - A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.
+- Pairing accepting a redirect that opens TablePro, a web browser, a database URL or another remote resource.
+- A refused or unrecognized deep link writing its query values, SQL included, to the system log.
 
 ## [0.79.0] - 2026-10-09
 
