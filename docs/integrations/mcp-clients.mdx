@@ -15,7 +15,7 @@ Paste one absolute path into your client's MCP config and stop there. `tablepro-
 }
 ```
 
-For an install outside `/Applications`, use your own bundle's path. **Connect a Client…** in **Settings > Integrations** shows snippets with it filled in.
+For an install outside `/Applications`, use your own bundle's path. **Connect a Client…** in **Settings > MCP** shows snippets with it filled in.
 
 ## Clients that take the JSON above
 
@@ -100,7 +100,7 @@ Run `goose session` and ask for the tool list to confirm.
 
 ## Setup snippets in TablePro
 
-Click **Connect a Client…** in **Settings > Integrations**. The sheet covers Claude Desktop, Claude Code, Cursor, and Zed, with numbered steps and copyable snippets that already carry the right binary path for your install.
+Click **Connect a Client…** in **Settings > MCP**. The sheet covers Claude Desktop, Claude Code, Cursor, and Zed, with numbered steps and copyable snippets that already carry the right binary path for your install.
 
 ## What the config leaves out
 
@@ -118,7 +118,7 @@ For a narrower scope than `readWrite`, or a connection allowlist, use the [HTTP 
 
 ## HTTP transport
 
-Use HTTP when the client cannot spawn a local process. Mint a token in **Settings > Integrations > Authentication** and point the client at the server:
+Use HTTP when the client cannot spawn a local process. Mint a token in **Settings > MCP > Authentication** and point the client at the server:
 
 ```json
 {
@@ -133,7 +133,7 @@ Use HTTP when the client cannot spawn a local process. Mint a token in **Setting
 }
 ```
 
-Replace `23508` with the port shown in **Settings > Integrations**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
+Replace `23508` with the port shown in **Settings > MCP**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
 
 Three things change on this route. The server binds `127.0.0.1` over plain HTTP with no remote mode and no TLS, so a client on another machine needs an SSH port forward. `GET /mcp` answers `405`, so a client that opens a `GET` stream for notifications fails; notifications ride the response stream of the request they belong to. And `2025-11-25` and `2025-06-18` still work through the old `initialize` handshake and `Mcp-Session-Id`, while `2025-03-26` is refused.
 
@@ -155,7 +155,7 @@ The bridge writes its failure to stderr and as a JSON-RPC error, so the message 
 
 ### TablePro is not running
 
-The bridge could not launch the app, or got no trusted handshake within 10 seconds. Open TablePro and check that **Settings > Integrations** shows the server running; if it does, toggle **Enable MCP Server** off and on, then relaunch the client.
+The bridge could not launch the app, or got no trusted handshake within 10 seconds. Open TablePro and check that **Settings > MCP** shows the server running; if it does, toggle **Enable MCP Server** off and on, then relaunch the client.
 
 ### The local MCP endpoint did not prove it belongs to TablePro
 

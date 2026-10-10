@@ -43,7 +43,7 @@ struct MCPSection: View {
     }
 
     var body: some View {
-        Section(String(localized: "Integrations")) {
+        Section {
             Toggle(String(localized: "Enable MCP Server"), isOn: $settings.enabled)
 
             if showsStatus {

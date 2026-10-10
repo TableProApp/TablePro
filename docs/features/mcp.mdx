@@ -5,7 +5,7 @@ description: Built-in Model Context Protocol server that lets AI clients query y
 
 The [MCP](https://modelcontextprotocol.io) server binds `127.0.0.1` and nothing else: no remote mode, no TLS certificate, no setting that opens it to your network. Claude Desktop, Claude Code, Cursor, and Zed reach your databases through the connections you already saved, and never see a password.
 
-This page covers the **Settings > Integrations** pane. The protocol itself, the tool catalog, the prompts and the token model live under [Developers](/developers).
+This page covers the **Settings > MCP** pane. The protocol itself, the tool catalog, the prompts and the token model live under [Developers](/developers).
 
 <Frame caption="MCP server settings">
   <img className="block dark:hidden" src="/images/mcp-settings.png" alt="TablePro MCP settings" />
@@ -14,7 +14,7 @@ This page covers the **Settings > Integrations** pane. The protocol itself, the 
 
 ## Starting and stopping
 
-Open **Settings > Integrations** and turn on **Enable MCP Server**. The **Status** row underneath is how you check it before touching a client config: it reads **Running on port 23508**, or **Stopped**, or the reason it failed.
+Open **Settings > MCP** and turn on **Enable MCP Server**. The **Status** row underneath is how you check it before touching a client config: it reads **Running on port 23508**, or **Stopped**, or the reason it failed.
 
 Leaving the toggle off does not keep the server down. It starts on demand when a client launches the bundled `tablepro-mcp` bridge and when you pair an extension, so turning the toggle off stops the listener but not those paths.
 
@@ -75,7 +75,7 @@ With the toggle off, a caller on your own machine is accepted without a token, b
 
 ## Activity and connected clients
 
-**View Activity…** opens a separate window with two sections:
+**View Activity…** opens the **MCP Activity** window, also on **TablePro > MCP Activity…**. It has two sections:
 
 - **Activity Log**: every authentication, tool call, resource read and query, with the token behind it, the category, the connection, and the outcome. Filter by time, category or token, search, and export the filtered view to CSV. Retained for 90 days. Statements are recorded as a SHA-256 digest, not as text.
 - **Connected Clients**: clients that have called in the last five minutes, with the client name, the token, and when they were first and last seen. **Disconnect** revokes that client's token, so the client has to pair again.

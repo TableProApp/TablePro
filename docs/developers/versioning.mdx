@@ -75,7 +75,7 @@ the specification froze, for `-33000` and above; a client that matched on the ol
 updating once. The current table is in [MCP Protocol](/developers/mcp-protocol#errors).
 
 The default port is not the port on every Mac. The user can set another under
-**Settings > Integrations**, and when `23508` is taken at start the server binds a free port instead.
+**Settings > MCP**, and when `23508` is taken at start the server binds a free port instead.
 Treat the port as a setting that defaults to `23508`; the pane's **Status** row shows the one in use.
 
 ### The tablepro command and the app's identity
@@ -104,15 +104,15 @@ These can change in any release, without notice:
   `/v1/integrations/exchange`.
 - The handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled
   `tablepro-mcp` bridge, which finds the server on its own, or connect over HTTP to the port on the
-  **Status** row in **Settings > Integrations**, `23508` by default.
+  **Status** row in **Settings > MCP**, `23508` by default.
 - The connections file at `~/Library/Application Support/TablePro/connections.json`. List
   connections with `list_connections` or AppleScript instead.
 - The preferences in `~/Library/Preferences/com.TablePro.plist`, including the connection groups
   and tags kept there.
 - Keychain items the app writes, such as connection passwords and token hashes.
 - The app's SQLite databases. Read query history with `search_query_history`, and the audit log at
-  `mcp-audit.db` in the activity window.
-- Token storage. Tokens are managed in **Settings > Integrations**.
+  `mcp-audit.db` in the **MCP Activity** window.
+- Token storage. Tokens are managed in **Settings > MCP**.
 - Where the app is installed.
 
 ## Reporting a contradiction

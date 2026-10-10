@@ -40,6 +40,16 @@ struct MainMenuStructureTests {
         #expect(MainMenuLink.changelog == "https://docs.tablepro.app/changelog")
     }
 
+    @Test("The app menu opens MCP Activity without an active connection")
+    func mcpActivityIsReachable() throws {
+        let app = try #require(buildMenu().items.first { $0.title == "TablePro" }?.submenu)
+        let item = try #require(app.items.first { $0.title == String(localized: "MCP Activity…") })
+        #expect(item.action == #selector(AppDelegate.openMCPActivity(_:)))
+        #expect(item.target == nil)
+        #expect(item.keyEquivalent.isEmpty)
+        #expect(AppDelegate().validateMenuItem(item))
+    }
+
     @Test("Top level order follows the macOS HIG")
     func topLevelOrder() {
         let titles = buildMenu().items.map(\.title)

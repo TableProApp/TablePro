@@ -46,7 +46,7 @@ struct MCPApprovalAlertPresenter: MCPApprovalPresenting {
             request.connectionName,
             request.databaseType
         )
-        let pointer = String(localized: "Change this in Settings > Integrations.")
+        let pointer = String(localized: "Change this in Settings > MCP.")
         return opening + "\n\n" + Self.consequence(of: request.memory) + " " + pointer
     }
 
