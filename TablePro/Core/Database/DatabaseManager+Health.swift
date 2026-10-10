@@ -525,9 +525,7 @@ extension DatabaseManager {
         var passwordOverride = initialPasswordOverride
         var deadline = initialDeadline
         let preparedConfiguration = initialPreparedConfiguration
-        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
-            session.connection.host.nilIfEmpty ?? session.connection.name
-        )
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(session.connection.timeoutEndpointName)
 
         while true {
             var driver: DatabaseDriver?
