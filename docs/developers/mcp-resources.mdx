@@ -69,13 +69,25 @@ The payload is a JSON string inside `text`. The shapes on the rest of this page 
       "is_connected": false,
       "ai_policy": "askEachTime",
       "external_access": "readOnly",
-      "safe_mode": "silent"
+      "safe_mode": "silent",
+      "color": "red",
+      "group": {
+        "id": "4b0f7c1e-8a52-4d0c-9a3e-6f2d1c7b5e90",
+        "name": "Acme",
+        "path": ["Clients", "Acme"],
+        "color": "blue"
+      },
+      "tags": [
+        { "id": "00000000-0000-0000-0000-000000000003", "name": "production", "color": "red" }
+      ]
     }
   ]
 }
 ```
 
 `database` is the session's browsed database when connected, the saved default otherwise. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`). Connections with `external_access: blocked` or `ai_policy: never` are omitted, as are connections outside the token's allowlist.
+
+`color`, `group` and `tags` are the same as in [`list_connections`](/developers/mcp-tools#connections): `color` and `group` are omitted when unset, and `tags` is always an array.
 
 ## `tablepro://connections/{id}/schema`
 

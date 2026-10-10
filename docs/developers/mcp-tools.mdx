@@ -47,7 +47,7 @@ Statements that read or write files, or that run server-side code, are refused o
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`. `is_connected` is false once a connection stops answering, before it is disconnected |
+| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`, `tags`, plus `color` and `group` when set. `is_connected` is false once a connection stops answering, before it is disconnected |
 | `connect` | `connection_id` | `status` (`connected`), `connection_id`, `current_database`, plus `current_schema` and `server_version` when known. Returns once the driver is up |
 | `disconnect` | `connection_id` | `status` (`disconnected`), `connection_id` |
 | `get_connection_status` | `connection_id` | `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply |
@@ -55,6 +55,16 @@ Statements that read or write files, or that run server-side code, are refused o
 | `switch_schema` | `connection_id`, `schema` | `status` (`switched`), `connection_id`, `current_schema` |
 
 `list_connections` omits connections blocked for external clients, connections whose AI policy is **Never**, and connections outside the token's allowlist. Its `database` is the session's browsed database when connected, the saved default otherwise.
+
+The labels the user gave a connection come with it, so a client can show the list the way the app does:
+
+| Field | Shape |
+|-------|-------|
+| `color` | `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink` or `gray`. Omitted when the connection has no color |
+| `group` | `{ id, name, path[], color }`. `path` holds the group names from the top-level group down, ending with `name`. `color` is omitted when the group has none. The whole field is omitted when the connection is in no group |
+| `tags` | `[{ id, name, color }]` in the order the user added them, `color` omitted when the tag has none. Always present, empty when there are no tags |
+
+Entries are sorted by name, Finder style (`db2` before `db10`), then by `id`.
 
 The two `switch_` tools move what the user sees in TablePro. To run one statement elsewhere, pass `database` or `schema` to that tool instead.
 

@@ -23,39 +23,8 @@ public actor MCPConnectionBridge {
     }
 
     private func listConnections(access: ConnectionAccess) async -> JsonValue {
-        let (connections, activeSessions, defaultPolicy) = await MainActor.run {
-            let defaultPolicy = AppSettingsManager.shared.ai.defaultConnectionPolicy
-            let conns = ConnectionStorage.shared.loadConnections()
-                .filter { $0.externalAccess != .blocked }
-                .filter { ($0.aiPolicy ?? defaultPolicy) != .never }
-                .filter { access.allows($0.id) }
-            return (conns, DatabaseManager.shared.activeSessions, defaultPolicy)
-        }
-
-        let items: [JsonValue] = connections
-            .sorted { lhs, rhs in
-                lhs.name == rhs.name
-                    ? lhs.id.uuidString < rhs.id.uuidString
-                    : lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-            .map { conn in
-                let session = activeSessions[conn.id]
-                let policy = conn.aiPolicy ?? defaultPolicy
-                return .object([
-                    "id": .string(conn.id.uuidString),
-                    "name": .string(conn.name),
-                    "type": .string(conn.type.rawValue),
-                    "host": .string(conn.host),
-                    "port": .int(conn.port),
-                    "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
-                    "is_connected": .bool(session?.reportedStatus.isConnected ?? false),
-                    "ai_policy": .string(policy.rawValue),
-                    "external_access": .string(conn.externalAccess.rawValue),
-                    "safe_mode": .string(conn.safeModeLevel.rawValue)
-                ])
-            }
-
-        return .object(["connections": .array(items)])
+        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
+        return MCPConnectionListEncoder.encode(listings, access: access)
     }
 
     func connect(connectionId: UUID) async throws -> JsonValue {

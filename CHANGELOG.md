@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
 - Custom icons for connections and groups on Mac and iPhone, chosen from a searchable set of symbols and synced through iCloud. (#3309)
 - Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
+- Group, tags and color in the MCP connection list and on the AppleScript connection class.
 - Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
 - MySQL and MariaDB connections through a local Unix socket.
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
