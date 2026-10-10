@@ -68,7 +68,7 @@ await openUrl(`tablepro://integrations/pair?${params}`); // however your host op
 
 // Step 3. Your callback receives ?code=<uuid>&state=<state>, or ?error=access_denied when the user says no.
 // 23508 is the default port. Make it a setting: if the port is taken, the server binds another one,
-// and the Status row in Settings > Integrations shows the port in use.
+// and the Status row in Settings > MCP shows the port in use.
 export async function exchange(callback: URL, port = 23508): Promise<string> {
   const query = callback.searchParams;
   if (query.get("state") !== state) throw new Error("pairing state mismatch");
