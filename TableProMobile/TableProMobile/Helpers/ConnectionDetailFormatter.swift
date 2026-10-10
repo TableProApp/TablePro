@@ -13,7 +13,15 @@ nonisolated enum ConnectionDetailFormatter {
         return name.isEmpty ? path : name
     }
 
+    private static func socketDetail(_ path: String, database: String) -> String {
+        guard !database.isEmpty else { return String(format: String(localized: "Mac socket %@"), path) }
+        return String(format: String(localized: "%1$@ on Mac socket %2$@"), database, path)
+    }
+
     private static func networkDetail(for connection: DatabaseConnection) -> String {
+        if let socketPath = connection.macSocketPath {
+            return socketDetail(socketPath, database: connection.database)
+        }
         var endpoint = connection.host
         let defaultPort = connection.type.defaultPort
         if !defaultPort.isEmpty, String(connection.port) != defaultPort {

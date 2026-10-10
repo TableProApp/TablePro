@@ -86,6 +86,9 @@
         }
       }
     },
+    "%1$@ on Mac socket %2$@" : {
+
+    },
     "%1$@ via %2$@" : {
       "localizations" : {
         "ko" : {
@@ -9268,6 +9271,9 @@
           }
         }
       }
+    },
+    "Mac socket %@" : {
+
     },
     "Magnifying Glass" : {
       "extractionState" : "manual",
