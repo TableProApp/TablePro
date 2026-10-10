@@ -66,6 +66,7 @@ final class DataFileController: ObservableObject {
 
     let changeManager: DataFileChangeManager
     let anyChangeManager: AnyChangeManager
+    let selectionSummary = SelectionSummaryState()
     weak var undoManager: UndoManager?
     weak var gridCoordinator: TableViewCoordinator?
     var onEdited: (() -> Void)?

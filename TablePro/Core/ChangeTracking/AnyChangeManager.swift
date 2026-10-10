@@ -9,6 +9,8 @@ protocol ChangeManaging: AnyObject {
     var canRedo: Bool { get }
     var rowChanges: [RowChange] { get }
     var insertedRowIDs: Set<RowID> { get }
+    var deletedRowIDs: Set<RowID> { get }
+    var modifiedCells: [RowID: Set<Int>] { get }
     var generatedColumns: Set<String> { get }
     var supportsFieldRemoval: Bool { get }
     func isRowDeleted(_ rowID: RowID) -> Bool
@@ -36,6 +38,10 @@ protocol ChangeManaging: AnyObject {
 /// inspector grids edit schema definitions, where the concept does not apply.
 extension ChangeManaging {
     var generatedColumns: Set<String> { [] }
+
+    var deletedRowIDs: Set<RowID> { [] }
+
+    var modifiedCells: [RowID: Set<Int>] { [:] }
 
     var supportsFieldRemoval: Bool { false }
 
@@ -69,6 +75,8 @@ final class AnyChangeManager: ObservableObject {
     var canRedo: Bool { wrapped.canRedo }
     var rowChanges: [RowChange] { wrapped.rowChanges }
     var insertedRowIDs: Set<RowID> { wrapped.insertedRowIDs }
+    var deletedRowIDs: Set<RowID> { wrapped.deletedRowIDs }
+    var modifiedCells: [RowID: Set<Int>] { wrapped.modifiedCells }
     var generatedColumns: Set<String> { wrapped.generatedColumns }
     var supportsFieldRemoval: Bool { wrapped.supportsFieldRemoval }
 

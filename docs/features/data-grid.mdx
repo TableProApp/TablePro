@@ -3,7 +3,7 @@ title: Data Grid
 description: Sort, size, hide, highlight, chart, map and copy the rows a table or a query puts in the grid
 ---
 
-Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, highlight, filter and page buttons at the trailing edge.
+Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, followed by the row count and, while cells are selected, their [sum](#selection-summary). The columns, highlight, filter and page buttons sit at the trailing edge.
 
 A narrow window trims that bar rather than cutting it off. The Columns and Filters buttons drop their titles first, and **First** and **Last** leave with them; the Query menu still carries all four page commands. Narrower still, the view switcher becomes a pull-down naming the current mode and rows-per-page moves into the page indicator's menu. Everything else keeps its place.
 
@@ -154,7 +154,7 @@ Saving edits, importing rows, **Insert Document…**, a structure change and **R
 
 ## Copying
 
-Click a cell to select it, drag or `Shift`-click for a range, and click a row number for a whole row. The row-number gutter stays at the left edge on a table wider than the window, so whole rows are still selectable when the columns have scrolled past it. `Shift+Space` widens whatever is selected to every row it touches. Copy acts on the whole selection.
+Click a cell to select it, drag or `Shift`-click for a range, and `Cmd`-click to add or remove a cell. Click a row number for a whole row. For a whole column, `Cmd`-click its header or right-click the header and choose **Select Column**; a plain click on a header sorts. The row-number gutter stays at the left edge on a table wider than the window, so whole rows are still selectable when the columns have scrolled past it. `Shift+Space` widens whatever is selected to every row it touches. Copy acts on the whole selection.
 
 | Shortcut | Copies |
 |---|---|
@@ -166,6 +166,18 @@ Click a cell to select it, drag or `Shift`-click for a range, and click a row nu
 Right-click and open **Copy as** for CSV, CSV with Headers, Markdown, and **IN Clause**, which writes `('a', 'b', 'c')` for a `WHERE col IN (…)`. **INSERT Statement(s)** and **UPDATE Statement(s)** appear when the result comes from a single table whose structure has loaded, and never on MongoDB or Redis. UPDATE is also missing on a table without a primary key that has a column no match can compare, such as a SQL Server `sql_variant`. **Copy Column Values** on the header menu copies one column, one value per line.
 
 Every copy follows the grid as shown: hidden columns are left out, columns keep their current order, and over a cell selection only those columns go out. INSERT and UPDATE write what a save of the same row would. They leave out the columns the server fills in, such as identity and computed columns. INSERT leaves a cell set to `DEFAULT` to the server, and UPDATE assigns it `DEFAULT`. The table name carries its schema. UPDATE finds the row as it is stored, not as you have edited it: by every column of the primary key, whether or not those cells are selected, or on a table without one by every column, hidden ones included, which also changes any identical copy of the row. A row you added and have not saved gets no UPDATE.
+
+## Selection summary
+
+Select two or more cells and the status bar shows their **Sum**, **Average** and **Count**. A narrow window shows the sum alone, then only the Σ button. Click it for the full list: **Count**, **Numbers**, **Empty**, **Sum**, **Average**, **Minimum** and **Maximum**, each with a copy button. Right-click inside the selection for **Copy Sum** and **Copy Average**.
+
+- **Count** is the selected cells that are not NULL. **Average** divides the sum by **Numbers**, the cells that hold a number.
+- Integer and decimal columns are summed. A text column is not, so a ZIP code such as `00501` never joins a total. A column with no declared type, such as a SQLite expression, is summed when its value is a plain number.
+- `NaN`, `Infinity` and PostgreSQL `money` values are left out and counted under **Not a number**.
+- A column shown with **Display As**, such as a Unix timestamp shown as a date, is counted but not summed.
+- Rows marked for deletion are left out, so the figures match the table after you save.
+- Only loaded rows count. On a paged table or a query that stopped at its row limit, a whole selected column covers the rows on screen, and the popover says so.
+- The arithmetic is exact: `0.1` added ten times is `1`, and a `BIGINT UNSIGNED` sum keeps every digit. Copy writes the full value without group separators, ready to paste into SQL.
 
 ## View modes
 

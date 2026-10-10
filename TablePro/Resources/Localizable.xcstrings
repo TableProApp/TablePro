@@ -48696,6 +48696,9 @@
         }
       }
     },
+    "Copy Average" : {
+
+    },
     "Copy Bound" : {
       "localizations" : {
         "fr" : {
@@ -48866,6 +48869,9 @@
         }
       }
     },
+    "Copy Count" : {
+
+    },
     "Copy DDL" : {
       "localizations" : {
         "fr" : {
@@ -49005,6 +49011,9 @@
           }
         }
       }
+    },
+    "Copy Empty Count" : {
+
     },
     "Copy Error" : {
       "localizations" : {
@@ -49369,6 +49378,12 @@
     "Copy Link" : {
 
     },
+    "Copy Maximum" : {
+
+    },
+    "Copy Minimum" : {
+
+    },
     "Copy Name" : {
       "localizations" : {
         "fr" : {
@@ -49492,6 +49507,12 @@
           }
         }
       }
+    },
+    "Copy Not a Number Count" : {
+
+    },
+    "Copy Number Count" : {
+
     },
     "Copy Operation" : {
       "comment" : "A button that copies the operation of a query plan node to the clipboard.",
@@ -49894,6 +49915,9 @@
           }
         }
       }
+    },
+    "Copy Sum" : {
+
     },
     "Copy Table Name" : {
       "localizations" : {
@@ -52851,6 +52875,9 @@
         }
       }
     },
+    "Count %lld" : {
+
+    },
     "Count all rows" : {
       "localizations" : {
         "fr" : {
@@ -53180,6 +53207,12 @@
           }
         }
       }
+    },
+    "Covers the loaded rows only." : {
+
+    },
+    "Covers this page only. Column Statistics covers the whole file." : {
+
     },
     "Create" : {
       "localizations" : {
@@ -68574,9 +68607,6 @@
         }
       }
     },
-    "Empty Value" : {
-
-    },
     "Empty response" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -68634,6 +68664,9 @@
           }
         }
       }
+    },
+    "Empty Value" : {
+
     },
     "Enable" : {
       "localizations" : {
@@ -120801,6 +120834,9 @@
         }
       }
     },
+    "Numbers" : {
+      "comment" : "How many of the selected cells hold a number"
+    },
     "Numeric tolerance" : {
       "localizations" : {
         "fr" : {
@@ -136591,9 +136627,6 @@
         }
       }
     },
-    "Query ST_Transform(geom, 4326) to see these shapes." : {
-
-    },
     "Query review on %@" : {
       "localizations" : {
         "fr" : {
@@ -136633,6 +136666,9 @@
           }
         }
       }
+    },
+    "Query ST_Transform(geom, 4326) to see these shapes." : {
+
     },
     "Query stopped after running past the %d second query timeout" : {
       "extractionState" : "manual",
@@ -156527,6 +156563,9 @@
         }
       }
     },
+    "Select Column" : {
+
+    },
     "Select Connections" : {
       "localizations" : {
         "fr" : {
@@ -162155,6 +162194,9 @@
           }
         }
       }
+    },
+    "Shows every figure with a Copy button" : {
+
     },
     "Shows how the time was spent" : {
       "localizations" : {
@@ -171124,6 +171166,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Somme"
+          }
+        }
+      }
+    },
+    "Sum %@" : {
+
+    },
+    "Sum %@ · Average %@ · Count %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sum %1$@ · Average %2$@ · Count %3$lld"
+          }
+        }
+      }
+    },
+    "Sum %@, Average %@, Count %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sum %1$@, Average %2$@, Count %3$lld"
           }
         }
       }
@@ -202918,9 +202983,6 @@
         }
       }
     },
-    "Use text mode to enter JSON." : {
-
-    },
     "Use IAM database authentication" : {
       "localizations" : {
         "fr" : {
@@ -203100,6 +203162,9 @@
           }
         }
       }
+    },
+    "Use text mode to enter JSON." : {
+
     },
     "Use the addresses the cluster advertises" : {
       "extractionState" : "manual",

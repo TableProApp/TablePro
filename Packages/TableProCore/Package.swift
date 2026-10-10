@@ -183,7 +183,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTabular",
-            dependencies: ["TableProTabularIO"],
+            dependencies: ["TableProTabularIO", "TableProNumberFormatting"],
             path: "Sources/TableProTabular"
         ),
         .target(
@@ -198,7 +198,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTabularTests",
-            dependencies: ["TableProTabular", "TableProTabularIO"],
+            dependencies: ["TableProTabular", "TableProTabularIO", "TableProNumberFormatting"],
             path: "Tests/TableProTabularTests"
         ),
         .testTarget(

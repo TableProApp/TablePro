@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TableProNumberFormatting
 import TableProTabular
 
 @MainActor
@@ -56,6 +57,7 @@ final class DataFileStatisticsModel: ObservableObject {
 struct DataFileStatisticsView: View {
     @ObservedObject var model: DataFileStatisticsModel
     let onPickValue: (TabularValueCount) -> Void
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -102,11 +104,13 @@ struct DataFileStatisticsView: View {
             metric(String(localized: "Empty"), summary.emptyCount.formatted())
             metric(String(localized: "Distinct"), summary.distinctCount.formatted())
             if let numeric = summary.numeric {
-                metric(String(localized: "Minimum"), numeric.minimum.formatted())
-                metric(String(localized: "Maximum"), numeric.maximum.formatted())
-                metric(String(localized: "Sum"), numeric.sum.formatted())
-                metric(String(localized: "Mean"), numeric.mean.formatted())
-                metric(String(localized: "Median"), numeric.median.formatted())
+                let exactDigits = numeric.scale...numeric.scale
+                let averageDigits = 0...(numeric.scale + 4)
+                metric(String(localized: "Minimum"), formatted(numeric.minimum, fractionDigits: exactDigits))
+                metric(String(localized: "Maximum"), formatted(numeric.maximum, fractionDigits: exactDigits))
+                metric(String(localized: "Sum"), formatted(numeric.sum, fractionDigits: exactDigits))
+                metric(String(localized: "Mean"), formatted(numeric.mean, fractionDigits: averageDigits))
+                metric(String(localized: "Median"), formatted(numeric.median, fractionDigits: averageDigits))
             }
             if summary.nonNumericCount > 0 {
                 metric(String(localized: "Not a number"), summary.nonNumericCount.formatted())
@@ -121,6 +125,10 @@ struct DataFileStatisticsView: View {
         }
         .font(.callout)
         .monospacedDigit()
+    }
+
+    private func formatted(_ number: ExactNumber, fractionDigits: ClosedRange<Int>) -> String {
+        ExactNumberFormat.string(number, fractionDigits: fractionDigits, locale: locale)
     }
 
     private func metric(_ label: String, _ value: String) -> some View {

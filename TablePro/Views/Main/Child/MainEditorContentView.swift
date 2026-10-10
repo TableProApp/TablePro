@@ -999,7 +999,8 @@ struct MainEditorContentView: View {
             },
             viewportPlacementProvider: { [coordinator] in
                 coordinator.takeViewportPlacement(forTab: tabId)
-            }
+            },
+            selectionSummary: coordinator.selectionSummary
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -1132,6 +1133,7 @@ struct MainEditorContentView: View {
                 lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
                 onCancel: { coordinator.stopExecution(for: tab.id) }
             ),
+            selectionSummary: coordinator.selectionSummary,
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab),
