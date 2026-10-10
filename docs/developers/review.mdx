@@ -1,0 +1,55 @@
+---
+title: Review process
+description: How a directory pull request becomes a listing, the deadlines on both sides, and how to report a listed integration
+---
+
+Expect a first reply within 7 days. That is a best effort from the maintainers, not a promise, and
+the review holds the entry to the [listing policy](/developers/listing-policy) rather than auditing
+your code.
+
+## From pull request to listing
+
+<Steps>
+  <Step title="Checks">
+    **Registry Gate** runs the checks on
+    [Submit to the directory](/developers/submit#what-the-checks-look-at), and the pull request gets
+    labels for its tier and for owner consent when it needs one.
+  </Step>
+  <Step title="Policy review">
+    A maintainer checks by hand what CI cannot: that the disclosures are true, the name and icon
+    follow the brand guidelines, Safe Mode is lowered only for local development, and the
+    integration works with the current TablePro release. A maintainer who asks for changes labels
+    the pull request **waiting on author**.
+  </Step>
+  <Step title="Merge and release">
+    After the merge, a maintainer publishes a new registry release.
+  </Step>
+  <Step title="Listing">
+    The website looks for a new release once a day and opens a pull request with it, which a
+    maintainer merges. The entry then appears at
+    [tablepro.app/integrations](https://tablepro.app/integrations).
+  </Step>
+</Steps>
+
+## Deadlines
+
+| When | What happens |
+| --- | --- |
+| A pull request labeled **waiting on author** gets no reply or push for 14 days | It is marked stale, and closes 7 days later, 21 days in all. Open a new one at any time |
+| Every week | A health check updates one issue with broken links, moved or archived repositories, removed licenses and private-file access. It never edits or deletes an entry |
+| A listed entry breaks the policy or stops working | A maintainer contacts the author in the integration's own tracker. With no reply after 30 days, the entry is archived |
+| An entry listed before the policy | Its [grace period](/developers/listing-policy#grace-periods) applies |
+
+## Report a listed integration
+
+| Problem | Where it goes |
+| --- | --- |
+| A bug in the integration | Its own issue tracker, linked on the entry page. Start there |
+| No reply after 7 days, or a policy problem: a broken link, a wrong disclosure, a confusing name or icon, access to private files | **Report a problem with this listing** on the entry page. It opens the [**Report a listed integration**](https://github.com/TableProApp/integrations/issues/new?template=report-integration.yml) form with the entry filled in |
+| Malware, credential theft or a vulnerability | The registry's [private security advisories](https://github.com/TableProApp/integrations/security/advisories/new), never a public issue. A confirmed report removes the entry at once |
+| A bug in TablePro itself | [TablePro's issues](https://github.com/TableProApp/TablePro/issues) |
+
+## Appeals
+
+To contest an archive, a removal or a refused pull request, reply on the issue or pull request that
+recorded it, or fix the problem and open a new pull request.

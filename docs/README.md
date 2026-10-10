@@ -14,7 +14,7 @@ docs/
 ├── features/                # Feature documentation
 ├── customization/           # Settings and customization
 ├── integrations/            # Using TablePro with other tools
-├── developers/              # URL scheme, AppleScript, MCP, pairing
+├── developers/              # Build an integration, API reference, directory listing
 └── development/             # Contributing
 ```
 

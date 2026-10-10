@@ -1,0 +1,204 @@
+---
+title: Submit to the directory
+description: List an integration on tablepro.app/integrations with one pull request to the registry
+---
+
+A listing is one folder in [TableProApp/integrations](https://github.com/TableProApp/integrations):
+an `integration.json` manifest, a 512x512 `icon.png` and up to four screenshots. If you publish the
+integration, open the pull request yourself. If you only use it, open a
+[**Suggest an integration**](https://github.com/TableProApp/integrations/issues/new?template=suggest-integration.yml)
+issue instead, and the maintainers ask the author before listing it.
+
+## Before you start
+
+- You own the repository, belong to the organization that owns it, or are a
+  [major contributor](/developers/listing-policy#rules). Anyone else needs the owner's consent in a
+  comment on the pull request.
+- The integration calls only the surfaces on [Build an integration](/developers#pick-a-surface),
+  finds TablePro by bundle ID, and reads none of
+  [TablePro's private files](/developers/listing-policy#rules).
+- The repository has a `LICENSE` file with an SPDX license, or the entry is closed source and shows
+  a **Closed source** label.
+- The product name follows `<Name> for TablePro`, and the icon is your own. The
+  [brand guidelines](https://tablepro.app/brand#naming) list the name forms.
+- It works with the current TablePro release.
+
+## Add the entry
+
+<Steps>
+  <Step title="Fork the registry">
+    Fork [TableProApp/integrations](https://github.com/TableProApp/integrations) and create
+    `integrations/<slug>/`. The slug is 2 to 40 characters of lowercase words joined by hyphens,
+    without `tablepro`. It becomes the page address, `tablepro.app/integrations/<slug>`, and never
+    changes after the first merge.
+  </Step>
+  <Step title="Write the manifest">
+    Add `integration.json`. Start from the [sample](#sample-manifest), from a listed entry like
+    yours, or from the
+    [test fixtures](https://github.com/TableProApp/integrations/tree/main/scripts/tests/fixtures/integrations).
+    Keep the `$schema` line: an editor that reads JSON Schema completes and checks every field.
+  </Step>
+  <Step title="Add the images">
+    `icon.png` is a 512x512 PNG of at most 512 KB. SVG is refused. Screenshots are optional: up to
+    four 1600x1000 PNGs of at most 1 MB each, named `screenshot-1.png` upward without gaps, and each
+    listed under `screenshots` with alt text.
+  </Step>
+  <Step title="Run the validator">
+    From the root of your fork, with Python 3.10 or later:
+
+    ```bash
+    python3 -m venv .venv
+    .venv/bin/pip install --require-hashes -r requirements.txt
+    .venv/bin/python scripts/validate.py
+    ```
+
+    <Warning>
+      The `/usr/bin/python3` that Xcode and its command line tools install is 3.9, and the pinned
+      requirements do not install on it. Install a newer Python, for example with
+      `brew install python`, and create the environment with that one.
+    </Warning>
+
+    <Check>The summary line reports `0 errors`.</Check>
+  </Step>
+  <Step title="Open the pull request">
+    One entry per pull request, titled `feat(<slug>): add <Name>`. Fill in the checklist in the
+    template, and link the owner's consent comment if you need one.
+  </Step>
+</Steps>
+
+## Sample manifest
+
+A fictional launcher command that lists connections over AppleScript and opens one with a
+`tablepro://` link. It passes the validator as written.
+
+```json integrations/example-launcher/integration.json
+{
+  "$schema": "../../schema/integration.schema.json",
+  "schemaVersion": 1,
+  "slug": "example-launcher",
+  "name": "Example Launcher",
+  "summary": "Search your TablePro connections from Example Launcher and open one with Return.",
+  "description": "An Example Launcher command that lists your saved TablePro connections by name, group and tag. Press Return to open the selected connection in TablePro.\n\nIt reads the connection list through AppleScript, so macOS asks once for Automation permission. It needs Example Launcher 2.0 or later.",
+  "tier": "community",
+  "status": { "state": "active" },
+  "publisher": { "name": "The Octocat", "github": "octocat", "githubId": 583231 },
+  "source": { "type": "github", "repo": "octocat/example-launcher-tablepro", "repoId": 123456789 },
+  "license": "MIT",
+  "install": {
+    "type": "github-release",
+    "url": "https://github.com/octocat/example-launcher-tablepro/releases/latest"
+  },
+  "host": { "name": "Example Launcher", "url": "https://example.com", "minVersion": "2.0" },
+  "platforms": ["macos"],
+  "categories": ["launchers"],
+  "surfaces": ["applescript", "url-scheme"],
+  "disclosures": {
+    "reads": ["connections"],
+    "writes": [],
+    "lowersSafeMode": false,
+    "network": "none",
+    "account": false,
+    "payment": "free"
+  },
+  "links": {
+    "homepage": "https://github.com/octocat/example-launcher-tablepro",
+    "issues": "https://github.com/octocat/example-launcher-tablepro/issues"
+  },
+  "icon": "icon.png",
+  "screenshots": [
+    { "file": "screenshot-1.png", "alt": "Example Launcher listing three TablePro connections for the search prod" }
+  ],
+  "keywords": ["launcher", "connections"],
+  "addedAt": "2026-10-10",
+  "lastVerifiedAt": "2026-10-10"
+}
+```
+
+## Manifest fields
+
+[`schema/integration.schema.json`](https://github.com/TableProApp/integrations/blob/main/schema/integration.schema.json)
+is the full reference. This table covers what it leaves to you.
+
+| Field | What to put |
+| --- | --- |
+| `name` | Up to 32 characters, without TablePro: the directory already says the entry works with it. Official, Verified and Certified are refused |
+| `summary` | One sentence of 20 to 120 characters, ending with a period |
+| `description` | Plain text of 80 to 1,200 characters, paragraphs separated by one blank line. No HTML, Markdown or emoji |
+| `tier` | `community`. Only a maintainer sets `official` or `partner` |
+| `status` | `{ "state": "active" }` |
+| `publisher` | The name shown as **By** on the page, a GitHub login, and that account's numeric `githubId` |
+| `source` | `github` with `repo`, its numeric `repoId` and, inside a monorepo, `path`. Or `closed`, with an optional `note` |
+| `license` | The repository's SPDX license. Required for a `github` source, left out for `closed` |
+| `install` | Where the install button goes. Use the store the integration ships in: `raycast-store`, `vscode-marketplace`, `alfred-gallery`, `app-store`, or `homebrew` for a formula or cask in Homebrew's own repositories. Otherwise `github-release`, or `ships-with-host` when the other product includes it. `page`, a plain download page, needs a maintainer's approval |
+| `host` | The other product: `name`, `url`, `minVersion`, and a `note` for a paid tier it needs |
+| `platforms` | The TablePro apps it works with: `macos`, `ios`, `ipados` |
+| `minTableProVersion` | Optional. The oldest TablePro release it works with, per platform |
+| `categories` | One or two of `ai-clients`, `automation`, `cloud-hosting`, `command-line`, `editors`, `launchers`, `local-development`, `other` |
+| `surfaces` | The TablePro interfaces it calls: `url-scheme`, `database-url`, `applescript`, `mcp`, `pairing`, `cli`, `shortcuts` |
+| `disclosures` | What it reads, writes and sends, covered in [Disclosures](#disclosures) |
+| `links` | `homepage`, plus `issues` or `support`. `docs`, `privacy` and `changelog` are optional |
+| `keywords` | Optional. Up to eight lowercase search terms |
+| `addedAt`, `lastVerifiedAt` | Today's date, as `YYYY-MM-DD` |
+
+Both numeric IDs come from the GitHub API:
+
+```bash
+gh api users/<login> --jq .id
+gh api repos/<owner>/<repo> --jq .id
+```
+
+### Disclosures
+
+The entry page shows these under **What it uses**. The listing policy treats a wrong one as a
+violation.
+
+| Field | What to put |
+| --- | --- |
+| `reads` | What it reads from TablePro: `connections`, `schema`, `data`. Empty when it only opens things |
+| `writes` | `data`, `schema`, or empty |
+| `accessNote` | Optional. What limits the access, such as the token scope picked when pairing |
+| `lowersSafeMode` | `true` when it opens connections below the user's Safe Mode default, such as with `safeModeLevel=0`. Then `safeModeNote` is required, and `categories` must include `local-development` |
+| `network` | Where the integration itself sends data, apart from TablePro and the user's databases: `none`, `local` for this Mac only, or `internet`, which requires `networkNote` |
+| `account` | `true` when it needs an account with a service other than TablePro and the host. Then `links.privacy` is required |
+| `payment` | `free`, `optional` or `paid`. The last two require `paymentNote` |
+
+## What the checks look at
+
+Every pull request runs **Registry Gate**, the one required check. A failure appears as an
+annotation on the line in **Files changed**, and the run summary lists each error. Push a fix to
+the same branch. The checks cover:
+
+- The manifest against the schema, and the text: normalized to NFC, with no emoji and no invisible
+  characters.
+- The name and slug, against reserved words and the other entries.
+- The folder: only the manifest, the icon and the listed screenshots, at the right sizes. An icon
+  that looks like the TablePro app icon fails.
+- Every link: `https`, no IP address or URL shortener, and it answers.
+- The GitHub IDs: `githubId` belongs to the login, `repoId` is the repository in `repo`, and that
+  repository is public and not archived.
+- The license GitHub detects in the repository, against `license`. In a monorepo, or when GitHub
+  cannot identify the license, a maintainer checks it by hand.
+- Who opened the pull request. Anyone other than the publisher, the repository owner or a public
+  member of its organization gets a **needs owner consent** label, which a maintainer removes once
+  the owner consents or your commits show you are a major contributor.
+- The install target: the store page, release, formula or cask has to exist.
+- The source: CI fetches the repository and searches its text files for the paths of TablePro's
+  private files. A match fails the check with its file and line. A fetch that fails leaves only a
+  warning.
+- The scope: one entry folder per pull request, and no file outside it.
+
+Run without flags, the validator skips every check that needs the network: the GitHub IDs, the
+license, who opened the pull request, links answering, the install target and the source scan. CI
+runs them all.
+
+## Change or remove an entry
+
+To update an entry, change the files in its folder and open a pull request. The same checks run.
+`slug` and `addedAt` never change. `tier`, `compliance`, `lastVerifiedAt`, `source.repoId` and
+`publisher.githubId` change only in a maintainer's pull request, so after a repository rename,
+update `source.repo` and keep `repoId`.
+
+To take an entry down, open a
+[**Request removal or archive**](https://github.com/TableProApp/integrations/issues/new?template=request-removal.yml)
+issue. A pull request that deletes the folder fails the checks. An archived entry keeps its page
+with a notice. A removed one answers 410 Gone, and its slug is never used again.
