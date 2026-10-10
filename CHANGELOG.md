@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Teradata Table Info counting every row of the table each time it opened. (#3308)
 - Create Table keeping a draft that could only fail again after the table was created and a later index or comment failed. (#3308)
 - An AWS IAM sign-in to MySQL failing to reconnect after an idle release, and Stop failing, once its token expired.
+- MySQL and MariaDB connections with SSL Disabled still using TLS when a client certificate or key was saved.
 - SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
 - Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
 - SQL Server `datetimeoffset` values shown, copied and exported without their offset.

@@ -9,8 +9,8 @@
 # flavor and fails on one the tool does not know.
 #
 # No server is needed. A tool rejects an unknown option before it opens a socket, so a closed port
-# tells the two apart: a flag it understands fails with "Can't connect", one it does not fails with
-# "unknown variable" or "unknown option".
+# and a socket file that does not exist tell the two apart: a flag it understands fails with "Can't
+# connect", one it does not fails with "unknown variable" or "unknown option".
 #
 # Usage:
 #   scripts/probes/check-mysql-dump-tool-flags.sh
@@ -23,6 +23,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE="$ROOT/TablePro/Core/Database/MySQLClientArguments.swift"
 CLOSED_PORT=59999
+MISSING_SOCKET=/nonexistent/tablepro-probe.sock
 
 [ -f "$SOURCE" ] || {
     echo "not found: $SOURCE" >&2
@@ -32,6 +33,9 @@ CLOSED_PORT=59999
 # The table this script holds the tools to. Every flag here must also appear in the Swift file, and
 # every SSL flag in the Swift file must appear here, so neither can drift alone.
 MYSQL_FLAGS=(
+    "--protocol=TCP"
+    "--protocol=SOCKET"
+    "--socket=/dev/null"
     "--ssl-mode=DISABLED"
     "--ssl-mode=PREFERRED"
     "--ssl-mode=REQUIRED"
@@ -41,8 +45,12 @@ MYSQL_FLAGS=(
     "--ssl-cert=/dev/null"
     "--ssl-key=/dev/null"
     "--skip-column-statistics"
+    "--enable-cleartext-plugin"
 )
 MARIADB_FLAGS=(
+    "--protocol=TCP"
+    "--protocol=SOCKET"
+    "--socket=/dev/null"
     "--skip-ssl"
     "--ssl"
     "--ssl-verify-server-cert"
@@ -109,7 +117,7 @@ check_tool() {
     fi
     echo "checking $flavor tool $tool"
     for flag in "${flags[@]}"; do
-        output="$("$tool" --protocol=TCP -h 127.0.0.1 -P "$CLOSED_PORT" -u probe "$flag" nodb 2>&1)"
+        output="$("$tool" --protocol=TCP -h 127.0.0.1 -P "$CLOSED_PORT" --socket="$MISSING_SOCKET" -u probe "$flag" nodb 2>&1)"
         case "$output" in
             *"unknown variable"* | *"unknown option"* | *"Unknown option"*)
                 fail "$tool ($flavor) rejects $flag: $(echo "$output" | head -1)"

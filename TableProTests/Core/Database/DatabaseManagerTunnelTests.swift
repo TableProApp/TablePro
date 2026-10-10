@@ -388,6 +388,23 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] == nil)
     }
 
+    @Test("Every tunnel drops the local MySQL socket, so the driver dials the forward")
+    func localSocketIsStrippedFromTunneledFields() {
+        for (kind, fixture) in tunnelFixtures() {
+            var connection = fixture
+            connection.type = .mysql
+            connection.host = "db.internal"
+            connection.port = 3_306
+            connection.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+
+            let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
+
+            #expect(tunneled.host == "127.0.0.1", "\(kind)")
+            #expect(tunneled.port == 62_000, "\(kind)")
+            #expect(tunneled.additionalFields[MySQLLocalSocket.fieldKey] == nil, "\(kind)")
+        }
+    }
+
     @Test("Exhausted tunnel recovery removes the session instead of leaving a spinner")
     func exhaustedRecoveryRemovesTheSession() {
         let connection = DatabaseConnection(

@@ -186093,6 +186093,14 @@
         }
       }
     },
+    "The socket path is %d bytes. macOS allows %d at most." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The socket path must start with /." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the SOCKS proxy" : {
       "localizations" : {
         "fr" : {

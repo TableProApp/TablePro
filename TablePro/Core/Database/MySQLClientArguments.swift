@@ -37,6 +37,15 @@ enum MySQLClientArguments {
         return try modeFlags(ssl.mode, flavor: flavor, toolPath: toolPath) + certificateFlags(ssl)
     }
 
+    /// The protocol is always named, because both families read a host spelled `localhost` as their
+    /// default socket. A socket also names `localhost`: measured with mysql 8.4.6 and mariadb
+    /// 13.0.2, a `host=127.0.0.1` in an option file made MariaDB dial TCP and MySQL fail with 2047
+    /// despite `--protocol=SOCKET`.
+    static func endpoint(host: String, port: Int, socketPath: String?) -> [String] {
+        guard let socketPath else { return ["--protocol=TCP", "-h", host, "-P", String(port)] }
+        return ["--protocol=SOCKET", "-h", "localhost", "--socket=\(socketPath)"]
+    }
+
     /// An IAM token reaches the server as a cleartext password over TLS. MySQL's clients refuse to
     /// send one unless told to; MariaDB's send it when the server asks and have no such flag.
     static func cleartextAuthentication(flavor: NativeDumpToolFlavor) -> [String] {
