@@ -52,6 +52,56 @@ struct RDSDiscoveryReconcilerTests {
         #expect(adopted[0].additionalFields?["awsAuth"] == "sso")
     }
 
+    @Test("Adopting a saved identity keeps every other field of the discovered row")
+    func adoptingIdentityKeepsOtherFields() throws {
+        let discovered = ExportableConnection(
+            name: "orders",
+            host: "orders.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            database: "",
+            username: "",
+            type: DatabaseType.postgresql.rawValue,
+            sshConfig: nil,
+            sslConfig: nil,
+            color: "Red",
+            iconName: "cloud",
+            tagName: nil,
+            groupName: "AWS",
+            sshProfileId: nil,
+            sshProfileName: "bastion",
+            credentialProfileName: "readers",
+            safeModeLevel: nil,
+            aiPolicy: nil,
+            connectTimeoutSeconds: 12,
+            queryTimeoutSeconds: 30,
+            additionalFields: nil,
+            redisDatabase: nil,
+            startupCommands: nil,
+            localOnly: nil
+        )
+
+        let adopted = try #require(RDSDiscoveryReconciler.adoptingExistingIdentity(
+            [discovered],
+            existing: [
+                RDSDiscoveryReconciler.ExistingEndpoint(
+                    host: discovered.host,
+                    port: discovered.port,
+                    database: "orders",
+                    username: "app_ro"
+                )
+            ]
+        ).first)
+
+        #expect(adopted.username == "app_ro")
+        #expect(adopted.iconName == "cloud")
+        #expect(adopted.color == "Red")
+        #expect(adopted.groupName == "AWS")
+        #expect(adopted.sshProfileName == "bastion")
+        #expect(adopted.credentialProfileName == "readers")
+        #expect(adopted.connectTimeoutSeconds == 12)
+        #expect(adopted.queryTimeoutSeconds == 30)
+    }
+
     @Test("Two saved connections on one endpoint are ambiguous, so nothing is adopted")
     func ambiguousEndpoint() {
         let endpoint = { (username: String) in

@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
@@ -211,6 +212,7 @@ enum IOSConnectionImportService {
             username: exportable.username,
             database: exportable.database,
             color: exportable.color.map { ConnectionColor(storedValue: $0) } ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(exportable.iconName),
             isReadOnly: safeModeLevel.blocksWrites,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: validQueryTimeout(exportable.queryTimeoutSeconds ?? legacyQueryTimeout),
@@ -235,7 +237,8 @@ enum IOSConnectionImportService {
             let exists = appState.groups.contains { normalizedKey($0.name) == normalizedKey(exportGroup.name) }
             guard !exists, !exportGroup.name.isEmpty else { continue }
             let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
-            appState.addGroup(ConnectionGroup(name: exportGroup.name, color: color))
+            let iconName = LibrarySymbolCatalog.normalizedName(exportGroup.iconName)
+            appState.addGroup(ConnectionGroup(name: exportGroup.name, color: color, iconName: iconName))
         }
         for exportTag in envelope.tags ?? [] {
             let exists = appState.tags.contains { normalizedKey($0.name) == normalizedKey(exportTag.name) }

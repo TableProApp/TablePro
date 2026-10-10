@@ -1032,6 +1032,26 @@
         }
       }
     },
+    "Americas" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Airplane" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Account" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Admin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Alert" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "AND" : {
       "localizations" : {
         "ko" : {
@@ -1972,6 +1992,14 @@
         }
       }
     },
+    "App" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Antenna" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Apply" : {
       "localizations" : {
         "ko" : {
@@ -1999,6 +2027,10 @@
           }
         }
       }
+    },
+    "Archive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Are you sure you want to delete this connection? Saved credentials will be permanently removed." : {
       "localizations" : {
@@ -2111,6 +2143,18 @@
           }
         }
       }
+    },
+    "Asia and Australia" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Atom" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Audit" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Auth" : {
       "localizations" : {
@@ -2308,6 +2352,22 @@
         }
       }
     },
+    "Bell" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Banknote" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bar Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Blue" : {
       "localizations" : {
         "ko" : {
@@ -2335,6 +2395,38 @@
           }
         }
       }
+    },
+    "Bookmark" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Book" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Briefcase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Brain" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Branch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Braces" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bolt" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Broadcast" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Browse and Edit Data" : {
       "localizations" : {
@@ -2364,6 +2456,10 @@
         }
       }
     },
+    "Bug" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Build" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2392,6 +2488,14 @@
           }
         }
       }
+    },
+    "Bus" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Building" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "CA Certificate" : {
       "localizations" : {
@@ -2449,6 +2553,14 @@
           }
         }
       }
+    },
+    "Cake" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Cable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Can't Import" : {
       "localizations" : {
@@ -2536,6 +2648,14 @@
     },
     "Cannot reach iCloud. Changes sync when this device is back online." : {
 
+    },
+    "Car" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Cart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Certificate" : {
       "localizations" : {
@@ -2626,6 +2746,10 @@
     },
     "Changes from iCloud could not be saved on this device. They download again on the next sync." : {
 
+    },
+    "Chat" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Check your %@ username and password." : {
       "localizations" : {
@@ -2823,6 +2947,10 @@
         }
       }
     },
+    "Checkered Flag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Checking iCloud" : {
       "localizations" : {
         "ko" : {
@@ -2850,6 +2978,10 @@
           }
         }
       }
+    },
+    "Checkmark" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Chinook (Sample)" : {
       "localizations" : {
@@ -2935,6 +3067,10 @@
           }
         }
       }
+    },
+    "Circle" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Clear" : {
       "localizations" : {
@@ -3246,6 +3382,22 @@
         }
       }
     },
+    "Cloud and Sun" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Coffee Cup" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Code" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Cloud" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Color" : {
       "localizations" : {
         "ko" : {
@@ -3330,6 +3482,10 @@
         }
       }
     },
+    "Command" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Computed by the database" : {
       "localizations" : {
         "ko" : {
@@ -3357,6 +3513,10 @@
           }
         }
       }
+    },
+    "Config File" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Configuration Error" : {
       "localizations" : {
@@ -4088,6 +4248,10 @@
         }
       }
     },
+    "Copies" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy Column Name" : {
       "localizations" : {
         "ko" : {
@@ -4679,6 +4843,22 @@
         }
       }
     },
+    "Data & Analytics" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Database & Storage" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Crown" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Credit Card" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DEFAULT" : {
       "localizations" : {
         "ko" : {
@@ -4708,6 +4888,8 @@
       }
     },
     "Database" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -5409,6 +5591,26 @@
         }
       }
     },
+    "Development" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Dice" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Diamond" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Device" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Desktop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Disabled" : {
       "localizations" : {
         "ko" : {
@@ -5521,6 +5723,18 @@
         }
       }
     },
+    "Dollar" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Display" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Document" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Don't Share" : {
       "localizations" : {
         "ko" : {
@@ -5577,6 +5791,10 @@
         }
       }
     },
+    "Downtrend" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Driver Unavailable" : {
       "localizations" : {
         "ko" : {
@@ -5606,6 +5824,8 @@
       }
     },
     "Drop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6139,6 +6359,14 @@
         }
       }
     },
+    "Environments & Status" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Envelope" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Error" : {
       "localizations" : {
         "ko" : {
@@ -6166,6 +6394,10 @@
           }
         }
       }
+    },
+    "Europe and Africa" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Every change you made to the sample database is replaced with the original data." : {
       "localizations" : {
@@ -6336,6 +6568,8 @@
       }
     },
     "Export" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6391,8 +6625,16 @@
         }
       }
     },
+    "External Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "External Table" : {
 
+    },
+    "Eye" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Failed" : {
       "localizations" : {
@@ -6877,7 +7119,13 @@
         }
       }
     },
+    "Film" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Filter" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6989,6 +7237,22 @@
         }
       }
     },
+    "Fish" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Firewall" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Flag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Flame" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Focus search" : {
       "localizations" : {
         "ko" : {
@@ -7016,6 +7280,10 @@
           }
         }
       }
+    },
+    "Folder" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Foreign Keys" : {
       "localizations" : {
@@ -7048,6 +7316,34 @@
     "Foreign Table" : {
 
     },
+    "Game Controller" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Fork and Knife" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gears" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gear" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Function" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gauge" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Full Tray" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Get Started" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7076,6 +7372,14 @@
           }
         }
       }
+    },
+    "Gift" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Globe" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Go" : {
       "localizations" : {
@@ -7189,6 +7493,10 @@
         }
       }
     },
+    "Graduation Cap" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Gray" : {
       "localizations" : {
         "ko" : {
@@ -7244,6 +7552,10 @@
           }
         }
       }
+    },
+    "Grid" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Group" : {
       "localizations" : {
@@ -7386,6 +7698,26 @@
         }
       }
     },
+    "Heart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Heartbeat" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Half Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Hare" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Hammer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Help decide what to improve next by sending one small report a day." : {
       "localizations" : {
         "ko" : {
@@ -7442,6 +7774,14 @@
           }
         }
       }
+    },
+    "Hexagon" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Hidden" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Hide Query" : {
       "localizations" : {
@@ -7529,7 +7869,13 @@
         }
       }
     },
+    "Histogram" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "History" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7612,6 +7958,13 @@
           }
         }
       }
+    },
+    "Icon" : {
+
+    },
+    "House" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks." : {
       "extractionState" : "stale",
@@ -7699,6 +8052,8 @@
       }
     },
     "Import" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7980,6 +8335,10 @@
         }
       }
     },
+    "Infinity" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Info" : {
       "localizations" : {
         "ko" : {
@@ -8120,6 +8479,14 @@
         }
       }
     },
+    "Institution" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Internal Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Interrupted" : {
       "localizations" : {
         "ko" : {
@@ -8231,6 +8598,10 @@
           }
         }
       }
+    },
+    "JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Jump host key not found: %@" : {
       "extractionState" : "stale",
@@ -8374,6 +8745,10 @@
         }
       }
     },
+    "Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Keychain Warning" : {
       "localizations" : {
         "ko" : {
@@ -8401,6 +8776,10 @@
           }
         }
       }
+    },
+    "Laptop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Last Connected" : {
       "localizations" : {
@@ -8458,6 +8837,22 @@
         }
       }
     },
+    "Leaf" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ledger" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Library" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Layers" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "License" : {
       "localizations" : {
         "ko" : {
@@ -8485,6 +8880,18 @@
           }
         }
       }
+    },
+    "Light Bulb" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Link" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Line Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Live Activities" : {
       "localizations" : {
@@ -8798,6 +9205,14 @@
         }
       }
     },
+    "Lock Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Lock" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Locks TablePro when reopened after the selected idle time. Cold launches always require authentication." : {
       "localizations" : {
         "ko" : {
@@ -8853,6 +9268,10 @@
           }
         }
       }
+    },
+    "Magnifying Glass" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Manage Groups" : {
       "extractionState" : "stale",
@@ -8967,6 +9386,14 @@
         }
       }
     },
+    "Map Pin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Map" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Match All Tags" : {
       "localizations" : {
         "ko" : {
@@ -9026,6 +9453,22 @@
     "Materialized View" : {
 
     },
+    "Medical Case" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Merge" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Mesh" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Memory" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Microsoft Entra ID Sign-In Required" : {
       "localizations" : {
         "ko" : {
@@ -9082,6 +9525,14 @@
         }
       }
     },
+    "Moon" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Modules" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "More" : {
       "localizations" : {
         "ko" : {
@@ -9137,6 +9588,10 @@
           }
         }
       }
+    },
+    "Mountains" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Move" : {
       "localizations" : {
@@ -9250,6 +9705,10 @@
         }
       }
     },
+    "Music" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB, and more." : {
       "localizations" : {
         "ko" : {
@@ -9277,6 +9736,18 @@
           }
         }
       }
+    },
+    "Newspaper" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Network" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Network Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "NULL" : {
       "localizations" : {
@@ -10379,6 +10850,42 @@
         }
       }
     },
+    "Number 5" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 4" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 3" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 2" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 1" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Office Buildings" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Numbered List" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Object" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "OK" : {
       "localizations" : {
         "ko" : {
@@ -10998,6 +11505,54 @@
         }
       }
     },
+    "Party Popper" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Paw Print" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Pin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Photo" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Phone" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Person" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Paintbrush" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Paper Plane" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Percent" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Pie Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Pause" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Package" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "PING failed: %@" : {
       "localizations" : {
         "ko" : {
@@ -11503,6 +12058,10 @@
         }
       }
     },
+    "Play" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Port" : {
       "localizations" : {
         "ko" : {
@@ -11756,6 +12315,10 @@
         }
       }
     },
+    "Processor" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Provide a JSON object or an array of objects." : {
       "localizations" : {
         "ko" : {
@@ -11784,6 +12347,10 @@
         }
       }
     },
+    "Pull Request" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Purple" : {
       "localizations" : {
         "ko" : {
@@ -11811,6 +12378,10 @@
           }
         }
       }
+    },
+    "Puzzle Piece" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Queries on the Lock Screen" : {
       "localizations" : {
@@ -12040,6 +12611,10 @@
         }
       }
     },
+    "Queue" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Quick Connect" : {
       "localizations" : {
         "ko" : {
@@ -12095,6 +12670,10 @@
           }
         }
       }
+    },
+    "Raised Hand" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Read-Only" : {
       "extractionState" : "stale",
@@ -12208,6 +12787,10 @@
           }
         }
       }
+    },
+    "Records" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Red" : {
       "localizations" : {
@@ -12547,6 +13130,10 @@
         }
       }
     },
+    "Report" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Requested" : {
       "localizations" : {
         "ko" : {
@@ -12884,6 +13471,10 @@
         }
       }
     },
+    "Risk" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Role" : {
       "localizations" : {
         "ko" : {
@@ -12911,6 +13502,14 @@
           }
         }
       }
+    },
+    "Rosette" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Route" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Row %d of %d" : {
       "localizations" : {
@@ -13193,6 +13792,21 @@
         }
       }
     },
+    "Search Icons" : {
+
+    },
+    "Security & Access" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Seal" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Scatter Plot" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SELECT * FROM ..." : {
       "localizations" : {
         "ko" : {
@@ -13220,6 +13834,22 @@
           }
         }
       }
+    },
+    "Servers & Network" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Services" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Shard" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "SID" : {
       "localizations" : {
@@ -13277,6 +13907,18 @@
         }
       }
     },
+    "Speedometer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Snowflake" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Sparkles" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SQL" : {
       "localizations" : {
         "ko" : {
@@ -13304,6 +13946,10 @@
           }
         }
       }
+    },
+    "Square" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "SSH Host" : {
       "localizations" : {
@@ -13811,6 +14457,8 @@
       }
     },
     "Schema" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14098,6 +14746,8 @@
 
     },
     "Server" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14691,6 +15341,18 @@
         }
       }
     },
+    "Star of Life" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Star" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Stack" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Stats" : {
       "localizations" : {
         "ko" : {
@@ -14776,6 +15438,8 @@
       }
     },
     "Stop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14802,6 +15466,10 @@
           }
         }
       }
+    },
+    "Stop Sign" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Stopped" : {
       "localizations" : {
@@ -14915,6 +15583,14 @@
         }
       }
     },
+    "Sum" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Sun" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Swipe right on a connection to add it to Favorites." : {
       "localizations" : {
         "ko" : {
@@ -14972,8 +15648,13 @@
         }
       }
     },
+    "Symbols & Objects" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Sync" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15267,6 +15948,30 @@
     "System Table" : {
 
     },
+    "Theater Masks" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ticket" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Team" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Terminal" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Text Search" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Test Tubes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TLS handshake failed: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15326,6 +16031,8 @@
       }
     },
     "Table" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15764,6 +16471,8 @@
       }
     },
     "Tag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -18459,6 +19168,10 @@
     "To free up space, open Settings, tap your name, then tap iCloud." : {
 
     },
+    "Token" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Too many rows. Add up to %lld rows at a time." : {
       "localizations" : {
         "ko" : {
@@ -18487,6 +19200,14 @@
         }
       }
     },
+    "Tools" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Tortoise" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Touch and hold a connection to rename, duplicate, or move it to a group." : {
       "localizations" : {
         "ko" : {
@@ -18514,6 +19235,18 @@
           }
         }
       }
+    },
+    "Trophy" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Triangle" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Transfer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Truncate" : {
       "localizations" : {
@@ -18598,6 +19331,10 @@
           }
         }
       }
+    },
+    "Trusted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Try Again" : {
       "localizations" : {
@@ -18714,6 +19451,10 @@
         }
       }
     },
+    "Two People" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Type" : {
       "localizations" : {
         "ko" : {
@@ -18769,6 +19510,14 @@
           }
         }
       }
+    },
+    "Uptrend" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Unlocked" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "UTF-8 via Latin 1" : {
       "localizations" : {
@@ -19310,6 +20059,14 @@
         }
       }
     },
+    "Vault" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Verified" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Verify CA" : {
       "localizations" : {
         "ko" : {
@@ -19486,6 +20243,18 @@
     },
     "Waiting to Retry" : {
 
+    },
+    "Waveform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Warning" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Wand" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Welcome to TablePro" : {
       "localizations" : {
@@ -19742,6 +20511,14 @@
         }
       }
     },
+    "Window" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Wi-Fi" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app." : {
       "localizations" : {
         "ko" : {
@@ -19769,6 +20546,14 @@
           }
         }
       }
+    },
+    "Work & Places" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Wrench" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Write Query Blocked" : {
       "localizations" : {

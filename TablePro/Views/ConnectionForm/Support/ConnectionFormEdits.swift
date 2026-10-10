@@ -15,6 +15,7 @@ struct ConnectionFormEdits: Equatable {
     var sshConfig: SSHConfiguration
     var sslConfig: SSLConfiguration
     var color: ConnectionColor
+    var iconName: String?
     var tagIds: [UUID]
     var groupId: UUID?
     var sshProfileId: UUID?
@@ -55,6 +56,7 @@ struct ConnectionFormEdits: Equatable {
         result.sshConfig = sshConfig
         result.sslConfig = sslConfig
         result.color = color
+        result.iconName = iconName
         result.tagIds = tagIds
         result.groupId = groupId
         result.sshProfileId = sshProfileId

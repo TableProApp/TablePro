@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
@@ -55,15 +56,20 @@ enum IOSConnectionExportService {
     // MARK: - Envelope
 
     static func buildEnvelope(_ connections: [DatabaseConnection], appState: AppState) -> ConnectionExportEnvelope {
+        var exportableGroups: [ExportableGroup] = []
         var groupNames: Set<String> = []
         var tagNames: Set<String> = []
 
         let exportables: [ExportableConnection] = connections.map { connection in
             let connectionTagNames = connection.tagIds.compactMap { appState.tag(for: $0)?.name }
             let tagName = connectionTagNames.first
-            let groupName = appState.group(for: connection.groupId)?.name
+            let group = appState.group(for: connection.groupId)
             connectionTagNames.forEach { tagNames.insert($0) }
-            if let groupName { groupNames.insert(groupName) }
+            // A file names a group by its leaf name only, so two groups that share one become a
+            // single group on import. The first in export order supplies its colour and icon.
+            if let group, groupNames.insert(group.name).inserted {
+                exportableGroups.append(exportableGroup(group))
+            }
 
             return ExportableConnection(
                 name: connection.name,
@@ -75,9 +81,10 @@ enum IOSConnectionExportService {
                 sshConfig: exportableSSH(connection),
                 sslConfig: exportableSSL(connection),
                 color: connection.color == .none ? nil : connection.color.rawValue,
+                iconName: LibrarySymbolCatalog.normalizedName(connection.iconName),
                 tagName: tagName,
                 tagNames: connectionTagNames.isEmpty ? nil : connectionTagNames,
-                groupName: groupName,
+                groupName: group?.name,
                 sshProfileId: nil,
                 safeModeLevel: connection.safeModeLevel == .off ? nil : connection.safeModeLevel.rawValue,
                 aiPolicy: nil,
@@ -90,10 +97,6 @@ enum IOSConnectionExportService {
             )
         }
 
-        let exportableGroups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map { name in
-            let color = appState.groups.first { $0.name == name }?.color
-            return ExportableGroup(name: name, color: color == .none ? nil : color?.rawValue)
-        }
         let exportableTags: [ExportableTag]? = tagNames.isEmpty ? nil : tagNames.map { name in
             let color = appState.tags.first { $0.name == name }?.color
             return ExportableTag(name: name, color: color == .none ? nil : color?.rawValue)
@@ -106,7 +109,7 @@ enum IOSConnectionExportService {
             exportedAt: Date(),
             appVersion: appVersion,
             connections: exportables,
-            groups: exportableGroups,
+            groups: exportableGroups.isEmpty ? nil : exportableGroups,
             tags: exportableTags,
             credentials: nil
         )
@@ -148,6 +151,14 @@ enum IOSConnectionExportService {
     }
 
     // MARK: - Helpers
+
+    private static func exportableGroup(_ group: ConnectionGroup) -> ExportableGroup {
+        ExportableGroup(
+            name: group.name,
+            color: group.color == .none ? nil : group.color.rawValue,
+            iconName: LibrarySymbolCatalog.normalizedName(group.iconName)
+        )
+    }
 
     private static func secret(
         _ kind: ConnectionSecretKind,

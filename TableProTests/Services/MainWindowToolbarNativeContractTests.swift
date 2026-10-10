@@ -357,6 +357,44 @@ struct MainWindowToolbarNativeContractTests {
         #expect(connection.menuFormRepresentation?.image === connection.image)
     }
 
+    /// The coordinator's `connection` is fixed at connect. The item reads the toolbar state instead,
+    /// which `handleConnectionRecordChange` updates on every save, so an open window follows a
+    /// rename or a new icon without reconnecting.
+    @Test("A rename or a new icon reaches an open connection's toolbar item")
+    func connectionItemFollowsTheRecord() throws {
+        var record = TestFixtures.makeConnection(name: "Old")
+        let coordinator = MainContentCoordinator(
+            connection: record,
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState(connection: record)
+        )
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar()
+        owner.repoint(to: coordinator)
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.connection,
+                willBeInsertedIntoToolbar: true
+            ) as? StatefulToolbarItem
+        )
+        let engine = item.image?.tiffRepresentation
+        #expect(item.title == "Old")
+
+        record.name = "New"
+        record.iconName = "server.rack"
+        coordinator.toolbarState.update(from: record)
+        item.validate()
+
+        let rack = try #require(NSImage(systemSymbolName: "server.rack", accessibilityDescription: nil))
+        #expect(item.title == "New")
+        #expect(item.image?.tiffRepresentation == rack.tiffRepresentation)
+        #expect(item.image?.tiffRepresentation != engine)
+        #expect(item.image?.isTemplate == true)
+        #expect(item.menuFormRepresentation?.image === item.image)
+    }
+
     /// Icon-only is the default because that is what Apple's own toolbars ship and what keeps the
     /// titlebar one row tall; AppKit's own default is icon-and-label. Measured on macOS 27: an
     /// autosaved display mode is restored when the toolbar reaches its window, which is after

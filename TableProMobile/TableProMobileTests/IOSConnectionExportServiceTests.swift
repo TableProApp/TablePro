@@ -181,4 +181,71 @@ struct IOSConnectionExportServiceTests {
 
         #expect(fields == ["connectionOptions": "-c search_path=app"])
     }
+
+    @Test("An export carries the connection icon, and no icon key when there is none")
+    func exportCarriesConnectionIcon() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let withIcon = DatabaseConnection(name: "Prod", type: .postgresql, iconName: "flame")
+        let withoutIcon = DatabaseConnection(name: "Dev", type: .postgresql)
+
+        let exported = IOSConnectionExportService.buildEnvelope([withIcon, withoutIcon], appState: state).connections
+
+        #expect(exported.map(\.iconName) == ["flame", nil])
+    }
+
+    @Test("A group exports its colour and icon from the connection's own group, not another of the same name")
+    func exportResolvesGroupById() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let clientA = ConnectionGroup(name: "Client A")
+        let clientB = ConnectionGroup(name: "Client B")
+        let prodA = ConnectionGroup(name: "Prod", color: .red, iconName: "briefcase", parentId: clientA.id)
+        let prodB = ConnectionGroup(name: "Prod", color: .blue, iconName: "flame", parentId: clientB.id)
+        for group in [clientA, clientB, prodA, prodB] {
+            #expect(state.addGroup(group) == .applied)
+        }
+        let inB = DatabaseConnection(name: "B", type: .postgresql, groupId: prodB.id)
+        let inA = DatabaseConnection(name: "A", type: .postgresql, groupId: prodA.id)
+
+        let envelope = IOSConnectionExportService.buildEnvelope([inB, inA], appState: state)
+        let groups = try #require(envelope.groups)
+
+        #expect(groups.map(\.name) == ["Prod"])
+        #expect(groups.first?.color == ConnectionColor.blue.rawValue)
+        #expect(groups.first?.iconName == "flame")
+        #expect(envelope.connections.map(\.groupName) == ["Prod", "Prod"])
+    }
+
+    @Test("Exported groups follow export order and leave out a group no exported connection uses")
+    func exportGroupsFollowExportOrder() throws {
+        let state = makeState(secureStore: MockSecureStore())
+        let work = ConnectionGroup(name: "Work", iconName: "building.2")
+        let home = ConnectionGroup(name: "Home", color: .green)
+        let unused = ConnectionGroup(name: "Unused")
+        for group in [work, home, unused] {
+            #expect(state.addGroup(group) == .applied)
+        }
+        let connections = [
+            DatabaseConnection(name: "Home DB", type: .mysql, groupId: home.id),
+            DatabaseConnection(name: "Work DB", type: .mysql, groupId: work.id),
+            DatabaseConnection(name: "Loose", type: .mysql)
+        ]
+
+        let groups = try #require(IOSConnectionExportService.buildEnvelope(connections, appState: state).groups)
+
+        #expect(groups.map(\.name) == ["Home", "Work"])
+        #expect(groups.map(\.color) == [ConnectionColor.green.rawValue, nil])
+        #expect(groups.map(\.iconName) == [nil, "building.2"])
+    }
+
+    @Test("An export with no grouped connection writes no groups")
+    func exportWithoutGroupsWritesNone() {
+        let state = makeState(secureStore: MockSecureStore())
+
+        let envelope = IOSConnectionExportService.buildEnvelope(
+            [DatabaseConnection(name: "Loose", type: .mysql)],
+            appState: state
+        )
+
+        #expect(envelope.groups == nil)
+    }
 }

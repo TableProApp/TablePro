@@ -17183,6 +17183,8 @@
       }
     },
     "Account" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -20231,6 +20233,8 @@
       }
     },
     "Admin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -21171,7 +21175,13 @@
         }
       }
     },
+    "Airplane" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Alert" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -23287,6 +23297,10 @@
         }
       }
     },
+    "Americas" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "ampersand" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24248,6 +24262,10 @@
         }
       }
     },
+    "Antenna" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
       "localizations" : {
         "fr" : {
@@ -24782,6 +24800,8 @@
       }
     },
     "App" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -26116,6 +26136,10 @@
         }
       }
     },
+    "Archive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Are you sure you want to cancel the running query for this session?" : {
       "localizations" : {
         "fr" : {
@@ -26686,6 +26710,10 @@
           }
         }
       }
+    },
+    "Asia and Australia" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ask" : {
       "localizations" : {
@@ -27291,6 +27319,10 @@
         }
       }
     },
+    "Atom" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Attach a connection to this conversation first." : {
       "localizations" : {
         "fr" : {
@@ -27553,6 +27585,10 @@
           }
         }
       }
+    },
+    "Audit" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Auth" : {
       "localizations" : {
@@ -29863,6 +29899,14 @@
         }
       }
     },
+    "Bag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Banknote" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Bar" : {
       "localizations" : {
         "fr" : {
@@ -29902,6 +29946,10 @@
           }
         }
       }
+    },
+    "Bar Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Base URL" : {
       "localizations" : {
@@ -30182,6 +30230,10 @@
           }
         }
       }
+    },
+    "Bell" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "between" : {
       "localizations" : {
@@ -30553,6 +30605,18 @@
         }
       }
     },
+    "Bolt" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Book" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bookmark" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Bool False" : {
       "localizations" : {
         "fr" : {
@@ -30751,6 +30815,22 @@
         }
       }
     },
+    "Braces" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Brain" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Branch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Briefcase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "BRIN indexes need PostgreSQL 9.5 or later." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -30842,6 +30922,10 @@
           }
         }
       }
+    },
+    "Broadcast" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Broker %d advertises %@, which could not be reached: %@" : {
       "extractionState" : "manual",
@@ -31081,6 +31165,10 @@
         }
       }
     },
+    "Bug" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Build the SQL that brings the target in line" : {
       "localizations" : {
         "fr" : {
@@ -31120,6 +31208,10 @@
           }
         }
       }
+    },
+    "Building" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Building chart" : {
       "localizations" : {
@@ -31382,6 +31474,10 @@
           }
         }
       }
+    },
+    "Bus" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Buy a License" : {
       "localizations" : {
@@ -31728,6 +31824,10 @@
         }
       }
     },
+    "Cable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Cache Hit Ratio" : {
       "localizations" : {
         "fr" : {
@@ -31819,6 +31919,10 @@
           }
         }
       }
+    },
+    "Cake" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Calling" : {
       "localizations" : {
@@ -33310,6 +33414,10 @@
         }
       }
     },
+    "Car" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Card Background" : {
       "localizations" : {
         "fr" : {
@@ -33390,6 +33498,10 @@
           }
         }
       }
+    },
+    "Cart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Cascade" : {
       "localizations" : {
@@ -35190,7 +35302,8 @@
       }
     },
     "Chat" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -35666,6 +35779,10 @@
         }
       }
     },
+    "Checkered Flag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Checking for the Claude Code command line tool…" : {
       "localizations" : {
         "fr" : {
@@ -35807,6 +35924,10 @@
           }
         }
       }
+    },
+    "Checkmark" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Chinook (Sample)" : {
       "localizations" : {
@@ -37421,6 +37542,10 @@
           }
         }
       }
+    },
+    "Circle" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Class" : {
       "extractionState" : "manual",
@@ -40206,6 +40331,14 @@
         }
       }
     },
+    "Cloud" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Cloud and Sun" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Cloud data warehouse" : {
       "localizations" : {
         "fr" : {
@@ -41043,6 +41176,10 @@
         }
       }
     },
+    "Code" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Code expired" : {
       "localizations" : {
         "fr" : {
@@ -41162,6 +41299,10 @@
           }
         }
       }
+    },
+    "Coffee Cup" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "collapse" : {
       "extractionState" : "stale",
@@ -43068,6 +43209,8 @@
       }
     },
     "Command" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -44554,6 +44697,10 @@
           }
         }
       }
+    },
+    "Config File" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Config Host" : {
       "localizations" : {
@@ -48278,6 +48425,10 @@
           }
         }
       }
+    },
+    "Copies" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Copies a database file from an SSH server and opens the copy read-only." : {
       "localizations" : {
@@ -54233,6 +54384,10 @@
         }
       }
     },
+    "Credit Card" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Critical" : {
       "localizations" : {
         "fr" : {
@@ -54314,6 +54469,10 @@
           }
         }
       }
+    },
+    "Crown" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "CSV" : {
       "localizations" : {
@@ -55789,6 +55948,10 @@
         }
       }
     },
+    "Data & Analytics" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Data Comparison" : {
       "localizations" : {
         "fr" : {
@@ -56212,6 +56375,10 @@
           }
         }
       }
+    },
+    "Database & Storage" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "database %@" : {
       "localizations" : {
@@ -58758,6 +58925,9 @@
           }
         }
       }
+    },
+    "Default (%@)" : {
+
     },
     "Default (%d)" : {
       "localizations" : {
@@ -61672,6 +61842,10 @@
         }
       }
     },
+    "Desktop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Destination" : {
       "localizations" : {
         "fr" : {
@@ -62093,6 +62267,8 @@
       }
     },
     "Development" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -62131,6 +62307,10 @@
           }
         }
       }
+    },
+    "Device" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Devices" : {
       "localizations" : {
@@ -62251,6 +62431,14 @@
           }
         }
       }
+    },
+    "Diamond" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Dice" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Diff layout" : {
       "localizations" : {
@@ -63221,7 +63409,8 @@
       }
     },
     "Display" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -63726,6 +63915,8 @@
       }
     },
     "Document" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -63885,6 +64076,10 @@
           }
         }
       }
+    },
+    "Dollar" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "dollar sign" : {
       "extractionState" : "manual",
@@ -64389,6 +64584,10 @@
         }
       }
     },
+    "Downtrend" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Draft a data quality audit" : {
       "localizations" : {
         "fr" : {
@@ -64622,6 +64821,8 @@
       }
     },
     "Drop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -67432,6 +67633,12 @@
           }
         }
       }
+    },
+    "Edit Group…" : {
+
+    },
+    "Edit Group" : {
+
     },
     "Edit Index" : {
       "localizations" : {
@@ -70550,6 +70757,10 @@
         }
       }
     },
+    "Envelope" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Environment" : {
       "localizations" : {
         "fr" : {
@@ -70669,6 +70880,10 @@
           }
         }
       }
+    },
+    "Environments & Status" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "equals" : {
       "localizations" : {
@@ -71551,6 +71766,10 @@
           }
         }
       }
+    },
+    "Europe and Africa" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Event" : {
       "localizations" : {
@@ -74410,6 +74629,8 @@
       }
     },
     "Export" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -76293,6 +76514,10 @@
         }
       }
     },
+    "External Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "External integrations and MCP client requests will appear here." : {
       "localizations" : {
         "fr" : {
@@ -76412,6 +76637,10 @@
           }
         }
       }
+    },
+    "Eye" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Failed" : {
       "localizations" : {
@@ -79369,7 +79598,13 @@
         }
       }
     },
+    "Film" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Filter" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -80950,6 +81185,10 @@
         }
       }
     },
+    "Firewall" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "First" : {
       "localizations" : {
         "fr" : {
@@ -81132,6 +81371,10 @@
         }
       }
     },
+    "Fish" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Fit to Geometry" : {
 
     },
@@ -81274,6 +81517,14 @@
           }
         }
       }
+    },
+    "Flag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Flame" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Flattened plan text" : {
       "localizations" : {
@@ -81536,6 +81787,8 @@
       }
     },
     "Folder" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -82251,6 +82504,10 @@
         }
       }
     },
+    "Fork and Knife" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Form" : {
       "localizations" : {
         "fr" : {
@@ -82827,6 +83084,10 @@
         }
       }
     },
+    "Full Tray" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Full-width %1$@ (%2$@). SQL needs the ASCII %1$@ (%3$@)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -82951,6 +83212,8 @@
       }
     },
     "Function" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -83069,6 +83332,22 @@
           }
         }
       }
+    },
+    "Game Controller" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gauge" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gear" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Gears" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "General" : {
       "localizations" : {
@@ -83891,6 +84170,10 @@
         }
       }
     },
+    "Gift" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Git did not respond in time." : {
       "localizations" : {
         "fr" : {
@@ -84123,6 +84406,10 @@
           }
         }
       }
+    },
+    "Globe" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Go" : {
       "localizations" : {
@@ -84489,6 +84776,10 @@
           }
         }
       }
+    },
+    "Graduation Cap" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Grant %1$@ on %2$@" : {
       "localizations" : {
@@ -84993,6 +85284,10 @@
         }
       }
     },
+    "Grid" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Group" : {
       "localizations" : {
         "fr" : {
@@ -85323,6 +85618,14 @@
         }
       }
     },
+    "Half Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Hammer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Handshake phase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -85334,6 +85637,10 @@
           }
         }
       }
+    },
+    "Hare" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Has Differences" : {
       "localizations" : {
@@ -85414,6 +85721,14 @@
           }
         }
       }
+    },
+    "Heart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Heartbeat" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Held back" : {
       "localizations" : {
@@ -85626,7 +85941,13 @@
         }
       }
     },
+    "Hexagon" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Hidden" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -86412,7 +86733,13 @@
         }
       }
     },
+    "Histogram" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "History" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -87111,6 +87438,10 @@
         }
       }
     },
+    "House" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Hover" : {
       "localizations" : {
         "fr" : {
@@ -87587,6 +87918,9 @@
       }
     },
     "iCloud sync is not available in this build of TablePro." : {
+
+    },
+    "Icon" : {
 
     },
     "Icons" : {
@@ -88184,6 +88518,8 @@
       }
     },
     "Import" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -91121,6 +91457,10 @@
         }
       }
     },
+    "Infinity" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Info" : {
       "localizations" : {
         "fr" : {
@@ -92747,6 +93087,10 @@
         }
       }
     },
+    "Institution" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Integer" : {
       "localizations" : {
         "fr" : {
@@ -92987,6 +93331,10 @@
           }
         }
       }
+    },
+    "Internal Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Invalid Account ID" : {
       "extractionState" : "manual",
@@ -94525,6 +94873,8 @@
       }
     },
     "JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -95566,6 +95916,8 @@
       }
     },
     "Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -96756,6 +97108,10 @@
         }
       }
     },
+    "Laptop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Large" : {
       "localizations" : {
         "fr" : {
@@ -97503,6 +97859,10 @@
     "Latitude %1$.5f, longitude %2$.5f." : {
 
     },
+    "Layers" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Layout" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -97624,6 +97984,10 @@
           }
         }
       }
+    },
+    "Leaf" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Lease can only be compared with a lease ID, such as 0x7b." : {
       "extractionState" : "manual",
@@ -97788,6 +98152,10 @@
           }
         }
       }
+    },
+    "Ledger" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "left curly bracket" : {
       "extractionState" : "manual",
@@ -98175,6 +98543,10 @@
           }
         }
       }
+    },
+    "Library" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "License" : {
       "localizations" : {
@@ -99036,6 +99408,10 @@
         }
       }
     },
+    "Light Bulb" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Limit" : {
       "localizations" : {
         "fr" : {
@@ -99336,6 +99712,10 @@
         }
       }
     },
+    "Line Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Line ending" : {
       "localizations" : {
         "fr" : {
@@ -99415,6 +99795,10 @@
           }
         }
       }
+    },
+    "Link" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Link a Folder…" : {
       "localizations" : {
@@ -102345,6 +102729,14 @@
         }
       }
     },
+    "Lock" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Lock Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Log MCP queries in history" : {
       "localizations" : {
         "fr" : {
@@ -102913,6 +103305,10 @@
         }
       }
     },
+    "Magnifying Glass" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Maintenance" : {
       "localizations" : {
         "fr" : {
@@ -103429,6 +103825,8 @@
       }
     },
     "Map" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -103447,6 +103845,10 @@
           }
         }
       }
+    },
+    "Map Pin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Markdown" : {
       "localizations" : {
@@ -105222,6 +105624,10 @@
         }
       }
     },
+    "Medical Case" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Medium" : {
       "localizations" : {
         "fr" : {
@@ -105463,6 +105869,10 @@
         }
       }
     },
+    "Memory" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Memory Fragmentation" : {
       "localizations" : {
         "fr" : {
@@ -105610,6 +106020,8 @@
       }
     },
     "Merge" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -105748,6 +106160,10 @@
           }
         }
       }
+    },
+    "Mesh" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Message too large. Shorten it and send it again." : {
       "localizations" : {
@@ -106999,6 +107415,10 @@
         }
       }
     },
+    "Modules" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "MongoDB" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -107286,6 +107706,10 @@
         }
       }
     },
+    "Moon" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "More tables follow. Pass LastEvaluatedTableName as ExclusiveStartTableName." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -107409,6 +107833,13 @@
           }
         }
       }
+    },
+    "Mountains" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Move “%@” to Connection" : {
+
     },
     "Move Column Down" : {
       "localizations" : {
@@ -108406,9 +108837,6 @@
         }
       }
     },
-    "Move “%@” to Connection" : {
-
-    },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -108579,6 +109007,10 @@
           }
         }
       }
+    },
+    "Music" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Must be exactly: I understand this is irreversible" : {
       "extractionState" : "stale",
@@ -109565,6 +109997,8 @@
       }
     },
     "Network" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -109603,6 +110037,10 @@
           }
         }
       }
+    },
+    "Network Drive" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "network encryption" : {
       "extractionState" : "manual",
@@ -111200,6 +111638,10 @@
           }
         }
       }
+    },
+    "Newspaper" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Next cursor: %@. The scan has not finished." : {
       "extractionState" : "manual",
@@ -120602,6 +121044,8 @@
       }
     },
     "Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -120640,6 +121084,26 @@
           }
         }
       }
+    },
+    "Number 1" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 2" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 3" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 4" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Number 5" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Number of documents per insertMany statement. Higher values create fewer statements." : {
       "extractionState" : "stale",
@@ -120853,6 +121317,10 @@
         }
       }
     },
+    "Numbered List" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Numbers" : {
       "comment" : "How many of the selected cells hold a number"
     },
@@ -121035,6 +121503,8 @@
       }
     },
     "Object" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -121387,6 +121857,10 @@
           }
         }
       }
+    },
+    "Office Buildings" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Offline" : {
 
@@ -126574,6 +127048,10 @@
         }
       }
     },
+    "Package" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Page" : {
       "localizations" : {
         "fr" : {
@@ -127027,6 +127505,10 @@
         }
       }
     },
+    "Paintbrush" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Pairing Failed" : {
       "localizations" : {
         "fr" : {
@@ -127116,6 +127598,10 @@
           }
         }
       }
+    },
+    "Paper Plane" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Parameter %lld is an OUT parameter, which TablePro cannot bind." : {
       "extractionState" : "manual",
@@ -127642,6 +128128,10 @@
           }
         }
       }
+    },
+    "Party Popper" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Pass 'query' or 'tables', not both." : {
       "localizations" : {
@@ -128843,6 +129333,8 @@
       }
     },
     "Pause" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -128961,6 +129453,10 @@
           }
         }
       }
+    },
+    "Paw Print" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Pending approval for" : {
       "localizations" : {
@@ -129181,6 +129677,10 @@
           }
         }
       }
+    },
+    "Percent" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "percent sign" : {
       "extractionState" : "manual",
@@ -129424,6 +129924,18 @@
         }
       }
     },
+    "Person" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Phone" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Photo" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "PHP Serialized" : {
       "localizations" : {
         "fr" : {
@@ -129643,6 +130155,14 @@
           }
         }
       }
+    },
+    "Pie Chart" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Pin" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Pin baseline" : {
       "localizations" : {
@@ -130159,6 +130679,10 @@
           }
         }
       }
+    },
+    "Play" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Please select a column" : {
       "localizations" : {
@@ -134125,6 +134649,10 @@
         }
       }
     },
+    "Processor" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "PRODUCE needs a topic name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -135383,6 +135911,10 @@
         }
       }
     },
+    "Pull Request" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Purchase License" : {
       "localizations" : {
         "en" : {
@@ -135559,6 +136091,10 @@
           }
         }
       }
+    },
+    "Puzzle Piece" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Python Beancount backend requires python3 with the beancount package installed. Set TABLEPRO_BEANCOUNT_PYTHON to the Python executable if needed." : {
       "extractionState" : "manual",
@@ -137069,6 +137605,10 @@
         }
       }
     },
+    "Queue" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Queued" : {
       "localizations" : {
         "fr" : {
@@ -137682,6 +138222,10 @@
           }
         }
       }
+    },
+    "Raised Hand" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Ran" : {
       "localizations" : {
@@ -140108,6 +140652,10 @@
           }
         }
       }
+    },
+    "Records" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Red" : {
       "localizations" : {
@@ -144266,6 +144814,10 @@
         }
       }
     },
+    "Report" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Report an Issue" : {
       "localizations" : {
         "fr" : {
@@ -147857,6 +148409,10 @@
         }
       }
     },
+    "Risk" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "rledger could not render the ledger's directives, so the pads table is empty: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -148136,6 +148692,10 @@
         }
       }
     },
+    "Rosette" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Round trip in milliseconds" : {
       "localizations" : {
         "fr" : {
@@ -148175,6 +148735,10 @@
           }
         }
       }
+    },
+    "Route" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Routes through a SOCKS5 proxy, which also resolves the database hostname." : {
       "localizations" : {
@@ -153007,6 +153571,10 @@
         }
       }
     },
+    "Scatter Plot" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Schema" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -154552,6 +155120,10 @@
         }
       }
     },
+    "Seal" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Search" : {
       "localizations" : {
         "fr" : {
@@ -154963,6 +155535,9 @@
           }
         }
       }
+    },
+    "Search Icons" : {
+
     },
     "Search Latency" : {
       "localizations" : {
@@ -155784,6 +156359,10 @@
           }
         }
       }
+    },
+    "Security & Access" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Security Protocol" : {
       "extractionState" : "manual",
@@ -157665,6 +158244,8 @@
       }
     },
     "Server" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158275,6 +158856,10 @@
         }
       }
     },
+    "Servers & Network" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Service" : {
       "localizations" : {
         "fr" : {
@@ -158559,6 +159144,8 @@
       }
     },
     "Services" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -159503,6 +160090,10 @@
         }
       }
     },
+    "Shard" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Share" : {
       "localizations" : {
         "fr" : {
@@ -159713,6 +160304,10 @@
           }
         }
       }
+    },
+    "Shield" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Shortcut Conflict" : {
       "localizations" : {
@@ -164441,6 +165036,10 @@
         }
       }
     },
+    "Snowflake" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Socket Path" : {
       "localizations" : {
         "fr" : {
@@ -165753,6 +166352,14 @@
         }
       }
     },
+    "Sparkles" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Speedometer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Split" : {
       "localizations" : {
         "fr" : {
@@ -166597,6 +167204,10 @@
           }
         }
       }
+    },
+    "Square" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "SRID %d is a projected coordinate system. Maps places longitude and latitude only, so these shapes cannot be drawn. Query ST_Transform(geom, 4326) to see them." : {
       "localizations" : {
@@ -167902,6 +168513,10 @@
         }
       }
     },
+    "Stack" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Stage" : {
       "localizations" : {
         "fr" : {
@@ -167977,6 +168592,14 @@
           }
         }
       }
+    },
+    "Star" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Star of Life" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Starred tables, sorted" : {
       "localizations" : {
@@ -169632,6 +170255,8 @@
       }
     },
     "Stop" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -170090,6 +170715,10 @@
           }
         }
       }
+    },
+    "Stop Sign" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Stop Trusting" : {
       "localizations" : {
@@ -171184,6 +171813,8 @@
       }
     },
     "Sum" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -171345,6 +171976,10 @@
           }
         }
       }
+    },
+    "Sun" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Support TablePro" : {
       "localizations" : {
@@ -172394,7 +173029,13 @@
         }
       }
     },
+    "Symbols & Objects" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Sync" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -173538,6 +174179,8 @@
       }
     },
     "Table" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -176803,6 +177446,8 @@
       }
     },
     "Tag" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -177143,6 +177788,8 @@
       }
     },
     "Team" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -177425,7 +178072,8 @@
       }
     },
     "Terminal" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -177745,6 +178393,10 @@
         }
       }
     },
+    "Test Tubes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Testing" : {
       "localizations" : {
         "fr" : {
@@ -177934,6 +178586,10 @@
           }
         }
       }
+    },
+    "Text Search" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Text value" : {
       "localizations" : {
@@ -182365,6 +183021,9 @@
           }
         }
       }
+    },
+    "The icon and color mark this connection in the connection list and its window." : {
+
     },
     "The index %@ is left out" : {
       "localizations" : {
@@ -188455,6 +189114,10 @@
           }
         }
       }
+    },
+    "Theater Masks" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Theme" : {
       "localizations" : {
@@ -194934,6 +195597,10 @@
         }
       }
     },
+    "Ticket" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Tier:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -196727,6 +197394,10 @@
         }
       }
     },
+    "Tools" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Top Level" : {
       "localizations" : {
         "fr" : {
@@ -196812,6 +197483,10 @@
           }
         }
       }
+    },
+    "Tortoise" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Total" : {
       "localizations" : {
@@ -197409,6 +198084,8 @@
       }
     },
     "Transfer" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -197573,6 +198250,10 @@
           }
         }
       }
+    },
+    "Triangle" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Trigger" : {
       "localizations" : {
@@ -197863,6 +198544,10 @@
           }
         }
       }
+    },
+    "Trophy" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "true" : {
       "localizations" : {
@@ -198427,6 +199112,10 @@
         }
       }
     },
+    "Trusted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Trusted Links" : {
       "localizations" : {
         "fr" : {
@@ -198785,6 +199474,10 @@
           }
         }
       }
+    },
+    "Two People" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Two-Factor Authentication" : {
       "localizations" : {
@@ -200798,6 +201491,10 @@
         }
       }
     },
+    "Unlocked" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Unpin" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -202505,6 +203202,10 @@
           }
         }
       }
+    },
+    "Uptrend" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "US Long (12/31/2024 11:59:59 PM)" : {
       "localizations" : {
@@ -205192,6 +205893,10 @@
         }
       }
     },
+    "Vault" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "VERBOSE (report progress)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -205245,6 +205950,8 @@
       }
     },
     "Verified" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -206403,6 +207110,10 @@
     "Waiting to Retry" : {
 
     },
+    "Wand" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Warehouse" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -206446,6 +207157,8 @@
       }
     },
     "Warning" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -206650,6 +207363,10 @@
           }
         }
       }
+    },
+    "Waveform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Weaviate answered with something other than HTTP." : {
       "extractionState" : "manual",
@@ -208652,6 +209369,10 @@
         }
       }
     },
+    "Wi-Fi" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Wide-Column" : {
       "localizations" : {
         "fr" : {
@@ -208995,6 +209716,8 @@
       }
     },
     "Window" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -209374,6 +210097,10 @@
         }
       }
     },
+    "Work & Places" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Working" : {
       "localizations" : {
         "fr" : {
@@ -209444,6 +210171,10 @@
           }
         }
       }
+    },
+    "Wrench" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Write a migration and its rollback" : {
       "localizations" : {

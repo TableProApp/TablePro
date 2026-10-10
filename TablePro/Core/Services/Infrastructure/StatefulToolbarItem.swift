@@ -28,6 +28,14 @@ internal struct ToolbarSymbolSource {
     }
 }
 
+/// A glyph that is not always a symbol, such as an engine logo from the asset catalog. The key
+/// names what the image shows, so a validation pass that changed nothing builds no image.
+@MainActor
+internal struct ToolbarGlyph {
+    internal let key: String
+    internal let image: @MainActor () -> NSImage?
+}
+
 @MainActor
 internal final class StatefulToolbarItem: NSToolbarItem {
     internal var symbolAccessibilityDescription: String? {
@@ -50,12 +58,35 @@ internal final class StatefulToolbarItem: NSToolbarItem {
         didSet { applyTitle() }
     }
 
+    /// Leaves the overflow entry alone: the toolbar has not assigned its own yet, and reading
+    /// `menuFormRepresentation` before then materializes AppKit's default one, which keeps neither
+    /// the key equivalent nor the validation mapping.
+    internal var glyphProvider: (@MainActor () -> ToolbarGlyph)? {
+        didSet {
+            appliedGlyphKey = nil
+            guard let glyph = glyphProvider?() else { return }
+            appliedGlyphKey = glyph.key
+            image = glyph.image()
+        }
+    }
+
     private var symbolSource = ToolbarSymbolSource()
+    private var appliedGlyphKey: String?
 
     override internal func validate() {
         super.validate()
         applySymbol()
+        refreshGlyph()
         applyTitle()
+    }
+
+    /// An overflowed item survives only as its menu entry, so the entry takes the new glyph too.
+    internal func refreshGlyph() {
+        guard let glyph = glyphProvider?(), glyph.key != appliedGlyphKey else { return }
+        appliedGlyphKey = glyph.key
+        let resolved = glyph.image()
+        image = resolved
+        menuFormRepresentation?.setInformativeImage(resolved)
     }
 
     private func applySymbol() {

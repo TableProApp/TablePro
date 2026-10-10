@@ -18,6 +18,7 @@ struct SyncRecordMapperConnectionTests {
         "sshConfig",
         "sslConfig",
         "color",
+        "iconName",
         "tagIds",
         "groupId",
         "sshProfileId",
@@ -33,6 +34,19 @@ struct SyncRecordMapperConnectionTests {
     ]
 
     private static let rebuiltFromRecord: Set<String> = ["sshTunnelMode"]
+
+    private static let optionalWireKeys: Set<String> = [
+        "iconName",
+        "tagIds",
+        "tagId",
+        "groupId",
+        "sshProfileId",
+        "aiPolicy",
+        "aiRules",
+        "aiAlwaysAllowedTools",
+        "redisDatabase",
+        "startupCommands"
+    ]
 
     private static let keptFromThisMac: Set<String> = [
         "localOnly",
@@ -60,6 +74,7 @@ struct SyncRecordMapperConnectionTests {
         connection.username = "admin"
         connection.type = .postgresql
         connection.color = .blue
+        connection.iconName = "server.rack"
         connection.tagIds = [UUID(), UUID()]
         connection.groupId = UUID()
         connection.sshProfileId = UUID()
@@ -213,6 +228,7 @@ struct SyncRecordMapperConnectionTests {
         #expect(decoded.username == connection.username)
         #expect(decoded.type == connection.type)
         #expect(decoded.color == connection.color)
+        #expect(decoded.iconName == "server.rack")
         #expect(decoded.groupId == connection.groupId)
         #expect(decoded.sshProfileId == connection.sshProfileId)
         #expect(decoded.safeModeLevel == connection.safeModeLevel)
@@ -245,6 +261,99 @@ struct SyncRecordMapperConnectionTests {
 
         #expect(updated[ConnectionSyncField.queryTimeoutSeconds.key] == nil)
         #expect(updated[ConnectionSyncField.additionalFieldsJson.key] == nil)
+    }
+
+    @Test("Emptying every optional field on a based record clears it on the record the push sends")
+    func emptiedOptionalsClearTheBasedRecord() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.iconName = nil
+        connection.tagIds = []
+        connection.groupId = nil
+        connection.sshProfileId = nil
+        connection.aiPolicy = nil
+        connection.aiRules = ""
+        connection.aiAlwaysAllowedTools = []
+        connection.redisDatabase = nil
+        connection.startupCommands = nil
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated === base)
+        for key in Self.optionalWireKeys {
+            #expect(updated[key] == nil, "\(key) kept the server's old value")
+        }
+    }
+
+    @Test("A connection pushed with no server copy names every empty optional field")
+    func freshRecordNamesEmptyOptionals() {
+        let record = SyncRecordMapper.toCKRecord(DatabaseConnection(name: "New"), in: zoneID)
+
+        #expect(Set(record.changedKeys()).isSuperset(of: Self.optionalWireKeys))
+        #expect(Set(record.allKeys()).isDisjoint(with: Self.optionalWireKeys))
+    }
+
+    /// The base already says nothing about these keys, so naming them would only restate an empty
+    /// value over whatever another device set since this Mac last pulled.
+    @Test("A based record leaves alone the empty fields the server copy does not hold")
+    func basedRecordLeavesAbsentKeysAlone() {
+        let connection = DatabaseConnection(name: "Plain")
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        let pristine = CKRecord(recordType: base.recordType, recordID: base.recordID)
+        for key in base.allKeys() {
+            pristine[key] = base[key]
+        }
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: pristine)
+
+        #expect(Set(updated.changedKeys()).isDisjoint(with: Self.optionalWireKeys))
+    }
+
+    @Test("An AI policy a newer release added survives this Mac saving another change")
+    func unrecognizedAIPolicySurvivesPush() throws {
+        let base = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        base[ConnectionSyncField.aiPolicy.key] = "someFuturePolicy" as CKRecordValue
+        var connection = try SyncRecordMapper.toConnection(base)
+        #expect(connection.aiPolicy == nil)
+        connection.name = "Renamed"
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.aiPolicy.key] as? String == "someFuturePolicy")
+    }
+
+    @Test("Choosing no AI policy still clears a policy this Mac knows")
+    func clearingAKnownAIPolicyClearsIt() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.aiPolicy = nil
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.aiPolicy.key] == nil)
+    }
+
+    /// A newer Mac or iPhone can pick a symbol this macOS cannot draw. Dropping it on read would
+    /// write nil on this Mac's next save and erase the icon on every device.
+    @Test("An icon this Mac cannot draw survives the pull and the next push")
+    func undrawableIconSurvivesTheRoundTrip() throws {
+        let base = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        base[ConnectionSyncField.iconName.key] = "made.up.symbol" as CKRecordValue
+
+        var connection = try SyncRecordMapper.toConnection(base)
+        #expect(connection.iconName == "made.up.symbol")
+        connection.name = "Renamed"
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.iconName.key] as? String == "made.up.symbol")
+    }
+
+    @Test("A malformed icon name from the wire reads as the engine icon")
+    func malformedIconReadsAsNone() throws {
+        let record = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        record[ConnectionSyncField.iconName.key] = "Not A Symbol!" as CKRecordValue
+
+        #expect(try SyncRecordMapper.toConnection(record).iconName == nil)
     }
 
     @Test(

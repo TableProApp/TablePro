@@ -83,7 +83,7 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: [],
+            dependencies: ["TableProConnectionLibrary"],
             path: "Sources/TableProImport"
         ),
         .target(
@@ -103,7 +103,7 @@ let package = Package(
         ),
         .target(
             name: "TableProSync",
-            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes"],
+            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes", "TableProConnectionLibrary"],
             path: "Sources/TableProSync"
         ),
         .target(

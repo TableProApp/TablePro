@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import Foundation
+import AppKit
 import TableProConnectionLibrary
 
 extension WelcomeViewModel {
@@ -13,18 +13,24 @@ extension WelcomeViewModel {
             return .section(title: WelcomeRowPresentation.title(for: kind))
         case .group(let id):
             guard let group = groupsById[id] else { return .empty }
-            return .group(WelcomeGroupRowModel(
-                id: id,
-                name: group.name,
-                color: group.color,
-                connectionCount: groupConnectionCounts[id] ?? 0
-            ))
+            return .group(WelcomeRowPresentation.group(group, connectionCount: groupConnectionCounts[id] ?? 0))
         case .connection(let id, let section):
             if section.acceptsSavedConnections, let connection = connectionsById[id] {
                 return .connection(savedRowModel(connection, section: section))
             }
             guard let shared = sharedConnectionsById[id] else { return .empty }
             return .connection(WelcomeRowPresentation.sharedConnection(shared, section: section))
+        }
+    }
+
+    func renameGlyph(for row: LibraryRowID) -> NSImage? {
+        switch row {
+        case .group(let id):
+            return WelcomeRowPresentation.renameGlyph(for: groupsById[id])
+        case .connection(let id, _):
+            return connectionsById[id].flatMap { WelcomeRowPresentation.renameGlyph(for: $0) }
+        case .section:
+            return nil
         }
     }
 

@@ -27,6 +27,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var database: String
     var groupId: UUID?
     var tagId: UUID?
+    var iconName: String?
     var safeModeLevel: SafeModeLevel
     var sslMode: SSLConfiguration.SSLMode?
     var sshTunnel: SSHTunnel?
@@ -52,6 +53,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.database) { connection.database = database }
         if changed(\.groupId) { connection.groupId = groupId }
         if changed(\.tagId) { connection.tagIds = Self.tagIds(selecting: tagId, over: connection.tagIds) }
+        if changed(\.iconName) { connection.iconName = iconName }
         if changed(\.safeModeLevel) {
             connection.safeModeLevel = safeModeLevel
             connection.isReadOnly = safeModeLevel.blocksWrites

@@ -57,7 +57,7 @@ struct ConnectionListRow: View {
 
     private var content: some View {
         contentLayout {
-            ConnectionTile(type: model.type, color: model.color)
+            ConnectionTile(type: model.type, iconName: model.iconName, color: model.color)
 
             VStack(alignment: .leading, spacing: 3) {
                 title
@@ -111,6 +111,7 @@ struct ConnectionListRow: View {
 
 struct ConnectionTile: View {
     let type: DatabaseType
+    let iconName: String?
     let color: ConnectionColor
 
     @ScaledMetric(relativeTo: .body) private var side: CGFloat = 32
@@ -118,7 +119,7 @@ struct ConnectionTile: View {
 
     var body: some View {
         let hasColor = color != .none
-        DatabaseIconView(type: type, size: iconSize, tint: hasColor ? .white : nil)
+        DatabaseIconView(type: type, iconName: iconName, size: iconSize, tint: hasColor ? .white : nil)
             .frame(width: side, height: side)
             .background(
                 hasColor
@@ -137,7 +138,7 @@ private struct ConnectionRowLabels: View {
     var body: some View {
         HStack(spacing: 10) {
             if let group = model.groupLabel {
-                ConnectionRowLabel(name: group.name, systemImage: "folder.fill", color: group.color)
+                ConnectionRowLabel(name: group.name, systemImage: LibraryGlyph.groupSymbol(group.iconName), color: group.color)
             }
             ForEach(model.tags, id: \.self) { tag in
                 ConnectionRowLabel(name: tag.name, systemImage: "tag.fill", color: tag.color)
@@ -173,7 +174,7 @@ struct ConnectionGroupRowLabel: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "folder.fill")
+            Image(systemName: LibraryGlyph.groupSymbol(group.iconName))
                 .foregroundStyle(group.color == .none ? Color.secondary : ConnectionColorPicker.swiftUIColor(for: group.color))
                 .accessibilityHidden(true)
             Text(verbatim: group.name)

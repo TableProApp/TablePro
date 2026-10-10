@@ -17,32 +17,24 @@ extension MainWindowToolbar {
         return String(format: String(localized: "Preview %@"), language)
     }
 
-    /// The engine's own glyph, which is what the centred status item used to draw beside the
-    /// connection name. It is the brand channel and nothing else: the connection's identity colour
-    /// deliberately never reaches a glyph, because a second meaning painted over the engine's own
-    /// colour reads as a hue shift rather than a signal (#2398).
-    var engineGlyph: NSImage? {
-        let type = coordinator?.toolbarState.databaseType
-        let label = type?.rawValue ?? String(localized: "Connection")
-        guard let name = type?.iconName else {
-            return NSImage(systemSymbolName: "network", accessibilityDescription: label)
+    /// Only the shape is the connection's. The image stays a template, so the identity colour never
+    /// reaches it: painted over the engine's own colour it reads as a hue shift, not a signal.
+    var connectionGlyph: ToolbarGlyph {
+        guard let state = coordinator?.toolbarState else {
+            let label = String(localized: "Connection")
+            return ToolbarGlyph(key: "", image: { NSImage(systemSymbolName: "network", accessibilityDescription: label) })
         }
-        if let symbol = NSImage(systemSymbolName: name, accessibilityDescription: label) {
-            return symbol
-        }
-        /// Copied before it is touched. `NSImage(named:)` returns the one cached instance for that
-        /// asset, so setting `isTemplate` or `accessibilityDescription` on it rewrites the image
-        /// every other engine-icon consumer in the app is holding.
-        guard let asset = NSImage(named: name)?.copy() as? NSImage else { return nil }
-        asset.isTemplate = true
-        asset.accessibilityDescription = label
-        return asset
+        let type = state.databaseType
+        let iconName = state.iconName
+        return ToolbarGlyph(key: type.rawValue + "/" + (iconName ?? ""), image: {
+            LibraryGlyph.connectionNSImage(type: type, iconName: iconName, accessibilityDescription: type.displayName)
+        })
     }
 
     /// The connection's own name, which is what the centred item is for. Empty for a window that
     /// is between connections, where AppKit draws the glyph alone rather than an empty capsule.
     var connectionTitle: String {
-        coordinator?.connection.name ?? ""
+        coordinator?.toolbarState.connectionName ?? ""
     }
 
     /// The container this control switches, and only that. It briefly read "app › public" on a
@@ -67,7 +59,9 @@ extension MainWindowToolbar {
             action: #selector(performOpenConnectionSwitcher(_:)),
             shortcut: .switchConnection,
             description: String(localized: "Switch Connection"),
-            image: engineGlyph,
+            glyphProvider: { [weak self] in
+                self?.connectionGlyph ?? ToolbarGlyph(key: "", image: { nil })
+            },
             titleProvider: { [weak self] in self?.connectionTitle ?? "" }
         )
     }
@@ -313,7 +307,7 @@ extension MainWindowToolbar {
         shortcut: ShortcutAction? = nil,
         description: String? = nil,
         symbolProvider: (@MainActor () -> String)? = nil,
-        image: NSImage? = nil,
+        glyphProvider: (@MainActor () -> ToolbarGlyph)? = nil,
         titleProvider: (@MainActor () -> String)? = nil
     ) -> NSToolbarItem {
         let item = StatefulToolbarItem(itemIdentifier: id)
@@ -325,8 +319,8 @@ extension MainWindowToolbar {
         item.autovalidates = true
         item.isBordered = true
         item.symbolAccessibilityDescription = label
-        if let image {
-            item.image = image
+        if let glyphProvider {
+            item.glyphProvider = glyphProvider
         } else {
             item.symbolProvider = symbolProvider ?? { symbol }
         }

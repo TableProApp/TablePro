@@ -373,6 +373,30 @@ struct ConnectionImportServiceTests {
         #expect(saved.first { $0.name == "Finite" }?.queryTimeoutSeconds == 45)
     }
 
+    @Test("prepared import saves each connection's icon and drops a malformed one")
+    func preparedImportKeepsIcons() throws {
+        let exported = [
+            makeImportedConnection(name: "Picked", host: "picked.example.com", iconName: "server.rack"),
+            makeImportedConnection(name: "Junk", host: "junk.example.com", iconName: "Server Rack!")
+        ]
+        let decoded = try ConnectionImportDecoder.decodeData(ConnectionExportService.encode(makeEnvelope(with: exported)))
+        let items = decoded.connections.map { ImportItem(connection: $0, status: .ready) }
+        let prepared = ConnectionExportService.prepareImport(
+            ConnectionImportPreview(envelope: decoded, items: items),
+            resolutions: Dictionary(uniqueKeysWithValues: items.map { ($0.id, ImportResolution.importNew) }),
+            tagIdsByName: [:],
+            groupIdsByName: [:]
+        )
+        let storage = makeStorage()
+
+        ConnectionExportService.performPreparedImport(prepared, connectionStorage: storage, notifyConnectionsChanged: {})
+        storage.invalidateCache()
+        let saved = storage.loadConnections()
+
+        #expect(saved.first { $0.name == "Picked" }?.iconName == "server.rack")
+        #expect(saved.first { $0.name == "Junk" }?.iconName == nil)
+    }
+
     @Test("as copy imports a renamed duplicate")
     func asCopyImportsARenamedDuplicate() {
         let storage = makeStorage()
@@ -637,7 +661,8 @@ struct ConnectionImportServiceTests {
         name: String,
         host: String,
         connectTimeoutSeconds: Int? = nil,
-        queryTimeoutSeconds: Int? = nil
+        queryTimeoutSeconds: Int? = nil,
+        iconName: String? = nil
     ) -> ExportableConnection {
         ExportableConnection(
             name: name,
@@ -649,6 +674,7 @@ struct ConnectionImportServiceTests {
             sshConfig: nil,
             sslConfig: nil,
             color: nil,
+            iconName: iconName,
             tagName: nil,
             groupName: nil,
             sshProfileId: nil,

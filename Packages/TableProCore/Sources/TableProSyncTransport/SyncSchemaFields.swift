@@ -4,13 +4,14 @@ public enum ConnectionGroupSyncField: String, SyncSchemaField {
     case groupId
     case name
     case color
+    case iconName
     case parentId
     case sortOrder
     case modifiedAtLocal
     case schemaVersion
 
     public static let verifiedInProduction: Set<Self> = [
-        .groupId, .name, .color, .parentId, .sortOrder, .modifiedAtLocal, .schemaVersion
+        .groupId, .name, .color, .iconName, .parentId, .sortOrder, .modifiedAtLocal, .schemaVersion
     ]
 }
 

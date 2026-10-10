@@ -319,3 +319,94 @@ struct IOSConnectionImportReplaceTests {
         }
     }
 }
+
+@MainActor
+@Suite("iOS connection import icons")
+struct IOSConnectionImportIconTests {
+    private let fixture: AppStateFixture
+    private let appState: AppState
+
+    init() throws {
+        fixture = try AppStateFixture()
+        appState = fixture.makeState(syncEnabled: false, secureStore: MockSecureStore())
+    }
+
+    private func importConnection(iconName: String?, groupName: String? = nil, groups: [ExportableGroup]? = nil) {
+        let imported = ExportableConnection(
+            name: "Prod", host: "db.example.com", port: 5_432, database: "", username: "",
+            type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: "Red",
+            iconName: iconName, tagName: nil, groupName: groupName, sshProfileId: nil,
+            safeModeLevel: nil, aiPolicy: nil, additionalFields: nil,
+            redisDatabase: nil, startupCommands: nil, localOnly: nil
+        )
+        let item = ImportItem(connection: imported, status: .ready)
+        let envelope = ConnectionExportEnvelope(
+            formatVersion: 1, exportedAt: Date(), appVersion: "Tests",
+            connections: [imported], groups: groups, tags: nil, credentials: nil
+        )
+        let result = IOSConnectionImportService.performImport(
+            ConnectionImportPreview(envelope: envelope, items: [item]),
+            resolutions: [item.id: .importNew],
+            appState: appState
+        )
+        #expect(result.importedCount == 1)
+    }
+
+    @Test("An imported connection keeps its icon and colour")
+    func connectionIconImports() {
+        importConnection(iconName: "flame")
+
+        #expect(appState.connections.first?.iconName == "flame")
+        #expect(appState.connections.first?.color == .red)
+    }
+
+    @Test("An imported icon that is not a symbol name is dropped", arguments: ["", "Flame", "../flame", "a b"])
+    func junkConnectionIconIsDropped(_ raw: String) {
+        importConnection(iconName: raw)
+
+        #expect(appState.connections.first?.iconName == nil)
+    }
+
+    @Test("A group the file brings is created with its colour and icon, and the connection joins it")
+    func groupIconImports() throws {
+        importConnection(
+            iconName: nil,
+            groupName: "Clients",
+            groups: [ExportableGroup(name: "Clients", color: "Purple", iconName: "briefcase")]
+        )
+
+        let group = try #require(appState.groups.first)
+        #expect(group.name == "Clients")
+        #expect(group.color == .purple)
+        #expect(group.iconName == "briefcase")
+        #expect(appState.connections.first?.groupId == group.id)
+    }
+
+    @Test("A group icon that is not a symbol name is dropped on import")
+    func junkGroupIconIsDropped() throws {
+        importConnection(
+            iconName: nil,
+            groupName: "Clients",
+            groups: [ExportableGroup(name: "Clients", color: nil, iconName: "../../etc")]
+        )
+
+        let group = try #require(appState.groups.first)
+        #expect(group.iconName == nil)
+    }
+
+    @Test("A group that already exists keeps its own icon")
+    func existingGroupKeepsItsIcon() throws {
+        let existing = ConnectionGroup(name: "Clients", iconName: "person.3")
+        #expect(appState.addGroup(existing) == .applied)
+
+        importConnection(
+            iconName: nil,
+            groupName: "clients",
+            groups: [ExportableGroup(name: "clients", color: "Red", iconName: "flame")]
+        )
+
+        #expect(appState.groups.count == 1)
+        #expect(appState.groups.first?.iconName == "person.3")
+        #expect(appState.connections.first?.groupId == existing.id)
+    }
+}

@@ -45,7 +45,7 @@ extension DatabaseType {
     }
 
     var iconName: String {
-        PluginMetadataRegistry.shared.snapshot(for: self)?.iconName ?? "database-icon"
+        PluginMetadataRegistry.shared.snapshot(for: self)?.iconName ?? "cylinder"
     }
 
     /// Returns the correct SwiftUI Image for this database type, handling both

@@ -8,6 +8,7 @@ import Foundation
 import TableProConnectionLibrary
 import Testing
 
+@MainActor
 struct WelcomeMenuSpecTests {
     private func context(
         rows: [LibraryRowID],
@@ -58,6 +59,13 @@ struct WelcomeMenuSpecTests {
             return entry.title
         case .submenu(let title, _):
             return title
+        }
+    }
+
+    private func entries(_ sections: [WelcomeMenuSection]) -> [SidebarMenuEntry<WelcomeMenuCommand>] {
+        sections.flatMap(\.items).compactMap { item in
+            guard case .command(let entry) = item else { return nil }
+            return entry
         }
     }
 
@@ -174,6 +182,61 @@ struct WelcomeMenuSpecTests {
         #expect(!titles(atCap).flatMap { $0 }.contains("New Subgroup…"))
         #expect(titles(belowCap).flatMap { $0 }.contains("New Subgroup…"))
         #expect(titles(atCap).last == ["Delete Group…"])
+    }
+
+    @Test("A group offers Edit Group… beside Rename")
+    func groupOffersEdit() throws {
+        let group = ConnectionGroup(name: "Acme")
+        let sections = WelcomeMenuSpec.sections(for: context(rows: [.group(group.id)], groups: [group]))
+
+        #expect(titles(sections).first == ["Edit Group…", "Rename", "New Subgroup…"])
+        let edit = try #require(entries(sections).first { $0.title == "Edit Group…" })
+        #expect(edit.command == .editGroup(group.id))
+    }
+
+    @Test("Move to Group draws each group's own symbol in its own colour")
+    func moveToGroupDrawsEachGroupsSymbol() throws {
+        let servers = ConnectionGroup(name: "Servers", color: .blue, iconName: "server.rack")
+        let plain = ConnectionGroup(name: "Acme", color: .red)
+        let connection = DatabaseConnection(name: "Prod", type: .mysql)
+        let sections = WelcomeMenuSpec.sections(for: context(
+            rows: [.connection(connection.id, section: .connections)],
+            connections: [connection],
+            groups: [servers, plain]
+        ))
+
+        let move = try #require(submenu("Move to Group", in: sections))
+        let symbols = Dictionary(uniqueKeysWithValues: entries([move[0]]).compactMap { entry in
+            entry.symbol.map { (entry.title, $0) }
+        })
+        #expect(symbols["Servers"] == SidebarMenuSymbol(systemName: LibraryGlyph.groupSymbol("server.rack"), color: .blue))
+        #expect(symbols["Acme"] == SidebarMenuSymbol(systemName: "folder.fill", color: .red))
+    }
+
+    @Test("Move Group To draws each target's own symbol")
+    func moveGroupToDrawsTargetSymbols() throws {
+        let moving = ConnectionGroup(name: "Moving")
+        let target = ConnectionGroup(name: "Servers", color: .green, iconName: "server.rack")
+        let sections = WelcomeMenuSpec.sections(for: context(rows: [.group(moving.id)], groups: [moving, target]))
+
+        let move = try #require(submenu("Move Group To", in: sections))
+        let symbols = entries(Array(move.dropFirst())).map(\.symbol)
+        #expect(symbols == [SidebarMenuSymbol(systemName: LibraryGlyph.groupSymbol("server.rack"), color: .green)])
+    }
+
+    /// Each candidate colour is previewed on the glyph the group actually draws, so picking a
+    /// colour shows what the row will look like.
+    @Test("The Color submenu previews every colour on the group's own symbol")
+    func colorSubmenuPreviewsGroupSymbol() throws {
+        let group = ConnectionGroup(name: "Servers", color: .blue, iconName: "server.rack")
+        let sections = WelcomeMenuSpec.sections(for: context(rows: [.group(group.id)], groups: [group]))
+
+        let colors = try #require(submenu("Color", in: sections))
+        let symbols = entries(colors).compactMap(\.symbol)
+        #expect(symbols.count == ConnectionColor.allCases.count)
+        #expect(symbols.map(\.systemName).allSatisfy { $0 == LibraryGlyph.groupSymbol("server.rack") })
+        #expect(symbols.map(\.color) == ConnectionColor.allCases)
+        #expect(entries(colors).filter { $0.isOn == true }.map(\.title) == [ConnectionColor.blue.displayName])
     }
 
     @Test("Several connections share one menu with counted titles")

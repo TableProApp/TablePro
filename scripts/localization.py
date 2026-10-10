@@ -7,6 +7,7 @@ rewrites a catalog. CONTRIBUTING.md has the commands.
 
     scripts/localization.py status              -> per-language coverage
     scripts/localization.py plugins [--add]     -> strings Xcode cannot see, missing or unmanaged
+    scripts/localization.py plugins --target ios -> the same for the package targets the iOS app links
 
 Xcode extracts strings per target. Code in a plugin bundle or in a package under `Packages/`
 resolves `String(localized:)` against `Bundle.main`, which is the host app, so its strings must be
@@ -28,6 +29,7 @@ CATALOGS = {
     "ios": Path("TableProMobile/TableProMobile/Localizable.xcstrings"),
 }
 HIDDEN_SOURCE_ROOTS = (Path("Plugins"), Path("Packages"))
+IOS_PROJECT = Path("TableProMobile/project.yml")
 
 # Xcode writes a catalog through JSONSerialization with exactly these options. Writing through the
 # same call keeps the file identical to what Xcode would write, so its next sync moves nothing.
@@ -133,6 +135,38 @@ def hidden_keys(roots: tuple[Path, ...] = HIDDEN_SOURCE_ROOTS) -> list[str]:
     return list(seen)
 
 
+def ios_hidden_source_roots() -> tuple[Path, ...]:
+    """The package targets the iOS app links. Every other package never ships on iOS, so its strings
+    do not belong in the iOS catalog."""
+    roots: list[Path] = []
+    package = None
+    for line in IOS_PROJECT.read_text(encoding="utf8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- package:"):
+            package = stripped.split(":", 1)[1].strip()
+            continue
+        if stripped.startswith("- framework:") or stripped.startswith("- target:") or stripped.startswith("- sdk:"):
+            package = None
+            continue
+        if package is None:
+            continue
+        if stripped.startswith("product:"):
+            products = [stripped.split(":", 1)[1].strip()]
+        elif stripped.startswith("- ") and ":" not in stripped:
+            products = [stripped[2:].strip()]
+        else:
+            continue
+        for product in products:
+            root = Path("Packages") / package / "Sources" / product
+            if root.is_dir() and not root.is_symlink():
+                roots.append(root)
+    return tuple(dict.fromkeys(roots))
+
+
+def hidden_source_roots(target: str) -> tuple[Path, ...]:
+    return ios_hidden_source_roots() if target == "ios" else HIDDEN_SOURCE_ROOTS
+
+
 def is_managed(entry: dict) -> bool:
     # Symbol generation stays off: the app sets STRING_CATALOG_GENERATE_SYMBOLS, which covers every
     # manual key, and keys such as "Output" and "output" would generate the same symbol.
@@ -150,11 +184,11 @@ def manage(strings: dict, keys: list[str]) -> None:
         entry["generatesSymbol"] = False
 
 
-def plugins(add: bool) -> int:
-    path = CATALOGS["mac"]
+def plugins(add: bool, target: str) -> int:
+    path = CATALOGS[target]
     catalog = load(path)
     strings = catalog["strings"]
-    pending = unmanaged_keys(strings, hidden_keys())
+    pending = unmanaged_keys(strings, hidden_keys(hidden_source_roots(target)))
 
     if not pending:
         print(f"ok: every plugin and package string is in {path}, managed manually")
@@ -183,7 +217,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "plugins":
-        return plugins(args.add)
+        return plugins(args.add, args.target)
     status(args.target)
     return 0
 
