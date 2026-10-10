@@ -71,7 +71,8 @@ internal struct FavoritesTabView: View {
             grouping: groupingStrategy,
             isConnected: session?.isConnected ?? false,
             schemaService: schemaService,
-            treeService: treeMetadata
+            treeService: treeMetadata,
+            keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: activeDatabase ?? "")
         )
     }
 

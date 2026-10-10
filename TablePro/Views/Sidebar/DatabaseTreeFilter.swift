@@ -58,6 +58,44 @@ enum DatabaseTreeFilter {
         SidebarNameFilter.matches(query: query, candidate: candidate)
     }
 
+    /// Who opened a row. `search` is the filter opening a schema because the listing found a match in it.
+    enum DisclosureOrigin: Equatable {
+        case user
+        case restore
+        case search
+    }
+
+    /// A schema the search opened draws its tables from the all-schema listing, which already holds
+    /// every row it can match, so opening it reads nothing. Opened by hand or restored, it reads.
+    static func readsOnDisclosure(origin: DisclosureOrigin) -> Bool {
+        origin != .search
+    }
+
+    enum SchemaContentSource: Equatable {
+        case loaded
+        case listing([TableInfo])
+        case pending
+        case failed(String)
+    }
+
+    /// While searching, the listing answers for a schema whose own tables are unread or overtaken,
+    /// and keeps answering while a hand-started read runs, so the matched rows stay put.
+    static func schemaContentSource(
+        searching: Bool,
+        tables: MetadataLoadPhase,
+        isTablesCurrent: Bool,
+        listingRows: [TableInfo]?
+    ) -> SchemaContentSource {
+        if searching, let listingRows, !(tables.isLoaded && isTablesCurrent) {
+            return .listing(listingRows)
+        }
+        switch tables {
+        case .loaded: return .loaded
+        case .failed(let message): return .failed(message)
+        case .idle, .loading: return .pending
+        }
+    }
+
     /// `database` is where the objects live when the caller knows it. A qualified search matches
     /// each object's own schema, and the database only when the search names one.
     static func filteredTables(_ tables: [TableInfo], searchText: String, database: String? = nil) -> [TableInfo] {
@@ -166,7 +204,7 @@ enum DatabaseTreeFilter {
             if loadedContent.isSettled, loadedContent.isCurrent { return .noMatch }
         }
         let unanswered: SchemaSearchVerdict = search.admits(database: database, schema: schema) ? .unknown : .noMatch
-        let listingAnswers = listingCoversSchema && listingMatches?.unlisted.contains(schema) == false
+        let listingAnswers = listingCoversSchema && listingMatches?.answers(for: schema) == true
         if listingAnswers, listingMatches?.matched.contains(schema) == true { return .match }
         if let loadedContent { return loadedContent.isSettled ? .noMatch : unanswered }
         return listingAnswers || !listingCoversSchema ? .noMatch : unanswered
@@ -207,7 +245,20 @@ enum DatabaseTreeFilter {
         guard let database = schemaService.loadedScope(for: connectionId)?.database,
               let listing = treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database).value
         else { return nil }
-        return SchemaListingMatches(listing: listing, database: database, searchText: searchText)
+        return SchemaListingMatches(
+            listing: listing,
+            database: database,
+            searchText: searchText,
+            covered: coveredSchemas(
+                treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            )
+        )
+    }
+
+    /// The schemas a held listing answers for, nil when it answers for every schema.
+    static func coveredSchemas(_ selection: CatalogTableListing.SchemaSelection?) -> Set<String>? {
+        guard case .only(let kept) = selection else { return nil }
+        return kept
     }
 
     /// A schema the search matched by name shows everything inside it. Filtering its objects by the
@@ -241,13 +292,17 @@ enum DatabaseTreeFilter {
         showsSystem: Bool,
         searchText: String,
         database: String? = nil,
+        selected: Set<String> = [],
+        pinned: Set<String> = [],
         contentMatches: (String) -> Bool
     ) -> [String] {
         let browsable = DatabaseTreeVisibility.visibleSchemas(
             schemas,
             systemSchemas: systemSchemas,
             activeSchema: activeSchema,
-            showsSystem: showsSystem
+            showsSystem: showsSystem,
+            selected: selected,
+            pinned: pinned
         )
         let search = SidebarSearch(searchText)
         let matched = search.isEmpty
@@ -278,19 +333,24 @@ enum DatabaseTreeFilter {
 
     /// One pass over a database's all-schema listing, recording which schemas hold a match. A tree
     /// judges hundreds of schemas against the same listing, and scanning it once per schema cost a
-    /// comparison per table per schema on every redraw.
+    /// comparison per table per schema on every redraw. A schema outside `covered`, the set a filtered
+    /// listing was read for, was never asked about, so the listing cannot say it holds no match.
     struct SchemaListingMatches: Equatable {
         let listed: Set<String>
         let matched: Set<String>
         let unlisted: Set<String>
+        let covered: Set<String>?
+        let rowsBySchema: [String: [TableInfo]]
 
-        init(listing: CatalogTableListing.Result, database: String, searchText: String) {
+        init(listing: CatalogTableListing.Result, database: String, searchText: String, covered: Set<String>? = nil) {
             let search = SidebarSearch(searchText)
             var listed: Set<String> = []
             var matched: Set<String> = []
+            var rowsBySchema: [String: [TableInfo]] = [:]
             for table in listing.tables {
                 guard let schema = table.schema else { continue }
                 listed.insert(schema)
+                rowsBySchema[schema, default: []].append(table)
                 guard !matched.contains(schema),
                       search.matchesObject(named: table.name, database: database, schema: schema) else { continue }
                 matched.insert(schema)
@@ -298,6 +358,12 @@ enum DatabaseTreeFilter {
             self.listed = listed
             self.matched = matched
             self.unlisted = listing.unlistedSchemas
+            self.covered = covered
+            self.rowsBySchema = rowsBySchema
+        }
+
+        func answers(for schema: String) -> Bool {
+            !unlisted.contains(schema) && covered?.contains(schema) != false
         }
     }
 
@@ -324,7 +390,7 @@ enum DatabaseTreeFilter {
         if namesContainer, search.matchesContainer(database: database, schema: schema) { return .match }
         if let loadedContent { return loadedContent.isEmpty ? .noMatch : .match }
         guard listingCoversSchema else { return .noMatch }
-        guard let listingMatches, !listingMatches.unlisted.contains(schema) else {
+        guard let listingMatches, listingMatches.answers(for: schema) else {
             return search.admits(database: database, schema: schema) ? .unknown : .noMatch
         }
         return listingMatches.matched.contains(schema) ? .match : .noMatch
@@ -338,11 +404,18 @@ enum DatabaseTreeFilter {
         connectionId: UUID,
         database: String,
         schema: String?,
-        searchText: String
+        searchText: String,
+        listingMatches: SchemaListingMatches? = nil
     ) -> DatabaseTreeObjectBuckets? {
-        guard case .loaded(let tables) = service.tablesLoadState(
+        guard case .loaded(let loaded) = service.tablesLoadState(
             connectionId: connectionId, database: database, schema: schema
         ) else { return nil }
+        var tables = loaded
+        // While searching, overtaken tables yield to the listing's, as the tree draws them.
+        if !searchText.isEmpty, let schema, let listingMatches, listingMatches.answers(for: schema),
+           !service.isTablesCurrent(connectionId: connectionId, database: database, schema: schema) {
+            tables = listingMatches.rowsBySchema[schema] ?? []
+        }
         return objectBuckets(
             tables: tables,
             routines: service.routines(connectionId: connectionId, database: database, schema: schema),
@@ -362,18 +435,23 @@ enum DatabaseTreeFilter {
         searchText: String,
         hiddenSchemas: Set<String>,
         allSchemaTables: MetadataLoadState<CatalogTableListing.Result>,
-        loadedContent: (String) -> DatabaseTreeObjectBuckets?
+        keptSchemas: Set<String>? = nil,
+        covered: Set<String>? = nil,
+        loadedContent: (String, SchemaListingMatches) -> DatabaseTreeObjectBuckets?
     ) -> [String] {
         guard !SidebarSearch(searchText).isEmpty, let listing = allSchemaTables.value else { return [] }
-        let listingMatches = SchemaListingMatches(listing: listing, database: database, searchText: searchText)
+        let listingMatches = SchemaListingMatches(
+            listing: listing, database: database, searchText: searchText, covered: covered
+        )
         return listingMatches.listed
             .filter { schema in
                 guard schema != browsedSchema, !hiddenSchemas.contains(schema) else { return false }
+                if let keptSchemas, !keptSchemas.contains(schema) { return false }
                 return schemaSearchVerdict(
                     schema: schema,
                     database: database,
                     searchText: searchText,
-                    loadedContent: loadedContent(schema),
+                    loadedContent: loadedContent(schema, listingMatches),
                     listingMatches: listingMatches,
                     countsSchemaName: false
                 ) == .match

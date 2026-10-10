@@ -35,8 +35,27 @@ struct DatabaseTreeAllSchemaTablesTests {
         service.allSchemaTablesLoadState(connectionId: connection.id, database: connection.database).value
     }
 
-    private func load(_ connection: DatabaseConnection) async {
-        await service.loadAllSchemaTables(connectionId: connection.id, database: connection.database)
+    private func load(
+        _ connection: DatabaseConnection,
+        selection: CatalogTableListing.SchemaSelection = .all
+    ) async {
+        await service.loadAllSchemaTables(connectionId: connection.id, database: connection.database, selection: selection)
+    }
+
+    private func covered(_ connection: DatabaseConnection) -> CatalogTableListing.SchemaSelection? {
+        service.allSchemaTablesSelection(connectionId: connection.id, database: connection.database)
+    }
+
+    /// Answers both the all-schema and the one-schema reads, so a test sees which one a selection takes.
+    private func threeSchemas(_ driver: MockDatabaseDriver) {
+        driver.allSchemaTablesToReturn = [
+            table("users", "public"), table("timesheet", "attendance"), table("payslip", "payroll")
+        ]
+        driver.schemaTablesToReturn = [
+            "public": [table("users", "public")],
+            "attendance": [table("timesheet", "attendance")],
+            "payroll": [table("payslip", "payroll")]
+        ]
     }
 
     private func table(_ name: String, _ schema: String) -> TableInfo {
@@ -227,6 +246,108 @@ struct DatabaseTreeAllSchemaTablesTests {
         await load(connection)
         #expect(driver.fetchTablesInAllSchemasCallCount == 2)
         #expect(listing(connection)?.tables.map(\.name) == ["users", "orders"])
+        await disconnect(connection)
+    }
+
+    @Test("Narrowing a current listing's filter narrows its rows at once and reads nothing")
+    func narrowingACurrentListingReadsNothing() async {
+        let (connection, driver) = connect(threeSchemas)
+        await load(connection)
+        #expect(listing(connection)?.tables.map(\.name) == ["users", "timesheet", "payslip"])
+
+        service.selectAllSchemaTables(.only(["attendance"]), connectionId: connection.id, database: connection.database)
+        #expect(listing(connection)?.tables.map(\.name) == ["timesheet"])
+        #expect(covered(connection) == .only(["attendance"]))
+
+        await load(connection, selection: .only(["attendance"]))
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        #expect(driver.fetchSchemaTablesCalls.isEmpty)
+        #expect(listing(connection)?.tables.map(\.name) == ["timesheet"])
+        await disconnect(connection)
+    }
+
+    @Test("A filter moved to schemas the listing does not cover hides the old rows at once and reads again")
+    func movedFilterReadsAgain() async {
+        let (connection, driver) = connect(threeSchemas)
+        await load(connection, selection: .only(["attendance"]))
+
+        service.selectAllSchemaTables(.only(["payroll"]), connectionId: connection.id, database: connection.database)
+        #expect(listing(connection)?.tables.isEmpty == true)
+        #expect(covered(connection) == .only([]))
+
+        await load(connection, selection: .only(["payroll"]))
+        #expect(driver.fetchSchemaTablesCalls == ["attendance", "payroll"])
+        #expect(driver.fetchTablesInAllSchemasCallCount == 0)
+        #expect(listing(connection)?.tables.map(\.name) == ["payslip"])
+        #expect(covered(connection) == .only(["payroll"]))
+        await disconnect(connection)
+    }
+
+    @Test("Narrowing a stale listing's filter still reads again")
+    func narrowingAStaleListingReadsAgain() async {
+        let (connection, driver) = connect(threeSchemas)
+        await load(connection)
+        await service.refreshCatalog(for: CatalogChange(connectionId: connection.id, kinds: .tables))
+
+        await load(connection, selection: .only(["attendance"]))
+
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        #expect(driver.fetchSchemaTablesCalls == ["attendance"])
+        await disconnect(connection)
+    }
+
+    @Test("Widening a filter keeps the rows it had, answering only for the old filter until the new listing lands")
+    func wideningKeepsRowsUntilTheListingLands() async {
+        let (connection, driver) = connect(threeSchemas)
+        await load(connection, selection: .only(["attendance"]))
+        #expect(covered(connection) == .only(["attendance"]))
+
+        driver.pausesNextAllSchemaTablesFetch = true
+        var wide: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            driver.onAllSchemaTablesFetchPaused = { paused.resume() }
+            wide = Task { await load(connection) }
+        }
+        #expect(listing(connection)?.tables.map(\.name) == ["timesheet"])
+        #expect(covered(connection) == .only(["attendance"]))
+
+        driver.resumeAllSchemaTablesFetch()
+        await wide?.value
+        #expect(listing(connection)?.tables.map(\.name) == ["users", "timesheet", "payslip"])
+        #expect(covered(connection) == .all)
+        await disconnect(connection)
+    }
+
+    @Test("A listing for an old filter that lands late does not commit")
+    func oldFilterListingLandingLateDoesNotCommit() async {
+        let (connection, driver) = connect { driver in
+            threeSchemas(driver)
+            driver.pausesNextSchemaTablesFetch = true
+        }
+        var old: Task<Void, Never>?
+        await withCheckedContinuation { (paused: CheckedContinuation<Void, Never>) in
+            driver.onSchemaTablesFetchPaused = { paused.resume() }
+            old = Task { await load(connection, selection: .only(["attendance"])) }
+        }
+        service.selectAllSchemaTables(.only(["payroll"]), connectionId: connection.id, database: connection.database)
+        driver.resumeSchemaTablesFetch()
+        await old?.value
+        #expect(listing(connection) == nil)
+
+        await load(connection, selection: .only(["payroll"]))
+        #expect(listing(connection)?.tables.map(\.name) == ["payslip"])
+        #expect(covered(connection) == .only(["payroll"]))
+        await disconnect(connection)
+    }
+
+    @Test("The same selection asked for twice reads once")
+    func sameSelectionReadsOnce() async {
+        let (connection, driver) = connect(threeSchemas)
+        await load(connection, selection: .only(["attendance"]))
+        await load(connection, selection: .only(["attendance"]))
+
+        #expect(driver.fetchSchemaTablesCalls == ["attendance"])
+        #expect(driver.fetchTablesInAllSchemasCallCount == 0)
         await disconnect(connection)
     }
 

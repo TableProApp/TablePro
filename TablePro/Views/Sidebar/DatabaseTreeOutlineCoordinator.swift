@@ -25,7 +25,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var windowState: WindowSidebarState?
     internal var sidebarState: SharedSidebarState?
     internal weak var viewModel: SidebarViewModel?
-    internal var searchText = ""
+    internal var searchText = "" {
+        didSet { if searchText.isEmpty { schemasOpenedDuringSearch.removeAll() } }
+    }
+    internal var schemasOpenedDuringSearch: Set<DatabaseSchemaKey> = []
     private var isConnected = false
     internal var activeDatabase: String?
     internal var activeSchema: String?
@@ -95,6 +98,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         self.favoriteDatabasesStorage = favoriteDatabasesStorage
         self.tableFolderStorage = tableFolderStorage
         super.init()
+    }
+
+    internal var pendingTableOperations: Set<DatabaseTreeTableRef> {
+        pendingTruncates.union(pendingDeletes)
     }
 
     internal var supportsSchemaLevel: Bool {
@@ -277,6 +284,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         /// changed nothing until some other edit happened to rebuild the tree.
         _ = sidebarState?.sidebarLayout
         _ = sidebarState?.databaseFilterSelected
+        _ = sidebarState?.schemaFilterSelected
         /// One token covers every table, routine and per-schema load for this connection, which is
         /// the whole reactive surface the flat and hierarchical shapes read.
         _ = schemaService.generationToken(for: connectionId)
@@ -643,13 +651,20 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
+    /// A table kind is refreshed as a catalog change, as Cmd+R is, so the partition lists the tree
+    /// holds under the section are marked stale along with the browsed list.
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
         case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
         case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .type: Task { await mainCoordinator.refreshUserDefinedTypes() }
-        case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
+        case .table, .view, .materializedView, .foreignTable:
+            CatalogChangeService.shared.record(.changed(CatalogChange(
+                connectionId: connectionId,
+                database: mainCoordinator.browseDatabaseName,
+                kinds: .tables
+            )))
         }
     }
 
@@ -869,6 +884,8 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         if isRecordingExpansion {
             recordExpansion(node, expanded: true)
             restoreDescendantExpansion(afterExpanding: node)
+        } else if !isApplyingExpansion, case .schema(let database, let schema) = node.kind {
+            schemasOpenedDuringSearch.insert(DatabaseSchemaKey(database: database, schema: schema))
         }
         scheduleSelectionSync()
     }
@@ -898,8 +915,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
         isCollapsingItem = true
-        if let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode, isRecordingExpansion {
-            recordExpansion(node, expanded: false)
+        if let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode {
+            if isRecordingExpansion {
+                recordExpansion(node, expanded: false)
+            } else if case .schema(let database, let schema) = node.kind {
+                schemasOpenedDuringSearch.remove(DatabaseSchemaKey(database: database, schema: schema))
+            }
         }
         scheduleSelectionSync(force: true)
     }

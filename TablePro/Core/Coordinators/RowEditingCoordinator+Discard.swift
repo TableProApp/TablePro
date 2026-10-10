@@ -65,8 +65,6 @@ extension RowEditingCoordinator {
             parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
         }
         parent.resumeDeferredTableRefresh()
-
-        Task { [parent] in await parent.refreshTables() }
     }
 
     /// Puts the loaded rows back the way the server last reported them.

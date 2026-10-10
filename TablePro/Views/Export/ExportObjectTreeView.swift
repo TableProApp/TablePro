@@ -23,6 +23,9 @@ internal struct ExportObjectTreeView: NSViewRepresentable {
     /// what owns the export driver lease.
     internal let loadColumns: (ExportObjectItem) async -> [String]
 
+    /// Asks the dialog to read a container's unread kinds: it was expanded, or ticked whole.
+    internal let onNeedsObjects: (UUID) -> Void
+
     internal func makeCoordinator() -> ExportObjectTreeCoordinator {
         ExportObjectTreeCoordinator(owner: self)
     }
@@ -87,6 +90,8 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     /// chose rather than reopening the whole tree.
     private var collapsedIdentities: Set<String> = []
 
+    private var seededDatabaseIDs: Set<UUID> = []
+
     internal init(owner: ExportObjectTreeView) {
         self.owner = owner
     }
@@ -110,12 +115,11 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             restoreExpansion()
             return
         }
-        let isFirstBuild = shapeFingerprint.isEmpty
         shapeFingerprint = fingerprint
         roots = ExportOutlineTreeBuilder.build(from: databases)
         indexNodes()
         pendingReloadIdentities = nil
-        if isFirstBuild { seedCollapsedFromModel() }
+        seedCollapsedFromModel()
         outlineView?.reloadData()
         restoreExpansion()
     }
@@ -146,12 +150,11 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         outlineView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
 
-    /// What the loader already decided. It opens the database the dialog was scoped to and any
-    /// container the preselection names, and leaves the rest closed; without this every database
-    /// on the server opened at once. Only the first build reads it, so a later reload never
-    /// reopens something the user has since collapsed.
+    /// What the builder opened, read once per container when the tree first meets it, so a reload
+    /// never reopens what the user collapsed. Reading it on the first build alone opened every
+    /// schema of the tree that replaces the sidebar preview, and an open schema reads its unread kinds.
     private func seedCollapsedFromModel() {
-        for database in databases where !database.isExpanded {
+        for database in databases where seededDatabaseIDs.insert(database.id).inserted && !database.isExpanded {
             collapsedIdentities.insert("db:\(database.id.uuidString)")
         }
     }
@@ -194,10 +197,20 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             outlineView.collapseItem(node)
         } else {
             outlineView.expandItem(node)
+            requestObjectsIfPending(node)
         }
         for child in node.children {
             expandRecursively(child, in: outlineView)
         }
+    }
+
+    /// An open container shows its contents, so one with unread kinds has to read them. Asking twice
+    /// is harmless: the dialog reads a container once.
+    private func requestObjectsIfPending(_ node: ExportOutlineNode) {
+        guard case .database(let databaseID) = node.kind,
+              databases.first(where: { $0.id == databaseID })?.hasUnloadedObjects == true
+        else { return }
+        owner.onNeedsObjects(databaseID)
     }
 
     // MARK: - Data Source
@@ -221,7 +234,8 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     /// navigated: refusing it leaves Space with nothing to toggle, Left and Right with nothing to
     /// collapse, and VoiceOver with no way into the tree at all.
     internal func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        true
+        guard let node = item as? ExportOutlineNode, case .pending = node.kind else { return true }
+        return false
     }
 
     /// Space toggles every selected row, which is what the checkbox in each of them does on a
@@ -240,6 +254,8 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
                 let isSelected = databases.first(where: { $0.id == databaseID })?
                     .objects.first(where: { $0.id == objectID })?.isSelected ?? false
                 setSelection(!isSelected, databaseID: databaseID, objectID: objectID)
+            case .pending:
+                continue
             }
         }
     }
@@ -247,6 +263,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     internal func outlineViewItemDidExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? ExportOutlineNode else { return }
         collapsedIdentities.remove(node.identity)
+        requestObjectsIfPending(node)
     }
 
     internal func outlineViewItemDidCollapse(_ notification: Notification) {
@@ -327,6 +344,17 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
                     loadColumns: { [owner] in await owner.loadColumns(object) }
                 )
             )
+        case .pending:
+            return AnyView(
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading…")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            )
         }
     }
 
@@ -361,28 +389,54 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             guard let object = databases.first(where: { $0.id == databaseID })?
                 .objects.first(where: { $0.id == objectID }) else { return [] }
             return [object]
+        case .pending:
+            return []
         }
+    }
+
+    /// The database behind a container row whose kinds are not all read yet, if this is one.
+    private func unloadedDatabase(at node: ExportOutlineNode) -> ExportDatabaseItem? {
+        guard case .database(let databaseID) = node.kind,
+              let database = databases.first(where: { $0.id == databaseID }),
+              database.hasUnloadedObjects
+        else { return nil }
+        return database
     }
 
     private func containerState(for node: ExportOutlineNode) -> TristateCheckbox.State {
         let items = objects(under: node)
-        guard !items.isEmpty else { return .unchecked }
+        guard !items.isEmpty else {
+            return unloadedDatabase(at: node)?.selectsLoadedObjects == true ? .checked : .unchecked
+        }
         let selected = items.count(where: \.isSelected)
         if selected == 0 { return .unchecked }
         return selected == items.count ? .checked : .mixed
     }
 
+    /// Ticking a container whose kinds are not all read yet also asks for them, and they arrive
+    /// selected unless something in it is unticked first.
     private func toggleContainer(_ node: ExportOutlineNode) {
         let items = objects(under: node)
-        let turningOn = items.contains { !$0.isSelected }
+        let unloaded = unloadedDatabase(at: node)
+        let turningOn = items.isEmpty
+            ? !(unloaded?.selectsLoadedObjects ?? true)
+            : items.contains { !$0.isSelected }
         let ids = Set(items.map(\.id))
-        mutateDatabases(touching: ids) { databases in
+        var reloading: Set<String> = []
+        if let unloaded { reloading.insert("db:\(unloaded.id.uuidString)") }
+        mutateDatabases(touching: ids, reloading: reloading) { databases in
             for databaseIndex in databases.indices {
                 for objectIndex in databases[databaseIndex].objects.indices
                 where ids.contains(databases[databaseIndex].objects[objectIndex].id) {
                     databases[databaseIndex].objects[objectIndex].isSelected = turningOn
                 }
+                if databases[databaseIndex].id == unloaded?.id {
+                    databases[databaseIndex].selectsLoadedObjects = turningOn
+                }
             }
+        }
+        if turningOn, let unloaded {
+            owner.onNeedsObjects(unloaded.id)
         }
         guard turningOn else { return }
         normalizeOptions(for: ids)
@@ -445,12 +499,14 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
 
     private func mutateDatabases(
         touching ids: Set<UUID>,
+        reloading extraIdentities: Set<String> = [],
         _ change: (inout [ExportDatabaseItem]) -> Void
     ) {
         var updated = databases
         change(&updated)
         databases = updated
         markForReload(objectIDs: ids)
+        pendingReloadIdentities?.formUnion(extraIdentities)
         owner.databaseItems = updated
     }
 }

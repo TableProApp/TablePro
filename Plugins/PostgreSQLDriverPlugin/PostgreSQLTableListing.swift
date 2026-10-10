@@ -3,17 +3,20 @@ import TableProPluginKit
 
 nonisolated enum PostgreSQLTableListingScope: Sendable, Equatable {
     case schema(String)
+    case schemas([String])
     case allSchemas
+
+    var projectsSchema: Bool {
+        switch self {
+        case .schema: false
+        case .schemas, .allSchemas: true
+        }
+    }
 }
 
 nonisolated enum PostgreSQLTableListing {
-    /// Lists user-visible schemas, excluding PostgreSQL's built-in `pg_*`
-    /// namespaces and `information_schema`.
-    ///
-    /// The underscore in the `LIKE` pattern is escaped so it is matched
-    /// literally; without an `ESCAPE` clause, `_` would be SQL LIKE's
-    /// single-char wildcard and `'pg_%'` would also exclude legitimate user
-    /// schemas such as `pgboss`, `pgcrypto`, or `pgvector`.
+    /// The underscore is escaped because `_` is a LIKE wildcard: a bare `'pg_%'` also hid user
+    /// schemas such as `pgboss` and `pgvector`.
     static let visibleSchemas = """
         SELECT schema_name FROM information_schema.schemata
         WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
@@ -21,42 +24,6 @@ nonisolated enum PostgreSQLTableListing {
         ORDER BY schema_name
         """
 
-    /// Lists tables and views, optionally including materialized views and
-    /// foreign tables. The optional unions reference `pg_matviews` and
-    /// `pg_foreign_table`, which some PostgreSQL-compatible engines do not
-    /// implement; the caller passes `false` when those catalogs are absent so
-    /// the whole query does not fail with `relation does not exist`.
-    ///
-    /// `includeComments` projects each table's comment via `obj_description`
-    /// over the relation's oid. Engines that lack that function fail the whole
-    /// listing, so the caller passes `false` to fall back to a comment-free
-    /// listing.
-    ///
-    /// `includePartitionAwareness` labels a declarative partition parent as
-    /// `PARTITIONED TABLE`, counts its partitions, and drops its partition
-    /// children, which `information_schema.tables` reports as plain
-    /// `BASE TABLE` rows indistinguishable from the parent. The test is
-    /// `pg_inherits` joined to the parent's `relkind`, not
-    /// `pg_class.relispartition`: `relispartition` only exists from PostgreSQL
-    /// 10, and referencing a missing column fails at parse time, which would
-    /// break the listing outright on older servers. Comparing `relkind` against
-    /// `'p'`/`'I'` is a value test on a column present since PostgreSQL 8, so it
-    /// parses everywhere and simply matches nothing before declarative
-    /// partitioning existed. Rows still come from `information_schema.tables`,
-    /// which keeps its privilege filtering; the catalog joins only label, count
-    /// and exclude rows it already returned. The caller passes `false` for
-    /// engines without these catalogs.
-    ///
-    /// A child is dropped only when its parent is itself listed. Keying the
-    /// exclusion on the child alone hid a partition whose parent the role cannot
-    /// read: granting `SELECT` on one partition and nothing on its parent left
-    /// the whole schema listing empty while that partition was perfectly
-    /// readable. The visibility test reuses `information_schema.tables` rather
-    /// than restating its privilege predicate, so the two cannot drift.
-    ///
-    /// Legacy `INHERITS` children stay listed on purpose. Their parent is an
-    /// ordinary table (`relkind = 'r'`), and they are independently useful
-    /// tables rather than an implementation detail of one parent.
     static func query(
         schema: String,
         includeMaterializedViews: Bool,
@@ -73,10 +40,8 @@ nonisolated enum PostgreSQLTableListing {
         )
     }
 
-    /// The same listing over one schema or over every schema `visibleSchemas` returns. The second
-    /// filters by that query itself rather than restating its predicate, so a table is listed here
-    /// exactly when its schema is listed there, and projects each row's schema, which the
-    /// one-schema listing leaves to the caller.
+    /// `pg_class` under `information_schema.tables`' own row test: the view runs its privilege
+    /// checks on every relation in the database before any schema filter applies.
     static func query(
         in listing: PostgreSQLTableListingScope,
         includeMaterializedViews: Bool,
@@ -84,89 +49,100 @@ nonisolated enum PostgreSQLTableListing {
         includeComments: Bool = true,
         includePartitionAwareness: Bool = true
     ) -> String {
-        func schemaFilter(_ column: String) -> String {
-            switch listing {
-            case .schema(let schema):
-                return "\(column) = \(PostgreSQLObjectQueries.quoteLiteral(schema))"
-            case .allSchemas:
-                return "\(column) IN (\n\(visibleSchemas)\n)"
-            }
-        }
-        func schemaColumn(_ column: String) -> String {
-            listing == .allSchemas ? ",\n       \(column) AS schema_name" : ""
-        }
-        let orderBy = listing == .allSchemas ? "ORDER BY schema_name, table_name" : "ORDER BY table_name"
-        func commentColumn(_ oidExpression: String) -> String {
-            includeComments ? "obj_description(\(oidExpression), 'pg_class')" : "NULL::text"
-        }
+        var labels: [(kind: String, label: String)] = includePartitionAwareness ? [("p", "PARTITIONED TABLE")] : []
+        labels.append(("v", "VIEW"))
+        if includeMaterializedViews { labels.append(("m", "MATERIALIZED VIEW")) }
+        if includeForeignTables { labels.append(("f", "FOREIGN TABLE")) }
+        let kinds = ["r", "p"] + labels.map(\.kind).filter { $0 != "p" }
+        let tableType = "CASE c.relkind\n"
+            + labels.map {
+                "           WHEN \(PostgreSQLObjectQueries.quoteLiteral($0.kind)) THEN \(PostgreSQLObjectQueries.quoteLiteral($0.label))\n"
+            }.joined()
+            + "           ELSE 'BASE TABLE' END"
 
-        let classJoin = (includeComments || includePartitionAwareness) ? """
+        let commentColumn = includeComments ? "d.description" : "NULL::text"
+        let partitionCountColumn = includePartitionAwareness
+            ? "CASE WHEN c.relkind = 'p' THEN (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = c.oid) END"
+            : "NULL::bigint"
+        let schemaColumn = listing.projectsSchema ? ",\n       c.nspname AS schema_name" : ""
+        // Unfenced, a reader's five-schema listing ran 42 ms instead of 12; one schema is fastest unfenced.
+        let fence = listing.projectsSchema ? "\n      OFFSET 0" : ""
+        let commentJoin = includeComments ? """
 
-            LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
-            LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
+            LEFT JOIN pg_catalog.pg_description d
+                ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objsubid = 0
+            """ : ""
+        // `relkind = 'p'` rather than `relispartition`, which is PostgreSQL 10. `OFFSET 0` keeps one index
+        // probe per row: as an anti join a misestimate rescanned every partition per row (76 ms, not 16).
+        let partitionExclusion = includePartitionAwareness ? """
+
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM pg_catalog.pg_inherits i
+                    JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                    WHERE i.inhrelid = c.oid
+                      AND parent.relkind = 'p'
+                      AND NOT pg_catalog.pg_is_other_temp_schema(parent.relnamespace)
+                      AND \(visibleRelation("parent"))
+                    OFFSET 0)
             """ : ""
 
-        let tableTypeColumn = includePartitionAwareness
-            ? "CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END"
-            : "t.table_type"
-
-        let partitionCountColumn = includePartitionAwareness ? """
-            CASE WHEN pc.relkind = 'p' THEN (
-                       SELECT count(*)
-                       FROM pg_catalog.pg_inherits ci
-                       WHERE ci.inhparent = pc.oid) END
-            """ : "NULL::bigint"
-
-        let partitionFilter = includePartitionAwareness
-            ? "\n  " + partitionChildExclusion(childOidExpression: "pc.oid")
-            : ""
-
-        var unions: [String] = [
+        return """
+            SELECT c.relname AS table_name,
+                   \(tableType) AS table_type,
+                   \(commentColumn) AS table_comment,
+                   \(partitionCountColumn) AS partition_count\(schemaColumn)
+            FROM (SELECT rc.oid, rc.relname, rc.relkind, rc.relowner, n.oid AS nspoid, n.nspname
+                  FROM pg_catalog.pg_class rc
+                  JOIN pg_catalog.pg_namespace n ON n.oid = rc.relnamespace
+                  WHERE \(namespaceFilter(listing, column: "n.nspname"))
+                    AND \(PostgreSQLObjectQueries.membership("rc.relkind", in: kinds))\(fence)) c\(commentJoin)
+            WHERE c.nspoid <> pg_catalog.pg_my_temp_schema()
+              AND NOT pg_catalog.pg_is_other_temp_schema(c.nspoid)
+              AND \(visibleRelation("c"))\(partitionExclusion)
+            \(orderBy(listing))
             """
-            SELECT t.table_name, \(tableTypeColumn) AS table_type,
-                   \(commentColumn("pc.oid")) AS table_comment,
-                   \(partitionCountColumn) AS partition_count\(schemaColumn("t.table_schema"))
-            FROM information_schema.tables t\(classJoin)
-            WHERE \(schemaFilter("t.table_schema"))
-              AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
+    }
+
+    /// The last rung, for an engine missing a catalog, function or column the catalog form names.
+    static func informationSchemaQuery(in listing: PostgreSQLTableListingScope) -> String {
+        let schemaColumn = listing.projectsSchema ? ",\n       t.table_schema AS schema_name" : ""
+        return """
+            SELECT t.table_name, t.table_type AS table_type,
+                   NULL::text AS table_comment,
+                   NULL::bigint AS partition_count\(schemaColumn)
+            FROM information_schema.tables t
+            WHERE \(namespaceFilter(listing, column: "t.table_schema"))
+              AND t.table_type IN ('BASE TABLE', 'VIEW')
+            \(orderBy(listing))
             """
-        ]
+    }
 
-        if includeMaterializedViews {
-            let matviewJoin = includeComments ? """
+    /// `information_schema.tables`' row test, so a relation is listed here exactly when that view
+    /// would list it.
+    static func visibleRelation(_ alias: String) -> String {
+        """
+        (pg_catalog.pg_has_role(\(alias).relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(\(alias).oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(\(alias).oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+        """
+    }
 
-                LEFT JOIN pg_catalog.pg_namespace mn ON mn.nspname = m.schemaname
-                LEFT JOIN pg_catalog.pg_class mc ON mc.relnamespace = mn.oid AND mc.relname = m.matviewname
-                """ : ""
-            unions.append(
-                """
-                SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-                       \(commentColumn("mc.oid")) AS table_comment,
-                       NULL::bigint AS partition_count\(schemaColumn("m.schemaname"))
-                FROM pg_matviews m\(matviewJoin)
-                WHERE \(schemaFilter("m.schemaname"))
-                """
-            )
+    /// The all-schema form filters by the schema list query itself, so a table is listed exactly
+    /// when `fetchSchemas()` lists its schema, whatever rule `schemata` applies on that release.
+    private static func namespaceFilter(_ listing: PostgreSQLTableListingScope, column: String) -> String {
+        switch listing {
+        case .schema(let schema):
+            return "\(column) = \(PostgreSQLObjectQueries.quoteLiteral(schema))"
+        case .schemas(let schemas):
+            return PostgreSQLObjectQueries.membership(column, in: schemas)
+        case .allSchemas:
+            return "\(column) IN (\n\(visibleSchemas)\n)"
         }
+    }
 
-        if includeForeignTables {
-            let foreignPartitionFilter = includePartitionAwareness
-                ? "\n  " + partitionChildExclusion(childOidExpression: "c.oid")
-                : ""
-            unions.append(
-                """
-                SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-                       \(commentColumn("c.oid")) AS table_comment,
-                       NULL::bigint AS partition_count\(schemaColumn("n.nspname"))
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE \(schemaFilter("n.nspname"))\(foreignPartitionFilter)
-                """
-            )
-        }
-
-        return unions.joined(separator: "\nUNION ALL\n") + "\n" + orderBy
+    private static func orderBy(_ listing: PostgreSQLTableListingScope) -> String {
+        listing.projectsSchema ? "ORDER BY schema_name, table_name" : "ORDER BY table_name"
     }
 
     static func table(fromRow row: [String?]) -> PluginTableInfo? {
@@ -188,26 +164,5 @@ nonisolated enum PostgreSQLTableListing {
         case "VIEW": return "VIEW"
         default: return "TABLE"
         }
-    }
-
-    /// The predicate that keeps a partition out of a flat listing. A foreign
-    /// table can be a partition from PostgreSQL 11, so the foreign-table union
-    /// arm needs it as much as the base arm does: without it one relation was
-    /// listed flat under Foreign Tables and nested under its parent at once.
-    private static func partitionChildExclusion(childOidExpression: String) -> String {
-        """
-            AND NOT EXISTS (
-                  SELECT 1
-                  FROM pg_catalog.pg_inherits i
-                  JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                  JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
-                  WHERE i.inhrelid = \(childOidExpression)
-                    AND parent.relkind IN ('p', 'I')
-                    AND EXISTS (
-                          SELECT 1
-                          FROM information_schema.tables pt
-                          WHERE pt.table_schema = parentns.nspname
-                            AND pt.table_name = parent.relname))
-        """
     }
 }

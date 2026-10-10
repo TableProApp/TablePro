@@ -9,17 +9,12 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Provides cached database schema information for autocomplete
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
 
-    /// How many tables' columns the cache holds, and therefore how large a schema is worth
-    /// preloading in one bulk fetch. The two are one number on purpose: fetching every column of a
-    /// schema and then keeping a fraction of them is the waste the eager load exists to avoid.
-    /// Columns are small next to row data, so this sits well above the point where a bulk fetch is
-    /// still one cheap query.
+    /// The cache's capacity in tables, and the largest schema one bulk column read fills: reading
+    /// every column and keeping a fraction is the waste the preload exists to avoid.
     static let maxCachedTables = 300
-    // MARK: - Properties
 
     /// A column list belongs to a table, and a table is a schema and a name. Keyed by the bare name,
     /// two schemas' `orders` shared one entry and each read whichever had been cached first.
@@ -42,8 +37,22 @@ actor SQLSchemaProvider {
     private var columnAccessOrder: [ColumnCacheKey] = []
     private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     private var loadTask: Task<Void, Never>?
-    private var eagerColumnTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
+
+    private enum ColumnPreload {
+        case idle
+        case awaitingTables(generation: Int)
+        case running(generation: Int, task: Task<Void, Never>)
+        case settled(generation: Int, outcome: Outcome)
+
+        enum Outcome { case loaded, skipped, failed }
+    }
+
+    /// Each state keeps the table-list generation it answered, so a later list reads it as stale.
+    private var columnPreload: ColumnPreload = .idle
+    private var tableListGeneration = 0
+    /// Until a query editor asks, a no-reference completion never starts a bulk read.
+    private var hasEditorDemand = false
 
     struct ColumnMetadataSource: Sendable {
         let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
@@ -126,7 +135,7 @@ actor SQLSchemaProvider {
 
     private func setLoadedTables(_ newTables: [TableInfo]) {
         tables = newTables
-        startEagerColumnLoad()
+        noteTableListWritten()
     }
 
     /// Get the current connection info
@@ -188,7 +197,7 @@ actor SQLSchemaProvider {
     }
 
     /// A lookup that names no schema reads the schema an unqualified fetch targets, which is the one
-    /// the eager preload fills, so `orders` and `public.orders` on PostgreSQL share one entry.
+    /// the column preload fills, so `orders` and `public.orders` on PostgreSQL share one entry.
     private func cacheKey(table: String, schema: String?) -> ColumnCacheKey {
         ColumnCacheKey(schema: (schema ?? eagerLoadSchema)?.lowercased(), name: table.lowercased())
     }
@@ -208,6 +217,7 @@ actor SQLSchemaProvider {
 
     func updateTables(_ newTables: [TableInfo]) {
         tables = newTables
+        noteTableListWritten()
     }
 
     func resetForDatabase(
@@ -228,15 +238,13 @@ actor SQLSchemaProvider {
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
-        startEagerColumnLoad()
+        noteTableListWritten()
     }
 
-    /// Empties the cache without refilling it. The refresh signal that reaches here also runs a
-    /// schema reload, and that ends in `resetForDatabase`, which starts the preload; restarting it
-    /// here as well sends a second whole-schema column query for every refresh.
+    /// Reads nothing. The next editor request or no-reference completion refills it.
     func clearColumnCache() {
-        eagerColumnTask?.cancel()
-        eagerColumnTask = nil
+        if case .running(_, let task) = columnPreload { task.cancel() }
+        columnPreload = .idle
         columnCache.removeAll()
         columnAccessOrder.removeAll()
         columnTasks.removeAll()
@@ -244,15 +252,23 @@ actor SQLSchemaProvider {
         fieldPathTasks.removeAll()
     }
 
-    // MARK: - Eager Column Loading
+    // MARK: - Column Preload
 
-    /// How many tables the bulk fetch will actually return.
-    ///
-    /// `tables` is the union of the current schema and every other schema the sidebar has expanded,
-    /// while `fetchAllColumns()` covers one schema. Counting the union turned the preload off for a
-    /// ten-table `public` as soon as eight other schemas were open. A table the list does not
-    /// attribute to any schema counts, which is what a flat engine reports for all of them; zero
-    /// means the list describes other schemas only, and a fetch sized by it would be a guess.
+    /// Only a query editor's `prepare` calls this. It joins a read in flight and retries a failed one.
+    func requestColumnPreload() {
+        hasEditorDemand = true
+        startColumnPreloadIfStale(retryingFailure: true)
+    }
+
+    /// Reads again for a table list written after a preload had served the previous one.
+    func renewColumnPreload() {
+        guard case .settled(let generation, .loaded) = columnPreload,
+              generation != tableListGeneration else { return }
+        startColumnPreloadIfStale(retryingFailure: false)
+    }
+
+    /// The bulk read covers one schema while `tables` holds every expanded one. Zero means the list
+    /// names other schemas only, so a read sized by it would be a guess.
     private var eagerLoadTableCount: Int {
         tables.filter { isInEagerLoadSchema($0) }.count
     }
@@ -262,23 +278,34 @@ actor SQLSchemaProvider {
         return tableSchema.caseInsensitiveCompare(eagerLoadSchema) == .orderedSame
     }
 
-    private func startEagerColumnLoad() {
-        eagerColumnTask?.cancel()
-        eagerColumnTask = nil
-
+    private func startColumnPreloadIfStale(retryingFailure: Bool) {
+        switch columnPreload {
+        case .awaitingTables(let generation) where generation == tableListGeneration,
+             .running(let generation, _) where generation == tableListGeneration:
+            return
+        case .settled(let generation, let outcome) where generation == tableListGeneration:
+            guard outcome == .failed, retryingFailure else { return }
+        case .idle, .awaitingTables, .running, .settled:
+            break
+        }
+        let generation = tableListGeneration
         let tableCount = eagerLoadTableCount
-        guard tableCount > 0 else { return }
+        guard tableCount > 0 else {
+            columnPreload = .awaitingTables(generation: generation)
+            return
+        }
         guard tableCount <= Self.maxCachedTables else {
             Self.logger.info(
-                "[schema] eager column load skipped tableCount=\(tableCount) limit=\(Self.maxCachedTables)"
+                "[schema] column preload skipped tableCount=\(tableCount) limit=\(Self.maxCachedTables)"
             )
+            columnPreload = .settled(generation: generation, outcome: .skipped)
             return
         }
         let source = metadataSource
         let driver = cachedDriver
         guard source != nil || driver != nil else { return }
-        eagerColumnTask = Task(priority: .utility) {
-            Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
+        Self.logger.info("[schema] column preload starting tableCount=\(tableCount)")
+        let task = Task(priority: .utility) {
             do {
                 let allColumns: [String: [ColumnInfo]]
                 if let source {
@@ -288,22 +315,46 @@ actor SQLSchemaProvider {
                 } else {
                     return
                 }
-                guard !Task.isCancelled else { return }
-                self.populateColumnCache(allColumns)
-                Self.logger.info("[schema] eager column load complete cachedCount=\(self.columnCache.count)")
+                self.commitColumnPreload(.success(allColumns), generation: generation)
             } catch {
-                guard !Task.isCancelled else { return }
-                Self.logger.debug("[schema] eager column load failed: \(error.localizedDescription)")
+                self.commitColumnPreload(.failure(error), generation: generation)
             }
+        }
+        columnPreload = .running(generation: generation, task: task)
+    }
+
+    /// The pooled lease ignores cancellation, so a superseded read still completes and is stopped here.
+    private func commitColumnPreload(_ result: Result<[String: [ColumnInfo]], any Error>, generation: Int) {
+        guard case .running(let running, _) = columnPreload, running == generation else { return }
+        switch result {
+        case .success(let allColumns):
+            populateColumnCache(allColumns)
+            columnPreload = .settled(generation: generation, outcome: .loaded)
+            Self.logger.info("[schema] column preload complete cachedCount=\(self.columnCache.count)")
+        case .failure(let error):
+            columnPreload = .settled(generation: generation, outcome: .failed)
+            Self.logger.debug("[schema] column preload failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
-    /// Fills the cache in the order the schema lists its tables, so which tables survive the cache
-    /// limit is the same on every run. Walking the fetched dictionary took whatever order hashing
-    /// produced, which made the cached set differ between two loads of the same database.
-    ///
-    /// The fetch covers the eager-load schema alone, so only a table listed in that schema takes an
-    /// entry from it. A same-named table in another schema is fetched on its own when asked for.
+    /// A request the previous list had not served yet is served against this one. A settled preload
+    /// waits for the next request.
+    private func noteTableListWritten() {
+        tableListGeneration &+= 1
+        switch columnPreload {
+        case .awaitingTables:
+            startColumnPreloadIfStale(retryingFailure: true)
+        case .running(_, let task):
+            task.cancel()
+            columnPreload = .idle
+            startColumnPreloadIfStale(retryingFailure: true)
+        case .idle, .settled:
+            break
+        }
+    }
+
+    /// In the schema's own table order, so the tables kept under the cache limit are the same every
+    /// run. Only a table listed in the preload schema takes an entry from the read.
     private func populateColumnCache(_ allColumns: [String: [ColumnInfo]]) {
         var pending: [String: [ColumnInfo]] = [:]
         pending.reserveCapacity(allColumns.count)
@@ -329,7 +380,8 @@ actor SQLSchemaProvider {
     }
 
     func waitForEagerColumnLoad() async {
-        await eagerColumnTask?.value
+        guard case .running(_, let task) = columnPreload else { return }
+        await task.value
     }
 
     /// Find table name from alias
@@ -547,15 +599,8 @@ actor SQLSchemaProvider {
         return paths
     }
 
-    /// Values a column is restricted to, when the database declares them (a PostgreSQL enum type,
-    /// a MongoDB `$jsonSchema` enum). Returns nothing for an ordinary column.
-    ///
-    /// Reads only what the column cache already holds, because completion runs on every keystroke
-    /// and this must never add a fetch of its own. The cache is filled by the eager preload on a
-    /// schema small enough to preload, and otherwise by `getColumns`, which column completion on the
-    /// same statement has already called for every table the statement names. A statement whose
-    /// value position is reached before any column completion ran therefore offers nothing here
-    /// until the next request.
+    /// Reads only the column cache, because completion runs per keystroke and must not add a fetch.
+    /// Until the preload or this statement's column completion has read the table, it offers nothing.
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
         let name = column.lowercased()
         let candidates = references.isEmpty
@@ -626,9 +671,10 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Get completion items for all columns from cached tables (zero network).
-    /// Used as fallback when no table references exist in the current statement.
+    /// Only the bulk cache can answer a statement that names no table, so once an editor has asked, a
+    /// stale cache starts a read here. This call answers from what is cached and never waits.
     func allColumnsFromCachedTables() async -> [SQLCompletionItem] {
+        if hasEditorDemand { startColumnPreloadIfStale(retryingFailure: false) }
         guard !columnCache.isEmpty else { return [] }
 
         let canonicalNames = Dictionary(

@@ -51,6 +51,10 @@ A database with only tables lists them flat, with no group to open first.
 
 On an engine that groups by database, each database is listed from what the server says it holds. One the account can list but not open is left out, so the rest of the tree still opens.
 
+On an engine that groups by schema, the tree lists the schemas the sidebar's [schema filter](/features/connection-window#filtering-schemas) keeps, plus the schema you are browsing, the default schema (`public` on PostgreSQL), the schema of each table you opened the dialog on, and every schema a saved selection names. Right-click a database or schema and choose **Export…** to list every schema it covers, filter or not.
+
+The default schema and the schemas of the tables you opened the dialog on open expanded, and the rest collapsed. A collapsed schema lists its tables and views only: expand it, or select its checkbox, to read its routines, triggers, sequences and types. **Export** is dimmed until they arrive. A database or schema exported with **Export…** is read in full from the start.
+
 Arrow keys move through the tree, Left and Right close and open a group, and Space ticks every selected row. Ticking a group ticks everything under it.
 
 Only SQL writes every group. CSV, JSON and XLSX take tables and views, and switching to one of them drops the rest from the tree. Per-object checkboxes follow the kind: **Data** is off the row for anything without rows, and a privilege row carries neither **Drop** nor **Data**.

@@ -67,6 +67,53 @@ struct AllSchemaTablesDemandTests {
         await disconnect(connection)
     }
 
+    @Test("A different selection is asked for at the same revision")
+    func differentSelectionIsRequested() async {
+        let connection = await connectedListing()
+        var demand = AllSchemaTablesDemand()
+        demand.noteRequested(connectionId: connection.id, database: connection.database, service: service)
+
+        #expect(!demand.needsRequest(connectionId: connection.id, database: connection.database, service: service))
+        #expect(demand.needsRequest(
+            connectionId: connection.id, database: connection.database, selection: .only(["public"]), service: service
+        ))
+        await disconnect(connection)
+    }
+
+    /// A wider selection moves the revision, so the one noted must be read after recording it, or the
+    /// next check would see a revision it never asked at and ask again.
+    @Test("Asking with a selection the listing cannot answer notes the revision its read runs at")
+    func widerSelectionIsNotedWithItsRevision() async {
+        let connection = await connectedListing()
+        service.selectAllSchemaTables(.only(["public"]), connectionId: connection.id, database: connection.database)
+        let before = service.allSchemaTablesRevision(connectionId: connection.id, database: connection.database)
+        var demand = AllSchemaTablesDemand()
+
+        demand.noteRequested(connectionId: connection.id, database: connection.database, selection: .all, service: service)
+
+        #expect(service.allSchemaTablesRevision(connectionId: connection.id, database: connection.database) == before + 1)
+        #expect(service.requestedAllSchemaTablesSelection(connectionId: connection.id, database: connection.database) == .all)
+        #expect(!demand.needsRequest(connectionId: connection.id, database: connection.database, selection: .all, service: service))
+        await disconnect(connection)
+    }
+
+    @Test("A narrower selection over a current listing is noted without moving the revision")
+    func narrowerSelectionKeepsTheRevision() async {
+        let connection = await connectedListing()
+        let before = service.allSchemaTablesRevision(connectionId: connection.id, database: connection.database)
+        var demand = AllSchemaTablesDemand()
+
+        demand.noteRequested(
+            connectionId: connection.id, database: connection.database, selection: .only(["public"]), service: service
+        )
+
+        #expect(service.allSchemaTablesRevision(connectionId: connection.id, database: connection.database) == before)
+        #expect(!demand.needsRequest(
+            connectionId: connection.id, database: connection.database, selection: .only(["public"]), service: service
+        ))
+        await disconnect(connection)
+    }
+
     @Test("Starting a new search asks again whatever was asked before")
     func resetForgetsEarlierRequests() async {
         let connection = await connectedListing()

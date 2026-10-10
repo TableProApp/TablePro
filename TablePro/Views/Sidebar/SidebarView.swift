@@ -56,19 +56,28 @@ struct SidebarView: View {
               DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy) else { return [] }
         let searchText = viewModel.filterQuery
         let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
+        let pending = Set(pendingTruncates.union(pendingDeletes).compactMap { ref -> String? in
+            (ref.database ?? database) == database ? ref.qualifyingSchema : nil
+        })
         return DatabaseTreeFilter.otherSchemaMatches(
             database: database,
             browsedSchema: coordinator?.toolbarState.currentSchema,
             searchText: searchText,
             hiddenSchemas: settingsManager.general.showSystemContainers ? [] : systemSchemas,
             allSchemaTables: treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database),
-            loadedContent: { schema in
+            keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database)?
+                .union(pending),
+            covered: DatabaseTreeFilter.coveredSchemas(
+                treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            ),
+            loadedContent: { schema, listingMatches in
                 DatabaseTreeFilter.loadedObjectBuckets(
                     in: treeMetadata,
                     connectionId: connectionId,
                     database: database,
                     schema: schema,
-                    searchText: searchText
+                    searchText: searchText,
+                    listingMatches: listingMatches
                 )
             }
         )

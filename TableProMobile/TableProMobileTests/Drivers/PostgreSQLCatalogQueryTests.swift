@@ -47,8 +47,8 @@ struct PostgreSQLCatalogQueryTests {
         #expect(tables.first?.type.allowsTruncate == false)
     }
 
-    @Test("the listing reads pg_matviews and pg_foreign_table only when the probe found them")
-    func optionalCatalogsFollowTheProbe() {
+    @Test("the listing names materialized views and foreign tables by relkind only when the probe found them")
+    func relationKindsFollowTheProbe() {
         let withCatalogs = PostgreSQLDriver.tablesQuery(
             schema: "public", databaseType: .postgresql, presence: Self.allCatalogs
         )
@@ -58,30 +58,42 @@ struct PostgreSQLCatalogQueryTests {
             presence: PostgreSQLDriver.presence(probedRows: [["pg_sequences"]])
         )
 
-        #expect(withCatalogs.contains("FROM pg_matviews m"))
-        #expect(withCatalogs.contains("FROM pg_foreign_table ft"))
-        #expect(!withoutCatalogs.contains("pg_matviews"))
-        #expect(!withoutCatalogs.contains("pg_foreign_table"))
+        #expect(withCatalogs.contains("rc.relkind IN ('r', 'p', 'v', 'm', 'f')"))
+        #expect(withoutCatalogs.contains("rc.relkind IN ('r', 'p', 'v')"))
+        for query in [withCatalogs, withoutCatalogs] {
+            #expect(!query.contains("pg_matviews"))
+            #expect(!query.contains("pg_foreign_table"))
+        }
     }
 
-    @Test("a failed catalog probe lists without the optional catalogs")
+    @Test("a failed catalog probe lists tables and views from pg_class")
     func failedProbeMeansAbsent() {
         let presence = PostgreSQLDriver.presence(probedRows: nil)
 
         #expect(!presence.hasMaterializedViews)
         #expect(!presence.hasForeignTables)
         let query = PostgreSQLDriver.tablesQuery(schema: "public", databaseType: .postgresql, presence: presence)
-        #expect(!query.contains("pg_matviews"))
-        #expect(!query.contains("pg_foreign_table"))
-        #expect(query.contains("FROM information_schema.tables t"))
+        #expect(query.contains("rc.relkind IN ('r', 'p', 'v')"))
+        #expect(query.contains("FROM pg_catalog.pg_class rc"))
+        #expect(!query.contains("information_schema.tables"))
     }
 
     @Test("the iOS listing reads no comments and keeps partitions listed flat")
     func noCommentsOrPartitionAwareness() {
         let query = PostgreSQLDriver.tablesQuery(schema: "public", databaseType: .postgresql, presence: Self.allCatalogs)
 
-        #expect(!query.contains("obj_description"))
+        #expect(!query.contains("pg_description"))
         #expect(!query.contains("pg_inherits"))
+        #expect(!query.contains("PARTITIONED TABLE"))
+    }
+
+    @Test("a failed catalog listing falls back to the information_schema form, except on Redshift")
+    func fallbackListing() {
+        let fallback = PostgreSQLDriver.fallbackTablesQuery(schema: "o'brien", databaseType: .postgresql)
+
+        #expect(fallback == PostgreSQLTableListing.informationSchemaQuery(in: .schema("o'brien")))
+        #expect(fallback?.contains("WHERE t.table_schema = 'o''brien'") == true)
+        #expect(PostgreSQLDriver.fallbackTablesQuery(schema: "public", databaseType: .redshift) == nil)
     }
 
     @Test("Redshift keeps the listing the macOS Redshift driver runs")
@@ -217,6 +229,18 @@ struct PostgreSQLCatalogQueryTests {
         #expect(query.contains("c.table_schema = 'o''brien' AND c.table_name = 'it''s'"))
         #expect(query.contains("mvn.nspname = 'o''brien'"))
         #expect(query.contains("AND mvc.relname = 'it''s'"))
+    }
+
+    @Test("the key subquery pairs each constraint with its own table")
+    func columnKeySubqueryIsTableScoped() {
+        let query = PostgreSQLDriver.columnsQuery(
+            schema: "public",
+            table: "orders",
+            shape: PostgreSQLColumnReadShape(includesIdentityColumns: true, includesMaterializedViews: false)
+        )
+
+        #expect(query.contains("AND tc.table_name = kcu.table_name"))
+        #expect(query.contains("AND tc.table_name = 'orders'"))
     }
 
     @Test("materialized view rows decode like table rows")

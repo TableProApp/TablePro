@@ -100,6 +100,8 @@ final class SidebarViewModel: ObservableObject {
         searchTextObservation = sharedState.onMainActorChange { [weak self] in
             guard let self else { return }
             self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
+            // The schema filter lives there too, and an edit to it during a search selects another listing.
+            self.loadAllSchemaTablesForSearch()
         }
     }
 
@@ -542,13 +544,16 @@ final class SidebarViewModel: ObservableObject {
                 service.schemaList.compactMap { key, state in
                     key.connectionId == connectionId && state.value != nil ? key.database : nil
                 }
-            )
+            ),
+            layout: sharedState.sidebarLayout
         )
         let isConnected = DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        let schemaFilter = SidebarSchemaFilter()
         for database in databases {
             listingDemand.requestIfNeeded(
                 connectionId: connectionId,
                 database: database,
+                selection: schemaFilter.selection(connectionId: connectionId, database: database),
                 isConnected: isConnected,
                 service: service
             )
@@ -561,12 +566,16 @@ final class SidebarViewModel: ObservableObject {
     nonisolated static func databasesListedForSearch(
         grouping: GroupingStrategy,
         browsedDatabase: String?,
-        databasesWithSchemaLists: Set<String>
+        databasesWithSchemaLists: Set<String>,
+        layout: SidebarLayout = .tree
     ) -> Set<String> {
         switch grouping {
         case .bySchema:
-            guard let browsedDatabase, !browsedDatabase.isEmpty else { return databasesWithSchemaLists }
-            return databasesWithSchemaLists.union([browsedDatabase])
+            let browsed = browsedDatabase.flatMap { $0.isEmpty ? nil : $0 }
+            // The flat list never shows another database.
+            if layout == .flat { return Set([browsed].compactMap { $0 }) }
+            guard let browsed else { return databasesWithSchemaLists }
+            return databasesWithSchemaLists.union([browsed])
         case .hierarchicalSchema:
             return Set([browsedDatabase].compactMap { $0 })
         case .flat, .byDatabase:

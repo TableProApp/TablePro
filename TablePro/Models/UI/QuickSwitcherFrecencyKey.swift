@@ -23,6 +23,10 @@ internal enum QuickSwitcherFrecencyKey {
         qualified("table_\(IdentityPath.qualified(name: name, schema: schema))", by: qualifier)
     }
 
+    static func isTable(_ key: String, in qualifier: DatabaseQualifier) -> Bool {
+        key.hasPrefix(qualified("table_", by: qualifier))
+    }
+
     static func schema(_ name: String, in qualifier: DatabaseQualifier) -> String {
         qualified("schema_\(name)", by: qualifier)
     }

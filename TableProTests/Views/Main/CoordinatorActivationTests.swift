@@ -22,49 +22,71 @@ struct CoordinatorActivationTests {
         let mock = harness.connectBackground()
         harness.controller.workspaces.select(harness.background.connectionId)
         let coordinator = try #require(harness.background.sessionState?.coordinator)
-        await harness.settle { coordinator.isActivated && mock.fetchAllColumnsCallCount > 0 && coordinator.schemaLoadTask == nil }
-        try #require(mock.fetchAllColumnsCallCount > 0)
+        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        try #require(harness.isAutocompletePopulated)
         let tablesFetched = mock.fetchTablesCallCount
-        let columnsFetched = mock.fetchAllColumnsCallCount
 
         for _ in 0..<3 {
-            harness.controller.workspaces.select(harness.foreground.connectionId)
-            await harness.settle(for: 0.1)
+            await harness.switchAway()
             let activations = coordinator.activationCount
             harness.controller.workspaces.select(harness.background.connectionId)
             await harness.settle { coordinator.activationCount > activations && coordinator.schemaLoadTask == nil }
-            /// The column fetch is the provider's own task, started after the load returns.
             await harness.settle(for: 0.5)
         }
 
         #expect(coordinator.activationCount >= 4)
         #expect(mock.fetchTablesCallCount == tablesFetched)
-        #expect(mock.fetchAllColumnsCallCount == columnsFetched)
+        #expect(mock.fetchAllColumnsCallCount == 0)
 
-        /// The control: with the autocomplete provider gone, the same switch does fetch, so the
-        /// unchanged counts above were measured on a path that would have shown a reload.
+        // Controls: a dropped provider is rebuilt from the loaded catalog without a read, and a
+        // dropped catalog is read again, so the counts above were measured where a reload shows.
         SchemaProviderRegistry.shared.clear(for: harness.backgroundConnection.id)
-        harness.controller.workspaces.select(harness.foreground.connectionId)
-        await harness.settle(for: 0.1)
+        await harness.switchAway()
         harness.controller.workspaces.select(harness.background.connectionId)
-        await harness.settle { mock.fetchAllColumnsCallCount > columnsFetched }
+        await harness.settle { harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
 
-        #expect(mock.fetchAllColumnsCallCount > columnsFetched)
+        #expect(harness.isAutocompletePopulated)
+        #expect(mock.fetchTablesCallCount == tablesFetched)
+
+        await harness.switchAway()
+        await SchemaService.shared.invalidate(connectionId: harness.backgroundConnection.id)
+        harness.controller.workspaces.select(harness.background.connectionId)
+        await harness.settle { mock.fetchTablesCallCount > tablesFetched }
+
+        #expect(mock.fetchTablesCallCount > tablesFetched)
+        #expect(mock.fetchAllColumnsCallCount == 0)
     }
 
-    @Test("Opening a connection fetches its columns once")
-    func openingFetchesColumnsOnce() async throws {
+    @Test("Opening a connection reads its tables once and no columns")
+    func openingReadsTablesOnceAndNoColumns() async throws {
         let harness = Harness()
         defer { harness.tearDown() }
         let mock = harness.connectBackground()
         harness.controller.workspaces.select(harness.background.connectionId)
         let coordinator = try #require(harness.background.sessionState?.coordinator)
 
-        await harness.settle { coordinator.isActivated && mock.fetchAllColumnsCallCount > 0 && coordinator.schemaLoadTask == nil }
+        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
         await harness.settle(for: 0.2)
 
+        #expect(harness.isAutocompletePopulated)
         #expect(mock.fetchTablesCallCount == 1)
-        #expect(mock.fetchAllColumnsCallCount == 1)
+        #expect(mock.fetchAllColumnsCallCount == 0)
+    }
+
+    /// The store refuses a second load for a scope already loading, so a prefetch left running by
+    /// the connect is what would make this one return nil.
+    @Test("Opening a connection starts no foreign-key read")
+    func openingStartsNoForeignKeyRead() async throws {
+        let harness = Harness()
+        defer { harness.tearDown() }
+        let mock = harness.connectBackground(bulkForeignKeyFetch: true)
+        harness.controller.workspaces.select(harness.background.connectionId)
+        let coordinator = try #require(harness.background.sessionState?.coordinator)
+        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        let scope = try #require(DatabaseManager.shared.browseScope(for: harness.backgroundConnection.id))
+
+        #expect(mock.providesBulkForeignKeyFetch)
+        #expect(SchemaForeignKeyStore.shared.prefetch(scope: scope) { nil } != nil)
     }
 
     @Test("A file connection starts one watcher however often it appears")
@@ -83,6 +105,54 @@ struct CoordinatorActivationTests {
         coordinator.markActivated()
 
         #expect(coordinator.fileWatcher === watcher)
+    }
+
+    /// Nothing re-reads a tree list until it is marked, and the change came from another process,
+    /// so no catalog change of this app's own will mark it.
+    @Test("An external change to the database file marks the tree's loaded lists stale")
+    func fileChangeMarksTreeListsStale() async throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("activation-\(UUID().uuidString).sqlite")
+        FileManager.default.createFile(atPath: file.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: file) }
+        let connection = TestFixtures.makeConnection(database: file.path, type: .sqlite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        // SQLite metadata reads lease a pooled connection, and only a plugin can open one.
+        let scope = try #require(DatabaseManager.shared.browseScope(for: connection.id))
+        for workload in [MetadataConnectionPool.Workload.interactive, .bulk] {
+            MetadataConnectionPool.shared.injectEntry(driver, scope: scope, workload: workload)
+        }
+        let tree = DatabaseTreeMetadataService.shared
+        await tree.loadTables(connectionId: connection.id, database: connection.database, schema: nil)
+        let coordinator = SessionStateFactory.create(connection: connection, payload: nil).coordinator
+        defer {
+            coordinator.teardown()
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+        try #require(tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil))
+        coordinator.markActivated()
+        try #require(coordinator.fileWatcher != nil)
+        for _ in 0 ..< 50 where coordinator.schemaLoadTask != nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try #require(
+            tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil),
+            "Opening the connection marked the list before the file changed"
+        )
+
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.write(contentsOf: Data("changed".utf8))
+        try handle.close()
+        for _ in 0 ..< 300 where tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(!tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil))
+        await tree.handleDisconnect(connectionId: connection.id)
     }
 
     /// One window hosting two connections. The background one has no database name, so its browse
@@ -116,8 +186,14 @@ struct CoordinatorActivationTests {
             window.orderFront(nil)
         }
 
-        func connectBackground() -> MockDatabaseDriver {
+        var isAutocompletePopulated: Bool {
+            guard let scope = DatabaseManager.shared.browseScope(for: backgroundConnection.id) else { return false }
+            return SchemaProviderRegistry.shared.isPopulated(scope)
+        }
+
+        func connectBackground(bulkForeignKeyFetch: Bool = false) -> MockDatabaseDriver {
             let mock = MockDatabaseDriver(connection: backgroundConnection)
+            mock.bulkForeignKeyFetch = bulkForeignKeyFetch
             mock.tablesToReturn = [
                 TestFixtures.makeTableInfo(name: "users"),
                 TestFixtures.makeTableInfo(name: "orders"),
@@ -143,6 +219,11 @@ struct CoordinatorActivationTests {
             }
         }
 
+        func switchAway() async {
+            controller.workspaces.select(foreground.connectionId)
+            await settle(for: 0.1)
+        }
+
         func settle(for interval: TimeInterval) async {
             let deadline = Date(timeIntervalSinceNow: interval)
             while Date() < deadline {
@@ -161,6 +242,7 @@ struct CoordinatorActivationTests {
             window.contentViewController = nil
             background.teardown()
             foreground.teardown()
+            SchemaForeignKeyStore.shared.invalidate(connectionId: backgroundConnection.id)
             DatabaseManager.shared.removeSession(for: backgroundConnection.id)
         }
 

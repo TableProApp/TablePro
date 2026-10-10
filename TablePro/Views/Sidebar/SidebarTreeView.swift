@@ -34,7 +34,9 @@ struct SidebarTreeView: View {
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
             activeSchema: coordinator?.toolbarState.currentSchema,
-            showsSystem: settingsManager.general.showSystemContainers
+            showsSystem: settingsManager.general.showSystemContainers,
+            selected: sidebarState.schemaFilter(for: activeDatabase),
+            pinned: Set(pendingTruncates.union(pendingDeletes).compactMap(\.qualifyingSchema))
         )
     }
 
@@ -77,7 +79,15 @@ struct SidebarTreeView: View {
             } else if !searchText.isEmpty && visibleSchemas.isEmpty {
                 noMatchState
             } else {
-                treeList
+                VStack(spacing: 0) {
+                    SidebarSchemaFilterBanner(
+                        connectionId: connectionId,
+                        database: activeDatabase,
+                        databaseType: viewModel.databaseType,
+                        sidebarState: sidebarState
+                    )
+                    treeList
+                }
             }
         }
     }

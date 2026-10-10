@@ -24,6 +24,7 @@ internal final class QuickSwitcherCatalogStore {
         internal let schemaGeneration: Int
         internal let isRefreshing: Bool
         internal let databaseFilter: [String]
+        internal let schemaFilter: [String]
         internal let contentRevision: Int
         /// The database and schema names the catalog listed, taken from the same metadata service
         /// the sidebar tree reads. Dropping or creating a container refreshes that service and

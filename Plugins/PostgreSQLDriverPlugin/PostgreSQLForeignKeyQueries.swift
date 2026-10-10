@@ -9,7 +9,10 @@ import TableProPluginKit
 enum PostgreSQLForeignKeyQueries {
     static func foreignKeyList(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        let tablePredicate = table.map { "\n                AND src.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        // The namespace comes from the constraint, so the whole-schema read never joins `pg_class` for
+        // every constraint in the database; `SET SCHEMA` moves a table's constraints with it.
+        let tableJoin = table == nil ? "" : "\n    JOIN pg_catalog.pg_class src ON src.oid = c.conrelid"
+        let tablePredicate = table.map { "\n        AND src.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
         let clonePredicate = capabilities.hasConstraintParent ? """
 
                     AND NOT EXISTS (
@@ -33,8 +36,7 @@ enum PostgreSQLForeignKeyQueries {
                 SELECT c.conname, c.conrelid, c.confrelid, c.confdeltype, c.confupdtype, c.conkey, c.confkey,
                        pg_catalog.generate_subscripts(c.conkey, 1) AS ord
                 FROM pg_catalog.pg_constraint c
-                JOIN pg_catalog.pg_class src ON src.oid = c.conrelid
-                JOIN pg_catalog.pg_namespace ns ON ns.oid = src.relnamespace
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = c.connamespace\(tableJoin)
                 WHERE c.contype = 'f'
                     AND ns.nspname = \(schemaLiteral)\(tablePredicate)\(clonePredicate)
             ) con

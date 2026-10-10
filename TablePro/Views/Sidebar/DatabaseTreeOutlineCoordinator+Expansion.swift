@@ -62,7 +62,7 @@ extension DatabaseTreeOutlineCoordinator {
             for schemaNode in resolvedChildren(of: databaseNode) {
                 guard case .schema(let database, let schema) = schemaNode.kind else { continue }
                 let wantSchema = searching
-                    ? schemaSearchVerdict(database: database, schema: schema) == .match
+                    ? searchOpens(schemaNode, database: database, schema: schema)
                     : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
@@ -71,6 +71,20 @@ extension DatabaseTreeOutlineCoordinator {
                 }
             }
         }
+    }
+
+    /// A schema matched by its own name alone stays closed, since opened it shows an empty container.
+    /// One already open stays open, so a row opened by hand does not snap shut when its read lands.
+    private func searchOpens(_ node: DatabaseTreeNode, database: String, schema: String) -> Bool {
+        guard schemaSearchVerdict(database: database, schema: schema) == .match else { return false }
+        if outlineView?.isItemExpanded(node) == true { return true }
+        return !objectBuckets(database: database, schema: schema).isEmpty
+    }
+
+    /// The flag is down for a click, so a schema opened by hand mid-search reads like any other.
+    private var disclosureOrigin: DatabaseTreeFilter.DisclosureOrigin {
+        guard isApplyingExpansion else { return .user }
+        return searchText.isEmpty ? .restore : .search
     }
 
     /// A connection knows where it is browsing from the moment it connects, so the tree can
@@ -233,7 +247,7 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .database(let metadata):
             if supportsSchemaLevel {
-                if isIdle(service.schemaListState(connectionId: connectionId, database: metadata.name)) {
+                if service.schemaListNeedsFetch(connectionId: connectionId, database: metadata.name) {
                     Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
                 }
                 loadExternalSchemaNames(database: metadata.name)
@@ -241,6 +255,9 @@ extension DatabaseTreeOutlineCoordinator {
                 loadObjects(database: metadata.name, schema: nil)
             }
         case .schema(let database, let schema):
+            guard DatabaseTreeFilter.readsOnDisclosure(origin: disclosureOrigin)
+                || isOpenedByUser(database: database, schema: schema)
+            else { return }
             loadObjects(database: database, schema: schema)
         case .table(let ref):
             loadPartitions(ref)
@@ -253,6 +270,13 @@ extension DatabaseTreeOutlineCoordinator {
              .redisKeysSection, .redisNode:
             break
         }
+    }
+
+    /// A schema the user has open keeps reading the lists a change overtook while a search runs; one
+    /// the search opened shows the listing's tables instead.
+    internal func isOpenedByUser(database: String, schema: String) -> Bool {
+        let key = DatabaseSchemaKey(database: database, schema: schema)
+        return windowState?.expandedTreeDatabaseSchemas.contains(key) == true || schemasOpenedDuringSearch.contains(key)
     }
 
     /// An expanded schema is the reader a catalog change waits for: it reads a schema never read,
@@ -284,10 +308,9 @@ extension DatabaseTreeOutlineCoordinator {
     private func loadPartitions(_ ref: DatabaseTreeTableRef) {
         guard showsPartitions, ref.table.type == .partitionedTable else { return }
         let database = ref.database ?? ""
-        let state = service.partitionsLoadState(
+        guard service.partitionsNeedFetch(
             connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
-        )
-        guard isIdle(state) else { return }
+        ) else { return }
         Task {
             await service.loadPartitions(
                 connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
@@ -295,23 +318,11 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// An expanded container whose lists a change overtook reads them again on the next pass; a
+    /// collapsed one waits until it is opened.
     private func loadObjects(database: String, schema: String?) {
-        if isIdle(service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadTables(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadRoutines(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadTriggers(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.typesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadUserDefinedTypes(connectionId: connectionId, database: database, schema: schema) }
-        }
-    }
-
-    private func isIdle<Value>(_ state: MetadataLoadState<Value>) -> Bool {
-        if case .idle = state { return true }
-        return false
+        guard service.objectsNeedFetch(connectionId: connectionId, database: database, schema: schema) else { return }
+        let connectionId = connectionId
+        Task { await service.loadObjects(connectionId: connectionId, database: database, schema: schema) }
     }
 }

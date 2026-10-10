@@ -22,9 +22,14 @@ struct ExportTreeBuilderTests {
         var groupedTables: [String: [TableInfo]] = [:]
         var databasesFailing: Set<String> = []
         var failsDatabaseList = false
+        var listsSchemaSets = true
+        var extraListingRows: [TableInfo] = []
+        var sideObjectsBySchema: [String: [ExportObjectItem]] = [:]
         /// Every schema argument the builder asked about, in order, with nil for the connection's own.
         private(set) var requestedSchemas: [String?] = []
+        private(set) var requestedSchemaSets: [[String]] = []
         private(set) var loadedContainers: [String] = []
+        private(set) var loadRequests: [ExportObjectLoader.Request] = []
 
         init(
             schemas: [String] = [],
@@ -33,7 +38,9 @@ struct ExportTreeBuilderTests {
             flatTables: [TableInfo] = [],
             groupedTables: [String: [TableInfo]] = [:],
             databasesFailing: Set<String> = [],
-            failsDatabaseList: Bool = false
+            failsDatabaseList: Bool = false,
+            listsSchemaSets: Bool = true,
+            sideObjectsBySchema: [String: [ExportObjectItem]] = [:]
         ) {
             self.schemas = schemas
             self.databases = databases
@@ -42,6 +49,12 @@ struct ExportTreeBuilderTests {
             self.groupedTables = groupedTables
             self.databasesFailing = databasesFailing
             self.failsDatabaseList = failsDatabaseList
+            self.listsSchemaSets = listsSchemaSets
+            self.sideObjectsBySchema = sideObjectsBySchema
+        }
+
+        func loadRequest(for container: String) -> ExportObjectLoader.Request? {
+            loadRequests.last { $0.containerName == container }
         }
 
         struct ReadFailure: Error {}
@@ -60,17 +73,31 @@ struct ExportTreeBuilderTests {
             return tablesBySchema[schema] ?? []
         }
 
+        func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
+            requestedSchemaSets.append(schemas)
+            guard listsSchemaSets else { return nil }
+            let rows = schemas.flatMap { schema in
+                (tablesBySchema[schema] ?? []).map {
+                    TableInfo(name: $0.name, type: $0.type, rowCount: nil, schema: schema)
+                }
+            }
+            return rows + extraListingRows
+        }
+
         func fetchTablesGroupedByDatabase() async -> [String: [TableInfo]] { groupedTables }
 
         func loadObjects(request: ExportObjectLoader.Request, tables: [TableInfo]) async -> [ExportObjectItem] {
             loadedContainers.append(request.containerName)
-            return tables.map {
+            loadRequests.append(request)
+            let tableItems = tables.map {
                 ExportObjectItem(
                     name: $0.name,
                     databaseName: request.containerName,
                     kind: PluginExportObjectKind.from(tableType: $0.type.rawValue)
                 )
             }
+            let sideItems = (sideObjectsBySchema[request.containerName] ?? []).filter { request.kinds.contains($0.kind) }
+            return tableItems + sideItems
         }
 
         func columnNames(table: String, schema: String?) async -> [String] { [] }
@@ -115,7 +142,10 @@ struct ExportTreeBuilderTests {
         typeId: String,
         preselection: ExportPreselection,
         reader: FakeReader,
-        database: String = "app"
+        database: String = "app",
+        supportedObjectKinds: Set<PluginExportObjectKind> = [.table, .view],
+        schemaFilter: Set<String> = [],
+        pinnedSchemas: Set<String> = []
     ) -> ExportTreeBuilder {
         registerTypes()
         var connection = TestFixtures.makeConnection(database: database)
@@ -124,13 +154,245 @@ struct ExportTreeBuilderTests {
             connection: connection,
             exportDatabaseName: database,
             preselection: preselection,
-            supportedObjectKinds: [.table, .view],
+            supportedObjectKinds: supportedObjectKinds,
+            schemaFilter: schemaFilter,
+            pinnedSchemas: pinnedSchemas,
             reader: reader
         )
     }
 
     private static func makeTable(_ name: String) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: nil)
+    }
+
+    private static let sqlKinds: Set<PluginExportObjectKind> = [.table, .view, .routine, .sequence, .grant]
+
+    private static func routine(_ name: String, in schema: String) -> ExportObjectItem {
+        ExportObjectItem(name: name, databaseName: schema, kind: .routine)
+    }
+
+    private static func threeSchemaReader(listsSchemaSets: Bool = true) -> FakeReader {
+        FakeReader(
+            schemas: ["public", "archive", "reporting"],
+            tablesBySchema: [
+                "public": [makeTable("users")],
+                "archive": [makeTable("old")],
+                "reporting": [makeTable("orders")],
+            ],
+            listsSchemaSets: listsSchemaSets
+        )
+    }
+
+    @Test("The tables of every shown schema come from one listing")
+    func shownSchemasShareOneListing() async throws {
+        let reader = Self.threeSchemaReader()
+        let builder = Self.builder(typeId: Self.schemaTypeId, preselection: .tables(names: [], scope: nil), reader: reader)
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(reader.requestedSchemaSets == [["public", "archive", "reporting"]])
+        #expect(reader.requestedSchemas.isEmpty)
+        #expect(items.first { $0.name == "archive" }?.objects.map(\.name) == ["old"])
+        #expect(items.first { $0.name == "reporting" }?.objects.map(\.name) == ["orders"])
+    }
+
+    @Test("An engine with no set listing is read schema by schema")
+    func engineWithoutSetListingReadsPerSchema() async throws {
+        let reader = Self.threeSchemaReader(listsSchemaSets: false)
+        let builder = Self.builder(typeId: Self.schemaTypeId, preselection: .tables(names: [], scope: nil), reader: reader)
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(reader.requestedSchemas == ["public", "archive", "reporting"])
+        #expect(items.map(\.name) == ["public", "archive", "reporting"])
+    }
+
+    @Test("A schema the filter hides is neither listed nor read")
+    func filteredSchemaIsNotRead() async throws {
+        let reader = FakeReader(
+            schemas: ["public", "legacy", "reporting"],
+            tablesBySchema: [
+                "public": [Self.makeTable("users")],
+                "legacy": [Self.makeTable("old")],
+                "reporting": [Self.makeTable("orders")],
+            ]
+        )
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: reader,
+            schemaFilter: ["reporting"]
+        )
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(reader.requestedSchemaSets == [["public", "reporting"]])
+        #expect(!reader.loadedContainers.contains("legacy"))
+        #expect(items.map(\.name) == ["public", "reporting"])
+    }
+
+    @Test("A schema the dialog was asked about is shown even when the filter leaves it out")
+    func askedAboutSchemasIgnoreTheFilter() async throws {
+        let schemas = ["public", "sales", "saved", "legacy"]
+        let reader = FakeReader(
+            schemas: schemas,
+            tablesBySchema: Dictionary(uniqueKeysWithValues: schemas.map { ($0, [Self.makeTable("t_\($0)")]) })
+        )
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: ["t_sales"], scope: .schema(database: "app", schema: "sales")),
+            reader: reader,
+            schemaFilter: ["reporting"],
+            pinnedSchemas: ["saved"]
+        )
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(items.map(\.name) == ["public", "sales", "saved"])
+    }
+
+    @Test("A schema a container preselection names is shown even when the filter leaves it out")
+    func preselectedContainerIgnoresTheFilter() async throws {
+        let reader = Self.threeSchemaReader()
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .containers([.schema(database: "app", schema: "archive")]),
+            reader: reader,
+            schemaFilter: ["reporting"]
+        )
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(items.map(\.name) == ["public", "archive", "reporting"])
+        #expect(items.first { $0.name == "archive" }?.objects.allSatisfy { $0.isSelected } == true)
+    }
+
+    @Test("A listing row with no schema, or one outside the shown set, is ignored")
+    func strayListingRowsAreIgnored() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.extraListingRows = [
+            TableInfo(name: "orphan", type: .table, rowCount: nil),
+            TableInfo(name: "elsewhere", type: .table, rowCount: nil, schema: "other"),
+        ]
+        let builder = Self.builder(typeId: Self.schemaTypeId, preselection: .tables(names: [], scope: nil), reader: reader)
+
+        let items = try await builder.build(priorRows: [:])
+        let names = items.flatMap { $0.objects.map(\.name) }
+
+        #expect(Set(names) == ["users", "old", "orders"])
+        #expect(!items.contains { $0.name == "other" })
+    }
+
+    @Test("A schema that opens collapsed lists its tables and reads no other kind")
+    func collapsedSchemaReadsNoSideKinds() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.sideObjectsBySchema = [
+            "public": [Self.routine("touch", in: "public")],
+            "archive": [Self.routine("purge", in: "archive")],
+        ]
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds
+        )
+
+        let items = try await builder.build(priorRows: [:])
+        let archive = try #require(items.first { $0.name == "archive" })
+        let publicSchema = try #require(items.first { $0.name == "public" })
+
+        #expect(reader.loadRequest(for: "archive")?.kinds == [.table, .view])
+        #expect(archive.unloadedKinds == [.routine, .sequence])
+        #expect(archive.objects.map(\.name) == ["old"])
+        #expect(reader.loadRequest(for: "public")?.kinds.contains(.routine) == true)
+        #expect(publicSchema.unloadedKinds.isEmpty)
+        #expect(publicSchema.objects.map(\.name) == ["users", "touch"])
+    }
+
+    @Test("A schema with no tables stays listed while its other kinds are unread")
+    func tableLessSchemaStaysListedWhileUnread() async throws {
+        let reader = FakeReader(
+            schemas: ["public", "functions_only"],
+            tablesBySchema: ["public": [Self.makeTable("users")]]
+        )
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds
+        )
+
+        let items = try await builder.build(priorRows: [:])
+        let functionsOnly = try #require(items.first { $0.name == "functions_only" })
+
+        #expect(functionsOnly.objects.isEmpty)
+        #expect(functionsOnly.hasUnloadedObjects)
+    }
+
+    @Test("Reading a collapsed schema's other kinds reads that one container")
+    func loadingUnreadKindsReadsOneContainer() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.sideObjectsBySchema = ["archive": [Self.routine("purge", in: "archive")]]
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds
+        )
+        let items = try await builder.build(priorRows: [:])
+        let archive = try #require(items.first { $0.name == "archive" })
+        let requestsBefore = reader.loadRequests.count
+
+        let loaded = await builder.loadUnloadedObjects(of: archive)
+
+        #expect(reader.loadRequests.count == requestsBefore + 1)
+        #expect(reader.loadRequests.last?.containerName == "archive")
+        #expect(reader.loadRequests.last?.kinds == [.routine, .sequence])
+        #expect(loaded.map(\.name) == ["purge"])
+    }
+
+    @Test("Exporting a whole database reads every kind of every schema in it")
+    func wholeDatabaseExportReadsEveryKind() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.sideObjectsBySchema = ["archive": [Self.routine("purge", in: "archive")]]
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .containers([.database("app")]),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds,
+            schemaFilter: ["reporting"]
+        )
+
+        let items = try await builder.build(priorRows: [:])
+        let archive = try #require(items.first { $0.name == "archive" })
+
+        #expect(items.map(\.name) == ["public", "archive", "reporting"])
+        #expect(items.allSatisfy { !$0.hasUnloadedObjects })
+        #expect(archive.objects.map(\.name) == ["old", "purge"])
+        #expect(archive.objects.allSatisfy { $0.isSelected })
+    }
+
+    @Test("A reload reads in full a schema where a routine was selected")
+    func reloadKeepsSelectedSideObjects() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.sideObjectsBySchema = ["archive": [Self.routine("purge", in: "archive")]]
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds
+        )
+        var before = try await builder.build(priorRows: [:])
+        let archiveIndex = try #require(before.firstIndex { $0.name == "archive" })
+        before[archiveIndex] = before[archiveIndex].mergingLoadedObjects([Self.routine("purge", in: "archive")])
+        let routineIndex = try #require(before[archiveIndex].objects.firstIndex { $0.kind == .routine })
+        before[archiveIndex].objects[routineIndex].isSelected = true
+
+        let after = try await builder.build(priorRows: ExportTreeBuilder.snapshots(of: before))
+        let archive = try #require(after.first { $0.name == "archive" })
+
+        #expect(!archive.hasUnloadedObjects)
+        #expect(archive.objects.first { $0.name == "purge" }?.isSelected == true)
     }
 
     @Test("A schema holding the preselected table is expanded even when it is not the default one")

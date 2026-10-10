@@ -21,6 +21,11 @@ extension MSSQLPluginDriver {
         try await listTables(in: .allSchemas, schemaFallback: nil)
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard !schemas.isEmpty else { return [] }
+        return try await listTables(in: .schemas(schemas), schemaFallback: nil)
+    }
+
     private func listTables(
         in scope: MSSQLTableListingScope,
         schemaFallback: String?

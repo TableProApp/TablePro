@@ -148,8 +148,6 @@ struct DatabaseTreeView: View {
         }
     }
 
-    /// A filtered list looks exactly like a short one, so it has to say it is filtered. The button
-    /// that used to carry that state, at the bottom of the sidebar, is gone.
     @ViewBuilder
     private var filterBanner: some View {
         if isFiltering {
@@ -158,27 +156,18 @@ struct DatabaseTreeView: View {
                 selected: sidebarState.databaseFilterSelected,
                 showsSystem: showsSystemContainers
             )
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                    .foregroundStyle(.tint)
-                Text(String(
-                    format: String(localized: "Showing %lld of %lld"),
-                    summary.shown,
-                    summary.total
-                ))
-                .lineLimit(1)
-                Spacer(minLength: 4)
-                Button(String(localized: "Show All")) {
-                    sidebarState.databaseFilterSelected = []
-                }
-                .buttonStyle(.link)
-            }
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
+            SidebarFilterBanner(
+                label: String(format: String(localized: "Showing %1$lld of %2$lld"), summary.shown, summary.total),
+                showAll: { sidebarState.databaseFilterSelected = [] }
+            )
             Divider()
         }
+        SidebarSchemaFilterBanner(
+            connectionId: connectionId,
+            database: coordinator?.browseDatabaseName ?? activeDatabase,
+            databaseType: databaseType,
+            sidebarState: sidebarState
+        )
     }
 
     private var outline: some View {

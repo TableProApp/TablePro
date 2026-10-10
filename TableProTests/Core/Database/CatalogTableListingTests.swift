@@ -151,6 +151,135 @@ struct CatalogTableListingTests {
     }
 }
 
+/// A kept set is the schema list, so no read asks the server for one.
+@MainActor
+struct CatalogTableListingSelectionTests {
+    private struct ListingFailed: Error {}
+
+    private let connectionId = UUID()
+
+    private var scope: DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: "shop", schema: nil)
+    }
+
+    private func table(_ name: String, _ schema: String) -> TableInfo {
+        TestFixtures.makeTableInfo(name: name, schema: schema)
+    }
+
+    private func driver() -> CatalogReadCountingDriver {
+        let driver = CatalogReadCountingDriver(connection: TestFixtures.makeConnection(id: connectionId, type: .postgresql))
+        driver.schemasToReturn = ["a", "b", "c"]
+        driver.tablesBySchema = [
+            "a": [table("orders", "a")],
+            "b": [table("invoices", "b")],
+            "c": [table("payslips", "c")]
+        ]
+        return driver
+    }
+
+    private func listing(
+        _ selection: CatalogTableListing.SchemaSelection,
+        excluding excluded: Set<String> = [],
+        on driver: CatalogReadCountingDriver
+    ) async throws -> CatalogTableListing.Result {
+        try await CatalogTableListing.tables(
+            in: scope,
+            selection: selection,
+            excludingSchemas: excluded,
+            metadata: SingleDriverMetadataProvider(driver: driver, scope: scope)
+        )
+    }
+
+    @Test("A kept set is read in one call when the engine answers it")
+    func keptSetInOneCall() async throws {
+        let driver = driver()
+        driver.answersTablesInSchemas = true
+
+        let result = try await listing(.only(["b", "a"]), on: driver)
+
+        #expect(driver.reads == ["tablesIn(a,b)"])
+        #expect(result.tables.map(\.name) == ["orders", "invoices"])
+        #expect(result.unlistedSchemas.isEmpty)
+    }
+
+    @Test("A filtered listing never calls fetchTablesInAllSchemas, even on an engine that answers it")
+    func filteredListingNeverReadsEverySchema() async throws {
+        let driver = driver()
+        driver.allSchemaTables = [table("orders", "a"), table("invoices", "b"), table("payslips", "c")]
+
+        let result = try await listing(.only(["a", "c"]), on: driver)
+
+        #expect(!driver.reads.contains("allSchemaTables"))
+        #expect(driver.perSchemaReads == ["tables:a", "tables:c"])
+        #expect(result.tables.map(\.name) == ["orders", "payslips"])
+    }
+
+    @Test("A kept set on an engine without a set read reads its schemas one by one, and no schema list")
+    func keptSetSchemaBySchema() async throws {
+        let driver = driver()
+
+        let result = try await listing(.only(["b", "a"]), on: driver)
+
+        #expect(driver.reads == ["tables:a", "tables:b"])
+        #expect(result.tables.map(\.name) == ["orders", "invoices"])
+    }
+
+    @Test("A kept schema whose read fails is named, and the other kept schemas still list")
+    func keptSchemaFailureIsNamed() async throws {
+        let driver = MockDatabaseDriver()
+        driver.allSchemaTablesToReturn = [table("users", "public"), table("timesheet", "attendance")]
+        driver.schemaTablesToReturn = ["public": [table("users", "public")]]
+        driver.schemaTablesErrors = ["attendance": ListingFailed()]
+
+        let result = try await CatalogTableListing.tables(
+            in: scope,
+            selection: .only(["public", "attendance"]),
+            excludingSchemas: [],
+            metadata: RecordingMetadataProvider(driver: driver)
+        )
+
+        #expect(result.tables.map(\.name) == ["users"])
+        #expect(result.unlistedSchemas == ["attendance"])
+        #expect(driver.fetchTablesInAllSchemasCallCount == 0)
+        #expect(driver.fetchSchemasCallCount == 0)
+    }
+
+    @Test("An empty kept set, or one of excluded schemas only, reads nothing")
+    func emptyKeptSetReadsNothing() async throws {
+        let driver = driver()
+        driver.answersTablesInSchemas = true
+
+        let empty = try await listing(.only([]), on: driver)
+        let excluded = try await listing(.only(["pg_catalog"]), excluding: ["pg_catalog"], on: driver)
+
+        #expect(driver.reads.isEmpty)
+        #expect(empty.tables.isEmpty)
+        #expect(excluded.tables.isEmpty)
+    }
+
+    @Test("Restricting a listing keeps the kept schemas' rows and unlisted names only")
+    func restrictingAListing() {
+        let listing = CatalogTableListing.Result(
+            tables: [table("orders", "a"), table("invoices", "b"), TestFixtures.makeTableInfo(name: "loose")],
+            unlistedSchemas: ["b", "c"]
+        )
+
+        let restricted = listing.restricted(to: .only(["b"]))
+
+        #expect(restricted.tables.map(\.name) == ["invoices", "loose"])
+        #expect(restricted.unlistedSchemas == ["b"])
+        #expect(listing.restricted(to: .all) == listing)
+    }
+
+    @Test("Two selections meet in the schemas both keep")
+    func selectionsIntersect() {
+        #expect(CatalogTableListing.SchemaSelection.all.intersection(.all) == .all)
+        #expect(CatalogTableListing.SchemaSelection.all.intersection(.only(["a"])) == .only(["a"]))
+        #expect(CatalogTableListing.SchemaSelection.only(["a", "b"]).intersection(.all) == .only(["a", "b"]))
+        #expect(CatalogTableListing.SchemaSelection.only(["a", "b"]).intersection(.only(["b", "c"])) == .only(["b"]))
+    }
+}
+
 @MainActor
 private final class RecordingMetadataProvider: ScopedMetadataProviding {
     private let driver: MockDatabaseDriver

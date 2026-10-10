@@ -46,6 +46,8 @@ struct DatabaseTreeMenuSpecTests {
         canReachOtherDatabases: Bool = true,
         canFilterDatabases: Bool = false,
         hasDatabaseFilter: Bool = false,
+        canFilterSchemas: Bool = false,
+        hasSchemaFilter: Bool = false,
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
@@ -117,6 +119,8 @@ struct DatabaseTreeMenuSpecTests {
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
+            canFilterSchemas: canFilterSchemas,
+            hasSchemaFilter: hasSchemaFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
             canCreateType: canCreateType,
@@ -298,6 +302,28 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(filtered.contains(.showAllDatabases))
         #expect(!unfiltered.contains(.showAllDatabases))
+    }
+
+    @Test("Filter Schemas is offered only where tables are listed per schema")
+    func schemaFilterOnlyWhereSchemasAreListed() {
+        let schemas = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canFilterSchemas: true)))
+        let none = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canFilterSchemas: false)))
+
+        #expect(schemas.contains(.filterSchemas))
+        #expect(!none.contains(.filterSchemas))
+    }
+
+    @Test("Show All Schemas appears only when a schema filter is actually on")
+    func showAllSchemasOnlyWhenFiltered() {
+        let filtered = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, canFilterSchemas: true, hasSchemaFilter: true)
+        ))
+        let unfiltered = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, canFilterSchemas: true, hasSchemaFilter: false)
+        ))
+
+        #expect(filtered.contains(.showAllSchemas))
+        #expect(!unfiltered.contains(.showAllSchemas))
     }
 
     @Test("View Options reports the settings it is toggling")

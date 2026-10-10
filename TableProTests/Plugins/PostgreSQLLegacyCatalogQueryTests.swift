@@ -44,6 +44,19 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLPrincipalQueries.columnGrants(role: "r"),
             PostgreSQLSequenceQueries.sequenceList(schema: "public", dependentOnTable: "orders", source: .sequenceParameters),
             PostgreSQLTableListing.query(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(in: .schemas(["public"]), includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.query(in: .allSchemas, includeMaterializedViews: true, includeForeignTables: true),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas(["public"])),
+            PostgreSQLSchemaQueries.columnsQuery(
+                schema: "public", table: nil, capabilities: legacy, includeMaterializedViews: false
+            ),
+            ColumnQueryShape.catalogPrimaryKeyJoin(schema: "public", fragments: ColumnQueryShape.fragments(table: nil)),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: "public", table: "orders"),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: "public", table: nil),
+            PostgreSQLSchemaQueries.databaseMetadata(database: "app"),
+            PostgreSQLSchemaQueries.allDatabaseMetadata,
+            PostgreSQLObjectQueries.routineList(schema: "public", capabilities: legacy),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: ["public", "app"], capabilities: legacy),
             PostgreSQLViewDefinition.catalogQuery(name: "v", schema: "public")
         ]
         for sql in queries {
@@ -64,7 +77,21 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.standaloneIndexQuery(schema: hostile, table: hostile),
             PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
-            )
+            ),
+            PostgreSQLTableListing.query(
+                in: .schemas([hostile]), includeMaterializedViews: true, includeForeignTables: true
+            ),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas([hostile])),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: hostile, table: hostile),
+            PostgreSQLSchemaQueries.databaseMetadata(database: hostile),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: [hostile], capabilities: Self.legacy),
+            PostgreSQLForeignKeyQueries.foreignKeyList(schema: hostile, table: hostile, capabilities: Self.legacy),
+            ColumnQueryShape.catalogPrimaryKeyJoin(schema: hostile, fragments: ColumnQueryShape.fragments(table: hostile)),
+            ColumnQueryShape.informationSchemaPrimaryKeyJoin(
+                schema: hostile, fragments: ColumnQueryShape.fragments(table: hostile)
+            ),
+            CockroachRelationSQL.columnsQuery(schema: hostile, table: hostile)
         ]
         for sql in queries {
             #expect(sql.contains("E'a\\\\b''c'"), "\(sql)")
@@ -87,7 +114,9 @@ struct PostgreSQLForeignKeyQueryTests {
         let sql = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: Self.modern)
         let derivedEnd = try #require(sql.range(of: ") con"))
         let inside = sql[..<derivedEnd.lowerBound]
+        #expect(inside.contains("JOIN pg_catalog.pg_namespace ns ON ns.oid = c.connamespace"))
         #expect(inside.contains("ns.nspname = 'public'"))
+        #expect(inside.contains("JOIN pg_catalog.pg_class src ON src.oid = c.conrelid"))
         #expect(inside.contains("src.relname = 'orders'"))
         #expect(inside.contains("pg_catalog.generate_subscripts(c.conkey, 1) AS ord"))
     }
@@ -100,11 +129,13 @@ struct PostgreSQLForeignKeyQueryTests {
         #expect(sql.contains("ORDER BY src_cl.relname, con.conname, con.ord"))
     }
 
-    @Test("The whole-schema read has no table predicate and the same projection")
+    @Test("The whole-schema read joins no table for its constraints and keeps the same projection")
     func bulkFormSharesProjection() {
         let bulk = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: nil, capabilities: Self.modern)
         let single = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: Self.modern)
         #expect(!bulk.contains("src.relname ="))
+        #expect(!bulk.contains("pg_catalog.pg_class src ON"))
+        #expect(bulk.contains("JOIN pg_catalog.pg_namespace ns ON ns.oid = c.connamespace"))
         let projection: (String) -> Substring = { $0[..<($0.range(of: "FROM (")?.lowerBound ?? $0.endIndex)] }
         #expect(projection(bulk) == projection(single))
     }

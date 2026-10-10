@@ -22,6 +22,7 @@ struct DuckDBSchemaQueriesTests {
     private static let catalogScopedQueries: [(name: String, sql: String)] = [
         ("listSchemas", DuckDBSchemaQueries.listSchemas),
         ("listTables(in: .schema)", DuckDBSchemaQueries.listTables(in: .schema)),
+        ("listTables(in: .schemas)", DuckDBSchemaQueries.listTables(in: .schemas(["core", "main"]))),
         ("listTables(in: .allSchemas)", DuckDBSchemaQueries.listTables(in: .allSchemas)),
         ("columnsForTable", DuckDBSchemaQueries.columnsForTable),
         ("columnsForSchema", DuckDBSchemaQueries.columnsForSchema),
@@ -119,7 +120,7 @@ struct DuckDBSchemaQueriesTests {
 
     @Test(
         "The table list reports views alongside tables and hides internal objects in both",
-        arguments: [DuckDBTableListingScope.schema, .allSchemas]
+        arguments: [DuckDBTableListingScope.schema, .schemas(["core", "main"]), .allSchemas]
     )
     func tableListIncludesViews(scope: DuckDBTableListingScope) {
         let sql = DuckDBSchemaQueries.listTables(in: scope)
@@ -149,6 +150,30 @@ struct DuckDBSchemaQueriesTests {
         #expect(!sql.contains("$2"))
         #expect(sql.components(separatedBy: ", schema_name\n").count == 3)
         #expect(sql.hasSuffix("ORDER BY 3, 1"))
+    }
+
+    @Test("Every arm of the schema-set listing is filtered by the named schemas, with the catalog bound alone")
+    func schemaSetListingFiltersByTheNamedSchemas() {
+        let sql = DuckDBSchemaQueries.listTables(in: .schemas(["core", "main"]))
+        #expect(sql.components(separatedBy: "AND schema_name IN ('core', 'main')\n").count == 3)
+        #expect(!sql.contains(DuckDBSchemaQueries.listSchemas))
+        #expect(!sql.contains("$2"))
+        #expect(sql.components(separatedBy: ", schema_name\n").count == 3)
+        #expect(sql.hasSuffix("ORDER BY 3, 1"))
+    }
+
+    @Test("The schema-set listing doubles a single quote and keeps a backslash as it is")
+    func schemaSetListingQuotesEachName() {
+        let sql = DuckDBSchemaQueries.listTables(in: .schemas(["it's", #"back\slash"#]))
+        #expect(sql.contains(#"schema_name IN ('it''s', 'back\slash')"#))
+        #expect(!sql.contains("'it's'"))
+    }
+
+    @Test("An empty schema set renders a listing that matches nothing")
+    func emptySchemaSetMatchesNothing() {
+        let sql = DuckDBSchemaQueries.listTables(in: .schemas([]))
+        #expect(sql.components(separatedBy: "AND 1 = 0\n").count == 3)
+        #expect(!sql.contains("IN ()"))
     }
 
     // MARK: - Keys

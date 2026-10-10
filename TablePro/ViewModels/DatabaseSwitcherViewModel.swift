@@ -32,21 +32,32 @@ final class DatabaseSwitcherViewModel: ObservableObject {
 
     private let connectionId: UUID
     private let currentDatabase: String?
+    /// A schema name means something only inside one database, so schema mode reads the schema
+    /// filter of the database its rows belong to. Nil leaves schema mode unfiltered.
+    private let activeDatabase: String?
     private let databaseType: DatabaseType
     private let services: AppServices
     private let sidebarState: SharedSidebarState?
+    private let keptSchemas: @MainActor (UUID, String) -> Set<String>?
     private var hasLoadedOnce = false
     private var loadToken: UUID?
 
-    /// The sidebar's database filter narrows a database list only. In schema mode these rows are
-    /// schemas, and the filter names databases.
     private var listedSections: DatabaseSwitchSections {
-        let selected = switchTarget == .database ? sidebarState?.databaseFilterSelected ?? [] : []
-        return DatabaseSwitchList.sections(
+        DatabaseSwitchList.sections(
             databases: databases,
-            selected: selected,
+            selected: sidebarFilterSelection,
             activeDatabase: currentDatabase
         )
+    }
+
+    private var sidebarFilterSelection: Set<String> {
+        switch switchTarget {
+        case .database:
+            return sidebarState?.databaseFilterSelected ?? []
+        case .schema:
+            guard let activeDatabase else { return [] }
+            return keptSchemas(connectionId, activeDatabase) ?? []
+        }
     }
 
     /// A search ranks within each section rather than across them, so a system database never
@@ -70,14 +81,20 @@ final class DatabaseSwitcherViewModel: ObservableObject {
         currentDatabase: String?,
         databaseType: DatabaseType,
         switchTarget: ContainerSwitchTarget? = nil,
+        activeDatabase: String? = nil,
         services: AppServices = .live,
-        sidebarState: SharedSidebarState? = nil
+        sidebarState: SharedSidebarState? = nil,
+        keptSchemas: @escaping @MainActor (UUID, String) -> Set<String>? = { connectionId, database in
+            SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database)
+        }
     ) {
         self.connectionId = connectionId
         self.currentDatabase = currentDatabase
+        self.activeDatabase = activeDatabase
         self.databaseType = databaseType
         self.services = services
         self.sidebarState = sidebarState
+        self.keptSchemas = keptSchemas
         self.switchTarget = switchTarget
             ?? services.pluginManager.containerSwitchTarget(for: databaseType)
             ?? .database
@@ -101,18 +118,8 @@ final class DatabaseSwitcherViewModel: ObservableObject {
                 }
             }
             guard loadToken == token else { return }
-            applyFetched(names.sorted().map { DatabaseMetadata.minimal(name: $0, isSystem: isSystemItem($0)) })
-
-            guard switchTarget == .database else { return }
-            do {
-                let metadataList = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
-                    try await driver.fetchAllDatabaseMetadata()
-                }
-                guard loadToken == token else { return }
-                applyFetched(metadataList.sorted { $0.name < $1.name })
-            } catch {
-                Self.logger.error("Failed to fetch database metadata: \(error)")
-            }
+            let systemNames = services.pluginManager.systemContainerNames(for: databaseType, target: target)
+            applyFetched(names.sorted().map { DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0)) })
         } catch {
             guard loadToken == token else { return }
             isLoading = false
@@ -198,8 +205,7 @@ final class DatabaseSwitcherViewModel: ObservableObject {
         }
     }
 
-    /// A selection the user made outlives a refresh. The slow bulk metadata pass lands well after
-    /// the list is interactive, so resetting the selection there took the row out from under them.
+    /// A refresh can land after the user moved the selection, so it keeps theirs.
     private func reconcileSelection() {
         selectedDatabases.formIntersection(Set(filteredDatabases.map(\.name)))
         guard selectedDatabases.isEmpty else { return }
@@ -215,13 +221,6 @@ final class DatabaseSwitcherViewModel: ObservableObject {
             selectedDatabase = current
         } else {
             selectedDatabase = items.first?.name
-        }
-    }
-
-    private func isSystemItem(_ name: String) -> Bool {
-        switch switchTarget {
-        case .database: services.pluginManager.systemDatabaseNames(for: databaseType).contains(name)
-        case .schema: services.pluginManager.systemSchemaNames(for: databaseType).contains(name)
         }
     }
 

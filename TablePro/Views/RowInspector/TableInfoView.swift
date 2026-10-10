@@ -79,6 +79,8 @@ internal struct TableInfoView: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("table-info")
     }
 
     @ViewBuilder

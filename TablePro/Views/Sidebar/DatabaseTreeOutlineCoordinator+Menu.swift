@@ -99,6 +99,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 databases: service.databases(for: connectionId),
                 showsSystem: showSystemContainers
             ),
+            canFilterSchemas: listsTablesPerSchema,
+            hasSchemaFilter: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: browsingDatabase ?? "") != nil,
             /// Not gated on this connection's safe mode: a read-only connection is a valid source,
             /// and the target picker is where a read-only target is refused.
             canCopyObjects: ObjectCopyEligibility.supportsCopying(

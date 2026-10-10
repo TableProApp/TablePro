@@ -22,6 +22,8 @@ internal enum SidebarMenuCommand: Equatable {
     case createType(database: String?, schema: String?)
     case filterDatabases
     case showAllDatabases
+    case filterSchemas
+    case showAllSchemas
     case openInNewTab(DatabaseTreeTableRef)
     case editViewDefinition(DatabaseTreeTableRef)
     case copyDDL(DatabaseTreeTableRef)

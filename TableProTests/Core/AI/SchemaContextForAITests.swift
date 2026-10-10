@@ -152,6 +152,7 @@ struct SchemaContextForAITests {
             driver: driver,
             connection: TestFixtures.makeConnection()
         )
+        await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
 
         let context = try #require(await provider.buildSchemaContextForAI(settings: .default))

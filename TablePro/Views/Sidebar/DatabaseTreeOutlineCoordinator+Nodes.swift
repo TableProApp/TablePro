@@ -273,7 +273,9 @@ extension DatabaseTreeOutlineCoordinator {
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
             activeSchema: activeSchema,
-            showsSystem: showSystemContainers
+            showsSystem: showSystemContainers,
+            selected: sidebarState?.schemaFilter(for: browsingDatabase) ?? [],
+            pinned: schemasWithPendingOperations(database: browsingDatabase)
         )
         nodes += browsable
             .filter { searchText.isEmpty || hierarchicalSchemaVerdict($0).isVisible }
@@ -393,8 +395,31 @@ extension DatabaseTreeOutlineCoordinator {
             searchText: searchText,
             hiddenSchemas: showSystemContainers ? [] : systemSchemas,
             allSchemaTables: service.allSchemaTablesLoadState(connectionId: connectionId, database: database),
-            loadedContent: { self.loadedObjectBuckets(database: database, schema: $0) }
+            keptSchemas: keptSchemas(database: database),
+            covered: DatabaseTreeFilter.coveredSchemas(
+                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            ),
+            loadedContent: { schema, _ in self.loadedObjectBuckets(database: database, schema: schema) }
         )
+    }
+
+    /// What the schema filter keeps of a database, nil for no filter, with every schema holding a
+    /// staged drop or truncate kept as well.
+    internal func keptSchemas(database: String) -> Set<String>? {
+        guard let kept = SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database) else {
+            return nil
+        }
+        return kept.union(schemasWithPendingOperations(database: database))
+    }
+
+    /// A staged drop or truncate runs on Save whether or not its schema is on screen, so the filter
+    /// never hides the row it was staged from.
+    internal func schemasWithPendingOperations(database: String?) -> Set<String> {
+        let browsed = browsingDatabase
+        return Set(pendingTableOperations.compactMap { ref -> String? in
+            guard (ref.database ?? browsed) == database else { return nil }
+            return ref.qualifyingSchema
+        })
     }
 
     internal var listsTablesPerSchema: Bool {
@@ -416,6 +441,8 @@ extension DatabaseTreeOutlineCoordinator {
                 showsSystem: showSystemContainers,
                 searchText: searchText,
                 database: database,
+                selected: sidebarState?.schemaFilter(for: database) ?? [],
+                pinned: schemasWithPendingOperations(database: database),
                 contentMatches: { schemaSearchVerdict(database: database, schema: $0).isVisible }
             )
             if visible.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
@@ -428,30 +455,80 @@ extension DatabaseTreeOutlineCoordinator {
     private func objectNodes(database: String, schema: String?) -> [DatabaseTreeNode] {
         let parentId = schema.map { DatabaseTreeNode.schemaId(database: database, schema: $0) }
             ?? DatabaseTreeNode.databaseId(database)
-        switch service.tablesLoadState(connectionId: connectionId, database: database, schema: schema) {
-        case .idle, .loading:
+        switch contentSource(database: database, schema: schema) {
+        case .pending:
             return [statusNode(parentId: parentId, status: .loading)]
         case .failed(let message):
             return [statusNode(parentId: parentId, status: .error(message))]
         case .loaded:
             return loadedObjectNodes(database: database, schema: schema, parentId: parentId)
+        case .listing:
+            return groupedObjectNodes(
+                buckets: objectBuckets(database: database, schema: schema),
+                sidePhases: DatabaseTreeSidePhases(routines: .loaded, triggers: nil, types: nil),
+                database: database,
+                schema: schema,
+                parentId: parentId,
+                listsDeclaredKinds: false
+            )
         }
+    }
+
+    private func contentSource(database: String, schema: String?) -> DatabaseTreeFilter.SchemaContentSource {
+        DatabaseTreeFilter.schemaContentSource(
+            searching: !searchText.isEmpty,
+            tables: service.tablesLoadState(connectionId: connectionId, database: database, schema: schema).erased,
+            isTablesCurrent: service.isTablesCurrent(connectionId: connectionId, database: database, schema: schema),
+            listingRows: listingRows(database: database, schema: schema)
+        )
+    }
+
+    /// A schema's rows in the database's all-schema listing, while a search is on and the listing can
+    /// answer for it. Nil otherwise, so the schema shows what its own reads hold.
+    private func listingRows(database: String, schema: String?) -> [TableInfo]? {
+        guard !searchText.isEmpty, let schema, listsTablesPerSchema, rootShape != .hierarchicalSchema,
+              !systemSchemas.contains(schema),
+              let matches = listingMatches(database: database), matches.answers(for: schema)
+        else { return nil }
+        return matches.rowsBySchema[schema] ?? []
     }
 
     /// The schema-grouped shape reads its objects from the connection's own schema service and the
     /// tree reads them per database, so the one shared bucket cache asks the source that shape owns.
-    private func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
+    internal func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
         let key = DatabaseTreeContainerKey(database: database, schema: schema, searchText: searchText)
         if let cached = objectBucketsCache[key] { return cached }
         let buckets: DatabaseTreeObjectBuckets
         if rootShape == .hierarchicalSchema, let schema {
             buckets = hierarchicalObjectBuckets(schema: schema)
         } else {
+            let tables: [TableInfo]
+            // A schema drawn from the listing keeps whatever side lists it has read.
+            if case .listing(let rows) = contentSource(database: database, schema: schema) {
+                tables = rows
+            } else {
+                tables = service.tables(connectionId: connectionId, database: database, schema: schema)
+            }
+            // A schema the search opened is never read, so a side list a change overtook would stay
+            // on screen with objects that no longer exist; it shows what is current only.
+            let showsOvertaken = searchText.isEmpty || schema.map { isOpenedByUser(database: database, schema: $0) } ?? true
+            func shown<Item>(_ items: [Item], isCurrent: Bool) -> [Item] {
+                showsOvertaken || isCurrent ? items : []
+            }
             buckets = DatabaseTreeFilter.objectBuckets(
-                tables: service.tables(connectionId: connectionId, database: database, schema: schema),
-                routines: service.routines(connectionId: connectionId, database: database, schema: schema),
-                triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
-                userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+                tables: tables,
+                routines: shown(
+                    service.routines(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isRoutinesCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
+                triggers: shown(
+                    service.triggers(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isTriggersCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
+                userTypes: shown(
+                    service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isTypesCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
                 searchText: searchText,
                 database: database
             )
@@ -508,12 +585,15 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
+    /// `listsDeclaredKinds` is false for a schema drawn from the listing, which holds tables and
+    /// views only: a declared kind it has no rows for is unread, not empty.
     private func groupedObjectNodes(
         buckets: DatabaseTreeObjectBuckets,
         sidePhases: DatabaseTreeSidePhases,
         database: String,
         schema: String?,
-        parentId: String
+        parentId: String,
+        listsDeclaredKinds: Bool = true
     ) -> [DatabaseTreeNode] {
         let plan = containerPlan(database: database, schema: schema, buckets: buckets)
         let folders = containerFolderNodes(plan, database: database, schema: schema)
@@ -525,7 +605,7 @@ extension DatabaseTreeOutlineCoordinator {
             database: database,
             schema: schema,
             itemCounts: looseItemCounts(buckets.itemCounts, plan: plan),
-            declaredKinds: declaredObjectKinds.union(plan.filedKinds)
+            declaredKinds: listsDeclaredKinds ? declaredObjectKinds.union(plan.filedKinds) : plan.filedKinds
         )
         var nodes = folders + groups.map { group in
             node(
@@ -615,7 +695,9 @@ extension DatabaseTreeOutlineCoordinator {
                 schemas,
                 systemSchemas: systemSchemas,
                 activeSchema: metadata.name == browsingDatabase ? activeSchema : nil,
-                showsSystem: showSystemContainers
+                showsSystem: showSystemContainers,
+                selected: sidebarState?.schemaFilter(for: metadata.name) ?? [],
+                pinned: schemasWithPendingOperations(database: metadata.name)
             )
             if browsable.contains(where: { schemaSearchVerdict(database: metadata.name, schema: $0).isVisible }) {
                 return true
@@ -643,7 +725,14 @@ extension DatabaseTreeOutlineCoordinator {
         guard let listing = service.allSchemaTablesLoadState(connectionId: connectionId, database: database).value else {
             return nil
         }
-        let matches = DatabaseTreeFilter.SchemaListingMatches(listing: listing, database: database, searchText: searchText)
+        let matches = DatabaseTreeFilter.SchemaListingMatches(
+            listing: listing,
+            database: database,
+            searchText: searchText,
+            covered: DatabaseTreeFilter.coveredSchemas(
+                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            )
+        )
         listingMatchesCache[key] = matches
         return matches
     }

@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 #
-# Check that PostgreSQL's all-schema table listing lists exactly what the per-schema listing does.
+# Check that PostgreSQL's all-schema and schema-set table listings list exactly what the
+# per-schema listing does, and what the listing listed before it moved off information_schema.
 #
-# Open Quickly and the sidebar filter find tables in schemas nobody has opened through one query,
-# PostgreSQLTableListing.query(in: .allSchemas). The sidebar lists each schema through
-# query(in: .schema(name)). The two have to agree row for row, on every rung of the
-# degradation ladder: a table the one-schema listing shows and the search cannot find is the bug
-# this listing exists to fix, and one the search finds that the sidebar hides is a result that
-# opens nothing.
+# The sidebar lists each schema through .schema(name); Open Quickly and search use .allSchemas; the
+# export dialog and the schema filter use .schemas(names). All three have to agree row for row on
+# every rung of PostgreSQLTableListingLadder: a table one listing shows and another hides is a
+# search that finds nothing, or a result that opens nothing. Against the pre-change listing, frozen
+# below, the only row allowed to go is a materialized view the role holds no privilege on.
 #
 # This builds a database with every shape the listing treats specially (declarative partitions,
 # a partition in another schema than its parent, legacy inheritance, a materialized view, a
 # foreign table, a schema the role cannot use, quoted names with dots and mixed case), compiles
-# the plugin's real query builder into a small harness, and compares the two listings as a role
-# with ordinary privileges.
+# the plugin's real query builders into a small harness, and compares the listings as the owner
+# and as a role with ordinary privileges. It also reads database metadata for the connected
+# database, another one, and one the role may not connect to.
 #
 # Usage:
 #   scripts/probes/check-postgres-table-listing-parity.sh [host] [port] [user]
@@ -32,8 +33,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # server cannot touch anything that was already there, and two runs cannot remove each other's.
 RUN_ID="$$_$RANDOM"
 DATABASE="tablepro_listing_parity_$RUN_ID"
+CLOSED_DATABASE="tablepro_listing_closed_$RUN_ID"
 READER="tablepro_listing_reader_$RUN_ID"
 CREATED_DATABASE=0
+CREATED_CLOSED_DATABASE=0
 CREATED_READER=0
 WORK="$(mktemp -d)"
 
@@ -41,6 +44,9 @@ cleanup() {
     rm -rf "$WORK"
     if [ "$CREATED_DATABASE" -eq 1 ]; then
         psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE $DATABASE" > /dev/null 2>&1
+    fi
+    if [ "$CREATED_CLOSED_DATABASE" -eq 1 ]; then
+        psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE $CLOSED_DATABASE" > /dev/null 2>&1
     fi
     if [ "$CREATED_READER" -eq 1 ]; then
         psql -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP ROLE $READER" > /dev/null 2>&1
@@ -93,14 +99,26 @@ enum ListingSQL {
             print(PostgreSQLSchemaQueries.listSchemas)
             return
         }
+        if arguments[1] == "dbmeta" {
+            print(PostgreSQLSchemaQueries.databaseMetadata(database: arguments[2]))
+            return
+        }
+        if arguments[1] == "alldbmeta" {
+            print(PostgreSQLSchemaQueries.allDatabaseMetadata)
+            return
+        }
         let attempt = attempts[Int(arguments[2]) ?? 0]
-        let listing: PostgreSQLTableListingScope = arguments[1] == "all" ? .allSchemas : .schema(arguments[3])
-        print(PostgreSQLTableListing.query(
+        let listing: PostgreSQLTableListingScope
+        switch arguments[1] {
+        case "all": listing = .allSchemas
+        case "set": listing = .schemas(Array(arguments.dropFirst(3)))
+        default: listing = .schema(arguments[3])
+        }
+        print(PostgreSQLTableListingLadder.query(
+            for: attempt,
             in: listing,
-            includeMaterializedViews: attempt.includeOptionalCatalogs,
-            includeForeignTables: attempt.includeOptionalCatalogs,
-            includeComments: attempt.includeComments,
-            includePartitionAwareness: attempt.includePartitionAwareness
+            includeMaterializedViews: true,
+            includeForeignTables: true
         ))
     }
 }
@@ -120,6 +138,9 @@ echo "Checking the all-schema table listing against PostgreSQL $VERSION at $HOST
 
 psql_do postgres -c "CREATE DATABASE $DATABASE" > /dev/null || exit 3
 CREATED_DATABASE=1
+psql_do postgres -c "CREATE DATABASE $CLOSED_DATABASE" > /dev/null || exit 3
+CREATED_CLOSED_DATABASE=1
+psql_do postgres -c "REVOKE CONNECT ON DATABASE $CLOSED_DATABASE FROM PUBLIC" > /dev/null || exit 3
 psql_do postgres -c "CREATE ROLE $READER" > /dev/null || exit 3
 CREATED_READER=1
 
@@ -149,47 +170,156 @@ CREATE FOREIGN TABLE archive.remote_orders (id int) SERVER loopback OPTIONS (tab
 GRANT USAGE ON SCHEMA public, attendance, "Attendance", "my.schema", archive, empty_schema TO $READER;
 GRANT SELECT ON ALL TABLES IN SCHEMA public, attendance, "Attendance", "my.schema", archive TO $READER;
 REVOKE ALL ON SCHEMA locked FROM PUBLIC;
+CREATE MATERIALIZED VIEW attendance.unreadable AS SELECT 1 AS one;
 SQL
 
-as_reader() {
-    psql_do "$DATABASE" -Atq -F '|' -c "SET ROLE $READER" -c "$1"
+# The rung 0 all-schema listing as it stood before the listing read pg_class directly.
+cat > "$WORK/before.sql" << 'SQL'
+SELECT t.table_name, CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END AS table_type,
+       obj_description(pc.oid, 'pg_class') AS table_comment,
+       CASE WHEN pc.relkind = 'p' THEN (SELECT count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = pc.oid) END AS partition_count,
+       t.table_schema AS schema_name
+FROM information_schema.tables t
+LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
+LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
+WHERE t.table_schema IN (
+SELECT schema_name FROM information_schema.schemata
+WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
+  AND schema_name <> 'information_schema'
+ORDER BY schema_name
+)
+  AND t.table_type IN ('BASE TABLE', 'VIEW')
+      AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_inherits i
+          JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+          JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
+          WHERE i.inhrelid = pc.oid
+            AND parent.relkind IN ('p', 'I')
+            AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.tables pt
+                  WHERE pt.table_schema = parentns.nspname
+                    AND pt.table_name = parent.relname))
+UNION ALL
+SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
+       obj_description(mc.oid, 'pg_class') AS table_comment,
+       NULL::bigint AS partition_count,
+       m.schemaname AS schema_name
+FROM pg_matviews m
+LEFT JOIN pg_catalog.pg_namespace mn ON mn.nspname = m.schemaname
+LEFT JOIN pg_catalog.pg_class mc ON mc.relnamespace = mn.oid AND mc.relname = m.matviewname
+WHERE m.schemaname IN (
+SELECT schema_name FROM information_schema.schemata
+WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
+  AND schema_name <> 'information_schema'
+ORDER BY schema_name
+)
+UNION ALL
+SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
+       obj_description(c.oid, 'pg_class') AS table_comment,
+       NULL::bigint AS partition_count,
+       n.nspname AS schema_name
+FROM pg_foreign_table ft
+JOIN pg_class c ON c.oid = ft.ftrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname IN (
+SELECT schema_name FROM information_schema.schemata
+WHERE schema_name NOT LIKE 'pg!_%' ESCAPE '!'
+  AND schema_name <> 'information_schema'
+ORDER BY schema_name
+)
+      AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_inherits i
+          JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+          JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
+          WHERE i.inhrelid = c.oid
+            AND parent.relkind IN ('p', 'I')
+            AND EXISTS (
+                  SELECT 1
+                  FROM information_schema.tables pt
+                  WHERE pt.table_schema = parentns.nspname
+                    AND pt.table_name = parent.relname))
+ORDER BY schema_name, table_name
+SQL
+
+ROLE="$READER"
+as_role() {
+    psql_do "$DATABASE" -Atq -F '|' -c "SET ROLE $ROLE" -c "$1"
+}
+
+# Rows of a listing that projects schema_name, as schema|name|type.
+schema_rows() {
+    as_role "$1" | while IFS='|' read -r name type _ _ schema; do
+        printf '%s|%s|%s\n' "$schema" "$name" "$type"
+    done | sort
 }
 
 FAILURES=0
+fail() {
+    echo "FAIL: $*" >&2
+    FAILURES=$((FAILURES + 1))
+}
+
 RUNGS="$("$HARNESS" rungs)"
 SCHEMA_LIST="$("$HARNESS" schemas)"
-for ((rung = 0; rung < RUNGS; rung++)); do
-    : > "$WORK/one.txt"
+for ROLE in "$USER_NAME" "$READER"; do
+    SCHEMAS=()
     while IFS= read -r schema; do
-        [ -n "$schema" ] || continue
-        as_reader "$("$HARNESS" one "$rung" "$schema")" | while IFS='|' read -r name type _; do
-            printf '%s|%s|%s\n' "$schema" "$name" "$type"
-        done >> "$WORK/one.txt"
-    done < <(as_reader "$SCHEMA_LIST")
-    as_reader "$("$HARNESS" all "$rung")" | while IFS='|' read -r name type _ _ schema; do
-        printf '%s|%s|%s\n' "$schema" "$name" "$type"
-    done > "$WORK/all.txt"
+        [ -n "$schema" ] && SCHEMAS+=("$schema")
+    done < <(as_role "$SCHEMA_LIST")
+    for ((rung = 0; rung < RUNGS; rung++)); do
+        : > "$WORK/one.txt"
+        for schema in "${SCHEMAS[@]}"; do
+            as_role "$("$HARNESS" one "$rung" "$schema")" | while IFS='|' read -r name type _; do
+                printf '%s|%s|%s\n' "$schema" "$name" "$type"
+            done >> "$WORK/one.txt"
+        done
+        sort -o "$WORK/one.txt" "$WORK/one.txt"
+        schema_rows "$("$HARNESS" all "$rung")" > "$WORK/all.txt"
+        schema_rows "$("$HARNESS" set "$rung" "${SCHEMAS[@]}")" > "$WORK/set.txt"
 
-    sort -o "$WORK/one.txt" "$WORK/one.txt"
-    sort -o "$WORK/all.txt" "$WORK/all.txt"
-    if diff -u "$WORK/one.txt" "$WORK/all.txt" > "$WORK/diff.txt"; then
-        echo "rung $rung: $(wc -l < "$WORK/all.txt" | tr -d ' ') tables, listings agree"
+        for form in all set; do
+            if diff -u "$WORK/one.txt" "$WORK/$form.txt" > "$WORK/diff.txt"; then
+                echo "$ROLE rung $rung: $(wc -l < "$WORK/$form.txt" | tr -d ' ') tables, per-schema and $form listings agree"
+            else
+                fail "$ROLE rung $rung: per-schema (-) and $form (+) listings differ"
+                cat "$WORK/diff.txt" >&2
+            fi
+        done
+    done
+
+    schema_rows "$("$HARNESS" all 0)" > "$WORK/after.txt"
+    schema_rows "$(cat "$WORK/before.sql")" > "$WORK/before.txt"
+    added="$(comm -13 "$WORK/before.txt" "$WORK/after.txt")"
+    dropped="$(comm -23 "$WORK/before.txt" "$WORK/after.txt")"
+    [ -z "$added" ] || fail "$ROLE: rows the pre-change listing did not list: $added"
+    if [ "$ROLE" = "$READER" ]; then
+        [ "$dropped" = "attendance|unreadable|MATERIALIZED VIEW" ] || fail "$ROLE: dropped rows other than the unreadable view: $dropped"
     else
-        echo "FAIL rung $rung: per-schema (-) and all-schema (+) listings differ" >&2
-        cat "$WORK/diff.txt" >&2
-        FAILURES=$((FAILURES + 1))
+        [ -z "$dropped" ] || fail "$ROLE: rows the pre-change listing listed: $dropped"
+    fi
+
+    current="$(as_role "$("$HARNESS" dbmeta "$DATABASE")")"
+    [[ "$current" =~ ^[0-9]+\|[0-9]+$ ]] || fail "$ROLE: the connected database read '$current', not a count and a size"
+    other="$(as_role "$("$HARNESS" dbmeta postgres)")"
+    [[ "$other" =~ ^\|[0-9]+$ ]] || fail "$ROLE: another database read '$other', not a size with no count"
+    closed="$(as_role "$("$HARNESS" dbmeta "$CLOSED_DATABASE")" 2>&1)"
+    all_closed="$(as_role "$("$HARNESS" alldbmeta)" 2>&1 | grep "^$CLOSED_DATABASE|")"
+    if [ "$ROLE" = "$READER" ]; then
+        [ "$closed" = "|" ] || fail "$ROLE: a database refusing CONNECT read '$closed', not two NULLs"
+        [ "$all_closed" = "$CLOSED_DATABASE|" ] || fail "$ROLE: the all-database read gave '$all_closed' for a database refusing CONNECT"
+    else
+        [[ "$closed" =~ ^\|[0-9]+$ ]] || fail "$ROLE: a closed database read '$closed' for the owner"
     fi
 done
 
 for expected in "attendance|timesheet|BASE TABLE" "attendance|time.sheet|BASE TABLE" "Attendance|TimeSheet|BASE TABLE" "my.schema|orders|BASE TABLE"; do
-    grep -qxF "$expected" "$WORK/all.txt" || {
-        echo "FAIL: the all-schema listing is missing $expected" >&2
-        FAILURES=$((FAILURES + 1))
-    }
+    grep -qxF "$expected" "$WORK/all.txt" || fail "the all-schema listing is missing $expected"
 done
 if grep -q '^locked|' "$WORK/all.txt"; then
-    echo "FAIL: the all-schema listing shows a schema the role cannot use" >&2
-    FAILURES=$((FAILURES + 1))
+    fail "the all-schema listing shows a schema the role cannot use"
 fi
 
 [ "$FAILURES" -eq 0 ] || exit 1

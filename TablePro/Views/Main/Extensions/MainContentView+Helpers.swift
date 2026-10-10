@@ -21,6 +21,12 @@ extension MainContentView {
         await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
 
+    func loadTableInfo() async {
+        guard currentTab?.execution.lastExecutedAt != nil else { return }
+        await loadTableMetadataIfNeeded()
+        scheduleInspectorUpdate()
+    }
+
     func handleConnectionStatusChange() {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }

@@ -1,6 +1,6 @@
 ---
 title: Connection window
-description: The toolbar, the Actions menu, the sidebar's list chooser and folders, and the trailing pane
+description: The toolbar, the Actions menu, the sidebar's list chooser, filters and folders, and the trailing pane
 ---
 
 Nothing in the titlebar is fixed furniture. The toolbar carries the commands for the tab you are on, and what it leaves out is one click away under **Actions** or in the menu bar.
@@ -95,9 +95,11 @@ The filter field matches any part of a name, so `sheet` finds `timesheet`. How f
 | **View > Sidebar as List** | The browsed schema, then every other schema holding a match, listed below it and opened to show the matches |
 | **View > Sidebar as Tree** | Every schema of every database whose schemas the tree has shown, expanded or not |
 
-A schema whose tables have not been read yet stays in the tree, collapsed, until they arrive. Oracle, Snowflake, BigQuery and the other engines whose sidebar lists schemas with no database above them show that tree in both layouts, and the filter checks the tables of every schema in it.
+Neither reaches a schema the [schema filter](#filtering-schemas) hides.
 
-Until the sidebar has read a schema's objects, only its tables and views match. Expand the schema to read them, and its procedures, functions, triggers and types match too.
+A schema you have not opened is searched from one listing of the whole database, so only its tables and views match. Open the schema to search its procedures, functions, triggers and types too. Until that listing arrives, those schemas stay in the tree, collapsed. Oracle, Snowflake, BigQuery and the other engines whose sidebar lists schemas with no database above them show that tree in both layouts, and the filter checks the tables of every schema in it.
+
+A refresh, or a change made from TablePro, reads again only the schemas the tree has open. A closed schema is read the next time you open it.
 
 <Frame caption="The List layout filtered by timesheet">
   <img className="block dark:hidden" src="/images/sidebar-filter-other-schemas.png" alt="Sidebar with timesheet in public at the top, and attendance and payroll below it, each opened to its timesheet table" />
@@ -105,6 +107,23 @@ Until the sidebar has read a schema's objects, only its tables and views match. 
 </Frame>
 
 Type a dot to filter by schema. `attendance.time` keeps the objects in `attendance` whose names contain `time`, `attendance.` shows everything in `attendance`, and `shop.attendance.time` names the database too. A table whose own name holds a dot, such as `audit.events`, still matches when you type that name. [Open Quickly](/features/open-quickly#other-schemas) takes the same form with fuzzy matching.
+
+## Filtering schemas
+
+Choose **View > Filter Schemas**, or right-click the empty area below the sidebar's last row, and select the schemas you work in. The sidebar narrows as you select, and selecting none lists every schema again. The filter applies to the database you are browsing, so switch database to filter another. On an engine without schemas, such as MySQL, the command is dimmed.
+
+<Frame caption="Ticked schemas stay in the sidebar, the rest leave it">
+  <img className="block dark:hidden" src="/images/sidebar-schema-filter.png" alt="Filter popover over the sidebar with a Search schemas field, a checkbox for each schema, and a Show All button at its foot" />
+  <img className="hidden dark:block" src="/images/sidebar-schema-filter-dark.png" alt="Filter popover over the sidebar with a Search schemas field, a checkbox for each schema, and a Show All button at its foot" />
+</Frame>
+
+The filter is kept per connection and per database, on this Mac. The schema you are browsing stays listed whatever the filter says, and so does any schema holding a staged drop or truncate. A renamed schema keeps its place in the filter, and a dropped one leaves it.
+
+The sidebar and its search, [Open Quickly](/features/open-quickly), the schema picker at the foot of the object list, **Database > Schema**, the schema switcher, the [export dialog](/features/import-export#what-the-tree-lists) and the column type picker all list only the schemas it keeps. The pickers and the switcher still offer every system schema. Typed SQL, autocomplete, MCP clients and the AI assistant reach every schema, filtered or not.
+
+A hidden schema still shows up in three places. A starred table in it stays in Favorites, the export dialog lists it when you export from it or a saved selection names it, and the type picker offers its types when the table you are editing lives there.
+
+While the filter hides anything, a line above the schema tree counts the schemas it shows. Click **Show All** there, or choose **View > Show All Schemas**, to clear it.
 
 ## Folders
 

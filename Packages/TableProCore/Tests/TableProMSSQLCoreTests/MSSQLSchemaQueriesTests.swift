@@ -70,6 +70,27 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
     }
 
+    func testSchemaSetListingIsFilteredByTheNamedSchemasAlone() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas(["sales", "dbo"]))
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (N'sales', N'dbo')\n"))
+        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+    }
+
+    func testSchemaSetListingQuotesEachName() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas(["O'Brien", "日本"]))
+        XCTAssertTrue(sql.contains("t.TABLE_SCHEMA IN (N'O''Brien', N'日本')"))
+        XCTAssertFalse(sql.contains("N'O'Brien'"))
+    }
+
+    func testEmptySchemaSetListingMatchesNothing() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas([]))
+        XCTAssertTrue(sql.contains("WHERE 1 = 0\n"))
+        XCTAssertFalse(sql.contains("IN ()"))
+    }
+
     func testSchemaListIsTheListedSchemasInOrder() {
         XCTAssertEqual(MSSQLSchemaQueries.schemas, MSSQLSchemaQueries.listedSchemaNames + "\nORDER BY SCHEMA_NAME")
         XCTAssertFalse(MSSQLSchemaQueries.listedSchemaNames.contains("ORDER BY"))

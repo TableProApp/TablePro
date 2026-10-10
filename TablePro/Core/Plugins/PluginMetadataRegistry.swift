@@ -196,6 +196,9 @@ struct PluginMetadataSnapshot: Sendable {
         /// wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
         /// over a `BIT` column returns its raw bytes and breaks a match that works today.
         let rowMatchTextTypePrefixes: [String]
+        /// Teradata and Snowflake compare database names without regard to case, so `dbc` is the
+        /// system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
+        let systemDatabaseNamesIgnoreCase: Bool
 
         init(
             defaultSchemaName: String,
@@ -213,7 +216,8 @@ struct PluginMetadataSnapshot: Sendable {
             structureColumnFields: [StructureColumnField],
             implicitSchemaName: String? = nil,
             rowMatchExcludedTypePrefixes: [String] = [],
-            rowMatchTextTypePrefixes: [String] = []
+            rowMatchTextTypePrefixes: [String] = [],
+            systemDatabaseNamesIgnoreCase: Bool = false
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -231,6 +235,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.implicitSchemaName = implicitSchemaName
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
             self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
+            self.systemDatabaseNamesIgnoreCase = systemDatabaseNamesIgnoreCase
         }
 
         static let defaults = SchemaInfo(
@@ -370,7 +375,8 @@ struct PluginMetadataSnapshot: Sendable {
                 structureColumnFields: schema.structureColumnFields,
                 implicitSchemaName: schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
-                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
             ),
             editor: editor,
             connection: connection
@@ -441,7 +447,8 @@ struct PluginMetadataSnapshot: Sendable {
                 structureColumnFields: schema.structureColumnFields,
                 implicitSchemaName: source.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
-                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
             ),
             editor: editor, connection: connection
         )
@@ -782,7 +789,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 structureColumnFields: driverType.structureColumnFields,
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
-                rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? []
+                rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? [],
+                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,

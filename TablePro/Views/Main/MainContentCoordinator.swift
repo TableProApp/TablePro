@@ -833,6 +833,7 @@ final class MainContentCoordinator: ObservableObject {
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
             guard let self else { return }
             if case .loading = services.schemaService.state(for: self.connectionId) { return }
+            DatabaseTreeMetadataService.shared.markListsStale(connectionId: self.connectionId)
             Task { await self.refreshTables() }
         }
         fileWatcher = watcher
@@ -1373,6 +1374,7 @@ final class MainContentCoordinator: ObservableObject {
                 return
             }
 
+            if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
             let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now

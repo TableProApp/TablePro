@@ -137,6 +137,16 @@ struct QuickSwitcherCrossSchemaTests {
         #expect(merged.count == 1)
     }
 
+    @Test("A schema hidden by the filter stays out even when the schema service still holds its tables")
+    func hiddenSchemaLeftOutOfLocalTables() {
+        let merged = [table("users", "public"), table("ledger", "finance"), table("loose", nil)]
+
+        let kept = QuickSwitcherViewModel.tables(merged, keeping: ["public"])
+
+        #expect(kept.map(\.name) == ["users", "loose"])
+        #expect(QuickSwitcherViewModel.tables(merged, keeping: nil).count == 3)
+    }
+
     /// While a database switch settles, the schema service still holds the old database's tables,
     /// and each would open against the new database.
     @Test("Tables loaded from the database the connection left are not offered")

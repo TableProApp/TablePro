@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
 - Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 - Help > Integrations, which opens the integrations directory on tablepro.app.
+- View > Filter Schemas… to choose which schemas the sidebar, its search, Open Quickly, export and the column type picker list.
 
 ### Changed
 
@@ -52,6 +53,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL slow to connect, browse, search, commit and switch schema on databases with many schemas.
+- Export dialog and column type picker slow to open on PostgreSQL databases with many schemas.
+- Database switcher slow to open on servers with many or large databases.
+- Table sizes read on every table switch while the inspector was closed.
+- Primary keys missing for PostgreSQL roles that can only read a table.
+- Materialized views and foreign tables listed in PostgreSQL schemas the role cannot read.
+- Table Info showing -1 rows for a PostgreSQL table that was never analyzed.
+- MCP database statistics reporting 0 tables for another PostgreSQL database, or failing when one refuses CONNECT.
+- Opening a PostgreSQL table on iPhone and iPad slow on databases with many tables.
 - Value filter cleared by Save, Refresh, Restore Previous Values and hiding a column. (#3316)
 - Value filter lost on a background tab whose rows were freed, or by choosing the result already shown.
 - Save in a query tab running the statement at the caret instead of reading its result again, and losing the sort.

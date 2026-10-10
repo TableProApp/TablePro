@@ -111,6 +111,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// has to ask each schema itself. `CatalogTableListing` is the caller that does.
     func fetchTablesInAllSchemas() async throws -> [TableInfo]?
 
+    /// What `fetchTables(schema:)` lists for each named schema, in one call, each row with its own
+    /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
+
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
     /// a MySQL or Oracle partition name is unique only within its own table.
@@ -266,6 +270,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch every named type the user created in the given schema, or the current schema if nil.
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo]
+
+    /// Every named type of each listed schema in one call, sorted by schema then name. Nil means the
+    /// caller asks each schema itself.
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]?
 
     /// Read one type again, definition and labels included. The type must be one this driver
     /// listed, because its `identity` is the driver's own key for finding it again.
@@ -807,6 +815,8 @@ extension DatabaseDriver {
 
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
@@ -814,6 +824,8 @@ extension DatabaseDriver {
     }
 
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]? { nil }
 
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {

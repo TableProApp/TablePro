@@ -30,8 +30,8 @@ The segmented control under the search field sets the scope. It stays on screen,
 
 | Scope | Key | Covers |
 |-------|-----|--------|
-| **All** | `Cmd+1` | Tables and views in every schema of this connection's database, plus its databases, schemas, saved queries, and last 50 queries |
-| **Tables** | `Cmd+2` | Tables, views, and system tables in every schema |
+| **All** | `Cmd+1` | Tables and views in every schema of this connection's database that the [schema filter](/features/connection-window#filtering-schemas) keeps, plus its databases, schemas, saved queries, and last 50 queries |
+| **Tables** | `Cmd+2` | Tables, views, and system tables in every schema the schema filter keeps |
 | **Databases** | `Cmd+3` | Databases and schemas |
 | **Queries** | `Cmd+4` | Saved queries and recent queries, from every connected window |
 | **Connections** | `Cmd+5` | Tables, views, and system tables in every connected window |
@@ -59,7 +59,7 @@ Type a dot to search by where a table lives:
 | `shop.attendance.timesheet` | The table, when `shop` is the database the connection is browsing |
 | `"my.schema".orders` | `orders` in a schema whose name holds a dot. Backticks and square brackets quote too |
 
-The browsed schema's tables are listed as the panel opens. Until the rest arrive the panel reads **Loading…** rather than reporting no results.
+The browsed schema's tables are listed as the panel opens. The other schemas' tables are read once you type, or as soon as the **Tables** scope opens. An empty search in **All** reads them too when **Recent** holds a table from another schema. Until they arrive the panel reads **Loading…** rather than reporting no results.
 
 | Engine | The other schemas' tables arrive after |
 |---|---|
@@ -93,9 +93,10 @@ An empty search shows **Recent**: the last 10 things opened on this connection t
 ## When a table is not listed
 
 - The list covers every schema of the database the connection is browsing. To reach a table in another database, switch database first, then search again.
+- Its schema is hidden by **View > Filter Schemas…**. Choose **View > Show All Schemas**, or select the schema in the filter.
 - System schemas such as `pg_catalog` and `information_schema` are left out.
 - A table created in another schema since the panel last listed that schema appears the next time you open the panel.
-- The **Databases** scope offers the databases the sidebar's database filter keeps, plus every system database. Clear the filter with **View > Show All Databases**.
+- The **Databases** scope offers what the sidebar's database and schema filters keep, plus every system database and schema and the schema you are browsing. Clear them with **View > Show All Databases** and **View > Show All Schemas**.
 - The **Connections** scope covers connected windows only, and only the database and schema each one is browsing.
 
 ## Right-click actions

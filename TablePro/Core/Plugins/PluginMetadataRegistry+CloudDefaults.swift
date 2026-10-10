@@ -491,7 +491,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["INFORMATION_SCHEMA"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment],
+                    systemDatabaseNamesIgnoreCase: true
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(

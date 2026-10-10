@@ -49,6 +49,8 @@ internal struct DatabaseTreeMenuContext {
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false
+    internal var canFilterSchemas: Bool = false
+    internal var hasSchemaFilter: Bool = false
     /// Copying reads the source and writes somewhere else, so it needs a driver that reports
     /// structure and a target that is not this connection's read-only self.
     internal var canCopyObjects: Bool = false

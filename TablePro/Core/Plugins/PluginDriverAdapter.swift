@@ -450,6 +450,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginTables.map { mapPluginTable($0, schemaFallback: nil) }
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
+        guard let pluginTables = try await pluginDriver.fetchTables(inSchemas: schemas) else { return nil }
+        let schemaFallback = schemas.count == 1 ? schemas.first : nil
+        return pluginTables.map { mapPluginTable($0, schemaFallback: schemaFallback) }
+    }
+
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)
@@ -700,6 +706,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 .sorted { $0.name < $1.name }
         } catch {
             Self.logger.warning("fetchUserDefinedTypes failed: \(error.publicLogShape, privacy: .public)")
+            throw error
+        }
+    }
+
+    /// Only a one-schema list can stamp a schema on a type that came back without one.
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]? {
+        let schemaFallback = schemas.count == 1 ? schemas.first : nil
+        do {
+            guard let types = try await pluginDriver.fetchUserDefinedTypes(inSchemas: schemas) else { return nil }
+            return types
+                .map { UserDefinedTypeInfo($0.adoptingSchema(schemaFallback)) }
+                .sorted { ($0.schema ?? "", $0.name) < ($1.schema ?? "", $1.name) }
+        } catch {
+            Self.logger.warning("fetchUserDefinedTypes(inSchemas:) failed: \(error.publicLogShape, privacy: .public)")
             throw error
         }
     }

@@ -164,6 +164,7 @@ extension QueryExecutionCoordinator {
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
+            if let tableName, !tableName.isEmpty { parent.prefetchForeignKeys(scope: scope) }
             let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
 
             do {

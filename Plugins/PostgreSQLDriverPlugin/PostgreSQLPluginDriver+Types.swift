@@ -20,6 +20,15 @@ extension PostgreSQLPluginDriver {
             .map(PostgreSQLTypeDefinition.info(from:))
     }
 
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? {
+        guard !schemas.isEmpty else { return [] }
+        let query = PostgreSQLObjectQueries.userDefinedTypeList(schemas: schemas, capabilities: catalogCapabilities)
+        let result = try await execute(query: query)
+        return result.rows
+            .compactMap(PostgreSQLTypeDefinition.record(from:))
+            .map(PostgreSQLTypeDefinition.info(from:))
+    }
+
     /// An identity is the oid this driver handed out, so one that is not an oid is refused rather
     /// than widened into a schema listing that would hand back whichever type sorts first. The
     /// oid is looked up without a schema predicate, because a type moved to another schema keeps

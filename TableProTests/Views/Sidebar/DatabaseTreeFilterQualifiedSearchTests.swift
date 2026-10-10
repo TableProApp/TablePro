@@ -69,6 +69,7 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         search searchText: String,
         tables: [TableInfo]?,
         unlisted: Set<String> = [],
+        covered: Set<String>? = nil,
         loadedContent: DatabaseTreeObjectBuckets? = nil,
         listingCoversSchema: Bool = true
     ) -> DatabaseTreeFilter.SchemaSearchVerdict {
@@ -76,7 +77,8 @@ struct DatabaseTreeFilterQualifiedSearchTests {
             DatabaseTreeFilter.SchemaListingMatches(
                 listing: CatalogTableListing.Result(tables: $0, unlistedSchemas: unlisted),
                 database: "shop",
-                searchText: searchText
+                searchText: searchText,
+                covered: covered
             )
         }
         return DatabaseTreeFilter.schemaSearchVerdict(
@@ -122,6 +124,14 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         #expect(result == .noMatch)
     }
 
+    @Test("A schema a filtered listing was not read for is unknown, not empty")
+    func schemaOutsideTheListingSelectionIsUnknown() {
+        let tables = [table("timesheet", schema: "attendance")]
+
+        #expect(verdict("sales", search: "timesheet", tables: tables, covered: ["attendance"]) == .unknown)
+        #expect(verdict("attendance", search: "timesheet", tables: tables, covered: ["attendance"]) == .match)
+    }
+
     @Test("A system schema the listing leaves out is not kept unknown")
     func uncoveredSchemaIsNotUnknown() {
         #expect(verdict("pg_catalog", search: "timesheet", tables: nil, listingCoversSchema: false) == .noMatch)
@@ -156,6 +166,26 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         #expect(matches.unlisted == ["locked"])
     }
 
+    @Test("The same pass keeps every row of each schema, matching or not")
+    func listingMatchesKeepRowsBySchema() {
+        let matches = DatabaseTreeFilter.SchemaListingMatches(
+            listing: CatalogTableListing.Result(
+                tables: [
+                    table("timesheet", schema: "attendance"),
+                    table("shift", schema: "attendance"),
+                    table("orders", schema: "sales")
+                ],
+                unlistedSchemas: []
+            ),
+            database: "shop",
+            searchText: "sheet"
+        )
+
+        #expect(matches.rowsBySchema["attendance"]?.map(\.name) == ["timesheet", "shift"])
+        #expect(matches.rowsBySchema["sales"]?.map(\.name) == ["orders"])
+        #expect(matches.answers(for: "attendance"))
+    }
+
     // MARK: - Flat list
 
     @Test("The flat list names the other schemas holding a match, sorted, never the browsed one")
@@ -168,9 +198,23 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         ])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _ in nil }
+            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
         )
         #expect(schemas == ["attendance", "payroll"])
+    }
+
+    @Test("The flat list names no schema the schema filter hides")
+    func otherSchemaMatchesFollowTheSchemaFilter() {
+        let allSchemas = listing([
+            table("timesheet", schema: "payroll"),
+            table("timesheet", schema: "attendance")
+        ])
+        let schemas = DatabaseTreeFilter.otherSchemaMatches(
+            database: "shop", browsedSchema: "public", searchText: "timesheet",
+            hiddenSchemas: [], allSchemaTables: allSchemas, keptSchemas: ["attendance", "public"],
+            loadedContent: { _, _ in nil }
+        )
+        #expect(schemas == ["attendance"])
     }
 
     @Test("The flat list does not name a schema that matched only by its own name")
@@ -178,7 +222,7 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         let allSchemas = listing([table("orders", schema: "timesheets")])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _ in nil }
+            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
         )
         #expect(schemas.isEmpty)
     }
@@ -188,7 +232,7 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         let allSchemas = listing([table("orders", schema: "attendance"), table("orders", schema: "sales")])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "attendance.",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _ in nil }
+            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
         )
         #expect(schemas == ["attendance"])
     }
@@ -197,13 +241,13 @@ struct DatabaseTreeFilterQualifiedSearchTests {
     func otherSchemaMatchesWithoutListing() {
         let pending = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: .loading, loadedContent: { _ in nil }
+            hiddenSchemas: [], allSchemaTables: .loading, loadedContent: { _, _ in nil }
         )
         let hidden = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
             hiddenSchemas: ["attendance"],
             allSchemaTables: listing([table("timesheet", schema: "attendance")]),
-            loadedContent: { _ in nil }
+            loadedContent: { _, _ in nil }
         )
         #expect(pending.isEmpty)
         #expect(hidden.isEmpty)

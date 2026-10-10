@@ -125,6 +125,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// row carrying its own schema. Nil means the engine has no single call for it, and the host
     /// asks each schema in turn instead.
     func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]?
+
+    /// What `fetchTables(schema:)` lists for each named schema, in one call, each row carrying its own
+    /// schema. Nil means the host asks each schema in turn; an empty list answers empty with no query.
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]?
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
 
     /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
@@ -183,6 +187,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answers the ones a table owns; this answers the rest, which a dump would otherwise drop.
     func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo]
     func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo]
+
+    /// What `fetchUserDefinedTypes(schema:)` lists for each named schema, in one call, each type
+    /// carrying its own schema. Nil means the host asks each schema in turn.
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]?
 
     /// Reads one type again, definition included. The type must be one this driver listed,
     /// because its `identity` is the driver's own key for finding it.
@@ -721,6 +729,8 @@ public extension PluginDatabaseDriver {
 
     func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo] { [] }
 
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? { nil }
+
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {
             throw PluginObjectSourceError.unsupported(type.name)
@@ -789,6 +799,8 @@ public extension PluginDatabaseDriver {
     func fetchSchemas() async throws -> [String] { [] }
 
     func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? { nil }
+
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? { nil }
 
     /// Schemas whose objects live in a catalog outside the database itself, such
     /// as Redshift external schemas backed by Glue, Hive, or a federated source.

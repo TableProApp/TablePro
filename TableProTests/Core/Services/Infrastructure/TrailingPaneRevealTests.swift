@@ -238,6 +238,55 @@ struct TrailingPaneRevealTests {
         }
     }
 
+    /// Table Info reads its numbers only while the inspector says it is drawn, so a background
+    /// workspace or a pane on another surface must never say so.
+    @Test("Only the selected workspace's inspector is on screen, and only while the pane is open")
+    func inspectorIsOnScreenOnlyForTheSelectedOpenPane() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness()
+            defer { harness.tearDown() }
+            try harness.requireContent()
+            let backgroundConnection = TestFixtures.makeConnection(name: "Background")
+            let backgroundState = TrailingPaneState()
+            let background = ConnectionWorkspace(
+                connectionId: backgroundConnection.id,
+                payload: nil,
+                autoConnect: false,
+                payloadConnection: backgroundConnection,
+                session: nil,
+                sessionState: nil,
+                trailingPaneState: backgroundState,
+                phase: .idle
+            )
+            harness.controller.workspaces.insert(background, select: false)
+            defer {
+                harness.controller.workspaces.remove(background.connectionId)
+                background.teardown()
+            }
+            harness.paneState.surface = .inspector
+            #expect(!harness.paneState.inspector.isOnScreen)
+
+            harness.controller.showInspector()
+            #expect(harness.paneState.inspector.isOnScreen)
+            #expect(!backgroundState.inspector.isOnScreen)
+
+            harness.controller.showAssistant()
+            #expect(!harness.paneState.inspector.isOnScreen)
+
+            harness.controller.showInspector()
+            harness.controller.workspaces.select(background.connectionId)
+            #expect(!harness.paneState.inspector.isOnScreen)
+            #expect(backgroundState.inspector.isOnScreen)
+
+            harness.controller.workspaces.select(harness.selected.connectionId)
+            #expect(harness.paneState.inspector.isOnScreen)
+            #expect(!backgroundState.inspector.isOnScreen)
+
+            harness.controller.hideTrailingPane()
+            #expect(!harness.paneState.inspector.isOnScreen)
+        }
+    }
+
     // MARK: - Helpers
 
     private static func context(

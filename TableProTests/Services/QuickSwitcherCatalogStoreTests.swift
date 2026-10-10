@@ -14,6 +14,7 @@ struct QuickSwitcherCatalogStoreTests {
         schemaGeneration: Int = 1,
         isRefreshing: Bool = false,
         databaseFilter: [String] = [],
+        schemaFilter: [String] = [],
         contentRevision: Int = 0,
         containerNames: [String] = ["database:app"],
         sessionEpoch: Int = 0
@@ -23,6 +24,7 @@ struct QuickSwitcherCatalogStoreTests {
             schemaGeneration: schemaGeneration,
             isRefreshing: isRefreshing,
             databaseFilter: databaseFilter,
+            schemaFilter: schemaFilter,
             contentRevision: contentRevision,
             containerNames: containerNames,
             sessionEpoch: sessionEpoch
@@ -67,6 +69,14 @@ struct QuickSwitcherCatalogStoreTests {
         let id = UUID()
         store.store([table("users")], for: id, version: version(databaseFilter: ["app"]))
         #expect(store.catalog(for: id, version: version(databaseFilter: ["app", "analytics"])) == nil)
+    }
+
+    @Test("A changed schema filter misses")
+    func changedSchemaFilterMisses() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.store([table("users")], for: id, version: version(schemaFilter: ["sales"]))
+        #expect(store.catalog(for: id, version: version(schemaFilter: ["sales", "hr"])) == nil)
     }
 
     /// Favorites and query history change without the browse scope or the schema moving, so the

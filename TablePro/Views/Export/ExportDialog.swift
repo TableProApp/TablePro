@@ -34,6 +34,19 @@ struct ExportDialog: View {
     /// already holds can answer for the new format without another round trip.
     @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
 
+    /// Bumped each time a reload replaces the tree, so a container read started against the old
+    /// tree cannot land in the new one.
+    @State private var treeGeneration = 0
+
+    /// A container read in flight. A second ask for the same container, from a profile or another
+    /// expansion, waits for it rather than reading twice or acting before it lands.
+    @State private var objectReads: [UUID: ObjectRead] = [:]
+
+    private struct ObjectRead {
+        let generation: Int
+        let task: Task<Void, Never>
+    }
+
     @State private var dataSourceScopeId: String?
 
     @State private var profiles: [ExportProfile] = []
@@ -288,7 +301,10 @@ struct ExportDialog: View {
                     databaseItems: $databaseItems,
                     formatId: config.formatId,
                     databaseType: databaseType,
-                    loadColumns: { await columnNames(for: $0) }
+                    loadColumns: { await columnNames(for: $0) },
+                    onNeedsObjects: { databaseID in
+                        Task { await loadUnloadedObjects(databaseID: databaseID) }
+                    }
                 )
                 .frame(minHeight: 300, maxHeight: .infinity)
             }
@@ -305,7 +321,7 @@ struct ExportDialog: View {
             }
             ForEach(profiles) { profile in
                 Button {
-                    applyProfile(profile)
+                    Task { await applyProfile(profile) }
                 } label: {
                     Text(profileLabel(profile))
                 }
@@ -350,7 +366,7 @@ struct ExportDialog: View {
     }
 
     private func profileLabel(_ profile: ExportProfile) -> String {
-        let matched = ExportProfileStorage.matchCount(profile, in: databaseItems)
+        let matched = databaseItems.presentEntryCount(of: profile)
         guard matched < profile.entries.count else { return profile.name }
         return String(
             format: String(localized: "%1$@ (%2$lld of %3$lld still present)"),
@@ -360,7 +376,14 @@ struct ExportDialog: View {
         )
     }
 
-    private func applyProfile(_ profile: ExportProfile) {
+    /// A profile can name objects of a kind a collapsed schema has not read yet, so those schemas
+    /// are read before it is matched against the tree.
+    @MainActor
+    private func applyProfile(_ profile: ExportProfile) async {
+        let named = Set(profile.entries.map(\.container))
+        for item in databaseItems where item.hasUnloadedObjects && named.contains(item.name) {
+            await loadUnloadedObjects(databaseID: item.id)
+        }
         config.formatId = profile.formatId
         databaseItems = normalizedForCurrentFormat(
             ExportProfileStorage.apply(profile, to: databaseItems)
@@ -559,7 +582,7 @@ struct ExportDialog: View {
     }
 
     private var isExportDisabled: Bool {
-        if isExporting || availableFormats.isEmpty {
+        if isExporting || availableFormats.isEmpty || databaseItems.contains(where: \.isLoadingObjects) {
             return true
         }
         switch mode {
@@ -586,11 +609,7 @@ struct ExportDialog: View {
             await loadDatabaseItems(of: connection)
             return
         }
-        databaseItems = databaseItems.compactMap { database in
-            var filtered = database
-            filtered.objects = database.objects.filter { wanted.contains($0.kind) }
-            return filtered.objects.isEmpty ? nil : filtered
-        }
+        databaseItems = databaseItems.narrowed(to: wanted)
     }
 
     private func resetOptionValues() {
@@ -702,7 +721,8 @@ struct ExportDialog: View {
         do {
             let items = try await treeBuilder(for: connection).build(priorRows: priorRows)
             loadedObjectKinds = supportedObjectKinds
-            databaseItems = normalizedForCurrentFormat(items)
+            treeGeneration += 1
+            databaseItems = normalizedForCurrentFormat(items.adoptingIdentities(of: databaseItems))
             isLoading = false
             applyDefaultFileName(for: connection)
         } catch is CancellationError {
@@ -727,14 +747,59 @@ struct ExportDialog: View {
         ExportDriverMetadataReader(scope: exportScope)
     }
 
+    /// A saved selection names its schemas on purpose, so the sidebar's schema filter must not make
+    /// it report its objects as gone.
     private func treeBuilder(for connection: DatabaseConnection) -> ExportTreeBuilder {
-        ExportTreeBuilder(
+        let savedContainers = ExportProfileStorage.shared.profiles(for: connection.id)
+            .flatMap { $0.entries.map(\.container) }
+        return ExportTreeBuilder(
             connection: connection,
             exportDatabaseName: exportDatabaseName,
             preselection: preselection,
             supportedObjectKinds: supportedObjectKinds,
+            schemaFilter: SidebarSchemaFilter().keptSchemas(connectionId: connection.id, database: exportDatabaseName) ?? [],
+            pinnedSchemas: Set(savedContainers + [exportScope?.schema].compactMap { $0 }),
             reader: metadataReader
         )
+    }
+
+    @MainActor
+    private func loadUnloadedObjects(databaseID: UUID) async {
+        if let running = objectReads[databaseID], running.generation == treeGeneration {
+            await running.task.value
+            return
+        }
+        guard let connection,
+              let index = databaseItems.firstIndex(where: { $0.id == databaseID }),
+              databaseItems[index].hasUnloadedObjects
+        else { return }
+        let generation = treeGeneration
+        let item = databaseItems[index]
+        let builder = treeBuilder(for: connection)
+        databaseItems[index].isLoadingObjects = true
+        let task = Task {
+            let loaded = await builder.loadUnloadedObjects(of: item)
+            mergeUnloadedObjects(loaded, databaseID: databaseID, generation: generation)
+        }
+        objectReads[databaseID] = ObjectRead(generation: generation, task: task)
+        await task.value
+        if objectReads[databaseID]?.generation == generation {
+            objectReads[databaseID] = nil
+        }
+    }
+
+    /// A container the read found nothing in is dropped, the rule the tree is built with.
+    @MainActor
+    private func mergeUnloadedObjects(_ loaded: [ExportObjectItem], databaseID: UUID, generation: Int) {
+        guard generation == treeGeneration,
+              let index = databaseItems.firstIndex(where: { $0.id == databaseID })
+        else { return }
+        let merged = databaseItems[index].mergingLoadedObjects(loaded)
+        guard !merged.objects.isEmpty, let normalized = normalizedForCurrentFormat([merged]).first else {
+            databaseItems.remove(at: index)
+            return
+        }
+        databaseItems[index] = normalized
     }
 
     private func applyDefaultFileName(for connection: DatabaseConnection) {

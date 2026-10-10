@@ -28,6 +28,15 @@ struct PostgreSQLLiteralQuotingTests {
             PostgreSQLTableListing.query(
                 schema: schema, includeMaterializedViews: true, includeForeignTables: true
             ),
+            PostgreSQLTableListing.query(
+                in: .schemas([schema, table]), includeMaterializedViews: true, includeForeignTables: true
+            ),
+            PostgreSQLTableListing.informationSchemaQuery(in: .schemas([schema, table])),
+            PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table),
+            PostgreSQLSchemaQueries.databaseMetadata(database: schema),
+            PostgreSQLObjectQueries.userDefinedTypeList(schemas: [schema], capabilities: caps),
+            CockroachRelationSQL.columnsQuery(schema: schema, table: table),
             PostgreSQLSchemaQueries.fetchPartitions(schema: schema, table: table),
             PostgreSQLSchemaQueries.columnsQuery(
                 schema: schema, table: table, capabilities: caps, includeMaterializedViews: true
@@ -64,7 +73,10 @@ struct PostgreSQLLiteralQuotingTests {
             RedshiftExternalSchemaQueries.listExternalColumns(
                 schema: schema, table: table, database: table
             ),
-            ColumnQueryShape.primaryKeyJoin(
+            ColumnQueryShape.informationSchemaPrimaryKeyJoin(
+                schema: schema, fragments: ColumnQueryShape.fragments(table: table)
+            ),
+            ColumnQueryShape.catalogPrimaryKeyJoin(
                 schema: schema, fragments: ColumnQueryShape.fragments(table: table)
             )
         ]

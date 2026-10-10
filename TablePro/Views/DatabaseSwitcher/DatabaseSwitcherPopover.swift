@@ -143,6 +143,7 @@ struct DatabaseSwitcherPopover: View {
                 currentDatabase: currentDatabase,
                 databaseType: databaseType,
                 switchTarget: switchTarget,
+                activeDatabase: activeDatabase,
                 sidebarState: SharedSidebarState.forConnection(connectionId)
             ))
     }

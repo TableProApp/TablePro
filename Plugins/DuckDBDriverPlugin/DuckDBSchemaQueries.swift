@@ -11,6 +11,7 @@ import Foundation
 
 enum DuckDBTableListingScope: Sendable, Equatable {
     case schema
+    case schemas([String])
     case allSchemas
 }
 
@@ -59,10 +60,10 @@ enum DuckDBSchemaQueries {
         ORDER BY schema_name
         """
 
-    /// One schema's objects, bound to the catalog and the schema, or every schema's, bound to the
-    /// catalog alone. The second filters by `listSchemas` itself rather than dropping the schema
-    /// predicate, so an object is listed here exactly when its schema is listed there, and it
-    /// projects each row's schema as a third column.
+    /// One schema's objects, bound to the catalog and the schema; a named set's or every schema's,
+    /// bound to the catalog alone. Every schema's filters by `listSchemas` itself rather than dropping
+    /// the schema predicate, so an object is listed here exactly when its schema is listed there.
+    /// Both multi-schema listings project each row's schema as a third column.
     static func listTables(in scope: DuckDBTableListingScope) -> String {
         let schemaFilter: String
         let schemaColumn: String
@@ -72,6 +73,12 @@ enum DuckDBSchemaQueries {
             schemaFilter = "schema_name = $2"
             schemaColumn = ""
             orderBy = "ORDER BY 1"
+        case .schemas(let schemas):
+            schemaFilter = schemas.isEmpty
+                ? "1 = 0"
+                : "schema_name IN (\(schemas.map(quoteLiteral).joined(separator: ", ")))"
+            schemaColumn = ", schema_name"
+            orderBy = "ORDER BY 3, 1"
         case .allSchemas:
             schemaFilter = "schema_name IN (\n\(listSchemas)\n)"
             schemaColumn = ", schema_name"

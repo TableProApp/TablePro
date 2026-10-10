@@ -2,6 +2,7 @@ import Foundation
 
 public enum MSSQLTableListingScope: Sendable, Equatable {
     case schema(String)
+    case schemas([String])
     case allSchemas
 }
 
@@ -160,9 +161,10 @@ public enum MSSQLSchemaQueries {
         tables(in: .schema(schema))
     }
 
-    /// The same listing over one schema or over every schema `schemas` returns. The second filters
-    /// by that query itself rather than dropping the schema predicate, so a table is listed here
-    /// exactly when its schema is listed there, and it projects each row's schema as a third column.
+    /// The same listing over one schema, a named set of them, or every schema `schemas` returns. The
+    /// last filters by that query itself rather than dropping the schema predicate, so a table is
+    /// listed here exactly when its schema is listed there. Both multi-schema listings project each
+    /// row's schema as a third column.
     public static func tables(in scope: MSSQLTableListingScope) -> String {
         let schemaFilter: String
         let schemaColumn: String
@@ -172,6 +174,12 @@ public enum MSSQLSchemaQueries {
             schemaFilter = "t.TABLE_SCHEMA = \(MSSQLStringLiteral.quoted(schema))"
             schemaColumn = ""
             orderBy = "t.TABLE_NAME"
+        case .schemas(let schemas):
+            schemaFilter = schemas.isEmpty
+                ? "1 = 0"
+                : "t.TABLE_SCHEMA IN (\(schemas.map(MSSQLStringLiteral.quoted).joined(separator: ", ")))"
+            schemaColumn = ", t.TABLE_SCHEMA"
+            orderBy = "t.TABLE_SCHEMA, t.TABLE_NAME"
         case .allSchemas:
             schemaFilter = "t.TABLE_SCHEMA IN (\n\(listedSchemaNames)\n)"
             schemaColumn = ", t.TABLE_SCHEMA"

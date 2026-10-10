@@ -77,6 +77,17 @@ extension MainSplitViewController: TrailingPaneProxy {
     func hideTrailingPane() {
         inspectorSplitItem?.animator().isCollapsed = true
         recomputeWindowMinSize()
+        syncInspectorVisibility()
+    }
+
+    /// Table Info reads its numbers only while this says its inspector is drawn, so a background
+    /// workspace and a pane showing another surface read nothing.
+    func syncInspectorVisibility() {
+        let shown = isInspectorVisible
+        let selected = workspaces.selected
+        for workspace in workspaces.workspaces {
+            workspace.trailingPaneState?.inspector.setOnScreen(shown && workspace === selected)
+        }
     }
 
     func toggleInspector() {
@@ -104,6 +115,7 @@ extension MainSplitViewController: TrailingPaneProxy {
     func showSelectedTrailingPane() {
         let selected = workspaces.selected
         followStoredSurface(of: selected?.trailingPaneState)
+        defer { syncInspectorVisibility() }
         guard let selected else {
             inspectorPaneHost.show(nil)
             return
@@ -127,6 +139,7 @@ extension MainSplitViewController: TrailingPaneProxy {
         showSelectedTrailingPane()
         inspectorSplitItem?.animator().isCollapsed = false
         recomputeWindowMinSize()
+        syncInspectorVisibility()
     }
 
     private func perform(_ effect: TrailingPaneCommandResolver.Effect) {

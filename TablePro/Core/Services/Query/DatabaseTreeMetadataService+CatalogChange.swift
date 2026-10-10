@@ -5,22 +5,18 @@
 
 import Foundation
 
-/// Which of the tree's loaded lists a catalog change reaches. Only lists something already loaded
-/// are named: a database nobody expanded has nothing on screen to go stale, and it loads fresh when
-/// it is expanded.
+/// Which loaded lists a change overtakes. They are marked stale and read again by the next reader
+/// on screen; only the database list is read now.
 struct CatalogTreeRefreshPlan: Equatable, Sendable {
     var refreshesDatabaseList = false
     var schemaLists: Set<DatabaseTreeMetadataService.DatabaseKey> = []
     var tables: Set<DatabaseTreeMetadataService.ObjectsKey> = []
-    /// Loaded partition lists, which are keyed per table and do not follow their parent's list. A
-    /// flat or hierarchical tree takes its tables from `SchemaService`, so a loaded partition list
-    /// can exist with no `tablesState` entry beside it, and planning from the table keys alone left
-    /// an expanded partitioned table showing its partitions from before the DDL forever.
+    /// Planned from their own keys: a flat or hierarchical tree takes its tables from `SchemaService`,
+    /// so a loaded partition list can have no table list beside it.
     var partitions: Set<DatabaseTreeMetadataService.PartitionsKey> = []
     var routines: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var triggers: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var types: Set<DatabaseTreeMetadataService.ObjectsKey> = []
-    /// Marked stale rather than refetched, for the reason `loadAllSchemaTables` gives.
     var allSchemaTables: Set<DatabaseTreeMetadataService.DatabaseKey> = []
 
     var isEmpty: Bool {
@@ -34,6 +30,8 @@ extension DatabaseTreeMetadataService {
         change.kinds.contains(.databases)
     }
 
+    /// The database list is read now: one statement, never on a COMMIT, and its readers have no
+    /// way to ask for it again.
     func refreshCatalog(for change: CatalogChange) async {
         let plan = Self.catalogRefreshPlan(
             for: change,
@@ -48,40 +46,28 @@ extension DatabaseTreeMetadataService {
         )
         guard !plan.isEmpty else { return }
         markAllSchemaTablesChanged(plan.allSchemaTables)
-        let databaseType = DatabaseManager.shared.session(for: change.connectionId)?.connection.type
-        await withTaskGroup(of: Void.self) { group in
-            if plan.refreshesDatabaseList, let databaseType {
-                group.addTask { await self.refreshDatabases(connectionId: change.connectionId, databaseType: databaseType) }
-            }
-            for key in plan.schemaLists {
-                group.addTask { await self.refreshSchemas(connectionId: key.connectionId, database: key.database) }
-            }
-            for key in plan.tables {
-                group.addTask {
-                    await self.refreshTableObjects(connectionId: key.connectionId, database: key.database, schema: key.schema)
-                }
-            }
-            for key in plan.partitions {
-                group.addTask { await self.refreshPartitions(key) }
-            }
-            for key in plan.routines {
-                group.addTask {
-                    await self.refreshRoutineObjects(connectionId: key.connectionId, database: key.database, schema: key.schema)
-                }
-            }
-            for key in plan.triggers {
-                group.addTask {
-                    await self.refreshTriggerObjects(connectionId: key.connectionId, database: key.database, schema: key.schema)
-                }
-            }
-            for key in plan.types {
-                group.addTask {
-                    await self.refreshUserDefinedTypeObjects(
-                        connectionId: key.connectionId, database: key.database, schema: key.schema
-                    )
-                }
-            }
-        }
+        markStale(plan, connectionId: change.connectionId)
+        guard plan.refreshesDatabaseList,
+              let databaseType = DatabaseManager.shared.session(for: change.connectionId)?.connection.type
+        else { return }
+        await refreshDatabases(connectionId: change.connectionId, databaseType: databaseType)
+    }
+
+    /// Every list the connection holds, or one database's, including the all-schema listing.
+    func markListsStale(connectionId: UUID, database: String? = nil) {
+        let plan = Self.catalogRefreshPlan(
+            for: CatalogChange(connectionId: connectionId, database: database, kinds: [.objects, .schemas]),
+            hasDatabaseList: false,
+            schemaListKeys: schemaList.keys,
+            tableKeys: tablesState.keys,
+            partitionKeys: partitionsState.keys,
+            routineKeys: routinesState.keys,
+            triggerKeys: triggersState.keys,
+            typeKeys: typesState.keys,
+            allSchemaTableKeys: allSchemaTablesState.keys
+        )
+        markAllSchemaTablesChanged(plan.allSchemaTables)
+        markStale(plan, connectionId: connectionId)
     }
 
     nonisolated static func catalogRefreshPlan(
@@ -111,9 +97,8 @@ extension DatabaseTreeMetadataService {
             })
         }
         plan.tables = objectKeys(tableKeys, for: .tables)
-        /// A partition list is reached by its own database alone. Matching its schema too would
-        /// miss a PostgreSQL partition that lives in another schema than the table it belongs to,
-        /// which is exactly the cross-schema case the tree draws under its parent.
+        // By database alone: a PostgreSQL partition can live in another schema than its table,
+        // which is the cross-schema case the tree draws under the parent.
         if change.kinds.contains(.tables) {
             plan.partitions = Set(partitionKeys.filter { key in
                 key.connectionId == change.connectionId && change.reaches(database: key.database)

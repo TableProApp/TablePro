@@ -105,6 +105,8 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 
 `include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 
+`get_database_statistics` leaves out a field the engine does not report. On PostgreSQL, `table_count` comes back only when `database` names the database the connection is browsing, and `size_bytes` only for a database the role has `CONNECT` on.
+
 `list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema. `list_types` takes `kind` as `enum`, `composite`, `domain` or `range`, omitted for all four; `labels` is set for an enum, `fields` for a composite and `base_type` for a domain or range, and only PostgreSQL and PGlite answer with rows.
 
 ### `search_schema`

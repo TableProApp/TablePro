@@ -92,6 +92,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     private var tableSource: TableSource?
     private var tableSourceObservations: [AnyCancellable] = []
     private var listingDemand = AllSchemaTablesDemand()
+    private var hasLoadedBrowseCatalog = false
+    private var listingRequestId: UUID?
     private var filterTask: Task<Void, Never>?
     private var selectionQuery: String?
     private var selectionScope: QuickSwitcherScope?
@@ -109,7 +111,12 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     @Published private(set) var isFiltering = false
     /// The tables of schemas other than the browsed one arrive after the rest of the catalog, so a
     /// search that finds nothing yet is still loading rather than a miss.
-    @Published private(set) var isLoadingTables = false
+    var isLoadingTables: Bool {
+        isLoadingBrowseCatalog || isListingInFlight
+    }
+
+    @Published private var isLoadingBrowseCatalog = false
+    @Published private var isListingInFlight = false
     @Published private(set) var isLoadingCrossConnections = false
     @Published private(set) var isLoadingCrossConnectionQueries = false
     @Published private(set) var crossConnectionQueryContentRevision = 0
@@ -119,6 +126,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         didSet {
             guard oldValue != searchText else { return }
             scheduleFilter(debounced: true)
+            refreshListingDemand()
         }
     }
 
@@ -126,6 +134,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         didSet {
             guard oldValue != scope else { return }
             scheduleFilter(debounced: false)
+            refreshListingDemand()
         }
     }
 
@@ -209,6 +218,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
         let loadId = UUID()
         activeLoadId = loadId
+        hasLoadedBrowseCatalog = false
 
         let tableSource = TableSource(
             database: services.databaseManager.browseScope(for: connectionId)?.database,
@@ -224,12 +234,18 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         /// Read once and used both to key the catalog and to build it. Reading it again after the
         /// awaits below let the two disagree: the items were filtered by whatever the sidebar held
         /// when the fetches finished, and stored under whatever it held when they started.
-        let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
-        let catalogVersion = self.catalogVersion(databaseFilter: databaseFilter)
+        let sidebarState = SharedSidebarState.forConnection(connectionId)
+        let databaseFilter = sidebarState.databaseFilterSelected
+        let schemaFilter = sidebarState.schemaFilter(for: tableSource.database)
+        let catalogVersion = self.catalogVersion(databaseFilter: databaseFilter, schemaFilter: schemaFilter)
         if let cached = catalogStore.catalog(for: connectionId, version: catalogVersion) {
             baseItems = cached
         } else {
-            let catalog = await loadBaseCatalog(databaseType: databaseType, databaseFilter: databaseFilter)
+            let catalog = await loadBaseCatalog(
+                databaseType: databaseType,
+                databaseFilter: databaseFilter,
+                schemaFilter: schemaFilter
+            )
             guard activeLoadId == loadId, !Task.isCancelled else { return }
             if catalog.isComplete {
                 catalogStore.store(catalog.items, for: connectionId, version: catalogVersion)
@@ -246,7 +262,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// a schema list that timed out once would have stayed missing on every reopen.
     private func loadBaseCatalog(
         databaseType: DatabaseType,
-        databaseFilter: Set<String>
+        databaseFilter: Set<String>,
+        schemaFilter: Set<String>
     ) async -> (items: [QuickSwitcherItem], isComplete: Bool) {
         var items: [QuickSwitcherItem] = []
         var isComplete = true
@@ -299,7 +316,13 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                 let schemaSubtitle = switchTarget == .schema
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Schema")
-                for schema in schemas {
+                let listed = SchemaMenuModel.sections(
+                    all: schemas,
+                    system: Set(services.pluginManager.systemSchemaNames(for: databaseType)),
+                    selected: schemaFilter,
+                    active: services.databaseManager.browseScope(for: connectionId)?.schema
+                )
+                for schema in listed.user + listed.system {
                     items.append(QuickSwitcherItem(
                         frecencyKey: QuickSwitcherFrecencyKey.schema(schema, in: qualifier),
                         name: schema,
@@ -341,12 +364,16 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// The catalog is a function of these, so a presentation that finds them unchanged can serve
     /// the previous one instead of re-running its fetches. Favorites and query history move without
     /// any of the rest moving, which is what `contentRevision` covers.
-    private func catalogVersion(databaseFilter: Set<String>) -> QuickSwitcherCatalogStore.Version {
+    private func catalogVersion(
+        databaseFilter: Set<String>,
+        schemaFilter: Set<String>
+    ) -> QuickSwitcherCatalogStore.Version {
         QuickSwitcherCatalogStore.Version(
             browseScope: services.databaseManager.browseScope(for: connectionId),
             schemaGeneration: services.schemaService.generationToken(for: connectionId),
             isRefreshing: services.schemaService.isRefreshing(connectionId: connectionId),
             databaseFilter: databaseFilter.sorted(),
+            schemaFilter: schemaFilter.sorted(),
             contentRevision: catalogStore.contentRevision(for: connectionId),
             containerNames: knownContainerNames(),
             sessionEpoch: catalogStore.sessionEpoch(for: connectionId)
@@ -367,21 +394,17 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     /// The browse schema's tables come from the schema service, which the sidebar loaded on
-    /// connect; every other schema's come from the all-schema listing, which is asked for here.
+    /// connect; every other schema's come from the all-schema listing, once the rows need it.
     private func loadTables(from source: TableSource, loadId: UUID) async {
-        isLoadingTables = true
+        isLoadingBrowseCatalog = true
         defer {
-            if activeLoadId == loadId { isLoadingTables = false }
+            if activeLoadId == loadId { isLoadingBrowseCatalog = false }
         }
         _ = await services.schemaRefreshService.loadBrowseCatalogs(connectionIds: [connectionId])
         guard activeLoadId == loadId else { return }
+        hasLoadedBrowseCatalog = true
         mergeTableItems()
-        guard source.listsTablesPerSchema, let database = source.database else { return }
-        let service = DatabaseTreeMetadataService.shared
-        listingDemand.noteRequested(connectionId: connectionId, database: database, service: service)
-        await service.loadAllSchemaTables(connectionId: connectionId, database: database)
-        guard activeLoadId == loadId else { return }
-        mergeTableItems()
+        refreshListingDemand()
     }
 
     /// A change to either source while the panel is open reaches it. A change that leaves the
@@ -391,20 +414,50 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         tableSourceObservations = [
             services.schemaService.onMainActorChange { [weak self] in self?.mergeTableItems() },
             DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in
-                self?.requestListingIfStale()
+                self?.refreshListingDemand()
                 self?.mergeTableItems()
             },
-            services.databaseManager.onMainActorChange { [weak self] in self?.requestListingIfStale() }
+            services.databaseManager.onMainActorChange { [weak self] in self?.refreshListingDemand() }
         ]
     }
 
-    private func requestListingIfStale() {
-        guard let tableSource, tableSource.listsTablesPerSchema, let database = tableSource.database else { return }
-        listingDemand.requestIfNeeded(
-            connectionId: connectionId,
-            database: database,
-            isConnected: services.databaseManager.session(for: connectionId)?.status == .connected,
-            service: DatabaseTreeMetadataService.shared
+    private func refreshListingDemand() {
+        guard hasLoadedBrowseCatalog, let tableSource, tableSource.listsTablesPerSchema,
+              let database = tableSource.database,
+              Self.wantsAllSchemaListing(
+                  scope: scope, query: trimmedSearchText, recentNeedsListing: { self.recentRowsNeedListing() }
+              ),
+              services.databaseManager.session(for: connectionId)?.status == .connected
+        else { return }
+        let service = DatabaseTreeMetadataService.shared
+        let selection = SidebarSchemaFilter(databaseManager: services.databaseManager)
+            .selection(connectionId: connectionId, database: database)
+        guard listingDemand.needsRequest(
+            connectionId: connectionId, database: database, selection: selection, service: service
+        ) else { return }
+        listingDemand.noteRequested(connectionId: connectionId, database: database, selection: selection, service: service)
+        let requestId = UUID()
+        listingRequestId = requestId
+        isListingInFlight = true
+        let connectionId = connectionId
+        Task { [weak self] in
+            await service.loadAllSchemaTables(connectionId: connectionId, database: database, selection: selection)
+            guard let self, self.listingRequestId == requestId else { return }
+            self.isListingInFlight = false
+            self.mergeTableItems()
+        }
+    }
+
+    private func recentRowsNeedListing() -> Bool {
+        guard let tableSource else { return false }
+        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
+            database: tableSource.database,
+            connectionSwitchesDatabases: tableSource.connectionSwitchesDatabases
+        )
+        return Self.recentNeedsListing(
+            recentKeys: frecencyStore.recentItemIds(),
+            resolvedKeys: Set((tableItems + (baseItems ?? [])).map(\.frecencyKey)),
+            isTableKey: { QuickSwitcherFrecencyKey.isTable($0, in: qualifier) }
         )
     }
 
@@ -433,8 +486,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             listing: listing,
             browsing: tableSource.database
         )
+        let kept = tableSource.database.flatMap {
+            SidebarSchemaFilter(databaseManager: services.databaseManager).keptSchemas(connectionId: connectionId, database: $0)
+        }
         return Self.makeTableItems(
-            tables,
+            Self.tables(tables, keeping: kept),
             database: tableSource.database,
             connectionSwitchesDatabases: tableSource.connectionSwitchesDatabases,
             browseSchema: tableSource.browseSchema,
@@ -447,6 +503,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     private func publishItems() {
         guard let baseItems else { return }
         allItems = tableItems + baseItems
+        refreshListingDemand()
     }
 
     /// Loading is keyed on a version of the world, so it must always record the version it
@@ -649,6 +706,16 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
     /// so no say, and the listing's stale copy of that table would come back.
     ///
+    /// The listing already honors the schema filter, but the schema service still holds every schema
+    /// the sidebar opened before the filter hid it.
+    nonisolated static func tables(_ tables: [TableInfo], keeping kept: Set<String>?) -> [TableInfo] {
+        guard let kept else { return tables }
+        return tables.filter { table in
+            guard let schema = table.schema else { return true }
+            return kept.contains(schema)
+        }
+    }
+
     /// `staleSchemas` are the per-schema lists a catalog change has overtaken and nothing has read
     /// again, because only an expanded tree row reads one again. The listing, which this panel asks
     /// for again after every change, answers for them once it has arrived.

@@ -408,6 +408,16 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
+    /// Every layout of an engine that lists tables per schema, because search, Open Quickly and the
+    /// pickers follow the filter even where the sidebar shows one schema.
+    var canFilterSchemas: Bool {
+        DatabaseTreeMetadataService.listsTablesPerSchema(PluginManager.shared.databaseGroupingStrategy(for: connection.type))
+    }
+
+    var hasSchemaFilter: Bool {
+        SidebarSchemaFilter().keptSchemas(connectionId: connection.id, database: browseDatabaseName) != nil
+    }
+
     var sidebarLayout: SidebarLayout {
         SharedSidebarState.forConnection(connection.id).sidebarLayout
     }

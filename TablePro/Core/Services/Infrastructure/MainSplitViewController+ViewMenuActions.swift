@@ -91,6 +91,14 @@ extension MainSplitViewController {
         clearDatabaseFilter()
     }
 
+    @objc func filterSchemas(_ sender: Any?) {
+        presentSchemaFilter()
+    }
+
+    @objc func showAllSchemas(_ sender: Any?) {
+        clearSchemaFilter()
+    }
+
     @objc func toggleFilterBar(_ sender: Any?) {
         commandActions?.toggleFilterPanel()
     }

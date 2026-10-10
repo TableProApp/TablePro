@@ -329,9 +329,7 @@ struct MainContentView: View {
                 }
             }
             .task(id: currentTab?.tableContext.tableName) {
-                guard currentTab?.execution.lastExecutedAt != nil else { return }
-                await loadTableMetadataIfNeeded()
-                scheduleInspectorUpdate()
+                await loadTableInfo()
             }
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.
@@ -350,6 +348,10 @@ struct MainContentView: View {
             /// together, so the stale snapshot is only ever reached by switching to it.
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
+            }
+            .onValueChange(of: \.isOnScreen, in: trailingPaneState.inspector) { _, isOnScreen in
+                guard isOnScreen else { return }
+                Task { await loadTableInfo() }
             }
             /// A value window detached from a field goes on writing while the JSON rendering is the
             /// one on screen, and it moves nothing the trigger above watches. Debounced, because it

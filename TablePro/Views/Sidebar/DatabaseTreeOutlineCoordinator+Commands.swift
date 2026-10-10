@@ -29,6 +29,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.splitViewController?.presentDatabaseFilter()
         case .showAllDatabases:
             mainCoordinator?.splitViewController?.clearDatabaseFilter()
+        case .filterSchemas:
+            mainCoordinator?.splitViewController?.presentSchemaFilter()
+        case .showAllSchemas:
+            mainCoordinator?.splitViewController?.clearSchemaFilter()
         case .openInNewTab(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(ref.table, schema: ref.schema, forceNewTab: true)

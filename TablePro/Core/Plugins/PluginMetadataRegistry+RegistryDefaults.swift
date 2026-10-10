@@ -380,7 +380,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue],
+                    systemDatabaseNamesIgnoreCase: true
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(

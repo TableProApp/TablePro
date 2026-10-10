@@ -22,6 +22,8 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     var tablesBySchema: [String: [TableInfo]] = [:]
     var tablesError: Error?
     var allSchemaTables: [TableInfo]?
+    var answersTablesInSchemas = false
+    var partitionsByTable: [String: [PartitionInfo]] = [:]
 
     private let lock = NSLock()
     private var readLog: [String] = []
@@ -132,6 +134,19 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
         record("allSchemaTables")
         return allSchemaTables
+    }
+
+    /// Recorded without a colon, so `perSchemaReads` counts only one-schema reads.
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
+        guard answersTablesInSchemas else { return nil }
+        record("tablesIn(\(schemas.joined(separator: ",")))")
+        if let tablesError { throw tablesError }
+        return schemas.flatMap { tablesBySchema[$0] ?? [] }
+    }
+
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
+        record("partitions:\(table)")
+        return partitionsByTable[table] ?? []
     }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
@@ -249,5 +264,156 @@ struct SchemaRefreshCommitCostTests {
         #expect(Set(driver.perSchemaReads) == ["tables:S0", "routines:S0"])
         #expect(driver.perSchemaReads.count == 2)
         #expect(schemaService.tables(for: connectionId, schema: "S199").map(\.name) == ["S199_ORDERS"])
+    }
+}
+
+/// PGlite groups by schema and cannot pool, so the tree's reads and the refresh's reads land on the
+/// one counting driver. Each test also shows the refresh it measures did read, so an empty log
+/// cannot pass for a refresh that never ran.
+@MainActor
+struct SchemaGroupedRefreshCostTests {
+    private let tree = DatabaseTreeMetadataService.shared
+
+    private func connect(schemas: [String]) -> (DatabaseConnection, CatalogReadCountingDriver) {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = CatalogReadCountingDriver(connection: connection)
+        driver.schemasToReturn = schemas
+        for schema in schemas {
+            driver.tablesBySchema[schema] = [TableInfo(name: "\(schema)_orders", type: .table, rowCount: nil, schema: schema)]
+        }
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return (connection, driver)
+    }
+
+    private func disconnect(_ connection: DatabaseConnection) async {
+        await tree.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    private func refreshService(
+        _ driver: CatalogReadCountingDriver,
+        connection: DatabaseConnection,
+        browsing schema: String?
+    ) -> SchemaRefreshService {
+        let provider = SingleDriverMetadataProvider(
+            driver: driver,
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: schema)
+        )
+        return SchemaRefreshService(
+            schemaService: SchemaService(),
+            providerRegistry: SchemaProviderRegistry(metadataDriverProvider: provider),
+            metadataDriverProvider: provider,
+            databaseManager: .shared
+        )
+    }
+
+    private func loadTree(_ connection: DatabaseConnection, schemas: [String]) async {
+        for schema in schemas {
+            await tree.loadTables(connectionId: connection.id, database: connection.database, schema: schema)
+        }
+    }
+
+    @Test("A schema switch on a schema-grouped engine reads only the new browsed schema")
+    func schemaSwitchReadsTheBrowsedSchemaAlone() async {
+        let schemas = (0..<20).map { "s\($0)" }
+        let (connection, driver) = connect(schemas: schemas)
+        await loadTree(connection, schemas: schemas)
+        driver.forgetReads()
+
+        await refreshService(driver, connection: connection, browsing: "s5")
+            .refreshForSchemaSwitch(connectionId: connection.id)
+
+        #expect(driver.reads.contains("tables"))
+        #expect(driver.perSchemaReads.isEmpty)
+        #expect(tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: "s3"))
+        await disconnect(connection)
+    }
+
+    @Test("A database switch reads no tree list")
+    func databaseSwitchReadsNoTreeList() async {
+        let schemas = (0..<5).map { "s\($0)" }
+        let (connection, driver) = connect(schemas: schemas)
+        await loadTree(connection, schemas: schemas)
+        driver.forgetReads()
+
+        await refreshService(driver, connection: connection, browsing: nil)
+            .refresh(connection: connection, database: connection.database)
+
+        #expect(driver.reads.contains("tables"))
+        #expect(driver.perSchemaReads.isEmpty)
+        await disconnect(connection)
+    }
+
+    @Test("Discarding staged edits sends no catalog read, while a refresh on the same window does")
+    func discardReadsNothing() async throws {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = CatalogReadCountingDriver(connection: connection)
+        let provider = SingleDriverMetadataProvider(
+            driver: driver,
+            scope: DatabaseScope(connectionId: connection.id, database: connection.database, schema: "public")
+        )
+        let schemaService = SchemaService()
+        let refresh = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(metadataDriverProvider: provider),
+            metadataDriverProvider: provider,
+            databaseManager: nil
+        )
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState(),
+            services: Self.services(schemaService: schemaService, schemaRefreshService: refresh)
+        )
+        var truncates = Set<DatabaseTreeTableRef>()
+        var deletes = Set<DatabaseTreeTableRef>()
+
+        coordinator.handleDiscard(pendingTruncates: &truncates, pendingDeletes: &deletes)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(driver.reads.isEmpty)
+
+        await coordinator.refreshTables()
+        #expect(driver.reads.contains("tables"))
+    }
+
+    private static func services(schemaService: SchemaService, schemaRefreshService: SchemaRefreshService) -> AppServices {
+        let live = AppServices.live
+        return AppServices(
+            appEvents: live.appEvents,
+            appSettings: live.appSettings,
+            appSettingsStorage: live.appSettingsStorage,
+            connectionStorage: live.connectionStorage,
+            databaseManager: live.databaseManager,
+            pluginManager: live.pluginManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            schemaProviderRegistry: SchemaProviderRegistry(),
+            catalogChangeService: live.catalogChangeService,
+            sqlFavoriteManager: live.sqlFavoriteManager,
+            favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
+            aiChatStorage: live.aiChatStorage,
+            aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
+            groupStorage: live.groupStorage,
+            tagStorage: live.tagStorage,
+            sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
+            licenseManager: live.licenseManager,
+            syncMetadataStorage: live.syncMetadataStorage,
+            favoritesExpansionState: live.favoritesExpansionState,
+            linkedFolderWatcher: live.linkedFolderWatcher,
+            queryHistoryManager: live.queryHistoryManager,
+            dateFormattingService: live.dateFormattingService,
+            copilotService: live.copilotService,
+            mcpServerManager: live.mcpServerManager,
+            syncTracker: live.syncTracker,
+            themeEngine: live.themeEngine,
+            welcomeRouter: live.welcomeRouter
+        )
     }
 }

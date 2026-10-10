@@ -665,6 +665,12 @@ internal enum DatabaseTreeMenuSpec {
                 filters.append(.command(String(localized: "Show All Databases"), .showAllDatabases))
             }
         }
+        if context.canFilterSchemas {
+            filters.append(.command(String(localized: "Filter Schemas…"), .filterSchemas))
+            if context.hasSchemaFilter {
+                filters.append(.command(String(localized: "Show All Schemas"), .showAllSchemas))
+            }
+        }
         return [
             DatabaseTreeMenuSection(creation),
             DatabaseTreeMenuSection([.command(String(localized: "View ER Diagram"), .showERDiagram)]),

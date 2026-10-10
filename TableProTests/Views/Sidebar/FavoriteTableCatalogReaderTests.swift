@@ -78,14 +78,44 @@ struct FavoriteTableCatalogReaderTests {
     private func reader(
         _ service: SchemaService,
         type: DatabaseType,
-        isConnected: Bool = false
+        isConnected: Bool = false,
+        keptSchemas: Set<String>? = nil
     ) -> FavoriteTableCatalogReader {
         FavoriteTableCatalogReader(
             connectionId: connectionId,
             grouping: PluginManager.shared.databaseGroupingStrategy(for: type),
             isConnected: isConnected,
-            schemaService: service
+            schemaService: service,
+            keptSchemas: keptSchemas
         )
+    }
+
+    /// The tree's freshness answers only for a live session, as every tree read does.
+    private func withConnectedSession(
+        driver: CatalogStubDriver,
+        _ body: () async -> Void
+    ) async {
+        var session = ConnectionSession(connection: driver.connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connectionId)
+        await body()
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: connectionId)
+        DatabaseManager.shared.removeSession(for: connectionId)
+    }
+
+    private func schemaGroupedService(type: DatabaseType) async -> (SchemaService, CatalogStubDriver) {
+        let service = SchemaService()
+        let connection = TestFixtures.makeConnection(id: connectionId, database: "shop", type: type)
+        let driver = CatalogStubDriver(connection: connection)
+        driver.browsedTables = [table("users", schema: "public")]
+        driver.tablesBySchema = ["sales": [table("orders", schema: "sales")]]
+        await service.load(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection,
+            scope: DatabaseScope(connectionId: connectionId, database: "shop", schema: "public")
+        )
+        return (service, driver)
     }
 
     private func scope(database: String?, schema: String?, type: DatabaseType) -> FavoriteTableBrowseScope {
@@ -233,32 +263,67 @@ struct FavoriteTableCatalogReaderTests {
 
     @Test("A schema-grouped engine's flat list vouches for the browsed schema only")
     func bySchemaFlatListCoversTheBrowsedSchema() async {
-        let service = SchemaService()
-        let connection = TestFixtures.makeConnection(id: connectionId, database: "shop", type: .postgresql)
-        let driver = CatalogStubDriver(connection: connection)
-        driver.browsedTables = [table("users", schema: "public")]
-        await service.load(
-            connectionId: connectionId,
-            driver: driver,
-            connection: connection,
-            scope: DatabaseScope(connectionId: connectionId, database: "shop", schema: "public")
-        )
+        let (service, driver) = await schemaGroupedService(type: .postgresql)
 
-        let read = reader(service, type: .postgresql, isConnected: true).read(
-            [
-                entry("users", schema: "public", database: "shop"),
-                entry("sessions", schema: "public", database: "shop"),
-                entry("orders", schema: "sales", database: "shop")
-            ],
-            scope: scope(database: "shop", schema: "public", type: .postgresql),
-            search: SidebarSearch("")
-        )
+        await withConnectedSession(driver: driver) {
+            let read = reader(service, type: .postgresql, isConnected: true).read(
+                [
+                    entry("users", schema: "public", database: "shop"),
+                    entry("sessions", schema: "public", database: "shop"),
+                    entry("orders", schema: "sales", database: "shop")
+                ],
+                scope: scope(database: "shop", schema: "public", type: .postgresql),
+                search: SidebarSearch("")
+            )
 
-        #expect(read.resolution.rows.map(\.entry.name) == ["orders", "users"])
-        #expect(read.resolution.rows.first { $0.entry.name == "users" }?.isVerified == true)
-        #expect(read.resolution.rows.first { $0.entry.name == "orders" }?.isVerified == false)
-        #expect(read.resolution.missingCount == 1)
-        #expect(read.loadRequest == FavoriteTableLoadRequest(database: "shop", schemas: ["sales"]))
+            #expect(read.resolution.rows.map(\.entry.name) == ["orders", "users"])
+            #expect(read.resolution.rows.first { $0.entry.name == "users" }?.isVerified == true)
+            #expect(read.resolution.rows.first { $0.entry.name == "orders" }?.isVerified == false)
+            #expect(read.resolution.missingCount == 1)
+            #expect(read.loadRequest == FavoriteTableLoadRequest(database: "shop", schemas: ["sales"]))
+        }
+    }
+
+    @Test("A favorite in a schema the schema filter hides still shows and is not asked for")
+    func hiddenSchemaIsNotRequested() async {
+        let (service, driver) = await schemaGroupedService(type: .postgresql)
+
+        await withConnectedSession(driver: driver) {
+            let read = reader(service, type: .postgresql, isConnected: true, keptSchemas: ["public"]).read(
+                [entry("orders", schema: "sales", database: "shop")],
+                scope: scope(database: "shop", schema: "public", type: .postgresql),
+                search: SidebarSearch("")
+            )
+
+            #expect(read.resolution.rows.map(\.entry.name) == ["orders"])
+            #expect(read.resolution.rows.first?.isVerified == false)
+            #expect(read.loadRequest == .none)
+        }
+    }
+
+    @Test("A favorite's tree list that a change overtook is asked for again")
+    func staleTreeListIsRequested() async {
+        let (service, driver) = await schemaGroupedService(type: .pglite)
+
+        await withConnectedSession(driver: driver) {
+            let tree = DatabaseTreeMetadataService.shared
+            await tree.loadTables(connectionId: connectionId, database: "shop", schema: "sales")
+            let favorites = [entry("orders", schema: "sales", database: "shop")]
+            let browsing = scope(database: "shop", schema: "public", type: .pglite)
+
+            let current = reader(service, type: .pglite, isConnected: true).read(
+                favorites, scope: browsing, search: SidebarSearch("")
+            )
+            tree.markListsStale(connectionId: connectionId)
+            let stale = reader(service, type: .pglite, isConnected: true).read(
+                favorites, scope: browsing, search: SidebarSearch("")
+            )
+
+            #expect(current.resolution.rows.first?.isVerified == true)
+            #expect(current.loadRequest == .none)
+            #expect(stale.resolution.rows.first?.isVerified == false)
+            #expect(stale.loadRequest == FavoriteTableLoadRequest(database: "shop", schemas: ["sales"]))
+        }
     }
 
     @Test("A flat engine's table list decides for the whole database and asks for nothing")

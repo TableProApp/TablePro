@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor
 struct SchemaProviderRegistryTests {
@@ -30,7 +30,8 @@ struct SchemaProviderRegistryTests {
     func getOrCreateReturnsSameProvider() {
         let registry = SchemaProviderRegistry()
         let scoped = scope()
-        #expect(registry.getOrCreate(for: scoped) === registry.getOrCreate(for: scoped))
+        let first = registry.getOrCreate(for: scoped)
+        #expect(registry.getOrCreate(for: scoped) === first)
     }
 
     @Test("provider(for:) returns nil for unknown scope")
@@ -244,6 +245,173 @@ struct SchemaProviderRegistryTests {
         await registry.prepare(for: target)
 
         #expect(driver.fetchScopedTablesCallCount == 0)
+    }
+
+    // MARK: - Column preload
+
+    @Test("prepare on the browse scope leaves its table list to its owner")
+    func prepareLeavesTheBrowseScopeToItsOwner() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let target = scope()
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: target)
+        let registry = SchemaProviderRegistry(
+            metadataDriverProvider: metadata,
+            browseCatalogState: { _ in .loaded([]) }
+        )
+
+        let provider = await registry.prepare(for: target)
+
+        #expect(driver.fetchScopedTablesCallCount == 0)
+        #expect(await provider.getTables().isEmpty)
+    }
+
+    @Test("prepare fills the browse scope itself when its catalog failed to load")
+    func prepareFillsTheBrowseScopeAfterAFailedLoad() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let target = scope()
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: target)
+        let registry = SchemaProviderRegistry(
+            metadataDriverProvider: metadata,
+            browseCatalogState: { _ in .failed("connection lost") }
+        )
+
+        let provider = await registry.prepare(for: target)
+
+        #expect(driver.fetchScopedTablesCallCount == 1)
+        #expect(await provider.getTables().map(\.name) == ["orders"])
+    }
+
+    @Test("an editor on the browse scope gets one column read once its owner fills it")
+    func browseEditorReadsColumnsOnceTheOwnerFillsIt() async {
+        let driver = MockDatabaseDriver()
+        let target = scope()
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: target)
+        let registry = SchemaProviderRegistry(
+            metadataDriverProvider: metadata,
+            browseCatalogState: { _ in .loading }
+        )
+
+        let provider = await registry.prepare(for: target)
+        await provider.waitForEagerColumnLoad()
+        #expect(driver.fetchAllColumnsCallCount == 0)
+
+        await provider.resetForDatabase("shop", tables: [TestFixtures.makeTableInfo(name: "orders")], driver: driver)
+        await registry.notePopulatedExternally(scope: target)?.value
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchScopedTablesCallCount == 0)
+        #expect(driver.fetchAllColumnsCallCount == 1)
+    }
+
+    @Test("a tab restored before its browse catalog loads leaves the table list to the owner and reads columns once")
+    func restoredBrowseEditorBeforeLoadReadsColumnsOnce() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let target = scope()
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: target)
+        let registry = SchemaProviderRegistry(
+            metadataDriverProvider: metadata,
+            browseCatalogState: { _ in .idle }
+        )
+
+        let provider = await registry.prepare(for: target)
+        await provider.waitForEagerColumnLoad()
+        await provider.resetForDatabase("shop", tables: [TestFixtures.makeTableInfo(name: "orders")], driver: driver)
+        await registry.notePopulatedExternally(scope: target)?.value
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchScopedTablesCallCount == 0)
+        #expect(driver.fetchAllColumnsCallCount == 1)
+    }
+
+    @Test("prepare reads a tab scope's columns once across repeated activations")
+    func repeatedPrepareReadsColumnsOnce() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let metadata = CountingScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry(metadataDriverProvider: metadata)
+        let target = scope(database: "warehouse")
+
+        for _ in 0 ..< 3 {
+            let provider = await registry.prepare(for: target)
+            await provider.waitForEagerColumnLoad()
+        }
+
+        #expect(driver.fetchScopedTablesCallCount == 1)
+        #expect(driver.fetchAllColumnsCallCount == 1)
+    }
+
+    @Test("a catalog change reads no columns for a scope no editor asked about")
+    func catalogChangeReadsNoColumnsWithoutAnEditor() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let connectionId = UUID()
+        let tab = scope(connectionId, database: "warehouse")
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: scope(connectionId))
+        let liveScopes = StubLiveScopeProvider(scopes: [tab])
+        let registry = SchemaProviderRegistry(metadataDriverProvider: metadata, liveScopeProvider: liveScopes)
+        let provider = registry.getOrCreate(for: tab)
+
+        await registry.refreshCatalog(for: CatalogChange(connectionId: connectionId, kinds: .tables))
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchScopedTablesCallCount == 1)
+        #expect(driver.fetchAllColumnsCallCount == 0)
+        withExtendedLifetime(liveScopes) {}
+    }
+
+    @Test("a catalog change re-reads a rendered editor's columns once and keeps them cached")
+    func catalogChangeRenewsARenderedEditorsColumns() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let connectionId = UUID()
+        let tab = scope(connectionId, database: "warehouse")
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: scope(connectionId))
+        let liveScopes = StubLiveScopeProvider(scopes: [tab])
+        let registry = SchemaProviderRegistry(metadataDriverProvider: metadata, liveScopeProvider: liveScopes)
+        let provider = await registry.prepare(for: tab)
+        await provider.waitForEagerColumnLoad()
+
+        await registry.refreshCatalog(for: CatalogChange(connectionId: connectionId, kinds: .tables))
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchScopedTablesCallCount == 2)
+        #expect(driver.fetchAllColumnsCallCount == 2)
+        _ = await provider.getColumns(for: "orders")
+        #expect(driver.fetchColumnsCallCount == 0)
+        withExtendedLifetime(liveScopes) {}
+    }
+
+    @Test("the owner's refill re-reads the browse editor's columns only while something renders it")
+    func ownerRefillRenewsOnlyARenderedBrowseScope() async {
+        for rendered in [true, false] {
+            let driver = MockDatabaseDriver()
+            driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+            let target = scope()
+            let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: target)
+            let liveScopes = StubLiveScopeProvider(scopes: rendered ? [target] : [])
+            let registry = SchemaProviderRegistry(
+                metadataDriverProvider: metadata,
+                liveScopeProvider: liveScopes,
+                browseCatalogState: { _ in .loaded([]) }
+            )
+            let tables = [TestFixtures.makeTableInfo(name: "orders")]
+            let provider = await registry.prepare(for: target)
+            await provider.resetForDatabase("shop", tables: tables, driver: driver)
+            await registry.notePopulatedExternally(scope: target)?.value
+            await provider.waitForEagerColumnLoad()
+            #expect(driver.fetchAllColumnsCallCount == 1)
+
+            await provider.resetForDatabase("shop", tables: tables, driver: driver)
+            await registry.notePopulatedExternally(scope: target)?.value
+            await provider.waitForEagerColumnLoad()
+
+            #expect(driver.fetchAllColumnsCallCount == (rendered ? 2 : 1), "rendered: \(rendered)")
+            withExtendedLifetime(liveScopes) {}
+        }
     }
 
     // MARK: - Eviction

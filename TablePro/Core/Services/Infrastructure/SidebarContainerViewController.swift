@@ -207,11 +207,10 @@ internal final class SidebarContainerViewController: NSViewController {
         tree.createFolder(in: .browsed)
     }
 
-    /// The database filter, shown from the View menu and from the object list's contextual menu
-    /// rather than from a button at the bottom of the sidebar. It anchors on the filter field
-    /// because that is what it scopes, and because the field is the one piece of sidebar chrome
-    /// that outlives a workspace switch.
-    func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
+    /// The database and schema filters, shown from the View menu and from the object list's
+    /// contextual menu. They anchor on the filter field because that is what they scope, and because
+    /// the field is the one piece of sidebar chrome that outlives a workspace switch.
+    func presentFilter(_ target: SidebarFilterTarget, connectionId: UUID, sidebarState: SharedSidebarState) {
         guard !searchField.isHiddenOrHasHiddenAncestor else { return }
         filterPopover?.close()
         filterPopover = PopoverPresenter.show(
@@ -222,10 +221,9 @@ internal final class SidebarContainerViewController: NSViewController {
         ) { _ in
             DatabaseTreeFilterPopover(
                 connectionId: connectionId,
-                selectedDatabases: Binding(
-                    get: { sidebarState.databaseFilterSelected },
-                    set: { sidebarState.databaseFilterSelected = $0 }
-                )
+                target: target,
+                selection: sidebarState.filterSelection(for: target),
+                onChange: { sidebarState.setFilterSelection($0, for: target) }
             )
         }
     }

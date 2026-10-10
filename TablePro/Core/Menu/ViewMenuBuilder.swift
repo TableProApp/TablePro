@@ -17,8 +17,29 @@ enum ViewMenuBuilder {
         String(localized: "menu.view", defaultValue: "View", comment: "The View menu in the menu bar")
     }
 
+    private static func sidebarFilterItems() -> [NSMenuItem] {
+        [
+            MenuItemFactory.item(
+                String(localized: "Filter Databases…"),
+                action: #selector(MainSplitViewController.filterDatabases(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Show All Databases"),
+                action: #selector(MainSplitViewController.showAllDatabases(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Filter Schemas…"),
+                action: #selector(MainSplitViewController.filterSchemas(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Show All Schemas"),
+                action: #selector(MainSplitViewController.showAllSchemas(_:))
+            )
+        ]
+    }
+
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(title, items: [
+        let leading: [NSMenuItem] = [
             MenuItemFactory.item(
                 String(localized: "Show Sidebar"),
                 action: #selector(NSSplitViewController.toggleSidebar(_:)),
@@ -63,15 +84,9 @@ enum ViewMenuBuilder {
             connectionSortSubmenu(),
             MenuItemFactory.separator,
             sidebarLayoutSubmenu(),
-            focusSubmenu(keyboard: keyboard),
-            MenuItemFactory.item(
-                String(localized: "Filter Databases…"),
-                action: #selector(MainSplitViewController.filterDatabases(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Show All Databases"),
-                action: #selector(MainSplitViewController.showAllDatabases(_:))
-            ),
+            focusSubmenu(keyboard: keyboard)
+        ]
+        let trailing: [NSMenuItem] = [
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Filter Bar"),
@@ -178,7 +193,8 @@ enum ViewMenuBuilder {
                 keyEquivalent: "f",
                 modifiers: [.command, .control]
             )
-        ])
+        ]
+        return MenuItemFactory.menu(title, items: leading + sidebarFilterItems() + trailing)
     }
 
     /// Browse and Agent as a checked pair sharing one selector, the shape the Result View submenu

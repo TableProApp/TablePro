@@ -92,6 +92,46 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
+    /// `reltuples` is -1 from PostgreSQL 14 until the first VACUUM or ANALYZE, which is no estimate at all.
+    static func rowEstimate(reltuples: String?) -> Int64? {
+        guard let reltuples, let estimate = Int64(reltuples), estimate >= 0 else { return nil }
+        return estimate
+    }
+
+    /// `pg_catalog` describes only the connected database, so another one gets no count rather than
+    /// 0, and a database the role cannot connect to gets no size rather than failing the read.
+    static func databaseMetadata(database: String) -> String {
+        let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
+        return """
+            SELECT
+                CASE WHEN pg_catalog.current_database() = \(databaseLiteral) THEN (
+                    SELECT pg_catalog.count(*)
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relkind IN ('r', 'v', 'f', 'p')
+                      AND n.nspname NOT LIKE 'pg!_%' ESCAPE '!'
+                      AND n.nspname <> 'information_schema'
+                      AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+                      AND \(PostgreSQLTableListing.visibleRelation("c"))
+                      AND c.oid NOT IN (
+                            SELECT i.inhrelid
+                            FROM pg_catalog.pg_inherits i
+                            JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                            WHERE parent.relkind IN ('p', 'I'))) END,
+                CASE WHEN pg_catalog.has_database_privilege(\(databaseLiteral), 'CONNECT')
+                     THEN pg_catalog.pg_database_size(\(databaseLiteral)) END
+            """
+    }
+
+    static let allDatabaseMetadata = """
+        SELECT d.datname,
+               CASE WHEN pg_catalog.has_database_privilege(d.oid, 'CONNECT')
+                    THEN pg_catalog.pg_database_size(d.oid) END
+        FROM pg_catalog.pg_database d
+        WHERE NOT d.datistemplate
+        ORDER BY d.datname
+        """
+
     static func approximateRowCount(schema: String, table: String) -> String {
         """
         SELECT c.reltuples::bigint
@@ -151,25 +191,56 @@ enum PostgreSQLSchemaQueries {
         WHERE t.typtype = 'e'
         """
 
-    /// Every enum appears, with a NULL label where it has none, so the column resolver can tell
-    /// an enum apart from a composite, a range or an extension's base type: all four reach it as
-    /// `USER-DEFINED`, and only an enum has a row here.
-    static let enumLabelQuery = """
+    /// Every enum the read's columns use, also through a domain or an array, with a NULL label where it
+    /// has none: an enum, a composite and a range all reach the resolver as `USER-DEFINED`.
+    static func enumLabelQuery(schema: String, table: String?) -> String {
+        """
+        WITH used AS (
+        \(usedColumnTypes(schema: schema, table: table))
+        )
         SELECT n.nspname, t.typname, e.enumlabel
         FROM pg_catalog.pg_type t
         JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
         LEFT JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
         WHERE t.typtype = 'e'
+          AND t.oid IN (
+            SELECT u.oid FROM used u
+            UNION SELECT ut.typbasetype FROM pg_catalog.pg_type ut JOIN used u ON u.oid = ut.oid
+            UNION SELECT ut.typelem FROM pg_catalog.pg_type ut JOIN used u ON u.oid = ut.oid
+            UNION SELECT b.typelem FROM pg_catalog.pg_type ut JOIN used u ON u.oid = ut.oid
+                  JOIN pg_catalog.pg_type b ON b.oid = ut.typbasetype)
         ORDER BY n.nspname, t.typname, e.enumsortorder
         """
+    }
 
-    static let arrayTypeQuery = """
+    static func arrayTypeQuery(schema: String, table: String?) -> String {
+        """
         SELECT n.nspname, arr.typname, el.typname, el.typtype
         FROM pg_catalog.pg_type arr
         JOIN pg_catalog.pg_type el ON el.oid = arr.typelem
         JOIN pg_catalog.pg_namespace n ON n.oid = arr.typnamespace
         WHERE arr.typelem <> 0 AND el.typarray = arr.oid
+          AND arr.oid IN (
+            SELECT CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END
+            FROM pg_catalog.pg_type t
+            WHERE t.oid IN (
+        \(usedColumnTypes(schema: schema, table: table))
+            ))
         """
+    }
+
+    private static func usedColumnTypes(schema: String, table: String?) -> String {
+        let tableFilter = table.map { "\n      AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        return """
+                SELECT a.atttypid AS oid
+                FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace
+                WHERE cn.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))\(tableFilter)
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
+            """
+    }
 
     /// Each column's type, default, generation expression and collation as the server writes them for
     /// a `CREATE TABLE` on another schema. `format_type` is the one spelling of a type that keeps its
@@ -483,7 +554,7 @@ enum PostgreSQLSchemaQueries {
             LEFT JOIN pg_catalog.pg_class rel
                 ON rel.relnamespace = relns.oid
                 AND rel.relname = c.table_name\(attributeJoin)
-            \(ColumnQueryShape.primaryKeyJoin(schema: schema, fragments: shape))
+            \(ColumnQueryShape.catalogPrimaryKeyJoin(schema: schema, fragments: shape))
             WHERE c.table_schema = \(schemaLiteral)\(shape.mainTableFilter)
             """
         var arms = [informationSchemaArm]

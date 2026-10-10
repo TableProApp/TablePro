@@ -94,6 +94,7 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// made in the pane header's picker reaches the split item without the picker knowing the window.
     weak var observedTrailingPaneState: TrailingPaneState?
     var trailingSurfaceCancellable: AnyCancellable?
+    var inspectorCollapseCancellable: AnyCancellable?
 
     /// The agent session whose name the window carries, and the subscription that follows it. Only
     /// ever the selected connection's displayed session in Agent mode, re-armed by `applyWindowTitle`.
@@ -346,6 +347,11 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// without anyone having to read AppKit's own autosave record to find out which it is.
         inspectorSplitItem.isCollapsed = true
         addSplitViewItem(inspectorSplitItem)
+        // `collapsed` is KVO compliant and follows a divider drag and the autosave restore too.
+        inspectorCollapseCancellable = inspectorSplitItem.publisher(for: \.isCollapsed)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncInspectorVisibility() }
 
         navigationSidebar.railController.onEntryCountChange = { [weak self] count in
             self?.applyRailVisibility(workspaceCount: count)
@@ -1284,21 +1290,47 @@ internal final class MainSplitViewController: NSSplitViewController {
     }
 
     func presentDatabaseFilter() {
+        presentSidebarFilter(.databases)
+    }
+
+    func clearDatabaseFilter() {
+        clearSidebarFilter(.databases)
+    }
+
+    /// The schema filter belongs to the database being browsed, the one whose schemas the sidebar
+    /// and Open Quickly list.
+    func presentSchemaFilter() {
+        guard let target = browsedSchemaFilterTarget else { return }
+        presentSidebarFilter(target)
+    }
+
+    func clearSchemaFilter() {
+        guard let target = browsedSchemaFilterTarget else { return }
+        clearSidebarFilter(target)
+    }
+
+    private var browsedSchemaFilterTarget: SidebarFilterTarget? {
+        guard let session = currentSession else { return nil }
+        return .schemas(database: DatabaseManager.shared.browseDatabaseName(for: session.connection))
+    }
+
+    private func presentSidebarFilter(_ target: SidebarFilterTarget) {
         guard let connectionId = currentSession?.connection.id else { return }
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.isCollapsed = false
         }
-        navigationSidebar.objectBrowser.presentDatabaseFilter(
+        navigationSidebar.objectBrowser.presentFilter(
+            target,
             connectionId: connectionId,
             sidebarState: SharedSidebarState.forConnection(connectionId)
         )
     }
 
-    func clearDatabaseFilter() {
+    private func clearSidebarFilter(_ target: SidebarFilterTarget) {
         guard let connectionId = currentSession?.connection.id else { return }
         let state = SharedSidebarState.forConnection(connectionId)
-        guard !state.databaseFilterSelected.isEmpty else { return }
-        state.databaseFilterSelected = []
+        guard !state.filterSelection(for: target).isEmpty else { return }
+        state.setFilterSelection([], for: target)
     }
 
     /// Which list the sidebar is showing, or nil while it is collapsed. The two View-menu items read

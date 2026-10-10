@@ -33,6 +33,14 @@ struct PostgreSQLObjectQueryTests {
             .contains("proisagg"))
     }
 
+    @Test("The extension test names pg_proc, so a member of another catalog sharing the oid hides nothing")
+    func routineExtensionTestNamesItsCatalog() {
+        let sql = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
+        #expect(sql.contains(
+            "WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e'"
+        ))
+    }
+
     @Test("Aggregates and window functions are excluded because pg_get_functiondef raises on them")
     func aggregatesExcluded() {
         let modern = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))

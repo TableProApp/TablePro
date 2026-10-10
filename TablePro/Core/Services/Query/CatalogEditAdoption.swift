@@ -167,6 +167,7 @@ struct CatalogEditAdoption {
             SharedSidebarState.forConnection(connectionId).renameRecentDatabase(from: oldDatabase, to: newName)
             favoriteDatabases.rename(database: oldDatabase, to: newName, connectionId: connectionId)
             retargetDatabaseFilter(from: oldDatabase, to: newName, connectionId: connectionId)
+            SharedSidebarState.forConnection(connectionId).moveSchemaFilter(fromDatabase: oldDatabase, toDatabase: newName)
             retargetSavedConnectionDatabase(from: oldDatabase, to: newName, connectionId: connectionId)
             retargetBrowseCursor(session.connection, from: oldDatabase, to: newName)
         case .schema:
@@ -175,9 +176,9 @@ struct CatalogEditAdoption {
             retargetContainer(
                 database: database, schema: oldSchema, toDatabase: database, toSchema: newName, connectionId: connectionId
             )
-            SharedSidebarState.forConnection(connectionId).renameRecentSchema(
-                database: database, from: oldSchema, to: newName
-            )
+            let sidebarState = SharedSidebarState.forConnection(connectionId)
+            sidebarState.renameRecentSchema(database: database, from: oldSchema, to: newName)
+            sidebarState.renameSchemaInFilter(database: database, from: oldSchema, to: newName)
         }
     }
 
@@ -208,12 +209,14 @@ struct CatalogEditAdoption {
         /// because they persist per connection in UserDefaults.
         if let schema {
             sidebarState.clearRecentTables(inDatabase: database, schema: schema)
+            sidebarState.removeSchemaFromFilter(database: database, schema: schema)
             return
         }
         guard container.kind == .database else { return }
         favoriteDatabases.removeFavorite(database: database, connectionId: connectionId)
         clearSavedConnectionDatabase(named: database, connectionId: connectionId)
         sidebarState.clearRecentTables(inDatabase: database)
+        sidebarState.setSchemaFilter([], for: database)
         var selected = sidebarState.databaseFilterSelected
         guard selected.remove(database) != nil else { return }
         sidebarState.databaseFilterSelected = selected

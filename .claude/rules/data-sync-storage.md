@@ -30,7 +30,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Filter defaults and presets | UserDefaults | `FilterSettingsStorage`, `FilterPresetStorage` |
 | Per-table filters | JSON, one file per table | `FilterSettingsStorage` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
-| Sidebar database filter, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
+| Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |

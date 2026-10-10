@@ -151,6 +151,17 @@ enum CompatHarness {
                 line(["table", table.name, table.type, table.comment ?? "-"])
             }
         }
+        await attempt("fetchTables(inSchemas:)") {
+            let one = try await driver.fetchTables(schema: "public").map { "\($0.name)|\($0.type)|public" }
+            let set = try await driver.fetchTables(inSchemas: ["public"])?.map { "\($0.name)|\($0.type)|\($0.schema ?? "-")" }
+            line(["inschemas-tables", set == one ? "same" : "differ"])
+        }
+        await attempt("fetchDatabaseMetadata") {
+            let current = try await driver.fetchDatabaseMetadata(CommandLine.arguments[5])
+            line(["dbmeta", "current", current.tableCount.map { $0 > 0 ? "counted" : "zero" } ?? "nil"])
+            let other = try await driver.fetchDatabaseMetadata("postgres")
+            line(["dbmeta", "other", other.tableCount.map { _ in "counted" } ?? "nil"])
+        }
         await attempt("fetchAllForeignKeys") {
             let all = try await driver.fetchAllForeignKeys(schema: "public")
             for (table, keys) in all.sorted(by: { $0.key < $1.key }) {
@@ -475,6 +486,9 @@ cat > "$WORK/expected.txt" <<'EXPECTED'
 120000-|table|part_child|TABLE|-
 120000-|table|part_ref|PARTITIONED TABLE|-
 120000-|table|part_src|PARTITIONED TABLE|-
+-|inschemas-tables|same
+-|dbmeta|current|counted
+-|dbmeta|other|nil
 -|fk|fk_child|fk_rev|y>fk_parent.b NO ACTION/CASCADE,x>fk_parent.a NO ACTION/CASCADE
 -|fk|orders|orders_customer_id_fkey|customer_id>customers.id CASCADE/NO ACTION
 120000-|fk|part_child|part_child_ref_id_fkey|ref_id>part_ref.id NO ACTION/NO ACTION

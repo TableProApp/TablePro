@@ -26,6 +26,15 @@ struct PostgreSQLApproximateRowCountQueryTests {
         #expect(!publicQuery.contains("'example'"))
     }
 
+    @Test("A table never analyzed has no estimate, rather than -1 rows")
+    func rowEstimateRejectsTheUnanalyzedSentinel() {
+        #expect(PostgreSQLSchemaQueries.rowEstimate(reltuples: "-1") == nil)
+        #expect(PostgreSQLSchemaQueries.rowEstimate(reltuples: "0") == 0)
+        #expect(PostgreSQLSchemaQueries.rowEstimate(reltuples: "1200") == 1_200)
+        #expect(PostgreSQLSchemaQueries.rowEstimate(reltuples: nil) == nil)
+        #expect(PostgreSQLSchemaQueries.rowEstimate(reltuples: "x") == nil)
+    }
+
     @Test("The estimate is the first and only projected column")
     func projectsReltuplesAlone() {
         let query = PostgreSQLSchemaQueries.approximateRowCount(schema: "public", table: "accounts")

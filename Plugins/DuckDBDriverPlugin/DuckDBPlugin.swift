@@ -671,6 +671,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Self.tableInfos(from: result)
     }
 
+    /// A remote catalog answers metadata best-effort, so it stays per schema, where a failed read
+    /// names its one schema instead of failing the whole set.
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard remoteAlias == nil else { return nil }
+        guard !schemas.isEmpty else { return [] }
+        let result = try await executeParameterized(
+            query: DuckDBSchemaQueries.listTables(in: .schemas(schemas)),
+            parameters: [.text(try requireCatalog())]
+        )
+        return Self.tableInfos(from: result)
+    }
+
     private static func tableInfos(from result: PluginQueryResult) -> [PluginTableInfo] {
         result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }

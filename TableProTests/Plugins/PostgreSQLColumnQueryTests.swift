@@ -39,8 +39,8 @@ struct PostgreSQLColumnsQueryTests {
     func singleTableFiltersOnRequestedSchema() {
         let query = singleTable(schema: "s2", table: "orders")
         #expect(query.contains("WHERE c.table_schema = 's2' AND c.table_name = 'orders'"))
-        #expect(query.contains("AND tc.table_schema = 's2'"))
-        #expect(query.contains("AND tc.table_name = 'orders'"))
+        #expect(query.contains("AND pkn.nspname = 's2'"))
+        #expect(query.contains("AND pkc.relname = 'orders'"))
     }
 
     @Test("a non-active schema is not ignored", arguments: ["s2", "analytics", "public"])
@@ -116,11 +116,27 @@ struct PostgreSQLColumnsQueryTests {
         }
     }
 
-    @Test("primary key columns are matched to the constraint's own table")
-    func primaryKeyJoinIsTableScoped() {
+    @Test("primary key columns come from pg_constraint, which a role that can only read the table still sees")
+    func primaryKeyReadsPgConstraint() throws {
         for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
-            #expect(query.contains("AND tc.table_name = kcu.table_name"))
+            let start = try #require(query.range(of: "FROM pg_catalog.pg_constraint con"))
+            let end = try #require(query.range(of: ") pk ON", range: start.upperBound..<query.endIndex))
+            let block = query[start.lowerBound..<end.lowerBound]
+            #expect(block.contains("pka.attnum = ANY (con.conkey)"))
+            #expect(block.contains("con.contype = 'p'"))
+            #expect(block.contains("pkn.nspname = 's2'"))
+            #expect(!block.contains("privilege"))
+            #expect(!block.contains("pg_has_role"))
+            #expect(!query.contains("information_schema.table_constraints"))
         }
+    }
+
+    @Test("only the one-table read names the table inside the key block")
+    func primaryKeyBlockNamesTheTableOnlyWhenAsked() {
+        #expect(singleTable(schema: "s2", table: "orders").contains("SELECT DISTINCT pka.attname AS column_name"))
+        #expect(singleTable(schema: "s2", table: "orders").contains("AND pkc.relname = 'orders'"))
+        #expect(allTables(schema: "s2").contains("SELECT DISTINCT pkc.relname AS table_name, pka.attname AS column_name"))
+        #expect(!allTables(schema: "s2").contains("pkc.relname = '"))
     }
 }
 
@@ -211,7 +227,7 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         #expect(rendered.contains("'NO' AS is_pk"))
         #expect(rendered.contains("NULL::text AS column_default"))
         #expect(!rendered.contains("pg_attrdef"))
-        #expect(rendered.components(separatedBy: "information_schema.table_constraints").count - 1 == 1)
+        #expect(rendered.components(separatedBy: "FROM pg_catalog.pg_constraint con").count - 1 == 1)
     }
 
     @Test("identity and generated mirror the capability switches the base arm uses")

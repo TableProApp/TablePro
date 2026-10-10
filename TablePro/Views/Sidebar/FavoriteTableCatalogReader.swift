@@ -26,19 +26,24 @@ internal struct FavoriteTableCatalogReader {
     internal let isConnected: Bool
     internal let schemaService: SchemaService
     internal let treeService: DatabaseTreeMetadataService
+    /// What the schema filter keeps, nil for no filter. A starred table in a hidden schema still
+    /// shows, unverified, and is read only when opened.
+    internal let keptSchemas: Set<String>?
 
     internal init(
         connectionId: UUID,
         grouping: GroupingStrategy,
         isConnected: Bool,
         schemaService: SchemaService = .shared,
-        treeService: DatabaseTreeMetadataService = .shared
+        treeService: DatabaseTreeMetadataService = .shared,
+        keptSchemas: Set<String>? = nil
     ) {
         self.connectionId = connectionId
         self.grouping = grouping
         self.isConnected = isConnected
         self.schemaService = schemaService
         self.treeService = treeService
+        self.keptSchemas = keptSchemas
     }
 
     internal func read(
@@ -132,19 +137,35 @@ internal struct FavoriteTableCatalogReader {
     ) -> FavoriteTableLoadRequest {
         guard isConnected, schemaServiceScope(browsing: scope.database) != nil else { return .none }
         let schemas = FavoriteTableResolver.schemasNeedingLoad(entries, scope: scope, catalog: catalog)
+            .union(staleTreeSchemas(entries, scope: scope, catalog: catalog))
             .filter { canStartLoad(schema: $0, database: scope.database) }
         guard !schemas.isEmpty else { return .none }
         return FavoriteTableLoadRequest(database: scope.database, schemas: schemas)
     }
 
+    /// A favorite's schema whose tree list a change overtook, and that nothing current answers for.
+    private func staleTreeSchemas(
+        _ entries: [FavoriteTablesStorage.FavoriteEntry],
+        scope: FavoriteTableBrowseScope,
+        catalog: FavoriteTableCatalog
+    ) -> Set<String> {
+        guard scope.listsTablesPerSchema, grouping != .hierarchicalSchema else { return [] }
+        let database = scope.database ?? ""
+        return Set(entries.filter(scope.contains).compactMap { entry -> String? in
+            guard let schema = entry.schema?.nilIfEmpty,
+                  treeService.tablesLoadState(connectionId: connectionId, database: database, schema: schema).value != nil,
+                  !catalog.sources.contains(where: { $0.isCurrent && $0.covers(schema: schema) })
+            else { return nil }
+            return schema
+        })
+    }
+
     private func canStartLoad(schema: String, database: String?) -> Bool {
+        if let keptSchemas, !keptSchemas.contains(schema) { return false }
         if grouping == .hierarchicalSchema {
             return schemaService.schemaObjectsNeedFetch(for: connectionId, schema: schema)
         }
-        guard case .idle = treeService.tablesLoadState(
-            connectionId: connectionId, database: database ?? "", schema: schema
-        ) else { return false }
-        return true
+        return treeService.tablesNeedFetch(connectionId: connectionId, database: database ?? "", schema: schema)
     }
 
     private func schemaServiceScope(browsing database: String?) -> DatabaseScope? {
@@ -193,7 +214,9 @@ internal struct FavoriteTableCatalogReader {
             return FavoriteTableCatalog.Source(
                 tables: tables.filter { names.contains($0.name) },
                 coverage: .schemas([schema]),
-                isCurrent: true
+                isCurrent: treeService.isTablesCurrent(
+                    connectionId: connectionId, database: database ?? "", schema: schema.nilIfEmpty
+                )
             )
         }
     }

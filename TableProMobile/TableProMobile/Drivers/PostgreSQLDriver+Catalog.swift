@@ -5,14 +5,23 @@ import TableProModels
 import TableProPluginKit
 
 nonisolated extension PostgreSQLDriver {
+    /// iOS errors carry no SQLSTATE, so any failure of the catalog form retries once on the
+    /// information_schema form, the way the column read falls back.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let query = Self.tablesQuery(
-            schema: schema ?? effectiveSchema,
-            databaseType: databaseType,
-            presence: catalogPresence
-        )
-        let result = try await execute(query: query)
-        return Self.tables(fromRows: result.rows, databaseType: databaseType)
+        let schemaName = schema ?? effectiveSchema
+        let query = Self.tablesQuery(schema: schemaName, databaseType: databaseType, presence: catalogPresence)
+        do {
+            let result = try await execute(query: query)
+            return Self.tables(fromRows: result.rows, databaseType: databaseType)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let fallback = Self.fallbackTablesQuery(schema: schemaName, databaseType: databaseType) else { throw error }
+            Self.logger.debug("Table listing fell back to information_schema: \(error.localizedDescription, privacy: .private)")
+            try Task.checkCancellation()
+            let result = try await execute(query: fallback)
+            return Self.tables(fromRows: result.rows, databaseType: databaseType)
+        }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
@@ -73,6 +82,11 @@ nonisolated extension PostgreSQLDriver {
         )
     }
 
+    static func fallbackTablesQuery(schema: String, databaseType: DatabaseType) -> String? {
+        guard databaseType != .redshift else { return nil }
+        return PostgreSQLTableListing.informationSchemaQuery(in: .schema(schema))
+    }
+
     static func tables(fromRows rows: [[String?]], databaseType: DatabaseType) -> [TableInfo] {
         rows.compactMap { row in
             let listed = databaseType == .redshift
@@ -104,6 +118,7 @@ nonisolated extension PostgreSQLDriver {
                 JOIN information_schema.key_column_usage kcu
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
+                    AND tc.table_name = kcu.table_name
                 WHERE tc.constraint_type = 'PRIMARY KEY'
                     AND tc.table_schema = \(schemaLiteral)
                     AND tc.table_name = \(tableLiteral)

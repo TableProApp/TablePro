@@ -193,6 +193,18 @@ struct HierarchicalSchemaSearchTests {
         #expect(unnamed == ["blog"])
         #expect(byDatabase.isEmpty)
     }
+
+    @Test("A schema-grouped flat list asks for the browsed database alone")
+    func flatSearchAsksForTheBrowsedDatabaseOnly() {
+        let requested = SidebarViewModel.databasesListedForSearch(
+            grouping: .bySchema, browsedDatabase: "shop", databasesWithSchemaLists: ["blog"], layout: .flat
+        )
+        let unnamed = SidebarViewModel.databasesListedForSearch(
+            grouping: .bySchema, browsedDatabase: "", databasesWithSchemaLists: ["blog"], layout: .flat
+        )
+        #expect(requested == ["shop"])
+        #expect(unnamed.isEmpty)
+    }
 }
 
 /// The measured case behind the change: a search over 200 schemas, three of which hold a match.

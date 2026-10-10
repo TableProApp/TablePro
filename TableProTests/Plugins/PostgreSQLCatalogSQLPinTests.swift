@@ -3,7 +3,7 @@ import TableProPluginKit
 import Testing
 
 struct PostgreSQLCatalogSQLPinTests {
-    @Test("The listing iOS runs, with the optional catalogs and without comments or partitions")
+    @Test("The listing iOS runs, with materialized views and foreign tables, without comments or partitions")
     func iOSListing() {
         let query = PostgreSQLTableListing.query(
             schema: "public",
@@ -15,7 +15,7 @@ struct PostgreSQLCatalogSQLPinTests {
         #expect(query == Self.iOSListing)
     }
 
-    @Test("The listing macOS runs first, with every arm")
+    @Test("The listing macOS runs first, with every relation kind")
     func fullListing() {
         let query = PostgreSQLTableListing.query(
             schema: "public",
@@ -23,6 +23,37 @@ struct PostgreSQLCatalogSQLPinTests {
             includeForeignTables: true
         )
         #expect(query == Self.fullListing)
+    }
+
+    @Test("The information_schema rung is the least capable listing as it stood before the catalog form")
+    func informationSchemaRung() {
+        let query = PostgreSQLTableListingLadder.query(
+            for: PostgreSQLTableListingLadder.leastCapableAttempt,
+            in: .schema("public"),
+            includeMaterializedViews: true,
+            includeForeignTables: true
+        )
+        #expect(query == Self.informationSchemaRung)
+    }
+
+    @Test("The schema-set listing names its schemas as quoted literals and fences the scan")
+    func schemaSetListing() {
+        let query = PostgreSQLTableListing.query(
+            in: .schemas(["public", "it's"]),
+            includeMaterializedViews: true,
+            includeForeignTables: true
+        )
+        #expect(query == Self.schemaSetListing)
+    }
+
+    @Test("Database metadata counts only the connected database and sizes only one the role may connect to")
+    func databaseMetadata() {
+        #expect(PostgreSQLSchemaQueries.databaseMetadata(database: "app") == Self.databaseMetadata)
+    }
+
+    @Test("The all-database read sizes only the databases the role may connect to")
+    func allDatabaseMetadata() {
+        #expect(PostgreSQLSchemaQueries.allDatabaseMetadata == Self.allDatabaseMetadata)
     }
 
     @Test("The column read with its materialized view arm")
@@ -80,82 +111,140 @@ struct PostgreSQLCatalogSQLPinTests {
         "WHEN a.attgenerated = 'v' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') VIRTUAL'"
 
     private static let iOSListing = """
+        SELECT c.relname AS table_name,
+               CASE c.relkind
+                   WHEN 'v' THEN 'VIEW'
+                   WHEN 'm' THEN 'MATERIALIZED VIEW'
+                   WHEN 'f' THEN 'FOREIGN TABLE'
+                   ELSE 'BASE TABLE' END AS table_type,
+               NULL::text AS table_comment,
+               NULL::bigint AS partition_count
+        FROM (SELECT rc.oid, rc.relname, rc.relkind, rc.relowner, n.oid AS nspoid, n.nspname
+              FROM pg_catalog.pg_class rc
+              JOIN pg_catalog.pg_namespace n ON n.oid = rc.relnamespace
+              WHERE n.nspname = 'public'
+                AND rc.relkind IN ('r', 'p', 'v', 'm', 'f')) c
+        WHERE c.nspoid <> pg_catalog.pg_my_temp_schema()
+          AND NOT pg_catalog.pg_is_other_temp_schema(c.nspoid)
+          AND (pg_catalog.pg_has_role(c.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+        ORDER BY table_name
+        """
+
+    private static let fullListing = """
+        SELECT c.relname AS table_name,
+               CASE c.relkind
+                   WHEN 'p' THEN 'PARTITIONED TABLE'
+                   WHEN 'v' THEN 'VIEW'
+                   WHEN 'm' THEN 'MATERIALIZED VIEW'
+                   WHEN 'f' THEN 'FOREIGN TABLE'
+                   ELSE 'BASE TABLE' END AS table_type,
+               d.description AS table_comment,
+               CASE WHEN c.relkind = 'p' THEN (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = c.oid) END AS partition_count
+        FROM (SELECT rc.oid, rc.relname, rc.relkind, rc.relowner, n.oid AS nspoid, n.nspname
+              FROM pg_catalog.pg_class rc
+              JOIN pg_catalog.pg_namespace n ON n.oid = rc.relnamespace
+              WHERE n.nspname = 'public'
+                AND rc.relkind IN ('r', 'p', 'v', 'm', 'f')) c
+        LEFT JOIN pg_catalog.pg_description d
+            ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objsubid = 0
+        WHERE c.nspoid <> pg_catalog.pg_my_temp_schema()
+          AND NOT pg_catalog.pg_is_other_temp_schema(c.nspoid)
+          AND (pg_catalog.pg_has_role(c.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+          AND NOT EXISTS (
+                SELECT 1
+                FROM pg_catalog.pg_inherits i
+                JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                WHERE i.inhrelid = c.oid
+                  AND parent.relkind = 'p'
+                  AND NOT pg_catalog.pg_is_other_temp_schema(parent.relnamespace)
+                  AND (pg_catalog.pg_has_role(parent.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(parent.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(parent.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+                OFFSET 0)
+        ORDER BY table_name
+        """
+
+    private static let informationSchemaRung = """
         SELECT t.table_name, t.table_type AS table_type,
                NULL::text AS table_comment,
                NULL::bigint AS partition_count
         FROM information_schema.tables t
         WHERE t.table_schema = 'public'
           AND t.table_type IN ('BASE TABLE', 'VIEW')
-        UNION ALL
-        SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-               NULL::text AS table_comment,
-               NULL::bigint AS partition_count
-        FROM pg_matviews m
-        WHERE m.schemaname = 'public'
-        UNION ALL
-        SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-               NULL::text AS table_comment,
-               NULL::bigint AS partition_count
-        FROM pg_foreign_table ft
-        JOIN pg_class c ON c.oid = ft.ftrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public'
         ORDER BY table_name
         """
 
-    private static let fullListing = """
-        SELECT t.table_name, CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END AS table_type,
-               obj_description(pc.oid, 'pg_class') AS table_comment,
-               CASE WHEN pc.relkind = 'p' THEN (
-                   SELECT count(*)
-                   FROM pg_catalog.pg_inherits ci
-                   WHERE ci.inhparent = pc.oid) END AS partition_count
-        FROM information_schema.tables t
-        LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
-        LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
-        WHERE t.table_schema = 'public'
-          AND t.table_type IN ('BASE TABLE', 'VIEW')
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM pg_catalog.pg_inherits i
-                  JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                  JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
-                  WHERE i.inhrelid = pc.oid
-                    AND parent.relkind IN ('p', 'I')
-                    AND EXISTS (
-                          SELECT 1
-                          FROM information_schema.tables pt
-                          WHERE pt.table_schema = parentns.nspname
-                            AND pt.table_name = parent.relname))
-        UNION ALL
-        SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-               obj_description(mc.oid, 'pg_class') AS table_comment,
-               NULL::bigint AS partition_count
-        FROM pg_matviews m
-        LEFT JOIN pg_catalog.pg_namespace mn ON mn.nspname = m.schemaname
-        LEFT JOIN pg_catalog.pg_class mc ON mc.relnamespace = mn.oid AND mc.relname = m.matviewname
-        WHERE m.schemaname = 'public'
-        UNION ALL
-        SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-               obj_description(c.oid, 'pg_class') AS table_comment,
-               NULL::bigint AS partition_count
-        FROM pg_foreign_table ft
-        JOIN pg_class c ON c.oid = ft.ftrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public'
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM pg_catalog.pg_inherits i
-                  JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                  JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
-                  WHERE i.inhrelid = c.oid
-                    AND parent.relkind IN ('p', 'I')
-                    AND EXISTS (
-                          SELECT 1
-                          FROM information_schema.tables pt
-                          WHERE pt.table_schema = parentns.nspname
-                            AND pt.table_name = parent.relname))
-        ORDER BY table_name
+    private static let schemaSetListing = """
+        SELECT c.relname AS table_name,
+               CASE c.relkind
+                   WHEN 'p' THEN 'PARTITIONED TABLE'
+                   WHEN 'v' THEN 'VIEW'
+                   WHEN 'm' THEN 'MATERIALIZED VIEW'
+                   WHEN 'f' THEN 'FOREIGN TABLE'
+                   ELSE 'BASE TABLE' END AS table_type,
+               d.description AS table_comment,
+               CASE WHEN c.relkind = 'p' THEN (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = c.oid) END AS partition_count,
+               c.nspname AS schema_name
+        FROM (SELECT rc.oid, rc.relname, rc.relkind, rc.relowner, n.oid AS nspoid, n.nspname
+              FROM pg_catalog.pg_class rc
+              JOIN pg_catalog.pg_namespace n ON n.oid = rc.relnamespace
+              WHERE n.nspname IN ('public', 'it''s')
+                AND rc.relkind IN ('r', 'p', 'v', 'm', 'f')
+              OFFSET 0) c
+        LEFT JOIN pg_catalog.pg_description d
+            ON d.objoid = c.oid AND d.classoid = 'pg_catalog.pg_class'::pg_catalog.regclass AND d.objsubid = 0
+        WHERE c.nspoid <> pg_catalog.pg_my_temp_schema()
+          AND NOT pg_catalog.pg_is_other_temp_schema(c.nspoid)
+          AND (pg_catalog.pg_has_role(c.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+          AND NOT EXISTS (
+                SELECT 1
+                FROM pg_catalog.pg_inherits i
+                JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                WHERE i.inhrelid = c.oid
+                  AND parent.relkind = 'p'
+                  AND NOT pg_catalog.pg_is_other_temp_schema(parent.relnamespace)
+                  AND (pg_catalog.pg_has_role(parent.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(parent.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(parent.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+                OFFSET 0)
+        ORDER BY schema_name, table_name
+        """
+
+    private static let databaseMetadata = """
+        SELECT
+            CASE WHEN pg_catalog.current_database() = 'app' THEN (
+                SELECT pg_catalog.count(*)
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind IN ('r', 'v', 'f', 'p')
+                  AND n.nspname NOT LIKE 'pg!_%' ESCAPE '!'
+                  AND n.nspname <> 'information_schema'
+                  AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+                  AND (pg_catalog.pg_has_role(c.relowner, 'USAGE')
+                   OR pg_catalog.has_table_privilege(c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                   OR pg_catalog.has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+                  AND c.oid NOT IN (
+                        SELECT i.inhrelid
+                        FROM pg_catalog.pg_inherits i
+                        JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                        WHERE parent.relkind IN ('p', 'I'))) END,
+            CASE WHEN pg_catalog.has_database_privilege('app', 'CONNECT')
+                 THEN pg_catalog.pg_database_size('app') END
+        """
+
+    private static let allDatabaseMetadata = """
+        SELECT d.datname,
+               CASE WHEN pg_catalog.has_database_privilege(d.oid, 'CONNECT')
+                    THEN pg_catalog.pg_database_size(d.oid) END
+        FROM pg_catalog.pg_database d
+        WHERE NOT d.datistemplate
+        ORDER BY d.datname
         """
 
     private static let columnsWithMaterializedViews = """
@@ -220,15 +309,16 @@ struct PostgreSQLCatalogSQLPinTests {
                 ON a.attrelid = rel.oid
                 AND a.attnum = c.ordinal_position
         LEFT JOIN (
-                SELECT DISTINCT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                    AND tc.table_name = kcu.table_name
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = 'public'
-                            AND tc.table_name = 'orders'
+                SELECT DISTINCT pka.attname AS column_name
+                FROM pg_catalog.pg_constraint con
+                JOIN pg_catalog.pg_class pkc ON pkc.oid = con.conrelid
+                JOIN pg_catalog.pg_namespace pkn ON pkn.oid = pkc.relnamespace
+                JOIN pg_catalog.pg_attribute pka
+                    ON pka.attrelid = con.conrelid AND pka.attnum = ANY (con.conkey) AND NOT pka.attisdropped
+                WHERE con.contype = 'p'
+                  AND pkc.relkind IN ('r', 'p')
+                  AND pkn.nspname = 'public'
+                  AND pkc.relname = 'orders'
             ) pk ON c.column_name = pk.column_name
         WHERE c.table_schema = 'public' AND c.table_name = 'orders'
         UNION ALL

@@ -78,17 +78,14 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let resolvedSchema = schema ?? core.currentSchema
-        let query = Self.columnsQuery(
-            schema: resolvedSchema,
-            tableFilter: "AND c.table_name = \(PostgreSQLObjectQueries.quoteLiteral(table))"
-        )
+        let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: table)
         let result = try await execute(query: query)
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
-        let query = Self.columnsQuery(schema: resolvedSchema, tableFilter: "", includesTableName: true)
+        let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: nil)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -246,45 +243,6 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     // MARK: - Query Helpers
-
-    private static func columnsQuery(
-        schema: String,
-        tableFilter: String,
-        includesTableName: Bool = false
-    ) -> String {
-        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        let selectPrefix = includesTableName ? "c.table_name,\n" : ""
-        let orderBy = includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
-        return """
-            SELECT
-                \(selectPrefix)c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pgd.description,
-                c.udt_name,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_class cls
-                ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = cls.oid
-                AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = \(schemaLiteral)
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = \(schemaLiteral) \(tableFilter)
-            ORDER BY \(orderBy)
-            """
-    }
 
     private static func mapColumnRow(_ row: [PluginCellValue], includesTableName: Bool) -> PluginColumnInfo? {
         let offset = includesTableName ? 1 : 0

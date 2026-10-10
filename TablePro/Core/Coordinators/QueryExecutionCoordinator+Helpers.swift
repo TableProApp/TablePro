@@ -105,8 +105,7 @@ extension QueryExecutionCoordinator {
     /// still come from the table's own metadata fetch, and claiming they had arrived would let
     /// `isMetadataCached` skip it.
     ///
-    /// A miss starts the fetch for this scope, so the store refills itself after a schema refresh
-    /// or a database switch cleared it. Only this table pays the wait; the next one is answered.
+    /// The table load started this scope's read beside its rows; a miss here starts it for a load that did not.
     private func prefetchedForeignKeys(tabIndex: Int, tableName: String) -> [String: ForeignKeyInfo]? {
         guard tabIndex < parent.tabManager.tabs.count,
               let scope = parent.scope(for: parent.tabManager.tabs[tabIndex])
