@@ -900,8 +900,14 @@ final class ConnectionFormCoordinator: ObservableObject {
             advanced.resetForType(parsed.type)
         }
 
-        // Left on Socket, normalizeTransport would drop the SSH server the URL names.
-        network.endpoint = .hostAndPort
+        if let socketPath = parsed.localSocketPath, network.supportsLocalSocket {
+            network.endpoint = .localSocket
+            network.localSocketPath = socketPath
+            transport = nil
+        } else {
+            // Left on Socket, normalizeTransport would drop the SSH server the URL names.
+            network.endpoint = .hostAndPort
+        }
         network.host = parsed.host
         network.port = String(parsed.resolvedPort)
         network.database = parsed.database
@@ -979,7 +985,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
             writeFieldByRegistry("oracleServiceName", value: svcName)
         }
-        for (fieldId, value) in parsed.additionalFields {
+        for (fieldId, value) in parsed.additionalFields where fieldId != MySQLLocalSocket.fieldKey {
             writeFieldByRegistry(fieldId, value: value)
         }
         if let hex = parsed.statusColor, !hex.isEmpty {
@@ -1072,9 +1078,11 @@ final class ConnectionFormCoordinator: ObservableObject {
         connectionStorage: ConnectionStorage
     ) -> Bool {
         connectionStorage.loadConnections().contains { saved in
-            saved.host == parsed.host
-                && saved.port == parsed.resolvedPort
-                && saved.username == parsed.username
+            guard saved.username == parsed.username, saved.localSocketPath == parsed.localSocketPath else {
+                return false
+            }
+            return parsed.localSocketPath != nil
+                || (saved.host == parsed.host && saved.port == parsed.resolvedPort)
         }
     }
 }

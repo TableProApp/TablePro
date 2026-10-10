@@ -56,9 +56,10 @@ The note under the field says when nothing is at the path or the file there is n
 
 ```text
 mysql://user:password@host:3306/database
+mysql://user:password@localhost/database?socket=%2Ftmp%2Fmysql.sock
 ```
 
-Opening a URL connects directly. See [Connection URL Reference](/connections/urls).
+`socket` connects through the socket file instead of host and port, and only with `localhost` or no host. Opening a URL connects directly. See [Connection URL Reference](/connections/urls#unix-socket).
 
 ## Common setups
 

@@ -115,6 +115,20 @@ Names are matched case-insensitively. Anything unrecognized is ignored, except o
 | `safeModeLevel` | [Safe Mode](/features/safe-mode) for this connection: 0=silent, 1=alert, 2=read-only | `?safeModeLevel=2` |
 | `statusColor` | Connection color as hex, matched to the nearest palette color | `?statusColor=FF3B30` |
 | `env` | Assign an existing tag by name. `environment` is accepted too | `?env=production` |
+| `socket` | MySQL and MariaDB: the server's socket file on this Mac, in place of host and port. `unix_socket` is accepted too. See [Unix socket](#unix-socket) | `?socket=%2Ftmp%2Fmysql.sock` |
+
+### Unix socket
+
+```text
+mysql://root@localhost/shop?socket=%2Ftmp%2Fmysql.sock
+mariadb://root@/shop?socket=(/tmp/mysql.sock)
+```
+
+- The host must be `localhost` or left out. Any other host, `127.0.0.1` included, ignores `socket` and connects over TCP, as the `mysql` client does.
+- Percent-encode the path or wrap it in parentheses. A `+` reads as a space, so a literal `+` is `%2B`.
+- A path that does not start with `/`, holds a control or invisible character, or is longer than 103 bytes refuses the URL.
+- Other engines and `+ssh` URLs ignore `socket`.
+- **Copy Connection String** on a socket connection writes this form, with no port.
 
 ### SSL/TLS
 
@@ -218,9 +232,9 @@ When another client also handles the scheme, `open -b com.TablePro "mysql://…"
 
 ## Confirmation and trusted links
 
-Every URL opened from outside the app raises an **Open External Database Connection?** alert naming the database type, host and port, user, and database. **Connect** does not answer the Return key. Escape is the only keyboard answer, and it cancels.
+Every URL opened from outside the app raises an **Open External Database Connection?** alert naming the database type, host and port or socket, user, and database. **Connect** does not answer the Return key. Escape is the only keyboard answer, and it cancels.
 
-**Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`). A trusted link is matched on database type, host, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Remote hosts always prompt, and so does a link through an SSH tunnel, whose database is on the SSH server.
+**Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`, or a socket). A trusted link is matched on database type, host, socket, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Trusting `localhost` does not cover a link that names a socket, and trusting one socket does not cover another. Remote hosts always prompt, and so does a link through an SSH tunnel, whose database is on the SSH server.
 
 A link with a [filter](#filtering) asks every time and offers no **Always Allow**. Read the filter in the box under the target before choosing **Connect**: it runs on the table as soon as the connection opens.
 

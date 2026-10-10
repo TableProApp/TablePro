@@ -67,11 +67,14 @@ struct ClipboardConnectionBanner: View {
             rendered += "@"
         }
         rendered += parsed.host
-        if !parsed.useSrv, parsed.resolvedPort > 0 {
+        if !parsed.useSrv, parsed.localSocketPath == nil, parsed.resolvedPort > 0 {
             rendered += ":\(parsed.resolvedPort)"
         }
         if !parsed.database.isEmpty {
             rendered += "/\(parsed.database)"
+        }
+        if let socketPath = parsed.localSocketPath {
+            rendered += "?socket=\(socketPath)"
         }
         if rendered.count > 60 {
             let prefix = rendered.prefix(48)

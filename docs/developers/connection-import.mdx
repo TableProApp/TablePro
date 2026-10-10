@@ -11,7 +11,7 @@ field, and a review sheet the user reads before anything is saved.
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin
 ```
 
-`name`, `host` and `type` are required. `type` takes any registered database type name,
+`name`, `host` and `type` are required, except that `socket` stands in for `host`. `type` takes any registered database type name,
 case-insensitive: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`,
 `Cassandra`, and every other type a loaded plugin registers.
 
@@ -24,6 +24,7 @@ values that contain spaces: `sslMode=Verify%20CA`.
 | Parameter | Description |
 |-----------|-------------|
 | `port` | Server port. Defaults to the type's standard port. |
+| `socket` | MySQL and MariaDB: the absolute path of the server's socket file on this Mac, at most 103 bytes. Replaces `host` and `port`, and `host` defaults to `localhost`. Ignored for other types and with `ssh=1`. A relative or longer path, or one holding a control or invisible character, refuses the link. `af_localSocketPath` is read the same way. |
 | `username` | Database username. |
 | `database` | Default database name. |
 | `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Gray` or `None`. Falls back to `None`. |
@@ -80,7 +81,7 @@ editor afterwards.
 
 ## What the user sees
 
-The review sheet shows the type, host and port, database, username, SSH auth method, SSL mode, color,
+The review sheet shows the type, host and port or socket, database, username, SSH auth method, SSL mode, color,
 icon, tags, group path, driver fields, and startup SQL. Only the name is editable. **Add Connection**
 saves it; when a connection to the same host, port, database and username is already saved, the sheet
 warns *"A connection to this server is already saved as “…”."* and the button becomes

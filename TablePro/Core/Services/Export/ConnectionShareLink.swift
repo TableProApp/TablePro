@@ -19,12 +19,14 @@ internal enum ConnectionShareLink {
         components.scheme = "tablepro"
         components.host = "import"
 
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "name", value: settings.name),
-            URLQueryItem(name: "host", value: settings.host),
-            URLQueryItem(name: "port", value: String(settings.port)),
-            URLQueryItem(name: "type", value: settings.type)
-        ]
+        var queryItems = [URLQueryItem(name: "name", value: settings.name)]
+        if let socketPath = connection.localSocketPath {
+            queryItems.append(URLQueryItem(name: "socket", value: socketPath))
+        } else {
+            queryItems.append(URLQueryItem(name: "host", value: settings.host))
+            queryItems.append(URLQueryItem(name: "port", value: String(settings.port)))
+        }
+        queryItems.append(URLQueryItem(name: "type", value: settings.type))
         if !settings.username.isEmpty {
             queryItems.append(URLQueryItem(name: "username", value: settings.username))
         }
@@ -70,7 +72,8 @@ internal enum ConnectionShareLink {
         if settings.localOnly == true {
             queryItems.append(URLQueryItem(name: "localOnly", value: "1"))
         }
-        for (key, value) in (settings.additionalFields ?? [:]).sorted(by: { $0.key < $1.key }) {
+        for (key, value) in (settings.additionalFields ?? [:]).sorted(by: { $0.key < $1.key })
+            where key != MySQLLocalSocket.fieldKey {
             queryItems.append(URLQueryItem(name: "af_\(key)", value: value))
         }
 

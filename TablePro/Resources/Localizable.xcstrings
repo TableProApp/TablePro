@@ -165488,6 +165488,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Socket" : {
+
+    },
     "Socket Path" : {
       "localizations" : {
         "fr" : {
@@ -165527,6 +165530,9 @@
           }
         }
       }
+    },
+    "Socket: %@" : {
+
     },
     "SOCKS Proxy" : {
       "localizations" : {
@@ -187319,6 +187325,10 @@
           }
         }
       }
+    },
+    "The socket path contains a control or invisible character." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The socket path is %d bytes. macOS allows %d at most." : {
       "extractionState" : "manual",

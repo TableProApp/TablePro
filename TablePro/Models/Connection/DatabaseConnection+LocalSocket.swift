@@ -6,9 +6,15 @@
 import Foundation
 import TableProPluginKit
 
+extension DatabaseType {
+    var supportsLocalSocket: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.connection.defaultLocalSocketPath != nil
+    }
+}
+
 extension DatabaseConnection {
     var supportsLocalSocket: Bool {
-        PluginMetadataRegistry.shared.snapshot(for: type)?.connection.defaultLocalSocketPath != nil
+        type.supportsLocalSocket
     }
 
     // A tunnel connects to its forwarded port, never this Mac's socket.

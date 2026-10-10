@@ -76,9 +76,17 @@ struct DeeplinkImportSheet: View {
             Section(String(localized: "Connection")) {
                 TextField(String(localized: "Name"), text: $editableName)
 
-                LabeledContent(String(localized: "Host")) {
-                    Text(Self.hostDisplay(connection))
-                        .foregroundStyle(.secondary)
+                if let socketPath = Self.socketPath(connection) {
+                    LabeledContent(String(localized: "Socket")) {
+                        Text(socketPath)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else {
+                    LabeledContent(String(localized: "Host")) {
+                        Text(Self.hostDisplay(connection))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if !connection.database.isEmpty {
@@ -118,6 +126,13 @@ struct DeeplinkImportSheet: View {
             noticesSection
         }
         .formStyle(.grouped)
+    }
+
+    private static func socketPath(_ connection: ExportableConnection) -> String? {
+        guard connection.sshConfig == nil, DatabaseType(rawValue: connection.type).supportsLocalSocket else {
+            return nil
+        }
+        return MySQLLocalSocket.path(in: connection.additionalFields ?? [:])
     }
 
     private static func hostDisplay(_ connection: ExportableConnection) -> String {
@@ -191,7 +206,9 @@ struct DeeplinkImportSheet: View {
 
     @ViewBuilder
     private func optionsSection(_ connection: ExportableConnection) -> some View {
-        if let fields = connection.additionalFields, !fields.isEmpty {
+        let shownAsSocket = Self.socketPath(connection) != nil
+        let fields = (connection.additionalFields ?? [:]).filter { !shownAsSocket || $0.key != MySQLLocalSocket.fieldKey }
+        if !fields.isEmpty {
             Section(String(localized: "Driver Options")) {
                 ForEach(fields.keys.sorted(), id: \.self) { key in
                     LabeledContent(key) {

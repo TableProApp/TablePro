@@ -5,8 +5,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @MainActor
 struct ConnectionURLFormatterTests {
@@ -652,5 +653,76 @@ struct ConnectionURLFormatterTests {
         #expect(parsed.host == "myhost")
         #expect(parsed.port == 9_495)
         #expect(parsed.database == "remotedb")
+    }
+
+    // MARK: - Unix socket
+
+    private func socketConnection(
+        _ path: String,
+        type: DatabaseType = .mysql,
+        host: String = "db.internal",
+        port: Int = 3_307
+    ) -> DatabaseConnection {
+        DatabaseConnection(
+            name: "", host: host, port: port, database: "local", username: "root", type: type,
+            sslConfig: SSLConfiguration(mode: type.defaultSSLMode),
+            additionalFields: [MySQLLocalSocket.fieldKey: path]
+        )
+    }
+
+    @Test("A socket connection copies as localhost, no port, and a percent-encoded socket")
+    func socketConnectionURL() {
+        let url = ConnectionURLFormatter.format(socketConnection("/tmp/mysql.sock"), password: "pw", sshPassword: nil)
+        #expect(url == "mysql://root:pw@localhost/local?socket=%2Ftmp%2Fmysql.sock")
+    }
+
+    @Test(
+        "A socket URL parses back to the same socket",
+        arguments: [
+            "/tmp/mysql.sock",
+            "/Users/me/Library/Application Support/Local/run/ab12/mysql/mysqld.sock",
+            "/tmp/a+b&c=d.sock",
+            "/tmp/(x).sock"
+        ]
+    )
+    func socketRoundTrip(_ path: String) throws {
+        for type in [DatabaseType.mysql, .mariadb] {
+            let url = ConnectionURLFormatter.format(socketConnection(path, type: type), password: nil, sshPassword: nil)
+            let parsed = try ConnectionURLParser.parse(url).get()
+            #expect(parsed.type == type)
+            #expect(parsed.localSocketPath == path)
+            #expect(parsed.host == "localhost")
+            #expect(parsed.database == "local")
+            #expect(parsed.username == "root")
+        }
+    }
+
+    @Test(
+        "A database name with URL delimiters keeps its socket and parses back",
+        arguments: ["shop#archive", "a?b", "100%", "my db", "a/b"]
+    )
+    func socketWithDelimitersInDatabase(_ database: String) throws {
+        var connection = socketConnection("/tmp/mysql.sock")
+        connection.database = database
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        let parsed = try ConnectionURLParser.parse(url).get()
+        #expect(parsed.database == database)
+        #expect(parsed.localSocketPath == "/tmp/mysql.sock")
+    }
+
+    @Test("A socket connection under an SSH tunnel copies the tunnel, not the socket")
+    func socketUnderTunnelIsNotWritten() {
+        var connection = socketConnection("/tmp/mysql.sock")
+        connection.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.example.com"))
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url.hasPrefix("mysql+ssh://bastion.example.com/root@db.internal:3307/local"))
+        #expect(!url.contains("socket"))
+    }
+
+    @Test("A socket field on an engine without a socket mode is not written")
+    func socketOnOtherEngineIsNotWritten() {
+        let connection = socketConnection("/tmp/mysql.sock", type: .postgresql, host: "db.example.com", port: 5_432)
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url == "postgresql://root@db.example.com/local")
     }
 }

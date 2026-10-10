@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group, tags and color in the MCP connection list and on the AppleScript connection class.
 - Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
 - MySQL and MariaDB connections through a local Unix socket.
+- `socket` parameter in `mysql://` and `mariadb://` URLs and `tablepro://import` links.
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
 - Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
 - Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.

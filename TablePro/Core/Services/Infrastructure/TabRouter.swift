@@ -367,13 +367,7 @@ internal final class TabRouter {
         }
 
         let connections = ConnectionStorage.shared.loadConnections()
-        let matched = connections.first { conn in
-            conn.type == parsed.type
-                && conn.host == parsed.host
-                && (parsed.port == nil || conn.port == parsed.port)
-                && conn.database == parsed.database
-                && (parsed.username.isEmpty || conn.username == parsed.username)
-        }
+        let matched = connections.first { DatabaseURLConnectionMatch.matches(saved: $0, parsed: parsed) }
 
         let connection: DatabaseConnection
         let isTransient: Bool

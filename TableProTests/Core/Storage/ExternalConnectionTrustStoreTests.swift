@@ -175,4 +175,69 @@ struct ExternalConnectionTrustStoreTests {
         #expect(store.entries().isEmpty)
         #expect(store.isTrusted(lookalike) == false)
     }
+
+    @Test("A socket key is local and matches only its own path")
+    func socketKeyMatchesItsPath() throws {
+        let store = try makeStore()
+        let socketKey = ExternalConnectionTrustKey(
+            databaseType: "MySQL", host: "", database: "local", username: "root",
+            scopeName: "Local", socketPath: "/tmp/site-a.sock"
+        )
+        store.trust(socketKey)
+
+        #expect(socketKey.isLoopbackHost)
+        #expect(store.isTrusted(socketKey))
+        #expect(!store.isTrusted(ExternalConnectionTrustKey(
+            databaseType: "MySQL", host: "localhost", database: "local", username: "root",
+            scopeName: "Local", socketPath: "/tmp/site-b.sock"
+        )))
+        #expect(!store.isTrusted(ExternalConnectionTrustKey(
+            databaseType: "MySQL", host: "localhost", database: "local", username: "root", scopeName: "Local"
+        )))
+    }
+
+    @Test("A socket connection's hidden host does not change its key")
+    func socketKeyIgnoresHost() {
+        var connection = DatabaseConnection(
+            name: "Local", host: "db.internal", port: 3_307, database: "local", username: "root", type: .mysql
+        )
+        connection.localSocketPath = "/tmp/mysql.sock"
+        let key = ExternalConnectionTrustKey(connection: connection, scopeName: "Local")
+
+        #expect(key.socketPath == "/tmp/mysql.sock")
+        #expect(key.host == "localhost")
+        #expect(key.isLoopbackHost)
+        #expect(key.displayDescription.contains("/tmp/mysql.sock"))
+    }
+
+    @Test("Entries saved before sockets still decode and stay trusted")
+    func legacyEntriesDecode() throws {
+        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let legacy = """
+            [{"key":{"databaseType":"mysql","host":"127.0.0.1","database":"db","username":"db",\
+            "scopeName":"ddev-shop"},"trustedAt":0}]
+            """
+        defaults.set(Data(legacy.utf8), forKey: "com.TablePro.externalConnectionTrust.entries")
+
+        let store = ExternalConnectionTrustStore(defaults: defaults)
+
+        #expect(store.entries().count == 1)
+        #expect(store.isTrusted(loopbackKey()))
+    }
+
+    @Test("A poisoned entry pairing a remote host with a socket is not trusted")
+    func poisonedSocketEntryIsIgnored() throws {
+        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let poisoned = """
+            [{"key":{"databaseType":"mysql","host":"db.evil.example.com","database":"db","username":"db",\
+            "scopeName":"","socketPath":"/tmp/mysql.sock"},"trustedAt":0}]
+            """
+        defaults.set(Data(poisoned.utf8), forKey: "com.TablePro.externalConnectionTrust.entries")
+
+        #expect(ExternalConnectionTrustStore(defaults: defaults).entries().isEmpty)
+    }
 }

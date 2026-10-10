@@ -50,6 +50,15 @@ struct ExternalConnectionGateTests {
         return connection
     }
 
+    private func localSiteConnection(socket: String = "/tmp/site-a.sock") -> DatabaseConnection {
+        var connection = DatabaseConnection(
+            name: "Local", host: "localhost", port: 3_306,
+            database: "local", username: "root", type: .mysql
+        )
+        connection.localSocketPath = socket
+        return connection
+    }
+
     private func remoteConnection() -> DatabaseConnection {
         DatabaseConnection(
             name: "Prod", host: "db.example.com", port: 3_306,
@@ -209,5 +218,50 @@ struct ExternalConnectionGateTests {
 
         #expect(await gate.authorize(tunnelledConnection(), scopeName: "ddev-shop"))
         #expect(store.entries().isEmpty)
+    }
+
+    @Test("A trusted localhost does not cover a link that names a socket")
+    func trustedHostAsksForSocket() async throws {
+        let store = try makeStore()
+        var tcp = localSiteConnection()
+        tcp.localSocketPath = nil
+        store.trust(ExternalConnectionTrustKey(connection: tcp, scopeName: "Local"))
+        let prompt = SpyPrompt(decision: .connect)
+        let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+
+        #expect(await gate.authorize(localSiteConnection(), scopeName: "Local"))
+        #expect(prompt.callCount == 1)
+        #expect(prompt.offeredAlwaysAllow == true)
+    }
+
+    @Test("Always Allow on a socket link trusts that socket and no other")
+    func alwaysAllowIsKeyedOnTheSocket() async throws {
+        let store = try makeStore()
+        let prompt = SpyPrompt(decision: .alwaysAllow)
+        let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+
+        #expect(await gate.authorize(localSiteConnection(), scopeName: "Local"))
+        #expect(await gate.authorize(localSiteConnection(), scopeName: "Local"))
+        #expect(prompt.callCount == 1)
+
+        _ = await gate.authorize(localSiteConnection(socket: "/tmp/site-b.sock"), scopeName: "Local")
+        #expect(prompt.callCount == 2)
+
+        var tcp = localSiteConnection()
+        tcp.localSocketPath = nil
+        _ = await gate.authorize(tcp, scopeName: "Local")
+        #expect(prompt.callCount == 3)
+    }
+
+    @Test("A socket link with a filter still asks every time")
+    func socketWithFilterAsks() async throws {
+        let store = try makeStore()
+        store.trust(ExternalConnectionTrustKey(connection: localSiteConnection(), scopeName: "Local"))
+        let prompt = SpyPrompt(decision: .connect)
+        let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+
+        _ = await gate.authorize(localSiteConnection(), scopeName: "Local", filter: .condition("id > 0"))
+        #expect(prompt.callCount == 1)
+        #expect(prompt.offeredAlwaysAllow == false)
     }
 }

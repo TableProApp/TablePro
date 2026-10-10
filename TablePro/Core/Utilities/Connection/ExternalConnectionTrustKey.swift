@@ -11,10 +11,21 @@ internal struct ExternalConnectionTrustKey: Hashable, Codable, Sendable {
     internal let database: String
     internal let username: String
     internal let scopeName: String
+    // Optional so entries saved before sockets still decode. Trust covers this exact path only.
+    internal let socketPath: String?
 
-    internal init(databaseType: String, host: String, database: String, username: String, scopeName: String) {
+    internal init(
+        databaseType: String,
+        host: String,
+        database: String,
+        username: String,
+        scopeName: String,
+        socketPath: String? = nil
+    ) {
+        let socket = socketPath?.trimmingCharacters(in: .whitespaces)
+        self.socketPath = socket?.isEmpty == false ? socket : nil
         self.databaseType = databaseType.lowercased()
-        self.host = host.trimmingCharacters(in: .whitespaces).lowercased()
+        self.host = self.socketPath == nil ? host.trimmingCharacters(in: .whitespaces).lowercased() : "localhost"
         self.database = database
         self.username = username
         self.scopeName = scopeName.trimmingCharacters(in: .whitespaces)
@@ -26,7 +37,8 @@ internal struct ExternalConnectionTrustKey: Hashable, Codable, Sendable {
             host: connection.host,
             database: connection.database,
             username: connection.username,
-            scopeName: scopeName ?? ""
+            scopeName: scopeName ?? "",
+            socketPath: connection.localSocketPath
         )
     }
 
@@ -41,6 +53,13 @@ internal struct ExternalConnectionTrustKey: Hashable, Codable, Sendable {
         }
         if !database.isEmpty {
             target += "/\(database)"
+        }
+        if let socketPath {
+            target = String(
+                format: String(localized: "%1$@ on %2$@"),
+                target,
+                (socketPath as NSString).abbreviatingWithTildeInPath
+            )
         }
         guard !scopeName.isEmpty else { return "\(databaseType) \(target)" }
         return "\(databaseType) \(target) (\(scopeName))"

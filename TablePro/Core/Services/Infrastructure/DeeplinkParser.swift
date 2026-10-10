@@ -292,11 +292,9 @@ internal enum DeeplinkParser {
         guard let name = value("name"), !name.isEmpty else {
             return .failure(.missingRequiredParam("name"))
         }
-        guard let host = value("host"), !host.isEmpty else {
-            return .failure(.missingRequiredParam("host"))
-        }
+        let givenHost = value("host") ?? ""
         guard let typeStr = value("type") else {
-            return .failure(.missingRequiredParam("type"))
+            return .failure(givenHost.isEmpty ? .missingRequiredParam("host") : .missingRequiredParam("type"))
         }
 
         guard let typeId = ConnectionTypeResolver.canonicalTypeId(
@@ -306,6 +304,35 @@ internal enum DeeplinkParser {
             return .failure(.unsupportedDatabaseType(typeStr))
         }
         let dbType = DatabaseType(rawValue: typeId)
+
+        let afItems = queryItems.filter { $0.name.hasPrefix("af_") }
+        var fields: [String: String] = [:]
+        for item in afItems {
+            let fieldKey = String(item.name.dropFirst(3))
+            if !fieldKey.isEmpty, let fieldValue = item.value, !fieldValue.isEmpty {
+                fields[fieldKey] = fieldValue
+            }
+        }
+
+        // The generic `af_localSocketPath` form is read too, under the same rules as `socket`.
+        let requestedSocket = MySQLLocalSocket.path(in: [
+            MySQLLocalSocket.fieldKey: value("socket") ?? fields[MySQLLocalSocket.fieldKey] ?? ""
+        ])
+        fields.removeValue(forKey: MySQLLocalSocket.fieldKey)
+        var socketPath: String?
+        if let requestedSocket, dbType.supportsLocalSocket, value("ssh") != "1" {
+            guard MySQLLocalSocket.issue(for: requestedSocket) == nil else {
+                return .failure(.invalidParameter("socket"))
+            }
+            socketPath = requestedSocket
+            fields[MySQLLocalSocket.fieldKey] = requestedSocket
+        }
+        let additionalFields: [String: String]? = fields.isEmpty ? nil : fields
+
+        guard !givenHost.isEmpty || socketPath != nil else {
+            return .failure(.missingRequiredParam("host"))
+        }
+        let host = givenHost.isEmpty ? "localhost" : givenHost
 
         let port = value("port").flatMap(Int.init) ?? dbType.defaultPort
         let username = value("username") ?? ""
@@ -350,21 +377,6 @@ internal enum DeeplinkParser {
             )
         } else {
             sslConfig = nil
-        }
-
-        var additionalFields: [String: String]?
-        let afItems = queryItems.filter { $0.name.hasPrefix("af_") }
-        if !afItems.isEmpty {
-            var fields: [String: String] = [:]
-            for item in afItems {
-                let fieldKey = String(item.name.dropFirst(3))
-                if !fieldKey.isEmpty, let fieldValue = item.value, !fieldValue.isEmpty {
-                    fields[fieldKey] = fieldValue
-                }
-            }
-            if !fields.isEmpty {
-                additionalFields = fields
-            }
         }
 
         var settings = ExportableConnection(
