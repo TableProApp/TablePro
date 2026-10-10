@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
 - Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
 - "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
+- A database link with a filter replacing the filters of a tab already showing that table.
 
 ### Security
 

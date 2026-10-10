@@ -148,7 +148,7 @@ postgresql://user:pass@host/mydb?schema=reporting&table=monthly_sales
 
 ### Filtering
 
-These apply a filter to the table the URL opened. A link carrying a filter always asks first, even for a trusted database, and the alert shows the whole filter. A filter longer than 51,200 characters is refused.
+These open the table in a new tab with the filter applied, so a tab already showing that table keeps its own filters. A link carrying a filter always asks first, even for a trusted database, and the alert shows the whole filter. A filter longer than 51,200 characters is refused.
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|

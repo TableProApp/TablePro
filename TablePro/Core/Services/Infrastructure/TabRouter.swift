@@ -231,6 +231,7 @@ internal final class TabRouter {
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
         database: String?, schema: String?, table: String, isView: Bool,
         objectType: TableInfo.TableType? = nil,
+        initialFilterState: TabFilterState? = nil,
         passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
@@ -241,7 +242,10 @@ internal final class TabRouter {
         } else {
             throw TabRouterError.connectionNotFound(connectionId)
         }
-        if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
+        /// A filtered open gets a new tab with the filter in its payload, so the filter is in place
+        /// before the first load and a tab already showing the table keeps its own filters.
+        if initialFilterState == nil,
+           focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
@@ -256,7 +260,9 @@ internal final class TabRouter {
             databaseName: database,
             schemaName: schema,
             isView: isView,
-            objectType: objectType
+            objectType: objectType,
+            forcesNewTab: initialFilterState != nil,
+            initialFilterState: initialFilterState
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
@@ -397,12 +403,10 @@ internal final class TabRouter {
                     schema: parsed.schema,
                     table: table,
                     isView: parsed.isView,
+                    initialFilterState: filter?.filterState,
                     passwordOverride: passwordOverride,
                     sshPasswordOverride: sshPasswordOverride
                 )
-            }
-            if let filter {
-                applyURLFilter(filter, connectionId: connection.id)
             }
             return
         }
@@ -573,12 +577,5 @@ internal final class TabRouter {
         guard await ConnectConsent.confirmIfNeeded(for: connection) else {
             throw TabRouterError.userCancelled
         }
-    }
-
-    /// The gate showed this filter before connecting, so it is not asked about again.
-    private func applyURLFilter(_ filter: ConnectionURLFilter, connectionId: UUID) {
-        guard let coordinator = MainContentCoordinator.allActiveCoordinators()
-            .first(where: { $0.connectionId == connectionId }) else { return }
-        coordinator.applyURLFilter(filter)
     }
 }

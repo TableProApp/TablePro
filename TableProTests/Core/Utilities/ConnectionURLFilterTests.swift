@@ -58,4 +58,38 @@ struct ConnectionURLFilterTests {
         let condition = String(repeating: "a", count: 400) + " OR 1=1"
         #expect(ConnectionURLFilter.condition(condition).displayText == condition)
     }
+
+    @Test("A condition becomes one applied raw SQL filter carrying the same text")
+    func conditionFilterState() throws {
+        let state = ConnectionURLFilter.condition("total > 1000").filterState
+        let filter = try #require(state.filters.first)
+        #expect(state.filters.count == 1)
+        #expect(state.commit == .all)
+        #expect(state.isVisible)
+        #expect(filter.isRawSQL)
+        #expect(filter.rawSQL == "total > 1000")
+    }
+
+    @Test("A column filter keeps its column and value and maps the operation")
+    func columnFilterState() throws {
+        let cases: [(operation: String, expected: FilterOperator)] = [
+            ("contains", .contains), (">=", .greaterOrEqual), ("Is Null", .isNull), ("unknown", .contains)
+        ]
+        for (operation, expected) in cases {
+            let state = ConnectionURLFilter.column(name: "status", operation: operation, value: "a").filterState
+            let filter = try #require(state.filters.first)
+            #expect(filter.columnName == "status", "\(operation)")
+            #expect(filter.value == "a", "\(operation)")
+            #expect(filter.filterOperator == expected, "\(operation)")
+            #expect(state.commit == .all, "\(operation)")
+        }
+    }
+
+    @Test("A column filter without an operation compares for equality")
+    func columnFilterDefaultsToEqual() throws {
+        let state = ConnectionURLFilter.column(name: "status", operation: nil, value: nil).filterState
+        let filter = try #require(state.filters.first)
+        #expect(filter.filterOperator == .equal)
+        #expect(filter.value.isEmpty)
+    }
 }
