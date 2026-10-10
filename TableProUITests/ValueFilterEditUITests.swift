@@ -13,6 +13,7 @@ final class ValueFilterEditUITests: UITestCase {
     private static let editedColumnPosition = 2
     private static let titleColumnPosition = 4
     private static let editedValue = "Edited Under Filter"
+    private static let savedValue = "Saved Under Filter"
 
     func testDiscardingAnEditMadeUnderAValueFilterRestoresTheEditedRow() throws {
         let app = try launchWithSampleDatabase()
@@ -56,6 +57,33 @@ final class ValueFilterEditUITests: UITestCase {
             secondRowBefore,
             "Discard must not write the edited row's value into the row that shared its position"
         )
+    }
+
+    func testSavingAnEditKeepsTheValueFilter() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
+        let grid = openTable(in: window)
+        let lastRowBefore = try cellValue(row: 8, in: grid)
+
+        openValueFilter(on: Self.filteredColumn, in: grid, app: app)
+        keepOnly(Self.keptTitle, in: window)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { self.currentCellValue(row: 2, in: grid) == lastRowBefore },
+            "Under the filter the table's last row must be shown second"
+        )
+
+        editCell(row: 2, in: grid, app: app, to: Self.savedValue)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { self.currentCellValue(row: 2, in: grid) == Self.savedValue },
+            "The edit must land on the row shown second"
+        )
+        app.typeKey("s", modifierFlags: .command)
+
+        XCTAssertFalse(
+            waitForPredicate(timeout: 8) { self.cellElement(row: 3, in: grid).exists },
+            "The rows read back after Save must still be filtered to \(Self.keptTitle)"
+        )
+        XCTAssertEqual(currentCellValue(row: 2, in: grid), Self.savedValue, "The saved value must be read back")
     }
 
     func testReturnInTheSearchKeepsOnlyTheValuesItFound() throws {

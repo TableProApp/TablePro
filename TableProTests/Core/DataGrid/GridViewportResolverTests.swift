@@ -25,6 +25,7 @@ struct GridViewportResolverTests {
         firstVisibleRow: Int,
         offset: CGFloat = 0,
         displayIDs: [RowID]? = nil,
+        selectedRows: [Int] = [],
         keyColumns: [String] = keyColumns,
         isCellModified: (RowID, Int) -> Bool = { _, _ in false }
     ) -> GridViewportSnapshot {
@@ -33,6 +34,7 @@ struct GridViewportResolverTests {
             displayIDs: displayIDs,
             firstVisibleDisplayRow: firstVisibleRow,
             firstVisibleOffset: offset,
+            selectedDisplayRows: selectedRows,
             keyColumns: keyColumns,
             isCellModified: isCellModified
         )
@@ -42,9 +44,16 @@ struct GridViewportResolverTests {
         _ intent: GridReloadIntent,
         from snapshot: GridViewportSnapshot,
         in incoming: TableRows,
+        displayIDs: [RowID]? = nil,
         keyColumns: [String] = keyColumns
     ) -> GridViewportPlacement {
-        GridViewportResolver.placement(for: intent, from: snapshot, in: incoming, keyColumns: keyColumns)
+        GridViewportResolver.placement(
+            for: intent,
+            from: snapshot,
+            in: incoming,
+            displayIDs: displayIDs,
+            keyColumns: keyColumns
+        )
     }
 
     @Test("A new view lands on the first row whatever the reader was looking at")
@@ -212,5 +221,68 @@ struct GridViewportResolverTests {
 
         #expect(missing == .firstRow)
         #expect(duplicated == .firstRow)
+    }
+
+    @Test("A re-read keeps the selected rows, matched by key wherever they land")
+    func keepPlaceRestoresTheSelectionByKey() {
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 100)), firstVisibleRow: 40, selectedRows: [44, 46])
+
+        let placement = Self.placement(.keepPlace, from: snapshot, in: Self.rows(ids: Array((1 ... 100).reversed())))
+
+        #expect(Set(placement.selectedRows) == [.existing(55), .existing(53)])
+        #expect(!placement.revealsSelection)
+    }
+
+    @Test("A re-read that starts at the first row still keeps the selection")
+    func firstRowKeepsTheSelectionOnly() {
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selectedRows: [2])
+
+        let placement = Self.placement(.firstRow, from: snapshot.selectionOnly, in: Self.rows(ids: Array(1 ... 10)))
+
+        #expect(placement.firstVisibleRow == nil)
+        #expect(placement.selectedRows == [.existing(2)])
+    }
+
+    @Test("A selected row that is gone, or a result with no key, leaves nothing selected")
+    func selectionNeedsTheRowAndAKey() {
+        let gone = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selectedRows: [4])
+        let keyless = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selectedRows: [4], keyColumns: [])
+
+        #expect(Self.placement(.firstRow, from: gone, in: Self.rows(ids: [1, 2, 3])).selectedRows.isEmpty)
+        #expect(keyless.selectedKeys.isEmpty)
+    }
+
+    @Test("A selected key that repeats in the new rows selects nothing")
+    func repeatedSelectedKeySelectsNothing() {
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 10)), firstVisibleRow: 0, selectedRows: [6])
+
+        #expect(Self.placement(.firstRow, from: snapshot, in: Self.rows(ids: [7, 7, 8])).selectedRows.isEmpty)
+    }
+
+    @Test("Without a key the position is read through the incoming display order")
+    func keepPlaceFallbackUsesTheDisplayOrder() {
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 100)), firstVisibleRow: 2, offset: 4, keyColumns: [])
+        let shown: [RowID] = [.existing(10), .existing(20), .existing(30), .existing(40)]
+
+        let placement = Self.placement(
+            .keepPlace,
+            from: snapshot,
+            in: Self.rows(ids: Array(1 ... 100)),
+            displayIDs: shown,
+            keyColumns: []
+        )
+
+        #expect(placement.firstVisibleRow == .existing(30))
+        #expect(placement.firstVisibleOffset == 4)
+    }
+
+    @Test("A top row the filter now hides is no anchor, so the position holds through the display order")
+    func hiddenAnchorFallsBackToThePosition() {
+        let snapshot = Self.snapshot(of: Self.rows(ids: Array(1 ... 100)), firstVisibleRow: 2, offset: 4)
+        let shown: [RowID] = [.existing(10), .existing(20), .existing(30), .existing(40)]
+
+        let placement = Self.placement(.keepPlace, from: snapshot, in: Self.rows(ids: Array(1 ... 100)), displayIDs: shown)
+
+        #expect(placement.firstVisibleRow == .existing(30))
     }
 }

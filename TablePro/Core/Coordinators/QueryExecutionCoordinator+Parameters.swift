@@ -71,7 +71,8 @@ extension QueryExecutionCoordinator {
         _ sql: String,
         parameters: [QueryParameter],
         bypassRowLimit: Bool = false,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        install: ResultInstall = .newResult
     ) {
         guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
 
@@ -105,7 +106,8 @@ extension QueryExecutionCoordinator {
             originalParameters: parameters,
             bypassRowLimit: bypassRowLimit,
             originalSQL: sql,
-            anchor: anchor
+            anchor: anchor,
+            install: install
         )
     }
 
@@ -117,7 +119,8 @@ extension QueryExecutionCoordinator {
         originalParameters: [QueryParameter],
         bypassRowLimit: Bool = false,
         originalSQL: String? = nil,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        install: ResultInstall = .newResult
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
@@ -193,7 +196,7 @@ extension QueryExecutionCoordinator {
                     ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
                     : nil
 
-                await applyParameterizedResult(
+                let applied = await applyParameterizedResult(
                     tabId: tabId,
                     fetchResult: fetchResult,
                     inlineMetadata: inlineMeta ?? cachedMetadata,
@@ -205,8 +208,13 @@ extension QueryExecutionCoordinator {
                     originalParameters: originalParameters,
                     nativeParameters: parameters,
                     originalSQL: originalSQL,
-                    anchor: anchor
+                    anchor: anchor,
+                    install: install
                 )
+                guard applied else {
+                    schemaTask?.cancel()
+                    return
+                }
 
                 if isEditable, let tableName {
                     if needsMetadataFetch {
@@ -632,17 +640,18 @@ extension QueryExecutionCoordinator {
         originalParameters: [QueryParameter],
         nativeParameters: [Any?],
         originalSQL: String? = nil,
-        anchor: StatementAnchor? = nil
-    ) async {
+        anchor: StatementAnchor? = nil,
+        install: ResultInstall = .newResult
+    ) async -> Bool {
         await MainActor.run { [weak self] in
-            guard let self else { return }
-            guard parent.tabExecution.settle(claim) else { return }
+            guard let self else { return false }
+            guard parent.tabExecution.settle(claim) else { return false }
             parent.retireQueryTask(.claim(claim))
             guard !Task.isCancelled else {
                 parent.reportEndedExecutions([
                     EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
                 ])
-                return
+                return false
             }
             parent.toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: claim.tabId)
             reportOperation(
@@ -656,6 +665,7 @@ extension QueryExecutionCoordinator {
                 )
             )
 
+            guard parent.rereadStillApplies(install.source) else { return false }
             applyPhase1Result(
                 tabId: tabId,
                 columns: fetchResult.columns,
@@ -676,6 +686,8 @@ extension QueryExecutionCoordinator {
                 historySQL: originalSQL,
                 anchor: anchor,
                 timing: fetchResult.resolvedTiming,
+                viewport: install.viewport,
+                source: install.source,
                 serverOutput: fetchResult.serverOutput,
                 absentCells: fetchResult.absentCells
             )
@@ -687,6 +699,7 @@ extension QueryExecutionCoordinator {
                 $0.display.activeResultSet?.baseQueryParameterValues = parameterValues
                 $0.display.activeResultSet?.namedParameterStatement = statement
             }
+            return true
         }
     }
 

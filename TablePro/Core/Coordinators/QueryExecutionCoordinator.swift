@@ -59,7 +59,8 @@ final class QueryExecutionCoordinator: ObservableObject {
         _ batches: [ExecutableBatch],
         tabIndex index: Int,
         bypassRowLimit: Bool = false,
-        extraCapabilities: CallerCapabilities = []
+        extraCapabilities: CallerCapabilities = [],
+        install: ResultInstall = .newResult
     ) {
         guard !parent.isShowingSafeModePrompt, let route = executionRoute(for: batches) else { return }
         guard !refuses(route, tabIndex: index) else { return }
@@ -72,12 +73,15 @@ final class QueryExecutionCoordinator: ObservableObject {
             defer { parent.isShowingSafeModePrompt = false }
             switch await parent.executionGate.authorize(request) {
             case .authorized:
+                guard parent.rereadCanStart(install.source) else { return }
                 switch route {
                 case .single(let only):
                     parent.executeQueryInternal(
                         only.sql,
                         bypassRowLimit: bypassRowLimit,
-                        anchor: StatementAnchor(only)
+                        anchor: install.anchor ?? StatementAnchor(only),
+                        viewport: install.viewport,
+                        source: install.source
                     )
                 case .statements(let statements):
                     executeMultipleStatements(statements, bypassRowLimit: bypassRowLimit)
@@ -113,7 +117,8 @@ final class QueryExecutionCoordinator: ObservableObject {
         parameters: [QueryParameter],
         tabIndex index: Int,
         bypassRowLimit: Bool = false,
-        extraCapabilities: CallerCapabilities = []
+        extraCapabilities: CallerCapabilities = [],
+        install: ResultInstall = .newResult
     ) {
         guard !parent.isShowingSafeModePrompt, let route = executionRoute(for: batches) else { return }
         guard !refuses(route, tabIndex: index) else { return }
@@ -127,7 +132,13 @@ final class QueryExecutionCoordinator: ObservableObject {
             defer { parent.isShowingSafeModePrompt = false }
             switch await parent.executionGate.authorize(request) {
             case .authorized:
-                executeParameterizedAfterSafeMode(route, parameters: parameters, bypassRowLimit: bypassRowLimit)
+                guard parent.rereadCanStart(install.source) else { return }
+                executeParameterizedAfterSafeMode(
+                    route,
+                    parameters: parameters,
+                    bypassRowLimit: bypassRowLimit,
+                    install: install
+                )
             case .denied(let reason, _):
                 parent.tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
             }
@@ -137,7 +148,8 @@ final class QueryExecutionCoordinator: ObservableObject {
     private func executeParameterizedAfterSafeMode(
         _ route: QueryExecutionRoute,
         parameters: [QueryParameter],
-        bypassRowLimit: Bool
+        bypassRowLimit: Bool,
+        install: ResultInstall
     ) {
         switch route {
         case .single(let only):
@@ -145,7 +157,8 @@ final class QueryExecutionCoordinator: ObservableObject {
                 only.sql,
                 parameters: parameters,
                 bypassRowLimit: bypassRowLimit,
-                anchor: StatementAnchor(only)
+                anchor: install.anchor ?? StatementAnchor(only),
+                install: install
             )
         case .statements(let statements):
             executeMultipleStatementsWithParameters(statements, parameters: parameters, bypassRowLimit: bypassRowLimit)

@@ -44,7 +44,7 @@ The cell menu has a third: **Filter** turns the clicked cell's value into a cond
   <img className="hidden dark:block" src="/images/value-filter-popover-dark.png" alt="Value filter popover" />
 </Frame>
 
-A value filter lives as long as the result does: switching view mode or tab keeps it, replacing the result clears it. **Fetch All** keeps it and applies it to the rows it loads. Edit a cell so its row no longer matches and the row stays where it is. The filter runs again when rows arrive or leave, and when you change the filter or the column's display format.
+A value filter stays until you clear it or the tab shows something else: another table, a query you run, or another result. Saving, `Cmd+R`, sorting, paging, the filter bar and **Fetch All** keep it and apply it to the rows they load. Hiding a filtered column keeps it filtered. Edit a cell so its row no longer matches and the row stays where it is until the rows load again. The filter also runs again when you change it or the column's display format.
 
 ## Highlighting
 
@@ -146,7 +146,7 @@ Some engines cannot skip rows and return a fixed maximum from one query. On thos
 
 ## Reloading
 
-`Cmd+R` reads the rows again and leaves the grid where it was. Scrolled down, the row at the top stays at the top, matched by primary key, so a row another session added takes its sorted place without moving what you are reading. At the top of the grid, the grid stays at the top and rows added above come into view. On a table without a primary key, or with a key that repeats, the scroll position holds instead. The selection clears.
+`Cmd+R` reads the rows again and leaves the grid where it was. Scrolled down, the row at the top stays at the top, matched by primary key, so a row another session added takes its sorted place without moving what you are reading. At the top of the grid, the grid stays at the top and rows added above come into view. On a table without a primary key, or with a key that repeats, the scroll position holds instead. Selected rows stay selected, matched by primary key; on a table without one, the selection clears.
 
 On a table tab, sorting, filtering, and changing page or page size start at the first row. The horizontal scroll position stays.
 

@@ -24,17 +24,31 @@ extension MainContentCoordinator {
         return delta
     }
 
-    func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID, viewport intent: GridReloadIntent = .firstRow) {
+    func setActiveTableRows(
+        _ tableRows: TableRows,
+        for tabId: UUID,
+        viewport intent: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource
+    ) {
+        let keepsViewState = source.keepsViewState
         let keyColumns = viewportKeyColumns(forTab: tabId)
-        let gridIsMounted = isGridMounted(forTab: tabId)
-        let snapshot = gridIsMounted ? viewportSnapshot(forTab: tabId, intent: intent, keyColumns: keyColumns) : .top
+        let gridIsMounted = isGridMounted(forTab: tabId, acceptsQueryTab: keepsViewState)
+        let snapshot = gridIsMounted
+            ? viewportSnapshot(forTab: tabId, intent: intent, keepsSelection: keepsViewState, keyColumns: keyColumns)
+            : .top
         installTableRows(tableRows, for: tabId)
-        resetSelectionForNewResult(tabId: tabId)
+        if keepsViewState {
+            carryValueFilter(onto: tableRows.columns, forTab: tabId)
+            resetSelection(tabId: tabId)
+        } else {
+            resetViewStateForNewSource(tabId: tabId)
+        }
         if gridIsMounted {
             let placement = GridViewportResolver.placement(
                 for: intent,
                 from: snapshot,
                 in: tableRows,
+                displayIDs: displayIDs(forTab: tabId),
                 keyColumns: keyColumns
             )
             tabSessionRegistry.stageViewportPlacement(placement, for: tabId)
@@ -92,13 +106,12 @@ extension MainContentCoordinator {
     /// pending edit set outlives the switch and `handleColumnsChange` refuses to rebuild the change
     /// manager while it exists, which leaves the grid writing to the outgoing result's table.
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
-        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        let wasActive = tabManager.tabs[tabIdx].display.activeResultSetId == resultSetId
+        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[tabIdx].display.activeResultSetId != resultSetId else { return }
 
         confirmDiscardChangesIfNeeded(action: .resultSwitch) { [weak self] confirmed in
             guard confirmed else { return }
             self?.applyResultSetSwitch(to: resultSetId, in: tabId)
-            guard !wasActive else { return }
             self?.revealStatement(behind: resultSetId, in: tabId)
         }
     }
@@ -130,7 +143,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         guard let incoming = tabManager.tabs[tabIdx].display.activeResultSet else { return }
         installTableRows(incoming.tableRows, for: tabId)
-        resetSelectionForNewResult(tabId: tabId)
+        resetViewStateForNewSource(tabId: tabId)
         syncLoadMoreState(from: incoming, at: tabIdx)
         adoptOrigin(of: incoming, at: tabIdx)
         notifyFullReplaceIfActive(tabId: tabId)
@@ -161,7 +174,7 @@ extension MainContentCoordinator {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let rows = tabManager.tabs[idx].display.activeResultSet?.tableRows ?? TableRows()
         installTableRows(rows, for: tabId)
-        resetSelectionForNewResult(tabId: tabId)
+        resetViewStateForNewSource(tabId: tabId)
         notifyFullReplaceIfActive(tabId: tabId)
     }
 
@@ -196,16 +209,20 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Row selection is a set of display positions into the result that produced it, so it
-    /// means nothing once the rows are replaced wholesale. Leaving it in place points every
-    /// consumer, the JSON view and the row inspector included, at rows that no longer exist.
-    /// Incremental edits go through `mutateActiveTableRows` and keep their selection.
-    ///
-    /// The per-column value filter goes for the same reason: it stores the displayed strings the
-    /// user picked out of the rows being replaced. Kept across a replacement it narrows an
-    /// unrelated result to nothing, with only a header indicator to explain why.
-    private func resetSelectionForNewResult(tabId: UUID) {
+    /// A value filter stores displayed strings picked out of the outgoing source, so on an unrelated
+    /// result it narrows to nothing. A query tab's grid sort goes too: the new rows carry no ORDER BY.
+    private func resetViewStateForNewSource(tabId: UUID) {
         clearValueFilter(forTab: tabId)
+        tabManager.mutate(tabId: tabId) { tab in
+            guard tab.tabType == .query, !tab.sortState.columns.isEmpty else { return }
+            tab.sortState = SortState()
+        }
+        resetSelection(tabId: tabId)
+    }
+
+    /// Row selection is a set of display positions into the rows being replaced, so it means nothing
+    /// after them. A re-read of the same source puts it back by key through the viewport placement.
+    private func resetSelection(tabId: UUID) {
         tabManager.mutate(tabId: tabId) { tab in
             guard !tab.selectedRowIndices.isEmpty || !tab.cellSelection.isEmpty else { return }
             tab.selectedRowIndices = []
@@ -239,7 +256,7 @@ extension MainContentCoordinator {
                 tab.sortState = state
                 tab.hasUserInteraction = true
             }) else { return }
-            self.setActiveTableRows(sorted, for: tabId)
+            self.setActiveTableRows(sorted, for: tabId, source: .sameSource)
         }
     }
 

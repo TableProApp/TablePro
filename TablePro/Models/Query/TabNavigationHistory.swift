@@ -17,8 +17,8 @@ import Foundation
 /// narrows them.
 ///
 /// The per-column value filter is deliberately absent. It holds the displayed strings the reader
-/// picked out of the rows being replaced, and `resetSelectionForNewResult` clears it on every
-/// replacement for that reason, so an entry carrying one would only look like it worked.
+/// picked out of the rows being replaced, and moving to another table clears it for that reason,
+/// so an entry carrying one would only look like it worked.
 struct TabNavigationEntry: Equatable {
     var tableName: String
     var databaseName: String

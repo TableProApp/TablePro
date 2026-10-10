@@ -192,6 +192,25 @@ extension MainContentCoordinator {
         refreshDisplayOrder(forTab: tabId)
     }
 
+    /// Re-reading the same source can move or drop columns, so the filter follows its columns by name.
+    /// The mounted grid's mirror takes the result before the full replace, or its own prune of the old
+    /// copy would write that back over the tab.
+    func carryValueFilter(onto columns: [String], forTab tabId: UUID) {
+        guard let current = tabManager.tabs.first(where: { $0.id == tabId })?.valueFilter,
+              current.isActive else { return }
+        /// The format cache keys on the result, which is replaced only after these rows are installed,
+        /// so it still holds the outgoing columns' formats by position.
+        displayFormatsCache.removeValue(forKey: tabId)
+        let carried = current.remapped(toColumns: columns)
+        if carried != current {
+            displayOrderCache.removeValue(forKey: tabId)
+            tabManager.mutate(tabId: tabId) { $0.valueFilter = carried }
+        }
+        if tabManager.selectedTabId == tabId {
+            dataTabDelegate?.tableViewCoordinator?.adoptValueFilter(carried)
+        }
+    }
+
     /// Drops a value filter whose rows have been replaced wholesale.
     ///
     /// The filter stores the displayed strings the user picked out of the loaded rows, so it means

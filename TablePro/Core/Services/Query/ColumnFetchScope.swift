@@ -8,17 +8,19 @@ import Foundation
 enum ColumnFetchScope {
     /// Sort columns are retained the way primary keys are: a browse query resolves its sort
     /// against the list it is handed, so a sorted column dropped from the projection leaves
-    /// nothing to sort by and the order is silently lost.
+    /// nothing to sort by and the order is silently lost. A value-filtered column stays for the
+    /// same reason: the filter matches the column's loaded values.
     static func selectColumns(
         schemaColumns: [String],
         hiddenColumns: Set<String>,
         primaryKeyColumns: [String],
-        sortColumns: [String] = []
+        sortColumns: [String] = [],
+        valueFilteredColumns: [String] = []
     ) -> [String]? {
         guard !hiddenColumns.isEmpty, !schemaColumns.isEmpty else { return nil }
         let schema = Set(schemaColumns)
         guard sortColumns.allSatisfy(schema.contains) else { return nil }
-        let retained = Set(primaryKeyColumns).union(sortColumns)
+        let retained = Set(primaryKeyColumns).union(sortColumns).union(valueFilteredColumns)
         let kept = schemaColumns.filter { !hiddenColumns.contains($0) || retained.contains($0) }
         guard !kept.isEmpty, kept.count < schemaColumns.count else { return nil }
         return kept

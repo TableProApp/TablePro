@@ -131,4 +131,51 @@ struct GridReloadViewportTests {
         #expect(fixture.coordinator.takeViewportPlacement(forTab: fixture.tabId) == nil)
         withExtendedLifetime(fixture) {}
     }
+
+    @Test("Reading the same table again keeps the selected rows, matched by primary key")
+    func sameSourceRestoresTheSelectionByKey() {
+        let fixture = makeFixture()
+        defer { fixture.coordinator.teardown() }
+        fixture.coordinator.selectionState.indices = [2, 5]
+
+        fixture.coordinator.setActiveTableRows(
+            Self.rows(ids: Array((1 ... 10).reversed())),
+            for: fixture.tabId,
+            viewport: .keepPlace,
+            source: .sameSource
+        )
+
+        let placement = fixture.coordinator.takeViewportPlacement(forTab: fixture.tabId)
+        #expect(Set(placement?.selectedRows ?? []) == [.existing(7), .existing(4)])
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test("A new result does not carry the selection over")
+    func newSourceRestoresNoSelection() {
+        let fixture = makeFixture()
+        defer { fixture.coordinator.teardown() }
+        fixture.coordinator.selectionState.indices = [2]
+
+        fixture.coordinator.setActiveTableRows(Self.rows(ids: Array(1 ... 10)), for: fixture.tabId, viewport: .keepPlace)
+
+        #expect(fixture.coordinator.takeViewportPlacement(forTab: fixture.tabId)?.selectedRows.isEmpty == true)
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test("A query tab's grid takes a placement when its own result is read again")
+    func queryTabRereadStagesTheSelection() {
+        let fixture = makeFixture(tabType: .query)
+        defer { fixture.coordinator.teardown() }
+        fixture.coordinator.selectionState.indices = [1]
+
+        fixture.coordinator.setActiveTableRows(
+            Self.rows(ids: Array(1 ... 10)),
+            for: fixture.tabId,
+            viewport: .keepPlace,
+            source: .sameSource
+        )
+
+        #expect(fixture.coordinator.takeViewportPlacement(forTab: fixture.tabId)?.selectedRows == [.existing(1)])
+        withExtendedLifetime(fixture) {}
+    }
 }

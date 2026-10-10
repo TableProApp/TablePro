@@ -19,7 +19,8 @@ extension MainContentCoordinator {
             schemaColumns: schema.columns,
             hiddenColumns: tab.columnLayout.hiddenColumns,
             primaryKeyColumns: schema.primaryKeys,
-            sortColumns: tab.sortState.columns.compactMap(\.columnName)
+            sortColumns: tab.sortState.columns.compactMap(\.columnName),
+            valueFilteredColumns: tab.valueFilter.activeColumns.compactMap { tab.valueFilter.columnName(forColumn: $0) }
         )
     }
 

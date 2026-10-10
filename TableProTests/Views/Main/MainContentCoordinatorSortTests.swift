@@ -295,6 +295,173 @@ struct MainContentCoordinatorSortTests {
         #expect(rerun.parameters == ["hello"])
     }
 
+    // MARK: - Reading the result again after a save
+
+    /// Save used to reload a query tab by running the statement at the caret, which here is the DELETE.
+    @Test("Reloading a query tab after a save re-reads the result's own statement, never the one at the caret")
+    func reloadRereadsTheResultsOwnStatement() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let editorText = "DELETE FROM audit WHERE msg = :m;\n\(statement)"
+        let harness = try await ParameterizedRunHarness.running(query: editorText, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement, sourceOffset: (editorText as NSString).range(of: statement).location)
+        }
+        defer { harness.tearDown() }
+
+        let reloaded = try await harness.reload()
+
+        #expect(reloaded.map(\.sql).allSatisfy { !$0.contains("DELETE") })
+        let rerun = try #require(ParameterizedRunHarness.onlyRerun(in: reloaded))
+        #expect(rerun.sql.hasPrefix("SELECT id, msg FROM audit WHERE msg = ?"))
+        #expect(rerun.parameters == ["hello"])
+    }
+
+    @Test("Reloading after a header sort keeps the sort and its arrow")
+    func reloadKeepsTheGridSort() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        _ = try await harness.sort(byColumn: 1)
+
+        let reloaded = try await harness.reload()
+
+        let rerun = try #require(ParameterizedRunHarness.onlyRerun(in: reloaded))
+        #expect(rerun.sql.hasPrefix("SELECT id, msg FROM audit WHERE msg = ? ORDER BY `msg` ASC"))
+        let tab = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId })
+        #expect(tab.sortState.columns == [SortColumn(columnIndex: 1, direction: .ascending)])
+    }
+
+    @Test("Reloading a result with no grid sort leaves the statement's own ORDER BY in place")
+    func reloadKeepsTheStatementsOwnOrderBy() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m ORDER BY id DESC"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+
+        let reloaded = try await harness.reload()
+
+        let rerun = try #require(ParameterizedRunHarness.onlyRerun(in: reloaded))
+        #expect(rerun.sql.hasPrefix("SELECT id, msg FROM audit WHERE msg = ? ORDER BY id DESC"))
+    }
+
+    @Test("Reloading a query tab keeps its value filter")
+    func reloadKeepsTheValueFilter() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        var filter = GridValueFilterState()
+        filter.set(ColumnValueFilter(selectedValues: ["2"], includesNull: false), columnName: "id", forColumn: 0)
+        harness.coordinator.setValueFilter(filter, forTab: harness.tabId)
+
+        _ = try await harness.reload()
+
+        #expect(harness.tabManager.tabs.first { $0.id == harness.tabId }?.valueFilter == filter)
+    }
+
+    @Test("A new Run drops the grid sort, because its rows carry no ORDER BY")
+    func runDropsTheGridSort() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        _ = try await harness.sort(byColumn: 1)
+
+        _ = try await harness.runAtCaret()
+
+        #expect(harness.tabManager.tabs.first { $0.id == harness.tabId }?.sortState.columns.isEmpty == true)
+    }
+
+    @Test("A result read by a write is never run again")
+    func rerunRefusesAWrite() throws {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        defer { coordinator.teardown() }
+        let idx = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
+        let written = ResultSet(label: "Result 1", tableRows: TableRows())
+        written.baseQuery = "UPDATE users SET name = 'x' WHERE id = 1 RETURNING id, name"
+        tabManager.mutate(at: idx) { $0.display.replaceUnpinnedResults(with: [written]) }
+
+        #expect(!coordinator.rerunActiveResult(.statement(written.baseQuery ?? ""), viewport: .keepPlace))
+    }
+
+    @Test("A re-read lands only on its own result and database, and starts only on the selected tab")
+    func rereadNeedsItsOwnResultOnScreen() throws {
+        let (coordinator, tabManager, tabId) = makeCoordinator()
+        defer { coordinator.teardown() }
+        let first = ResultSet(label: "Result 1", tableRows: TableRows())
+        let second = ResultSet(label: "Result 2", tableRows: TableRows())
+        tabManager.mutate(tabId: tabId) { tab in
+            tab.display.resultSets = [first, second]
+            tab.display.activeResultSetId = first.id
+            tab.tableContext.databaseName = "app"
+        }
+        let target = ResultSourceChange.reread(
+            RereadTarget(tabId: tabId, resultId: first.id, databaseName: "app", schemaName: nil)
+        )
+        #expect(coordinator.rereadStillApplies(target))
+
+        tabManager.mutate(tabId: tabId) { $0.display.activeResultSetId = second.id }
+        #expect(!coordinator.rereadStillApplies(target))
+
+        tabManager.mutate(tabId: tabId) { tab in
+            tab.display.activeResultSetId = first.id
+            tab.tableContext.databaseName = "other"
+        }
+        #expect(!coordinator.rereadStillApplies(target))
+
+        tabManager.mutate(tabId: tabId) { $0.tableContext.databaseName = "app" }
+        tabManager.addTab(initialQuery: "SELECT 1")
+        #expect(coordinator.rereadStillApplies(target))
+        #expect(!coordinator.rereadCanStart(target))
+        #expect(coordinator.rereadCanStart(.sameSource))
+    }
+
+    @Test("Moving to another result before a reload is authorized drops the reload")
+    func reloadDroppedWhenTheResultChangesFirst() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        let alreadySent = harness.driver.sent.count
+        let other = ResultSet(label: "Result 2", tableRows: TableRows())
+
+        harness.coordinator.reloadActiveResult()
+        harness.tabManager.mutate(tabId: harness.tabId) { tab in
+            tab.display.resultSets.append(other)
+            tab.display.activeResultSetId = other.id
+        }
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(harness.driver.sent.count == alreadySent)
+        let display = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.display)
+        #expect(display.activeResultSetId == other.id)
+        #expect(display.resultSets.count == 2)
+    }
+
+    @Test("Reloading a pinned result re-reads it in its place and keeps it pinned")
+    func reloadKeepsAPinnedResultInItsPlace() async throws {
+        let statement = "SELECT id, msg FROM audit WHERE msg = :m"
+        let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
+            coordinator.runStatement(statement)
+        }
+        defer { harness.tearDown() }
+        let before = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.display.activeResultSet)
+        before.isPinned = true
+
+        let reloaded = try await harness.reload()
+
+        #expect(ParameterizedRunHarness.onlyRerun(in: reloaded) != nil)
+        let display = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.display)
+        #expect(display.resultSets.count == 1)
+        #expect(display.activeResultSet?.isPinned == true)
+        #expect(display.activeResultSetId != before.id)
+    }
+
     /// A result stays on screen, headers and all, while the next run is in flight, and a re-run cannot start until
     /// that run ends. The click used to leave its re-run on the tab, and the next Run sent it in place of the
     /// statement at the caret, bound to the values of the result that was clicked rather than the panel's.
@@ -649,6 +816,16 @@ private struct ParameterizedRunHarness {
         var state = SortState()
         state.columns = [SortColumn(columnIndex: column, direction: .ascending)]
         coordinator.handleSortStateChanged(state)
+        try await waitUntilIdle {
+            driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
+        }
+        return Array(driver.sent.dropFirst(alreadySent))
+    }
+
+    /// Reads the result again the way a save does and returns every statement that sent.
+    func reload() async throws -> [SentStatement] {
+        let alreadySent = driver.sent.count
+        coordinator.reloadActiveResult()
         try await waitUntilIdle {
             driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
         }

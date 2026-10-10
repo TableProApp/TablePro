@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Settings > Integrations is now Settings > MCP, and TablePro > Integrations… is now MCP Activity….
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+- Value filters stay through sorting, paging and the filter bar, and clear when the tab shows another table or query.
+- Save, Refresh and sorting keep the selected rows, matched by primary key.
 - Connection files keep the full path of nested groups, and import rebuilds that path.
 - Connection files written by this version, Team Catalog files included, open only in this version or later.
 - **Keep Existing, Add Queries** in place of **Skip** for a duplicate connection on import.
@@ -47,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Value filter cleared by Save, Refresh, Restore Previous Values and hiding a column. (#3316)
+- Value filter lost on a background tab whose rows were freed, or by choosing the result already shown.
+- Save in a query tab running the statement at the caret instead of reading its result again, and losing the sort.
+- Sort arrow left on a query tab's columns after Run.
+- Header sort on rows returned by an `INSERT`, `UPDATE` or `DELETE` running that statement again.
+- Header sort on a pinned result, or on one of several results, dropping the other results.
 - New View… offered on Redis and other engines without views. (#3308)
 - Column comments typed in Create Table dropped on PostgreSQL, SQL Server, Oracle, DuckDB and Teradata. (#3308)
 - DuckDB Create Table failing on an auto-increment column. (#3308)
