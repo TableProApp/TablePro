@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
@@ -38,6 +39,7 @@ enum IOSConnectionExportService {
             sshConfig: portableSSH(connection),
             sslConfig: portableSSL(connection),
             color: connection.color == .none ? nil : connection.color.rawValue,
+            iconName: LibrarySymbolCatalog.normalizedName(connection.iconName),
             safeModeLevel: connection.safeModeLevel == .off ? nil : connection.safeModeLevel.rawValue,
             connectTimeoutSeconds: connection.connectTimeoutSeconds,
             queryTimeoutSeconds: connection.queryTimeoutSeconds.flatMap {
@@ -63,7 +65,13 @@ enum IOSConnectionExportService {
                 )
             },
             groups: appState.groups.map {
-                BundleExportInput.Group(id: $0.id, name: $0.name, color: portableColor($0.color), parentId: $0.parentId)
+                BundleExportInput.Group(
+                    id: $0.id,
+                    name: $0.name,
+                    color: portableColor($0.color),
+                    iconName: LibrarySymbolCatalog.normalizedName($0.iconName),
+                    parentId: $0.parentId
+                )
             },
             tags: appState.tags.map {
                 BundleExportInput.Tag(id: $0.id, name: $0.name, color: portableColor($0.color))

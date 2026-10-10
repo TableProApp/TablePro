@@ -1,11 +1,11 @@
 ---
-title: Raycast Extension
+title: Raycast
 description: Install and pair the TablePro Raycast extension, and use its commands and AI tools
 ---
 
 Searching connections, browsing schemas and running SQL happen inside the Raycast window, with no
 switch to the app. Nine commands and twelve AI tools reach TablePro over the `tablepro://` scheme and
-the [MCP server](/external-api/mcp-tools), after one pairing step. Needs TablePro 0.37.0 or later.
+the [MCP server](/developers/mcp-tools), after one pairing step. Needs TablePro 0.37.0 or later.
 
 ## Install
 
@@ -22,7 +22,7 @@ It defaults to `/Applications/TablePro.app`, so change it only for a build that 
 
 Run **Pair with TablePro**. An approval sheet opens in TablePro where you pick the scope (read-only
 to start), the connections the token may reach, and an optional expiry. Approving sends a one-time
-code back to Raycast, which exchanges it for a token over localhost. [Pairing](/external-api/pairing)
+code back to Raycast, which exchanges it for a token over localhost. [Pairing](/developers/pairing)
 documents the protocol.
 
 Re-run the command whenever you want a fresh token. The previous one keeps working until you revoke
@@ -51,7 +51,7 @@ it in **Settings > Integrations**.
 
 This is also an AI Extension: with Raycast AI, mention `@tablepro` in a chat and Raycast picks tools
 from this catalog. Each one calls the MCP server, so a call cannot exceed the
-[token's scope](/external-api/tokens). AI tool calls themselves go through Raycast's AI provider,
+[token's scope](/developers/tokens). AI tool calls themselves go through Raycast's AI provider,
 under Raycast's [privacy policy](https://www.raycast.com/privacy).
 
 | Tool | Description |
@@ -76,4 +76,4 @@ under Raycast's [privacy policy](https://www.raycast.com/privacy).
 | Paired, but the connection list is empty | TablePro omits every connection the token cannot reach. Either the allowlist you approved left it out, or its **External Clients** level is **Blocked**. Re-pair with the connection selected, or raise the level in the [connection form's Options tab](/connections/connection-form#options). |
 | Commands hang on a running TablePro | The MCP server is stopped. The extension opens `tablepro://integrations/start-mcp` and retries on its own; give it a moment. |
 | `401` | The token was revoked or has expired. Run **Pair with TablePro** again. |
-| `403` and other MCP errors | See [MCP client troubleshooting](/external-api/mcp-clients#when-it-does-not-work). |
+| `403` and other MCP errors | See [MCP client troubleshooting](/integrations/mcp-clients#when-it-does-not-work). |

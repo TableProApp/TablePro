@@ -126,6 +126,18 @@ struct PortableConnectionMappingTests {
 
     // MARK: - Other fields
 
+    @Test("An imported icon is trimmed, and a malformed one is dropped")
+    func importNormalizesIcon() {
+        var trimmed = settings()
+        trimmed.iconName = " server.rack\n"
+        var junk = settings()
+        junk.iconName = "../../etc/passwd"
+
+        #expect(imported(trimmed).iconName == "server.rack")
+        #expect(imported(junk).iconName == nil)
+        #expect(imported(settings()).iconName == nil)
+    }
+
     @Test("A blank host imports as localhost")
     func blankHostImportsAsLocalhost() {
         var blank = settings()

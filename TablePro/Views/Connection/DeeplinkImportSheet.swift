@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProConnectionLibrary
 import TableProImport
 
 struct DeeplinkImportSheet: View {
@@ -206,8 +207,9 @@ struct DeeplinkImportSheet: View {
     @ViewBuilder
     private func metadataSection(_ entry: BundleConnection) -> some View {
         let color = Self.displayColor(entry.settings.color)
+        let customSymbol = LibraryGlyph.customSymbol(entry.settings.iconName)
         let groupPath = bundle.groupChain(entry.groupRef).map(\.name)
-        if color != nil || !entry.tagNames.isEmpty || !groupPath.isEmpty {
+        if color != nil || customSymbol != nil || !entry.tagNames.isEmpty || !groupPath.isEmpty {
             Section {
                 if let color {
                     LabeledContent(String(localized: "Color")) {
@@ -216,9 +218,16 @@ struct DeeplinkImportSheet: View {
                             .frame(width: 12, height: 12)
                     }
                 }
+                if let customSymbol {
+                    LabeledContent(String(localized: "Icon")) {
+                        Image(systemName: customSymbol)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(LibrarySymbolCatalog.symbol(named: customSymbol)?.title ?? customSymbol)
+                    }
+                }
                 if !entry.tagNames.isEmpty {
                     LabeledContent(entry.tagNames.count == 1 ? String(localized: "Tag") : String(localized: "Tags")) {
-                        Text(entry.tagNames.joined(separator: ", ")).foregroundStyle(.secondary)
+                        Text(ListFormatter.localizedString(byJoining: entry.tagNames)).foregroundStyle(.secondary)
                     }
                 }
                 if !groupPath.isEmpty {

@@ -1,0 +1,94 @@
+---
+title: Build an integration
+description: Pick the surface for the job, find TablePro by bundle ID, and know what stays stable before you ship
+---
+
+import StabilityMatrix from "/snippets/stability-matrix.mdx";
+
+What you need back decides the surface. Putting something on screen needs no setup at all; reading
+rows back needs AppleScript or a token.
+
+## Pick a surface
+
+| Job | Surface | Data back | What the user approves |
+| --- | --- | --- | --- |
+| Open a saved connection, table or query | [`tablepro://` links](/developers/url-scheme) | No | The SQL of a query link, and a connection's pre-connect script |
+| Open a database nobody saved | [Database URLs](/connections/urls), opened by bundle ID | No | **Open External Database Connection?**, with **Always Allow** for a database on this Mac |
+| Hand over a connection to keep | [Connection import](/developers/connection-import) | No | A review sheet before the connection is saved |
+| List connections or run a query from a script | [AppleScript](/developers/applescript) | Yes | Automation permission, once per sending app |
+| Give an AI client or a long-running tool schema and rows | [MCP](/developers/mcp-protocol) | Yes | A token or the bundled bridge, then each connection on first use |
+| Get a token for your own extension | [Pairing](/developers/pairing) | A token | The pairing sheet |
+| Add a database engine or a file format | [A plugin](/development/plugin-development) | Runs inside the app | Trust in the developer who signed it |
+
+A launcher needs two of these: AppleScript or MCP to list connections, and a
+`tablepro://connect/<uuid>` link to open one. On iPhone and iPad, an integration has
+[two connection links](/developers/url-scheme#on-iphone-and-ipad) and the
+[Shortcuts actions](/integrations/ios-shortcuts).
+
+## Find the app
+
+Look TablePro up by its bundle ID, `com.TablePro`, through Launch Services. A path check fails twice
+over: the app runs from `/Applications`, `~/Applications` or any other folder, and an unrelated app
+also installs itself as `/Applications/TablePro.app`.
+
+<CodeGroup>
+```swift Swift
+import AppKit
+
+if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.TablePro") {
+    let version = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    let bridge = app.appendingPathComponent("Contents/MacOS/tablepro-mcp")
+}
+```
+
+```bash Shell
+# Opens the link in TablePro, or exits 1 when no app has that bundle ID
+open -b com.TablePro "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
+
+# Prints the app's path without launching it, or an empty line
+osascript -l JavaScript -e 'ObjC.import("AppKit"); var u = $.NSWorkspace.sharedWorkspace.URLForApplicationWithBundleIdentifier("com.TablePro"); u.isNil() ? "" : u.path.js'
+```
+
+```ts Raycast
+import { getApplications, open } from "@raycast/api";
+
+const installed = (await getApplications()).some((app) => app.bundleId === "com.TablePro");
+if (installed) {
+  await open("tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1", "com.TablePro");
+}
+```
+</CodeGroup>
+
+Check the version before relying on a newer surface: `CFBundleShortVersionString` in the bundle,
+or the `serverInfo` version once the MCP server answers.
+
+Read nothing the app writes to disk: not `~/Library/Application Support/TablePro`, not the
+`com.TablePro` preferences, not its Keychain items. None of them is under the contract, and
+[Versioning](/developers/versioning#what-is-not-under-the-contract) names what to call instead.
+
+## What stays stable
+
+<StabilityMatrix />
+
+[Versioning](/developers/versioning) has the rule for each surface and how a break is announced.
+
+## Security model
+
+The MCP server binds `127.0.0.1`, and on stock settings every request carries a token. A call is
+allowed only where the token's scope, the token's connection allowlist, and the connection's own
+**External Clients** level all permit it; the effective permission is the lowest of them.
+[Tokens](/developers/tokens) has the full model. On top of that, an AI policy of **Never** refuses
+the connection outright, and [Safe Mode](/features/safe-mode) still holds destructive statements
+behind a confirmation.
+
+AppleScript has no token. macOS asks the sending app for Automation permission instead, and the
+connection's **External Clients** level and Safe Mode apply exactly as they do over MCP. The AI
+policy does not: it governs the assistant, not other apps.
+
+A database URL that matches no saved connection opens at **Silent** unless it sets
+`safeModeLevel`: `1` asks before each write and `2` refuses writes. A URL that matches a saved
+connection runs at that connection's own level and ignores the parameter.
+
+Each request lands in the activity log with the token behind it, and a statement is stored as a
+SHA-256 digest rather than as text. Open **Settings > Integrations** and click **View Activity** to
+read it.

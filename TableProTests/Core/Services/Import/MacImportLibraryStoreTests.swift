@@ -164,6 +164,31 @@ struct MacImportLibraryStoreTests {
         #expect(fresh.queryTimeoutSeconds == 45)
     }
 
+    @Test("An import saves each connection's icon and drops a malformed one")
+    func importKeepsIcons() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var picked = settings(name: "Picked", host: "picked.example.com")
+        picked.iconName = "server.rack"
+        var junk = settings(name: "Junk", host: "junk.example.com")
+        junk.iconName = "Server Rack!"
+        let bundle = try ConnectionBundle(
+            appVersion: "Tests",
+            connections: [
+                BundleConnection(ref: "c1", settings: picked),
+                BundleConnection(ref: "c2", settings: junk)
+            ]
+        )
+
+        let outcome = try await library.importDefaults(of: bundle)
+
+        #expect(outcome.connectionsAdded == 2)
+        library.connections.invalidateCache()
+        let saved = library.connections.loadConnections()
+        #expect(saved.first { $0.name == "Picked" }?.iconName == "server.rack")
+        #expect(saved.first { $0.name == "Junk" }?.iconName == nil)
+    }
+
     @Test("Credentials from the file land on the connection the import saved")
     func credentialsLandOnTheSavedConnection() async throws {
         let library = try ImportLibraryFixture()

@@ -59,7 +59,8 @@ Write like the developer who built the feature explaining it to the developer ab
 
 - **No internals on user-facing pages.** No class names, bundle identifiers, or activity types under
   `features/`, `databases/`, `connections/`, `customization/`. A page once opened with
-  `NSUserActivity`. They are fine under `development/` and `external-api/`.
+  `NSUserActivity`. They are fine under `development/` and `developers/`; an `integrations/` page
+  may show a bundle ID only inside a command the reader runs.
 - **Repair a hedge with a measurement.** Not "large results may take some time". Say the number, or
   name the condition.
 

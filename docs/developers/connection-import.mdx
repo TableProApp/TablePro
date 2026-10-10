@@ -27,12 +27,15 @@ values that contain spaces: `sslMode=Verify%20CA`.
 | `username` | Database username. |
 | `database` | Default database name. |
 | `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Gray` or `None`. Falls back to `None`. |
+| `icon` | SF Symbol name to draw instead of the type's icon, such as `server.rack`. Lowercase letters, digits and dots, up to 100 characters; anything else is dropped. A name this macOS lacks is kept and draws the type's icon. |
 | `tagName` | Tag to assign. Repeat the parameter for more than one tag. |
 | `groupName` | Group to place the connection in. Repeat the parameter for a nested group, outermost first. |
 | `safeModeLevel` | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull` or `readOnly`. Falls back to `silent`. |
 | `aiPolicy` | `alwaysAllow`, `askEachTime` or `never`. Falls back to the app default. |
 | `redisDatabase` | Redis database index to select on connect. |
 | `startupCommands` | SQL to run after connecting. The review sheet shows it in full. |
+| `connectTimeoutSeconds` | Seconds to wait for the connection, `1` to `600`. Out of range falls back to the app default. |
+| `queryTimeoutSeconds` | Seconds a query may run before it is canceled, `0` to `2147483`. `0` turns the limit off. Out of range falls back to the app default. |
 | `localOnly` | `1` keeps the connection off iCloud sync. |
 
 ## SSH parameters
@@ -78,8 +81,8 @@ editor afterwards.
 ## What the user sees
 
 The review sheet shows the type, host and port, database, username, SSH auth method, SSL mode, color,
-tags, group path, driver fields, and startup SQL. Only the name is editable. **Add Connection** saves
-it; when a connection to the same host, port, database and username is already saved, the sheet
+icon, tags, group path, driver fields, and startup SQL. Only the name is editable. **Add Connection**
+saves it; when a connection to the same host, port, database and username is already saved, the sheet
 warns *"A connection to this server is already saved as “…”."* and the button becomes
 **Add as Copy**.
 

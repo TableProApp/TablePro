@@ -58,12 +58,14 @@ public struct BundleExportInput: Sendable {
         public let id: UUID
         public let name: String
         public let color: String?
+        public let iconName: String?
         public let parentId: UUID?
 
-        public init(id: UUID, name: String, color: String? = nil, parentId: UUID? = nil) {
+        public init(id: UUID, name: String, color: String? = nil, iconName: String? = nil, parentId: UUID? = nil) {
             self.id = id
             self.name = name
             self.color = color
+            self.iconName = iconName
             self.parentId = parentId
         }
     }
@@ -179,7 +181,7 @@ public enum BundleExportAssembler {
                 connection.settings,
                 ref: ref,
                 groupPath: chain(from: connection.groupId, in: groups, parent: \.parentId).map {
-                    ConnectionBundleBuilder.GroupComponent(name: $0.name, color: $0.color)
+                    ConnectionBundleBuilder.GroupComponent(name: $0.name, color: $0.color, iconName: $0.iconName)
                 },
                 tags: connection.tagIds.compactMap { tags[$0] }.map { BundleTag(name: $0.name, color: $0.color) },
                 credentialProfile: connection.credentialProfileId.flatMap { profiles[$0] }.map {

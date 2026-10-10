@@ -115,7 +115,7 @@ For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. S
 
 | Rule | Covers |
 | --- | --- |
-| `ai-mcp-security.md` | `TablePro/Core/AI`, `TablePro/Core/MCP`, the external API docs |
+| `ai-mcp-security.md` | `TablePro/Core/AI`, `TablePro/Core/MCP`, the developer docs (`docs/developers`) |
 | `changelog.md` | `CHANGELOG.md` |
 | `connection-window.md` | connection windows, workspaces, sessions, `DatabaseManager` |
 | `data-grid.md` | the data grid under `TablePro/Views/Results` |

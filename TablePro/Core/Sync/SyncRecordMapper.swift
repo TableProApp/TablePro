@@ -8,6 +8,7 @@
 import CloudKit
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSyncTransport
@@ -82,6 +83,11 @@ struct SyncRecordMapper {
 
     // MARK: - Connection
 
+    /// Writes the optional fields whether or not they hold anything, for the reason
+    /// `toCKRecord(sqlFavorite:in:)` gives: a connection moved out of its group, stripped of its
+    /// tags or of its AI rules pushed a record that said nothing about them, and the next pull put
+    /// them back. On the server's own record a nil names the key only where the server still has a
+    /// value; a record built fresh has nothing to compare against, so it names every empty key.
     static func toCKRecord(
         _ connection: DatabaseConnection,
         in zone: CKRecordZone.ID,
@@ -89,7 +95,7 @@ struct SyncRecordMapper {
     ) -> CKRecord {
         let record = record(type: .connection, id: connection.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(ConnectionSyncField.self)
+        let fields = record.fields(ConnectionSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.connectionId] = connection.id.uuidString
         fields[.name] = connection.name
         fields[.host] = connection.host
@@ -98,6 +104,7 @@ struct SyncRecordMapper {
         fields[.username] = connection.username
         fields[.type] = connection.type.rawValue
         fields[.color] = connection.color.rawValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName)
         fields[.safeModeLevel] = connection.preferredSafeModeLevel.rawValue
         /// `safeModeLevel` superseded `isReadOnly`, but both are still on the wire and this mapper
         /// still reads the old one when the new one is absent. Writing only the new one left the
@@ -110,32 +117,19 @@ struct SyncRecordMapper {
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0)
         fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) }
 
-        if !connection.tagIds.isEmpty {
-            let tagIdStrings = connection.tagIds.map { $0.uuidString }
-            fields[.tagIds] = tagIdStrings
-            fields[.tagId] = tagIdStrings[0]
-        }
-        if let groupId = connection.groupId {
-            fields[.groupId] = groupId.uuidString
-        }
-        if let aiPolicy = connection.aiPolicy {
-            fields[.aiPolicy] = aiPolicy.rawValue
-        }
-        if let aiRules = connection.aiRules, !aiRules.isEmpty {
-            fields[.aiRules] = aiRules
-        }
-        if !connection.aiAlwaysAllowedTools.isEmpty {
-            fields[.aiAlwaysAllowedTools] = Array(connection.aiAlwaysAllowedTools).sorted()
-        }
-        if let redisDatabase = connection.redisDatabase {
-            fields[.redisDatabase] = Int64(redisDatabase)
-        }
-        if let startupCommands = connection.startupCommands {
-            fields[.startupCommands] = startupCommands
-        }
-        if let sshProfileId = connection.sshProfileId {
-            fields[.sshProfileId] = sshProfileId.uuidString
-        }
+        let tagIdStrings = connection.tagIds.map(\.uuidString)
+        fields[.tagIds] = tagIdStrings.isEmpty ? nil : tagIdStrings
+        /// Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
+        fields[.tagId] = tagIdStrings.first
+        fields[.groupId] = connection.groupId?.uuidString
+        fields[.aiPolicy] = connection.aiPolicy?.rawValue ?? unrecognizedAIPolicy(in: fields)
+        fields[.aiRules] = connection.aiRules.flatMap { $0.isEmpty ? nil : $0 }
+        fields[.aiAlwaysAllowedTools] = connection.aiAlwaysAllowedTools.isEmpty
+            ? nil
+            : Array(connection.aiAlwaysAllowedTools).sorted()
+        fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
+        fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
+        fields[.sshProfileId] = connection.sshProfileId?.uuidString
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
@@ -267,6 +261,7 @@ struct SyncRecordMapper {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: ConnectionColor(storedValue: colorRaw),
+            iconName: LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String),
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: sshProfileId,
@@ -289,6 +284,12 @@ struct SyncRecordMapper {
         return connection
     }
 
+    /// A policy a newer release added reads as nil on this Mac. Writing that nil back would clear
+    /// the other device's choice the next time this Mac saves any other change to the connection.
+    private static func unrecognizedAIPolicy(in fields: SyncRecordFields<ConnectionSyncField>) -> String? {
+        (fields[.aiPolicy] as? String).flatMap { AIConnectionPolicy(rawValue: $0) == nil ? $0 : nil }
+    }
+
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
         var fields = connection.additionalFields
         fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
@@ -309,17 +310,18 @@ struct SyncRecordMapper {
 
     // MARK: - Connection Group
 
-    static func toCKRecord(_ group: ConnectionGroup, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .group, id: group.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: recordID)
+    /// Writes `parentId` and `iconName` whether or not they hold anything, for the reason the
+    /// connection mapper gives: a group dragged to the top level, or set back to the folder, has
+    /// to clear the server's value or the next pull restores it.
+    static func toCKRecord(_ group: ConnectionGroup, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .group, id: group.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(ConnectionGroupSyncField.self)
+        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
-        if let parentId = group.parentId {
-            fields[.parentId] = parentId.uuidString
-        }
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
+        fields[.parentId] = group.parentId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -345,6 +347,7 @@ struct SyncRecordMapper {
             id: groupId,
             name: name,
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String),
             parentId: parentId,
             sortOrder: sortOrder
         )

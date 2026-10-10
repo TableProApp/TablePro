@@ -9,7 +9,7 @@ Eight URIs, all read-only, all JSON. A client reads them to find its way around 
 
 <MCPGates what="read" />
 
-Reads count against the caller's [request rate](/external-api/tokens#rate-limits) like anything else.
+Reads count against the caller's [request rate](/developers/tokens#rate-limits) like anything else.
 
 ## Discovery
 
@@ -30,10 +30,10 @@ Reads count against the caller's [request rate](/external-api/tokens#rate-limits
 | `tablepro://connections/{connection_id}/tables/{table}/ddl{?database,schema}` | `table_ddl` | The `CREATE` statement as the engine reports it, as `get_table_ddl` returns it |
 | `tablepro://connections/{connection_id}/history{?limit,search,date_filter}` | `connection_history` | Queries recently run against this connection, newest first |
 
-`{connection_id}` must be a UUID; a name is `-32602`. On the `tables` URI, `row_counts=true` asks for approximate counts and `1` and `yes` also work. `completion/complete` fills every variable in these templates against the live schema, including `table`, `database` and `schema`. See [Completions](/external-api/mcp-prompts#completions).
+`{connection_id}` must be a UUID; a name is `-32602`. On the `tables` URI, `row_counts=true` asks for approximate counts and `1` and `yes` also work. `completion/complete` fills every variable in these templates against the live schema, including `table`, `database` and `schema`. See [Completions](/developers/mcp-prompts#completions).
 
 <Note>
-These URIs live inside the MCP transport and are not the shell-level [URL scheme deep links](/external-api/url-scheme), which happen to share the `tablepro://` prefix.
+These URIs live inside the MCP transport and are not the shell-level [URL scheme deep links](/developers/url-scheme), which happen to share the `tablepro://` prefix.
 </Note>
 
 ## Reading
@@ -52,7 +52,7 @@ These URIs live inside the MCP transport and are not the shell-level [URL scheme
 }
 ```
 
-The payload is a JSON string inside `text`. The shapes on the rest of this page are what you get after parsing it. Each read carries a `private` cache hint whose TTL depends on the URI; the numbers are in [Cache hints](/external-api/mcp-protocol#cache-hints).
+The payload is a JSON string inside `text`. The shapes on the rest of this page are what you get after parsing it. Each read carries a `private` cache hint whose TTL depends on the URI; the numbers are in [Cache hints](/developers/mcp-protocol#cache-hints).
 
 ## `tablepro://connections`
 
@@ -98,7 +98,7 @@ The payload is a JSON string inside `text`. The shapes on the rest of this page 
 
 Capped at 100 tables. Beyond that the payload also carries `truncated: true` and `total_tables`. For a larger schema use the `list_tables` tool, or `search_schema` to find a table in any schema or a column by name.
 
-This is the only subscribable resource. See [Subscriptions](/external-api/mcp-subscriptions).
+This is the only subscribable resource. See [Subscriptions](/developers/mcp-subscriptions).
 
 ## `tablepro://connections/{id}/history{?limit,search,date_filter}`
 
@@ -138,4 +138,4 @@ This is the only subscribable resource. See [Subscriptions](/external-api/mcp-su
 | `-32020` | The `Mcp-Name` header does not match `params.uri` |
 | `-33007` | The token's allowlist rejects the connection, or its external access is `blocked` |
 
-Resource-not-found is `-32602` rather than a code of its own; [MCP Protocol](/external-api/mcp-protocol#errors) lists the rest.
+Resource-not-found is `-32602` rather than a code of its own; [MCP Protocol](/developers/mcp-protocol#errors) lists the rest.

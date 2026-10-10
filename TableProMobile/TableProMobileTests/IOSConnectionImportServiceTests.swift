@@ -579,3 +579,91 @@ struct IOSConnectionImportServiceTests {
         #expect(hop.macAuthMethod == .sshAgent)
     }
 }
+
+@MainActor
+@Suite("iOS connection import icons")
+struct IOSConnectionImportIconTests {
+    private let fixture: AppStateFixture
+    private let store = MockSecureStore()
+    private let appState: AppState
+
+    init() throws {
+        fixture = try AppStateFixture()
+        appState = fixture.makeState(syncEnabled: false, secureStore: store)
+    }
+
+    private func bundle(iconName: String?, group: BundleGroup? = nil) throws -> ConnectionBundle {
+        let settings = ExportableConnection(
+            name: "Prod", host: "db.example.com", port: 5_432, database: "", username: "",
+            type: DatabaseType.postgresql.rawValue, color: "Red", iconName: iconName
+        )
+        return try ConnectionBundle(
+            appVersion: "Tests",
+            connections: [BundleConnection(ref: "c1", settings: settings, groupRef: group?.ref)],
+            groups: group.map { [$0] } ?? []
+        )
+    }
+
+    private func importBundle(_ bundle: ConnectionBundle, throughFile: Bool = true) async throws {
+        let read = try throughFile ? ConnectionBundleCodec.decode(ConnectionBundleCodec.encode(bundle)) : bundle
+        let preview = try await IOSConnectionImportService.preview(of: read, fileName: "Tests.tablepro", appState: appState)
+        let plan = ImportPlanner.plan(preview, selection: .defaults(for: preview))
+        let outcome = await IOSConnectionImportService.apply(plan, appState: appState, secureStore: store)
+        #expect(outcome.connectionsAdded == 1)
+    }
+
+    @Test("An imported connection keeps its icon and colour")
+    func connectionIconImports() async throws {
+        try await importBundle(bundle(iconName: "flame"))
+
+        #expect(appState.connections.first?.iconName == "flame")
+        #expect(appState.connections.first?.color == .red)
+    }
+
+    @Test("An imported icon that is not a symbol name is dropped", arguments: ["", "Flame", "../flame", "a b"])
+    func junkConnectionIconIsDropped(_ raw: String) async throws {
+        try await importBundle(bundle(iconName: raw), throughFile: false)
+
+        #expect(appState.connections.first?.iconName == nil)
+    }
+
+    @Test("A group the file brings is created with its colour and icon, and the connection joins it")
+    func groupIconImports() async throws {
+        try await importBundle(bundle(
+            iconName: nil,
+            group: BundleGroup(ref: "g1", name: "Clients", color: "Purple", iconName: "briefcase")
+        ))
+
+        let group = try #require(appState.groups.first)
+        #expect(group.name == "Clients")
+        #expect(group.color == .purple)
+        #expect(group.iconName == "briefcase")
+        #expect(appState.connections.first?.groupId == group.id)
+    }
+
+    @Test("A group icon that is not a symbol name is dropped on import", arguments: [true, false])
+    func junkGroupIconIsDropped(_ throughFile: Bool) async throws {
+        try await importBundle(
+            bundle(iconName: nil, group: BundleGroup(ref: "g1", name: "Clients", iconName: "../../etc")),
+            throughFile: throughFile
+        )
+
+        let group = try #require(appState.groups.first)
+        #expect(group.iconName == nil)
+    }
+
+    @Test("A group that already exists keeps its own icon")
+    func existingGroupKeepsItsIcon() async throws {
+        let existing = ConnectionGroup(name: "Clients", iconName: "person.3")
+        #expect(appState.addGroup(existing) == .applied)
+
+        try await importBundle(bundle(
+            iconName: nil,
+            group: BundleGroup(ref: "g1", name: "clients", color: "Red", iconName: "flame")
+        ))
+
+        #expect(appState.groups.count == 1)
+        #expect(appState.groups.first?.iconName == "person.3")
+        #expect(appState.connections.first?.groupId == existing.id)
+    }
+}

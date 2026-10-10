@@ -15,7 +15,7 @@ The editor's sidebar lists the same four sections whatever the driver. Only Netw
 | **General** | Name, database type, host, port, database, credentials |
 | **Network** | How the connection reaches the server, and how it is encrypted |
 | **Options** | Timeouts, driver options, startup SQL, Safe Mode, external and AI access, iCloud |
-| **Appearance** | Color, tags, group |
+| **Appearance** | Icon, color, tags, group |
 
 The bar along the bottom carries **Test Connection**, **Cancel** and **Save**, plus **Save & Connect** on a new connection and **Delete** on a saved one. When **Save** is dimmed, the reason sits to its left, prefixed with the tab that holds the empty field.
 
@@ -69,7 +69,7 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
 | **Safe Mode** | Confirms, authenticates or refuses queries before they run. See [Safe Mode](/features/safe-mode) |
 | **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients. Shown while **Enable AI Features** is on |
-| **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
+| **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/developers/applescript). A token's own scope cannot raise it. See the [integration security model](/developers#security-model) |
 | **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. Shown while **Enable AI Features** is on. See [AI Assistant](/features/ai-assistant) |
 | **Local only** | Keeps this connection off iCloud Sync. Shown while **Sync this Mac with iCloud** is on. See [iCloud Sync](/features/icloud-sync) |
 
@@ -87,6 +87,8 @@ session picks it up.
 A pre-connect script never runs unprompted. A **Pre-Connect Script** alert shows the script itself and waits for **Run Script**, every time. At launch it is not prompted for at all: a restored window whose connection carries a script waits with a **Connect** button.
 
 ## Appearance
+
+**Icon** replaces the database logo in the connection list, **Switch Connection**, the connections strip and the toolbar. Click it, type to search the symbols, then click one or press `Return`. **Default** brings the logo back. The database type stays in the row's tooltip.
 
 **Color** marks the connection in the connection list and its window. **Tags** and **Group** decide where it sits in the welcome window's tree.
 

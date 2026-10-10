@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comment field in Create Table. (#3308)
 - Table comment in the Structure tab, saved with the other structure changes. (#3308)
 - Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
+- Custom icons for connections and groups on Mac and iPhone, chosen from a searchable set of symbols and synced through iCloud. (#3309)
+- Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
 - Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
 - Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 
@@ -46,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Teradata Table Info counting every row of the table each time it opened. (#3308)
 - Create Table keeping a draft that could only fail again after the table was created and a later index or comment failed. (#3308)
 - An AWS IAM sign-in to MySQL failing to reconnect after an idle release, and Stop failing, once its token expired.
+- MySQL and MariaDB connections with SSL Disabled still using TLS when a client certificate or key was saved.
 - SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
 - Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
 - SQL Server `datetimeoffset` values shown, copied and exported without their offset.
@@ -93,6 +96,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
 - Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
 - "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
+- A database link with a filter replacing the filters of a tab already showing that table.
+- A cleared group, tag, AI rule, startup command or SSH profile, or a group moved to the top level, returning after iCloud sync. (#3309)
+- Exported connections taking the color of another group with the same name. (#3309)
+- Copy TablePro Link dropping the connect and query timeouts, and new tags after the first. (#3309)
+- The toolbar keeping a connection's old name after it was renamed while connected. (#3309)
+- The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
+- No icon for a connection to a database type no installed plugin describes. (#3309)
+- MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
 - Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
 - Saving or importing connections while the connection library could not be read replacing every saved connection.
 - Import counting connections it could not save and storing their passwords in the Keychain.
@@ -102,7 +113,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Duplicating a connection set to Blocked for external access making the copy readable over MCP. (#3309)
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
+- A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
+- A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.
 
 ## [0.79.0] - 2026-10-09
 

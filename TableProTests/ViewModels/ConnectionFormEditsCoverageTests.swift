@@ -24,6 +24,7 @@ struct ConnectionFormEditsCoverageTests {
         "sshConfig",
         "sslConfig",
         "color",
+        "iconName",
         "tagIds",
         "groupId",
         "sshProfileId",
@@ -106,6 +107,7 @@ struct ConnectionFormEditsCoverageTests {
         original.isSample = true
         original.aiAlwaysAllowedTools = ["run_query"]
         original.passwordSource = .env(variable: "PGPASSWORD")
+        original.iconName = "server.rack"
 
         let result = ConnectionFormEdits(
             name: original.name,
@@ -117,6 +119,7 @@ struct ConnectionFormEditsCoverageTests {
             sshConfig: original.sshConfig,
             sslConfig: original.sslConfig,
             color: original.color,
+            iconName: original.iconName,
             tagIds: original.tagIds,
             groupId: original.groupId,
             sshProfileId: original.sshProfileId,

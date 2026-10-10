@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 
 public enum BundlePasswordMode: String, Codable, Sendable {
     case stored
@@ -37,12 +38,20 @@ public struct BundleGroup: Codable, Sendable, Equatable {
     public var ref: BundleRef
     public var name: String
     public var color: String?
+    public var iconName: String?
     public var parentRef: BundleRef?
 
-    public init(ref: BundleRef, name: String, color: String? = nil, parentRef: BundleRef? = nil) {
+    public init(
+        ref: BundleRef,
+        name: String,
+        color: String? = nil,
+        iconName: String? = nil,
+        parentRef: BundleRef? = nil
+    ) {
         self.ref = ref
         self.name = name
         self.color = color
+        self.iconName = iconName
         self.parentRef = parentRef
     }
 }
@@ -229,23 +238,31 @@ public struct ConnectionBundle: Sendable, Equatable {
         return rebuilt(connections: updated)
     }
 
-    func mappingSettings(_ transform: (ExportableConnection) -> ExportableConnection) -> ConnectionBundle {
-        rebuilt(connections: connections.map { connection in
-            var copy = connection
-            copy.settings = transform(connection.settings)
-            return copy
-        })
+    func sanitizedForImport() -> ConnectionBundle {
+        rebuilt(
+            connections: connections.map { connection in
+                var copy = connection
+                copy.settings = connection.settings.sanitizedForImport()
+                return copy
+            },
+            groups: groups.map { group in
+                var copy = group
+                copy.iconName = LibrarySymbolCatalog.normalizedName(group.iconName)
+                return copy
+            }
+        )
     }
 
     private func rebuilt(
         connections: [BundleConnection]? = nil,
+        groups: [BundleGroup]? = nil,
         credentials: [BundleRef: ExportableCredentials]? = nil
     ) -> ConnectionBundle {
         ConnectionBundle(
             unchecked: exportedAt,
             appVersion: appVersion,
             connections: connections ?? self.connections,
-            groups: groups,
+            groups: groups ?? self.groups,
             tags: tags,
             credentialProfiles: credentialProfiles,
             credentials: credentials ?? self.credentials,

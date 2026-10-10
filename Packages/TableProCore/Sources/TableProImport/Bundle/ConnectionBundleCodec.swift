@@ -52,10 +52,10 @@ public enum ConnectionBundleCodec {
         }
         if probe.formatVersion == 1 {
             let envelope = try decodeBody(ConnectionBundleV1.Envelope.self, from: data)
-            return try envelope.upgraded().mappingSettings { $0.sanitizedForImport() }
+            return try envelope.upgraded().sanitizedForImport()
         }
         let payload = try decodeBody(ConnectionBundlePayload.self, from: data)
-        return try payload.bundle(sanitizing: { $0.sanitizedForImport() })
+        return try payload.bundle().sanitizedForImport()
     }
 
     private static func decodeBody<Body: Decodable>(_ type: Body.Type, from data: Data) throws -> Body {

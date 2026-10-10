@@ -18,7 +18,7 @@ Passwords stay in your Keychain, so every route here hands over a connection def
 
 Right-click a connection > **Share > Export to File…**, selecting several first to export them together, or **File > Export > Export Connections…** for all of them.
 
-The file carries what the connection form holds, from host and port through SSH and SSL configuration, color, tags, the full group path, Safe Mode level, startup commands, AI policy, the Local only flag, and any driver field the plugin does not mark secret. Passwords, key passphrases, TOTP secrets, and secret driver fields stay behind.
+The file carries what the connection form holds, from host and port through SSH and SSL configuration, color, icon, tags, the full group path, Safe Mode level, startup commands, AI policy, the Local only flag, and any driver field the plugin does not mark secret. Passwords, key passphrases, TOTP secrets, and secret driver fields stay behind.
 
 <Frame caption="Export connections">
   <img className="block dark:hidden" src="/images/connection-export-menu.png" alt="Export connections" />
@@ -76,7 +76,7 @@ Each saved query shows its connection, or **All connections** for a global one, 
 | Too large to save (…) | Over the 900 KB limit for a saved query, so it cannot be selected |
 | Its connection is not imported. | Select the connection to bring its queries |
 
-Group and folder paths match by name from the top down: an existing group or folder is reused, and a missing one is created. Only the groups, tags, and credential profiles that added or replaced connections use are created.
+Group and folder paths match by name from the top down: an existing group or folder is reused, and a missing one is created. A created group takes the file's color and icon; an existing one keeps its own. Only the groups, tags, and credential profiles that added or replaced connections use are created.
 
 <Frame caption="Import preview">
   <img className="block dark:hidden" src="/images/connection-import-preview.png" alt="Import preview" />
@@ -93,7 +93,7 @@ Anything that decides where a credential comes from is stripped on the way in, f
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
 ```
 
-`tablepro://connect/<uuid>` opens a saved connection rather than importing one. No menu item builds it; see [URL Scheme](/external-api/url-scheme#open-a-connection).
+`tablepro://connect/<uuid>` opens a saved connection rather than importing one. No menu item builds it; see [URL Scheme](/developers/url-scheme#open-a-connection).
 
 ## Import from other apps
 
@@ -217,7 +217,7 @@ A `ref` links records inside one file and means nothing outside it. Refs must be
 
 | Key | Holds |
 |---|---|
-| `groups` | Groups with a `ref`, a `name`, and an optional `color`, nested through `parentRef`. A connection points at the innermost one with `groupRef` |
+| `groups` | Groups with a `ref`, a `name`, and an optional `color` and `iconName`, nested through `parentRef`. A connection points at the innermost one with `groupRef` |
 | `tags` | Tag colors. A connection lists its tags in `tagNames`, and a name missing here imports with no color |
 | `credentialProfiles` | Profiles with `ref`, `name`, `username`, and `passwordMode` (`stored`, `prompt`, or `pgpass`), named by a connection's `credentialProfileRef`. A profile's password never travels, so a `stored` one imports as `prompt` |
 | `queryFolders` | Saved query folders with a `ref` and a `name`, nested through `parentRef`. A `connectionRef` scopes a folder to that connection; without one it is global |

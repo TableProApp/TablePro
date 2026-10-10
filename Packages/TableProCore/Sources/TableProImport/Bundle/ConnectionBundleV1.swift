@@ -14,8 +14,9 @@ enum ConnectionBundleV1 {
 
         /// Connection `i` becomes ref "i", so the index-keyed credentials carry over. `sshProfileName` is never read.
         func upgraded() throws -> ConnectionBundle {
-            let groupColors = ConnectionBundleV1.firstColors((groups ?? []).map { (name: $0.name, color: $0.color) })
-            let tagColors = ConnectionBundleV1.firstColors((tags ?? []).map { (name: $0.name, color: $0.color) })
+            let groupColors = ConnectionBundleV1.firstValues((groups ?? []).map { (name: $0.name, value: $0.color) })
+            let groupIcons = ConnectionBundleV1.firstValues((groups ?? []).map { (name: $0.name, value: $0.iconName) })
+            let tagColors = ConnectionBundleV1.firstValues((tags ?? []).map { (name: $0.name, value: $0.color) })
             var profilesByName: [String: CredentialProfile] = [:]
             for profile in credentialProfiles ?? [] where profilesByName[ConnectionBundleV1.key(profile.name)] == nil {
                 profilesByName[ConnectionBundleV1.key(profile.name)] = profile
@@ -25,7 +26,11 @@ enum ConnectionBundleV1 {
             for (index, connection) in connections.enumerated() {
                 let ref = BundleRef(String(index))
                 let groupPath = connection.groupName.map { name in
-                    [ConnectionBundleBuilder.GroupComponent(name: name, color: groupColors[ConnectionBundleV1.key(name)])]
+                    [ConnectionBundleBuilder.GroupComponent(
+                        name: name,
+                        color: groupColors[ConnectionBundleV1.key(name)],
+                        iconName: groupIcons[ConnectionBundleV1.key(name)]
+                    )]
                 } ?? []
                 let tagNames = connection.tagNames ?? connection.tagName.map { [$0] } ?? []
                 let profile = connection.credentialProfileName.flatMap { profilesByName[ConnectionBundleV1.key($0)] }
@@ -73,6 +78,7 @@ enum ConnectionBundleV1 {
     struct Group: Decodable {
         let name: String
         let color: String?
+        let iconName: String?
     }
 
     struct Tag: Decodable {
@@ -91,12 +97,12 @@ enum ConnectionBundleV1 {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    private static func firstColors(_ entries: [(name: String, color: String?)]) -> [String: String] {
-        var colors: [String: String] = [:]
+    private static func firstValues(_ entries: [(name: String, value: String?)]) -> [String: String] {
+        var values: [String: String] = [:]
         for entry in entries {
-            guard let color = entry.color, colors[key(entry.name)] == nil else { continue }
-            colors[key(entry.name)] = color
+            guard let value = entry.value, values[key(entry.name)] == nil else { continue }
+            values[key(entry.name)] = value
         }
-        return colors
+        return values
     }
 }

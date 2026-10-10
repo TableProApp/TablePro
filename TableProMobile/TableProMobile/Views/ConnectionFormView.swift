@@ -248,6 +248,8 @@ struct ConnectionFormView: View {
         @Bindable var viewModel = viewModel
         let graph = LibraryGroupGraph(groups: appState.groups)
         Section("Organization") {
+            SymbolPickerRow(selection: $viewModel.iconName, subject: .connection(viewModel.type))
+
             Picker("Group", selection: $viewModel.groupId) {
                 Text("None").tag(UUID?.none)
                 ForEach(graph.flattened(), id: \.id) { entry in

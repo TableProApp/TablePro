@@ -130,6 +130,7 @@ internal final class GroupStorage {
         try validateUniqueName(group.name, parentId: group.parentId, excluding: [group.id], in: groups)
 
         var placed = group
+        placed.iconName = LibrarySymbolCatalog.normalizedName(group.iconName)
         placed.sortOrder = LibraryOrdering.nextSortOrder(
             after: groups.filter { $0.parentId == group.parentId }.map(\.sortOrder)
         )
@@ -173,6 +174,35 @@ internal final class GroupStorage {
         groups[index] = updated
         guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
         notifyChanged()
+    }
+
+    /// The edit sheet's save, as one write: a rename and a move saved separately could keep the
+    /// rename and then refuse the move. A new parent takes the group at its end, as a move does.
+    /// Writes only the fields `edited` changed from `opening`, onto the group as it is stored now,
+    /// so a rename or a move synced in while the sheet was open survives a save that changed only
+    /// the icon.
+    internal func editGroup(id: UUID, from opening: ConnectionGroupFields, to edited: ConnectionGroupFields) throws {
+        let groups = loadGroups()
+        guard let current = groups.first(where: { $0.id == id }) else {
+            throw GroupStorageError.groupNotFound
+        }
+        let movesParent = edited.parentId != opening.parentId && edited.parentId != current.parentId
+        let sortOrder = movesParent
+            ? LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == edited.parentId && $0.id != id }.map(\.sortOrder)
+            )
+            : current.sortOrder
+        try mutateGroup(id: id) { group in
+            if edited.name != opening.name { group.name = edited.name }
+            if edited.color != opening.color { group.color = edited.color }
+            if edited.iconName != opening.iconName {
+                group.iconName = LibrarySymbolCatalog.normalizedName(edited.iconName)
+            }
+            if edited.parentId != opening.parentId {
+                group.parentId = edited.parentId
+                group.sortOrder = sortOrder
+            }
+        }
     }
 
     internal func moveGroups(_ ids: [UUID], toParent parentId: UUID?, before: UUID?) throws {
@@ -323,6 +353,7 @@ internal final class GroupStorage {
                 id: node.id,
                 name: node.name,
                 color: node.color.map(ConnectionColor.init(storedValue:)) ?? .none,
+                iconName: LibrarySymbolCatalog.normalizedName(node.iconName),
                 parentId: node.parentId,
                 sortOrder: sortOrder
             ))

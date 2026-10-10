@@ -4,11 +4,13 @@ public struct PathComponent: Hashable, Sendable {
     public let name: String
     public let scope: UUID?
     public let color: String?
+    public let iconName: String?
 
-    public init(name: String, scope: UUID?, color: String?) {
+    public init(name: String, scope: UUID?, color: String?, iconName: String? = nil) {
         self.name = name
         self.scope = scope
         self.color = color
+        self.iconName = iconName
     }
 }
 
@@ -17,15 +19,24 @@ public struct PathNode: Hashable, Sendable {
     public let name: String
     public let parentId: UUID?
     public let scope: UUID?
-    /// Set only on nodes the resolver created, so a store can colour what it adds.
+    /// Set only on nodes the resolver created, so a store styles only what it adds.
     public let color: String?
+    public let iconName: String?
 
-    public init(id: UUID, name: String, parentId: UUID?, scope: UUID?, color: String? = nil) {
+    public init(
+        id: UUID,
+        name: String,
+        parentId: UUID?,
+        scope: UUID?,
+        color: String? = nil,
+        iconName: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.parentId = parentId
         self.scope = scope
         self.color = color
+        self.iconName = iconName
     }
 }
 
@@ -66,7 +77,8 @@ public enum PathTreeResolver {
                     name: name,
                     parentId: parentId,
                     scope: component.scope,
-                    color: component.color
+                    color: component.color,
+                    iconName: component.iconName
                 )
                 children[key] = node.id
                 created.append(node)

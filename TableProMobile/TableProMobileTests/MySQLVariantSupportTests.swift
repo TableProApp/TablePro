@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import Testing
@@ -48,6 +49,68 @@ struct MySQLVariantSupportTests {
         let driver = try IOSDriverFactory().createDriver(for: connection, password: nil)
         let mysql = try #require(driver as? MySQLDriver)
         #expect(mysql.databaseType == .oceanbase)
+    }
+
+    @Test(
+        "A connection that dials a socket on the Mac is refused before connecting",
+        arguments: [DatabaseType.mysql, .mariadb, .tidb, .oceanbase]
+    )
+    func macSocketIsRefused(type: DatabaseType) {
+        let connection = DatabaseConnection(
+            name: "Local",
+            type: type,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+
+        #expect(throws: ConnectionError.localSocketNotSupported) {
+            try IOSDriverFactory().createDriver(for: connection, password: nil)
+        }
+    }
+
+    @Test("A blank socket path connects by host and port, as the Mac driver does")
+    func blankSocketPathConnectsByHost() throws {
+        let connection = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            host: "db.example.com",
+            additionalFields: [MySQLLocalSocket.fieldKey: "  "]
+        )
+
+        let driver = try IOSDriverFactory().createDriver(for: connection, password: nil)
+
+        #expect(driver is MySQLDriver)
+    }
+
+    @Test("An SSH tunnel takes the place of the socket, as it does on the Mac")
+    func sshTunnelReplacesTheSocket() throws {
+        let connection = DatabaseConnection(
+            name: "Remote",
+            type: .mariadb,
+            host: "127.0.0.1",
+            port: 62_000,
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"],
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", username: "deploy")
+        )
+
+        let driver = try IOSDriverFactory().createDriver(for: connection, password: nil)
+
+        #expect(driver is MySQLDriver)
+    }
+
+    @Test("SSH switched on without a tunnel configured leaves the socket to be refused")
+    func sshWithoutTunnelStillRefused() {
+        let connection = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"],
+            sshEnabled: true
+        )
+
+        #expect(throws: ConnectionError.localSocketNotSupported) {
+            try IOSDriverFactory().createDriver(for: connection, password: nil)
+        }
     }
 
     @Test("An OceanBase session lifts the server's own statement limit; other MySQL engines set nothing")

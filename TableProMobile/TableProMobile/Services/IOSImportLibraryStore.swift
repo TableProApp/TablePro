@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
@@ -52,6 +53,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                 id: node.id,
                 name: node.name,
                 color: node.color.map { ConnectionColor(storedValue: $0) } ?? .none,
+                iconName: LibrarySymbolCatalog.normalizedName(node.iconName),
                 parentId: parentId
             )
             let outcome = appState.addGroup(group)
@@ -173,6 +175,7 @@ private extension DatabaseConnection {
             username: settings.username,
             database: settings.database,
             color: settings.color.map { ConnectionColor(storedValue: $0) } ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(settings.iconName),
             isReadOnly: safeModeLevel.blocksWrites,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: settings.queryTimeoutSeconds,

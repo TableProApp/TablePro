@@ -48,6 +48,28 @@ struct ConnectionBundleExporterTests {
         #expect(!json.contains("hunter2"))
     }
 
+    @Test("A connection's icon survives a file export and its import")
+    func iconRoundTrip() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var connection = makeConnection(name: "Primary")
+        connection.iconName = "server.rack"
+
+        let data = try await library.exporter.fileData(for: [connection], options: .connectionsOnly, passphrase: nil)
+        let exported = try #require(try ConnectionBundleCodec.decode(data).connections.first).settings
+        let imported = DatabaseConnection(
+            importing: exported,
+            id: UUID(),
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
+        )
+
+        #expect(exported.iconName == "server.rack")
+        #expect(imported.iconName == "server.rack")
+    }
+
     @Test("An encrypted file decrypts with the right passphrase and carries the password")
     func encryptedRoundTrip() async throws {
         let library = try ImportLibraryFixture()
@@ -173,11 +195,11 @@ struct ConnectionBundleExporterTests {
 
     // MARK: - Library structure
 
-    @Test("A nested group exports as its whole chain, root first, with colors")
+    @Test("A nested group exports as its whole chain, root first, with colors and icons")
     func groupChainExportsRootFirst() throws {
         let library = try ImportLibraryFixture()
         defer { library.cleanUp() }
-        let client = ConnectionGroup(name: "Client A", color: .blue)
+        let client = ConnectionGroup(name: "Client A", color: .blue, iconName: "briefcase")
         let production = ConnectionGroup(name: "Production", parentId: client.id)
         try library.groups.addGroup(client)
         try library.groups.addGroup(production)
@@ -189,6 +211,7 @@ struct ConnectionBundleExporterTests {
         let chain = bundle.groupChain(bundle.connections.first?.groupRef)
         #expect(chain.map(\.name) == ["Client A", "Production"])
         #expect(chain.first?.color == ConnectionColor.blue.rawValue)
+        #expect(chain.map(\.iconName) == ["briefcase", nil])
         #expect(library.exporter.groupPath(for: connection) == ["Client A", "Production"])
     }
 }

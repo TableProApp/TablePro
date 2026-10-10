@@ -306,6 +306,29 @@ struct NativeDumpRegistryTests {
         #expect(try configurationValue("uri", in: configuration(of: mongo)).hasPrefix("mongodb://alice@127.0.0.1:5432/?"))
     }
 
+    @Test("A MySQL connection goes over TCP to its host and port unless it names a local socket", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mysqlEndpointFollowsTheSocket(kind: NativeDumpKind) throws {
+        let tcp = connection(type: .mysql, host: "localhost", port: 3_307)
+        for flavor in [NativeDumpToolFlavor.mysql, .mariadb] {
+            let built = try command(.mysql, kind: kind, connection: tcp, flavor: flavor)
+            #expect(built.arguments.starts(with: ["--protocol=TCP", "-h", "localhost", "-P", "3307"]), "\(flavor)")
+            #expect(!built.arguments.contains { $0.hasPrefix("--socket") }, "\(flavor)")
+        }
+
+        var socket = connection(type: .mysql, host: "db.example.com", port: 3_307)
+        socket.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+        for flavor in [NativeDumpToolFlavor.mysql, .mariadb] {
+            let built = try command(.mysql, kind: kind, connection: socket, flavor: flavor)
+            let expected = ["--protocol=SOCKET", "-h", "localhost", "--socket=/tmp/mysql.sock"]
+            #expect(built.arguments.starts(with: expected), "\(flavor)")
+            #expect(!built.arguments.contains("--protocol=TCP"), "\(flavor)")
+            #expect(!built.arguments.contains("db.example.com"), "\(flavor)")
+            #expect(!built.arguments.contains("-P"), "\(flavor)")
+        }
+    }
+
     /// Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and
     /// MySQL 8.4.11 answers `--ssl` with `unknown option` and exit 2, so neither spelling may reach
     /// the other family's tool in either direction (#3046).

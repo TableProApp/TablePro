@@ -458,6 +458,9 @@ final class ConnectionStorage {
         return true
     }
 
+    /// The copy is the user's own new connection, so it starts unfavorited and is never a sample.
+    /// Every other property carries, External Access too: a Read Only copy of a Blocked connection
+    /// would be open to MCP clients with the source's passwords.
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection? {
         let newId = UUID()
 
@@ -472,6 +475,7 @@ final class ConnectionStorage {
             sshConfig: connection.sshConfig,
             sslConfig: connection.sslConfig,
             color: connection.color,
+            iconName: connection.iconName,
             tagIds: connection.tagIds,
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
@@ -485,6 +489,7 @@ final class ConnectionStorage {
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,
             aiAlwaysAllowedTools: connection.aiAlwaysAllowedTools,
+            externalAccess: connection.externalAccess,
             redisDatabase: connection.redisDatabase,
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,

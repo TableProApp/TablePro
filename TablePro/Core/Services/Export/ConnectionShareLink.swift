@@ -40,6 +40,9 @@ internal enum ConnectionShareLink {
         if let color = settings.color {
             queryItems.append(URLQueryItem(name: "color", value: color))
         }
+        if let iconName = settings.iconName {
+            queryItems.append(URLQueryItem(name: "icon", value: iconName))
+        }
         for tagName in exporter.tagNames(for: connection) {
             queryItems.append(URLQueryItem(name: "tagName", value: tagName))
         }
@@ -51,6 +54,12 @@ internal enum ConnectionShareLink {
         }
         if let aiPolicy = settings.aiPolicy {
             queryItems.append(URLQueryItem(name: "aiPolicy", value: aiPolicy))
+        }
+        if let connectTimeout = settings.connectTimeoutSeconds {
+            queryItems.append(URLQueryItem(name: "connectTimeoutSeconds", value: String(connectTimeout)))
+        }
+        if let queryTimeout = settings.queryTimeoutSeconds {
+            queryItems.append(URLQueryItem(name: "queryTimeoutSeconds", value: String(queryTimeout)))
         }
         if let redisDatabase = settings.redisDatabase {
             queryItems.append(URLQueryItem(name: "redisDatabase", value: String(redisDatabase)))

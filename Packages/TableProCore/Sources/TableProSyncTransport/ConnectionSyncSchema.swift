@@ -10,6 +10,7 @@ public enum ConnectionSyncField: String, SyncSchemaField {
     case type
     case color
     case colorTag
+    case iconName
     case safeModeLevel
     case sortOrder
     case groupId
@@ -34,7 +35,7 @@ public enum ConnectionSyncField: String, SyncSchemaField {
 
     public static let verifiedInProduction: Set<Self> = [
         .connectionId, .name, .host, .port, .database, .username, .type,
-        .color, .colorTag, .safeModeLevel, .sortOrder, .groupId, .tagId, .tagIds,
+        .color, .colorTag, .iconName, .safeModeLevel, .sortOrder, .groupId, .tagId, .tagIds,
         .isReadOnly, .sshEnabled, .sslEnabled, .queryTimeoutSeconds,
         .sshConfigJson, .sslConfigJson, .additionalFieldsJson,
         .aiPolicy, .aiRules, .aiAlwaysAllowedTools, .redisDatabase, .startupCommands,

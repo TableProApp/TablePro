@@ -15,6 +15,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
     internal let title: String
     internal let indentationLevel: Int
     internal let color: ConnectionColor
+    internal let iconName: String?
     internal let isEnabled: Bool
     internal let hasSeparatorAbove: Bool
 
@@ -23,6 +24,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
         title: String,
         indentationLevel: Int = 0,
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         isEnabled: Bool = true,
         hasSeparatorAbove: Bool = false
     ) {
@@ -30,6 +32,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
         self.title = title
         self.indentationLevel = indentationLevel
         self.color = color
+        self.iconName = iconName
         self.isEnabled = isEnabled
         self.hasSeparatorAbove = hasSeparatorAbove
     }
@@ -37,31 +40,50 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
 
 internal enum GroupMenuEntries {
     internal static func forConnection(groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
-        entries(groups: groups, noneTitle: noneTitle) { _, _ in true }
+        entries(graph: LibraryGroupGraph(groups: groups), groups: groups, noneTitle: noneTitle, isEnabled: { _ in true })
     }
 
     internal static func forParent(groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
-        entries(groups: groups, noneTitle: noneTitle) { graph, id in
-            graph.canCreateSubgroup(under: id)
-        }
+        let graph = LibraryGroupGraph(groups: groups)
+        return entries(graph: graph, groups: groups, noneTitle: noneTitle, isEnabled: { graph.canCreateSubgroup(under: $0) })
+    }
+
+    /// The parents an existing group can move under. Its own subtree is left out, because a group
+    /// cannot sit inside itself, and a parent that would push the subtree past the nesting cap is
+    /// shown dimmed, as one at the cap is when creating a group.
+    internal static func forMoving(groupId: UUID, groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
+        let graph = LibraryGroupGraph(groups: groups)
+        let subtree = graph.descendantIds(of: groupId).union([groupId])
+        return entries(
+            graph: graph,
+            groups: groups,
+            noneTitle: noneTitle,
+            isOffered: { !subtree.contains($0) },
+            isEnabled: { graph.canPlace(groupId, under: $0) }
+        )
     }
 
     private static func entries(
+        graph: LibraryGroupGraph,
         groups: [ConnectionGroup],
         noneTitle: String,
-        isEnabled: (LibraryGroupGraph, UUID) -> Bool
+        isOffered: (UUID) -> Bool = { _ in true },
+        isEnabled: (UUID) -> Bool
     ) -> [GroupMenuEntry] {
-        let graph = LibraryGroupGraph(groups: groups)
         let groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let offered: [(group: ConnectionGroup, depth: Int)] = graph.flattened().compactMap { flat in
+            guard let group = groupsById[flat.id], isOffered(group.id) else { return nil }
+            return (group, flat.depth)
+        }
         var result = [GroupMenuEntry(id: nil, title: noneTitle)]
-        for (index, flat) in graph.flattened().enumerated() {
-            guard let group = groupsById[flat.id] else { continue }
+        for (index, (group, depth)) in offered.enumerated() {
             result.append(GroupMenuEntry(
                 id: group.id,
                 title: group.name,
-                indentationLevel: flat.depth,
+                indentationLevel: depth,
                 color: group.color,
-                isEnabled: isEnabled(graph, group.id),
+                iconName: group.iconName,
+                isEnabled: isEnabled(group.id),
                 hasSeparatorAbove: index == 0
             ))
         }
@@ -115,7 +137,7 @@ internal struct GroupPopUpButton: NSViewRepresentable {
             item.isEnabled = entry.isEnabled
             item.representedObject = entry.id
             if entry.id != nil {
-                item.setInformativeImage(ConnectionLibrarySymbols.folderImage(for: entry.color))
+                item.setInformativeImage(LibraryGlyph.groupNSImage(iconName: entry.iconName, color: entry.color))
             }
             menu.addItem(item)
         }

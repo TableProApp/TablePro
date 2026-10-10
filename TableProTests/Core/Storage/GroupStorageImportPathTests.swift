@@ -44,8 +44,8 @@ struct GroupStorageImportPathTests {
         )
     }
 
-    private func group(_ name: String, color: String? = nil) -> PathComponent {
-        PathComponent(name: name, scope: nil, color: color)
+    private func group(_ name: String, color: String? = nil, iconName: String? = nil) -> PathComponent {
+        PathComponent(name: name, scope: nil, color: color, iconName: iconName)
     }
 
     @Test("The same leaf name under two parents stays two groups")
@@ -78,6 +78,28 @@ struct GroupStorageImportPathTests {
         let production = try #require(storage.group(for: leaf))
         #expect(production.parentId == client.id)
         #expect(production.color == .green)
+    }
+
+    @Test("An existing group keeps its own icon, and a created group takes the file's icon")
+    func onlyCreatedGroupsTakeAnIcon() throws {
+        let clients = ConnectionGroup(name: "Clients", iconName: "person.3")
+        try storage.addGroup(clients)
+
+        let leaves = try storage.ensureGroupPaths([
+            [group("clients", iconName: "flame"), group("Prod", iconName: "server.rack")]
+        ])
+
+        #expect(storage.group(for: clients.id)?.iconName == "person.3")
+        let leaf = try #require(leaves[0])
+        #expect(storage.group(for: leaf)?.iconName == "server.rack")
+    }
+
+    @Test("A created group stores no malformed icon")
+    func createdGroupDropsMalformedIcon() throws {
+        let leaves = try storage.ensureGroupPaths([[group("Clients", iconName: "../../etc")]])
+
+        let leaf = try #require(leaves[0])
+        #expect(storage.group(for: leaf)?.iconName == nil)
     }
 
     @Test("A created group goes after the groups already beside it")

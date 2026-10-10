@@ -121,9 +121,9 @@ This is a floor on TablePro's own behavior, not on the database. It stops the ap
 A write from an external client (Raycast, Cursor, Claude Desktop, any MCP client) clears three locks in order:
 
 1. **External Clients** (per connection: **Blocked** / **Read Only** / **Read & Write**), next to **Safe Mode** under **Access** on the connection form's **Options** tab. A Read Only connection rejects a write before the request reaches the database.
-2. **Token scope** (per integration: `readOnly` / `readWrite` / `fullAccess`), issued by the [pairing flow](/external-api/pairing). The effective permission is `MIN(token.scope, connection.externalAccess)`.
+2. **Token scope** (per integration: `readOnly` / `readWrite` / `fullAccess`), issued by the [pairing flow](/developers/pairing). The effective permission is `MIN(token.scope, connection.externalAccess)`.
 3. **Safe Mode**, per query. Everything on this page then applies, Touch ID prompts and confirmation dialogs included.
 
-`DROP` and `TRUNCATE` always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time. No token scope skips it. See the [External API security model](/external-api/index#security-model).
+`DROP` and `TRUNCATE` always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time. No token scope skips it. See the [integration security model](/developers#security-model).
 
 A client that answers its own approval prompt has only answered its own. Only a `fullAccess` token stands in for TablePro's dialog. On every other token the dialog still appears on the Mac, so a `readWrite` client asks twice.

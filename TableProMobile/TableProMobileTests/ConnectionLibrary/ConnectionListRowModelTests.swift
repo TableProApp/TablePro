@@ -23,7 +23,7 @@ struct ConnectionListRowModelTests {
 
     @Test("Only a Favorites or Recent row names the group, because a tree row already sits under it")
     func groupLabelOnAliasRows() {
-        let group = ConnectionGroup(name: "Acme", color: .purple)
+        let group = ConnectionGroup(name: "Acme", color: .purple, iconName: "building.2")
         let connection = DatabaseConnection(name: "Prod", type: .mysql, groupId: group.id)
 
         let treeRow = ConnectionListRowModel(connection: connection, section: .connections, tags: [], groups: [group])
@@ -31,8 +31,20 @@ struct ConnectionListRowModelTests {
         let recentRow = ConnectionListRowModel(connection: connection, section: .recent, tags: [], groups: [group])
 
         #expect(treeRow.groupLabel == nil)
-        #expect(favoriteRow.groupLabel == ConnectionListLabel(name: "Acme", color: .purple))
+        #expect(favoriteRow.groupLabel == ConnectionListGroupLabel(name: "Acme", color: .purple, iconName: "building.2"))
         #expect(recentRow.groupLabel?.name == "Acme")
+    }
+
+    @Test("A row carries the custom icon, and VoiceOver still names the engine")
+    func rowCarriesIconAndSpeaksEngine() {
+        let connection = DatabaseConnection(name: "Prod", type: .postgresql, color: .red, iconName: "flame")
+
+        let row = ConnectionListRowModel(connection: connection, section: .connections, tags: [], groups: [])
+
+        #expect(row.iconName == "flame")
+        #expect(row.type == .postgresql)
+        #expect(row.color == .red)
+        #expect(row.accessibilityLabel.contains(DatabaseType.postgresql.mobileDisplayName))
     }
 
     @Test("An unnamed connection is titled by its host, and nothing is joined with a middle dot")

@@ -108,15 +108,11 @@ struct ConnectionBundlePayload: Decodable {
         credentials = Dictionary(uniqueKeysWithValues: keyed.map { (BundleRef($0.key), $0.value) })
     }
 
-    func bundle(sanitizing transform: (ExportableConnection) -> ExportableConnection) throws -> ConnectionBundle {
+    func bundle() throws -> ConnectionBundle {
         try ConnectionBundle(
             exportedAt: exportedAt,
             appVersion: appVersion,
-            connections: connections.map { connection in
-                var copy = connection
-                copy.settings = transform(connection.settings)
-                return copy
-            },
+            connections: connections,
             groups: groups,
             tags: tags,
             credentialProfiles: credentialProfiles,

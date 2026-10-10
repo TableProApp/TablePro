@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 
@@ -60,6 +61,7 @@ internal extension DatabaseConnection {
             sshConfig: settings.sshConfig.map(SSHConfiguration.init(importing:)) ?? SSHConfiguration(),
             sslConfig: settings.sslConfig.map(SSLConfiguration.init(importing:)) ?? SSLConfiguration(),
             color: settings.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(settings.iconName),
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: settings.sshProfileId

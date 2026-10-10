@@ -157,6 +157,38 @@ struct ConnectionLibraryPublisherTests {
         #expect(items.map(\.sortOrder) == [0, 1, 1])
     }
 
+    @Test("A widget item draws the custom icon when this device can, and the engine glyph otherwise")
+    func widgetItemGlyphPrefersCustomIcon() {
+        let custom = DatabaseConnection(name: "A", type: .postgresql, iconName: "flame", sortOrder: 0)
+        let unknown = DatabaseConnection(name: "B", type: .postgresql, iconName: "made.up.symbol", sortOrder: 1)
+        let plain = DatabaseConnection(name: "C", type: .postgresql, sortOrder: 2)
+
+        let glyphs = ConnectionLibraryPublisher.widgetItems(for: [custom, unknown, plain]).map(\.glyph)
+
+        #expect(glyphs == [
+            ConnectionGlyph(source: .symbol, name: "flame"),
+            ConnectionGlyph(source: .asset, name: "postgresql-icon"),
+            ConnectionGlyph(source: .asset, name: "postgresql-icon")
+        ])
+    }
+
+    /// The widget kept its own copy of the engine glyph map, which had drifted from the list: a
+    /// Dameng connection drew a drive in the widget and a cylinder in the list.
+    @Test("A widget item draws the same engine glyph as the connection list")
+    func widgetItemGlyphMatchesTheList() {
+        let types: [DatabaseType] = [.dameng, .snowflake, .mysql, DatabaseType(rawValue: "FuturePlugin")]
+        let connections = types.enumerated().map { index, type in
+            DatabaseConnection(name: "C\(index)", type: type, sortOrder: index)
+        }
+
+        let glyphs = ConnectionLibraryPublisher.widgetItems(for: connections).map(\.glyph)
+
+        #expect(glyphs == types.map { type -> ConnectionGlyph? in LibraryGlyph.engineGlyph(for: type) })
+        #expect(glyphs.first == ConnectionGlyph(source: .symbol, name: "cylinder"))
+        #expect(glyphs[1] == .fallback)
+        #expect(glyphs[2] == ConnectionGlyph(source: .asset, name: "mysql-icon"))
+    }
+
     @Test("A Spotlight item keeps the identifier and domain earlier builds indexed under")
     func spotlightItemFields() {
         let searchable = SearchableConnection(connection: connection("Orders"))

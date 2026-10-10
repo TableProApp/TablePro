@@ -15,10 +15,11 @@ struct ConnectionInfoView: View {
                     Text(connection.name.isEmpty ? connection.host : connection.name)
                 } label: {
                     HStack(spacing: 8) {
-                        DatabaseIconView(type: connection.type, size: 18)
+                        DatabaseIconView(type: connection.type, iconName: connection.iconName, size: 18)
                             .frame(width: 28, height: 28)
                             .background(DatabaseIconView.color(for: connection.type).opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .accessibilityHidden(true)
                         Text("Name")
                     }
                 }

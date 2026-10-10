@@ -5,7 +5,7 @@ description: Every tablepro:// deep link action with parameters and examples
 
 macOS hands the URL to TablePro, which parses it, confirms anything that could do damage, and opens
 something on screen. Nothing comes back over the scheme: to read rows, use
-[MCP](/external-api/mcp-tools).
+[MCP](/developers/mcp-tools).
 
 Call it from a shell with `open`, from another app with `NSWorkspace.shared.open(url:)`, or from a
 Raycast extension with `open()` from `@raycast/api`.
@@ -28,8 +28,8 @@ tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
 ```
 
 No UI action copies a connect link. To find a UUID, call the MCP
-[`list_connections`](/external-api/mcp-tools) tool or read the
-[`tablepro://connections`](/external-api/mcp-resources) resource. The welcome window's
+[`list_connections`](/developers/mcp-tools) tool or read the
+[`tablepro://connections`](/developers/mcp-resources) resource. The welcome window's
 **Copy TablePro Link** context menu item copies a `tablepro://import?…` link for sharing a connection
 definition, which is a different thing.
 
@@ -94,7 +94,7 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%2
 ```
 
 To run SQL from a script and read rows back, use the MCP
-[`execute_query`](/external-api/mcp-tools) tool. This link hands SQL to the GUI and stops there.
+[`execute_query`](/developers/mcp-tools) tool. This link hands SQL to the GUI and stops there.
 
 ## Start pairing
 
@@ -116,19 +116,12 @@ one-time code to `redirect`.
 These parameters are a request, not a grant: the sheet lets the user raise or lower every one of
 them.
 
-```ts
-import { open } from "@raycast/api";
-
-const params = new URLSearchParams({
-  client: "Raycast on macbook-pro",
-  challenge: challengeB64Url,
-  redirect: "raycast://extensions/ngoquocdat/tablepro/pair-callback",
-  scopes: "readWrite",
-});
-await open(`tablepro://integrations/pair?${params}`);
+```bash
+# The challenge for the RFC 7636 sample verifier, and a loopback listener on port 7391
+open "tablepro://integrations/pair?client=My%20Launcher&challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&redirect=http%3A%2F%2F127.0.0.1%3A7391%2Fcallback&scopes=readWrite"
 ```
 
-[Pairing](/external-api/pairing) has the exchange step and the error codes.
+[Pairing](/developers/pairing) has the exchange step and the error codes.
 
 ## Lazy-start the MCP server
 
@@ -140,8 +133,7 @@ Starts the MCP server if it is not running, then returns. MCP does not have to b
 first. The bundled `tablepro-mcp` CLI uses this to bootstrap on a cold launch.
 
 The server takes the configured port (`23508` by default) and falls back to a kernel-assigned free
-port when that one is busy. Either way it writes the port it actually bound to a handshake file at
-`~/Library/Application Support/TablePro/mcp-handshake.json`.
+port when that one is busy. The **Status** row in **Settings > Integrations** shows the port it bound.
 
 A launch whose only reason is this URL stays in the background: no Dock icon, no app switcher entry,
 until it has a window to show.
@@ -158,11 +150,17 @@ tablepro://import?name=<n>&host=<h>&type=<t>&…
 
 Shows a review sheet with the parsed connection, then saves it on **Add Connection**. `name`, `host`
 and `type` are required; the rest of the connection form maps to query parameters listed in
-[Connection Import](/external-api/connection-import). Passwords are never accepted in a link.
+[Connection Import](/developers/connection-import). Passwords are never accepted in a link.
 
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
 ```
+
+## On iPhone and iPad
+
+The iOS app answers two of these paths: `connect/<uuid>` opens the connection, and
+`connect/<uuid>/table/<table-name>` opens it on that table. Any other path under a connection, such as
+`database/…` or `query`, opens the connection alone. `import` and `integrations` links do nothing.
 
 ## Errors
 

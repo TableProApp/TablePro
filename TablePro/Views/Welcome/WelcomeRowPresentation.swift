@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import Foundation
+import AppKit
 import TableProConnectionLibrary
 import TableProImport
 
@@ -18,12 +18,16 @@ internal struct WelcomeGroupRowModel: Equatable {
     internal let id: UUID
     internal let name: String
     internal let color: ConnectionColor
+    internal let symbolName: String
     internal let connectionCount: Int
 }
 
+/// Shared by tags and groups, so each label carries its own symbol: a group draws the icon it was
+/// given, a tag always draws the tag.
 internal struct WelcomeTagLabel: Hashable {
     internal let name: String
     internal let color: ConnectionColor
+    internal let symbolName: String
 }
 
 internal struct WelcomeConnectionRowModel: Equatable {
@@ -31,6 +35,7 @@ internal struct WelcomeConnectionRowModel: Equatable {
     internal let name: String
     internal let detail: String
     internal let type: DatabaseType
+    internal let iconName: String?
     internal let identityColor: ConnectionColor?
     internal let tags: [WelcomeTagLabel]
     internal let hiddenTagCount: Int
@@ -79,6 +84,46 @@ internal enum WelcomeRowPresentation {
         }
     }
 
+    internal static func group(_ group: ConnectionGroup, connectionCount: Int) -> WelcomeGroupRowModel {
+        WelcomeGroupRowModel(
+            id: group.id,
+            name: group.name,
+            color: group.color,
+            symbolName: LibraryGlyph.groupSymbol(group.iconName),
+            connectionCount: connectionCount
+        )
+    }
+
+    internal static func groupLabel(_ group: ConnectionGroup) -> WelcomeTagLabel {
+        WelcomeTagLabel(name: group.name, color: group.color, symbolName: LibraryGlyph.groupSymbol(group.iconName))
+    }
+
+    internal static func tagLabel(_ tag: ConnectionTag) -> WelcomeTagLabel {
+        WelcomeTagLabel(name: tag.name, color: tag.color, symbolName: "tag.fill")
+    }
+
+    internal static let renameGlyphSide: CGFloat = 16
+
+    /// An image rather than a symbol name, because most engine logos are assets. An asset comes at
+    /// its SVG artboard size (2500pt for one), and the rename field's image view is constrained in
+    /// width only, so it would take that as its height.
+    internal static func renameGlyph(for connection: DatabaseConnection) -> NSImage? {
+        guard let image = LibraryGlyph.connectionNSImage(
+            type: connection.type,
+            iconName: connection.iconName,
+            accessibilityDescription: nil
+        ) else { return nil }
+        let side = max(image.size.width, image.size.height)
+        guard side > renameGlyphSide else { return image }
+        let scale = renameGlyphSide / side
+        image.size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
+        return image
+    }
+
+    internal static func renameGlyph(for group: ConnectionGroup?) -> NSImage? {
+        NSImage(systemSymbolName: LibraryGlyph.groupSymbol(group?.iconName), accessibilityDescription: nil)
+    }
+
     internal static func savedConnection(
         _ connection: DatabaseConnection,
         section: LibrarySectionKind,
@@ -87,16 +132,17 @@ internal enum WelcomeRowPresentation {
         groupPath: [String],
         isDriverRejected: Bool
     ) -> WelcomeConnectionRowModel {
-        let labels = tags.map { WelcomeTagLabel(name: $0.name, color: $0.color) }
+        let labels = tags.map { tagLabel($0) }
         return WelcomeConnectionRowModel(
             id: connection.id,
             name: connection.name,
             detail: connection.connectionSubtitle,
             type: connection.type,
+            iconName: connection.iconName,
             identityColor: connection.identityColor,
             tags: Array(labels.prefix(visibleTagLimit)),
             hiddenTagCount: max(0, labels.count - visibleTagLimit),
-            groupLabel: section == .connections ? nil : group.map { WelcomeTagLabel(name: $0.name, color: $0.color) },
+            groupLabel: section == .connections ? nil : group.map { groupLabel($0) },
             isLocalOnly: connection.localOnly && !connection.isSample,
             isDriverRejected: isDriverRejected,
             tooltip: tooltip(for: connection, groupPath: groupPath, tags: tags)
@@ -118,13 +164,14 @@ internal enum WelcomeRowPresentation {
             name: exportable.name,
             detail: detail,
             type: type,
+            iconName: LibrarySymbolCatalog.normalizedName(exportable.iconName),
             identityColor: exportable.color.flatMap { ConnectionColor(rawValue: $0) }.flatMap { $0.isDefault ? nil : $0 },
             tags: [],
             hiddenTagCount: 0,
             groupLabel: nil,
             isLocalOnly: false,
             isDriverRejected: false,
-            tooltip: [exportable.name, account + detail].joined(separator: "\n")
+            tooltip: [exportable.name, type.displayName, account + detail].joined(separator: "\n")
         )
     }
 
@@ -141,7 +188,7 @@ internal enum WelcomeRowPresentation {
     }
 
     internal static func tooltip(for connection: DatabaseConnection, groupPath: [String], tags: [ConnectionTag]) -> String {
-        var lines = [connection.name]
+        var lines = [connection.name, connection.type.displayName]
         let account = connection.username.isEmpty ? "" : connection.username + "@"
         lines.append(account + connection.connectionSubtitle)
         if !groupPath.isEmpty {

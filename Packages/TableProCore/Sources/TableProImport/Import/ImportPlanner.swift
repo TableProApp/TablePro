@@ -130,7 +130,7 @@ extension ImportPlanner {
     ) -> [PathComponent] {
         let components = bundle.groupChain(connection.groupRef).compactMap { group -> PathComponent? in
             let name = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            return name.isEmpty ? nil : PathComponent(name: name, scope: nil, color: group.color)
+            return name.isEmpty ? nil : PathComponent(name: name, scope: nil, color: group.color, iconName: group.iconName)
         }
         return Array(components.prefix(max(maximumDepth, 0)))
     }

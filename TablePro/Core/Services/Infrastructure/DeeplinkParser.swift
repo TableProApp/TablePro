@@ -339,8 +339,11 @@ internal enum DeeplinkParser {
         settings.sshConfig = sshConfig
         settings.sslConfig = sslConfig
         settings.color = value("color")
+        settings.iconName = value("icon")
         settings.safeModeLevel = value("safeModeLevel")
         settings.aiPolicy = value("aiPolicy")
+        settings.connectTimeoutSeconds = value("connectTimeoutSeconds").flatMap(Int.init)
+        settings.queryTimeoutSeconds = value("queryTimeoutSeconds").flatMap(Int.init)
         settings.additionalFields = additionalFields
         settings.redisDatabase = value("redisDatabase").flatMap(Int.init)
         settings.startupCommands = value("startupCommands")

@@ -47,7 +47,7 @@ Search matches partial words, so `cust` finds `customers`. Several words must al
 | Structure Changes | DDL from the structure editor, triggers, and user management |
 | Imports | Import runs |
 | AI and MCP | Queries run by an AI assistant or an MCP client |
-| AppleScript | Queries run by [a script](/external-api/applescript) |
+| AppleScript | Queries run by [a script](/developers/applescript) |
 
 **My Queries**, the default, is Editor and Explain. Add **Table Browsing** to see what the app sent while you clicked around a table, **Structure Changes** to review what altered a schema and when.
 
@@ -102,4 +102,4 @@ Parameter values are never recorded here, and the user and role editor never rec
 
 ## Search from external clients
 
-The [`search_query_history`](/external-api/mcp-tools) MCP tool returns matching entries with timestamp, connection, query text, source and outcome. The Raycast extension wraps it in a **Search Query History** command; see [Raycast commands](/external-api/raycast#commands).
+The [`search_query_history`](/developers/mcp-tools) MCP tool returns matching entries with timestamp, connection, query text, source and outcome. The Raycast extension wraps it in a **Search Query History** command; see [Raycast commands](/integrations/raycast#commands).

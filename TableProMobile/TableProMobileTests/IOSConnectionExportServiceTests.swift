@@ -280,4 +280,81 @@ struct IOSConnectionExportServiceTests {
         let b = DatabaseConnection(name: "B", type: .mysql, host: "b", port: 3_306)
         #expect(IOSConnectionExportService.suggestedFilename(for: [a, b]) == "TablePro Connections.tablepro")
     }
+
+    @Test("An export carries the connection icon, and no icon key when there is none")
+    func exportCarriesConnectionIcon() async throws {
+        let state = makeState()
+        let withIcon = DatabaseConnection(name: "Prod", type: .postgresql, iconName: "flame")
+        let withoutIcon = DatabaseConnection(name: "Dev", type: .postgresql)
+
+        let bundle = try await exportedBundle([withIcon, withoutIcon], from: state)
+        let data = try await IOSConnectionExportService.exportData(
+            connections: [withoutIcon],
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+
+        let json = try #require(String(data: data, encoding: .utf8))
+
+        #expect(bundle.connections.map(\.settings.iconName) == ["flame", nil])
+        #expect(!json.contains("iconName"))
+    }
+
+    @Test("Two groups that share a name export as two groups, each with its own colour and icon")
+    func exportKeepsSameNamedGroupsApart() async throws {
+        let state = makeState()
+        let clientA = ConnectionGroup(name: "Client A")
+        let clientB = ConnectionGroup(name: "Client B")
+        let prodA = ConnectionGroup(name: "Prod", color: .red, iconName: "briefcase", parentId: clientA.id)
+        let prodB = ConnectionGroup(name: "Prod", color: .blue, iconName: "flame", parentId: clientB.id)
+        for group in [clientA, clientB, prodA, prodB] {
+            #expect(state.addGroup(group) == .applied)
+        }
+        let inB = DatabaseConnection(name: "B", type: .postgresql, groupId: prodB.id)
+        let inA = DatabaseConnection(name: "A", type: .postgresql, groupId: prodA.id)
+
+        let bundle = try await exportedBundle([inB, inA], from: state)
+        let chainB = bundle.groupChain(bundle.connection("c1")?.groupRef)
+        let chainA = bundle.groupChain(bundle.connection("c2")?.groupRef)
+        let leafB = try #require(chainB.last)
+        let leafA = try #require(chainA.last)
+
+        #expect(bundle.groups.count == 4)
+        #expect(leafB.color == ConnectionColor.blue.rawValue)
+        #expect(leafB.iconName == "flame")
+        #expect(leafA.color == ConnectionColor.red.rawValue)
+        #expect(leafA.iconName == "briefcase")
+    }
+
+    @Test("Exported groups follow export order and leave out a group no exported connection uses")
+    func exportGroupsFollowExportOrder() async throws {
+        let state = makeState()
+        let work = ConnectionGroup(name: "Work", iconName: "building.2")
+        let home = ConnectionGroup(name: "Home", color: .green)
+        let unused = ConnectionGroup(name: "Unused", iconName: "star")
+        for group in [work, home, unused] {
+            #expect(state.addGroup(group) == .applied)
+        }
+        let connections = [
+            DatabaseConnection(name: "Home DB", type: .mysql, groupId: home.id),
+            DatabaseConnection(name: "Work DB", type: .mysql, groupId: work.id),
+            DatabaseConnection(name: "Loose", type: .mysql)
+        ]
+
+        let groups = try await exportedBundle(connections, from: state).groups
+
+        #expect(groups.map(\.name) == ["Home", "Work"])
+        #expect(groups.map(\.color) == [ConnectionColor.green.rawValue, nil])
+        #expect(groups.map(\.iconName) == [nil, "building.2"])
+    }
+
+    @Test("An export with no grouped connection writes no groups")
+    func exportWithoutGroupsWritesNone() async throws {
+        let state = makeState()
+
+        let bundle = try await exportedBundle([DatabaseConnection(name: "Loose", type: .mysql)], from: state)
+
+        #expect(bundle.groups.isEmpty)
+    }
 }

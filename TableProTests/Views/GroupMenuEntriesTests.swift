@@ -10,9 +10,10 @@ struct GroupMenuEntriesTests {
     private func group(
         _ name: String,
         parent: ConnectionGroup? = nil,
-        color: ConnectionColor = .none
+        color: ConnectionColor = .none,
+        iconName: String? = nil
     ) -> ConnectionGroup {
-        ConnectionGroup(name: name, color: color, parentId: parent?.id)
+        ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parent?.id)
     }
 
     @Test("The uncategorised entry comes first and carries no identifier")
@@ -51,6 +52,57 @@ struct GroupMenuEntriesTests {
         let root = group("Prod", color: .red)
         let entries = GroupMenuEntries.forConnection(groups: [root], noneTitle: "None")
         #expect(entries.last?.color == .red)
+    }
+
+    @Test("A group's icon rides along with its entry")
+    func iconIsCarried() {
+        let root = group("Prod", iconName: "server.rack")
+        let entries = GroupMenuEntries.forConnection(groups: [root], noneTitle: "None")
+        #expect(entries.last?.iconName == "server.rack")
+    }
+
+    /// Offering the group itself or anything under it would let Save build a cycle.
+    @Test("Moving a group never offers the group or its descendants as the parent")
+    func movingLeavesOutTheGroupsSubtree() {
+        let prod = group("Prod")
+        let europe = group("EU", parent: prod)
+        let replica = group("Replica", parent: europe)
+        let staging = group("Staging")
+        let entries = GroupMenuEntries.forMoving(
+            groupId: europe.id,
+            groups: [prod, europe, replica, staging],
+            noneTitle: "None"
+        )
+        #expect(Set(entries.map(\.title)) == ["None", "Prod", "Staging"])
+    }
+
+    @Test("Moving a group dims a parent that would push its subtree past the nesting limit")
+    func movingDimsParentsPastTheLimit() {
+        let a = group("A")
+        let b = group("B", parent: a)
+        let c = group("C", parent: b)
+        let moving = group("Moving")
+        let child = group("Child", parent: moving)
+        let entries = GroupMenuEntries.forMoving(
+            groupId: moving.id,
+            groups: [a, b, c, moving, child],
+            noneTitle: "None"
+        )
+        let byTitle = Dictionary(uniqueKeysWithValues: entries.map { ($0.title, $0.isEnabled) })
+        #expect(byTitle["None"] == true)
+        #expect(byTitle["A"] == true)
+        #expect(byTitle["B"] == false)
+        #expect(byTitle["C"] == false)
+        #expect(byTitle["Moving"] == nil)
+        #expect(byTitle["Child"] == nil)
+    }
+
+    @Test("The separator sits above the first group offered when the first one is left out")
+    func separatorFollowsTheFirstOfferedGroup() {
+        let only = group("Only")
+        let other = group("Other")
+        let entries = GroupMenuEntries.forMoving(groupId: only.id, groups: [only, other], noneTitle: "None")
+        #expect(entries.filter { $0.hasSeparatorAbove }.map(\.title) == ["Other"])
     }
 
     @Test("A parent picker disables anything already at the nesting limit")

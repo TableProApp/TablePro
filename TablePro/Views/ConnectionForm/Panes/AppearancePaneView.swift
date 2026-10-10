@@ -12,6 +12,14 @@ struct AppearancePaneView: View {
     var body: some View {
         Form {
             Section {
+                LabeledContent(String(localized: "Icon")) {
+                    SymbolWell(
+                        iconName: $coordinator.customization.iconName,
+                        subject: .connection(coordinator.network.type),
+                        color: coordinator.customization.color,
+                        accessibilityIdentifier: "connection-form-icon"
+                    )
+                }
                 LabeledContent(String(localized: "Color")) {
                     ConnectionColorPicker(selectedColor: $coordinator.customization.color)
                 }
@@ -22,7 +30,7 @@ struct AppearancePaneView: View {
                     ConnectionGroupPicker(selectedGroupId: $coordinator.customization.groupId)
                 }
             } footer: {
-                Text(String(localized: "The color marks this connection in the connection list and its window."))
+                Text(String(localized: "The icon and color mark this connection in the connection list and its window."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

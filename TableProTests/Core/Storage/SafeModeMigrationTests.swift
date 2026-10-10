@@ -340,6 +340,7 @@ struct SafeModeMigrationTests {
         var edited = connection
         edited.color = .red
         edited.name = "Production (renamed)"
+        edited.iconName = "flame"
         storage.updateConnection(edited)
 
         #expect(manager.session(for: id)?.connection.identityColor == nil)
@@ -348,6 +349,7 @@ struct SafeModeMigrationTests {
 
         #expect(manager.session(for: id)?.connection.identityColor == .red)
         #expect(manager.session(for: id)?.connection.name == "Production (renamed)")
+        #expect(manager.session(for: id)?.connection.iconName == "flame")
     }
 
     /// `reconnectOntoDatabase` builds its reconnect from `session.connection`, so a host, port or

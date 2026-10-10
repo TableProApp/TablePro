@@ -22,13 +22,25 @@ struct MoveToGroupSheet: View {
         NavigationStack {
             List {
                 Section {
-                    destinationRow(title: String(localized: "Ungrouped"), color: nil, depth: 0, groupId: nil)
+                    destinationRow(
+                        title: String(localized: "Ungrouped"),
+                        systemImage: "tray",
+                        color: .none,
+                        depth: 0,
+                        groupId: nil
+                    )
                 }
                 if !appState.groups.isEmpty {
                     Section("Groups") {
                         ForEach(graph.flattened(), id: \.id) { entry in
                             if let group = groupsById[entry.id] {
-                                destinationRow(title: group.name, color: group.color, depth: entry.depth, groupId: group.id)
+                                destinationRow(
+                                    title: group.name,
+                                    systemImage: LibraryGlyph.groupSymbol(group.iconName),
+                                    color: group.color,
+                                    depth: entry.depth,
+                                    groupId: group.id
+                                )
                             }
                         }
                     }
@@ -46,15 +58,21 @@ struct MoveToGroupSheet: View {
         }
     }
 
-    private func destinationRow(title: String, color: ConnectionColor?, depth: Int, groupId: UUID?) -> some View {
+    private func destinationRow(
+        title: String,
+        systemImage: String,
+        color: ConnectionColor,
+        depth: Int,
+        groupId: UUID?
+    ) -> some View {
         let isCurrent = currentGroupIds == [groupId]
         return Button {
             appState.moveConnections(connectionIds, toGroup: groupId)
             dismiss()
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: groupId == nil ? "tray" : "folder.fill")
-                    .foregroundStyle(color.map(ConnectionColorPicker.swiftUIColor(for:)) ?? .secondary)
+                Image(systemName: systemImage)
+                    .foregroundStyle(color == .none ? Color.secondary : ConnectionColorPicker.swiftUIColor(for: color))
                     .accessibilityHidden(true)
                 Text(title)
                     .foregroundStyle(.primary)

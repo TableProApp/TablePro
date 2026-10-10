@@ -1,14 +1,16 @@
 import Foundation
 
-/// Names match trimmed and lowercased; the first spelling and the first color win.
+/// Names match trimmed and lowercased; the first spelling, the first color and the first icon win.
 public struct ConnectionBundleBuilder: Sendable {
     public struct GroupComponent: Hashable, Sendable {
         public let name: String
         public let color: String?
+        public let iconName: String?
 
-        public init(name: String, color: String? = nil) {
+        public init(name: String, color: String? = nil, iconName: String? = nil) {
             self.name = name
             self.color = color
+            self.iconName = iconName
         }
     }
 
@@ -164,12 +166,21 @@ public struct ConnectionBundleBuilder: Sendable {
                 if groups[position].color == nil {
                     groups[position].color = component.color
                 }
+                if groups[position].iconName == nil {
+                    groups[position].iconName = component.iconName
+                }
                 parent = groups[position].ref
                 continue
             }
             let ref = BundleRef("g\(groups.count + 1)")
             groupPositionsByPath[key] = groups.count
-            groups.append(BundleGroup(ref: ref, name: name, color: component.color, parentRef: parent))
+            groups.append(BundleGroup(
+                ref: ref,
+                name: name,
+                color: component.color,
+                iconName: component.iconName,
+                parentRef: parent
+            ))
             parent = ref
         }
         return parent

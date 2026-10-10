@@ -467,6 +467,8 @@ extension WelcomeViewModel {
             NSWorkspace.shared.activateFileViewerSelecting([linked.sourceFileURL])
         case .newSubgroup(let parentId):
             requestNewGroup(parentId: parentId, movingConnectionIds: [])
+        case .editGroup(let id):
+            requestEditGroup(id)
         case .setGroupColor(let id, let color):
             setGroupColor(id, color)
         case .moveGroup(let id, let parentId):

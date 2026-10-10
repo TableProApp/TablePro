@@ -21,7 +21,7 @@ description: Token model, scopes, connection allowlists, expiry, revocation, and
 
 Anonymous loopback is the floor and cannot be raised: the scope check refuses `tools:write` and `admin` to a caller with no issued token, whatever it asks for.
 
-`confirm_destructive_operation` also needs the connection's external access to be **Read & Write**, and no permission level skips the user's approval. [Scopes and gates](/external-api/mcp-tools#scopes-and-gates) names which tools sit on which scope.
+`confirm_destructive_operation` also needs the connection's external access to be **Read & Write**, and no permission level skips the user's approval. [Scopes and gates](/developers/mcp-tools#scopes-and-gates) names which tools sit on which scope.
 
 ## Require authentication
 
@@ -47,7 +47,7 @@ The effective permission is the lower of the token's scope and the connection's 
 
 ## Creating a token
 
-Pairing is the usual route: see [Pairing](/external-api/pairing). To mint one by hand, open **Settings > Integrations > Authentication**, click **Generate Token**, and pick a name, permission level, connection allowlist and expiry. The plaintext is shown once.
+Pairing is the usual route: see [Pairing](/developers/pairing). To mint one by hand, open **Settings > Integrations > Authentication**, click **Generate Token**, and pick a name, permission level, connection allowlist and expiry. The plaintext is shown once.
 
 ## Expiry
 
@@ -72,7 +72,7 @@ Revoking cancels every request that token has in flight and clears the connectio
 
 Every server start mints a token named `__stdio_bridge__` and writes it into the handshake file for the bundled bridge. It is **Read & Write**, so an agent going through the bridge can read and write but cannot call `confirm_destructive_operation`.
 
-It expires after an hour and is rotated 15 minutes before that, deleted when the server stops, and any stale copy is removed the next time the store loads. It is hidden from the Settings token list, though its name can appear in the activity log. For a narrower scope, skip the bridge and connect over [HTTP with a token you mint](/external-api/mcp-clients#http-transport).
+It expires after an hour and is rotated 15 minutes before that, deleted when the server stops, and any stale copy is removed the next time the store loads. It is hidden from the Settings token list, though its name can appear in the activity log. For a narrower scope, skip the bridge and connect over [HTTP with a token you mint](/integrations/mcp-clients#http-transport).
 
 ## Stored fields
 
@@ -117,7 +117,7 @@ Entries are chained: each row's hash covers the previous one, so a row cannot be
 | Failed pairing exchanges | 5 per 5 minutes |
 | Pairing lockout | 15 minutes |
 
-Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Auth failures count against both the client address and the token, so one misbehaving client cannot lock out another on the same loopback address, and a successful auth clears the bucket. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/external-api/mcp-protocol#transport-limits).
+Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Failed auth attempts are counted per client address, and every client on the Mac shares one, so a client that keeps sending a bad token locks the others out too. A malformed `Authorization` header, a scheme other than `Bearer`, and an unknown, expired or revoked token each count. A request with no `Authorization` header gets the `401` challenge and does not count. A successful auth clears the count. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/developers/mcp-protocol#transport-limits).
 
 ## What a token cannot do
 
@@ -132,4 +132,4 @@ Request limits are keyed by token id, or by client address for an anonymous call
 | Create, change, or read other tokens | no |
 | Create or edit connection records | no |
 
-Statements that reach the filesystem or run server-side code are refused before they reach the driver, on every tool. The reachable surface is the [tool catalog](/external-api/mcp-tools), the [resources](/external-api/mcp-resources), and the [prompts](/external-api/mcp-prompts). Nothing outside those lists is exposed.
+Statements that reach the filesystem or run server-side code are refused before they reach the driver, on every tool. The reachable surface is the [tool catalog](/developers/mcp-tools), the [resources](/developers/mcp-resources), and the [prompts](/developers/mcp-prompts). Nothing outside those lists is exposed.

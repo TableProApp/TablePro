@@ -48,7 +48,8 @@ final class ConnectionLibraryPublisher {
                     id: connection.id,
                     name: connection.name.isEmpty ? connection.host : connection.name,
                     type: connection.type.rawValue,
-                    sortOrder: connection.sortOrder
+                    sortOrder: connection.sortOrder,
+                    glyph: LibraryGlyph.connectionGlyph(type: connection.type, iconName: connection.iconName)
                 )
             }
     }

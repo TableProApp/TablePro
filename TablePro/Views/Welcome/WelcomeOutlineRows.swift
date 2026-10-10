@@ -24,6 +24,7 @@ internal struct WelcomeOutlineRow: View {
 
 internal struct ConnectionTile: View {
     let type: DatabaseType
+    var iconName: String?
     let identityColor: ConnectionColor?
     var size: CGFloat = 28
 
@@ -39,7 +40,7 @@ internal struct ConnectionTile: View {
 
     @ViewBuilder
     private var glyph: some View {
-        let image = type.iconImage
+        let image = LibraryGlyph.connectionImage(type: type, iconName: iconName)
             .renderingMode(.template)
             .scaledToFit()
             .font(.system(size: size * 0.5, weight: .medium))
@@ -74,7 +75,7 @@ private struct WelcomeGroupRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "folder.fill")
+            Image(systemName: model.symbolName)
                 .selectionAwareTint(model.color.isDefault ? .secondary : model.color.color)
                 .accessibilityHidden(true)
             Text(model.name)
@@ -95,7 +96,7 @@ internal struct WelcomeConnectionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ConnectionTile(type: model.type, identityColor: model.identityColor)
+            ConnectionTile(type: model.type, iconName: model.iconName, identityColor: model.identityColor)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -181,10 +182,10 @@ private struct WelcomeConnectionLabels: View {
     var body: some View {
         HStack(spacing: 8) {
             if let group = model.groupLabel {
-                ConnectionSymbolLabel(systemName: "folder.fill", label: group)
+                ConnectionSymbolLabel(label: group)
             }
             ForEach(model.tags, id: \.self) { tag in
-                ConnectionSymbolLabel(systemName: "tag.fill", label: tag)
+                ConnectionSymbolLabel(label: tag)
             }
             if model.hiddenTagCount > 0 {
                 Text(String(format: String(localized: "+%lld"), Int64(model.hiddenTagCount)))
@@ -197,12 +198,11 @@ private struct WelcomeConnectionLabels: View {
 }
 
 internal struct ConnectionSymbolLabel: View {
-    let systemName: String
     let label: WelcomeTagLabel
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: systemName)
+            Image(systemName: label.symbolName)
                 .imageScale(.small)
                 .selectionAwareTint(label.color.isDefault ? .secondary : label.color.color)
                 .accessibilityHidden(true)

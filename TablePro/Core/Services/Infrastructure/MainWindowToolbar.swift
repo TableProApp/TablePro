@@ -239,8 +239,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             case Self.connection:
                 /// The overflow entry carries the glyph too, and it is written once when the item
                 /// is vended, so without this a clipped item kept the previous engine's icon.
-                item.image = engineGlyph
-                item.menuFormRepresentation?.setInformativeImage(engineGlyph)
+                (item as? StatefulToolbarItem)?.refreshGlyph()
             case Self.database:
                 apply(label: containerEntityName, to: item)
                 updateShortcutDescription(

@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 import UniformTypeIdentifiers
 
 public extension UTType {
@@ -78,6 +79,7 @@ public struct ExportableConnection: Codable, Sendable, Equatable {
     public var sshConfig: ExportableSSHConfig?
     public var sslConfig: ExportableSSLConfig?
     public var color: String?
+    public var iconName: String?
     public var sshProfileId: String?
     public var safeModeLevel: String?
     public var aiPolicy: String?
@@ -99,6 +101,7 @@ public struct ExportableConnection: Codable, Sendable, Equatable {
         sshConfig: ExportableSSHConfig? = nil,
         sslConfig: ExportableSSLConfig? = nil,
         color: String? = nil,
+        iconName: String? = nil,
         sshProfileId: String? = nil,
         safeModeLevel: String? = nil,
         aiPolicy: String? = nil,
@@ -119,6 +122,7 @@ public struct ExportableConnection: Codable, Sendable, Equatable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
+        self.iconName = iconName
         self.sshProfileId = sshProfileId
         self.safeModeLevel = safeModeLevel
         self.aiPolicy = aiPolicy
@@ -197,6 +201,7 @@ public extension ExportableConnection {
             Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
         }
         copy.additionalFields = allowed.isEmpty ? nil : allowed
+        copy.iconName = LibrarySymbolCatalog.normalizedName(iconName)
         return copy
     }
 }

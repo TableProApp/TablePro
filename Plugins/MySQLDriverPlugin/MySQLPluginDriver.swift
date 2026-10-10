@@ -170,8 +170,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let connectDeadline = MySQLConnectDeadline(timeout: connectTimeout)
 
         let conn = MariaDBPluginConnection(
-            host: config.host,
-            port: config.port,
+            transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
             user: config.username,
             password: password,
             database: activeDatabaseName,

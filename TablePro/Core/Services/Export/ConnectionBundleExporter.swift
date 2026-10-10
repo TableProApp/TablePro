@@ -69,6 +69,7 @@ internal struct ConnectionBundleExporter {
         settings.sshConfig = ExportableSSHConfig(portable: sshConfiguration(for: connection))
         settings.sslConfig = ExportableSSLConfig(portable: connection.sslConfig)
         settings.color = connection.color.isDefault ? nil : connection.color.rawValue
+        settings.iconName = connection.iconName
         settings.sshProfileId = connection.sshProfileId?.uuidString
         settings.safeModeLevel = connection.preferredSafeModeLevel == .silent ? nil : connection.preferredSafeModeLevel.rawValue
         settings.aiPolicy = connection.aiPolicy?.rawValue
@@ -219,6 +220,7 @@ internal struct ConnectionBundleExporter {
                     id: group.id,
                     name: group.name,
                     color: group.color.isDefault ? nil : group.color.rawValue,
+                    iconName: group.iconName,
                     parentId: group.parentId
                 )
             },
