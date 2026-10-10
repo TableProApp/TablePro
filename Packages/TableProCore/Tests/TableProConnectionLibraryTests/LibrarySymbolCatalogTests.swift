@@ -65,6 +65,13 @@ struct LibrarySymbolCatalogTests {
         #expect(Self.names(LibrarySymbolCatalog.sections(matching: "ladybug")) == ["ladybug"])
     }
 
+    @Test("Search matches a whole dotted symbol name", arguments: ["server.rack", "doc.text", "cylinder.split.1x2"])
+    func searchMatchesWholeName(name: String) {
+        #expect(Self.names(LibrarySymbolCatalog.sections(matching: name)).contains(name))
+        let symbols = LibrarySymbolCatalog.sections(matching: name).flatMap(\.symbols)
+        #expect(LibrarySymbolCatalog.bestMatch(for: name, in: symbols)?.name == name)
+    }
+
     @Test("Search keeps catalog order and its category headers")
     func searchKeepsOrderAndHeaders() {
         let sections = LibrarySymbolCatalog.sections(matching: "prod")

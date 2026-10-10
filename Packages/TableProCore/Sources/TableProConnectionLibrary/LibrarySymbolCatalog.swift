@@ -113,7 +113,7 @@ public enum LibrarySymbolCatalog {
     private static func matches(_ symbol: LibrarySymbol, term: String) -> Bool {
         if symbol.title.localizedStandardContains(term) { return true }
         if symbol.keywords.contains(where: { $0.localizedStandardContains(term) }) { return true }
-        return symbol.name.split(separator: ".").contains { String($0).localizedStandardContains(term) }
+        return symbol.name.localizedStandardContains(term)
     }
 
     private static func isEqual(_ lhs: String, _ rhs: String) -> Bool {
