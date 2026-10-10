@@ -117,7 +117,7 @@ Entries are chained: each row's hash covers the previous one, so a row cannot be
 | Failed pairing exchanges | 5 per 5 minutes |
 | Pairing lockout | 15 minutes |
 
-Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Auth failures count against both the client address and the token, so one misbehaving client cannot lock out another on the same loopback address, and a successful auth clears the bucket. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/developers/mcp-protocol#transport-limits).
+Request limits are keyed by token id, or by client address for an anonymous caller, and `subscriptions/listen` is exempt. Failed auth attempts are counted per client address, and every client on the Mac shares one, so a client that keeps sending a bad token locks the others out too. A malformed `Authorization` header, a scheme other than `Bearer`, and an unknown, expired or revoked token each count. A request with no `Authorization` header gets the `401` challenge and does not count. A successful auth clears the count. Anything over a limit returns `-33010` with HTTP `429` and a `Retry-After` header. Transport limits such as the body cap are on [MCP Protocol](/developers/mcp-protocol#transport-limits).
 
 ## What a token cannot do
 

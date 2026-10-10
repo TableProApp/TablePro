@@ -1,9 +1,9 @@
 ---
-title: Terminal and DDEV
-description: Opening databases and files from a shell script, and wiring up a ddev tablepro command
+title: Terminal
+description: Open database URLs, database files and SQL files in TablePro from a shell or a script
 ---
 
-`open "mysql://…"` goes to whichever app claims the `mysql://` scheme, and with TablePlus or another
+`open "mysql://…"` goes to whichever app claims the `mysql://` scheme, and with another database
 client installed that may not be TablePro. Name TablePro instead, either by bundle identifier or
 through the `tablepro` command:
 
@@ -49,19 +49,6 @@ tablepro app.db
   DuckDB plugin. A window already connected to that file comes to front instead of a second one
   opening.
 
-## DDEV
-
-[DDEV](https://ddev.com) ships a `tablepro` command of its own. From any project:
-
-```bash
-cd my-project
-ddev tablepro
-```
-
-If `ddev tablepro` is not found, update DDEV. It covers MySQL, MariaDB and PostgreSQL projects, and
-DDEV's database, user and password are all `db`. Prefer it over a saved connection: `ddev start`
-hands the project a new host port each time, and the command reads the current one.
-
 ## Trusting a link
 
 The first time a link connects, TablePro asks: **Open External Database Connection?**, showing the
@@ -69,8 +56,9 @@ host, user and database. This is what stops a web page from opening a connection
 
 For a database on your own machine (`localhost`, `127.0.0.1`, `::1`, or any `127.x.x.x` address) the
 alert adds **Always Allow**. Choose it and that database stops asking, which is what makes
-`ddev tablepro` a one-step command. Trust is keyed on database type, host, database name, user and
-the URL's `name` parameter, deliberately not the port, since DDEV changes the port on every start.
+[`ddev tablepro`](/integrations/ddev) a one-step command. Trust is keyed on database type, host,
+database name, user and the URL's `name` parameter, not the port, so a tool that picks a new port on
+each start stays trusted.
 
 <Frame caption="The confirmation alert for an external database link">
   <img className="block dark:hidden" src="/images/link-trust-alert.png" alt="Alert asking to confirm an external database link, with Always Allow for local databases" />

@@ -222,6 +222,14 @@ nonisolated enum ErrorClassifier {
                 recovery: String(localized: "Turn off the SSH tunnel for this connection."),
                 underlying: error
             )
+        case .localSocketNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "Socket Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Open it on the Mac, or change it there to connect by host and port."),
+                underlying: error
+            )
         }
     }
 

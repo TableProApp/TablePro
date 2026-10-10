@@ -15,7 +15,7 @@ Paste one absolute path into your client's MCP config and stop there. `tablepro-
 }
 ```
 
-For an install outside `/Applications`, use your own bundle's path. Setapp puts it at `~/Applications/Setapp/TablePro.app/Contents/MacOS/tablepro-mcp`.
+For an install outside `/Applications`, use your own bundle's path. **Connect a Client…** in **Settings > MCP** shows snippets with it filled in.
 
 ## Clients that take the JSON above
 
@@ -179,4 +179,4 @@ The bridge token is stale. The bridge re-reads the handshake and retries once on
 
 ### Rate limited (`-33010`)
 
-Five failed auth attempts inside 60 seconds triggered a 5-minute lockout. Wait it out, or restart TablePro. The other [rate limits](/developers/tokens#rate-limits) return the same code.
+Five failed auth attempts inside 60 seconds triggered a 5-minute lockout for every client on this Mac. A request that sends no token is not a failed attempt. Wait it out, or restart TablePro. The other [rate limits](/developers/tokens#rate-limits) return the same code.

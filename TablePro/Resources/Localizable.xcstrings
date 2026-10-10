@@ -190643,6 +190643,10 @@
         }
       }
     },
+    "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
         "fr" : {

@@ -2,12 +2,6 @@
 //  MCPCompositeAuthenticatorTests.swift
 //  TableProTests
 //
-//  Two rules meet here. The anonymous loopback principal is the weakest identity the server can
-//  hand out, so it carries read scopes only and no issued token: a write or an admin operation is
-//  refused for it whatever its scope set says. And presenting a credential opts out of anonymity
-//  entirely, so a revoked or expired token is refused rather than silently downgraded to the
-//  anonymous principal, which is how a token the user had revoked kept working.
-//
 
 import Foundation
 @testable import TablePro
@@ -202,6 +196,29 @@ struct MCPCompositeAuthenticatorTests {
         let reason = try #require(denial(decision))
         #expect(reason.kind == .unauthenticated)
         #expect(reason.httpStatus == 401)
+    }
+
+    @Test("Probing without a credential never locks out the client that then sends its token")
+    func probingWithoutCredentialDoesNotLockOut() async {
+        let store = FakeMCPTokenStore()
+        let plaintext = "tp_client"
+        await store.register(plaintext, validated: makeValidated(label: "Client"))
+        let composite = makeComposite(store, requireAuthentication: true)
+
+        for _ in 0..<10 {
+            let probe = await composite.authenticate(authorizationHeader: nil, clientAddress: .loopback)
+            #expect(denial(probe)?.httpStatus == 401)
+        }
+
+        let decision = await composite.authenticate(
+            authorizationHeader: "Bearer \(plaintext)",
+            clientAddress: .loopback
+        )
+        guard case .allow(let principal) = decision else {
+            Issue.record("Expected allow, got \(decision)")
+            return
+        }
+        #expect(principal.metadata.label == "Client")
     }
 
     @Test("Requiring authentication accepts a valid token from a remote client")
