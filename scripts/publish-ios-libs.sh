@@ -69,6 +69,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
+# libs-v1 predates release immutability, so it stays mutable. Stop before the baseline moves if not.
+immutable="$(gh api "repos/$REPO/releases/tags/$LIBS_TAG" --jq .immutable)"
+if [ "$immutable" != "false" ]; then
+    echo "error: $REPO@$LIBS_TAG is an immutable release, so --clobber cannot replace its archive." >&2
+    echo "       Publish to a new release tag and point scripts/download-libs.sh at it." >&2
+    exit 1
+fi
+
 cp "$WORK/new-baseline" "$CHECKSUMS"
 echo "📝 Wrote $CHECKSUMS"
 
