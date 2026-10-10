@@ -35,10 +35,18 @@ struct ImportOutcomeMessageTests {
 
     @Test("Nothing written reads as nothing imported, not as a failure")
     func nothingImported() {
-        let message = ImportOutcomeMessage(ImportOutcome(savedQueriesNotImported: 2))
+        let message = ImportOutcomeMessage(ImportOutcome())
 
         #expect(message.title == String(localized: "Nothing Imported"))
         #expect(message.message == String(localized: "Everything selected was already in your library."))
+    }
+
+    @Test("Saved queries skipped with nothing else written are counted, not called already saved")
+    func nothingImportedCountsSkippedQueries() {
+        let message = ImportOutcomeMessage(ImportOutcome(savedQueriesNotImported: 2))
+
+        #expect(message.title == String(localized: "Nothing Imported"))
+        #expect(message.message == String(format: String(localized: "%d saved queries were not imported."), 2))
     }
 
     @Test("A query store failure after connections were saved is incomplete")

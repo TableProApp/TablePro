@@ -107,10 +107,11 @@ internal struct ConnectionBundleExporter {
         )
     }
 
-    func savedQueryCounts(for connections: [DatabaseConnection]) async -> SavedQueryCounts {
+    /// Nil when the saved queries cannot be read, which is not the same as having none.
+    func savedQueryCounts(for connections: [DatabaseConnection]) async -> SavedQueryCounts? {
         guard let library = await favorites.exportSnapshot() else {
-            Self.logger.error("Saved queries could not be read, so the export offers none")
-            return SavedQueryCounts(connectionScoped: 0, global: 0)
+            Self.logger.error("Saved queries could not be read for the export options")
+            return nil
         }
         return BundleExportAssembler.savedQueryCounts(
             exportInput(for: connections, includesCredentials: false, library: library)

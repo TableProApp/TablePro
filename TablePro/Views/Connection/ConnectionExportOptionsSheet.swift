@@ -20,6 +20,7 @@ struct ConnectionExportOptionsSheet: View {
     @State private var isPreparingExport = false
     @State private var exportError: String?
     @State private var savedQueryCounts: SavedQueryCounts?
+    @State private var hasLoadedSavedQueryCounts = false
     @State private var includeSavedQueries = true
     @State private var includeGlobalSavedQueries = false
 
@@ -246,12 +247,14 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private func loadSavedQueryCounts() async {
-        guard savedQueryCounts == nil else { return }
+        guard !hasLoadedSavedQueryCounts else { return }
         savedQueryCounts = await ConnectionBundleExporter().savedQueryCounts(for: connections)
+        hasLoadedSavedQueryCounts = true
     }
 
     private var exportOptions: BundleExportOptions {
-        // Until the counts arrive the exporter reads the queries itself, so the default still applies.
+        // Before the counts arrive, or when they could not be read, the exporter reads the queries
+        // itself and reports a failure, so the default never silently drops them.
         let hasSavedQueries = savedQueryCounts.map { $0.connectionScoped + $0.global > 0 } ?? true
         let includesSavedQueries = hasSavedQueries && includeSavedQueries
         return BundleExportOptions(

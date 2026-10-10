@@ -33,7 +33,8 @@ internal struct ImportOutcomeMessage: Equatable {
         guard !imported.isEmpty else {
             return (
                 String(localized: "Nothing Imported"),
-                String(localized: "Everything selected was already in your library.")
+                notImportedSentence(outcome.savedQueriesNotImported)
+                    ?? String(localized: "Everything selected was already in your library.")
             )
         }
         let sentences = imported + [notImportedSentence(outcome.savedQueriesNotImported)].compactMap { $0 }

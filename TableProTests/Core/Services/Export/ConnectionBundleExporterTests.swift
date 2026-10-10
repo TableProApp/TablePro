@@ -170,6 +170,8 @@ struct ConnectionBundleExporterTests {
         let connection = makeConnection()
         let options = Self.queriesOnly
 
+        #expect(await exporter.savedQueryCounts(for: [connection]) == nil)
+
         await #expect(throws: ConnectionBundleExportError.savedQueriesUnreadable) {
             _ = try await exporter.fileData(for: [connection], options: options, passphrase: nil)
         }
