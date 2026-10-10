@@ -71,4 +71,12 @@ extension SnowflakePluginDriver {
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
         ddlGenerator.columnDefinitionSQL(column)
     }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        SnowflakeDDLGenerator.objectCommentSQL(
+            qualifiedName: qualifiedName(table: name, schema: schema),
+            objectType: objectType,
+            comment: comment
+        )
+    }
 }

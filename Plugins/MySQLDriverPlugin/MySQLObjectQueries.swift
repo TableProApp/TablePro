@@ -45,6 +45,21 @@ public enum MySQLObjectQueries {
         qualifiedIdentifier(schema: schema, name: name, quote: quoteIdentifier)
     }
 
+    // Neither MySQL's nor MariaDB's ALTER VIEW has a COMMENT clause.
+    public static func takesTableComment(objectType: String) -> Bool {
+        switch objectType.uppercased() {
+        case "TABLE", "PARTITIONED TABLE":
+            return true
+        default:
+            return false
+        }
+    }
+
+    public static func tableCommentStatement(qualifiedTable: String, objectType: String, comment: String?) -> String? {
+        guard takesTableComment(objectType: objectType) else { return nil }
+        return "ALTER TABLE \(qualifiedTable) COMMENT = '\(escapeLiteral(comment ?? ""))'"
+    }
+
     /// Lists a schema's tables, with the partition count joined in for the ones that have any.
     ///
     /// `information_schema.PARTITIONS` holds one all-null row for a table that is not partitioned,

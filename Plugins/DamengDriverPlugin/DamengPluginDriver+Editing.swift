@@ -193,6 +193,13 @@ extension DamengPluginDriver {
         "SELECT * FROM \(qualifiedName(schema: schema, object: table))"
     }
 
+    /// Tables only: the comment is read from `ALL_TABLES`, which has no row for a view. DM8 takes a
+    /// string literal after `IS`, so an empty string is what removes the comment.
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        guard objectType.uppercased() == "TABLE" else { return nil }
+        return "COMMENT ON TABLE \(qualifiedName(schema: schema, object: name)) IS \(stringLiteral(comment ?? ""))"
+    }
+
     private func insertStatement(
         table: String,
         columns: [String],

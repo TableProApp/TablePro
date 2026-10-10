@@ -256,6 +256,36 @@ final class DamengPluginDriverTests: XCTestCase {
         )
     }
 
+    func testObjectCommentStatementSetsAndClearsATableComment() {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+
+        XCTAssertEqual(
+            driver.objectCommentStatement(name: "ORDERS", objectType: "TABLE", schema: "SALES", comment: "customer's orders"),
+            "COMMENT ON TABLE \"SALES\".\"ORDERS\" IS 'customer''s orders'"
+        )
+        XCTAssertEqual(
+            driver.objectCommentStatement(name: "ORDERS", objectType: "TABLE", schema: nil, comment: "x"),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS 'x'"
+        )
+        XCTAssertEqual(
+            driver.objectCommentStatement(name: "ORDERS", objectType: "TABLE", schema: "APP", comment: nil),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS ''"
+        )
+        XCTAssertEqual(
+            driver.objectCommentStatement(name: "ORDERS", objectType: "TABLE", schema: "APP", comment: ""),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS ''"
+        )
+    }
+
+    func testObjectCommentStatementCoversTablesOnly() {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+
+        for kind in ["VIEW", "MATERIALIZED VIEW", "SEQUENCE", "SYSTEM TABLE", "FOREIGN TABLE"] {
+            XCTAssertNil(driver.objectCommentStatement(name: "t", objectType: kind, schema: "s", comment: nil), kind)
+        }
+        XCTAssertNotNil(driver.objectCommentStatement(name: "t", objectType: "TABLE", schema: "s", comment: nil))
+    }
+
     func testRowCapClampsToTheEmergencyMaximum() {
         XCTAssertEqual(DamengConnection.fetchLimit(nil), PluginRowLimits.emergencyMax)
         XCTAssertEqual(DamengConnection.fetchLimit(0), PluginRowLimits.emergencyMax)

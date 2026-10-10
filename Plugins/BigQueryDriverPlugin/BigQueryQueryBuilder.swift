@@ -235,6 +235,24 @@ internal struct BigQueryQueryBuilder {
         [projectId, dataset, table].map(GoogleSQLLiteral.quotedIdentifier).joined(separator: ".")
     }
 
+    /// BigQuery keeps a table's comment in its `description` option, and setting an option to NULL
+    /// clears it.
+    static func descriptionStatement(qualifiedTable: String, objectType: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased().replacingOccurrences(of: "_", with: " ") {
+        case "TABLE":
+            keyword = "TABLE"
+        case "VIEW":
+            keyword = "VIEW"
+        case "MATERIALIZED VIEW":
+            keyword = "MATERIALIZED VIEW"
+        default:
+            return nil
+        }
+        let value = comment.flatMap { $0.isEmpty ? nil : GoogleSQLLiteral.quotedString($0) } ?? "NULL"
+        return "ALTER \(keyword) \(qualifiedTable) SET OPTIONS (description = \(value))"
+    }
+
     static func buildSQL(from params: BigQueryQueryParams, projectId: String) -> String {
         let columns = params.columns ?? []
         let table = qualifiedTable(projectId: projectId, dataset: params.dataset, table: params.table)

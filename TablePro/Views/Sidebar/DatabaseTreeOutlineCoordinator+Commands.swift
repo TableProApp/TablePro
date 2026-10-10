@@ -17,6 +17,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createNewTable()
         case .createView:
             mainCoordinator?.createView()
+        case .createDatabase:
+            mainCoordinator?.createDatabase()
         case .createType(let database, let schema):
             mainCoordinator?.createType(database: database, schema: schema)
         case .createSchema(let database):

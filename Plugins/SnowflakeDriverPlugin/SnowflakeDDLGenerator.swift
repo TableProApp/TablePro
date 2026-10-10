@@ -128,6 +128,29 @@ struct SnowflakeDDLGenerator {
         return definition
     }
 
+    /// `ALTER ... SET COMMENT` and `UNSET COMMENT` are documented for tables, views and materialized
+    /// views alike, while `COMMENT ON` has no documented way to remove a comment.
+    static func objectCommentSQL(qualifiedName: String, objectType: String, comment: String?) -> String? {
+        guard let keyword = commentKeyword(forObjectType: objectType) else { return nil }
+        guard let comment, !comment.isEmpty else {
+            return "ALTER \(keyword) \(qualifiedName) UNSET COMMENT"
+        }
+        return "ALTER \(keyword) \(qualifiedName) SET COMMENT = '\(SnowflakeSQL.escapeLiteral(comment))'"
+    }
+
+    private static func commentKeyword(forObjectType objectType: String) -> String? {
+        switch objectType.uppercased().replacingOccurrences(of: "_", with: " ") {
+        case "TABLE":
+            return "TABLE"
+        case "VIEW":
+            return "VIEW"
+        case "MATERIALIZED VIEW":
+            return "MATERIALIZED VIEW"
+        default:
+            return nil
+        }
+    }
+
     static func isSupportedTypeChange(from oldType: String, to newType: String) -> Bool {
         let old = parse(oldType)
         let new = parse(newType)

@@ -816,17 +816,43 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
+    /// Leaves out the column comments: an older app sends this text in one call, and Oracle refuses a second statement
+    /// in it with ORA-03405.
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard let statements = generateCreateTableStatements(definition: definition),
+        guard let statements = createTableAndIndexStatements(definition: definition),
               let createTable = statements.first else { return nil }
         let indexStatements = statements.dropFirst()
         guard !indexStatements.isEmpty else { return createTable + ";" }
         return createTable + ";\n\n" + indexStatements.joined(separator: ";\n") + ";"
     }
 
-    /// The table and each of its indexes as a statement of its own. Oracle runs one statement per call, and sent as
-    /// one text the table and its indexes fail with ORA-03405 and create nothing.
+    /// Oracle runs one statement per call, and sent as one text the table and its indexes fail with ORA-03405 and
+    /// create nothing.
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        guard let statements = createTableAndIndexStatements(definition: definition) else { return nil }
+        let comments = OracleColumnStatements.commentStatements(
+            qualifiedTable: oracleQualifiedTable(definition.tableName), columns: definition.columns
+        )
+        return statements + comments
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        let qualifiedName = OracleObjectQueries.quoteIdentifier(effectiveSchema(schema)) + "."
+            + OracleObjectQueries.quoteIdentifier(name)
+        return OracleObjectQueries.commentStatement(qualifiedName: qualifiedName, objectType: objectType, comment: comment)
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        guard case .addColumn(let column) = operation, column.autoIncrement else { return nil }
+        if let release = core?.serverRelease, !release.hasIdentityColumns {
+            return String(localized: "Oracle 11g has no identity columns, so a column cannot be auto-increment.")
+        }
+        guard let defaultValue = column.defaultValue,
+              !defaultValue.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return String(localized: "An auto-increment column takes its values from a sequence, so it cannot also have a default.")
+    }
+
+    private func createTableAndIndexStatements(definition: PluginCreateTableDefinition) -> [String]? {
         guard !definition.columns.isEmpty else { return nil }
 
         let qualifiedTable = oracleQualifiedTable(definition.tableName)
@@ -951,18 +977,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
     }
 
+    /// An unknown release writes the identity: `schemaOperationRefusal` stops auto-increment on a known 11g.
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(defaultValue)"
-        }
-        if !col.isNullable {
-            def += " NOT NULL"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
+        OracleColumnStatements.definition(
+            col,
+            inlinePrimaryKey: inlinePK,
+            supportsIdentity: core?.serverRelease?.hasIdentityColumns ?? true,
+            quote: quoteIdentifier
+        )
     }
 
     private func oracleIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {

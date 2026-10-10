@@ -141,6 +141,12 @@ internal enum DatabendCatalog {
         "CREATE DATABASE \(quoteIdentifier(name))"
     }
 
+    // https://docs.databend.com/sql/sql-commands/ddl/table/alter-table-comment (v1.2.419+)
+    static func tableCommentStatement(qualifiedTable: String, objectType: String, comment: String?) -> String? {
+        guard MySQLObjectQueries.takesTableComment(objectType: objectType) else { return nil }
+        return "ALTER TABLE \(qualifiedTable) COMMENT = '\(DatabendLiteral.escapeString(comment ?? ""))'"
+    }
+
     private static func definitionChanged(from old: PluginColumnDefinition, to new: PluginColumnDefinition) -> Bool {
         old.dataType.uppercased() != new.dataType.uppercased()
             || old.isNullable != new.isNullable

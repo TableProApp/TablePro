@@ -76,6 +76,7 @@ struct StructureChangeManagerSaveHoldTests {
         manager.deleteColumn(id: manager.workingColumns[2].id)
         manager.performAsOneUndoStep { manager.deleteColumn(id: manager.workingColumns[0].id) }
         manager.undoDelete(for: .columns, at: 2)
+        manager.stageTableComment("Users of the shop")
         manager.undo()
         manager.redo()
         manager.discardChanges()
@@ -84,6 +85,7 @@ struct StructureChangeManagerSaveHoldTests {
         #expect(manager.getChangesArray() == staged)
         #expect(manager.workingColumns == working)
         #expect(manager.tableName == "users")
+        #expect(manager.tableComment.text.isEmpty)
         #expect(!manager.canUndo)
         #expect(!manager.canRedo)
     }

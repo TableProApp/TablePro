@@ -958,6 +958,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "\(quoteIdentifier(schema)).\(quoteIdentifier(name))"
     }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        guard MySQLObjectQueries.takesTableComment(objectType: objectType) else { return nil }
+        let table = qualifiedIdentifier(schema: schema, name: name)
+        guard !flavor.isDatabend else {
+            return DatabendCatalog.tableCommentStatement(qualifiedTable: table, objectType: objectType, comment: comment)
+        }
+        return MySQLObjectQueries.tableCommentStatement(qualifiedTable: table, objectType: objectType, comment: comment)
+            .map(literalSpelling.respelled)
+    }
+
     // MARK: - Database Switching
 
     /// The `USE` goes in the way the query timeout does, as the driver's own setup rather than as

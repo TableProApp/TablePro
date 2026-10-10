@@ -2,45 +2,45 @@
 //  SchemaStatementGenerator.swift
 //  TablePro
 //
-//  Generates ALTER TABLE SQL statements from schema changes.
-//  Delegates all DDL generation to the plugin driver.
-//
 
 import Foundation
 import TableProPluginKit
 
-/// A schema SQL statement with metadata.
 /// `carriesCredentials` marks statements whose SQL embeds a plaintext password, so they are never
-/// written to the on-disk query history.
+/// written to the on-disk query history. `setsComment` marks a statement that changes nothing but
+/// the object's comment, so a save made only of those reports a comment change.
 struct SchemaStatement {
     let sql: String
     let description: String
     let isDestructive: Bool
     var carriesCredentials = false
+    var setsComment = false
 }
 
-/// Generates SQL statements for schema modifications by delegating to the plugin driver.
 struct SchemaStatementGenerator {
     private let tableName: String
+    private let schema: String?
+    private let objectType: TableInfo.TableType
 
-    /// Actual primary key constraint name (queried from database).
-    /// Passed to plugin for databases that require it (e.g. PostgreSQL DROP CONSTRAINT).
+    /// Queried from the database, for engines that drop a primary key by name (PostgreSQL).
     private let primaryKeyConstraintName: String?
 
-    /// Plugin driver for database-specific DDL generation.
     private let pluginDriver: any PluginDatabaseDriver
 
     init(
         tableName: String,
+        schema: String? = nil,
+        objectType: TableInfo.TableType = .table,
         primaryKeyConstraintName: String? = nil,
         pluginDriver: any PluginDatabaseDriver
     ) {
         self.tableName = tableName
+        self.schema = schema
+        self.objectType = objectType
         self.primaryKeyConstraintName = primaryKeyConstraintName
         self.pluginDriver = pluginDriver
     }
 
-    /// Generate all SQL statements from schema changes
     func generate(changes: [SchemaChange]) throws -> [SchemaStatement] {
         var statements: [SchemaStatement] = []
 
@@ -66,7 +66,8 @@ struct SchemaStatementGenerator {
                 statements.append(SchemaStatement(
                     sql: sql,
                     description: stmt.description,
-                    isDestructive: stmt.isDestructive || change.requiresDataMigration
+                    isDestructive: stmt.isDestructive || change.requiresDataMigration,
+                    setsComment: stmt.setsComment
                 ))
             }
         }
@@ -92,6 +93,7 @@ struct SchemaStatementGenerator {
         // 5. Modify primary key
         // 6. Add indexes
         // 7. Add foreign keys
+        // 8. Comments, last, so every structural statement has run on an engine without transactional DDL
         // Every drop of an index or a check constraint runs before any add or rename of one, and a
         // rename or add runs after the rename that frees its name. The structure editor counts a
         // deleted or renamed row's name as free on that basis.
@@ -108,6 +110,7 @@ struct SchemaStatementGenerator {
         var indexAdds: [SchemaChange] = []
         var fkAdds: [SchemaChange] = []
         var constraintAdds: [SchemaChange] = []
+        var commentChanges: [SchemaChange] = []
         let keepsIndexModifiesWhole = !changes.contains(where: Self.changesColumns)
 
         for change in changes {
@@ -157,6 +160,8 @@ struct SchemaStatementGenerator {
                 indexAdds.append(change)
             case .addForeignKey:
                 fkAdds.append(change)
+            case .modifyTableComment:
+                commentChanges.append(change)
             }
         }
 
@@ -165,7 +170,7 @@ struct SchemaStatementGenerator {
 
         return constraintDeletes + constraintHandoffs.drops + constraintHandoffs.ordered + fkDeletes
             + indexDeletes + indexHandoffs.drops + columnDeletes + columnModifies + columnAdds + pkChanges
-            + indexHandoffs.ordered + fkAdds + constraintAdds
+            + indexHandoffs.ordered + fkAdds + constraintAdds + commentChanges
     }
 
     /// Orders changes that each give up one name and take another in a single step, a rename or a
@@ -221,7 +226,7 @@ struct SchemaStatementGenerator {
         case .addCheckConstraint(let constraint):
             return (nil, constraint.name)
         case .addColumn, .modifyColumn, .deleteColumn, .deleteIndex, .addForeignKey, .modifyForeignKey,
-             .deleteForeignKey, .modifyPrimaryKey, .deleteCheckConstraint:
+             .deleteForeignKey, .modifyPrimaryKey, .deleteCheckConstraint, .modifyTableComment:
             return (nil, nil)
         }
     }
@@ -234,7 +239,7 @@ struct SchemaStatementGenerator {
             return (.deleteCheckConstraint(old), .addCheckConstraint(new))
         case .addColumn, .modifyColumn, .deleteColumn, .addIndex, .deleteIndex, .addForeignKey,
              .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey, .addCheckConstraint,
-             .deleteCheckConstraint:
+             .deleteCheckConstraint, .modifyTableComment:
             return nil
         }
     }
@@ -244,7 +249,7 @@ struct SchemaStatementGenerator {
         case .addColumn, .modifyColumn, .deleteColumn, .modifyPrimaryKey:
             return true
         case .addIndex, .modifyIndex, .deleteIndex, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
-             .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
+             .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment:
             return false
         }
     }
@@ -311,6 +316,8 @@ struct SchemaStatementGenerator {
             return generateModifyCheckConstraint(old: old, new: new)
         case .deleteCheckConstraint(let constraint):
             return generateDeleteCheckConstraint(constraint).map { [$0] } ?? []
+        case .modifyTableComment(_, let new):
+            return generateTableComment(new).map { [$0] } ?? []
         }
     }
 
@@ -454,6 +461,19 @@ struct SchemaStatementGenerator {
         }
         return SchemaStatement(
             sql: sql, description: "Drop check constraint '\(constraint.name)'", isDestructive: true
+        )
+    }
+
+    // MARK: - Comment
+
+    private func generateTableComment(_ comment: String?) -> SchemaStatement? {
+        guard let sql = pluginDriver.objectCommentStatement(
+            name: tableName, objectType: objectType.rawValue, schema: schema, comment: comment
+        ) else {
+            return nil
+        }
+        return SchemaStatement(
+            sql: sql, description: "Set comment on '\(tableName)'", isDestructive: false, setsComment: true
         )
     }
 

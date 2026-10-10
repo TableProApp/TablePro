@@ -86,6 +86,15 @@ extension MainContentCoordinator {
         toolbarState.isResultsCollapsed = true
     }
 
+    // MARK: - Database Operations
+
+    func createDatabase() {
+        guard !safeModeLevel.blocksAllWrites,
+              services.pluginManager.supportsContainerSwitching(for: connection.type)
+        else { return }
+        activeSheet = .createDatabase
+    }
+
     // MARK: - Table Operations
 
     func createNewTable() {
@@ -109,11 +118,9 @@ extension MainContentCoordinator {
     // MARK: - View Operations
 
     func createView() {
-        guard !safeModeLevel.blocksAllWrites else { return }
-
-        let driver = DatabaseManager.shared.driver(for: connection.id)
-        let template = driver?.createViewTemplate()
-            ?? "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+        guard !safeModeLevel.blocksAllWrites,
+              let template = DatabaseManager.shared.driver(for: connection.id)?.createViewTemplate()
+        else { return }
 
         let payload = EditorTabPayload(
             connectionId: connection.id,

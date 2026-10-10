@@ -144,6 +144,9 @@ internal struct FavoritesTabView: View {
                     favoritesList(items, databaseGroups: groups, filteredTables: filteredTables)
                 }
             }
+            SidebarFooterBar {
+                FavoritesAddButton(perform: { perform($0) })
+            }
         }
         .task(id: tableRead.loadRequest) {
             reader.load(tableRead.loadRequest)
@@ -670,8 +673,7 @@ internal struct FavoritesTabView: View {
 
     // MARK: - Empty States
 
-    /// An empty list has no row to right-click, so the commands the background menu carries have to
-    /// be here too. They used to live in a bar at the bottom of the sidebar.
+    /// An empty list has no row to right-click, so the background menu's commands are here too.
     ///
     /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
     /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that

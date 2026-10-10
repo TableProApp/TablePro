@@ -57,5 +57,34 @@ final class TrinoDDLSQLTests: XCTestCase {
             TrinoDDLSQL.setTableComment(qualifiedTable: target, comment: "hi"),
             "COMMENT ON TABLE \(target) IS 'hi'"
         )
+        XCTAssertEqual(
+            TrinoDDLSQL.setTableComment(qualifiedTable: target, comment: ""),
+            "COMMENT ON TABLE \(target) IS NULL"
+        )
+        XCTAssertEqual(
+            TrinoDDLSQL.setViewComment(qualifiedView: target, comment: "it's"),
+            "COMMENT ON VIEW \(target) IS 'it''s'"
+        )
+        XCTAssertEqual(
+            TrinoDDLSQL.setViewComment(qualifiedView: target, comment: nil),
+            "COMMENT ON VIEW \(target) IS NULL"
+        )
+    }
+
+    func testObjectCommentPicksTheKeywordForTheKind() {
+        XCTAssertEqual(
+            TrinoDDLSQL.objectComment(qualifiedName: target, objectType: "TABLE", comment: "a"),
+            "COMMENT ON TABLE \(target) IS 'a'"
+        )
+        XCTAssertEqual(
+            TrinoDDLSQL.objectComment(qualifiedName: target, objectType: "VIEW", comment: nil),
+            "COMMENT ON VIEW \(target) IS NULL"
+        )
+    }
+
+    func testObjectCommentRefusesKindsTrinoCannotComment() {
+        for kind in ["MATERIALIZED VIEW", "SEQUENCE", "SYSTEM TABLE", "FOREIGN TABLE"] {
+            XCTAssertNil(TrinoDDLSQL.objectComment(qualifiedName: target, objectType: kind, comment: nil), kind)
+        }
     }
 }

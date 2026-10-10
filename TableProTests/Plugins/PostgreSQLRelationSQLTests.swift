@@ -76,6 +76,82 @@ struct PostgreSQLRelationSQLTests {
         #expect(PostgreSQLRelationSQL.commentValue("   ") == "'   '")
     }
 
+    @Test("A narrowed keyword set refuses the kinds it leaves out")
+    func supportedKeywordsNarrowTheKinds() {
+        #expect(PostgreSQLRelationSQL.commentStatement(
+            name: "t", schema: "s", objectType: "TABLE", comment: "x", supportedKeywords: ["TABLE"]
+        ) == "COMMENT ON TABLE \"s\".\"t\" IS 'x'")
+        #expect(PostgreSQLRelationSQL.commentStatement(
+            name: "t", schema: "s", objectType: "PARTITIONED TABLE", comment: nil, supportedKeywords: ["TABLE"]
+        ) == "COMMENT ON TABLE \"s\".\"t\" IS NULL")
+        #expect(PostgreSQLRelationSQL.commentStatement(
+            name: "v", schema: "s", objectType: "VIEW", comment: "x", supportedKeywords: ["TABLE"]
+        ) == nil)
+        #expect(PostgreSQLRelationSQL.commentStatement(
+            name: "v", schema: "s", objectType: "VIEW", comment: "x", supportedKeywords: ["TABLE", "VIEW"]
+        ) == "COMMENT ON VIEW \"s\".\"v\" IS 'x'")
+        #expect(PostgreSQLRelationSQL.commentStatement(
+            name: "m", schema: "s", objectType: "MATERIALIZED VIEW", comment: "x", supportedKeywords: ["TABLE", "VIEW"]
+        ) == nil)
+    }
+
+    @Test("Without a narrowed set every PostgreSQL keyword is accepted")
+    func defaultKeywordSetIsComplete() {
+        for objectType in ["TABLE", "PARTITIONED TABLE", "VIEW", "MATERIALIZED VIEW", "FOREIGN TABLE"] {
+            #expect(PostgreSQLRelationSQL.commentStatement(
+                name: "t", schema: "s", objectType: objectType, comment: "x"
+            ) != nil)
+        }
+    }
+
+    // MARK: - Column comments
+
+    private func column(_ name: String, comment: String?) -> PluginColumnDefinition {
+        PluginColumnDefinition(
+            name: name, dataType: "text", comment: comment, generationExpression: nil, generationKind: nil
+        )
+    }
+
+    @Test("A column comment names the qualified table and quotes the column")
+    func columnCommentStatementShape() {
+        #expect(PostgreSQLRelationSQL.columnCommentStatement(
+            qualifiedTable: "\"s\".\"t\"", column: "Odd \"Col\"", comment: "it's"
+        ) == "COMMENT ON COLUMN \"s\".\"t\".\"Odd \"\"Col\"\"\" IS 'it''s'")
+    }
+
+    @Test("An empty or missing column comment clears it")
+    func emptyColumnCommentClears() {
+        #expect(PostgreSQLRelationSQL.columnCommentStatement(qualifiedTable: "\"s\".\"t\"", column: "c", comment: nil)
+            == "COMMENT ON COLUMN \"s\".\"t\".\"c\" IS NULL")
+        #expect(PostgreSQLRelationSQL.columnCommentStatement(qualifiedTable: "\"s\".\"t\"", column: "c", comment: "")
+            == "COMMENT ON COLUMN \"s\".\"t\".\"c\" IS NULL")
+    }
+
+    @Test("A column comment with a backslash is written as an E-string")
+    func columnCommentBackslashUsesEString() {
+        #expect(PostgreSQLRelationSQL.columnCommentStatement(
+            qualifiedTable: "\"s\".\"t\"", column: "c", comment: #"C:\temp"#
+        ) == #"COMMENT ON COLUMN "s"."t"."c" IS E'C:\\temp'"#)
+    }
+
+    @Test("Create Table writes one statement per commented column, in column order")
+    func columnCommentStatementsSkipUncommented() {
+        let statements = PostgreSQLRelationSQL.columnCommentStatements(
+            qualifiedTable: "\"s\".\"t\"",
+            columns: [
+                column("id", comment: "Key"),
+                column("plain", comment: nil),
+                column("blank", comment: ""),
+                column("note", comment: "Free text")
+            ]
+        )
+
+        #expect(statements == [
+            "COMMENT ON COLUMN \"s\".\"t\".\"id\" IS 'Key'",
+            "COMMENT ON COLUMN \"s\".\"t\".\"note\" IS 'Free text'"
+        ])
+    }
+
     // MARK: - Refresh
 
     @Test("Refresh qualifies the view and adds CONCURRENTLY only when asked")

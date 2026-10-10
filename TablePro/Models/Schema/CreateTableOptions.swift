@@ -2,8 +2,6 @@
 //  CreateTableOptions.swift
 //  TablePro
 //
-//  Table-level options for CREATE TABLE generation.
-//
 
 import Foundation
 
@@ -12,6 +10,7 @@ struct CreateTableOptions: Hashable {
     var charset: String = "utf8mb4"
     var collation: String = "utf8mb4_unicode_ci"
     var ifNotExists: Bool = false
+    var comment: String = ""
 
     static let engines = [
         "InnoDB", "MyISAM", "MEMORY", "CSV", "ARCHIVE",

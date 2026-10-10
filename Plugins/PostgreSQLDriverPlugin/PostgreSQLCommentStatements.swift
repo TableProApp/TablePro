@@ -55,6 +55,18 @@ public enum PostgreSQLCommentStatements {
         """
     }
 
+    /// `objsubid = 0` is the relation's own row; a column's row carries its ordinal.
+    public static func relationCommentQuery(name: String, schema: String) -> String {
+        """
+        SELECT d.description
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(name))
+        """
+    }
+
     /// Renders what `catalogQuery` answered. Rows are projected as `relkind`, `attname`,
     /// `description`, and a nil `attname` marks the relation's own comment.
     public static func statements(name: String, schema: String, rows: [[String?]]) -> [String] {

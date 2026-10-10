@@ -14,12 +14,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     private static let cacheTTL: TimeInterval = 300
     private static let serverVersionName = "Google BigQuery"
-    private static let metadataDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
 
     let config: DriverConnectionConfig
     let parameterTypes = BigQueryParameterTypeCache()
@@ -129,6 +123,15 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         guard let projectId, let keyword = Self.droppableObjectKeyword(objectType) else { return nil }
         return "DROP \(keyword) IF EXISTS \(qualifiedTable(name, schema: schema, projectId: projectId))"
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        guard let projectId else { return nil }
+        return BigQueryQueryBuilder.descriptionStatement(
+            qualifiedTable: qualifiedTable(name, schema: schema, projectId: projectId),
+            objectType: objectType,
+            comment: comment
+        )
     }
 
     func buildExplainQuery(_ sql: String) -> String? {
@@ -380,17 +383,26 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         return ddl
     }
 
+    /// Read past the table cache: the comment editor loads the description from here right after
+    /// saving one, and a cached resource would hand back the old text for minutes.
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let resource = try await cachedTable(datasetId: dataset(for: schema), tableId: table)
+        let resource = try await loadTable(datasetId: dataset(for: schema), tableId: table)
+        return Self.tableMetadata(table: table, resource: resource)
+    }
+
+    /// The comment is the description alone, because the comment editor writes it back as the
+    /// description. Partitioning, labels and expiry stay in the table's DDL.
+    static func tableMetadata(table: String, resource: BQTableResource) -> PluginTableMetadata {
         let numBytes = resource.numBytes.flatMap { Int64($0) }
-        let parts = Self.metadataSummary(resource)
         return PluginTableMetadata(
             tableName: table,
             dataSize: numBytes,
             totalSize: numBytes,
             rowCount: resource.numRows.flatMap { Int64($0) },
-            comment: parts.isEmpty ? nil : parts.joined(separator: " | "),
-            engine: resource.type
+            comment: resource.description.flatMap { $0.isEmpty ? nil : $0 },
+            engine: resource.type,
+            createTime: date(fromMilliseconds: resource.creationTime),
+            updateTime: date(fromMilliseconds: resource.lastModifiedTime)
         )
     }
 
@@ -475,15 +487,18 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func cachedTable(datasetId: String, tableId: String) async throws -> BQTableResource {
-        let cacheKey = "\(datasetId).\(tableId)"
-        let cached: CachedResource? = lock.withLock { _tableSchemaCache[cacheKey] }
+        let cached: CachedResource? = lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"] }
         if let cached, Date().timeIntervalSince(cached.cachedAt) < Self.cacheTTL {
             return cached.resource
         }
+        return try await loadTable(datasetId: datasetId, tableId: tableId)
+    }
+
+    private func loadTable(datasetId: String, tableId: String) async throws -> BQTableResource {
         do {
             let resource = try await requireConnection().getTable(datasetId: datasetId, tableId: tableId)
             lock.withLock {
-                _tableSchemaCache[cacheKey] = CachedResource(resource: resource, cachedAt: Date())
+                _tableSchemaCache["\(datasetId).\(tableId)"] = CachedResource(resource: resource, cachedAt: Date())
             }
             return resource
         } catch {
@@ -514,31 +529,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         return " [\(range.start ?? "0")-\(range.end ?? "?") by \(range.interval ?? "?")]"
     }
 
-    private static func metadataSummary(_ resource: BQTableResource) -> [String] {
-        var parts: [String] = []
-        if let description = resource.description, !description.isEmpty {
-            parts.append(description)
-        }
-        if let partitioning = resource.timePartitioning {
-            parts.append("Partitioned: \(partitioning.field ?? "ingestion time") (\(partitioning.type ?? "DAY"))")
-        }
-        if let rangePartitioning = resource.rangePartitioning, let field = rangePartitioning.field {
-            parts.append("Range partitioned: \(field)\(rangeDescription(rangePartitioning))")
-        }
-        if let labels = resource.labels, !labels.isEmpty {
-            parts.append("Labels: " + labels.map { "\($0.key)=\($0.value)" }.joined(separator: ", "))
-        }
-        if let expiration = resource.expirationTime.flatMap(Double.init) {
-            parts.append("Expires: \(formattedDate(milliseconds: expiration))")
-        }
-        if let created = resource.creationTime.flatMap(Double.init) {
-            parts.append("Created: \(formattedDate(milliseconds: created))")
-        }
-        return parts
-    }
-
-    private static func formattedDate(milliseconds: Double) -> String {
-        metadataDateFormatter.string(from: Date(timeIntervalSince1970: milliseconds / 1_000))
+    private static func date(fromMilliseconds value: String?) -> Date? {
+        value.flatMap(Double.init).map { Date(timeIntervalSince1970: $0 / 1_000) }
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

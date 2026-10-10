@@ -7,7 +7,9 @@ Dropping a table cannot be undone, and **Cascade** in the confirmation dialog wi
 
 ## Create a table or view
 
-**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)); on [DynamoDB](/databases/dynamodb#creating-and-changing-tables) it opens a form for the keys, capacity and indexes instead. **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them. On an engine with no way to create a table, such as Redis or Kafka, **New Table…** is dimmed in the menu bar and absent from the sidebar.
+Click **+** at the foot of the sidebar and choose **New Table…** or **New View…**, or use **Database > New Table…** and **Database > New View…**. **New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)); on [DynamoDB](/databases/dynamodb#creating-and-changing-tables) it opens a form for the keys, capacity and indexes instead. **New View…** opens a query tab holding a `CREATE VIEW` template for the engine. The same **+** menu carries **New Schema…** and **New Database…** where the engine has them, and **New Folder** for [sidebar folders](/features/connection-window#folders).
+
+The sidebar's right-click menu over empty space holds the same items. [Safe mode](/features/safe-mode) dims them in the **+** menu and the menu bar, and removes them from the right-click menu. An item the engine cannot do is left out: Redis and Kafka get no **New Table…**, and an engine without views gets no **New View…**.
 
 ## Drop and truncate
 
@@ -92,13 +94,22 @@ PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, 
 
 Views carry an eye icon in the sidebar; materialized views and foreign tables get their own. All three are read-only kinds, so their menus drop **Truncate** and **Import**, and the drop item reads **Drop View**, **Drop Materialized View**, or **Drop Foreign Table**. Dropping removes the definition only, and the data in the underlying tables stays.
 
-Right-click empty space and choose **New View…** to write a new one; right-click an existing view and choose **Edit View Definition** to open the current definition in a query tab. Either way, execute the statement to apply it.
+Click **+** at the foot of the sidebar and choose **New View…** to write a new one; right-click an existing view and choose **Edit View Definition** to open the current definition in a query tab. Either way, execute the statement to apply it.
 
 **Show DDL** opens the definition in a read-only tab, with **Copy**, **Export** and **Open in Editor** on it; **Copy DDL** puts the same statement straight on the clipboard. Both stay available on a read-only connection, where **Edit View Definition** is hidden.
 
 A materialized view holds stored rows, so refreshing it is a server operation. Right-click one and choose **Refresh Materialized View…**, or use **Database > Refresh Materialized View…**. The confirmation names the view and warns that other sessions cannot read it while the refresh runs. **Refresh concurrently** leaves readers alone; it is available on PostgreSQL for a view that has been populated and carries a unique index on plain columns with no `WHERE` clause, and the alert says which of the two is missing when it is dimmed. Tabs showing the view reload when the refresh finishes. A plain view stores nothing, so `Cmd+R` re-runs its query instead.
 
-Comments are edited per object. Right-click a table, view, materialized view or foreign table, choose **Edit Comment…**, and type the text; saving an empty field removes the comment. Column comments live in the [Columns tab](/features/table-structure#columns-tab). Both need an engine that writes comments, which today means PostgreSQL and PGlite.
+Comments are edited per object. Right-click a table or view and choose **Edit Comment…**, or type in the **Comment** field at the top of its [Structure tab](/features/table-structure#table-comment); saving an empty field removes the comment. Column comments live in the [Columns tab](/features/table-structure#columns-tab).
+
+| Engine | Comments on |
+|--------|-------------|
+| PostgreSQL, PGlite | Tables, views, materialized views, foreign tables |
+| Redshift, SQL Server, Oracle, DuckDB, Snowflake, Trino, SAP HANA, BigQuery, Teradata | Tables and views |
+| MySQL, MariaDB, CockroachDB, Dameng, Cassandra | Tables |
+| ClickHouse 23.9 and later | Tables |
+
+Engines installed as plugins need their latest plugin version.
 
 ## Sequences and system-versioned tables
 

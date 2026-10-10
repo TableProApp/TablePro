@@ -116,6 +116,16 @@ final class HanaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         HanaSQL.escapeLiteralBody(value)
     }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        let target = (try? effectiveSchema(schema)).map { HanaSQL.qualifiedName(schema: $0, name: name) }
+            ?? HanaSQL.quoteIdentifier(name)
+        return HanaSQL.commentStatement(objectType: objectType, qualifiedName: target, comment: comment)
+    }
+
+    func createViewTemplate() -> String? {
+        "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+    }
+
     static func fetchLimit(_ rowCap: Int?) -> Int {
         guard let rowCap, rowCap > 0 else { return PluginRowLimits.emergencyMax }
         return min(rowCap, PluginRowLimits.emergencyMax)

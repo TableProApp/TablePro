@@ -112,8 +112,20 @@ extension MainContentCommandActions {
         )
     }
 
+    var canCreateView: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return CreateViewEligibility.canCreateView(
+            with: DatabaseManager.shared.driver(for: coordinator.connection.id)
+        )
+    }
+
+    var canCreateSchema: Bool {
+        guard isConnected, let coordinator else { return false }
+        return SchemaEditEligibility.canCreate(context: coordinator.schemaEditContext)
+    }
+
     func createDatabase() {
-        coordinator?.activeSheet = .createDatabase
+        coordinator?.createDatabase()
     }
 
     /// The menu-bar mirrors of the sidebar's own commands. With no clicked row to carry, both act

@@ -473,10 +473,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - View Templates
 
-    func createViewTemplate() -> String? {
-        "-- Redis does not support views"
-    }
-
     func editViewFallbackTemplate(viewName: String) -> String? {
         "-- Redis does not support views"
     }

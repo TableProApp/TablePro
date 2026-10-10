@@ -160,6 +160,7 @@ struct TableStructureView: View {
     @State var displayVersion: Int = 0
     @State var selectedRows: Set<Int> = []
     @State var actionHandler = StructureViewActionHandler()
+    @FocusState var isTableCommentFocused: Bool
 
     init(
         tableName: String,
@@ -184,6 +185,7 @@ struct TableStructureView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            tableCommentBar
             toolbar
             Divider()
             contentArea
@@ -202,6 +204,10 @@ struct TableStructureView: View {
         .onChange(of: indexes) { _ in onIndexesChanged() }
         .onChange(of: foreignKeys) { _ in onForeignKeysChanged() }
         .onChange(of: checkConstraints) { _ in onCheckConstraintsChanged() }
+        .onChange(of: session.tableComment) { _ in onTableCommentChanged() }
+        .onChange(of: isTableCommentFocused) { isFocused in
+            if !isFocused { structureChangeManager.endTableCommentRun() }
+        }
         .onChange(of: searchText) { _ in displayVersion += 1 }
         .onChange(of: displayVersion) { _ in updateGridDelegate() }
         .onAppear {
@@ -245,6 +251,7 @@ struct TableStructureView: View {
             publishFooterCapability()
         }
         .onDisappear {
+            structureChangeManager.endTableCommentRun()
             /// Every clear is guarded by identity, because appearance is not lifetime: SwiftUI does
             /// not order `onDisappear` on the outgoing view before `onAppear` on the incoming one,
             /// and an unguarded clear that lands second nils the wiring the incoming structure tab

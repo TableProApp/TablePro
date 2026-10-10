@@ -13,6 +13,8 @@ struct CreateTablePlan {
     let definition: PluginCreateTableDefinition?
     let indexes: [PluginIndexDefinition]
     let issues: [SchemaDraftIssue]
+    /// Nil writes no comment. Set after the `CREATE TABLE`, as its own statement.
+    var tableComment: String?
 
     var isReadyToCreate: Bool { definition != nil && issues.isEmpty }
 }
@@ -100,7 +102,8 @@ enum CreateTableDraftBuilder {
         return CreateTablePlan(
             definition: definition,
             indexes: resolvedIndexes.map { $0.toPlugin() },
-            issues: issues
+            issues: issues,
+            tableComment: ObjectCommentDraft.normalized(options.comment)
         )
     }
 

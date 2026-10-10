@@ -124,6 +124,9 @@ struct MenuValidationContext: Equatable {
     var canEditObjectComment = false
     var canCreateDatabase = false
     var canCreateTable = false
+    var canCreateView = false
+    var canCreateSchema = false
+    var canCreateTableFolder = false
     var canCopyObjects = false
     var canDuplicateDatabase = false
     var hasMaintenanceOperations = false
@@ -174,6 +177,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if let find = isFindCommandEnabled(selector, context: context) { return find }
         if let query = isQueryCommandEnabled(selector, context: context) { return query }
         if let chooser = isContainerCommandEnabled(selector, context: context) { return chooser }
+        if let creation = isCreationCommandEnabled(selector, context: context) { return creation }
 
         switch selector {
         case #selector(exportTables(_:)),
@@ -291,12 +295,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(delete(_:)):
             return context.isConnected && (context.canDeleteSelectedRows || context.canDropSelectedTables)
 
-        case #selector(createNewTable(_:)):
-            return context.isConnected && !context.isReadOnly && context.canCreateTable
-        case #selector(createNewView(_:)):
-            return context.isConnected && !context.isReadOnly
-        case #selector(createNewDatabase(_:)):
-            return context.canCreateDatabase
         case #selector(copyObjectsToDatabase(_:)):
             return context.canCopyObjects
         case #selector(duplicateCurrentDatabase(_:)):
@@ -363,6 +361,28 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canFilterDatabases
         case #selector(showAllDatabases(_:)):
             return context.isConnected && context.canFilterDatabases && context.hasDatabaseFilter
+        default:
+            return nil
+        }
+    }
+
+    /// The Database menu's creation commands, which the sidebar's add button also sends through the
+    /// responder chain. New Folder records local state only, so read-only does not dim it.
+    private static func isCreationCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        switch selector {
+        case #selector(createNewTable(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateTable
+        case #selector(createNewView(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateView
+        case #selector(createNewDatabase(_:)):
+            return context.canCreateDatabase
+        case #selector(createSchema(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateSchema
+        case #selector(createTableFolder(_:)):
+            return context.isConnected && context.canCreateTableFolder
         default:
             return nil
         }
@@ -654,6 +674,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             canEditObjectComment: actions.canEditObjectComment,
             canCreateDatabase: actions.canCreateDatabase,
             canCreateTable: actions.canCreateTable,
+            canCreateView: actions.canCreateView,
+            canCreateSchema: actions.canCreateSchema,
+            canCreateTableFolder: canCreateTableFolder,
             canCopyObjects: actions.canCopyObjects,
             canDuplicateDatabase: actions.canDuplicateDatabase,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,

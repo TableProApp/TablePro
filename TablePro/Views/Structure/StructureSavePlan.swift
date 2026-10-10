@@ -27,6 +27,7 @@ internal extension StructureEditingSession {
             return .alter(
                 try await DatabaseManager.shared.schemaChangeStatements(
                     tableName: tableName,
+                    objectKind: objectKind,
                     changes: changes,
                     scope: scope
                 )

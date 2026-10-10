@@ -57,7 +57,7 @@ internal extension SchemaChange {
             return .modifyCheckConstraint(old: old.withoutIdentity(), new: new.withoutIdentity())
         case .deleteCheckConstraint(let constraint):
             return .deleteCheckConstraint(constraint.withoutIdentity())
-        case .modifyPrimaryKey:
+        case .modifyPrimaryKey, .modifyTableComment:
             return self
         }
     }

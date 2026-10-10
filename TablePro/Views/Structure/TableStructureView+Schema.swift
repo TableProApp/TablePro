@@ -40,7 +40,7 @@ extension TableStructureView {
     func refreshAfterApply() async {
         isReloadingAfterSave = true
         await reloadCoreTabs()
-        loadSchemaForEditing()
+        adoptFetchedBaseline()
         await loadTabDataIfNeeded(selectedTab)
 
         /// Save resets the manager (pendingChanges cleared, working state refetched from the

@@ -35,6 +35,12 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
         let clickedRef = clicked.flatMap(DatabaseTreeSelection.tableRef)
         let settings = AppSettingsManager.shared.general
         let selected = Set(selectedRefs())
+        let creation = SidebarCreationFacts.resolve(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            offersBrowsedFolders: offersBrowsedFolders,
+            activeDatabase: activeDatabase
+        )
         return DatabaseTreeMenuContext(
             clicked: clicked?.kind,
             selectedTables: selected,
@@ -105,10 +111,12 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             ),
             canBackUp: backupIsAvailable(),
             canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil,
-            canCreateTable: CreateTableEligibility.canCreateTable(with: DatabaseManager.shared.driver(for: connectionId)),
+            canCreateTable: creation.canCreateTable,
+            canCreateView: creation.canCreateView,
+            canCreateDatabase: creation.supportsCreateDatabase,
             objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
-            offersBrowsedFolders: rootShape == .flat && viewModel != nil,
+            offersBrowsedFolders: creation.offersBrowsedFolders,
             canShowAllTables: mainCoordinator?.allTablesListing() != nil
         )
     }

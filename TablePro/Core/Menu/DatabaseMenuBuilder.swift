@@ -51,6 +51,10 @@ enum DatabaseMenuBuilder {
                 String(localized: "New View…"),
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "New Folder"),
+                action: #selector(MainSplitViewController.createTableFolder(_:))
+            ),
             MenuItemFactory.separator,
             /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable
             /// from the keyboard. The menu acts on the database being browsed, which is what a

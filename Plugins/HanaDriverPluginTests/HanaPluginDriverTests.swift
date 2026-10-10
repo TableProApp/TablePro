@@ -60,6 +60,31 @@ final class HanaPluginDriverTests: XCTestCase {
         XCTAssertEqual(driver.escapeStringLiteral("a'\u{0301}\0"), "a''\u{0301}")
     }
 
+    func testObjectCommentStatementResolvesTheSchemaWithoutThrowing() {
+        let configured = HanaPluginDriver(config: config(database: "APP"), session: HanaFakeSession())
+        XCTAssertEqual(
+            configured.objectCommentStatement(name: "ORDERS", objectType: "TABLE", schema: nil, comment: "x"),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS N'x'"
+        )
+        XCTAssertEqual(
+            configured.objectCommentStatement(name: "V", objectType: "VIEW", schema: "SALES", comment: nil),
+            "COMMENT ON VIEW \"SALES\".\"V\" IS NULL"
+        )
+        XCTAssertNil(configured.objectCommentStatement(name: "t", objectType: "SEQUENCE", schema: "s", comment: nil))
+
+        let unscoped = HanaPluginDriver(config: config(database: ""), session: HanaFakeSession())
+        XCTAssertEqual(
+            unscoped.objectCommentStatement(name: "T", objectType: "TABLE", schema: nil, comment: nil),
+            "COMMENT ON TABLE \"T\" IS NULL"
+        )
+    }
+
+    func testCreateViewTemplateIsACreateViewSkeleton() throws {
+        let driver = HanaPluginDriver(config: config(), session: HanaFakeSession())
+        let template = try XCTUnwrap(driver.createViewTemplate())
+        XCTAssertTrue(template.hasPrefix("CREATE VIEW view_name AS\nSELECT"))
+    }
+
     func testConnectSendsTheConfiguredSettingsAndKeepsTheConfiguredSchema() async throws {
         let session = HanaFakeSession()
         let driver = HanaPluginDriver(

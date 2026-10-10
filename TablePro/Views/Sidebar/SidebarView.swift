@@ -193,22 +193,22 @@ struct SidebarView: View {
 
     // MARK: - Footer
 
-    /// The schema picker belongs to the flat table list alone, and the support link belongs to
-    /// anyone without a license, so the bar draws when either has something to put in it.
-    private var showsSchemaPicker: Bool {
-        supportsSchemaFooter && sidebarState.selectedSidebarTab == .tables
-    }
-
+    /// The Tables tab's bar. Favorites draws its own, because its commands belong to that view.
     @ViewBuilder
     private var sidebarFooter: some View {
-        if showsSchemaPicker || licenseManager.supportAudience == .prospect {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 8) {
-                    SupportPromptLink()
-                        .font(.caption)
-                    Spacer()
-                    if showsSchemaPicker {
+        if sidebarState.selectedSidebarTab == .tables {
+            let offersCreation = SidebarCreationFacts.offersAnyCreation(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                offersBrowsedFolders: rootShape == .flat
+            )
+            if offersCreation || supportsSchemaFooter || licenseManager.supportAudience == .prospect {
+                SidebarFooterBar {
+                    if offersCreation {
+                        SidebarAddButton(sections: { creationSections() }, isEnabled: isConnected)
+                    }
+                } trailing: {
+                    if supportsSchemaFooter {
                         SchemaPickerControl(
                             connectionId: connectionId,
                             databaseType: viewModel.databaseType,
@@ -216,10 +216,21 @@ struct SidebarView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
             }
         }
+    }
+
+    // Built when the menu opens, so the driver probes stay off the redraw path.
+    private func creationSections() -> [DatabaseTreeMenuSection] {
+        DatabaseTreeMenuSpec.creationSections(
+            SidebarCreationFacts.resolve(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                offersBrowsedFolders: rootShape == .flat,
+                activeDatabase: activeDatabase
+            ),
+            hidesDatabaseWrites: false
+        )
     }
 
     // MARK: - Tables Content

@@ -100,6 +100,10 @@ private final class SavePlanDriver: SavePlanBaseDriver, PluginDatabaseDriver, @u
         "fingerprint"
     }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        "COMMENT ON \(objectType) \"\(schema ?? "")\".\"\(name)\" IS '\(comment ?? "")'"
+    }
+
     private func qualified(_ table: String) -> String {
         guard let schema, !schema.isEmpty else { return "\"\(table)\"" }
         return "\"\(schema)\".\"\(table)\""
@@ -242,6 +246,45 @@ struct StructureSavePlanTests {
         #expect(plan.displayStatements == ["ALTER TABLE \"reporting\".\"orders\" ADD COLUMN \"notes\" TEXT;"])
         #expect(sessionDriver.executedQueries.isEmpty)
         #expect(pooled.currentSchema == "reporting")
+    }
+
+    @Test("A staged comment is composed last, naming the tab's schema")
+    func commentIsComposedLastOnTheTabSchema() async throws {
+        let (connection, _) = Self.inject(type: .postgresql, sessionSchema: "public")
+        defer { Self.tearDown(connection) }
+        let session = TestFixtures.makeStructureSession(
+            connection: connection, database: "shop", schema: "reporting", table: "orders"
+        )
+        _ = try await Self.seedPooledDriver(connection, scope: session.scope)
+
+        let plan = try await session.stagedSavePlan(for: [
+            .modifyTableComment(old: nil, new: "Customer orders"),
+            Self.addColumn()
+        ])
+
+        #expect(plan.displayStatements == [
+            "ALTER TABLE \"reporting\".\"orders\" ADD COLUMN \"notes\" TEXT;",
+            "COMMENT ON TABLE \"reporting\".\"orders\" IS 'Customer orders';"
+        ])
+    }
+
+    @Test("A view's comment is composed for a VIEW")
+    func viewCommentNamesTheViewKind() async throws {
+        let (connection, _) = Self.inject(type: .postgresql, sessionSchema: "public")
+        defer { Self.tearDown(connection) }
+        let session = StructureEditingSession(
+            identity: "shop.reporting.recent",
+            connection: connection,
+            databaseName: "shop",
+            schemaName: "reporting",
+            tableName: "recent",
+            objectKind: .view
+        )
+        _ = try await Self.seedPooledDriver(connection, scope: session.scope)
+
+        let plan = try await session.stagedSavePlan(for: [.modifyTableComment(old: "Old", new: nil)])
+
+        #expect(plan.displayStatements == ["COMMENT ON VIEW \"reporting\".\"recent\" IS '';"])
     }
 
     @Test("An engine with one connection composes on the session driver after pinning it to the tab's schema")

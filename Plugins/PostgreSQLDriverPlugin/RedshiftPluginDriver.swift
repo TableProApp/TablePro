@@ -16,6 +16,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private let connectedDatabase: String
 
+    private let externalSchemaLock = NSLock()
     private var externalSchemaCache: Set<String>?
 
     /// Redshift forked PostgreSQL at 8.0.2 and `aclexplode` arrived in 8.4, so the schema ACL is
@@ -56,7 +57,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private func probeExternalSchemas() async {
         do {
             let result = try await execute(query: RedshiftExternalSchemaQueries.listExternalSchemaNames)
-            externalSchemaCache = Set(result.rows.compactMap { $0.first?.asText })
+            let names = Set(result.rows.compactMap { $0.first?.asText })
+            externalSchemaLock.withLock { externalSchemaCache = names }
         } catch {
             Self.logger.warning(
                 "Could not read svv_external_schemas; external schemas stay unresolved: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
@@ -65,11 +67,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchExternalSchemaNames() async throws -> Set<String> {
-        externalSchemaCache ?? []
+        externalSchemaLock.withLock { externalSchemaCache } ?? []
     }
 
+    // Also read on the main actor, while a probe may be writing the cache.
     private func isExternalSchema(_ schema: String) -> Bool {
-        externalSchemaCache?.contains(schema) ?? false
+        externalSchemaLock.withLock { externalSchemaCache }?.contains(schema) ?? false
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
@@ -444,6 +447,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         guard !isExternalSchema(resolvedSchema) else {
             return PluginTableMetadata(tableName: table, engine: "Redshift External")
         }
+        let comment = try await fetchRelationComment(table: table, schema: resolvedSchema)
         let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let query = """
@@ -459,7 +463,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
-            return PluginTableMetadata(tableName: table)
+            return PluginTableMetadata(tableName: table, comment: comment)
         }
 
         let rowCount: Int64? = {
@@ -475,8 +479,27 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             dataSize: totalSize,
             totalSize: totalSize,
             rowCount: rowCount,
+            comment: comment,
             engine: "Redshift"
         )
+    }
+
+    // COMMENT ON takes TABLE and VIEW, never an external table:
+    // https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        let resolvedSchema = schema ?? core.currentSchema
+        guard !isExternalSchema(resolvedSchema) else { return nil }
+        return PostgreSQLRelationSQL.commentStatement(
+            name: name,
+            schema: resolvedSchema,
+            objectType: objectType,
+            comment: comment,
+            supportedKeywords: ["TABLE", "VIEW"]
+        )
+    }
+
+    func createViewTemplate() -> String? {
+        "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
     }
 
     func fetchDatabases() async throws -> [String] {

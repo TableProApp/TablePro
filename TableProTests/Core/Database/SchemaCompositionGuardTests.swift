@@ -21,9 +21,12 @@ struct SchemaCompositionGuardTests {
         "generateCreateTableStatements("
     ]
 
+    /// `CreateTableStatementComposer` is reached only through the scoped lease in
+    /// `DatabaseManager+SchemaComposition.swift`.
     private static let scopedComposers: Set<String> = [
         "DatabaseManager+SchemaComposition.swift",
-        "StructureTableRebuildHandler.swift"
+        "StructureTableRebuildHandler.swift",
+        "CreateTableStatementComposer.swift"
     ]
 
     private static let knownUnscopedComposers: Set<String> = [

@@ -1264,6 +1264,15 @@ internal final class MainSplitViewController: NSSplitViewController {
         navigationSidebar.objectBrowser.hasObjectList
     }
 
+    @objc func createTableFolder(_ sender: Any?) {
+        expandSidebarIfCollapsed()
+        navigationSidebar.objectBrowser.createBrowsedTableFolder()
+    }
+
+    var canCreateTableFolder: Bool {
+        navigationSidebar?.objectBrowser.canCreateBrowsedTableFolder ?? false
+    }
+
     /// Which of the selected connection's two sidebar trees the column is drawing.
     var shownSidebarPane: NSViewController? {
         navigationSidebar?.objectBrowser.shownPane

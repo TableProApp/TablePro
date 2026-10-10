@@ -54,6 +54,18 @@ struct MenuValidationCoverageTests {
         )
     }
 
+    // The Schema submenu is filled when it opens, so the walk above never sees New Schema.
+    @Test("New Schema is decided rather than left enabled by default")
+    func newSchemaIsDecided() {
+        let selector = #selector(MainSplitViewController.createSchema(_:))
+        #expect(MainSplitViewController.resolvedEnablement(selector, context: MenuValidationContext()) == false)
+
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.canCreateSchema = true
+        #expect(MainSplitViewController.resolvedEnablement(selector, context: context) == true)
+    }
+
     @Test("Clear Selection needs a connection rather than merely a window")
     func clearSelectionNeedsAConnection() {
         let selector = #selector(MainSplitViewController.clearSelection(_:))

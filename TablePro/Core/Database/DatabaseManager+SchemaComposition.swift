@@ -26,6 +26,7 @@ extension DatabaseManager {
     /// engine needs it, and can refuse the save or put statements ahead of it.
     func schemaChangeStatements(
         tableName: String,
+        objectKind: TableInfo.TableType,
         changes: [SchemaChange],
         scope: DatabaseScope
     ) async throws -> SchemaChangeScript {
@@ -37,6 +38,8 @@ extension DatabaseManager {
             )
             let generator = SchemaStatementGenerator(
                 tableName: tableName,
+                schema: scope.schema,
+                objectType: objectKind,
                 primaryKeyConstraintName: constraintName,
                 pluginDriver: pluginDriver
             )
@@ -73,9 +76,10 @@ extension DatabaseManager {
         guard plan.definition != nil else {
             return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
         }
+        let schema = scope.schema
         return try await withSchemaComposer(scope: scope, route: schemaChangeRoute(for: scope)) { _, pluginDriver in
             await MainActor.run {
-                CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver)
+                CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver, schema: schema)
             }
         }
     }

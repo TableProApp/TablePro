@@ -14,17 +14,36 @@ import Foundation
 /// have the app read it. The rule and its measurement live in `OracleDictionary` in TableProOracleCore, which this file
 /// cannot import: it compiles into the test target, which does not link that package, so the prefix is written out here.
 public enum OracleObjectQueries {
+    /// `.literal` matches by code unit: the default matches grapheme clusters and skips a quote that
+    /// a combining mark follows, which then ends the literal early.
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
-    /// Standalone procedures and functions only. A packaged routine is addressed through its
-    /// package, which is a different object with a different DDL call, so listing it here would
-    /// produce rows whose source cannot be fetched.
+    /// Oracle's grammar is `COMMENT ON TABLE [schema.]{table | view}`: there is no `VIEW` keyword.
+    public static func commentStatement(qualifiedName: String, objectType: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased() {
+        case "TABLE", "PARTITIONED TABLE", "VIEW": keyword = "TABLE"
+        case "MATERIALIZED VIEW": keyword = "MATERIALIZED VIEW"
+        default: return nil
+        }
+        return "COMMENT ON \(keyword) \(qualifiedName) IS \(commentLiteral(comment))"
+    }
+
+    public static func columnCommentStatement(qualifiedTable: String, column: String, comment: String?) -> String {
+        "COMMENT ON COLUMN \(qualifiedTable).\(quoteIdentifier(column)) IS \(commentLiteral(comment))"
+    }
+
+    /// Oracle removes a comment only when it is set to the empty string.
+    private static func commentLiteral(_ comment: String?) -> String {
+        "'\(escapeLiteral((comment ?? "").replacingOccurrences(of: "\0", with: "", options: .literal)))'"
+    }
+
     /// Standalone procedures and functions only. A packaged routine is addressed through its
     /// package, which is a different object with a different DDL call, so listing it here would
     /// produce rows whose source cannot be fetched.

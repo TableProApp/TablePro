@@ -352,7 +352,16 @@ extension MSSQLPluginDriver {
                 comment: comment
             )
         }
-        return PluginTableMetadata(tableName: table)
+        let viewComment = await viewDescription(view: table, schema: schema)
+        return PluginTableMetadata(tableName: table, comment: viewComment)
+    }
+
+    private func viewDescription(view: String, schema: String?) async -> String? {
+        let sql = MSSQLTableDefinitionSQL.descriptionQuery(
+            schema: effectiveSchema(schema), objectKind: "VIEW", object: view
+        )
+        guard let result = try? await execute(query: sql) else { return nil }
+        return result.rows.first?.first?.asText?.nilIfEmpty
     }
 
     func fetchDatabases() async throws -> [String] {

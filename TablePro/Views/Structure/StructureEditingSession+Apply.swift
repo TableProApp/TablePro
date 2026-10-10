@@ -143,6 +143,7 @@ internal extension StructureEditingSession {
             Self.logger.fault("A structure save landed over staged edits it did not write; they stay staged")
             return .refused
         }
+        adoptWrittenTableComment(from: hold.changes)
         markEveryTabStale()
         hasLoaded = false
         lastAppliedAt = Date()

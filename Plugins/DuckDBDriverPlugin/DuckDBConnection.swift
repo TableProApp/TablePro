@@ -399,7 +399,7 @@ actor DuckDBConnectionActor {
         query: String, parameters: [PluginCellValue], connection: duckdb_connection
     ) throws -> (result: duckdb_result, schema: ColumnSchema) {
         var statement: duckdb_prepared_statement?
-        let projection = resolveProjection(query: query, connection: connection, statement: &statement)
+        let projection = try resolveProjection(query: query, connection: connection, statement: &statement)
         defer { duckdb_destroy_prepare(&statement) }
 
         if case .projected(let sql, let schema) = projection,
@@ -435,12 +435,17 @@ actor DuckDBConnectionActor {
         return projected
     }
 
+    /// A text holding more than one statement fails to prepare, and it must stay failed: running it
+    /// through `duckdb_query` would let a crafted name carry a second statement.
     private static func resolveProjection(
         query: String, connection: duckdb_connection, statement: inout duckdb_prepared_statement?
-    ) -> ResultProjection {
-        let state = duckdb_prepare(connection, query, &statement)
-
-        guard state != DuckDBError, let stmt = statement else { return .unprojected }
+    ) throws -> ResultProjection {
+        guard duckdb_prepare(connection, query, &statement) != DuckDBError, let stmt = statement else {
+            let message = statement.flatMap { duckdb_prepare_error($0) }.map { String(cString: $0) }
+                ?? "Failed to prepare statement"
+            duckdb_destroy_prepare(&statement)
+            throw DuckDBPluginError.queryFailed(message)
+        }
         guard duckdb_prepared_statement_type(stmt) == DUCKDB_STATEMENT_TYPE_SELECT else { return .unprojected }
 
         let columnCount = duckdb_prepared_statement_column_count(stmt)

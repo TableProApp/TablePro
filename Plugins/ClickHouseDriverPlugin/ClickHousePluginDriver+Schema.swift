@@ -233,8 +233,7 @@ extension ClickHousePluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let escapedTable = table.replacingOccurrences(of: "`", with: "``")
-        let sql = "SHOW CREATE TABLE `\(escapedTable)`"
+        let sql = "SHOW CREATE TABLE \(clickHouseQuotedIdentifier(table))"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.asText ?? ""
     }
@@ -363,13 +362,11 @@ extension ClickHousePluginDriver {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let escapedName = request.name.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "CREATE DATABASE `\(escapedName)`")
+        _ = try await execute(query: "CREATE DATABASE \(clickHouseQuotedIdentifier(request.name))")
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
+        _ = try await execute(query: "DROP DATABASE \(clickHouseQuotedIdentifier(name))")
     }
 
     /// Both sides are qualified with the same database, so this renames in place. Qualifying them

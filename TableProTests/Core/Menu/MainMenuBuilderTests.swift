@@ -585,21 +585,65 @@ struct MainMenuValidationTests {
         context.hasTableSelection = true
         context.canTruncateSelectedTables = true
         context.canCreateTable = true
+        context.canCreateView = true
+        context.canCreateSchema = true
         context.isReadOnly = true
         #expect(!enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
     }
 
     @Test("New Table is disabled for an engine that cannot create a table")
     func newTableFollowsTheDriver() {
         var context = MenuValidationContext()
         context.isConnected = true
+        context.canCreateView = true
         #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.createNewView(_:)), context))
 
         context.canCreateTable = true
         #expect(enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+    }
+
+    @Test("New View follows the driver's template")
+    func newViewFollowsTheTemplate() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.canCreateView = true
+        #expect(enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.createNewView(_:)), context))
+    }
+
+    @Test("New Schema needs an engine that creates schemas")
+    func newSchemaNeedsTheCapability() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+
+        context.canCreateSchema = true
+        #expect(enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+
+        context.isConnected = false
+        #expect(!enabled(#selector(MainSplitViewController.createSchema(_:)), context))
+    }
+
+    @Test("New Folder needs the flat list on screen and ignores read-only")
+    func newFolderNeedsTheFlatList() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
+
+        context.canCreateTableFolder = true
+        #expect(enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
+
+        context.isReadOnly = true
+        #expect(enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
     }
 
     /// A view is a valid selection and a hopeless truncate. The menu bar used to ask only whether
@@ -705,6 +749,9 @@ struct MainMenuValidationTests {
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true
         context.canCreateTable = true
+        context.canCreateView = true
+        context.canCreateSchema = true
+        context.canCreateTableFolder = true
         context.canInsertDocument = true
         context.canEditDocument = true
         return context
@@ -731,6 +778,9 @@ struct MainMenuValidationTests {
             #selector(MainSplitViewController.explainQuery(_:)),
             #selector(MainSplitViewController.previewSQL(_:)),
             #selector(MainSplitViewController.createNewTable(_:)),
+            #selector(MainSplitViewController.createNewView(_:)),
+            #selector(MainSplitViewController.createSchema(_:)),
+            #selector(MainSplitViewController.createTableFolder(_:)),
             #selector(MainSplitViewController.openContainerSwitcher(_:)),
             #selector(MainSplitViewController.showServerDashboard(_:)),
             #selector(MainSplitViewController.showUsersAndRoles(_:)),
@@ -1035,6 +1085,18 @@ struct DatabaseMenuCommandTests {
         let submenu = container?.submenu
         #expect(submenu?.delegate != nil, "The current environment must be read on menuNeedsUpdate")
         #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
+    }
+
+    @Test("New Folder follows New View and routes through the responder chain")
+    func newFolderFollowsNewView() throws {
+        let items = databaseMenu()?.items ?? []
+        let viewIndex = try #require(items.firstIndex { $0.title == String(localized: "New View…") })
+        try #require(viewIndex + 1 < items.count)
+        let folder = items[viewIndex + 1]
+
+        #expect(folder.title == String(localized: "New Folder"))
+        #expect(folder.action == #selector(MainSplitViewController.createTableFolder(_:)))
+        #expect(folder.target == nil)
     }
 
     @Test("Disconnect and Reconnect route through the responder chain")
