@@ -206,8 +206,8 @@ python3 .claude/skills/release/scripts/changed-plugins.py
 
 Slugs, tag names and targets come from `.github/plugin-registry.json`, so nothing is mapped by hand.
 `own` counts commits in the plugin's source paths (its folder, plus a package or `Native/` bridge it
-builds from), `kit` counts PluginKit commits. Skip `bundled` rows: their changes ship inside the app
-(to reach users on an older app, use the shipped-app command below). A row with only `kit` commits
+builds from), `kit` counts PluginKit commits. Skip `bundled` rows: their changes ship inside the app,
+which never applies a registry update to a bundled plugin. A row with only `kit` commits
 needs a release only after a breaking bump, through `release-all-plugins.sh`.
 
 Show the user what changed and ask before tagging, suggesting a patch bump from the last tag. Tag
