@@ -20,25 +20,22 @@ public enum MCPRateLimitDimension: String, Sendable, Equatable, Hashable, CaseIt
     case pairingExchange
 }
 
+/// Failures are keyed by address only: a guessed bearer matches no stored token, so there is no token to key on.
 public struct MCPRateLimitKey: Sendable, Equatable, Hashable {
-    public let subject: MCPRateLimitSubject
+    public let address: MCPClientAddress
     public let dimension: MCPRateLimitDimension
 
-    public init(subject: MCPRateLimitSubject, dimension: MCPRateLimitDimension) {
-        self.subject = subject
+    private init(address: MCPClientAddress, dimension: MCPRateLimitDimension) {
+        self.address = address
         self.dimension = dimension
     }
 
     public static func authFailure(address: MCPClientAddress) -> Self {
-        Self(subject: .address(address), dimension: .authFailure)
-    }
-
-    public static func authFailure(tokenId: UUID) -> Self {
-        Self(subject: .token(tokenId), dimension: .authFailure)
+        Self(address: address, dimension: .authFailure)
     }
 
     public static func pairingExchange(address: MCPClientAddress) -> Self {
-        Self(subject: .address(address), dimension: .pairingExchange)
+        Self(address: address, dimension: .pairingExchange)
     }
 }
 
@@ -242,7 +239,7 @@ public actor MCPRateLimiter {
     }
 
     private static func describe(_ key: MCPRateLimitKey) -> String {
-        "\(key.dimension.rawValue)/\(key.subject.describedValue)"
+        "\(key.dimension.rawValue)/\(MCPRateLimitSubject.address(key.address).describedValue)"
     }
 
     private static func seconds(of duration: Duration) -> TimeInterval {

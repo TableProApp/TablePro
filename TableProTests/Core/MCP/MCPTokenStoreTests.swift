@@ -260,6 +260,85 @@ struct MCPTokenStoreTests {
         #expect(await store.activeTokens().isEmpty)
     }
 
+    @Test("An expired token is refused as expired, not unknown, and its last use is not stamped")
+    func expiredTokenIsRefusedAsExpired() async throws {
+        let store = makeStore()
+        let result = try await store.generate(
+            name: "expired",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(-1),
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.validateBearerToken(result.plaintext) == .failure(.expired))
+        #expect(await store.token(id: result.token.id)?.lastUsedAt == nil)
+    }
+
+    @Test("A revoked token is refused as revoked, not unknown, and its last use is not stamped")
+    func revokedTokenIsRefusedAsRevoked() async throws {
+        let store = makeStore()
+        let result = try await store.generate(
+            name: "revoked",
+            permissions: .readWrite,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        await store.revoke(tokenId: result.token.id)
+
+        #expect(await store.validateBearerToken(result.plaintext) == .failure(.revoked))
+        #expect(await store.token(id: result.token.id)?.lastUsedAt == nil)
+    }
+
+    @Test("An expired token from the store reaches the client as -33008 with the token expired challenge")
+    func expiredTokenReachesTheClientAsExpired() async throws {
+        let store = makeStore()
+        let result = try await store.generate(
+            name: "expired",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: Date.now.addingTimeInterval(-1),
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+        let authenticator = MCPBearerTokenAuthenticator(
+            tokenStore: store,
+            rateLimiter: MCPRateLimiter(clock: MCPTestClock())
+        )
+
+        let decision = await authenticator.authenticate(
+            authorizationHeader: "Bearer \(result.plaintext)",
+            clientAddress: .loopback
+        )
+
+        guard case .deny(let reason) = decision else {
+            Issue.record("Expected a denial, got \(decision)")
+            return
+        }
+        #expect(reason.asProtocolError.code == JsonRpcErrorCode.expired)
+        #expect(reason.challenge?.headerValue.contains("error_description=\"token expired\"") == true)
+    }
+
+    @Test("A string that matches no stored token is refused as unknown")
+    func unmatchedBearerIsUnknown() async throws {
+        let store = makeStore()
+        let result = try await store.generate(
+            name: "valid",
+            permissions: .readOnly,
+            connectionAccess: .all,
+            expiresAt: nil,
+            isBridgeCredential: false,
+            extraScopes: []
+        )
+
+        #expect(await store.validateBearerToken("tp_wrong") == .failure(.unknownToken))
+        #expect(await store.validateBearerToken(result.token.prefix) == .failure(.unknownToken))
+    }
+
     @Test("Validating stamps the last use onto the token")
     func validationStampsLastUse() async throws {
         let store = makeStore()
