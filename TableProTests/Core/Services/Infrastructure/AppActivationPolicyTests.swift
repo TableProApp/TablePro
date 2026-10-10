@@ -33,6 +33,8 @@ struct AppActivationPolicyTests {
         #expect(LaunchIntent.openDataFile(URL(fileURLWithPath: "/tmp/rows.csv")).impliesUserInterface)
         #expect(LaunchIntent.openConnectionShare(URL(string: "tablepro://share")!).impliesUserInterface)
         #expect(LaunchIntent.installPlugin(URL(string: "tablepro://plugin")!).impliesUserInterface)
+        #expect(LaunchIntent.openSettings(.mcp).impliesUserInterface)
+        #expect(LaunchIntent.openSettings(nil).impliesUserInterface)
         #expect(
             LaunchIntent.openTable(
                 connectionId: UUID(), database: nil, schema: nil, table: "users", isView: false
@@ -80,6 +82,15 @@ struct AppActivationPolicyTests {
         #expect(
             AppActivationPolicyDecision.origin(
                 adopting: [.openConnection(UUID())], current: .machine, isLaunching: false
+            ) == .user
+        )
+    }
+
+    @Test("A launch from a settings link is the person's own")
+    func settingsLinkLaunchIsUser() {
+        #expect(
+            AppActivationPolicyDecision.origin(
+                adopting: [.openSettings(.mcp)], current: .machine, isLaunching: true
             ) == .user
         )
     }

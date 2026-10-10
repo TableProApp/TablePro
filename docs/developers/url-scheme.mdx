@@ -18,6 +18,7 @@ Raycast extension with `open()` from `@raycast/api`.
 | [`import?…`](#import-a-connection) | A review sheet that saves a new connection |
 | [`integrations/pair?…`](#start-pairing) | The pairing approval sheet |
 | [`integrations/start-mcp`](#lazy-start-the-mcp-server) | Nothing. Starts the MCP server and returns |
+| [`settings/<pane>`](#open-a-settings-pane) | Settings on that pane, or on the last-used pane |
 
 ## Connection IDs are UUIDs
 
@@ -156,11 +157,45 @@ and `type` are required; the rest of the connection form maps to query parameter
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
 ```
 
+## Open a settings pane
+
+```text
+tablepro://settings
+tablepro://settings/<pane>
+```
+
+The bare link opens Settings on the last-used pane, the same as `Cmd+,`. With a pane id it opens that
+pane. The link only navigates and never changes a setting.
+
+| Pane | id |
+|---|---|
+| General | `general` |
+| Appearance | `appearance` |
+| Editor | `editor` |
+| Data | `data` |
+| Keyboard | `keyboard` |
+| Profiles | `profiles` |
+| Notifications | `notifications` |
+| AI | `ai` |
+| MCP | `mcp` |
+| Plugins | `plugins` |
+| Sync | `sync` |
+| License | `license` |
+
+Ids are lowercase and matched exactly, and they stay the same when a pane is renamed. An unknown id
+opens the last-used pane with no error, so a link to a pane added in a later version still opens
+Settings on an older one. Path segments and query items after the id are ignored.
+
+```bash
+open "tablepro://settings/mcp"
+```
+
 ## On iPhone and iPad
 
 The iOS app answers two of these paths: `connect/<uuid>` opens the connection, and
 `connect/<uuid>/table/<table-name>` opens it on that table. Any other path under a connection, such as
-`database/…` or `query`, opens the connection alone. `import` and `integrations` links do nothing.
+`database/…` or `query`, opens the connection alone. `import`, `integrations` and `settings` links do
+nothing.
 
 ## Errors
 

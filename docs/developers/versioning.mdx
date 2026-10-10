@@ -38,6 +38,8 @@ Within a major TablePro version every covered surface is additive only. Per surf
 ### Links and database URLs
 
 - A `tablepro://` path or parameter is never removed and never changes meaning.
+- A [settings pane id](/developers/url-scheme#open-a-settings-pane) is never removed and keeps
+  opening the same pane, whatever the pane is called.
 - On iPhone and iPad, `connect/<uuid>` and `connect/<uuid>/table/<name>` keep working. Any other
   path under a connection opens the connection alone.
 - A scheme on [Connection URLs](/connections/urls) keeps opening the same database type, and a
