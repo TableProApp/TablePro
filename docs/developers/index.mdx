@@ -63,8 +63,9 @@ Check the version before relying on a newer surface: `CFBundleShortVersionString
 or the `serverInfo` version once the MCP server answers.
 
 Read nothing the app writes to disk: not `~/Library/Application Support/TablePro`, not the
-`com.TablePro` preferences, not its Keychain items. None of them is under the contract, and
-[Versioning](/developers/versioning#what-is-not-under-the-contract) names what to call instead.
+`com.TablePro` preferences, not its Keychain items. None of them is under the contract,
+[Versioning](/developers/versioning#what-is-not-under-the-contract) names what to call instead, and
+the directory [refuses](/developers/listing-policy#rules) an integration that reads them.
 
 ## What stays stable
 
@@ -87,8 +88,18 @@ policy does not: it governs the assistant, not other apps.
 
 A database URL that matches no saved connection opens at **Silent** unless it sets
 `safeModeLevel`: `1` asks before each write and `2` refuses writes. A URL that matches a saved
-connection runs at that connection's own level and ignores the parameter.
+connection runs at that connection's own level and ignores the parameter. A listed integration may
+lower Safe Mode, such as with `safeModeLevel=0`, only for local development databases, and its
+directory page says so.
 
 Each request lands in the activity log with the token behind it, and a statement is stored as a
 SHA-256 digest rather than as text. Open **Settings > MCP** and click **View Activity** to
 read it.
+
+## Publish it
+
+Listed integrations appear at [tablepro.app/integrations](https://tablepro.app/integrations), and
+each one is a folder in [TableProApp/integrations](https://github.com/TableProApp/integrations).
+[Submit to the directory](/developers/submit) walks through the pull request, the
+[listing policy](/developers/listing-policy) is what review holds the entry to, and
+[Review process](/developers/review) covers the time from pull request to listing.

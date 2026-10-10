@@ -405,6 +405,14 @@
               "developers/tokens",
               "developers/versioning"
             ]
+          },
+          {
+            "group": "Publish",
+            "pages": [
+              "developers/submit",
+              "developers/listing-policy",
+              "developers/review"
+            ]
           }
         ]
       },

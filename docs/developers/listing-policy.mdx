@@ -1,0 +1,64 @@
+---
+title: Listing policy
+description: What gets an integration listed, labeled, archived or refused on tablepro.app/integrations
+---
+
+Review applies [POLICY.md](https://github.com/TableProApp/integrations/blob/main/POLICY.md) in the
+registry, and where this summary differs from it, POLICY.md wins. A listing says the integration
+worked with TablePro and met the policy when it was reviewed. It is not an endorsement or a security
+audit, and support comes from the integration's author, not from TablePro.
+
+## Labels
+
+| Label | Built by | Assigned by |
+| --- | --- | --- |
+| Official | TablePro | A maintainer |
+| Partner | The company that makes the other product, verified through its GitHub organization or a DNS record on its domain | A maintainer, after that check |
+| Community | Anyone else | The default for every new entry |
+
+Every entry also shows **By** and its publisher, and a closed-source one shows **Closed source**.
+
+**Archived** is a status, not a label. An archived entry leaves the directory list and search, and
+its page stays with a notice. An author who fixes the problem can ask for it to return.
+
+## Rules
+
+| Rule | What it asks |
+| --- | --- |
+| Documented interfaces | Only the surfaces in [these developer docs](/developers): the `tablepro://` URL scheme, database URLs, the `tablepro` command, AppleScript, MCP, pairing and tokens, and Shortcuts. Find TablePro by bundle ID `com.TablePro`, not by path |
+| Private files | Never read, write or delete `connections.json`, `com.TablePro.plist`, `mcp-handshake.json`, TablePro's Keychain items or its SQLite databases. CI scans open-source entries for these paths, and a new entry gets no exception and no grace period |
+| Who submits | The repository owner, a member of the owning organization, or a contributor with at least a third of the top contributor's commits. Anyone else needs the owner's consent in a comment on the pull request |
+| License | An open-source entry has a `LICENSE` file with an SPDX license that matches the manifest. Closed source is allowed, and its disclosures rest on the publisher's word |
+| Name | Your product is `<Name> for TablePro`. `TablePro` alone and `TablePro for <Name>` are reserved for TablePro's own products. The entry's name in the directory leaves TablePro out, and never says official, verified or certified |
+| Icon | Your own. The TablePro app icon is refused as your icon, and a small TablePro badge in a corner of yours is fine |
+| Safe Mode | Opening connections below the user's default, such as with `safeModeLevel=0`, is allowed only for local development databases. The manifest discloses it and the entry page shows it |
+| Disclosures | What it reads and writes, whether it lowers Safe Mode, where it sends data, any account it needs, and what it costs. A wrong disclosure is a violation |
+| Popularity | No minimum stars, installs or downloads |
+
+The [brand guidelines](https://tablepro.app/brand) apply on top. [Naming your
+product](https://tablepro.app/brand#naming) lists every allowed and refused name form, and [Using
+the logo and app icon](https://tablepro.app/brand#logo-use) keeps a badge to a third of your icon's
+width. Text and image limits for the entry itself are on
+[Submit to the directory](/developers/submit#manifest-fields).
+
+## Grace periods
+
+An entry listed before the policy took effect has 60 days, counted from the day its author is
+contacted, to fix any problem with interfaces, private files, license, Safe Mode, disclosures, name
+or icon that it already had. Its page says so while the time runs. If the problem is still there
+when the 60 days end, the entry is archived.
+
+A later version of the policy gives existing entries 60 days from its effective date to meet a new
+rule.
+
+## Removal
+
+An entry is removed when its publisher asks, or at once, without contact or waiting, for malware,
+credential theft, hidden data collection or a deceptive install link. A removed slug is never used
+again, and its page answers 410 Gone. [Review process](/developers/review#report-a-listed-integration)
+says where to report one.
+
+## Your text and images
+
+Manifest text is released under CC0-1.0. Icons and screenshots stay yours, and submitting them lets
+TablePro show them in the directory and in the registry's published data.
