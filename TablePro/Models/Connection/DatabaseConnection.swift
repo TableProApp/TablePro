@@ -161,6 +161,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     var sshConfig: SSHConfiguration
     var sslConfig: SSLConfiguration
     var color: ConnectionColor
+    /// An SF Symbol the user picked to draw instead of the engine icon. Nil draws the engine icon.
+    var iconName: String?
     var tagIds: [UUID]
     var groupId: UUID?
     var sshProfileId: UUID?
@@ -299,6 +301,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         sshConfig: SSHConfiguration = SSHConfiguration(),
         sslConfig: SSLConfiguration = SSLConfiguration(),
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         tagIds: [UUID] = [],
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
@@ -340,6 +343,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
+        self.iconName = iconName
         self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
