@@ -18,15 +18,16 @@ internal struct ExternalConnectionGate {
         self.prompt = prompt ?? ExternalConnectionAlertPrompt()
     }
 
-    /// Trust covers the target, not what a link runs on it, so a link carrying a filter asks every
-    /// time and cannot be trusted from that prompt.
+    /// The trust key names neither a filter nor an SSH server, so trusting a link that carries one
+    /// would cover whatever SQL or server a later link picks. A tunnelled loopback host is not on
+    /// this Mac either.
     internal func authorize(
         _ connection: DatabaseConnection,
         scopeName: String?,
         filter: ConnectionURLFilter? = nil
     ) async -> Bool {
         let key = ExternalConnectionTrustKey(connection: connection, scopeName: scopeName)
-        let trustable = key.isLoopbackHost && filter == nil
+        let trustable = key.isLoopbackHost && !connection.sshConfig.enabled && filter == nil
         if trustable, trustStore.isTrusted(key) { return true }
 
         switch await prompt.prompt(for: connection, filter: filter, offerAlwaysAllow: trustable) {

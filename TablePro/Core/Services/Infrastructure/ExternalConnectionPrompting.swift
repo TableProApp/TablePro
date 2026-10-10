@@ -60,9 +60,12 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
                 connection.type.rawValue,
                 details
             )
-            /// `informativeText` neither scrolls nor reveals invisible characters, so a long or
-            /// disguised filter would run with part of it unseen.
-            alert.accessoryView = AlertHelper.scrollingTextAccessory(RevealedText(filter.displayText).plainText)
+            /// `informativeText` neither scrolls nor reveals invisible characters. An overlay scroller
+            /// stays hidden until scrolled, so line breaks could push SQL out of the box unnoticed.
+            let box = AlertHelper.scrollingTextAccessory(RevealedText(filter.displayText).plainText)
+            box.scrollerStyle = .legacy
+            box.autohidesScrollers = true
+            alert.accessoryView = box
         } else {
             alert.informativeText = String(
                 format: String(localized: """

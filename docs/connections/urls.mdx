@@ -220,7 +220,7 @@ When another client also handles the scheme, `open -b com.TablePro "mysql://…"
 
 Every URL opened from outside the app raises an **Open External Database Connection?** alert naming the database type, host and port, user, and database. **Connect** does not answer the Return key. Escape is the only keyboard answer, and it cancels.
 
-**Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`). A trusted link is matched on database type, host, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Remote hosts always prompt.
+**Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`). A trusted link is matched on database type, host, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Remote hosts always prompt, and so does a link through an SSH tunnel, whose database is on the SSH server.
 
 A link with a [filter](#filtering) asks every time and offers no **Always Allow**. Read the filter in the box under the target before choosing **Connect**: it runs on the table as soon as the connection opens.
 

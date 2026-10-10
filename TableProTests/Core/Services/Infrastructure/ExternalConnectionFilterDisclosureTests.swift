@@ -55,6 +55,18 @@ struct ExternalConnectionFilterDisclosureTests {
         #expect(alert.buttons.count == 2)
     }
 
+    @Test("The filter box shows a scroller whenever the filter overflows it")
+    func overflowShowsScroller() throws {
+        let padded = "id > 0" + String(repeating: "\n", count: 40) + "OR (SELECT pg_sleep(30)) IS NULL"
+        let alert = ExternalConnectionAlertPrompt.makeAlert(
+            for: connection(), filter: .condition(padded), offerAlwaysAllow: false
+        )
+        let box = try #require(alert.accessoryView as? NSScrollView)
+        #expect(box.scrollerStyle == .legacy)
+        #expect(box.autohidesScrollers)
+        #expect(shownFilter(in: alert) == padded)
+    }
+
     @Test("A link without a filter shows no filter box")
     func noFilterNoAccessory() {
         let alert = ExternalConnectionAlertPrompt.makeAlert(for: connection(), offerAlwaysAllow: true)

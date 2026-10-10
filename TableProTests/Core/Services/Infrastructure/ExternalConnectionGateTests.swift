@@ -42,6 +42,14 @@ struct ExternalConnectionGateTests {
         )
     }
 
+    private func tunnelledConnection() -> DatabaseConnection {
+        var connection = ddevConnection()
+        connection.sshConfig.enabled = true
+        connection.sshConfig.host = "bastion.example.com"
+        connection.sshConfig.username = "ops"
+        return connection
+    }
+
     private func remoteConnection() -> DatabaseConnection {
         DatabaseConnection(
             name: "Prod", host: "db.example.com", port: 3_306,
@@ -180,5 +188,26 @@ struct ExternalConnectionGateTests {
         )
 
         #expect(authorized == false)
+    }
+
+    @Test("A tunnelled link asks even when the same local target is trusted")
+    func tunnelIgnoresTrust() async throws {
+        let store = try makeStore()
+        store.trust(ExternalConnectionTrustKey(connection: ddevConnection(), scopeName: "ddev-shop"))
+        let prompt = SpyPrompt(decision: .connect)
+        let gate = ExternalConnectionGate(trustStore: store, prompt: prompt)
+
+        #expect(await gate.authorize(tunnelledConnection(), scopeName: "ddev-shop"))
+        #expect(prompt.callCount == 1)
+        #expect(prompt.offeredAlwaysAllow == false)
+    }
+
+    @Test("Answering Always Allow to a tunnelled link trusts nothing")
+    func tunnelNeverPersistsTrust() async throws {
+        let store = try makeStore()
+        let gate = ExternalConnectionGate(trustStore: store, prompt: SpyPrompt(decision: .alwaysAllow))
+
+        #expect(await gate.authorize(tunnelledConnection(), scopeName: "ddev-shop"))
+        #expect(store.entries().isEmpty)
     }
 }
