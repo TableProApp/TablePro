@@ -74,6 +74,9 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
       - ../Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
+      # through a socket.
+      - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The column default reading both apps show, plus the literal spellings it writes and the
       # version floor that says which catalog quotes its defaults. The DDL writers stay on macOS.

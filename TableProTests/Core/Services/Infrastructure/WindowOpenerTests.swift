@@ -190,6 +190,18 @@ final class WindowOpenerTests: XCTestCase {
         XCTAssertEqual(opened, [.ai])
     }
 
+    func testASettingsLinkRoutesItsPaneToThePresenter() async {
+        await LaunchIntentRouter.shared.route(.openSettings(.mcp))
+
+        XCTAssertEqual(openedSettingsPanes, [.mcp])
+    }
+
+    func testABareSettingsLinkAsksForNoPane() async {
+        await LaunchIntentRouter.shared.route(.openSettings(nil))
+
+        XCTAssertEqual(openedSettingsPanes, [SettingsPane?.none])
+    }
+
     func testCompareSyncCarriesThePrefilledSourceToThePresenter() {
         let connectionId = UUID()
 

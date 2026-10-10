@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Custom icons for connections and groups on Mac and iPhone, chosen from a searchable set of symbols and synced through iCloud. (#3309)
 - Edit Group… in the welcome window, with name, icon, color and parent group in one sheet. (#3309)
 - MySQL and MariaDB connections through a local Unix socket.
+- `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
 
 ### Changed
 
@@ -98,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The toolbar keeping a connection's old name after it was renamed while connected. (#3309)
 - The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
 - No icon for a connection to a database type no installed plugin describes. (#3309)
+- MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
 
 ### Security
 
