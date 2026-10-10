@@ -9,119 +9,84 @@ import Testing
 
 @testable import TablePro
 
-/// A bundle travels between Macs, so a profile in one has to arrive as something the receiving Mac
-/// can resolve. Names travel; ids and secrets do not.
 @MainActor
 struct CredentialProfileSharingTests {
-    @Test("A profile's password never reaches an export bundle")
-    func exportCarriesNoPassword() throws {
-        let profile = CredentialProfile(name: "Prod reader", username: "app", passwordMode: .stored)
-        let exportable = ExportableCredentialProfile(
-            name: profile.name,
-            username: profile.username,
-            passwordMode: "stored"
+    private func bundleNamingProfile(_ name: String) throws -> ConnectionBundle {
+        try ConnectionBundle(
+            appVersion: "Tests",
+            connections: [
+                BundleConnection(
+                    ref: "c1",
+                    settings: ExportableConnection(
+                        name: "Imported",
+                        host: "attacker.example.com",
+                        port: 5_432,
+                        database: "db",
+                        username: "someone",
+                        type: DatabaseType.postgresql.rawValue
+                    ),
+                    credentialProfileRef: "p1"
+                )
+            ],
+            credentialProfiles: [
+                BundleCredentialProfile(ref: "p1", name: name, username: "someone", passwordMode: .stored)
+            ]
         )
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(timeIntervalSince1970: 0),
-            appVersion: "test",
-            connections: [],
-            groups: nil,
-            tags: nil,
-            credentials: nil,
-            credentialProfiles: [exportable]
-        )
-
-        let json = try String(decoding: JSONEncoder().encode(envelope), as: UTF8.self)
-        #expect(json.contains("Prod reader"))
-        #expect(!json.contains("password\":\"" ))
     }
 
-    /// The import boundary. A bundle is written by someone else, so letting its profile name select
-    /// one of this Mac's existing profiles would let a shared file decide which of the user's own
-    /// credentials a connection signs in with, and send them to whatever host the file names.
+    @Test("A profile's password never reaches an export file")
+    func exportCarriesNoPassword() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let profile = CredentialProfile(name: "Prod reader", username: "app", passwordMode: .stored)
+        #expect(library.profiles.addProfile(profile))
+        #expect(library.profiles.savePassword("hunter2", for: profile.id))
+        var connection = DatabaseConnection(name: "Orders", host: "db.example.com", port: 5_432, type: .postgresql)
+        connection.credentialMode = .profile(id: profile.id)
+
+        let data = try await library.exporter.fileData(for: [connection], options: .connectionsOnly, passphrase: nil)
+
+        let json = try #require(String(bytes: data, encoding: .utf8))
+        #expect(json.contains("Prod reader"))
+        #expect(!json.contains("hunter2"))
+    }
+
+    /// A bundle is written by someone else, so letting its profile name select one of this Mac's
+    /// profiles would let a shared file send the user's own credentials to whatever host it names.
     @Test("A bundle's profile name never binds a connection to a profile already on this Mac")
-    func importNeverBindsToAnExistingLocalProfileByName() {
-        let exportable = ExportableConnection(
-            name: "Imported",
-            host: "attacker.example.com",
-            port: 5432,
-            database: "db",
-            username: "someone",
-            type: "PostgreSQL",
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            credentialProfileName: "Prod reader",
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
-        )
+    func importNeverBindsToAnExistingLocalProfileByName() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        #expect(library.profiles.addProfile(CredentialProfile(name: "Prod reader", username: "app")))
+        let importedId = UUID()
 
-        /// Empty, which is what a profile that was already here looks like: only profiles the
-        /// import itself created are ever offered to a connection.
-        let connection = ConnectionExportService.buildDatabaseConnection(
-            id: UUID(),
-            from: exportable,
-            name: "Imported",
-            tagIdsByName: [:],
-            groupIdsByName: [:],
-            importedProfileIds: [:]
-        )
+        let outcome = try await library.importDefaults(of: bundleNamingProfile("prod reader"), makeId: { importedId })
 
-        #expect(connection.credentialMode == .inline)
+        #expect(outcome.connectionsAdded == 1)
+        #expect(library.connections.loadConnection(id: importedId)?.credentialMode == .inline)
+        #expect(library.profiles.loadProfiles().map(\.name) == ["Prod reader"])
     }
 
     @Test("A connection does link to a profile the same import created")
-    func importLinksToAProfileItCreated() {
-        let createdId = UUID()
-        let exportable = ExportableConnection(
-            name: "Imported",
-            host: "db.example.com",
-            port: 5432,
-            database: "db",
-            username: "app",
-            type: "PostgreSQL",
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            credentialProfileName: "Prod reader",
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
-        )
+    func importLinksToAProfileItCreated() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let importedId = UUID()
 
-        let connection = ConnectionExportService.buildDatabaseConnection(
-            id: UUID(),
-            from: exportable,
-            name: "Imported",
-            tagIdsByName: [:],
-            groupIdsByName: [:],
-            importedProfileIds: ["prod reader": createdId]
-        )
+        let outcome = try await library.importDefaults(of: bundleNamingProfile("Prod reader"), makeId: { importedId })
 
-        #expect(connection.credentialMode == .profile(id: createdId))
+        #expect(outcome.connectionsAdded == 1)
+        let created = try #require(library.profiles.loadProfiles().first { $0.name == "Prod reader" })
+        #expect(created.passwordMode == .prompt)
+        #expect(library.connections.loadConnection(id: importedId)?.credentialMode == .profile(id: created.id))
     }
 
-    /// A shared bundle that carried a shell command would run it on a Mac that never agreed to it,
-    /// which is why a source-backed profile exports as one that asks.
+    /// A shared bundle that carried a shell command would run it on a Mac that never agreed to it.
     @Test("A password source is never exportable")
     func exportReducesAPasswordSource() {
-        #expect(ConnectionExportService.portableModeForTesting(.source(.command(shell: "echo owned"))) == "prompt")
-        #expect(ConnectionExportService.portableModeForTesting(.stored) == "stored")
-        #expect(ConnectionExportService.portableModeForTesting(.pgpass) == "pgpass")
-        #expect(ConnectionExportService.portableModeForTesting(.prompt) == "prompt")
+        #expect(ConnectionBundleExporter.portablePasswordMode(.source(.command(shell: "echo owned"))) == .prompt)
+        #expect(ConnectionBundleExporter.portablePasswordMode(.stored) == .stored)
+        #expect(ConnectionBundleExporter.portablePasswordMode(.pgpass) == .pgpass)
+        #expect(ConnectionBundleExporter.portablePasswordMode(.prompt) == .prompt)
     }
 }

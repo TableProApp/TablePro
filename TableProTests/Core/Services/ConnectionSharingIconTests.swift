@@ -10,12 +10,16 @@ import Testing
 
 @MainActor
 struct ConnectionSharingIconTests {
-    private func parsedLink(for connection: DatabaseConnection) throws -> ExportableConnection {
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: connection))
-        return try #require(importedConnection(from: URL(string: link)))
+    private func parsed(_ link: String?) throws -> ConnectionBundle {
+        let url = try #require(link.flatMap(URL.init(string:)))
+        guard case .success(.importConnection(let bundle)) = DeeplinkParser.parse(url) else {
+            Issue.record("The link did not parse as a connection import")
+            throw CocoaError(.coderReadCorrupt)
+        }
+        return bundle
     }
 
-    private func parsedLink(_ items: [URLQueryItem]) throws -> ExportableConnection {
+    private func parsedSettings(_ items: [URLQueryItem]) throws -> ExportableConnection {
         var components = URLComponents()
         components.scheme = "tablepro"
         components.host = "import"
@@ -24,67 +28,76 @@ struct ConnectionSharingIconTests {
             URLQueryItem(name: "host", value: "db.example.com"),
             URLQueryItem(name: "type", value: "PostgreSQL")
         ] + items
-        return try #require(importedConnection(from: components.url))
+        let bundle = try parsed(components.url?.absoluteString)
+        return try #require(bundle.connections.first).settings
     }
 
-    private func importedConnection(from url: URL?) -> ExportableConnection? {
-        guard let url, case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else { return nil }
-        return parsed
-    }
-
-    private func imported(_ exportable: ExportableConnection) -> DatabaseConnection {
-        ConnectionExportService.buildDatabaseConnection(
-            id: UUID(), from: exportable, name: exportable.name,
-            tagIdsByName: [:], groupIdsByName: [:]
+    private func imported(_ settings: ExportableConnection) -> DatabaseConnection {
+        DatabaseConnection(
+            importing: settings,
+            id: UUID(),
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
         )
+    }
+
+    private func queryValue(_ name: String, in link: String) -> String? {
+        URLComponents(string: link)?.queryItems?.first { $0.name == name }?.value
     }
 
     // MARK: - Connection icon
 
     @Test("A file export and Copy as JSON carry the connection's icon")
     func exportCarriesIcon() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         var connection = DatabaseConnection(name: "Prod", type: .postgresql)
         connection.iconName = "server.rack"
 
-        let exported = try #require(ConnectionExportService.buildEnvelope(for: [connection]).connections.first)
-        let json = ConnectionExportService.buildCompactJSON(for: connection)
+        let bundle = try library.exporter.connectionsOnlyBundle(for: [connection])
+        let json = ConnectionShareLink.compactJSON(for: connection, exporter: library.exporter)
         let fromJSON = try JSONDecoder().decode(ExportableConnection.self, from: Data(json.utf8))
 
-        #expect(exported.iconName == "server.rack")
+        #expect(bundle.connections.first?.settings.iconName == "server.rack")
         #expect(fromJSON.iconName == "server.rack")
     }
 
     @Test("Copy TablePro Link carries the icon and the import keeps it")
     func linkCarriesIcon() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         var connection = DatabaseConnection(name: "Prod", type: .postgresql)
         connection.iconName = "lock.shield"
 
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: connection))
-        let parsed = try parsedLink(for: connection)
+        let link = try #require(ConnectionShareLink.deeplink(for: connection, exporter: library.exporter))
+        let settings = try #require(try parsed(link).connections.first).settings
 
-        #expect(URLComponents(string: link)?.queryItems?.first { $0.name == "icon" }?.value == "lock.shield")
-        #expect(parsed.iconName == "lock.shield")
-        #expect(imported(parsed).iconName == "lock.shield")
+        #expect(queryValue("icon", in: link) == "lock.shield")
+        #expect(settings.iconName == "lock.shield")
+        #expect(imported(settings).iconName == "lock.shield")
     }
 
     @Test("A connection with the engine icon puts no icon in the link")
     func linkOmitsDefaultIcon() throws {
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: DatabaseConnection(name: "Plain")))
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+
+        let link = try #require(ConnectionShareLink.deeplink(for: DatabaseConnection(name: "Plain"), exporter: library.exporter))
 
         #expect(URLComponents(string: link)?.queryItems?.contains { $0.name == "icon" } == false)
     }
 
     @Test("A malformed icon in a link or a file is dropped, and one this Mac cannot draw is kept")
     func importNormalizesIcon() throws {
-        #expect(try parsedLink([URLQueryItem(name: "icon", value: "../../secret")]).iconName == nil)
-        #expect(try parsedLink([URLQueryItem(name: "icon", value: "made.up.symbol")]).iconName == "made.up.symbol")
+        #expect(try parsedSettings([URLQueryItem(name: "icon", value: "../../secret")]).iconName == nil)
+        #expect(try parsedSettings([URLQueryItem(name: "icon", value: "made.up.symbol")]).iconName == "made.up.symbol")
 
-        let file = ExportableConnection(
-            name: "Prod", host: "db.example.com", port: 5_432, database: "", username: "",
-            type: "PostgreSQL", sshConfig: nil, sslConfig: nil, color: nil, iconName: "Not A Symbol",
-            tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-            additionalFields: nil, redisDatabase: nil, startupCommands: nil, localOnly: nil
+        var file = ExportableConnection(
+            name: "Prod", host: "db.example.com", port: 5_432, database: "", username: "", type: "PostgreSQL"
         )
+        file.iconName = "Not A Symbol"
         #expect(imported(file).iconName == nil)
     }
 
@@ -92,133 +105,144 @@ struct ConnectionSharingIconTests {
 
     @Test("Copy TablePro Link carries the connect and query timeouts")
     func linkCarriesTimeouts() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         var connection = DatabaseConnection(name: "Prod", type: .postgresql)
         connection.connectTimeoutSeconds = 12
         connection.queryTimeoutSeconds = 30
 
-        let parsed = try parsedLink(for: connection)
-        let connected = imported(parsed)
+        let link = try #require(ConnectionShareLink.deeplink(for: connection, exporter: library.exporter))
+        let settings = try #require(try parsed(link).connections.first).settings
+        let connected = imported(settings)
 
-        #expect(parsed.connectTimeoutSeconds == 12)
-        #expect(parsed.queryTimeoutSeconds == 30)
+        #expect(settings.connectTimeoutSeconds == 12)
+        #expect(settings.queryTimeoutSeconds == 30)
         #expect(connected.connectTimeoutSeconds == 12)
         #expect(connected.queryTimeoutSeconds == 30)
     }
 
     @Test("A link keeps a disabled query timeout")
     func linkKeepsDisabledQueryTimeout() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         var connection = DatabaseConnection(name: "Prod", type: .postgresql)
         connection.queryTimeoutSeconds = 0
 
-        #expect(try parsedLink(for: connection).queryTimeoutSeconds == 0)
+        let link = ConnectionShareLink.deeplink(for: connection, exporter: library.exporter)
+
+        #expect(try parsed(link).connections.first?.settings.queryTimeoutSeconds == 0)
     }
 
     @Test("A link with an out-of-range timeout imports the default, as a file does")
     func linkRejectsOutOfRangeTimeouts() throws {
-        let parsed = try parsedLink([
+        let settings = try parsedSettings([
             URLQueryItem(name: "connectTimeoutSeconds", value: "601"),
             URLQueryItem(name: "queryTimeoutSeconds", value: "-1")
         ])
 
-        #expect(parsed.connectTimeoutSeconds == nil)
-        #expect(parsed.queryTimeoutSeconds == nil)
-        #expect(imported(parsed).connectTimeoutSeconds == nil)
-        #expect(imported(parsed).queryTimeoutSeconds == nil)
+        #expect(settings.connectTimeoutSeconds == nil)
+        #expect(settings.queryTimeoutSeconds == nil)
+        #expect(imported(settings).connectTimeoutSeconds == nil)
+        #expect(imported(settings).queryTimeoutSeconds == nil)
     }
 
     @Test("A link with an unreadable timeout imports the default")
     func linkIgnoresUnreadableTimeouts() throws {
-        let parsed = try parsedLink([
+        let settings = try parsedSettings([
             URLQueryItem(name: "connectTimeoutSeconds", value: "soon"),
             URLQueryItem(name: "queryTimeoutSeconds", value: "")
         ])
 
-        #expect(parsed.connectTimeoutSeconds == nil)
-        #expect(parsed.queryTimeoutSeconds == nil)
+        #expect(settings.connectTimeoutSeconds == nil)
+        #expect(settings.queryTimeoutSeconds == nil)
     }
 
     // MARK: - Exported groups
 
-    @Test("Exported groups come from the groups the connections are in, not from a lookup by name")
-    func exportedGroupsResolveById() throws {
-        let unrelated = ConnectionGroup(name: "Prod", color: .blue, iconName: "star")
-        let clientA = ConnectionGroup(name: "Prod", color: .red, iconName: "flame", parentId: UUID())
-        var connection = DatabaseConnection(name: "Orders", type: .postgresql)
-        connection.groupId = clientA.id
-
-        let groups = try #require(ConnectionExportService.exportableGroups(for: [connection], in: [unrelated, clientA]))
-
-        #expect(groups.count == 1)
-        #expect(groups.first?.name == "Prod")
-        #expect(groups.first?.color == ConnectionColor.red.rawValue)
-        #expect(groups.first?.iconName == "flame")
-    }
-
-    /// The file keys a group by name and the import resolves a connection's group by name, so two
-    /// exported groups that share a name become one, and the first connection's group wins.
-    @Test("Two exported groups with one name become one entry taken from the first connection's group")
-    func sameNamedGroupsKeepTheFirstInExportOrder() throws {
-        let clientA = ConnectionGroup(name: "Prod", color: .red, iconName: "flame", parentId: UUID())
-        let clientB = ConnectionGroup(name: "Prod", color: .green, iconName: "leaf", parentId: UUID())
-        let staging = ConnectionGroup(name: "Staging")
+    @Test("Two groups that share a name export as two groups, each with its own color and icon")
+    func sameNamedGroupsStayDistinct() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let clientA = ConnectionGroup(name: "Client A")
+        let clientB = ConnectionGroup(name: "Client B")
+        let prodA = ConnectionGroup(name: "Prod", color: .red, iconName: "flame", parentId: clientA.id)
+        let prodB = ConnectionGroup(name: "Prod", color: .green, iconName: "leaf", parentId: clientB.id)
+        for group in [clientA, clientB, prodA, prodB] {
+            try library.groups.addGroup(group)
+        }
         var inB = DatabaseConnection(name: "Billing", type: .postgresql)
-        inB.groupId = clientB.id
-        var inA = DatabaseConnection(name: "Orders", type: .postgresql)
-        inA.groupId = clientA.id
-        var inStaging = DatabaseConnection(name: "Scratch", type: .postgresql)
-        inStaging.groupId = staging.id
+        inB.groupId = prodB.id
+        var inA = DatabaseConnection(name: "Orders", host: "orders.example.com", type: .postgresql)
+        inA.groupId = prodA.id
 
-        let groups = try #require(
-            ConnectionExportService.exportableGroups(for: [inB, inA, inStaging], in: [clientA, clientB, staging])
-        )
-        let names = groups.map(\.name)
+        let bundle = try library.exporter.connectionsOnlyBundle(for: [inB, inA])
+        let leafB = bundle.groupChain(bundle.connection("c1")?.groupRef).last
+        let leafA = bundle.groupChain(bundle.connection("c2")?.groupRef).last
 
-        #expect(names == ["Prod", "Staging"])
-        #expect(groups[0].color == ConnectionColor.green.rawValue)
-        #expect(groups[0].iconName == "leaf")
-        #expect(groups[1].color == nil)
-        #expect(groups[1].iconName == nil)
+        #expect(bundle.groups.count == 4)
+        #expect(leafB?.color == ConnectionColor.green.rawValue)
+        #expect(leafB?.iconName == "leaf")
+        #expect(leafA?.color == ConnectionColor.red.rawValue)
+        #expect(leafA?.iconName == "flame")
     }
 
     @Test("No group entry is written when no exported connection is in a group")
-    func ungroupedExportHasNoGroups() {
-        let groups = ConnectionExportService.exportableGroups(
-            for: [DatabaseConnection(name: "Loose")],
-            in: [ConnectionGroup(name: "Unused")]
-        )
+    func ungroupedExportHasNoGroups() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        try library.groups.addGroup(ConnectionGroup(name: "Unused", iconName: "star"))
 
-        #expect(groups == nil)
+        let bundle = try library.exporter.connectionsOnlyBundle(for: [DatabaseConnection(name: "Loose")])
+
+        #expect(bundle.groups.isEmpty)
     }
 
     @Test("An imported group takes the file's color and icon, and drops a malformed icon")
-    func importedGroupTakesColorAndIcon() {
-        let group = ConnectionExportService.importedGroup(
-            from: ExportableGroup(name: "Prod", color: ConnectionColor.red.rawValue, iconName: "flame")
-        )
-        let junk = ConnectionExportService.importedGroup(
-            from: ExportableGroup(name: "Prod", color: nil, iconName: "Flame Icon")
+    func importedGroupTakesColorAndIcon() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let settings = { (name: String, host: String) in
+            ExportableConnection(name: name, host: host, port: 5_432, database: "", username: "", type: "PostgreSQL")
+        }
+        let bundle = try ConnectionBundle(
+            appVersion: "Tests",
+            connections: [
+                BundleConnection(ref: "c1", settings: settings("Orders", "orders.example.com"), groupRef: "g1"),
+                BundleConnection(ref: "c2", settings: settings("Billing", "billing.example.com"), groupRef: "g2")
+            ],
+            groups: [
+                BundleGroup(ref: "g1", name: "Prod", color: ConnectionColor.red.rawValue, iconName: "flame"),
+                BundleGroup(ref: "g2", name: "Junk", iconName: "Flame Icon")
+            ]
         )
 
-        #expect(group.name == "Prod")
-        #expect(group.color == .red)
-        #expect(group.iconName == "flame")
+        let outcome = try await library.importDefaults(of: bundle)
+
+        #expect(outcome.connectionsAdded == 2)
+        let groups = library.groups.loadGroups()
+        let prod = try #require(groups.first { $0.name == "Prod" })
+        let junk = try #require(groups.first { $0.name == "Junk" })
+        #expect(prod.color == .red)
+        #expect(prod.iconName == "flame")
         #expect(junk.color == ConnectionColor.none)
         #expect(junk.iconName == nil)
     }
 
     // MARK: - Link tags
 
-    @Test("A link with several tags imports every one of them")
+    @Test("A link with several tags imports every one of them, renamed or not")
     func linkImportsEveryTag() throws {
-        let parsed = try parsedLink([
-            URLQueryItem(name: "tagName", value: "prod"),
-            URLQueryItem(name: "tagName", value: "billing")
-        ])
+        let bundle = try parsed(
+            "tablepro://import?name=Staging&host=db.example.com&type=PostgreSQL&tagName=prod&tagName=billing"
+        )
+        let entry = try #require(bundle.connections.first)
+        var renamed = entry.settings
+        renamed.name = "Staging Copy"
 
-        let envelope = DeeplinkImportSheet.importEnvelope(for: parsed, named: "Staging Copy")
+        let edited = bundle.replacingSettings(renamed, of: entry.ref)
 
-        #expect(envelope.tags?.map(\.name) == ["prod", "billing"])
-        #expect(envelope.connections.first?.name == "Staging Copy")
-        #expect(envelope.connections.first?.tagNames == ["prod", "billing"])
+        #expect(edited.tags.map(\.name) == ["prod", "billing"])
+        #expect(edited.connections.first?.settings.name == "Staging Copy")
+        #expect(edited.connections.first?.tagNames == ["prod", "billing"])
     }
 }

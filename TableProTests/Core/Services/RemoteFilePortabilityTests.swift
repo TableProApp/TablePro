@@ -23,9 +23,20 @@ struct RemoteFilePortabilityTests {
         return DatabaseConnection(name: "Remote", type: .sqlite, sshConfig: ssh)
     }
 
+    private func rebuild(_ exportable: ExportableConnection) -> DatabaseConnection {
+        DatabaseConnection(
+            importing: exportable,
+            id: UUID(),
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
+        )
+    }
+
     @Test("A share link carries the remote path and access mode")
     func deeplinkCarriesRemoteFile() throws {
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: remoteFileConnection(access: .onServer)))
+        let link = try #require(ConnectionShareLink.deeplink(for: remoteFileConnection(access: .onServer)))
         #expect(link.contains("sshRemoteFilePath="))
         #expect(link.contains("app.db"))
         #expect(link.contains("sshRemoteFileAccess=onServer"))
@@ -33,7 +44,7 @@ struct RemoteFilePortabilityTests {
 
     @Test("The read-only copy mode is the default and is left out of the link")
     func deeplinkOmitsDefaultAccess() throws {
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: remoteFileConnection(access: .readOnlyCopy)))
+        let link = try #require(ConnectionShareLink.deeplink(for: remoteFileConnection(access: .readOnlyCopy)))
         #expect(link.contains("sshRemoteFilePath="))
         #expect(!link.contains("sshRemoteFileAccess="))
     }
@@ -47,14 +58,9 @@ struct RemoteFilePortabilityTests {
                 authMethod: "password", privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
                 totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil,
                 remoteFilePath: "/srv/app.db", remoteFileAccess: "onServer"
-            ),
-            sslConfig: nil, color: nil, tagName: nil, groupName: nil,
-            sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-            additionalFields: nil, redisDatabase: nil, startupCommands: nil, localOnly: nil
+            )
         )
-        let rebuilt = ConnectionExportService.buildDatabaseConnection(
-            id: UUID(), from: exportable, name: "Remote", tagIdsByName: [:], groupIdsByName: [:]
-        )
+        let rebuilt = rebuild(exportable)
         #expect(rebuilt.resolvedSSHConfig.remoteFilePath == "/srv/app.db")
         #expect(rebuilt.resolvedSSHConfig.remoteFileAccess == .onServer)
     }
@@ -68,14 +74,9 @@ struct RemoteFilePortabilityTests {
                 authMethod: "password", privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
                 totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil,
                 remoteFilePath: "/srv/app.db", remoteFileAccess: nil
-            ),
-            sslConfig: nil, color: nil, tagName: nil, groupName: nil,
-            sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-            additionalFields: nil, redisDatabase: nil, startupCommands: nil, localOnly: nil
+            )
         )
-        let rebuilt = ConnectionExportService.buildDatabaseConnection(
-            id: UUID(), from: exportable, name: "Remote", tagIdsByName: [:], groupIdsByName: [:]
-        )
+        let rebuilt = rebuild(exportable)
         #expect(rebuilt.resolvedSSHConfig.remoteFilePath == "/srv/app.db")
         #expect(rebuilt.resolvedSSHConfig.remoteFileAccess == .readOnlyCopy)
     }

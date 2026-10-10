@@ -29,11 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pairing links take `state` and `response_mode`, and send a standard `code` to any redirect.
 - MySQL and MariaDB connections through a local Unix socket.
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
+- Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
+- Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 
 ### Changed
 
 - Settings > Integrations is now Settings > MCP, and TablePro > Integrations… is now MCP Activity….
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+- Connection files keep the full path of nested groups, and import rebuilds that path.
+- Connection files written by this version, Team Catalog files included, open only in this version or later.
+- **Keep Existing, Add Queries** in place of **Skip** for a duplicate connection on import.
+- Importing connections asks before adding their startup SQL, the same way it asks about tunnel commands.
 
 ### Deprecated
 
@@ -108,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No icon for a connection to a database type no installed plugin describes. (#3309)
 - MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
 - A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
+- Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
+- Saving or importing connections while the connection library could not be read replacing every saved connection.
+- Import counting connections it could not save and storing their passwords in the Keychain.
+- Import creating the groups, tags and credential profiles of connections left unselected.
+- An unpredictable password when two imported rows replaced the same connection.
+- TablePlus import reading the default folder instead of the data location set in TablePlus.
 
 ### Security
 

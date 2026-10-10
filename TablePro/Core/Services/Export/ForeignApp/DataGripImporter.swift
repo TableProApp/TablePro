@@ -5,22 +5,24 @@
 
 import AppKit
 import Foundation
-import os
 import TableProImport
 import TableProPluginKit
 
 struct DataGripImporter: ForeignAppImporter {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataGripImporter")
-
     let id = "datagrip"
     let displayName = "DataGrip"
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.jetbrains.datagrip"
     let readsPasswordsFromKeychain = true
 
-    /// Root holding versioned IDE config dirs (`DataGrip2024.3`, ...). Injectable for tests.
     var jetBrainsRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/JetBrains")
+
+    var savedQuerySupport: ForeignSavedQuerySupport {
+        .reads(caption: String(
+            localized: "Query consoles import with their data source. Consoles with a default name start unchecked."
+        ))
+    }
 
     private struct Location {
         let dataSourcesURL: URL
@@ -28,84 +30,116 @@ struct DataGripImporter: ForeignAppImporter {
         let configDir: URL
     }
 
+    private struct ScannedSource {
+        let source: DataGripDataSource
+        let configDir: URL
+    }
+
+    private struct Scan {
+        var sources: [ScannedSource] = []
+        var consoleSources: [DataGripConsoleReader.DataSource] = []
+    }
+
     func isAvailable() -> Bool {
         installedAppURL() != nil || !locations().isEmpty
     }
 
-    func connectionCount() -> Int {
-        var seen = Set<String>()
-        for location in locations() {
-            for source in dataSources(at: location) {
-                seen.insert(source.uuid)
-            }
-        }
-        return seen.count
+    func inventory() -> ForeignAppInventory {
+        let scan = scanDataSources(locations())
+        return ForeignAppInventory(
+            connections: scan.sources.count,
+            savedQueries: DataGripConsoleReader.count(dataSources: scan.consoleSources, configDirs: dataGripConfigDirs())
+        )
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
         let locations = locations()
         guard !locations.isEmpty else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
 
-        var seenUUIDs = Set<String>()
-        var exportableConnections: [ExportableConnection] = []
-        var groupNames = Set<String>()
-        var credentials: [String: ExportableCredentials] = [:]
+        let scan = scanDataSources(locations)
+        var records: [ForeignConnectionRecord] = []
         var credentialsAborted = false
         var sshConfigsByDir: [URL: [String: DataGripSSHConfig]] = [:]
+        var credentialStores: [URL: JetBrainsCredentialStore] = [:]
+
+        for scanned in scan.sources {
+            try Task.checkCancellation()
+            let configDir = scanned.configDir
+            let sshConfigs = sshConfigsByDir[configDir] ?? loadSSHConfigs(configDir: configDir)
+            sshConfigsByDir[configDir] = sshConfigs
+
+            var credentials: ExportableCredentials?
+            if request.includePasswords, !credentialsAborted {
+                let store = credentialStores[configDir] ?? JetBrainsCredentialStore(configDir: configDir)
+                credentialStores[configDir] = store
+                let collected = collectCredentials(for: scanned.source, sshConfigs: sshConfigs, store: store)
+                credentials = collected.credentials
+                credentialsAborted = collected.aborted
+            }
+
+            records.append(ForeignConnectionRecord(
+                sourceId: scanned.source.uuid,
+                settings: makeConnection(scanned.source, sshConfigs: sshConfigs),
+                groupPath: scanned.source.groupName.map { [$0] } ?? [],
+                credentials: credentials
+            ))
+        }
+
+        let savedQueries = request.includeSavedQueries
+            ? try DataGripConsoleReader.savedQueries(
+                dataSources: scan.consoleSources,
+                configDirs: dataGripConfigDirs(),
+                limit: SavedQuerySize.maximumSyncableByteCount
+            )
+            : []
+
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: savedQueries,
+            credentialsAborted: credentialsAborted
+        )
+    }
+
+    // Locations run newest config dir first, so the first copy of a uuid wins. Consoles key on every uuid
+    // DataGrip lists, including one TablePro cannot map to a connection.
+    private func scanDataSources(_ locations: [Location]) -> Scan {
+        var resolved: [String: ScannedSource] = [:]
+        var fragmentsByUUID: [String: DataGripDataSourceFragment] = [:]
+        var order: [String] = []
+        var result = Scan()
 
         for location in locations {
-            let sshConfigs = sshConfigsByDir[location.configDir] ?? {
-                let loaded = loadSSHConfigs(configDir: location.configDir)
-                sshConfigsByDir[location.configDir] = loaded
-                return loaded
-            }()
-            let credentialStore = includePasswords ? JetBrainsCredentialStore(configDir: location.configDir) : nil
-
-            for source in dataSources(at: location) {
-                guard seenUUIDs.insert(source.uuid).inserted,
-                      let connection = makeConnection(source, sshConfigs: sshConfigs) else { continue }
-
-                let index = exportableConnections.count
-                exportableConnections.append(connection)
-                if let groupName = connection.groupName {
-                    groupNames.insert(groupName)
+            for fragment in fragments(at: location) {
+                if fragmentsByUUID[fragment.uuid] == nil {
+                    fragmentsByUUID[fragment.uuid] = fragment
+                    order.append(fragment.uuid)
                 }
-
-                if let store = credentialStore, !credentialsAborted {
-                    let collected = collectCredentials(for: source, sshConfigs: sshConfigs, store: store)
-                    if let resolved = collected.credentials {
-                        credentials[String(index)] = resolved
-                    }
-                    credentialsAborted = collected.aborted
+                if resolved[fragment.uuid] == nil, let source = fragment.resolved() {
+                    let scanned = ScannedSource(source: source, configDir: location.configDir)
+                    resolved[fragment.uuid] = scanned
+                    result.sources.append(scanned)
                 }
             }
         }
 
-        guard !exportableConnections.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
+        result.consoleSources = order.compactMap { uuid in
+            guard let fragment = fragmentsByUUID[uuid] else { return nil }
+            let source = resolved[uuid]?.source
+            return DataGripConsoleReader.DataSource(
+                uuid: uuid,
+                isMongo: isMongo(driverRef: source?.driverRef ?? fragment.driverRef, jdbcURL: source?.jdbcURL ?? fragment.jdbcURL)
+            )
         }
+        return result
+    }
 
-        let groups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map {
-            ExportableGroup(name: $0, color: nil)
-        }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "DataGrip Import",
-            connections: exportableConnections,
-            groups: groups,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
-        )
-
-        return ForeignAppImportResult(
-            envelope: envelope,
-            sourceName: displayName,
-            credentialsAborted: credentialsAborted
-        )
+    private func isMongo(driverRef: String?, jdbcURL: String?) -> Bool {
+        let url = jdbcURL ?? ""
+        if url.lowercased().hasPrefix("mongodb") { return true }
+        return mapDriverRef(driverRef ?? "", subprotocol: jdbcSubprotocol(url)) == DatabaseType.mongodb.rawValue
     }
 
     // MARK: - Credentials
@@ -115,10 +149,7 @@ struct DataGripImporter: ForeignAppImporter {
         var aborted: Bool
     }
 
-    /// Reads the data-source password plus, when the connection tunnels over an
-    /// SSH config, its saved secret: a key passphrase for key auth or a password
-    /// otherwise. The SSH secret is keyed by `<host>:<port> <configId>`. `aborted`
-    /// is set when the user denies Keychain access so the caller stops prompting.
+    // `aborted` means the user denied Keychain access, so the caller stops prompting.
     private func collectCredentials(
         for source: DataGripDataSource,
         sshConfigs: [String: DataGripSSHConfig],
@@ -218,7 +249,7 @@ struct DataGripImporter: ForeignAppImporter {
     private func recentProjectPaths(configDir: URL) -> [String] {
         let url = configDir.appendingPathComponent("options/recentProjects.xml")
         guard let data = try? Data(contentsOf: url),
-              let document = try? XMLDocument(data: data),
+              let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
               let nodes = try? document.nodes(forXPath: "//entry/@key") else { return [] }
 
         return nodes.compactMap { node in
@@ -226,20 +257,15 @@ struct DataGripImporter: ForeignAppImporter {
         }
     }
 
-    /// DataGrip stores SSH connection details once per IDE under
-    /// `options/sshConfigs.xml`, keyed by id and referenced from each data
-    /// source's `<ssh-properties><ssh-config-id>`.
     private func loadSSHConfigs(configDir: URL) -> [String: DataGripSSHConfig] {
         let url = configDir.appendingPathComponent("options/sshConfigs.xml")
         guard let data = try? Data(contentsOf: url) else { return [:] }
         return DataGripDataSourceParser.parseSSHConfigs(data)
     }
 
-    /// Merges the shared `dataSources.xml` with the machine-local
-    /// `dataSources.local.xml`. The shared file carries the driver and JDBC URL;
-    /// the local file carries the user name, SSH and SSL properties. Fragments
-    /// join by uuid with the local file overriding the fields it provides.
-    private func dataSources(at location: Location) -> [DataGripDataSource] {
+    // The shared `dataSources.xml` carries the driver and JDBC URL, the machine-local
+    // `dataSources.local.xml` the user name, SSH and SSL; the local file wins per field.
+    private func fragments(at location: Location) -> [DataGripDataSourceFragment] {
         var fragments: [String: DataGripDataSourceFragment] = [:]
         var order: [String] = []
 
@@ -254,7 +280,7 @@ struct DataGripImporter: ForeignAppImporter {
                 }
             }
         }
-        return order.compactMap { fragments[$0]?.resolved() }
+        return order.compactMap { fragments[$0] }
     }
 
     // MARK: - Mapping
@@ -262,7 +288,7 @@ struct DataGripImporter: ForeignAppImporter {
     private func makeConnection(
         _ source: DataGripDataSource,
         sshConfigs: [String: DataGripSSHConfig]
-    ) -> ExportableConnection? {
+    ) -> ExportableConnection {
         let subprotocol = jdbcSubprotocol(source.jdbcURL)
         let type = mapDriverRef(source.driverRef, subprotocol: subprotocol)
         let endpoint = JDBCConnectionString.parse(url: source.jdbcURL, subprotocol: subprotocol)
@@ -279,17 +305,7 @@ struct DataGripImporter: ForeignAppImporter {
             username: source.username,
             type: type,
             sshConfig: makeSSHConfig(source.ssh, sshConfigs: sshConfigs),
-            sslConfig: makeSSLConfig(source.ssl),
-            color: nil,
-            tagName: nil,
-            groupName: source.groupName,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            sslConfig: makeSSLConfig(source.ssl)
         )
     }
 

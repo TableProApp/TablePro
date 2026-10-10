@@ -116,8 +116,6 @@ struct WelcomeRowPresentationTests {
             sslConfig: nil,
             color: nil,
             iconName: iconName,
-            tagName: nil,
-            groupName: nil,
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,

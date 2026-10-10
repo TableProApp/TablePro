@@ -21,13 +21,32 @@ final class ConnectionExportCryptoIsolationTests: XCTestCase {
         }
     }
 
+    func testEncodingAnEncryptedFileLeavesTheMainActorFree() async throws {
+        let passphrase = passphrase
+        let bundle = try makeBundle()
+        try await assertLeavesMainActorFree {
+            _ = try await ConnectionBundleCodec.encode(bundle, passphrase: passphrase)
+        }
+    }
+
     func testDecodingAnEncryptedFileLeavesTheMainActorFree() async throws {
         let passphrase = passphrase
-        let json = try ConnectionImportDecoder.encode(makeEnvelope(connections: [makeConnection()]))
-        let sealed = try await ConnectionExportCrypto.encrypt(data: json, passphrase: passphrase)
+        let sealed = try await ConnectionBundleCodec.encode(makeBundle(), passphrase: passphrase)
         try await assertLeavesMainActorFree {
-            _ = try await ConnectionImportDecoder.decodeEncryptedData(sealed, passphrase: passphrase)
+            _ = try await ConnectionBundleCodec.decode(sealed, passphrase: passphrase)
         }
+    }
+
+    private func makeBundle() throws -> ConnectionBundle {
+        try ConnectionBundle(
+            appVersion: "1.0",
+            connections: [BundleConnection(
+                ref: "c1",
+                settings: ExportableConnection(
+                    name: "Local", host: "127.0.0.1", port: 3_306, database: "test", username: "root", type: "MySQL"
+                )
+            )]
+        )
     }
 
     private func assertLeavesMainActorFree(

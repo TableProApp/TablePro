@@ -20,7 +20,7 @@ struct ConnectionSharingTests {
             connection.connectTimeoutSeconds = 12
             connection.queryTimeoutSeconds = 0
 
-            let exported = try #require(ConnectionExportService.buildEnvelope(for: [connection]).connections.first)
+            let exported = ConnectionBundleExporter().portableSettings(for: connection)
 
             #expect(exported.connectTimeoutSeconds == 12)
             #expect(exported.queryTimeoutSeconds == 0)
@@ -36,7 +36,7 @@ struct ConnectionSharingTests {
                 DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1
             )
 
-            let exported = try #require(ConnectionExportService.buildEnvelope(for: [connection]).connections.first)
+            let exported = ConnectionBundleExporter().portableSettings(for: connection)
 
             #expect(exported.queryTimeoutSeconds == nil)
             #expect(exported.additionalFields?[DatabaseConnection.queryTimeoutSecondsKey] == nil)
@@ -47,21 +47,16 @@ struct ConnectionSharingTests {
         func importKeepsExplicitTimeouts() {
             let exported = ExportableConnection(
                 name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
-                type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: nil,
-                tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+                type: DatabaseType.postgresql.rawValue,
                 connectTimeoutSeconds: 12, queryTimeoutSeconds: 0,
                 additionalFields: [
                     DatabaseConnection.connectTimeoutSecondsKey: "99",
                     DatabaseConnection.queryTimeoutSecondsKey: "88",
                     "schema": "public"
-                ],
-                redisDatabase: nil, startupCommands: nil, localOnly: nil
+                ]
             )
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exported, name: exported.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(exported)
 
             #expect(connection.connectTimeoutSeconds == 12)
             #expect(connection.queryTimeoutSeconds == 0)
@@ -73,19 +68,14 @@ struct ConnectionSharingTests {
         func importMigratesLegacyAdditionalFields() {
             let exported = ExportableConnection(
                 name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
-                type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: nil,
-                tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+                type: DatabaseType.postgresql.rawValue,
                 additionalFields: [
                     DatabaseConnection.connectTimeoutSecondsKey: "15",
                     DatabaseConnection.queryTimeoutSecondsKey: "0"
-                ],
-                redisDatabase: nil, startupCommands: nil, localOnly: nil
+                ]
             )
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exported, name: exported.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(exported)
 
             #expect(connection.connectTimeoutSeconds == 15)
             #expect(connection.queryTimeoutSeconds == 0)
@@ -96,21 +86,16 @@ struct ConnectionSharingTests {
         func invalidExplicitTimeoutsUseDefaults() {
             let exported = ExportableConnection(
                 name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
-                type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: nil,
-                tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
+                type: DatabaseType.postgresql.rawValue,
                 connectTimeoutSeconds: 601, queryTimeoutSeconds: -1,
                 additionalFields: [
                     DatabaseConnection.connectTimeoutSecondsKey: "15",
                     DatabaseConnection.queryTimeoutSecondsKey: "30",
                     "schema": "public"
-                ],
-                redisDatabase: nil, startupCommands: nil, localOnly: nil
+                ]
             )
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exported, name: exported.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(exported)
 
             #expect(connection.connectTimeoutSeconds == nil)
             #expect(connection.queryTimeoutSeconds == nil)
@@ -124,30 +109,22 @@ struct ConnectionSharingTests {
             let exportable: (Int) -> ExportableConnection = { queryTimeoutSeconds in
                 ExportableConnection(
                     name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
-                    type: DatabaseType.postgresql.rawValue, sshConfig: nil, sslConfig: nil, color: nil,
-                    tagName: nil, groupName: nil, sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-                    queryTimeoutSeconds: queryTimeoutSeconds,
-                    additionalFields: nil, redisDatabase: nil, startupCommands: nil, localOnly: nil
+                    type: DatabaseType.postgresql.rawValue,
+                    queryTimeoutSeconds: queryTimeoutSeconds
                 )
             }
 
-            let accepted = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exportable(maximum), name: "Accepted",
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
-            let rejected = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exportable(maximum + 1), name: "Rejected",
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let accepted = ConnectionSharingTests.imported(exportable(maximum))
+            let rejected = ConnectionSharingTests.imported(exportable(maximum + 1))
 
             #expect(accepted.queryTimeoutSeconds == maximum)
             #expect(rejected.queryTimeoutSeconds == nil)
         }
     }
 
-    // MARK: - buildImportDeeplink
+    // MARK: - Share link
 
-    @Suite("Build Import Deeplink")
+    @Suite("Share link")
     struct BuildDeeplinkTests {
         @Test("Emits required fields")
         @MainActor
@@ -156,7 +133,7 @@ struct ConnectionSharingTests {
                 name: "Dev", host: "localhost", port: 3_306,
                 database: "mydb", username: "root", type: .mysql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("name=Dev"))
             #expect(link.contains("host=localhost"))
             #expect(link.contains("port=3306"))
@@ -172,7 +149,7 @@ struct ConnectionSharingTests {
                 name: "Minimal", host: "db.com", port: 5_432,
                 database: "", username: "", type: .postgresql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(!link.contains("username="))
             #expect(!link.contains("database="))
         }
@@ -192,7 +169,7 @@ struct ConnectionSharingTests {
                 database: "main", username: "app", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("ssh=1"))
             #expect(link.contains("sshHost=bastion.com"))
             #expect(link.contains("sshPort=2222"))
@@ -207,7 +184,7 @@ struct ConnectionSharingTests {
                 name: "NoSSH", host: "localhost", port: 3_306,
                 database: "", username: "", type: .mysql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(!link.contains("ssh="))
             #expect(!link.contains("sshHost="))
         }
@@ -224,7 +201,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(!link.contains("sshPort="))
         }
 
@@ -242,7 +219,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 sslConfig: ssl
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("sslMode=Required"))
             #expect(link.contains("sslCaCertPath="))
         }
@@ -254,7 +231,7 @@ struct ConnectionSharingTests {
                 name: "NoSSL", host: "localhost", port: 3_306,
                 database: "", username: "", type: .mysql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(!link.contains("sslMode="))
         }
 
@@ -268,7 +245,7 @@ struct ConnectionSharingTests {
                 safeModeLevel: .readOnly,
                 aiPolicy: .never
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("color=Red"))
             #expect(link.contains("safeModeLevel=readOnly"))
             #expect(link.contains("aiPolicy=never"))
@@ -281,7 +258,7 @@ struct ConnectionSharingTests {
                 name: "Default", host: "localhost", port: 3_306,
                 database: "", username: "", type: .mysql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(!link.contains("color="))
             #expect(!link.contains("safeModeLevel="))
             #expect(!link.contains("aiPolicy="))
@@ -296,7 +273,7 @@ struct ConnectionSharingTests {
                 redisDatabase: 3,
                 additionalFields: ["customField": "customValue"]
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("redisDatabase=3"))
             #expect(link.contains("af_customField=customValue"))
         }
@@ -309,7 +286,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 startupCommands: "SET search_path TO myschema;"
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("startupCommands="))
         }
 
@@ -321,7 +298,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 localOnly: true
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("localOnly=1"))
         }
 
@@ -332,7 +309,7 @@ struct ConnectionSharingTests {
                 name: "Dev & Staging", host: "db.example.com", port: 5_432,
                 database: "my db", username: "user@domain", type: .postgresql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             let url = try #require(URL(string: link))
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let nameValue = components?.queryItems?.first(where: { $0.name == "name" })?.value
@@ -355,7 +332,7 @@ struct ConnectionSharingTests {
                 safeModeLevel: .readOnly,
                 startupCommands: "SET timeout=30;"
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: conn))
+            let link = try #require(ConnectionShareLink.deeplink(for: conn))
             let url = URL(string: link)
             #expect(url != nil)
             #expect(url?.scheme == "tablepro")
@@ -366,7 +343,7 @@ struct ConnectionSharingTests {
         @MainActor
         func testLeavesOutImportBlockedFields() throws {
             let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: connection))
+            let link = try #require(ConnectionShareLink.deeplink(for: connection))
             let components = try #require(URLComponents(string: link))
             let fieldNames = Set((components.queryItems ?? []).map(\.name))
 
@@ -378,9 +355,9 @@ struct ConnectionSharingTests {
         }
     }
 
-    // MARK: - buildCompactJSON
+    // MARK: - Copy as JSON
 
-    @Suite("Build Compact JSON")
+    @Suite("Copy as JSON")
     struct BuildCompactJSONTests {
         @Test("Returns valid JSON")
         @MainActor
@@ -389,7 +366,7 @@ struct ConnectionSharingTests {
                 name: "Dev", host: "localhost", port: 3_306,
                 database: "mydb", username: "root", type: .mysql
             )
-            let json = ConnectionExportService.buildCompactJSON(for: conn)
+            let json = ConnectionShareLink.compactJSON(for: conn)
             let data = try #require(json.data(using: .utf8))
             let decoded = try? JSONDecoder().decode(ExportableConnection.self, from: data)
             #expect(decoded != nil)
@@ -405,7 +382,7 @@ struct ConnectionSharingTests {
                 name: "Dev", host: "localhost", port: 3_306,
                 database: "", username: "", type: .mysql
             )
-            let json = ConnectionExportService.buildCompactJSON(for: conn)
+            let json = ConnectionShareLink.compactJSON(for: conn)
             let data = try #require(json.data(using: .utf8))
             let decoded = try JSONDecoder().decode(ExportableConnection.self, from: data)
             #expect(decoded.sshProfileId == nil)
@@ -418,7 +395,7 @@ struct ConnectionSharingTests {
                 name: "Dev", host: "localhost", port: 3_306,
                 database: "", username: "", type: .mysql
             )
-            let json = ConnectionExportService.buildCompactJSON(for: conn)
+            let json = ConnectionShareLink.compactJSON(for: conn)
             #expect(!json.contains("\n  "))
         }
 
@@ -435,7 +412,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 sshConfig: ssh
             )
-            let json = ConnectionExportService.buildCompactJSON(for: conn)
+            let json = ConnectionShareLink.compactJSON(for: conn)
             let data = try #require(json.data(using: .utf8))
             let decoded = try JSONDecoder().decode(ExportableConnection.self, from: data)
             #expect(decoded.sshConfig != nil)
@@ -446,8 +423,7 @@ struct ConnectionSharingTests {
         @MainActor
         func testEnvelopeLeavesOutImportBlockedFields() throws {
             let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
-            let envelope = ConnectionExportService.buildEnvelope(for: [connection])
-            let fields = try #require(envelope.connections.first?.additionalFields)
+            let fields = try #require(ConnectionBundleExporter().portableSettings(for: connection).additionalFields)
 
             #expect(fields["preConnectScript"] == nil)
             #expect(fields["usePgpass"] == nil)
@@ -455,6 +431,29 @@ struct ConnectionSharingTests {
             #expect(fields["awsRegion"] == nil)
             #expect(fields["connectionOptions"] == "--cluster=prod")
         }
+    }
+
+    @MainActor
+    static func importedBundle(_ url: URL) -> ConnectionBundle? {
+        guard case .success(.importConnection(let bundle)) = DeeplinkParser.parse(url) else { return nil }
+        return bundle
+    }
+
+    @MainActor
+    static func importedSettings(_ url: URL) -> ExportableConnection? {
+        importedBundle(url)?.connections.first?.settings
+    }
+
+    @MainActor
+    static func imported(_ settings: ExportableConnection) -> DatabaseConnection {
+        DatabaseConnection(
+            importing: settings,
+            id: UUID(),
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
+        )
     }
 
     @MainActor
@@ -474,7 +473,7 @@ struct ConnectionSharingTests {
 
     // MARK: - Round-Trip
 
-    @Suite("Round-Trip: buildImportDeeplink → parseImport")
+    @Suite("Round-Trip: share link → parser")
     struct RoundTripTests {
         @Test("Basic connection survives round-trip")
         @MainActor
@@ -483,12 +482,9 @@ struct ConnectionSharingTests {
                 name: "Dev MySQL", host: "db.example.com", port: 3_307,
                 database: "app_db", username: "dev_user", type: .mysql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.name == original.name)
             #expect(parsed.host == original.host)
             #expect(parsed.port == original.port)
@@ -513,12 +509,9 @@ struct ConnectionSharingTests {
                 database: "main", username: "app", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.sshConfig != nil)
             #expect(parsed.sshConfig?.enabled == true)
             #expect(parsed.sshConfig?.host == "bastion.prod.com")
@@ -543,12 +536,9 @@ struct ConnectionSharingTests {
                 database: "secure", username: "admin", type: .postgresql,
                 sslConfig: ssl
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.sslConfig != nil)
             #expect(parsed.sslConfig?.mode == "Verify CA")
             #expect(parsed.sslConfig?.caCertificatePath == "~/certs/ca.pem")
@@ -568,12 +558,9 @@ struct ConnectionSharingTests {
                 startupCommands: "SET statement_timeout = 30000;",
                 localOnly: true
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.color == "Red")
             #expect(parsed.safeModeLevel == "readOnly")
             #expect(parsed.aiPolicy == "never")
@@ -589,12 +576,9 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .redis,
                 redisDatabase: 5
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.redisDatabase == 5)
         }
 
@@ -605,12 +589,9 @@ struct ConnectionSharingTests {
                 name: "Dev & Staging (v2)", host: "db.example.com", port: 5_432,
                 database: "my database", username: "user@company.com", type: .postgresql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
             #expect(parsed.name == "Dev & Staging (v2)")
             #expect(parsed.database == "my database")
             #expect(parsed.username == "user@company.com")
@@ -623,17 +604,15 @@ struct ConnectionSharingTests {
                 name: "Bare", host: "localhost", port: 5_432,
                 database: "", username: "", type: .postgresql
             )
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let bundle = try #require(ConnectionSharingTests.importedBundle(url))
+            let parsed = try #require(bundle.connections.first?.settings)
+            #expect(bundle.connections.first?.groupRef == nil)
+            #expect(bundle.connections.first?.tagNames.isEmpty == true)
             #expect(parsed.sshConfig == nil)
             #expect(parsed.sslConfig == nil)
             #expect(parsed.color == nil)
-            #expect(parsed.tagName == nil)
-            #expect(parsed.groupName == nil)
             #expect(parsed.safeModeLevel == nil)
             #expect(parsed.aiPolicy == nil)
             #expect(parsed.additionalFields == nil)
@@ -680,12 +659,9 @@ struct ConnectionSharingTests {
                 additionalFields: ["schema": "public"]
             )
 
-            let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+            let link = try #require(ConnectionShareLink.deeplink(for: original))
             let url = try #require(URL(string: link))
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                Issue.record("Failed to parse round-trip link")
-                return
-            }
+            let parsed = try #require(ConnectionSharingTests.importedSettings(url))
 
             #expect(parsed.name == "Full Config")
             #expect(parsed.host == "db.prod.internal")
@@ -735,7 +711,7 @@ struct ConnectionSharingTests {
                 Issue.record("Failed to build import URL")
                 return
             }
-            guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
+            guard let parsed = ConnectionSharingTests.importedSettings(url) else {
                 Issue.record("Failed to parse import link")
                 return
             }
@@ -743,10 +719,7 @@ struct ConnectionSharingTests {
             #expect(parsed.additionalFields?["preConnectScript"] == nil)
             #expect(parsed.additionalFields?["mongoAuthSource"] == "admin")
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: parsed, name: parsed.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(parsed)
             #expect(connection.preConnectScript == nil)
         }
 
@@ -766,16 +739,10 @@ struct ConnectionSharingTests {
             )
             let exportable = ExportableConnection(
                 name: "SSH Prod", host: "db.internal", port: 5_432, database: "main",
-                username: "app", type: DatabaseType.postgresql.rawValue, sshConfig: ssh,
-                sslConfig: nil, color: nil, tagName: nil, groupName: nil, sshProfileId: nil,
-                safeModeLevel: nil, aiPolicy: nil, additionalFields: nil, redisDatabase: nil,
-                startupCommands: nil, localOnly: nil
+                username: "app", type: DatabaseType.postgresql.rawValue, sshConfig: ssh
             )
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: exportable, name: exportable.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(exportable)
 
             #expect(connection.sshConfig.authMethod == .sshAgent)
             #expect(connection.sshConfig.port == nil)
@@ -783,16 +750,14 @@ struct ConnectionSharingTests {
             #expect(connection.sshConfig.jumpHosts.first?.port == nil)
         }
 
+        @MainActor
         private static func parseImportLink(_ items: [URLQueryItem]) -> ExportableConnection? {
             var components = URLComponents()
             components.scheme = "tablepro"
             components.host = "import"
             components.queryItems = items
-            guard let url = components.url,
-                  case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-                return nil
-            }
-            return parsed
+            guard let url = components.url else { return nil }
+            return ConnectionSharingTests.importedSettings(url)
         }
 
         @Test("Deeplink import drops every AWS credential-resolution field")
@@ -816,10 +781,7 @@ struct ConnectionSharingTests {
             #expect(parsed.additionalFields?["awsProfileName"] == nil)
             #expect(parsed.additionalFields?["mongoAuthSource"] == "admin")
 
-            let connection = ConnectionExportService.buildDatabaseConnection(
-                id: UUID(), from: parsed, name: parsed.name,
-                tagIdsByName: [:], groupIdsByName: [:]
-            )
+            let connection = ConnectionSharingTests.imported(parsed)
             #expect(!connection.usesAWSIAM)
         }
 
@@ -846,10 +808,7 @@ struct ConnectionSharingTests {
         func testSanitizedImportDropsSpannerEndpoint() {
             let shared = ExportableConnection(
                 name: "Orders", host: "", port: 0, database: "", username: "", type: "Spanner",
-                sshConfig: nil, sslConfig: nil, color: nil, tagName: nil, groupName: nil,
-                sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-                additionalFields: ["spEndpoint": "https://collector.example.com", "spProjectId": "proj"],
-                redisDatabase: nil, startupCommands: nil, localOnly: nil
+                additionalFields: ["spEndpoint": "https://collector.example.com", "spProjectId": "proj"]
             )
 
             let imported = shared.sanitizedForImport()

@@ -15,9 +15,9 @@ internal struct WelcomePresentations: ViewModifier {
         content
             .modifier(WelcomeDeletionAlerts(vm: vm))
             .sheet(item: $vm.activeSheet, onDismiss: {
-                if let count = vm.pendingImportResultCount {
-                    vm.importResultCount = count
-                    vm.pendingImportResultCount = nil
+                if let outcome = vm.pendingImportOutcome {
+                    vm.importOutcome = outcome
+                    vm.pendingImportOutcome = nil
                 }
                 onSheetDismiss()
                 WindowOpener.shared.openStagedConnectionForm()
@@ -96,22 +96,13 @@ internal struct WelcomePresentations: ViewModifier {
         case .activation:
             LicenseActivationSheet()
         case .importFile(let url):
-            ConnectionImportSheet(fileURL: url) { count in
-                vm.pendingImportResultCount = count
-                vm.activeSheet = nil
-            }
+            ConnectionImportSheet(fileURL: url) { vm.finishImport($0) }
         case .exportConnections(let conns):
             ConnectionExportOptionsSheet(connections: conns)
         case .importFromApp:
-            ImportFromAppSheet { count in
-                vm.pendingImportResultCount = count
-                vm.activeSheet = nil
-            }
+            ImportFromAppSheet { vm.finishImport($0) }
         case .importFromAWS:
-            ImportFromAWSSheet { count in
-                vm.pendingImportResultCount = count
-                vm.activeSheet = nil
-            }
+            ImportFromAWSSheet { vm.finishImport($0) }
         case .projectFolderScan(let url):
             ProjectFolderScanSheet(
                 rootURL: url,
@@ -124,10 +115,8 @@ internal struct WelcomePresentations: ViewModifier {
                     vm.openProjectFolder()
                 }
             )
-        case .deeplinkImport(let exportable):
-            DeeplinkImportSheet(connection: exportable) {
-                vm.loadConnections()
-            }
+        case .deeplinkImport(let bundle):
+            DeeplinkImportSheet(bundle: bundle) { vm.finishImport($0) }
         }
     }
 }
@@ -210,24 +199,19 @@ private struct WelcomeImportResultAlert: ViewModifier {
     @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
-        content
+        let outcomeMessage = vm.importOutcome.map { ImportOutcomeMessage($0) }
+        return content
             .alert(
-                (vm.importResultCount ?? 0) > 0
-                    ? String(localized: "Import Complete")
-                    : String(localized: "No Connections Imported"),
+                outcomeMessage?.title ?? "",
                 isPresented: Binding(
-                    get: { vm.importResultCount != nil },
-                    set: { if !$0 { vm.importResultCount = nil } }
+                    get: { vm.importOutcome != nil },
+                    set: { if !$0 { vm.importOutcome = nil } }
                 )
             ) {
-                Button(String(localized: "OK")) { vm.importResultCount = nil }
+                Button(String(localized: "OK")) { vm.importOutcome = nil }
             } message: {
-                if let count = vm.importResultCount, count > 0 {
-                    Text(count == 1
-                        ? String(localized: "1 connection was imported.")
-                        : String(format: String(localized: "%d connections were imported."), count))
-                } else {
-                    Text(String(localized: "All selected connections were skipped."))
+                if let outcomeMessage {
+                    Text(verbatim: outcomeMessage.message)
                 }
             }
     }

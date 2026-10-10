@@ -22,6 +22,7 @@ internal enum UITestLaunchEnvironment {
     internal static let sampleDatabaseVariable = "TABLEPRO_UI_TEST_OPEN_SAMPLE"
     internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
     internal static let dataFileVariable = "TABLEPRO_UI_TEST_OPEN_FILE"
+    internal static let connectionShareVariable = "TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE"
     internal static let openURLVariable = "TABLEPRO_UI_TEST_OPEN_URL"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "UITestLaunchEnvironment")
@@ -39,8 +40,11 @@ internal enum UITestLaunchEnvironment {
         if isSet(sampleDatabaseVariable) {
             intents.append(.openSampleDatabase)
         }
-        if let dataFileURL {
+        if let dataFileURL = fileURL(in: dataFileVariable) {
             intents.append(.openDataFile(dataFileURL))
+        }
+        if let connectionShareURL = fileURL(in: connectionShareVariable) {
+            intents.append(.openConnectionShare(connectionShareURL))
         }
         if let openURLIntent {
             intents.append(openURLIntent)
@@ -64,8 +68,8 @@ internal enum UITestLaunchEnvironment {
         }
     }
 
-    private static var dataFileURL: URL? {
-        guard let path = value(of: dataFileVariable), path.hasPrefix("/") else { return nil }
+    private static func fileURL(in variable: String) -> URL? {
+        guard let path = value(of: variable), path.hasPrefix("/") else { return nil }
         return URL(fileURLWithPath: path)
     }
 

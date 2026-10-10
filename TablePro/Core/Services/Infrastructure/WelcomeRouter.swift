@@ -40,7 +40,7 @@ internal final class WelcomeRouter: ObservableObject {
     internal static let shared = WelcomeRouter()
 
     @Published private(set) var pendingRequest: WelcomeRequest?
-    @Published private(set) var pendingImport: ExportableConnection?
+    @Published private(set) var pendingImport: ConnectionBundle?
     @Published private(set) var pendingConnectionShare: URL?
     @Published private(set) var pendingSQLFiles: [URL] = []
     @Published private(set) var pendingError: PendingConnectionError?
@@ -73,8 +73,8 @@ internal final class WelcomeRouter: ObservableObject {
         return value
     }
 
-    internal func routeImport(_ exportable: ExportableConnection) {
-        pendingImport = exportable
+    internal func routeImport(_ bundle: ConnectionBundle) {
+        pendingImport = bundle
         showWelcomeWindow()
     }
 
@@ -97,7 +97,7 @@ internal final class WelcomeRouter: ObservableObject {
         pendingSQLFiles.append(url)
     }
 
-    internal func consumePendingImport() -> ExportableConnection? {
+    internal func consumePendingImport() -> ConnectionBundle? {
         let value = pendingImport
         pendingImport = nil
         return value

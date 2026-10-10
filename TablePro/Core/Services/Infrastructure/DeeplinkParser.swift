@@ -17,6 +17,7 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
     case invalidUUID(String)
     case sqlTooLong(Int, limit: Int)
     case unsupportedDatabaseType(String)
+    case invalidConnection(String)
 
     internal var errorDescription: String? {
         switch self {
@@ -39,6 +40,8 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
             )
         case .unsupportedDatabaseType(let raw):
             return String(format: String(localized: "Unsupported database type: %@"), raw)
+        case .invalidConnection(let detail):
+            return String(format: String(localized: "This connection link could not be read: %@"), detail)
         }
     }
 }
@@ -364,32 +367,43 @@ internal enum DeeplinkParser {
             }
         }
 
-        let exportable = ExportableConnection(
+        var settings = ExportableConnection(
             name: name,
             host: host,
             port: port,
             database: database,
             username: username,
-            type: dbType.rawValue,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: value("color"),
-            iconName: value("icon"),
-            tagName: value("tagName"),
-            tagNames: values("tagName").isEmpty ? nil : values("tagName"),
-            groupName: value("groupName"),
-            sshProfileId: nil,
-            safeModeLevel: value("safeModeLevel"),
-            aiPolicy: value("aiPolicy"),
-            connectTimeoutSeconds: value("connectTimeoutSeconds").flatMap(Int.init),
-            queryTimeoutSeconds: value("queryTimeoutSeconds").flatMap(Int.init),
-            additionalFields: additionalFields,
-            redisDatabase: value("redisDatabase").flatMap(Int.init),
-            startupCommands: value("startupCommands"),
-            localOnly: value("localOnly") == "1" ? true : nil
+            type: dbType.rawValue
         )
+        settings.sshConfig = sshConfig
+        settings.sslConfig = sslConfig
+        settings.color = value("color")
+        settings.iconName = value("icon")
+        settings.safeModeLevel = value("safeModeLevel")
+        settings.aiPolicy = value("aiPolicy")
+        settings.connectTimeoutSeconds = value("connectTimeoutSeconds").flatMap(Int.init)
+        settings.queryTimeoutSeconds = value("queryTimeoutSeconds").flatMap(Int.init)
+        settings.additionalFields = additionalFields
+        settings.redisDatabase = value("redisDatabase").flatMap(Int.init)
+        settings.startupCommands = value("startupCommands")
+        settings.localOnly = value("localOnly") == "1" ? true : nil
 
-        return .success(.importConnection(exportable.sanitizedForImport().withoutTunnelCommand()))
+        var builder = ConnectionBundleBuilder(appVersion: ConnectionBundleExporter.bundledAppVersion)
+        builder.addConnection(
+            settings.sanitizedForImport().withoutTunnelCommand(),
+            ref: "c1",
+            groupPath: nonEmpty(values("groupName")).map { ConnectionBundleBuilder.GroupComponent(name: $0, color: nil) },
+            tags: nonEmpty(values("tagName")).map { BundleTag(name: $0, color: nil) }
+        )
+        do {
+            return .success(.importConnection(try builder.build()))
+        } catch {
+            return .failure(.invalidConnection(error.localizedDescription))
+        }
+    }
+
+    private static func nonEmpty(_ names: [String]) -> [String] {
+        names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     private static func pathSegments(_ url: URL) -> [String] {

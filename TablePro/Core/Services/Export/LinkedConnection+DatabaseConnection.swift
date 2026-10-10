@@ -10,12 +10,13 @@ import TableProPluginKit
 internal extension LinkedConnection {
     @MainActor
     func databaseConnection() -> DatabaseConnection {
-        var built = ConnectionExportService.buildDatabaseConnection(
+        var built = DatabaseConnection(
+            importing: connection,
             id: id,
-            from: connection,
-            name: connection.name,
-            tagIdsByName: [:],
-            groupIdsByName: [:]
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { SSHProfileStorage.shared.profile(for: $0) != nil }
         )
         built.promptForPassword = Self.signsInWithPassword(built)
         return built
