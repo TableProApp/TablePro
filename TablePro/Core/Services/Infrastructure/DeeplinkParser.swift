@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProImport
 import TableProPluginKit
 
@@ -42,6 +43,8 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
 internal enum DeeplinkParser {
     internal static let sqlLengthLimit = 51_200
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DeeplinkParser")
+
     internal static func parse(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
         guard url.scheme == "tablepro" else {
             return .failure(.unknownScheme(url.scheme ?? ""))
@@ -54,9 +57,24 @@ internal enum DeeplinkParser {
             return parseImport(url)
         case "integrations":
             return parseIntegrations(url)
+        case "settings":
+            return parseSettings(url)
         default:
             return .failure(.unknownHost(host))
         }
+    }
+
+    /// Never fails: an unknown id or extra segments open the last-used pane, so a link to a pane
+    /// or section added later still opens Settings on an older app.
+    private static func parseSettings(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
+        guard let identifier = pathSegments(url).first else {
+            return .success(.openSettings(nil))
+        }
+        guard let pane = SettingsPane(urlIdentifier: identifier) else {
+            logger.notice("Unknown settings pane id \(identifier, privacy: .public), opening the last-used pane")
+            return .success(.openSettings(nil))
+        }
+        return .success(.openSettings(pane))
     }
 
     private static func parseConnect(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
