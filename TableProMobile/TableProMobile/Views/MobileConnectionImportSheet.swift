@@ -10,20 +10,33 @@ struct MobileConnectionImportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var phase: Phase = .loading
-    @State private var preview: ConnectionImportPreview?
-    @State private var selectedIds: Set<UUID> = []
-    @State private var resolutions: [UUID: ImportResolution] = [:]
+    @State private var review: Review?
     @State private var encryptedData: Data?
     @State private var passphrase = ""
     @State private var passphraseError: String?
-    @State private var wasEncryptedImport = false
     @State private var isDecrypting = false
+    @State private var isImporting = false
 
     private enum Phase: Equatable {
         case loading
         case passphrase
-        case preview
+        case review
         case failed(String)
+    }
+
+    private struct Review {
+        let preview: ImportPreview
+        var selection: ImportSelection
+
+        var plan: ImportPlan {
+            ImportPlanner.plan(preview, selection: selection)
+        }
+    }
+
+    nonisolated private enum FileContents: Sendable {
+        case encrypted(Data)
+        case bundle(ConnectionBundle)
+        case unreadable(String)
     }
 
     var body: some View {
@@ -36,9 +49,13 @@ struct MobileConnectionImportSheet: View {
                         Button(String(localized: "Cancel")) { dismiss() }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        if phase == .preview {
-                            Button(String(localized: "Import")) { performImport() }
-                                .disabled(selectedIds.isEmpty)
+                        if phase == .review, let review {
+                            if isImporting {
+                                ProgressView()
+                            } else {
+                                Button(String(localized: "Import")) { isImporting = true }
+                                    .disabled(review.plan.isEmpty)
+                            }
                         }
                     }
                 }
@@ -48,6 +65,11 @@ struct MobileConnectionImportSheet: View {
             guard isDecrypting else { return }
             await decrypt()
             isDecrypting = false
+        }
+        .task(id: isImporting) {
+            guard isImporting else { return }
+            await performImport()
+            isImporting = false
         }
     }
 
@@ -64,8 +86,10 @@ struct MobileConnectionImportSheet: View {
             } description: {
                 Text(message)
             }
-        case .preview:
-            previewList
+        case .review:
+            if let review {
+                reviewList(review)
+            }
         }
     }
 
@@ -95,36 +119,40 @@ struct MobileConnectionImportSheet: View {
         }
     }
 
-    @ViewBuilder
-    private var previewList: some View {
-        if let preview {
-            List {
-                ForEach(preview.items) { item in
-                    row(for: item)
+    private func reviewList(_ review: Review) -> some View {
+        List {
+            Section {
+                ForEach(review.preview.connections) { row in
+                    connectionRow(row, in: review)
+                }
+            } footer: {
+                if !review.preview.collected.bundle.savedQueries.isEmpty {
+                    Text("This file also holds saved queries, which import only on a Mac.")
                 }
             }
         }
+        .disabled(isImporting)
     }
 
-    private func row(for item: ImportItem) -> some View {
-        let isSelected = selectedIds.contains(item.id)
+    private func connectionRow(_ row: ConnectionRow, in review: Review) -> some View {
+        let isSelected = review.selection.resolution(for: row.ref) != nil
         return HStack(spacing: 12) {
             Button {
-                toggle(item.id)
+                setSelected(!isSelected, row)
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
 
-                    DatabaseIconView(type: DatabaseType(rawValue: item.connection.type), size: 18)
+                    DatabaseIconView(type: DatabaseType(rawValue: row.settings.type), size: 18)
                         .frame(width: 28, height: 28)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.connection.name)
+                        Text(row.settings.name)
                             .lineLimit(1)
-                        Text(subtitle(for: item))
+                        Text(Self.subtitle(for: row))
                             .font(.caption)
-                            .foregroundStyle(statusColor(for: item.status))
+                            .foregroundStyle(Self.needsAttention(row) ? Color.orange : Color.secondary)
                             .lineLimit(1)
                     }
 
@@ -134,10 +162,11 @@ struct MobileConnectionImportSheet: View {
             }
             .buttonStyle(.plain)
 
-            if case .duplicate(let existingId, _) = item.status, isSelected {
-                Picker("", selection: resolutionBinding(for: item)) {
-                    Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
+            if isSelected, row.duplicate != nil {
+                Picker("", selection: resolutionBinding(for: row, in: review)) {
+                    ForEach(review.selection.offeredResolutions(for: row), id: \.self) { resolution in
+                        Text(Self.label(for: resolution)).tag(resolution)
+                    }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
@@ -145,58 +174,75 @@ struct MobileConnectionImportSheet: View {
         }
     }
 
-    private func subtitle(for item: ImportItem) -> String {
-        switch item.status {
-        case .ready:
-            return "\(item.connection.host):\(item.connection.port)"
-        case .duplicate:
-            return String(localized: "Already exists")
-        case .warnings, .unsupportedType:
-            return item.status.message ?? "\(item.connection.host):\(item.connection.port)"
+    private static func subtitle(for row: ConnectionRow) -> String {
+        if let typeId = row.unsupportedTypeId {
+            return String(format: String(localized: "TablePro doesn't support “%@” connections"), typeId)
+        }
+        if let duplicate = row.duplicate {
+            return String(format: String(localized: "Matches “%@”"), duplicate.name)
+        }
+        return row.warnings.first ?? "\(row.settings.host):\(row.settings.port)"
+    }
+
+    private static func needsAttention(_ row: ConnectionRow) -> Bool {
+        row.unsupportedTypeId != nil || row.duplicate != nil || !row.warnings.isEmpty
+    }
+
+    private static func label(for resolution: ConnectionResolution) -> String {
+        switch resolution {
+        case .add: String(localized: "Add")
+        case .addCopy: String(localized: "As Copy")
+        case .replace: String(localized: "Replace")
+        case .keepExisting: String(localized: "Keep Existing, Add Queries")
         }
     }
 
-    private func statusColor(for status: ImportItemStatus) -> Color {
-        switch status {
-        case .ready: return .secondary
-        case .duplicate, .warnings, .unsupportedType: return .orange
+    private static func message(for error: any Error) -> String {
+        if error is ImportStoreError {
+            return String(localized: "TablePro could not read your connection library, so nothing was imported.")
+        }
+        return error.localizedDescription
+    }
+
+    private static func message(for failure: ImportFailure) -> String {
+        switch failure {
+        case .libraryUnreadable:
+            String(localized: "TablePro could not read your connection library, so nothing was imported.")
+        case .connectionsNotSaved:
+            String(localized: "The connections could not be saved.")
+        case .savedQueriesNotSaved:
+            String(localized: "The saved queries could not be saved.")
         }
     }
 
     // MARK: - State helpers
 
-    private func toggle(_ id: UUID) {
-        if selectedIds.contains(id) {
-            selectedIds.remove(id)
-        } else {
-            selectedIds.insert(id)
-        }
+    private func setSelected(_ selected: Bool, _ row: ConnectionRow) {
+        guard let preview = review?.preview else { return }
+        review?.selection.setSelected(selected, connection: row.ref, in: preview)
     }
 
-    private func resolutionBinding(for item: ImportItem) -> Binding<ImportResolution> {
+    private func resolutionBinding(for row: ConnectionRow, in review: Review) -> Binding<ConnectionResolution> {
         Binding(
-            get: { resolutions[item.id] ?? .importAsCopy },
-            set: { resolutions[item.id] = $0 }
+            get: { self.review?.selection.resolution(for: row.ref) ?? row.resolutions.first ?? .addCopy },
+            set: { resolution in
+                _ = self.review?.selection.resolve(row.ref, as: resolution, in: review.preview)
+            }
         )
     }
 
     // MARK: - Actions
 
     private func loadFile() async {
-        let accessing = fileURL.startAccessingSecurityScopedResource()
-        defer { if accessing { fileURL.stopAccessingSecurityScopedResource() } }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            if ConnectionExportCrypto.isEncrypted(data) {
-                encryptedData = data
-                phase = .passphrase
-                return
-            }
-            let envelope = try ConnectionImportDecoder.decodeData(data)
-            applyPreview(IOSConnectionImportService.analyze(envelope, appState: appState))
-        } catch {
-            phase = .failed(error.localizedDescription)
+        guard phase == .loading else { return }
+        switch await Self.readFile(at: fileURL) {
+        case .encrypted(let data):
+            encryptedData = data
+            phase = .passphrase
+        case .bundle(let bundle):
+            await showReview(of: bundle)
+        case .unreadable(let message):
+            phase = .failed(message)
         }
     }
 
@@ -209,10 +255,9 @@ struct MobileConnectionImportSheet: View {
     private func decrypt() async {
         guard let data = encryptedData, !passphrase.isEmpty else { return }
         do {
-            let envelope = try await ConnectionImportDecoder.decodeEncryptedData(data, passphrase: passphrase)
+            let bundle = try await ConnectionBundleCodec.decode(data, passphrase: passphrase)
             try Task.checkCancellation()
-            wasEncryptedImport = true
-            applyPreview(IOSConnectionImportService.analyze(envelope, appState: appState))
+            await showReview(of: bundle)
         } catch is CancellationError {
             return
         } catch {
@@ -221,37 +266,47 @@ struct MobileConnectionImportSheet: View {
         }
     }
 
-    private func applyPreview(_ result: ConnectionImportPreview) {
-        preview = result
-        selectedIds.formUnion(result.items.filter(\.status.isSelectedByDefault).map(\.id))
-        phase = .preview
+    private func showReview(of bundle: ConnectionBundle) async {
+        do {
+            let preview = try await IOSConnectionImportService.preview(
+                of: bundle,
+                fileName: fileURL.lastPathComponent,
+                appState: appState
+            )
+            review = Review(preview: preview, selection: .defaults(for: preview))
+            phase = .review
+        } catch {
+            phase = .failed(Self.message(for: error))
+        }
     }
 
-    private func performImport() {
-        guard let preview else { return }
-        var resolved: [UUID: ImportResolution] = [:]
-        for item in preview.items {
-            if selectedIds.contains(item.id) {
-                switch item.status {
-                case .ready, .warnings, .unsupportedType:
-                    resolved[item.id] = .importNew
-                case .duplicate:
-                    resolved[item.id] = resolutions[item.id] ?? .importAsCopy
-                }
-            } else {
-                resolved[item.id] = .skip
-            }
+    private func performImport() async {
+        guard let review else { return }
+        let outcome = await IOSConnectionImportService.apply(
+            review.plan,
+            appState: appState,
+            secureStore: appState.secureStore
+        )
+        if let failure = outcome.failure, !outcome.importedAnything {
+            phase = .failed(Self.message(for: failure))
+            return
         }
-
-        let result = IOSConnectionImportService.performImport(preview, resolutions: resolved, appState: appState)
-        if wasEncryptedImport, preview.envelope.credentials != nil {
-            IOSConnectionImportService.restoreCredentials(
-                from: preview.envelope,
-                connectionIdMap: result.connectionIdMap,
-                secureStore: appState.secureStore
-            )
-        }
-        onImported?(result.importedCount)
+        onImported?(outcome.connectionsAdded + outcome.connectionsReplaced)
         dismiss()
+    }
+
+    @concurrent
+    nonisolated private static func readFile(at url: URL) async -> FileContents {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            if ConnectionBundleCodec.isEncrypted(data) {
+                return .encrypted(data)
+            }
+            return .bundle(try ConnectionBundleCodec.decode(data))
+        } catch {
+            return .unreadable(error.localizedDescription)
+        }
     }
 }

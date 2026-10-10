@@ -18,18 +18,7 @@ struct RDSDiscoveryReconcilerTests {
             database: database,
             username: username,
             type: DatabaseType.postgresql.rawValue,
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: ["awsAuth": "sso", "awsRegion": "us-east-1"],
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            additionalFields: ["awsAuth": "sso", "awsRegion": "us-east-1"]
         )
     }
 
@@ -89,50 +78,27 @@ struct RDSDiscoveryReconcilerTests {
         #expect(adopted[0].database == "orders")
     }
 
-    @Test("A row whose driver is not installed is flagged rather than left ready")
-    func flagsMissingDrivers() {
-        let envelope = RDSDiscoveryReconciler.envelope(for: [exportable()])
-        let preview = ConnectionImportPreview(
-            envelope: envelope,
-            items: [ImportItem(connection: exportable(), status: .ready)]
+    @Test("collected wraps the rows as a cloud discovery, with reader endpoints unchecked")
+    func collectedMarksReaderEndpoints() throws {
+        let writer = exportable(name: "analytics", host: "analytics.cluster-abc.us-east-1.rds.amazonaws.com")
+        let reader = exportable(name: "analytics (reader)", host: "analytics.cluster-ro-abc.us-east-1.rds.amazonaws.com")
+
+        let collected = try RDSDiscoveryReconciler.collected(
+            for: [writer, reader],
+            deselectedHosts: [" Analytics.Cluster-RO-abc.us-east-1.rds.amazonaws.com "]
         )
 
-        let marked = RDSDiscoveryReconciler.markingMissingDrivers(preview) { typeId in
-            typeId == DatabaseType.postgresql.rawValue ? "PostgreSQL" : nil
-        }
-
-        guard case .warnings(let messages) = marked.items[0].status else {
-            Issue.record("expected a warning status")
-            return
-        }
-        #expect(messages.first?.contains("PostgreSQL") == true)
+        #expect(collected.source == .cloudDiscovery(name: "AWS"))
+        #expect(collected.source.offersReplace == false)
+        #expect(collected.bundle.connections.map { $0.settings } == [writer, reader])
+        let readerRef = try #require(collected.bundle.connections.last?.ref)
+        #expect(collected.unsuggestedConnections == [readerRef])
+        #expect(collected.bundle.credentials.isEmpty)
+        #expect(collected.bundle.savedQueries.isEmpty)
     }
 
-    @Test("A duplicate row keeps its duplicate status")
-    func leavesDuplicatesAlone() {
-        let envelope = RDSDiscoveryReconciler.envelope(for: [exportable()])
-        let existingId = UUID()
-        let preview = ConnectionImportPreview(
-            envelope: envelope,
-            items: [
-                ImportItem(
-                    connection: exportable(),
-                    status: .duplicate(existingId: existingId, existingName: "orders")
-                )
-            ]
-        )
-
-        let marked = RDSDiscoveryReconciler.markingMissingDrivers(preview) { _ in "PostgreSQL" }
-
-        guard case .duplicate(let id, _) = marked.items[0].status else {
-            Issue.record("expected the duplicate status to survive")
-            return
-        }
-        #expect(id == existingId)
-    }
-
-    @Test("Analysis flags a discovered row that matches a saved connection")
-    func duplicateDetection() {
+    @Test("A discovered row that adopted a saved connection's identity matches it as a duplicate")
+    func duplicateDetection() throws {
         let connections = RDSDiscoveryReconciler.adoptingExistingIdentity(
             [exportable()],
             existing: [
@@ -144,31 +110,16 @@ struct RDSDiscoveryReconcilerTests {
                 )
             ]
         )
-        let existingId = UUID()
-        let preview = ConnectionImportAnalyzer.analyze(
-            RDSDiscoveryReconciler.envelope(for: connections),
-            existingConnections: [
-                ConnectionDuplicateCandidate(
-                    id: existingId,
-                    name: "Orders production",
-                    host: "orders.abc123.us-east-1.rds.amazonaws.com",
-                    port: 5_432,
-                    database: "orders",
-                    username: "app_ro",
-                    redisDatabase: nil
-                )
-            ],
-            registeredTypeIds: [DatabaseType.postgresql.rawValue],
-            fileExists: { _ in true }
-        )
+        let collected = try RDSDiscoveryReconciler.collected(for: connections, deselectedHosts: [])
+        let settings = try #require(collected.bundle.connections.first?.settings)
 
-        guard case .duplicate(let id, let name) = preview.items[0].status else {
-            Issue.record("expected a duplicate")
-            return
-        }
-        #expect(id == existingId)
-        #expect(name == "Orders production")
-        #expect(preview.items[0].status.isSelectedByDefault == false)
+        #expect(ConnectionMatchKey(settings) == ConnectionMatchKey(
+            host: "orders.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            database: "orders",
+            username: "app_ro",
+            redisDatabase: nil
+        ))
     }
 
     @Test("AWS error codes map to the recovery the user needs")

@@ -180,7 +180,7 @@ enum KdbxDatabase {
     // MARK: - XML
 
     private static func parseEntries(_ xml: Data, cipher: KdbxInnerStreamCipher?) -> [KdbxEntry] {
-        guard let document = try? XMLDocument(data: xml) else { return [] }
+        guard let document = try? XMLDocument(data: xml, options: [.nodeLoadExternalEntitiesNever]) else { return [] }
 
         var decryptedValues: [ObjectIdentifier: String] = [:]
         if var activeCipher = cipher, let valueNodes = try? document.nodes(forXPath: "//Value") {

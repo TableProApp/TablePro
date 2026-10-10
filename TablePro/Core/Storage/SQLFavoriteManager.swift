@@ -6,20 +6,26 @@
 import Combine
 import Foundation
 import os
+import TableProImport
 import TableProSyncTransport
 
-/// Manages SQL favorites with notifications
 internal final class SQLFavoriteManager: @unchecked Sendable {
     static let shared = SQLFavoriteManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteManager")
 
     private let storage: SQLFavoriteStorage
     private let syncTracker: SyncChangeTracker
+    private let appEvents: @MainActor @Sendable () -> AppEvents
     private let operations = MainActorSerialQueue()
 
-    init(storage: SQLFavoriteStorage = SQLFavoriteStorage(), syncTracker: SyncChangeTracker = .shared) {
+    init(
+        storage: SQLFavoriteStorage = SQLFavoriteStorage(),
+        syncTracker: SyncChangeTracker = .shared,
+        appEvents: @escaping @MainActor @Sendable @autoclosure () -> AppEvents = .shared
+    ) {
         self.storage = storage
         self.syncTracker = syncTracker
+        self.appEvents = appEvents
     }
 
     // MARK: - Favorites
@@ -144,6 +150,14 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     func foldersForSync() async -> [SQLFavoriteFolder]? {
         await storage.readAllFolders()
+    }
+
+    func ledgerEntries() async -> [SavedQueryLedger.Entry]? {
+        await storage.readAllFavorites()?.map(\.ledgerEntry)
+    }
+
+    func exportSnapshot() async -> (favorites: [SQLFavorite], folders: [SQLFavoriteFolder])? {
+        await storage.readAllFavoritesAndFolders()
     }
 
     // MARK: - Versions
@@ -418,8 +432,9 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Notifications
 
     private func postUpdateNotification(connectionId: UUID?) {
+        let appEvents = appEvents
         Task { @MainActor in
-            AppEvents.shared.sqlFavoritesDidUpdate.send(connectionId)
+            appEvents().sqlFavoritesDidUpdate.send(connectionId)
         }
     }
 
@@ -437,5 +452,21 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     internal static func scopeToAnnounce(for write: FavoriteScopeWrite, newConnectionId: UUID?) -> UUID? {
         guard case .updatedExisting(let previousConnectionId) = write else { return newConnectionId }
         return previousConnectionId == newConnectionId ? newConnectionId : nil
+    }
+}
+
+extension SQLFavoriteManager: SavedQueryImportStore {
+    /// Marks dirty only after the transaction commits, and once per record type, so a sync started
+    /// by the mark reads the imported rows and an import of hundreds posts two batches.
+    func importSavedQueries(_ queries: [PlannedQuery]) async -> SavedQueryImportWrite? {
+        await operations.run { [self] in
+            guard let write = await storage.importSavedQueries(queries) else { return nil }
+            syncTracker.markDirty(.favoriteFolder, ids: write.createdFolderIds.map(\.uuidString))
+            syncTracker.markDirty(.favorite, ids: write.insertedIds.map(\.uuidString))
+            if !write.insertedIds.isEmpty || !write.createdFolderIds.isEmpty {
+                appEvents().sqlFavoritesDidUpdate.send(nil)
+            }
+            return write
+        }
     }
 }

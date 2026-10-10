@@ -1,11 +1,11 @@
 ---
 title: Switching to TablePro
-description: Move your connections from TablePlus, Sequel Ace, DBeaver, DataGrip, Beekeeper Studio or Navicat, what comes across, what does not, and how to get your shortcuts back
+description: Move your connections and saved queries from TablePlus, Sequel Ace, DBeaver, DataGrip, Beekeeper Studio or Navicat, what comes across, what does not, and how to get your shortcuts back
 ---
 
 import DriverCounts from "/snippets/driver-counts.mdx";
 
-Most of a migration is one dialog. **File > Import from Other App…** reads the connections your current client already has, including groups and folders, and the source app does not need to be running.
+Most of a migration is one dialog. **File > Import from Other App…** reads the connections and saved queries your current client already has, groups and folders included, and the source app does not need to be running.
 
 This page covers the rest: what does not come across, and what to do about it.
 
@@ -16,10 +16,10 @@ This page covers the rest: what does not come across, and what to do about it.
     **File > Import from Other App…**
   </Step>
   <Step title="Pick your current client">
-    TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio are read in place. Navicat is the exception: export first with **File > Export Connections** in Navicat, with **Export Password** turned on, then point TablePro at the `.ncx` file.
+    TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio are read in place. Navicat is the exception: export first with **File > Export Connections** in Navicat, with **Export Password** turned on, then point TablePro at the `.ncx` file. Leave **Include saved queries** selected to bring the saved queries along.
   </Step>
   <Step title="Review and import">
-    Deselect anything you do not want, resolve duplicates, click **Import**. A connection to an engine TablePro does not support arrives unchecked, with the reason beside it.
+    Deselect any connection or saved query you do not want, resolve duplicates, click **Import**. A connection to an engine TablePro does not support arrives unchecked, with the reason beside it. Where each app's saved queries land is in [Connection Sharing](/features/connection-sharing#import-from-other-apps).
   </Step>
   <Step title="Open one before you delete the old app">
     Connect to a connection that had a password. That is the only check that proves the credential came across, and deleting the source app is the one step you cannot undo.
@@ -53,7 +53,7 @@ TablePlus's password dropdown comes across too. **Ask everytime** arrives as **P
 
 | Not imported | What to do |
 |--------------|------------|
-| Saved queries and snippets | Re-save the ones you actually use as [Favorites](/features/favorites) with `Cmd+D`. To keep a whole folder of `.sql` files in sync instead, including one tracked in git, [Linked Folders](/features/connection-sharing) does that and needs a Starter license |
+| Snippets, and saved queries from Navicat, whose export file has none | Re-save the ones you actually use as [Favorites](/features/favorites) with `Cmd+D`. To keep a whole folder of `.sql` files in sync instead, including one tracked in git, link it as a [linked SQL folder](/features/favorites#linked-sql-folders) |
 | Query history | Starts fresh. TablePro records history per connection from the first query you run, searchable with `Cmd+Y` |
 | Column widths, sort order and per-table filters | Rebuilt as you browse. TablePro saves these per table on its own |
 | Connections to an engine TablePro does not support, such as Vertica or Greenplum | Check the row anyway to keep its host, user and password, then edit the connection and choose a database type. Greenplum speaks the PostgreSQL protocol, so PostgreSQL is the one to try |

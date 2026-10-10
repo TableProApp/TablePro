@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import os
+import TableProImport
 import TableProSyncTransport
 
 internal enum TagStorageError: LocalizedError, Equatable {
@@ -24,7 +25,6 @@ internal enum TagStorageError: LocalizedError, Equatable {
     }
 }
 
-/// Service for persisting the global tag library
 @MainActor
 internal final class TagStorage {
     internal static let shared = TagStorage()
@@ -57,8 +57,6 @@ internal final class TagStorage {
 
     // MARK: - Tag CRUD
 
-    /// Load all tags (presets + custom)
-    ///
     /// A payload that decodes element by element keeps every tag it can read: one entry written by
     /// a future version, or truncated on disk, used to take the whole library down with it and
     /// leave the presets standing in its place.
@@ -93,8 +91,8 @@ internal final class TagStorage {
         return tags
     }
 
-    /// Save all tags. A save that failed leaves the store holding the previous set, so a caller
-    /// that goes on to write related state must check the result.
+    /// A save that failed leaves the store holding the previous set, so a caller that goes on to
+    /// write related state must check the result.
     @discardableResult
     internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
         let previous = defaults.data(forKey: tagsKey) == nil ? [] : loadTags()
@@ -115,7 +113,6 @@ internal final class TagStorage {
         }
     }
 
-    /// Add a new custom tag
     internal func addTag(_ tag: ConnectionTag) throws {
         var tags = loadTags()
         guard !tags.contains(where: { $0.name.lowercased() == tag.name.lowercased() }) else {
@@ -144,7 +141,6 @@ internal final class TagStorage {
         return saveTags(tags) ? .applied : .failed
     }
 
-    /// Delete a custom tag (presets cannot be deleted)
     internal func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
         var tags = loadTags()
@@ -154,7 +150,6 @@ internal final class TagStorage {
         notifyChanged()
     }
 
-    /// Delete a custom tag and clear it from every connection that referenced it.
     /// Connections are persisted before the tag tombstone fires (sync delete-ordering invariant).
     internal func deleteTag(_ tag: ConnectionTag, clearingFrom connectionStorage: ConnectionStorage) {
         guard !tag.isPreset else { return }
@@ -162,12 +157,44 @@ internal final class TagStorage {
         deleteTag(tag)
     }
 
-    /// Get tag by ID
+    /// Keyed by lowercased name. A preset wins over a custom tag of the same name, and a missing
+    /// preset is restored with its fixed id, so every Mac maps "production" to one record.
+    internal func ensureTags(_ planned: [PlannedTag]) throws -> [String: UUID] {
+        let wanted = planned.filter { !Self.matchKey($0.name).isEmpty }
+        guard !wanted.isEmpty else { return [:] }
+        var tags = loadTags()
+        guard !storeIsUnreadable else { throw TagStorageError.storeUnreadable }
+
+        var ids: [String: UUID] = [:]
+        var created = false
+        for tag in wanted {
+            let key = Self.matchKey(tag.name)
+            if let match = Self.match(key, in: tags) {
+                ids[tag.name.lowercased()] = match.id
+                continue
+            }
+            let restorablePreset = ConnectionTag.presets.first { preset in
+                Self.matchKey(preset.name) == key && !tags.contains { $0.id == preset.id }
+            }
+            let added = restorablePreset ?? ConnectionTag(
+                name: tag.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                color: tag.color.map(ConnectionColor.init(storedValue:)) ?? .gray
+            )
+            tags.append(added)
+            ids[tag.name.lowercased()] = added.id
+            created = true
+        }
+
+        guard created else { return ids }
+        guard saveTags(tags) else { throw TagStorageError.storeUnreadable }
+        notifyChanged()
+        return ids
+    }
+
     internal func tag(for id: UUID) -> ConnectionTag? {
         loadTags().first { $0.id == id }
     }
 
-    /// Get tags for a list of IDs
     internal func tags(for ids: [UUID]) -> [ConnectionTag] {
         let allTags = loadTags()
         return ids.compactMap { id in allTags.first { $0.id == id } }
@@ -179,6 +206,15 @@ internal final class TagStorage {
     /// record at a time and raises a single coalesced notification of its own for the batch.
     private func notifyChanged() {
         appEvents.connectionUpdated.send(nil)
+    }
+
+    private static func matchKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func match(_ key: String, in tags: [ConnectionTag]) -> ConnectionTag? {
+        let named = tags.filter { matchKey($0.name) == key }
+        return named.first(where: \.isPreset) ?? named.first
     }
 }
 

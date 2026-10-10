@@ -39,9 +39,33 @@ struct TeamCatalogPublisherTests {
         let written = try TeamCatalogPublisher.publish([connection], to: folder)
 
         let data = try Data(contentsOf: try #require(written.first))
-        let envelope = try ConnectionImportDecoder.decodeData(data)
-        #expect(envelope.credentials == nil)
-        #expect(envelope.connections.first?.name == "Prod DB")
+        let bundle = try ConnectionBundleCodec.decode(data)
+        #expect(bundle.credentials.isEmpty)
+        #expect(bundle.connections.first?.settings.name == "Prod DB")
+    }
+
+    @Test("Published file carries no saved queries or passwords")
+    func publishedFileHasNoSavedQueries() async throws {
+        let folder = try makeTempDirectory()
+        let library = try ImportLibraryFixture()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            library.cleanUp()
+        }
+        let connection = DatabaseConnection(name: "Prod DB")
+        #expect(library.connections.savePassword("hunter2", for: connection.id))
+        _ = await library.favorites.addFavorite(
+            SQLFavorite(name: "Daily", query: "select 1", connectionId: connection.id)
+        )
+
+        let written = try TeamCatalogPublisher.publish([connection], to: folder, exporter: library.exporter)
+
+        let data = try Data(contentsOf: try #require(written.first))
+        let bundle = try ConnectionBundleCodec.decode(data)
+        #expect(bundle.savedQueries.isEmpty)
+        #expect(bundle.queryFolders.isEmpty)
+        let json = try #require(String(bytes: data, encoding: .utf8))
+        #expect(!json.contains("hunter2"))
     }
 
     @Test("Published file cannot carry a command password source (RCE guard)")
@@ -99,7 +123,7 @@ struct TeamCatalogPublisherTests {
         #expect(contents == [TeamCatalogPublisher.filename(for: renamed), TeamCatalogPublisher.filename(for: other)])
 
         let data = try Data(contentsOf: folder.appendingPathComponent(TeamCatalogPublisher.filename(for: renamed)))
-        #expect(try ConnectionImportDecoder.decodeData(data).connections.map(\.name) == ["B"])
+        #expect(try ConnectionBundleCodec.decode(data).connections.map(\.settings.name) == ["B"])
     }
 
     @Test("Republishing never removes a folder that matches a connection's file name")
@@ -132,7 +156,7 @@ struct TeamCatalogPublisherTests {
             .filter { $0.hasSuffix(".tablepro") }
         #expect(contents.count == 1)
         let data = try Data(contentsOf: try #require(written.first))
-        #expect(try ConnectionImportDecoder.decodeData(data).connections.map(\.name) == ["Prod"])
+        #expect(try ConnectionBundleCodec.decode(data).connections.map(\.settings.name) == ["Prod"])
     }
 
     @Test("A publish whose earlier file cannot be removed still writes every connection")

@@ -1,6 +1,6 @@
 ---
 title: Connection Sharing
-description: Export connections to a file, share links, import from other apps, and resolve passwords from secret managers
+description: Export connections and their saved queries to a file, share links, import from other apps, and resolve passwords from secret managers
 ---
 
 Passwords stay in your Keychain, so every route here hands over a connection definition and leaves the other person to supply their own credential. An encrypted export is the one exception.
@@ -18,12 +18,22 @@ Passwords stay in your Keychain, so every route here hands over a connection def
 
 Right-click a connection > **Share > Export to File…**, selecting several first to export them together, or **File > Export > Export Connections…** for all of them.
 
-The file carries what the connection form holds, from host and port through SSH and SSL configuration, color, tags, group, Safe Mode level, startup commands, AI policy, the Local only flag, and any driver field the plugin does not mark secret. Passwords, key passphrases, TOTP secrets, and secret driver fields stay behind.
+The file carries what the connection form holds, from host and port through SSH and SSL configuration, color, tags, the full group path, Safe Mode level, startup commands, AI policy, the Local only flag, and any driver field the plugin does not mark secret. Passwords, key passphrases, TOTP secrets, and secret driver fields stay behind.
 
 <Frame caption="Export connections">
   <img className="block dark:hidden" src="/images/connection-export-menu.png" alt="Export connections" />
   <img className="hidden dark:block" src="/images/connection-export-menu-dark.png" alt="Export connections" />
 </Frame>
+
+The export sheet adds these options:
+
+| Option | Default | Adds to the file |
+|---|---|---|
+| **Include Saved Queries** | On | The [saved queries](/features/favorites#saving-a-query) that belong to the exported connections, with their folders and keywords |
+| **Also include global saved queries** | Off | The saved queries every connection shows. Dimmed while **Include Saved Queries** is off |
+| **Include Credentials** | Off | Passwords and other secrets, under a passphrase. See [Encrypted export](#encrypted-export) |
+
+The saved query options appear only when there are saved queries to export, and they need no license. Saved queries are written as readable text unless **Include Credentials** encrypts the file. Version history, [linked SQL folders](/features/favorites#linked-sql-folders) and Team Library queries are never exported.
 
 <Warning>
 **Copy Connection String** writes a database URL that carries the password in plain text, plus the SSH password when the connection tunnels. TablePro marks the clipboard item concealed, which keeps it out of the history of clipboard managers that follow that convention and out of nothing else. **Copy TablePro Link** and **Copy as JSON** carry no secrets.
@@ -44,14 +54,36 @@ Turn on **Include Credentials** in the export sheet and enter a passphrase of 8 
 
 Open a `.tablepro` file through **File > Import > Import Connections…**, by right-clicking the empty area of the connection list, by double-clicking the file, or by dragging it onto TablePro. **File > Import > Import from URL…** takes a database URL instead, described in [Connection URLs](/connections/urls).
 
-A preview badges each connection before anything is saved: a green checkmark for ready, a yellow triangle when an SSH key or certificate is missing, a "duplicate" tag for one that already exists. Duplicates match by host, port, database, and username and start unchecked. Check one, then pick **As Copy**, **Replace**, or **Skip**.
+A review lists the connections, then the saved queries, before anything is saved. The checkbox in each section header selects or deselects the whole section. A green checkmark marks a connection ready; a yellow triangle marks a missing SSH key or certificate, or an SSL mode TablePro does not recognize, which imports as **Required**. A "duplicate" tag marks one already in your library, with the name it matches.
+
+Duplicates match by host, port, database, and username, and start deselected. Select one, then choose what happens to it:
+
+| Choice | Result |
+|---|---|
+| **Keep Existing, Add Queries** | Your connection stays as it is and gains the file's saved queries for it. Offered only when the row carries saved queries |
+| **As Copy** | A second connection named "*name* (Imported)" |
+| **Replace** | The file's settings overwrite yours. Only one row can replace a given connection |
+
+A duplicate that carries saved queries starts on **Keep Existing, Add Queries**; any other duplicate starts on **As Copy**. To skip a connection, deselect it.
+
+Each saved query shows its connection, or **All connections** for a global one, and its folder path. A query whose connection is deselected cannot be selected. A query you already have is tagged "already saved" and stays deselected: same name, same SQL, and the same connection, or global in both places. A note on the row says what else changes:
+
+| Note | What happens |
+|---|---|
+| A saved query with this name exists. | It imports beside the one you have |
+| Keyword “…” is in use, so it imports without one. | The query that has the keyword keeps it |
+| Keyword “…” is not valid, so it imports without one. | Keywords cannot hold spaces |
+| Too large to save (…) | Over the 900 KB limit for a saved query, so it cannot be selected |
+| Its connection is not imported. | Select the connection to bring its queries |
+
+Group and folder paths match by name from the top down: an existing group or folder is reused, and a missing one is created. Only the groups, tags, and credential profiles that added or replaced connections use are created.
 
 <Frame caption="Import preview">
   <img className="block dark:hidden" src="/images/connection-import-preview.png" alt="Import preview" />
   <img className="hidden dark:block" src="/images/connection-import-preview-dark.png" alt="Import preview" />
 </Frame>
 
-Anything that decides where a credential comes from is stripped on the way in, from a file and from a link alike: AWS options including IAM authentication, the region, the profile and the RDS endpoint; **Use Password File**; **Prompt for password**; the SSL client key passphrase; the pre-tunnel host and port; and the **Pre-Connect Script**. Startup SQL does arrive, and the confirmation sheet shows it in full. Read it before you save, because it runs on every connect with your credentials.
+Anything that decides where a credential comes from is stripped on the way in, from a file and from a link alike: AWS options including IAM authentication, the region, the profile and the RDS endpoint; **Use Password File**; **Prompt for password**; the SSL client key passphrase; the pre-tunnel host and port; and the **Pre-Connect Script**. Startup SQL and tunnel commands run on every connect, so a file brings them only if you agree: importing lists each one and asks, and **Import Without Commands** is the default. A link's sheet shows its startup SQL in full before you add it.
 
 ## Share via link
 
@@ -65,21 +97,23 @@ tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&use
 
 ## Import from other apps
 
-Choose **File > Import > Import from Other App…**, pick the source, then review the list and resolve duplicates before clicking **Import**. Groups and folders carry over, and the source app does not have to be running.
+Choose **File > Import > Import from Other App…**, pick the source, then review the list and resolve duplicates before clicking **Import**. Groups and folders carry over, and the source app does not have to be running. Leave **Include saved queries** selected to bring the source's saved queries into the same review; the source list says how many it found.
 
 <Frame caption="Pick the source app">
   <img className="block dark:hidden" src="/images/import-from-app-picker.png" alt="Import from other app - source picker" />
   <img className="hidden dark:block" src="/images/import-from-app-picker-dark.png" alt="Import from other app - source picker" />
 </Frame>
 
-| App | Databases | Passwords | Notes |
-|-----|-----------|-----------|-------|
-| TablePlus | Every TablePlus engine except Vertica and Greenplum | From Keychain, and the password mode with them | SQLite and DuckDB connections bring their file path. Check the account ID of a Cloudflare D1 connection and the URL of a libSQL one in the connection form after importing |
-| Sequel Ace | MySQL | From Keychain | |
-| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file | Read from the data folder, so every edition works |
-| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` | Reads recent projects with SSH and SSL settings. A master password blocks it |
-| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store | Brings SSH bastion hosts across |
-| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file | Export from Navicat first, with **Export Password** on, then pick the `.ncx` |
+| App | Databases | Passwords | Saved queries | Notes |
+|-----|-----------|-----------|---------------|-------|
+| TablePlus | Every TablePlus engine except Vertica and Greenplum | From Keychain, and the password mode with them | Favorites and shared favorite folders, global, in a folder named TablePlus | SQLite and DuckDB connections bring their file path. Check the account ID of a Cloudflare D1 connection and the URL of a libSQL one in the connection form after importing |
+| Sequel Ace | MySQL | From Keychain | Query favorites, global, in a folder named Sequel Ace | |
+| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file | Scripts, with the connection each one runs on | Read from the data folder, so every edition works |
+| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` | Query consoles, with their data source | Reads recent projects with SSH and SSL settings. A master password blocks it |
+| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store | Saved queries, global, in a folder named Beekeeper Studio | Brings SSH bastion hosts across |
+| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file | None: the `.ncx` file has no saved queries | Export from Navicat first, with **Export Password** on, then pick the `.ncx` |
+
+Saved queries keep their folders inside the app's folder. A query keeps one keyword: a Sequel Ace tab trigger, or the first keyword without spaces from a TablePlus favorite. A DBeaver script with no connection lands in a global folder named DBeaver. A script or console whose connection is not part of the import lands in a global DBeaver or DataGrip folder, deselected. Scripts and consoles that still carry the name the app gave them, such as `Script-3` or `console_2`, also start deselected. Empty files are skipped, and placeholders such as `${1:name}` arrive as written.
 
 ## Import from AWS
 
@@ -88,6 +122,8 @@ Choose **File > Import > Import from AWS…** to list the RDS instances and Auro
 ## On iPhone
 
 TablePro for iPhone reads and writes the same file. Tap the **more** menu (•••) above the connection list and choose **Import Connections**, or open a `.tablepro` file from Files or AirDrop. **Export Connections** shares through the system share sheet, leaving passwords out unless you turn on **Include passwords** and set a passphrase.
+
+Groups nest on iPhone the way they do on the Mac. Saved queries do not: an iPhone import skips the ones in a file, and an iPhone export carries none, so a Mac file exported again from an iPhone loses its queries.
 
 ## Linked Folders
 
@@ -104,7 +140,7 @@ Press `Cmd+,`, then **Settings > General > Linked Folders > Add Folder…** and 
 
 <Info>Needs a [Team license](/features/licensing).</Info>
 
-**Share > Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder, asking for the folder the first time. Republishing overwrites the file, and passwords, passphrases, and TOTP secrets are never written. Teammates add that folder as a Linked Folder.
+**Share > Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder, asking for the folder the first time. Republishing overwrites the file, and passwords, passphrases, TOTP secrets, and saved queries are never written. Teammates add that folder as a Linked Folder. An older TablePro skips these files, as [File format](#file-format) explains.
 
 ## Environment variables
 
@@ -144,25 +180,48 @@ Editing `connections.json` by hand costs one extra step. TablePro stamps the fil
 
 ## File format
 
-JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each connection needs `name`, `host`, `port`, `database`, `username`, and `type`, and an empty string is fine where a value does not apply. Groups and tags match by name and are created when missing. Groups export flat, name and color only. Paths use `~/` so they travel.
+JSON, at format version 2. A file needs `formatVersion`, `exportedAt`, `appVersion`, and `connections`. Each connection needs `ref`, `name`, `host`, `port`, `database`, `username`, and `type`, and an empty string is fine where a value does not apply. Paths use `~/` so they travel.
 
 ```json
 {
-  "formatVersion": 1,
-  "exportedAt": "2026-07-14T09:00:00Z",
-  "appVersion": "0.57.0",
+  "formatVersion": 2,
+  "exportedAt": "2026-10-10T09:00:00Z",
+  "appVersion": "0.80.0",
   "connections": [
     {
-      "name": "Production",
+      "ref": "c1",
+      "name": "Orders",
       "host": "db.example.com",
-      "port": 3306,
-      "database": "app",
-      "username": "deploy",
-      "type": "MySQL",
-      "tagName": "production"
+      "port": 5432,
+      "database": "orders",
+      "username": "app",
+      "type": "PostgreSQL",
+      "groupRef": "g2",
+      "tagNames": ["production"]
     }
   ],
-  "groups": [{ "name": "Backend", "color": "Blue" }],
-  "tags": [{ "name": "production", "color": "Red" }]
+  "groups": [
+    { "ref": "g1", "name": "Client A", "color": "Blue" },
+    { "ref": "g2", "name": "Production", "parentRef": "g1" }
+  ],
+  "tags": [{ "name": "production", "color": "Red" }],
+  "queryFolders": [{ "ref": "f1", "name": "Reports", "connectionRef": "c1" }],
+  "savedQueries": [
+    { "ref": "q1", "name": "Daily active users", "sql": "SELECT …", "keyword": "dau", "folderRef": "f1", "connectionRef": "c1" },
+    { "ref": "q2", "name": "Locks", "sql": "SELECT …" }
+  ]
 }
 ```
+
+A `ref` links records inside one file and means nothing outside it. Refs must be unique within each kind. A ref that points at nothing, or a parent chain that loops, fails the import with an error naming the ref.
+
+| Key | Holds |
+|---|---|
+| `groups` | Groups with a `ref`, a `name`, and an optional `color`, nested through `parentRef`. A connection points at the innermost one with `groupRef` |
+| `tags` | Tag colors. A connection lists its tags in `tagNames`, and a name missing here imports with no color |
+| `credentialProfiles` | Profiles with `ref`, `name`, `username`, and `passwordMode` (`stored`, `prompt`, or `pgpass`), named by a connection's `credentialProfileRef`. A profile's password never travels, so a `stored` one imports as `prompt` |
+| `queryFolders` | Saved query folders with a `ref` and a `name`, nested through `parentRef`. A `connectionRef` scopes a folder to that connection; without one it is global |
+| `savedQueries` | A `ref`, `name`, and `sql`, and an optional `keyword`, `folderRef`, and `connectionRef`. Without a `connectionRef` a query is global |
+| `credentials` | Only inside an encrypted file: secrets keyed by connection `ref` |
+
+Version 1 files still import. Their `groupName` becomes a group at the top level of the library, and `tagName` or `tagNames` become tags. A TablePro version from before saved query export cannot open a version 2 file and reports that it needs a newer version; Linked Folders on such a version skip these files, Team Catalog ones included.

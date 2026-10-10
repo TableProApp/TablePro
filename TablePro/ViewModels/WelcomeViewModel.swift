@@ -30,7 +30,7 @@ enum WelcomeActiveSheet: Identifiable {
     case importFromApp
     case importFromAWS
     case projectFolderScan(URL)
-    case deeplinkImport(ExportableConnection)
+    case deeplinkImport(ConnectionBundle)
 
     var id: String {
         switch self {
@@ -43,7 +43,10 @@ enum WelcomeActiveSheet: Identifiable {
         case .importFromApp: "importFromApp"
         case .importFromAWS: "importFromAWS"
         case .projectFolderScan(let u): "projectFolderScan-\(u.absoluteString)"
-        case .deeplinkImport(let c): "deeplinkImport-\(c.type)-\(c.name)-\(c.host)-\(c.port)"
+        case .deeplinkImport(let bundle):
+            "deeplinkImport-" + bundle.connections
+                .map { "\($0.settings.type)-\($0.settings.name)-\($0.settings.host)-\($0.settings.port)" }
+                .joined(separator: ",")
         }
     }
 }
@@ -132,10 +135,9 @@ final class WelcomeViewModel: ObservableObject {
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
     @Published var showImportFilePanel = false
-    @Published var importResultCount: Int?
-    /// Set when a sheet (import file / import-from-app) finishes work and is about to dismiss.
-    /// Flushed in the sheet's `onDismiss` so the result alert appears after the sheet animation.
-    @Published var pendingImportResultCount: Int?
+    @Published var importOutcome: ImportOutcome?
+    /// Shown from the sheet's `onDismiss`, so the alert waits for the sheet to finish closing.
+    @Published var pendingImportOutcome: ImportOutcome?
 
     // MARK: - Observers
 
@@ -615,8 +617,9 @@ final class WelcomeViewModel: ObservableObject {
         showImportFilePanel = true
     }
 
-    func showImportResult(count: Int) {
-        importResultCount = count
+    func finishImport(_ outcome: ImportOutcome) {
+        pendingImportOutcome = outcome
+        activeSheet = nil
     }
 
     func connectionString(for connection: DatabaseConnection) -> String {

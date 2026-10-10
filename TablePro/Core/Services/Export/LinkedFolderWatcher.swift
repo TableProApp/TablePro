@@ -2,9 +2,6 @@
 //  LinkedFolderWatcher.swift
 //  TablePro
 //
-//  Watches linked folders for .tablepro connection files.
-//  Rescans on filesystem changes with 1s debounce.
-//
 
 import Combine
 import CryptoKit
@@ -75,14 +72,12 @@ final class LinkedFolderWatcher: ObservableObject {
         }
     }
 
-    /// Scans folders on a background thread to avoid blocking the main actor.
     nonisolated private static func scanFoldersAsync(_ folders: [LinkedFolder]) async -> [LinkedConnection] {
         await Task.detached(priority: .utility) {
             scanFolders(folders)
         }.value
     }
 
-    /// Pure scanning logic. Runs on any thread.
     nonisolated private static func scanFolders(_ folders: [LinkedFolder]) -> [LinkedConnection] {
         var results: [LinkedConnection] = []
         var seenIds: Set<UUID> = []
@@ -104,11 +99,19 @@ final class LinkedFolderWatcher: ObservableObject {
                 let fileURL = URL(fileURLWithPath: expandedPath).appendingPathComponent(filename)
                 guard let data = try? Data(contentsOf: fileURL) else { continue }
 
-                if ConnectionExportCrypto.isEncrypted(data) { continue }
+                if ConnectionBundleCodec.isEncrypted(data) { continue }
 
-                guard let envelope = try? ConnectionImportDecoder.decodeData(data) else { continue }
+                let bundle: ConnectionBundle
+                do {
+                    bundle = try ConnectionBundleCodec.decode(data)
+                } catch {
+                    logger.warning(
+                        "Skipped linked file \(filename, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)"
+                    )
+                    continue
+                }
 
-                for exportable in envelope.connections {
+                for exportable in bundle.connections.map(\.settings) {
                     let linked = linkedConnection(folderId: folder.id, sourceFileURL: fileURL, exportable: exportable)
                     guard seenIds.insert(linked.id).inserted else { continue }
                     results.append(linked)

@@ -143,6 +143,14 @@ internal class UITestCase: XCTestCase {
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path])
     }
 
+    /// Arrives as the open intent a Finder double-click on a `.tablepro` file sends.
+    internal func launchWithConnectionShare(named name: String, contents: Data) throws -> XCUIApplication {
+        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
+        let fileURL = root.appendingPathComponent(name)
+        try contents.write(to: fileURL)
+        return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE": fileURL.path])
+    }
+
     /// Returning as soon as the launch was requested is what used to leave fourteen suites poking
     /// at a window that had no connection yet, and every one of those misses cost an XCUITest
     /// retry. The object browser having rows is the cheapest proof the connection is live.

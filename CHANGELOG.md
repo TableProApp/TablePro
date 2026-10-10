@@ -23,10 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comment field in Create Table. (#3308)
 - Table comment in the Structure tab, saved with the other structure changes. (#3308)
 - Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
+- Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
+- Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 
 ### Changed
 
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+- Connection files keep the full path of nested groups, and import rebuilds that path.
+- Connection files written by this version, Team Catalog files included, open only in this version or later.
+- **Keep Existing, Add Queries** in place of **Skip** for a duplicate connection on import.
+- Importing connections asks before adding their startup SQL, the same way it asks about tunnel commands.
 
 ### Fixed
 
@@ -87,6 +93,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
 - Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
 - "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
+- Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
+- Saving or importing connections while the connection library could not be read replacing every saved connection.
+- Import counting connections it could not save and storing their passwords in the Keychain.
+- Import creating the groups, tags and credential profiles of connections left unselected.
+- An unpredictable password when two imported rows replaced the same connection.
+- TablePlus import reading the default folder instead of the data location set in TablePlus.
 
 ### Security
 

@@ -19,6 +19,9 @@ struct ConnectionExportOptionsSheet: View {
     @State private var isExporting = false
     @State private var isPreparingExport = false
     @State private var exportError: String?
+    @State private var savedQueryCounts: SavedQueryCounts?
+    @State private var includeSavedQueries = true
+    @State private var includeGlobalSavedQueries = false
 
     private var isProAvailable: Bool {
         licenseManager.isFeatureAvailable(.encryptedExport)
@@ -47,14 +50,14 @@ struct ConnectionExportOptionsSheet: View {
                 .padding(20)
                 .disabled(isPreparingExport)
 
-            Spacer(minLength: 0)
-
             Divider()
 
             footer
                 .padding(16)
         }
-        .frame(width: 440, height: 300)
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
+        .task { await loadSavedQueryCounts() }
         .task(id: isPreparingExport) {
             guard isPreparingExport else { return }
             await performExport()
@@ -103,6 +106,10 @@ struct ConnectionExportOptionsSheet: View {
 
     private var options: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let savedQueryCounts, savedQueryCounts.connectionScoped + savedQueryCounts.global > 0 {
+                savedQueryOptions(savedQueryCounts)
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Toggle("Include Credentials", isOn: $includeCredentials)
@@ -122,6 +129,49 @@ struct ConnectionExportOptionsSheet: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func savedQueryOptions(_ counts: SavedQueryCounts) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Include Saved Queries", isOn: $includeSavedQueries)
+                    .toggleStyle(.checkbox)
+                    .accessibilityIdentifier("export-include-saved-queries")
+                Text(verbatim: Self.savedQueriesCaption(connectionScoped: counts.connectionScoped))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if counts.global > 0 {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Also include global saved queries", isOn: $includeGlobalSavedQueries)
+                        .toggleStyle(.checkbox)
+                        .disabled(!includeSavedQueries)
+                        .accessibilityIdentifier("export-include-global-saved-queries")
+                    Text(verbatim: Self.globalSavedQueriesCaption(counts.global))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 20)
+            }
+        }
+    }
+
+    static func savedQueriesCaption(connectionScoped count: Int) -> String {
+        let readable = String(localized: "Saved queries are written as readable text unless the file is encrypted.")
+        guard count > 0 else { return readable }
+        let scoped = count == 1
+            ? String(localized: "1 saved query that belongs to these connections, with its folder and keyword.")
+            : String(format: String(localized: "%d saved queries that belong to these connections, with their folders and keywords."), count)
+        return "\(scoped) \(readable)"
+    }
+
+    static func globalSavedQueriesCaption(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 saved query that every connection shows.")
+            : String(format: String(localized: "%d saved queries that every connection shows."), count)
     }
 
     private var passphraseFields: some View {
@@ -195,10 +245,27 @@ struct ConnectionExportOptionsSheet: View {
         }
     }
 
+    private func loadSavedQueryCounts() async {
+        guard savedQueryCounts == nil else { return }
+        savedQueryCounts = await ConnectionBundleExporter().savedQueryCounts(for: connections)
+    }
+
+    private var exportOptions: BundleExportOptions {
+        let hasSavedQueries = (savedQueryCounts.map { $0.connectionScoped + $0.global } ?? 0) > 0
+        let includesSavedQueries = hasSavedQueries && includeSavedQueries
+        return BundleExportOptions(
+            includesCredentials: includeCredentials && isProAvailable,
+            includesSavedQueries: includesSavedQueries,
+            includesGlobalSavedQueries: includesSavedQueries && includeGlobalSavedQueries
+        )
+    }
+
     private func exportPayload() async throws -> Data {
-        guard includeCredentials, isProAvailable else {
-            return try ConnectionExportService.exportData(connections)
-        }
-        return try await ConnectionExportService.exportEncryptedData(connections, passphrase: passphrase)
+        let options = exportOptions
+        return try await ConnectionBundleExporter().fileData(
+            for: connections,
+            options: options,
+            passphrase: options.includesCredentials ? passphrase : nil
+        )
     }
 }

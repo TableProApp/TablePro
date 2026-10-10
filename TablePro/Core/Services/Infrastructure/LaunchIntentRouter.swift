@@ -32,8 +32,8 @@ internal final class LaunchIntentRouter {
                 Self.logger.debug("LaunchIntentRouter.route(.openDataFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
                 try await openDataFileDocument(at: url)
 
-            case .importConnection(let exportable):
-                WelcomeRouter.shared.routeImport(exportable)
+            case .importConnection(let bundle):
+                WelcomeRouter.shared.routeImport(bundle)
 
             case .openConnectionShare(let url):
                 WelcomeRouter.shared.routeShare(url)

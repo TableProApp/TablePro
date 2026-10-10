@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProConnectionLibrary
+import TableProImport
 import TableProSyncTransport
 
 internal enum GroupStorageError: LocalizedError, Equatable {
@@ -37,7 +38,6 @@ internal enum GroupStorageError: LocalizedError, Equatable {
     }
 }
 
-/// Service for persisting connection groups
 @MainActor
 internal final class GroupStorage {
     internal static let shared = GroupStorage()
@@ -70,8 +70,6 @@ internal final class GroupStorage {
 
     // MARK: - Group CRUD
 
-    /// Load all groups
-    ///
     /// A payload that decodes element by element keeps every group it can read: one entry written
     /// by a future version, or truncated on disk, used to take the whole list down with it.
     internal func loadGroups() -> [ConnectionGroup] {
@@ -104,8 +102,8 @@ internal final class GroupStorage {
         return groups
     }
 
-    /// Save all groups. Callers that go on to write related state must check the result: a save
-    /// that failed leaves the store holding the previous set.
+    /// Callers that go on to write related state must check the result: a save that failed leaves
+    /// the store holding the previous set.
     @discardableResult
     internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
         let previous = loadGroups()
@@ -126,8 +124,6 @@ internal final class GroupStorage {
         }
     }
 
-    /// Add a new group at the end of its parent (duplicate check scoped to siblings, enforces depth
-    /// cap and cycle prevention)
     internal func addGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         try validatePlacement(of: group, in: groups)
@@ -142,7 +138,6 @@ internal final class GroupStorage {
         notifyChanged()
     }
 
-    /// Update an existing group (enforces cycle prevention and depth cap on parentId changes)
     internal func updateGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         guard let index = groups.firstIndex(where: { $0.id == group.id }) else {
@@ -278,7 +273,6 @@ internal final class GroupStorage {
         return saveGroups(repaired)
     }
 
-    /// Delete a group and all descendant groups, nil-out groupId on affected connections.
     @discardableResult
     internal func deleteGroup(_ group: ConnectionGroup) -> Bool {
         var groups = loadGroups()
@@ -310,7 +304,34 @@ internal final class GroupStorage {
         return true
     }
 
-    /// Get group by ID
+    /// Matches inside this write rather than in the plan, so a group a sync pull added between
+    /// preview and import is reused instead of duplicated.
+    internal func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?] {
+        guard paths.contains(where: { !$0.isEmpty }) else { return paths.map { _ in nil } }
+        var groups = loadGroups()
+        guard !storeIsUnreadable else { throw GroupStorageError.storeUnreadable }
+
+        let existing = groups.map { PathNode(id: $0.id, name: $0.name, parentId: $0.parentId, scope: nil) }
+        let resolved = PathTreeResolver.resolve(paths, existing: existing)
+        guard !resolved.created.isEmpty else { return resolved.leaves }
+
+        for node in resolved.created {
+            let sortOrder = LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == node.parentId }.map(\.sortOrder)
+            )
+            groups.append(ConnectionGroup(
+                id: node.id,
+                name: node.name,
+                color: node.color.map(ConnectionColor.init(storedValue:)) ?? .none,
+                parentId: node.parentId,
+                sortOrder: sortOrder
+            ))
+        }
+        guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
+        notifyChanged()
+        return resolved.leaves
+    }
+
     internal func group(for id: UUID) -> ConnectionGroup? {
         loadGroups().first { $0.id == id }
     }

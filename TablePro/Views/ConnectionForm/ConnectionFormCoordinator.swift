@@ -407,6 +407,10 @@ final class ConnectionFormCoordinator: ObservableObject {
     }
 
     private func saveConnection(connect: Bool) {
+        guard !storage.isLibraryUnreadable else {
+            saveError = Self.unreadableLibraryMessage
+            return
+        }
         let finalId = connectionId ?? UUID()
 
         var edits = buildEdits()
@@ -488,7 +492,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
             clearedSecrets.forEach { $0() }
@@ -514,7 +518,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
             clearedSecrets.forEach { $0() }
@@ -525,6 +529,15 @@ final class ConnectionFormCoordinator: ObservableObject {
             dismissAction?()
             services.appEvents.connectionUpdated.send(connectionToSave.id)
         }
+    }
+
+    private static var unreadableLibraryMessage: String {
+        String(localized: "TablePro could not read your saved connections, so it did not save over them.")
+    }
+
+    private var saveFailureMessage: String {
+        guard !storage.isLibraryUnreadable else { return Self.unreadableLibraryMessage }
+        return String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {

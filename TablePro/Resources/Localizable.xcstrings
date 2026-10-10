@@ -1493,6 +1493,10 @@
         }
       }
     },
+    "“%1$@” refers to “%2$@”, which is not in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "(%@)" : {
       "localizations" : {
         "fr" : {
@@ -23703,6 +23707,10 @@
           }
         }
       }
+    },
+    "an item has an empty reference" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "An item must be a JSON object" : {
       "extractionState" : "manual",
@@ -107410,6 +107418,9 @@
         }
       }
     },
+    "Move “%@” to Connection" : {
+
+    },
     "Move Column Down" : {
       "localizations" : {
         "fr" : {
@@ -108405,9 +108416,6 @@
           }
         }
       }
-    },
-    "Move “%@” to Connection" : {
-
     },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {
@@ -152681,6 +152689,10 @@
         }
       }
     },
+    "Saved passwords can only be exported to an encrypted file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Saved Queries" : {
       "localizations" : {
         "fr" : {
@@ -167777,6 +167789,10 @@
         }
       }
     },
+    "SSL mode “%@” is not recognized, so the connection imports with SSL required." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SSL/TLS" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -178673,6 +178689,8 @@
       }
     },
     "The %@ plugin is not installed. TablePro offers to install it on connect." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -183858,6 +183876,10 @@
         }
       }
     },
+    "the passwords for “%@” belong to no connection in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The path \"%@\" is too long." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184742,6 +184764,18 @@
           }
         }
       }
+    },
+    "the reference “%@” is inside itself" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the reference “%@” is nested too deeply" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the reference “%@” is used more than once" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "the replica is not available on this broker" : {
       "extractionState" : "manual",
@@ -191539,6 +191573,10 @@
           }
         }
       }
+    },
+    "This file is not a valid TablePro export: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This file is not in a Git repository." : {
       "localizations" : {
@@ -201573,6 +201611,8 @@
       }
     },
     "Untitled" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
