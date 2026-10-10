@@ -431,9 +431,7 @@ final class MetadataConnectionPool {
             purpose: purpose
         )
         let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
-        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(
-            session.connection.host.nilIfEmpty ?? session.connection.name
-        )
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(session.connection.timeoutEndpointName)
         let operationTimeoutSeconds = session.effectiveQueryTimeoutSeconds > 0
             ? Double(session.effectiveQueryTimeoutSeconds)
             : nil

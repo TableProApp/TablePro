@@ -10,12 +10,19 @@ import TableProPluginKit
 
 @MainActor
 final class NetworkPaneViewModel: ObservableObject {
+    enum Endpoint: Hashable {
+        case hostAndPort
+        case localSocket
+    }
+
     @Published var name: String = ""
     @Published var type: DatabaseType = .mysql
     @Published var host: String = ""
     @Published var port: String = ""
     @Published var database: String = ""
     @Published var sshForwardUnixSocketPath: String = ""
+    @Published var endpoint: Endpoint = .hostAndPort
+    @Published var localSocketPath: String = ""
     @Published var additionalFieldValues: [String: String] = [:]
 
     @Published var coordinator: WeakCoordinatorRef?
@@ -131,6 +138,7 @@ final class NetworkPaneViewModel: ObservableObject {
         }
         issues += connectionFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
         issues += endpointHostListIssues
+        issues += localSocketIssues
         return issues
     }
 
@@ -202,6 +210,8 @@ final class NetworkPaneViewModel: ObservableObject {
         database = connection.database
         type = connection.type
         sshForwardUnixSocketPath = connection.sshForwardUnixSocketPath ?? ""
+        localSocketPath = connection.localSocketPath ?? ""
+        endpoint = connection.localSocketPath == nil ? .hostAndPort : .localSocket
 
         var values: [String: String] = [:]
         let allFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
@@ -243,6 +253,9 @@ final class NetworkPaneViewModel: ObservableObject {
         let socketPath = sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces)
         if !socketPath.isEmpty {
             fields[DatabaseConnection.sshForwardUnixSocketPathKey] = socketPath
+        }
+        if usesLocalSocket, let localSocket = resolvedLocalSocketPath {
+            fields[MySQLLocalSocket.fieldKey] = localSocket
         }
     }
 }
