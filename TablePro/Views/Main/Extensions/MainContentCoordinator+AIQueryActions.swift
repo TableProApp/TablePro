@@ -17,10 +17,17 @@ extension MainContentCoordinator {
 
     func aiQueryActionAvailability(for tab: QueryTab?) -> AIQueryActionAvailability {
         let settings = AppSettingsManager.shared.ai
+        let policy = AIConnectionAccessGate.policy(
+            for: connectionId,
+            connectionStorage: services.connectionStorage,
+            databaseManager: services.databaseManager,
+            defaultPolicy: settings.defaultConnectionPolicy,
+            unsavedCopy: connection
+        ) ?? .never
         return AIQueryActionAvailability(
             aiEnabled: settings.enabled,
             hasActiveProvider: settings.hasActiveProvider,
-            connectionPolicy: connection.aiPolicy ?? settings.defaultConnectionPolicy,
+            connectionPolicy: policy,
             isQueryTab: tab?.tabType == .query,
             isConnected: MainWindowToolbar.hasLiveSession(toolbarState.connectionState),
             hasStatement: tab?.hasQueryText ?? false

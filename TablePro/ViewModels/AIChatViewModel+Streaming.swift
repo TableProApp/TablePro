@@ -84,6 +84,10 @@ extension AIChatViewModel {
         guard case .pausedAtToolLimit = streamingState else { return }
 
         let settings = services.appSettings.ai
+        if connection != nil, resolveConnectionPolicy(settings: settings) == .never {
+            errorMessage = String(localized: "AI is disabled for this connection.")
+            return
+        }
         let resolved = AIProviderFactory.resolve(
             settings: settings,
             overrideProviderId: selectedProviderId,

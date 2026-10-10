@@ -92,6 +92,7 @@ internal struct AIConnectionAccessGateTests {
 @MainActor
 internal struct AIConnectionAccessGateSavedPolicyTests {
     private let storage: ConnectionStorage
+    private let fileURL: URL
 
     init() {
         let unique = UUID().uuidString
@@ -108,6 +109,7 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
             fatalError("Failed to create isolated test user defaults")
         }
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
+        self.fileURL = fileURL
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
@@ -190,6 +192,161 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         let gate = makeGate(manager: DatabaseManager(connectionStorage: storage)) { .alwaysAllow }
 
         #expect(!gate.allowsUnpromptedAccess(to: UUID()))
+    }
+
+    @Test("A chat turn follows a policy saved after the chat and the session took their copies")
+    func chatTurnFollowsTheSavedPolicy() {
+        let id = UUID()
+        storage.addConnection(makeConnection(id: id, policy: .alwaysAllow))
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
+        defer { manager.removeSession(for: id) }
+        let vm = AIChatViewModel(services: services(manager: manager))
+        vm.connection = makeConnection(id: id, policy: .alwaysAllow)
+
+        storage.updateConnection(makeConnection(id: id, policy: .never))
+
+        #expect(vm.resolveConnectionPolicy(settings: AISettings()) == .never)
+    }
+
+    @Test("Continue after a tool limit pause is refused once the saved policy is Never")
+    func continueFollowsTheSavedPolicy() {
+        let id = UUID()
+        storage.addConnection(makeConnection(id: id, policy: .never))
+        let vm = AIChatViewModel(services: services(manager: DatabaseManager(connectionStorage: storage)))
+        vm.connection = makeConnection(id: id, policy: .alwaysAllow)
+        vm.streamingState = .pausedAtToolLimit(count: 5)
+
+        vm.continueToolLoop()
+
+        #expect(vm.errorMessage == String(localized: "AI is disabled for this connection."))
+        #expect(vm.isPausedAtToolLimit)
+    }
+
+    @Test("A connections file that will not decode refuses instead of trusting an older copy")
+    func undecodableStoreRefuses() throws {
+        let id = UUID()
+        storage.addConnection(makeConnection(id: id, policy: .never))
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
+        defer { manager.removeSession(for: id) }
+        try Data("not json".utf8).write(to: fileURL)
+        storage.invalidateCache()
+
+        #expect(!makeGate(manager: manager).allowsUnpromptedAccess(to: id))
+        let vm = AIChatViewModel(services: services(manager: manager))
+        vm.connection = makeConnection(id: id, policy: .alwaysAllow)
+        #expect(vm.resolveConnectionPolicy(settings: AISettings()) == .never)
+    }
+
+    @Test("A chat tool is refused once the saved policy is Never, whatever the session holds")
+    func chatToolFollowsTheSavedPolicy() async {
+        let id = UUID()
+        storage.addConnection(makeConnection(id: id, policy: .never))
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
+        defer { manager.removeSession(for: id) }
+
+        await #expect(throws: ChatToolAuthorizationError.self) {
+            try await ChatToolTarget.authorized(
+                context: toolContext(connectionId: id, manager: manager),
+                input: .object([:]),
+                tool: "list_tables"
+            )
+        }
+    }
+
+    @Test("A chat tool on a session with no saved record follows the session's policy")
+    func chatToolOnUnsavedSessionUsesItsOwnPolicy() async throws {
+        let id = UUID()
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
+        defer { manager.removeSession(for: id) }
+
+        let resolved = try await ChatToolTarget.authorized(
+            context: toolContext(connectionId: id, manager: manager),
+            input: .object([:]),
+            tool: "list_tables"
+        )
+        #expect(resolved == id)
+    }
+
+    @Test("The AI query actions follow the saved policy, not the window's copy")
+    func queryActionsFollowTheSavedPolicy() {
+        let aiEnabled = AppSettingsManager.shared.ai.enabled
+
+        #expect(!queryActionsVisible(saved: .never, held: .alwaysAllow))
+        #expect(queryActionsVisible(saved: .alwaysAllow, held: .never) == aiEnabled)
+    }
+
+    private func queryActionsVisible(saved: AIConnectionPolicy, held: AIConnectionPolicy) -> Bool {
+        let id = UUID()
+        storage.addConnection(makeConnection(id: id, policy: saved))
+        let coordinator = MainContentCoordinator(
+            connection: makeConnection(id: id, policy: held),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState(),
+            services: services(manager: DatabaseManager(connectionStorage: storage))
+        )
+        let tab = QueryTab(title: "Query", query: "SELECT 1", tabType: .query)
+        return coordinator.aiQueryActionAvailability(for: tab).isVisible
+    }
+
+    private func toolContext(connectionId: UUID, manager: DatabaseManager) -> ChatToolContext {
+        let storage = storage
+        return ChatToolContext(
+            connectionId: connectionId,
+            bridge: MCPConnectionBridge(),
+            authPolicy: MCPAuthPolicy()
+        ) { id in
+            await MainActor.run {
+                AIConnectionAccessGate.policy(
+                    for: id,
+                    connectionStorage: storage,
+                    databaseManager: manager,
+                    defaultPolicy: .askEachTime
+                )
+            }
+        }
+    }
+
+    private func services(manager: DatabaseManager) -> AppServices {
+        let live = AppServices.live
+        return AppServices(
+            appEvents: live.appEvents,
+            appSettings: live.appSettings,
+            appSettingsStorage: live.appSettingsStorage,
+            connectionStorage: storage,
+            databaseManager: manager,
+            pluginManager: live.pluginManager,
+            schemaService: live.schemaService,
+            schemaRefreshService: live.schemaRefreshService,
+            schemaProviderRegistry: live.schemaProviderRegistry,
+            catalogChangeService: live.catalogChangeService,
+            sqlFavoriteManager: live.sqlFavoriteManager,
+            favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
+            aiChatStorage: live.aiChatStorage,
+            aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: AIAccessApprovals(),
+            groupStorage: live.groupStorage,
+            tagStorage: live.tagStorage,
+            sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
+            licenseManager: live.licenseManager,
+            syncMetadataStorage: live.syncMetadataStorage,
+            favoritesExpansionState: live.favoritesExpansionState,
+            linkedFolderWatcher: live.linkedFolderWatcher,
+            queryHistoryManager: live.queryHistoryManager,
+            dateFormattingService: live.dateFormattingService,
+            copilotService: live.copilotService,
+            mcpServerManager: live.mcpServerManager,
+            syncTracker: live.syncTracker,
+            themeEngine: live.themeEngine,
+            welcomeRouter: live.welcomeRouter
+        )
     }
 }
 

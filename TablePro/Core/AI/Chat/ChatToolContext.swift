@@ -15,6 +15,8 @@ import Foundation
 /// against one connection authorize a statement executed against another. `ChatToolTarget` is the
 /// one door, and it is why this type no longer carries a resolver of its own.
 struct ChatToolContext: Sendable {
+    typealias PolicyLookup = @Sendable (UUID) async -> AIConnectionPolicy?
+
     let connectionId: UUID?
     let bridge: MCPConnectionBridge
     let authPolicy: MCPAuthPolicy
@@ -33,18 +35,22 @@ struct ChatToolContext: Sendable {
     /// unconditionally, which skipped the only screen naming what was about to run and where.
     let approvalWasExplicit: Bool
 
+    private let policyLookup: PolicyLookup
+
     init(
         connectionId: UUID?,
         bridge: MCPConnectionBridge,
         authPolicy: MCPAuthPolicy,
         sessionId: UUID? = nil,
-        approvalWasExplicit: Bool = false
+        approvalWasExplicit: Bool = false,
+        policyLookup: @escaping PolicyLookup = ChatToolContext.savedPolicy
     ) {
         self.connectionId = connectionId
         self.bridge = bridge
         self.authPolicy = authPolicy
         self.sessionId = sessionId
         self.approvalWasExplicit = approvalWasExplicit
+        self.policyLookup = policyLookup
     }
 
     /// The same context bound to one block's approval outcome.
@@ -57,24 +63,24 @@ struct ChatToolContext: Sendable {
             bridge: bridge,
             authPolicy: authPolicy,
             sessionId: sessionId,
-            approvalWasExplicit: approvalWasExplicit
+            approvalWasExplicit: approvalWasExplicit,
+            policyLookup: policyLookup
         )
     }
 
-    /// This connection's AI Policy, or nil when no such connection is saved.
-    ///
-    /// Read live rather than from a held record: the view model's copy is refreshed only when the
-    /// connection's id changes, so a policy set while the pane stayed mounted would not be seen.
+    /// This connection's AI Policy, or nil when there is no such connection.
     func aiPolicy(for connectionId: UUID) async -> AIConnectionPolicy? {
+        await policyLookup(connectionId)
+    }
+
+    static let savedPolicy: PolicyLookup = { connectionId in
         await MainActor.run {
-            let resolved: DatabaseConnection?
-            switch DatabaseManager.shared.connectionState(connectionId) {
-            case .live(_, let session): resolved = session.connection
-            case .stored(let connection): resolved = connection
-            case .unknown: resolved = nil
-            }
-            guard let resolved else { return nil }
-            return resolved.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy
+            AIConnectionAccessGate.policy(
+                for: connectionId,
+                connectionStorage: .shared,
+                databaseManager: .shared,
+                defaultPolicy: AppSettingsManager.shared.ai.defaultConnectionPolicy
+            )
         }
     }
 

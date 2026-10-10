@@ -47,10 +47,32 @@ extension AIConnectionAccessGate {
         defaultPolicy: @escaping @MainActor () -> AIConnectionPolicy
     ) -> AIConnectionAccessGate {
         AIConnectionAccessGate(approvals: approvals) { connectionId in
-            let record = connectionStorage.loadConnection(id: connectionId)
-                ?? databaseManager.session(for: connectionId)?.connection
-            guard let record else { return nil }
-            return record.aiPolicy ?? defaultPolicy()
+            policy(
+                for: connectionId,
+                connectionStorage: connectionStorage,
+                databaseManager: databaseManager,
+                defaultPolicy: defaultPolicy()
+            )
         }
+    }
+
+    /// The saved record wins: a live session keeps the policy it connected with. Only a connection
+    /// with no saved record answers with its session's copy, then `unsavedCopy`. Nil refuses, and a
+    /// connections file that will not decode refuses rather than fall back to an older copy.
+    static func policy(
+        for connectionId: UUID,
+        connectionStorage: ConnectionStorage,
+        databaseManager: DatabaseManager,
+        defaultPolicy: AIConnectionPolicy,
+        unsavedCopy: DatabaseConnection? = nil
+    ) -> AIConnectionPolicy? {
+        if let saved = connectionStorage.loadConnection(id: connectionId) {
+            return saved.aiPolicy ?? defaultPolicy
+        }
+        guard !connectionStorage.lastLoadFailed else { return nil }
+        guard let unsaved = databaseManager.session(for: connectionId)?.connection ?? unsavedCopy else {
+            return nil
+        }
+        return unsaved.aiPolicy ?? defaultPolicy
     }
 }

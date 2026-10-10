@@ -155,7 +155,15 @@ extension AIChatViewModel {
     }
 
     func resolveConnectionPolicy(settings: AISettings) -> AIConnectionPolicy? {
-        let policy = connection?.aiPolicy ?? settings.defaultConnectionPolicy
+        let policy = connection.map {
+            AIConnectionAccessGate.policy(
+                for: $0.id,
+                connectionStorage: services.connectionStorage,
+                databaseManager: services.databaseManager,
+                defaultPolicy: settings.defaultConnectionPolicy,
+                unsavedCopy: $0
+            ) ?? .never
+        } ?? settings.defaultConnectionPolicy
 
         if policy == .askEachTime {
             if let connectionID = connection?.id, services.aiAccessApprovals.isApproved(connectionID) {

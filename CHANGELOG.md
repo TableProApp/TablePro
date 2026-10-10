@@ -140,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.
 - Pairing accepting a redirect that opens TablePro, a web browser, a database URL or another remote resource.
 - A refused or unrecognized deep link writing its query values, SQL included, to the system log.
+- AI chat on an open connection ignoring a change to its AI policy until reconnect.
 
 ## [0.79.0] - 2026-10-09
 
