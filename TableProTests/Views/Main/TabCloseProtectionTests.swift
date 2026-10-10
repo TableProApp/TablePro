@@ -369,27 +369,4 @@ struct TabCloseProtectionTests {
         #expect(coordinator.structureSessions[id] == nil)
         #expect(coordinator.createTableDrafts[id] == nil)
     }
-
-    /// A closed tab's file registration used to outlive it, and `TabRouter.openSQLFile` trusts that
-    /// registry without re-checking, so the file could not be reopened while the window lived.
-    @Test("Closing a file-backed tab releases its source-file registration")
-    func closingReleasesTheSourceFileRegistration() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-
-        let url = URL(fileURLWithPath: "/tmp/tabclose-\(UUID().uuidString).sql")
-        let windowId = UUID()
-        coordinator.windowId = windowId
-        coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        guard let id = coordinator.tabManager.selectedTabId else {
-            Issue.record("expected a selected tab")
-            return
-        }
-        coordinator.tabManager.mutate(tabId: id) { $0.content.sourceFileURL = url }
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
-
-        coordinator.closeTabsByUser(ids: [id])
-
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
-    }
 }

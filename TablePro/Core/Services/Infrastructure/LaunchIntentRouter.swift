@@ -50,12 +50,8 @@ internal final class LaunchIntentRouter {
             case .openSampleDatabase:
                 SampleDatabaseLauncher.open()
             }
-        } catch let error as TabRouterError where error == .userCancelled {
-            Self.logger.info("Intent cancelled by user")
-        } catch let error as DatabaseAccessError where error.isUserCancelled {
-            Self.logger.info("Pairing cancelled by user")
-        } catch is CancellationError {
-            Self.logger.info("Intent cancelled")
+        } catch let error where error.isUserCancellation {
+            Self.logger.info("Intent cancelled: \(error.publicLogShape, privacy: .public)")
         } catch {
             Self.logger.error("Intent failed: \(error.publicLogShape, privacy: .public)")
             await presentError(error, for: intent)

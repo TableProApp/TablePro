@@ -9,11 +9,6 @@
 import os
 import SwiftUI
 
-private enum RestoreLoadTiming {
-    case immediate
-    case deferred
-}
-
 extension MainContentView {
     // MARK: - Initialization
 
@@ -33,171 +28,49 @@ extension MainContentView {
             )
         }()
 
-        guard let payload else {
-            await handleRestoreOrDefault()
-            _ = await schemaLoad
-            return
+        if let payload {
+            MainContentView.lifecycleLogger.info(
+                "[open] initializeAndRestoreTabs intent=\(String(describing: payload.intent), privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
+            )
+            if payload.intent == .openContent {
+                await prepareFoundingContent(skipAutoExecute: payload.skipAutoExecute)
+            }
         }
 
-        MainContentView.lifecycleLogger.info(
-            "[open] initializeAndRestoreTabs intent=\(String(describing: payload.intent), privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
-        )
-
-        switch payload.intent {
-        case .openContent:
-            if let selectedTab = tabManager.selectedTab,
-                selectedTab.tabType == .table,
-                selectedTab.tableContext.tableName != nil
-            {
-                coordinator.restoreLastHiddenColumnsForTable()
-                if selectedTab.filterState.appliedFilters.isEmpty {
-                    coordinator.restoreFiltersForSelectedTab()
-                } else if let tabIndex = tabManager.selectedTabIndex {
-                    coordinator.rebuildTableQuery(at: tabIndex)
-                }
-            }
-            if payload.skipAutoExecute {
-                await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
-                _ = await schemaLoad
-                return
-            }
-            if let selectedTab = tabManager.selectedTab,
-                selectedTab.tabType == .table,
-                !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                if let session = DatabaseManager.shared.activeSessions[connection.id],
-                    session.isConnected
-                {
-                    coordinator.lazyLoadCurrentTabIfNeeded()
-                } else {
-                    coordinator.pendingLoadTrigger = .userInitiated
-                }
-            }
-            if let sourceURL = payload.sourceFileURL {
-                WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
-            }
-
-        case .newEmptyTab:
-            _ = await schemaLoad
-            return
-
-        case .restoreOrDefault:
-            await handleRestoreOrDefault()
+        if payload == nil || payload?.intent == .restoreOrDefault {
+            await coordinator.restoreSavedTabs()
         }
-
+        /// Before the schema load, which can take seconds, so a move waiting on the restore lands now.
+        coordinator.settleTabRestore()
         _ = await schemaLoad
     }
 
-    private func restoreConnectionContext(
-        for selected: QueryTab,
-        activeDatabase: String?,
-        activeSchema: String?,
-        loadTiming: RestoreLoadTiming
-    ) {
-        let isTableTab = selected.tabType == .table
-            && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-        guard loadTiming == .immediate else {
-            if isTableTab {
-                coordinator.deferredRestoreLoadTabId = selected.id
-            }
-            return
-        }
-
-        guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else {
-            if isTableTab { coordinator.pendingLoadTrigger = .restore }
-            return
-        }
-
-        Task {
-            await coordinator.switchContainers(database: activeDatabase, schema: activeSchema)
-            if isTableTab {
-                coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
-            }
-        }
-    }
-
-    private func applyRestoredGroup(
-        _ tabs: [QueryTab],
-        selectedTabId: UUID?,
-        activeDatabase: String? = nil,
-        activeSchema: String? = nil,
-        loadTiming: RestoreLoadTiming = .immediate
-    ) {
-        guard let firstTab = tabs.first else { return }
-        tabManager.tabs = tabs
-        tabManager.selectedTabId = tabs.contains(where: { $0.id == selectedTabId }) ? selectedTabId : firstTab.id
-
-        guard let selected = tabManager.selectedTab else { return }
-
-        if selected.tabType == .table,
-            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func prepareFoundingContent(skipAutoExecute: Bool) async {
+        if let selectedTab = tabManager.selectedTab,
+            selectedTab.tabType == .table,
+            selectedTab.tableContext.tableName != nil
         {
             coordinator.restoreLastHiddenColumnsForTable()
-        }
-
-        /// Every table tab, not just the selected one. A tab whose filters were never loaded holds
-        /// an empty set, and the next tab switch saves that over the filters the reader left on the
-        /// table, because an empty set is what the storage reads as a delete. The hidden columns
-        /// above go first, so the query this rebuilds for the selected tab selects the right ones.
-        for index in tabManager.tabs.indices where tabManager.tabs[index].tabType == .table {
-            coordinator.restoreFilters(forTabAt: index)
-        }
-
-        restoreConnectionContext(
-            for: selected,
-            activeDatabase: activeDatabase,
-            activeSchema: activeSchema,
-            loadTiming: loadTiming
-        )
-    }
-
-    private func handleRestoreOrDefault() async {
-        /// The split view controller owns the window and is wired up before this view is built, unlike
-        /// `viewWindow`, which arrives from `configureWindow` and can still be nil here.
-        guard let window = coordinator.splitViewController?.view.window else {
-            MainContentView.lifecycleLogger.error(
-                "[open] handleRestoreOrDefault has no window windowId=\(windowId, privacy: .public)"
-            )
-            return
-        }
-        let restoreStart = Date()
-        let result = await coordinator.persistence.restoreFromDisk()
-        MainContentView.lifecycleLogger.info(
-            "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
-        )
-        guard !result.tabs.isEmpty else { return }
-
-        var restoredTabs = result.tabs
-        for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
-            if let tableName = restoredTabs[i].tableContext.tableName {
-                do {
-                    restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
-                        tableName: tableName,
-                        databaseType: connection.type,
-                        schemaName: restoredTabs[i].tableContext.schemaName
-                    )
-                } catch {
-                    MainContentView.lifecycleLogger.error(
-                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
-                    )
-                }
+            if selectedTab.filterState.appliedFilters.isEmpty {
+                coordinator.restoreFiltersForSelectedTab()
+            } else if let tabIndex = tabManager.selectedTabIndex {
+                coordinator.rebuildTableQuery(at: tabIndex)
             }
         }
-
-        /// One window hosts every connection, so a connection's saved tabs all belong to the one
-        /// tab list. The old shape split them across windows by a saved group index, which now
-        /// has nowhere to go: a group handed back to `openTab` restores nothing and the next
-        /// autosave erases it.
-        applyRestoredGroup(
-            restoredTabs,
-            selectedTabId: result.selectedTabId ?? restoredTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
-            loadTiming: window.isKeyWindow ? .immediate : .deferred
-        )
+        if skipAutoExecute {
+            await coordinator.rebuildSelectedTableQueryForHiddenColumnsIfNeeded()
+            return
+        }
+        guard let selectedTab = tabManager.selectedTab,
+              selectedTab.tabType == .table,
+              !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        if let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected {
+            coordinator.lazyLoadCurrentTabIfNeeded()
+        } else {
+            coordinator.pendingLoadTrigger = .userInitiated
+        }
     }
-
 
     // MARK: - Command Actions Setup
 

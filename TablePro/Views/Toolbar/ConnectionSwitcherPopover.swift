@@ -37,6 +37,13 @@ struct ConnectionSwitcherEntry: Identifiable {
     let isConnected: Bool
 }
 
+/// The same list serves two commands: Switch Connection navigates, Move Tab to Connection picks
+/// where one query tab goes.
+internal enum ConnectionSwitcherPurpose {
+    case switchConnection
+    case moveTab(title: String, onPick: @MainActor (UUID) -> Void)
+}
+
 struct ConnectionSwitcherPopover: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
     @ObservedObject private var listPreferences = ConnectionListPreferences.shared
@@ -46,7 +53,10 @@ struct ConnectionSwitcherPopover: View {
     /// same shape.
     let dismiss: () -> Void
 
+    /// The connection on screen, or for a move the one the tab is leaving, which the list leaves out.
     let currentConnectionId: UUID?
+
+    let purpose: ConnectionSwitcherPurpose
 
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var groups: [ConnectionGroup] = []
@@ -114,21 +124,37 @@ struct ConnectionSwitcherPopover: View {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    private var movedTabTitle: String? {
+        guard case .moveTab(let title, _) = purpose else { return nil }
+        return title
+    }
+
+    private var excludedConnectionId: UUID? {
+        guard case .moveTab = purpose else { return nil }
+        return currentConnectionId
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            if let movedTabTitle {
+                moveHeader(movedTabTitle)
+            }
+
             searchField
 
             Divider()
 
             content
 
-            Divider()
+            if movedTabTitle == nil {
+                Divider()
 
-            ConnectionActivityFooter(connection: currentConnection)
+                ConnectionActivityFooter(connection: currentConnection)
 
-            Divider()
+                Divider()
 
-            manageButton
+                manageButton
+            }
         }
         .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .onAppear {
@@ -159,6 +185,19 @@ struct ConnectionSwitcherPopover: View {
         .onChange(of: searchText) { _ in
             settleSelection()
         }
+    }
+
+    private func moveHeader(_ title: String) -> some View {
+        Text(String(format: String(localized: "Move “%@” to Connection"), title))
+            .font(.headline)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("connection-switcher-move-header")
     }
 
     private var searchField: some View {
@@ -195,7 +234,8 @@ struct ConnectionSwitcherPopover: View {
                 lastConnected: RecentConnectionsStore.shared.lastConnected,
                 includesRecent: listPreferences.showsRecent
             ),
-            isFiltering: isFiltering
+            isFiltering: isFiltering,
+            excluding: excludedConnectionId
         )
     }
 
@@ -341,10 +381,20 @@ struct ConnectionSwitcherPopover: View {
         activate(connectionId: id)
     }
 
+    private func activate(connectionId: UUID) {
+        switch purpose {
+        case .switchConnection:
+            switchTo(connectionId: connectionId)
+        case .moveTab(_, let onPick):
+            dismiss()
+            onPick(connectionId)
+        }
+    }
+
     /// Command-click opens a saved connection in a window of its own, the modifier Finder and
     /// Safari use for the same intent. A connection already open is switched to either way: moving
     /// one between windows belongs to the connections strip, which owns that arrangement.
-    private func activate(connectionId: UUID) {
+    private func switchTo(connectionId: UUID) {
         let opensNewWindow = NSApp.currentEvent?.modifierFlags.contains(.command) == true
         dismiss()
         Task {
@@ -355,6 +405,7 @@ struct ConnectionSwitcherPopover: View {
                     try await TabRouter.shared.route(.openConnection(connectionId))
                 }
             } catch {
+                guard !error.isUserCancellation else { return }
                 await MainActor.run {
                     AlertHelper.showErrorSheet(
                         title: String(localized: "Connection Failed"),
@@ -370,19 +421,25 @@ struct ConnectionSwitcherPopover: View {
 // MARK: - Sections
 
 internal enum ConnectionSwitcherSections {
+    /// `excluding` drops one connection before Recent is capped, so the cap counts only rows that
+    /// can be shown.
     internal static func build(
         active: [ConnectionSwitcherEntry],
         library request: LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag>,
-        isFiltering: Bool
+        isFiltering: Bool,
+        excluding excludedId: UUID? = nil
     ) -> [FieldDrivenListSection<ConnectionSwitcherEntry>] {
-        let byId = Dictionary(request.connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var library = request
+        library.connections.removeAll { $0.id == excludedId }
+        let byId = Dictionary(library.connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return build(
             active: active,
-            saved: LibrarySorting.sorted(request.connections, mode: request.sortMode, lastConnected: request.lastConnected),
-            groups: request.groups,
+            saved: LibrarySorting.sorted(library.connections, mode: library.sortMode, lastConnected: library.lastConnected),
+            groups: library.groups,
             isFiltering: isFiltering,
-            favorites: LibraryOutlineBuilder.favoriteIds(request).compactMap { byId[$0] },
-            recent: LibraryOutlineBuilder.recentIds(request).compactMap { byId[$0] }
+            favorites: LibraryOutlineBuilder.favoriteIds(library).compactMap { byId[$0] },
+            recent: LibraryOutlineBuilder.recentIds(library).compactMap { byId[$0] },
+            excluding: excludedId
         )
     }
 
@@ -400,13 +457,19 @@ internal enum ConnectionSwitcherSections {
         groups: [ConnectionGroup],
         isFiltering: Bool,
         favorites: [DatabaseConnection] = [],
-        recent: [DatabaseConnection] = []
+        recent: [DatabaseConnection] = [],
+        excluding excludedId: UUID? = nil
     ) -> [FieldDrivenListSection<ConnectionSwitcherEntry>] {
+        let listedActive = active.filter { $0.id != excludedId }
+        let listedSaved = saved.filter { $0.id != excludedId }
+        let listedFavorites = favorites.filter { $0.id != excludedId }
+        let listedRecent = recent.filter { $0.id != excludedId }
+
         var sections = [
             FieldDrivenListSection(
                 id: "active",
                 title: String(localized: "ACTIVE CONNECTIONS"),
-                items: active
+                items: listedActive
             ),
         ]
 
@@ -415,29 +478,29 @@ internal enum ConnectionSwitcherSections {
                 FieldDrivenListSection(
                     id: "saved",
                     title: String(localized: "SAVED CONNECTIONS"),
-                    items: saved.map(entry)
+                    items: listedSaved.map(entry)
                 )
             )
             return sections
         }
 
-        if !favorites.isEmpty {
+        if !listedFavorites.isEmpty {
             sections.append(FieldDrivenListSection(
                 id: "favorites",
                 title: String(localized: "FAVORITES"),
-                items: favorites.map(entry)
+                items: listedFavorites.map(entry)
             ))
         }
-        if !recent.isEmpty {
+        if !listedRecent.isEmpty {
             sections.append(FieldDrivenListSection(
                 id: "recent",
                 title: String(localized: "RECENT"),
-                items: recent.map(entry)
+                items: listedRecent.map(entry)
             ))
         }
 
-        let listedIds = Set(favorites.map(\.id)).union(recent.map(\.id))
-        let library = saved.filter { !listedIds.contains($0.id) }
+        let listedIds = Set(listedFavorites.map(\.id)).union(listedRecent.map(\.id))
+        let library = listedSaved.filter { !listedIds.contains($0.id) }
         let graph = LibraryGroupGraph(groups: groups)
         var byGroup: [UUID: [DatabaseConnection]] = [:]
         var ungrouped: [DatabaseConnection] = []

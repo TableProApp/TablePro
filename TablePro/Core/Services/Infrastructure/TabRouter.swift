@@ -161,20 +161,18 @@ internal final class TabRouter {
             existing.makeKeyAndOrderFront(nil)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
-            let host = existing.contentViewController as? MainSplitViewController
             /// Raising the window is not the same as showing the connection the user picked, and a
-            /// window hosts several. Without this, choosing a connected one from the connection list
-            /// re-fronted a window still showing a different connection and stopped there.
-            if let host, host.workspaces.contains(id) {
-                host.selectHostedConnection(id)
+            /// window hosts several. Whether to dial is the workspace phase's call: no driver is
+            /// installed for the whole of a connect, so asking the driver restarted one in flight.
+            if let host = existing.contentViewController as? MainSplitViewController,
+               host.workspaces.contains(id) {
+                host.reconnectWorkspaceIfIdle(id)
+                return
             }
-            guard DatabaseManager.shared.activeSessions[id]?.driver == nil else { return }
-            if let host, host.workspaces.contains(id) {
-                host.reconnectWorkspace(id)
-            } else {
-                try await confirmConnectConsent(connection)
-                try await DatabaseManager.shared.ensureConnected(connection)
-            }
+            let status = DatabaseManager.shared.activeSessions[id]?.reportedStatus
+            guard Self.needsConnect(reportedStatus: status) else { return }
+            try await confirmConnectConsent(connection)
+            try await DatabaseManager.shared.ensureConnected(connection)
             return
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
@@ -184,6 +182,18 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
+    }
+
+    /// An unreachable session reports an error, so it is redialed like one that is gone. A session
+    /// already connecting is left alone: dialing again would ask for consent a second time.
+    internal static func needsConnect(reportedStatus: ConnectionStatus?) -> Bool {
+        guard let reportedStatus else { return true }
+        switch reportedStatus {
+        case .connected, .connecting:
+            return false
+        case .disconnected, .error:
+            return true
+        }
     }
 
     /// Opens a connection and hands its window to the agent.
@@ -262,23 +272,17 @@ internal final class TabRouter {
     private func focusExistingTableTab(
         connectionId: UUID, database: String?, schema: String?, table: String
     ) -> Bool {
-        for coordinator in MainContentCoordinator.allActiveCoordinators()
-            where coordinator.connectionId == connectionId {
-            guard let match = coordinator.tabManager.tabs.first(where: { tab in
-                guard tab.tabType == .table,
-                      tab.tableContext.tableName == table else { return false }
-                let databaseMatches = database.map { db in
-                    tab.tableContext.databaseName == db
-                } ?? true
-                let schemaMatches = schema.map { sch in
-                    tab.tableContext.schemaName.map { $0 == sch } ?? false
-                } ?? true
-                return databaseMatches && schemaMatches
-            }) else { continue }
-            coordinator.selectTabAndFocusWindow(match.id)
-            return true
+        HostedTabRouting.live.revealFirstTab(of: connectionId) { tab in
+            guard tab.tabType == .table,
+                  tab.tableContext.tableName == table else { return false }
+            let databaseMatches = database.map { db in
+                tab.tableContext.databaseName == db
+            } ?? true
+            let schemaMatches = schema.map { sch in
+                tab.tableContext.schemaName.map { $0 == sch } ?? false
+            } ?? true
+            return databaseMatches && schemaMatches
         }
-        return false
     }
 
     // MARK: - Query
@@ -300,7 +304,7 @@ internal final class TabRouter {
         )
         guard confirmed else { throw TabRouterError.userCancelled }
 
-        if focusExistingQueryTab(connectionId: connectionId, sql: sql) {
+        if Self.revealExistingQueryTab(connectionId: connectionId, sql: sql, routing: .live) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
@@ -321,21 +325,14 @@ internal final class TabRouter {
         try await DatabaseManager.shared.ensureConnected(connection)
     }
 
-    private func focusExistingQueryTab(connectionId: UUID, sql: String) -> Bool {
-        for coordinator in MainContentCoordinator.allActiveCoordinators()
-            where coordinator.connectionId == connectionId {
-            let match = coordinator.tabManager.tabs.first { tab in
-                tab.tabType == .query && tab.content.query == sql
-            }
-            guard let match else { continue }
-            coordinator.tabManager.selectedTabId = match.id
-            if let windowId = coordinator.windowId,
-               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
-                window.makeKeyAndOrderFront(nil)
-            }
-            return true
+    /// Through the reveal, which selects the tab's connection workspace too. Selecting the tab
+    /// alone left the window showing another connection while reporting the tab found.
+    internal static func revealExistingQueryTab(
+        connectionId: UUID, sql: String, routing: HostedTabRouting
+    ) -> Bool {
+        routing.revealFirstTab(of: connectionId) { tab in
+            tab.tabType == .query && tab.content.query == sql
         }
-        return false
     }
 
     private func previewForSQL(_ sql: String) -> String {
@@ -481,19 +478,40 @@ internal final class TabRouter {
     // MARK: - SQL File
 
     private func openSQLFile(_ url: URL) async throws {
-        if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
-            existing.makeKeyAndOrderFront(nil)
+        if HostedTabRouting.live.revealTab(editing: url) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             return
         }
 
-        if let session = DatabaseManager.shared.lastActiveSession {
-            let payload = try await Self.sqlFileTabPayload(for: url, connectionId: session.connection.id)
-            WindowManager.shared.openTab(payload: payload)
-            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        } else {
+        let target = Self.sqlFileConnectionId(
+            shownConnectionId: WindowManager.shared.frontmostHost()?.workspaces.selectedConnectionId,
+            lastActiveConnectionId: DatabaseManager.shared.lastActiveSessionId,
+            activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
+        )
+        guard let target else {
             WelcomeRouter.shared.enqueueSQLFile(url)
+            return
         }
+        let payload = try await Self.sqlFileTabPayload(for: url, connectionId: target)
+        WindowManager.shared.openTab(payload: payload)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// The connection on screen, so the script lands where the user is looking. The last one to
+    /// connect is only a fallback for when no window shows a connected one: switching to a
+    /// connection that is already up never updates it.
+    internal static func sqlFileConnectionId(
+        shownConnectionId: UUID?,
+        lastActiveConnectionId: UUID?,
+        activeSessionIds: Set<UUID>
+    ) -> UUID? {
+        if let shownConnectionId, activeSessionIds.contains(shownConnectionId) {
+            return shownConnectionId
+        }
+        if let lastActiveConnectionId, activeSessionIds.contains(lastActiveConnectionId) {
+            return lastActiveConnectionId
+        }
+        return nil
     }
 
     internal static func sqlFileTabPayload(for url: URL, connectionId: UUID) async throws -> EditorTabPayload {
@@ -519,8 +537,14 @@ internal final class TabRouter {
     // MARK: - Helpers
 
     internal func bringConnectionWindowToFront(_ connectionId: UUID) {
-        if let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId) {
-            window.makeKeyAndOrderFront(nil)
+        if let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId)
+            ?? WindowManager.shared.window(for: connectionId) {
+            /// A window hosts several connections, so raising it can still show another one.
+            if let host = window.contentViewController as? MainSplitViewController,
+               host.workspaces.contains(connectionId) {
+                host.selectHostedConnection(connectionId)
+            }
+            WindowManager.shared.bringToFront(window)
         } else {
             NSApp.windows.first { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }?.makeKeyAndOrderFront(nil)
         }

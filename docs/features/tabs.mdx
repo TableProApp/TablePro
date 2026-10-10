@@ -95,6 +95,14 @@ The command dims for a window's only tab, for a tab with a query or a table load
 
 Tabs with unsaved work stay put. A move carries the tab, not the edits pending in the grid or the ALTERs staged in the structure editor, so save those first and the command comes back.
 
+## Moving a query tab to another connection
+
+To run the same SQL on another connection, press `Ctrl+Option+Cmd+C`, choose **Database > Move Tab to Connection…**, or right-click the tab. Pick the connection and press `Return`. The tab moves there with its SQL, cursor, parameters, and unsaved file text, and the window switches to that connection. Press `Cmd+Enter` to run it: nothing runs on arrival.
+
+A connection that is not open is opened and connected first. The tab stays where it was until that connection is up, and stays there if the connect fails or you go back to the tab before it finishes.
+
+On the new connection the tab points at the database the sidebar is browsing. Results stay behind. The command is for query tabs, and dims while the query runs or while the grid holds unsaved edits. A tab saved to a file stays put when the other connection already has that file open.
+
 ## Tabs that stop fitting
 
 The strip keeps one row and scrolls it, the way every macOS tab bar does. Scroll over it with two fingers to reach the rest.
@@ -120,7 +128,7 @@ Loaded rows are the exception, and only in bulk. Background table tabs keep thei
 
 ## Where a tab points
 
-A tab is bound to one connection, database, and schema, and every query, refresh, filter, sort, structure read, and structure save it runs uses that binding. Switching tabs never changes the connection's saved default database. To point an existing tab somewhere else, use the database picker in the query editor's toolbar: it rebinds that one tab and reruns it.
+A tab is bound to one connection, database, and schema, and every query, refresh, filter, sort, structure read, and structure save it runs uses that binding. Switching tabs never changes the connection's saved default database. To point an existing tab somewhere else, use the database picker in the query editor's toolbar: it rebinds that one tab, and reruns it when it was showing rows. A statement that writes asks before it runs. To point it at another connection, [move the tab](#moving-a-query-tab-to-another-connection).
 
 The centred toolbar control names the frontmost tab's database, and clicking it switches to another. That is how you tell two tabs on one connection apart. On engines with schemas, **Database > Schema** names the one in use and switches it.
 

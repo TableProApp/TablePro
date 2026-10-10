@@ -20,6 +20,18 @@ private struct TabLoadKey: Hashable {
     let loadEpoch: Int
 }
 
+/// Picking another database reruns the tab only while it shows rows. An error, a plan or a write's
+/// count is not a view of the data the new database holds, and rerunning it was an unasked run.
+@MainActor
+internal enum ContainerChangeRerunPolicy {
+    internal static func reruns(showing activeResult: ResultSet?) -> Bool {
+        guard let activeResult else { return false }
+        return activeResult.errorMessage == nil
+            && !activeResult.isExplainResult
+            && !activeResult.resultColumns.isEmpty
+    }
+}
+
 struct MainEditorContentView: View {
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var licenseManager = LicenseManager.shared
@@ -433,8 +445,10 @@ struct MainEditorContentView: View {
               tabManager.mutate(tabId: tabId, { $0.tableContext.databaseName = name }) else { return }
         tabManager.markTabRenamed(tabId)
         SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
-        guard tabManager.selectedTabId == tabId else { return }
-        coordinator.runQuery(viewport: .firstRow)
+        guard tabManager.selectedTabId == tabId,
+              ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
+        /// The statement at the caret may not be the one that produced the rows, so a write asks first.
+        coordinator.runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
     }
 
     // MARK: - Query Tab Content

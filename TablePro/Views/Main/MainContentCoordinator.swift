@@ -389,6 +389,10 @@ final class MainContentCoordinator: ObservableObject {
     /// view out and in again, and restoring the saved tabs a second time over the live ones replaced
     /// whatever changed since the last save.
     internal var hasRestoredTabs = false
+    /// Set once this coordinator's restore has run, or was not due. A moved tab waits for it,
+    /// so it is checked against, merged into and saved with the saved set.
+    internal var hasSettledTabRestore = false
+    internal var movesAwaitingRestore: [PendingTabMove] = []
     /// How many times this connection's content has appeared, a connection switch back included.
     internal private(set) var activationCount = 0
     private var externalFileModCancellable: AnyCancellable?
@@ -953,6 +957,7 @@ final class MainContentCoordinator: ObservableObject {
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
+        dropMovesAwaitingRestore(reason: "coordinator torn down")
         SessionRecoveryTracker.sync()
         if let observer = terminationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -1079,7 +1084,10 @@ final class MainContentCoordinator: ObservableObject {
 
     // MARK: - Query Execution
 
-    func runQuery(viewport: GridReloadIntent, trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
+    func runQuery(
+        viewport: GridReloadIntent, trigger: TableLoadTrigger = .userInitiated,
+        bypassRowLimit: Bool = false, extraCapabilities: CallerCapabilities = []
+    ) {
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runQuery")
@@ -1096,7 +1104,10 @@ final class MainContentCoordinator: ObservableObject {
         /// offset and let the scanner do the trimming, which keeps the two from having to agree about how much
         /// whitespace was dropped.
         let target = selectionOrStatementAtCursor(in: tab.content.query)
-        executeResolvedSQL(target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: target.offset)
+        executeResolvedSQL(
+            target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit,
+            sourceOffset: target.offset, extraCapabilities: extraCapabilities
+        )
     }
 
     /// Runs one statement, named by its own text rather than by where the caret happens to be.
@@ -1134,7 +1145,8 @@ final class MainContentCoordinator: ObservableObject {
         tabIndex index: Int,
         bypassRowLimit: Bool,
         sourceOffset: Int? = nil,
-        boundParameters: [QueryParameter]? = nil
+        boundParameters: [QueryParameter]? = nil,
+        extraCapabilities: CallerCapabilities = []
     ) -> Bool {
         let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
         let statements = batches.flatMap(\.statements)
@@ -1146,7 +1158,8 @@ final class MainContentCoordinator: ObservableObject {
                 batches,
                 parameters: boundParameters,
                 tabIndex: index,
-                bypassRowLimit: bypassRowLimit
+                bypassRowLimit: bypassRowLimit,
+                extraCapabilities: extraCapabilities
             )
             return true
         }
@@ -1172,14 +1185,15 @@ final class MainContentCoordinator: ObservableObject {
                     batches,
                     parameters: reconciled,
                     tabIndex: index,
-                    bypassRowLimit: bypassRowLimit
+                    bypassRowLimit: bypassRowLimit,
+                    extraCapabilities: extraCapabilities
                 )
                 return true
             }
         }
 
         tabManager.tabStructureVersion += 1
-        dispatchBatches(batches, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        dispatchBatches(batches, tabIndex: index, bypassRowLimit: bypassRowLimit, extraCapabilities: extraCapabilities)
         return true
     }
 

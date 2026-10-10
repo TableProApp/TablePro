@@ -20,6 +20,12 @@ enum DatabaseMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Move Tab to Connection…"),
+                action: #selector(MainSplitViewController.moveTabToConnection(_:)),
+                shortcut: .moveTabToConnection,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Open Database…"),
                 action: #selector(MainSplitViewController.openContainerSwitcher(_:)),
                 shortcut: .openDatabase,

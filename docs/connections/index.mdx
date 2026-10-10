@@ -89,6 +89,8 @@ The sort order and the Recent section, shown or hidden, stay on this Mac.
 
 Press `Ctrl+Cmd+C` for **Switch Connection**. Whatever is already open sits at the top, then your favorites and, while **Show recent connections** is on, the connections you opened last. The rest are listed under the group they belong to, a nested group carrying its full path. Arrow keys move, `Return` switches the window to that connection, and `Cmd`-click opens a saved one in a window of its own. Typing searches every group at once and collapses the matches into a single list.
 
+Switching leaves the query tab you were in on its own connection. To take it with you, press `Ctrl+Option+Cmd+C` for **Move Tab to Connection…** instead. See [Moving a query tab to another connection](/features/tabs#moving-a-query-tab-to-another-connection).
+
 A footer under that list names the transport the window's connection runs on. On an SSH tunnel or a SOCKS proxy it also carries the bytes that have crossed since the transport opened, received and sent, with the current rate beside each direction while something is moving.
 
 The rest show their name alone. Cloudflare Tunnel, Cloud SQL Auth Proxy and Tunnel Command each run a separate binary that holds the connection end to end, a [remote database file](/connections/remote-database-files) is fetched once and then read from disk, and a direct connection's socket belongs to the database driver.

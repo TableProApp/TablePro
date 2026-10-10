@@ -32,6 +32,8 @@ internal final class ToolbarSwitcherPresenter {
     internal enum Subject: Equatable {
         case connection
         case container(ContainerSwitchTarget?)
+        /// Keyed by tab, so asking to move another tab replaces the picker instead of closing it.
+        case moveTab(UUID)
     }
 
     private var presentedSubject: Subject?

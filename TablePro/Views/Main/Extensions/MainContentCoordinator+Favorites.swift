@@ -41,19 +41,11 @@ extension MainContentCoordinator {
     func openLinkedFavorite(_ favorite: LinkedSQLFavorite) {
         guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
 
-        if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            if let hosting = MainContentCoordinator.coordinator(forWindow: existing),
-               let match = hosting.tabManager.tabs.first(where: {
-                   $0.content.sourceFileURL == favorite.fileURL
-               }) {
-                /// Selecting it, not just raising its window. An editor tab used to be a window, so
-                /// raising the window was the whole of showing the tab; now a window holds every tab
-                /// and the command did nothing whenever the file's tab is not the one in front.
-                hosting.selectTabAndFocusWindow(match.id)
-                AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-                return
-            }
-            WindowLifecycleMonitor.shared.unregisterSourceFile(favorite.fileURL)
+        /// Any connection's tab, not only this window's selected one: the file can be open in a
+        /// workspace the window is not showing, and opening it here too made two buffers on one file.
+        if hostedTabRouting.revealTab(editing: favorite.fileURL) {
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+            return
         }
 
         if tabManager.tabs.isEmpty {
@@ -63,7 +55,6 @@ extension MainContentCoordinator {
                 sourceFileStamp: loaded.stamp,
                 sourceFileEncoding: loaded.textEncoding
             )
-            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -78,7 +69,6 @@ extension MainContentCoordinator {
                 tab.title = QueryTab.fileDisplayTitle(for: favorite.fileURL)
             }
             tabManager.markTabRenamed(tab.id)
-            registerWindowForSourceFile(favorite.fileURL)
             return
         }
 
@@ -92,11 +82,6 @@ extension MainContentCoordinator {
             sourceFileEncoding: loaded.textEncoding
         )
         WindowManager.shared.openTab(payload: payload)
-    }
-
-    private func registerWindowForSourceFile(_ url: URL) {
-        guard let windowId else { return }
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
     }
 
     @discardableResult

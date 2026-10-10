@@ -13,22 +13,30 @@ extension MainContentCoordinator {
     internal func dispatchBatches(
         _ batches: [ExecutableBatch],
         tabIndex index: Int,
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        extraCapabilities: CallerCapabilities = []
     ) {
-        queryExecutionCoordinator.dispatchBatches(batches, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        queryExecutionCoordinator.dispatchBatches(
+            batches,
+            tabIndex: index,
+            bypassRowLimit: bypassRowLimit,
+            extraCapabilities: extraCapabilities
+        )
     }
 
     internal func dispatchParameterizedBatches(
         _ batches: [ExecutableBatch],
         parameters: [QueryParameter],
         tabIndex index: Int,
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        extraCapabilities: CallerCapabilities = []
     ) {
         queryExecutionCoordinator.dispatchParameterizedBatches(
             batches,
             parameters: parameters,
             tabIndex: index,
-            bypassRowLimit: bypassRowLimit
+            bypassRowLimit: bypassRowLimit,
+            extraCapabilities: extraCapabilities
         )
     }
 }

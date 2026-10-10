@@ -41,6 +41,9 @@ struct EditorTabStripInteractionTests {
             moveBy: { _, _ in },
             tearOff: { _ in },
             canTearOff: { _ in false },
+            moveToConnection: { _ in },
+            offersMoveToConnection: { _ in false },
+            canMoveToConnection: { _ in false },
             tooltip: { _ in "" }
         )
         interaction.dropClosedTabs(keeping: ids)

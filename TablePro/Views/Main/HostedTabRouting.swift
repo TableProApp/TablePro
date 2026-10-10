@@ -22,6 +22,9 @@ internal struct HostedTabRouting {
     ///   itself rather than leave the click doing nothing.
     internal var reveal: (MainContentCoordinator, UUID) -> Bool
 
+    /// Every coordinator a window hosts, whatever its connection.
+    internal var allCoordinators: () -> [MainContentCoordinator] = { [] }
+
     internal static let live = HostedTabRouting(
         coordinators: { WindowManager.shared.coordinators(for: $0) },
         reveal: { coordinator, tabId in
@@ -35,8 +38,44 @@ internal struct HostedTabRouting {
                   host.workspaces.contains(coordinator.connectionId) else { return false }
             host.selectHostedConnection(coordinator.connectionId)
             coordinator.tabManager.selectedTabId = tabId
+            /// AppKit makes a background member of a tab group key without bringing it to the front.
+            if let group = window.tabGroup, group.selectedWindow !== window {
+                group.selectedWindow = window
+            }
             window.makeKeyAndOrderFront(nil)
             return true
-        }
+        },
+        allCoordinators: { WindowManager.shared.hostedCoordinators() }
     )
+}
+
+internal extension HostedTabRouting {
+    /// The hosted tab editing this file, on whichever connection holds it. Asked of the tabs
+    /// themselves, so a tab that closed, moved or changed file cannot leave a stale answer behind.
+    func tab(editing fileURL: URL) -> (coordinator: MainContentCoordinator, tabId: UUID)? {
+        for coordinator in allCoordinators() {
+            guard let match = coordinator.tabManager.tabs.first(where: { $0.content.sourceFileURL == fileURL }) else {
+                continue
+            }
+            return (coordinator, match.id)
+        }
+        return nil
+    }
+
+    @discardableResult
+    func revealTab(editing fileURL: URL) -> Bool {
+        guard let match = tab(editing: fileURL) else { return false }
+        return reveal(match.coordinator, match.tabId)
+    }
+
+    /// Reveals the first tab of the connection that matches, trying the next one when a reveal
+    /// fails, so a tab whose window has gone does not stop the search.
+    @discardableResult
+    func revealFirstTab(of connectionId: UUID, where matches: (QueryTab) -> Bool) -> Bool {
+        for coordinator in coordinators(connectionId) {
+            guard let match = coordinator.tabManager.tabs.first(where: matches) else { continue }
+            if reveal(coordinator, match.id) { return true }
+        }
+        return false
+    }
 }
