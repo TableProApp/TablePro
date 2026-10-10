@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 final class ConnectionImportReviewUITests: UITestCase {
@@ -78,10 +79,10 @@ final class ConnectionImportReviewUITests: UITestCase {
         return (app, sheet)
     }
 
+    // XCUITest reports a mixed checkbox as NSControl.StateValue.mixed (-1), not the AXValue of 2.
     private func isMixed(_ checkbox: XCUIElement) -> Bool {
-        if let number = checkbox.value as? Int { return number == 2 }
-        let text = (checkbox.value as? String) ?? ""
-        return text == "2" || text.lowercased() == "mixed"
+        if let number = checkbox.value as? Int { return number == NSControl.StateValue.mixed.rawValue }
+        return (checkbox.value as? String) == String(NSControl.StateValue.mixed.rawValue)
     }
 
     private static func text(_ string: String) -> NSPredicate {
