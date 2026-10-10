@@ -27,7 +27,7 @@ PKV="$1"
 # hand-maintained arrays that had to agree with the workflow, the registry and each other, which is
 # three copies of one list and no way to tell when they drift apart.
 #
-# A bulk ABI re-release covers the registry-only plugins. The six marked `bundled` ship inside the
+# A bulk ABI re-release covers the registry-only plugins. The ones marked `bundled` ship inside the
 # app and their binaries ride with the next app release, so re-publishing them here would put a
 # second copy in the registry for no one.
 PLUGINS=()
