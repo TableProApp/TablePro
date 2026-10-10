@@ -309,7 +309,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: cloudIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database"),
-                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock",
+                    defaultLocalSocketPath: MySQLLocalSocket.defaultPath
                 )
             )),
             ("MariaDB", PluginMetadataSnapshot(
@@ -378,7 +379,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Open-source fork of MySQL"),
-                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
+                    defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock",
+                    defaultLocalSocketPath: MySQLLocalSocket.defaultPath
                 )
             )),
             ("PostgreSQL", PluginMetadataSnapshot(

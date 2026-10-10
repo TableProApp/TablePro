@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 /// The launch intents a UI test can ask for without driving the menu bar to get them.
 ///
@@ -21,6 +22,9 @@ internal enum UITestLaunchEnvironment {
     internal static let sampleDatabaseVariable = "TABLEPRO_UI_TEST_OPEN_SAMPLE"
     internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
     internal static let dataFileVariable = "TABLEPRO_UI_TEST_OPEN_FILE"
+    internal static let openURLVariable = "TABLEPRO_UI_TEST_OPEN_URL"
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "UITestLaunchEnvironment")
 
     internal static var requestsWelcomeSheet: Bool {
         isSet(welcomeSheetVariable)
@@ -30,7 +34,7 @@ internal enum UITestLaunchEnvironment {
     /// counts as one somebody asked for. `runStartupBehaviorIfNeeded(skipping:)` skips a launch
     /// that carries intents, which is what stops the startup behaviour from racing the sample
     /// window onto the screen 150ms later.
-    internal static var launchIntents: [LaunchIntent] {
+    @MainActor internal static var launchIntents: [LaunchIntent] {
         var intents: [LaunchIntent] = []
         if isSet(sampleDatabaseVariable) {
             intents.append(.openSampleDatabase)
@@ -38,7 +42,26 @@ internal enum UITestLaunchEnvironment {
         if let dataFileURL {
             intents.append(.openDataFile(dataFileURL))
         }
+        if let openURLIntent {
+            intents.append(openURLIntent)
+        }
         return intents
+    }
+
+    /// Classified like a URL macOS hands the app, without going through LaunchServices, which
+    /// would deliver it to whichever TablePro is registered for the scheme.
+    @MainActor private static var openURLIntent: LaunchIntent? {
+        guard let raw = value(of: openURLVariable), let url = URL(string: raw) else { return nil }
+        switch URLClassifier.classify(url) {
+        case .some(.success(let intent)):
+            return intent
+        case .some(.failure(let error)):
+            logger.error("UI test URL did not parse: \(error.publicLogShape, privacy: .public)")
+            return nil
+        case .none:
+            logger.error("UI test URL is not one the app opens")
+            return nil
+        }
     }
 
     private static var dataFileURL: URL? {

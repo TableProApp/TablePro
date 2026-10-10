@@ -22,6 +22,7 @@ struct NetworkPaneView: View {
             if coordinator.supportsSSL {
                 SSLSections(
                     databaseType: coordinator.network.type,
+                    usesLocalSocket: coordinator.network.usesLocalSocket,
                     sslMode: sslModeBinding,
                     sslCaCertPath: $coordinator.ssl.caCertPath,
                     sslClientCertPath: $coordinator.ssl.clientCertPath,
@@ -59,7 +60,8 @@ struct NetworkPaneView: View {
 
     private var directSummary: String {
         ConnectionTunnelKind.directSummary(
-            isFileBased: coordinator.network.connectionMode == .fileBased
+            isFileBased: coordinator.network.connectionMode == .fileBased,
+            usesLocalSocket: coordinator.network.usesLocalSocket
         )
     }
 

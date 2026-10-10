@@ -18,7 +18,7 @@ enum SettingsPane: String, CaseIterable {
         case .profiles: String(localized: "Profiles")
         case .notifications: String(localized: "Notifications")
         case .ai: String(localized: "AI")
-        case .mcp: String(localized: "Integrations")
+        case .mcp: "MCP"
         case .plugins: String(localized: "Plugins")
         case .sync: String(localized: "Sync")
         /// The stored rawValue stays "account": it is the tab item identifier and the pane the

@@ -25,8 +25,10 @@ The bar along the bottom carries **Test Connection**, **Cancel** and **Save**, p
 |-------|-------------|
 | **Name** | Display name in the connection list |
 | **Type** | The database type. **Change…** retypes the connection and resets the fields the old type owned |
+| **Connect Using** | MySQL and MariaDB. **Host and Port**, or **Socket** for a server on this Mac. See [Unix socket](/databases/mysql#unix-socket) |
 | **Host** | Empty falls back to the driver's own default, usually `localhost` |
 | **Port** | Pre-filled from the database type |
+| **Socket** | Replaces Host and Port when **Connect Using** is **Socket**. The full path of the server's socket file, such as `/tmp/mysql.sock` |
 | **Database** | Optional on drivers that browse every database from one session. PostgreSQL and Redshift do not connect without one |
 | **Username** | Not pre-filled. Empty means the driver's own default |
 | **Password** | Stored in the macOS Keychain |
@@ -50,6 +52,8 @@ SQLite, DuckDB, libSQL, and Beancount replace the host fields with a file path. 
 | **Tunnel Command** | Holds a `kubectl port-forward`, an AWS SSM session, or a command of your own. See [Tunnel Command](/connections/tunnel-command) |
 
 Leave it on **Direct** unless the database is unreachable from this Mac. Switching to another transport keeps what you typed into the previous one, so switching back costs nothing.
+
+A connection set to **Socket** on General offers only **Direct**, since a tunnel cannot reach a socket file on this Mac.
 
 **Socket Path**, under **SSH Tunnel**, forwards to a unix socket instead of Host and Port, which are then unused. See [Forwarding to a unix socket](/connections/ssh-tunneling#forwarding-to-a-unix-socket).
 

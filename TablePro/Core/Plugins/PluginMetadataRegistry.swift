@@ -279,6 +279,8 @@ struct PluginMetadataSnapshot: Sendable {
         /// store may have no container at all.
         let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
+        // Non-nil means the form offers Connect Using > Socket.
+        let defaultLocalSocketPath: String?
         let defaultHost: String?
 
         init(
@@ -288,6 +290,7 @@ struct PluginMetadataSnapshot: Sendable {
             hidesBuiltInPassword: Bool = false,
             hidesBuiltInDatabase: Bool = false,
             defaultUnixSocketPath: String? = nil,
+            defaultLocalSocketPath: String? = nil,
             defaultHost: String? = nil
         ) {
             self.additionalConnectionFields = additionalConnectionFields
@@ -296,6 +299,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.hidesBuiltInPassword = hidesBuiltInPassword
             self.hidesBuiltInDatabase = hidesBuiltInDatabase
             self.defaultUnixSocketPath = defaultUnixSocketPath
+            self.defaultLocalSocketPath = defaultLocalSocketPath
             self.defaultHost = defaultHost
         }
 
@@ -794,6 +798,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
                 hidesBuiltInDatabase: existingSnapshot?.connection.hidesBuiltInDatabase ?? false,
                 defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
+                defaultLocalSocketPath: existingSnapshot?.connection.defaultLocalSocketPath,
                 defaultHost: existingSnapshot?.connection.defaultHost
             )
         )
