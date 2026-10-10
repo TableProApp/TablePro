@@ -35,13 +35,42 @@ public struct ListConnectionsTool: MCPToolImplementation {
                         "is_connected": MCPToolSchema.boolean(String(localized: "Whether a session is open")),
                         "ai_policy": MCPToolSchema.string(String(localized: "AI access policy")),
                         "external_access": MCPToolSchema.string(String(localized: "External client access level")),
-                        "safe_mode": MCPToolSchema.string(String(localized: "Safe mode level"))
+                        "safe_mode": MCPToolSchema.string(String(localized: "Safe mode level")),
+                        "color": colorSchema,
+                        "group": MCPToolSchema.object(
+                            properties: [
+                                "id": MCPToolSchema.string(String(localized: "Group UUID")),
+                                "name": MCPToolSchema.string(String(localized: "Group name")),
+                                "path": MCPToolSchema.array(
+                                    String(localized: "Group names from the top-level group down to this one"),
+                                    of: MCPToolSchema.stringItem
+                                ),
+                                "color": colorSchema
+                            ],
+                            required: ["id", "name", "path"]
+                        ),
+                        "tags": MCPToolSchema.array(
+                            String(localized: "Tags on the connection"),
+                            of: MCPToolSchema.object(
+                                properties: [
+                                    "id": MCPToolSchema.string(String(localized: "Tag UUID")),
+                                    "name": MCPToolSchema.string(String(localized: "Tag name")),
+                                    "color": colorSchema
+                                ],
+                                required: ["id", "name"]
+                            )
+                        )
                     ],
-                    required: ["id", "name", "type", "host", "port", "database", "is_connected"]
+                    required: ["id", "name", "type", "host", "port", "database", "is_connected", "tags"]
                 )
             )
         ],
         required: ["connections"]
+    )
+
+    private static let colorSchema = MCPToolSchema.string(
+        String(localized: "Color, omitted when none"),
+        enumValues: ConnectionColor.allCases.compactMap(\.externalName)
     )
 
     public init() {}

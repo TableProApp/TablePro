@@ -34,6 +34,18 @@
             <enumerator name="version history" code="TPk9" description="The history of a saved query or a linked SQL file."/>
         </enumeration>
 
+        <enumeration name="connection color" code="TPcl" description="A color the user gave a connection, group or tag.">
+            <enumerator name="none" code="TPc0" description="No color."/>
+            <enumerator name="red" code="TPc1"/>
+            <enumerator name="orange" code="TPc2"/>
+            <enumerator name="yellow" code="TPc3"/>
+            <enumerator name="green" code="TPc4"/>
+            <enumerator name="blue" code="TPc5"/>
+            <enumerator name="purple" code="TPc6"/>
+            <enumerator name="pink" code="TPc7"/>
+            <enumerator name="gray" code="TPc8"/>
+        </enumeration>
+
         <record-type name="result row" code="TPrr" description="One row of a query result.">
             <property name="values" code="TPvl" description="The row's cells, in column order. A null is empty text and binary is Base64.">
                 <cocoa key="scriptValues"/>
@@ -129,6 +141,18 @@
             </property>
             <property name="external access" code="TPxa" type="external access level" access="r" description="What a script may do with this connection.">
                 <cocoa key="externalAccess"/>
+            </property>
+            <property name="color" code="TPlc" type="connection color" access="r" description="The connection's color."/>
+            <property name="group path" code="TPgp" access="r" description="The names of the groups the connection is in, from the top-level group down. Empty when it is in no group.">
+                <cocoa key="groupPath"/>
+                <type type="text" list="yes"/>
+            </property>
+            <property name="group color" code="TPgc" type="connection color" access="r" description="The color of the connection's group. None when it is in no group.">
+                <cocoa key="groupColor"/>
+            </property>
+            <property name="tags" code="TPtg" access="r" description="The names of the connection's tags.">
+                <cocoa key="tagNames"/>
+                <type type="text" list="yes"/>
             </property>
             <element type="tab">
                 <cocoa key="scriptTabs"/>

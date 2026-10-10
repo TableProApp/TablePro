@@ -57,6 +57,8 @@ tell application "TablePro"
   name of every connection
   connection id "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
   every connection whose connected is true
+  every connection whose tags contains "production"
+  name of every connection whose group path contains "Acme"
 end tell
 ```
 
@@ -73,6 +75,10 @@ end tell
 | `connected` | boolean | |
 | `safe mode` | enumeration | `silent`, `alert`, `alert full`, `authenticate`, `authenticate full`, `read only` |
 | `external access` | enumeration | `blocked`, `read only`, `read write` |
+| `color` | enumeration | `none`, `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `gray` |
+| `group path` | list of text | The group names from the top-level group down. Empty when the connection is in no group |
+| `group color` | enumeration | `none` when the connection is in no group |
+| `tags` | list of text | Tag names, in the order the user added them |
 
 No credential is reachable from a script, and neither is the account name. Every property is read only.
 

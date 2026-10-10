@@ -46,6 +46,20 @@ internal enum ScriptEnumerations {
         }
     }
 
+    internal static func code(for color: ConnectionColor) -> FourCharCode {
+        switch color {
+        case .none: fourCharCode("TPc0")
+        case .red: fourCharCode("TPc1")
+        case .orange: fourCharCode("TPc2")
+        case .yellow: fourCharCode("TPc3")
+        case .green: fourCharCode("TPc4")
+        case .blue: fourCharCode("TPc5")
+        case .purple: fourCharCode("TPc6")
+        case .pink: fourCharCode("TPc7")
+        case .gray: fourCharCode("TPc8")
+        }
+    }
+
     internal static func fourCharCode(_ string: String) -> FourCharCode {
         var code: FourCharCode = 0
         for byte in string.utf8.prefix(4) {
