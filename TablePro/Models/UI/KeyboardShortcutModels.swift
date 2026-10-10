@@ -64,6 +64,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case newConnection
     case openDatabase
     case switchConnection
+    case moveTabToConnection
 
     // Editor & Query
     case openFile
@@ -168,7 +169,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var category: ShortcutCategory {
         switch self {
-        case .manageConnections, .newConnection, .openDatabase, .switchConnection:
+        case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
             return .connections
         case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
@@ -251,6 +252,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .openDatabase: return String(localized: "Open Database")
         case .openFile: return String(localized: "Open File")
         case .switchConnection: return String(localized: "Switch Connection")
+        case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
@@ -574,6 +576,7 @@ struct KeyboardSettings: Codable, Equatable {
         .newConnection: .character("n", command: true),
         .openDatabase: .character("k", command: true),
         .switchConnection: .character("c", command: true, control: true),
+        .moveTabToConnection: .character("c", command: true, option: true, control: true),
 
         // Editor & Query
         .openFile: .character("o", command: true),

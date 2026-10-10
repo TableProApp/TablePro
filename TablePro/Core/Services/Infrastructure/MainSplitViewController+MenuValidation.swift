@@ -90,6 +90,7 @@ struct MenuValidationContext: Equatable {
     var canCloseOtherTabs = false
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
+    var canMoveTabToConnection = false
     /// How many editor tabs the connection on screen has open.
     var editorTabCount = 0
     /// The tab a Select Tab item names, read off the item being validated. Nil when the item is not
@@ -386,6 +387,10 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(focusInspector(_:)): return context.canFocusInspector
         case #selector(focusAssistant(_:)): return context.canFocusAssistant
 
+        /// Not `isConnected`: the SQL text is what moves, so a source that lost its connection can
+        /// still hand it over.
+        case #selector(moveTabToConnection(_:)): return context.canMoveTabToConnection
+
         /// Escape clears the selection wherever one is, so the command needs a window showing a
         /// connection and something that can hold a selection, not merely a window.
         case #selector(clearSelection(_:)): return context.isConnected
@@ -441,8 +446,8 @@ extension MainSplitViewController: NSMenuItemValidation {
 
     /// The commands that act on the browse content, which Agent mode does not mount.
     ///
-    /// Every one of them but the two document commands has a toolbar twin whose
-    /// `ToolbarContextResolver` arm answers no in Agent mode, and the menu bar is where most of them
+    /// Every one of them but the two document commands and Move Tab to Connection has a toolbar twin
+    /// whose `ToolbarContextResolver` arm answers no in Agent mode, and the menu bar is where most of them
     /// now live, so leaving them lit here would be the same defect one surface deeper: Refresh over a
     /// grid that is not there, Save over a commit gate frozen at the moment the mode changed, Command Y
     /// flipping a persisted flag for a drawer that is not mounted, and New Tab opening a tab behind
@@ -478,6 +483,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(showServerDashboard(_:)),
         #selector(navigateBack(_:)),
         #selector(navigateForward(_:)),
+        #selector(moveTabToConnection(_:)),
     ]
 
     /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
@@ -583,6 +589,7 @@ extension MainSplitViewController: NSMenuItemValidation {
                 hasAssistantConversation: conversations != nil,
                 hasStoredConversations: conversations?.conversations.isEmpty == false,
                 canFocusAssistant: canFocusAssistant,
+                canMoveTabToConnection: canMoveSelectedTabToConnection,
                 hasOtherWindowTabs: hasOtherWindowTabs,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
@@ -628,6 +635,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
+            canMoveTabToConnection: canMoveSelectedTabToConnection,
             editorTabCount: actions.openTabCount,
             hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
             hasOtherWindowTabs: hasOtherWindowTabs,

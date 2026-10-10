@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clickable links for http, https and mailto values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Color swatches beside hex, `rgb()` and `hsl()` values in the JSON and PHP viewer trees and the inspector's JSON tab.
 - Map preview of a geometry value in the row inspector, with Text and Map segments, Fit to Geometry and Open in Window.
+- Move Tab to Connection… (`Ctrl+Option+Cmd+C`) in the Database menu and the tab menu, which takes a query tab to another connection.
 
 ### Changed
 
@@ -55,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Geographic SRIDs such as 4258, 4283 and 7844 refused by the map as projected coordinate systems.
 - GeoJSON with a lowercase type name such as `point` not drawn on the map.
 - A column holding only curved geometry losing the Map view, and `CIRCULARSTRINGM` called unreadable instead of named.
+- Closing the only tab of a connection first opened from a link or the query history deleting its saved tabs.
+- A reopened tab disappearing when its connection's saved tabs finished loading.
+- Picking a connection that was still connecting restarting its connect.
+- A `.sql` file opening on the connection that connected last instead of the one on screen.
+- An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
+- Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
+- "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
 
 ## [0.79.0] - 2026-10-09
 

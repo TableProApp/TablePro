@@ -265,6 +265,10 @@ private struct EditorTabStripItem: View {
             Divider()
             Button(String(localized: "Move Tab to New Window")) { commands?.tearOff(tab.id) }
                 .disabled(!canTearOff)
+            if offersMoveToConnection {
+                Button(String(localized: "Move Tab to Connection…")) { commands?.moveToConnection(tab.id) }
+                    .disabled(!canMoveToConnection)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -278,6 +282,9 @@ private struct EditorTabStripItem: View {
         .accessibilityActions {
             if canKeepOpen {
                 Button(String(localized: "Keep Open")) { commands?.keepOpen(tab.id) }
+            }
+            if offersMoveToConnection, canMoveToConnection {
+                Button(String(localized: "Move Tab to Connection")) { commands?.moveToConnection(tab.id) }
             }
         }
         .accessibilityAction(named: Text("Move Tab Left")) { if canMoveLeft { commands?.moveBy(tab.id, -1) } }
@@ -366,6 +373,14 @@ private struct EditorTabStripItem: View {
 
     private var canTearOff: Bool {
         commands?.canTearOff(tab.id) ?? false
+    }
+
+    private var offersMoveToConnection: Bool {
+        commands?.offersMoveToConnection(tab.id) ?? false
+    }
+
+    private var canMoveToConnection: Bool {
+        commands?.canMoveToConnection(tab.id) ?? false
     }
 
     private var canMoveLeft: Bool {

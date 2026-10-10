@@ -70,4 +70,19 @@ struct TabPersistenceWriteGateTests {
         let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
         #expect(loaded == nil || loaded?.tabs.isEmpty == true)
     }
+
+    /// An empty list that never held the saved set is not the user emptying it.
+    @Test("A clear before any restore leaves the saved set alone")
+    func clearIsRefusedBeforeRestore() async {
+        let connectionId = UUID()
+        let writer = TabPersistenceCoordinator(connectionId: connectionId)
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        writer.markObservedTabs()
+        writer.saveNowSync(tabs: [makeTab("Keep me")], selectedTabId: nil)
+
+        TabPersistenceCoordinator(connectionId: connectionId).clearForUserClosedAllTabs()
+
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.count == 1)
+    }
 }

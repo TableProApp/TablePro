@@ -73,6 +73,20 @@ internal extension MainSplitViewController {
         connect(connection, cancellingPrevious: true)
     }
 
+    /// Shows the connection and dials only when its phase allows a manual connect. Redialing one
+    /// that is already connecting cancels that attempt and restarts it, prompts included.
+    internal func reconnectWorkspaceIfIdle(_ connectionId: UUID) {
+        guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        workspaces.select(connectionId)
+        guard ConnectionWindowPhaseMachine.allowsManualConnect(phase: workspace.phase) else { return }
+        reconnectWorkspace(connectionId)
+    }
+
+    internal func isShowingInKeyWindow(_ connectionId: UUID) -> Bool {
+        guard isViewLoaded, view.window?.isKeyWindow == true else { return false }
+        return workspaces.selectedConnectionId == connectionId
+    }
+
     /// The window stays open and repaints itself from its own phase once the session entry goes
     /// away, so this only has to end the session. Every other window on the connection hears the
     /// same status change and reaches the same phase on its own.
@@ -202,7 +216,7 @@ internal extension MainSplitViewController {
         return true
     }
 
-    private func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
+    func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let isCurrentAttempt = workspace.attemptToken == token
         if isCurrentAttempt { workspace.attemptToken = nil }

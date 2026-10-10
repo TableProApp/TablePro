@@ -107818,6 +107818,12 @@
         }
       }
     },
+    "Move Tab to Connection" : {
+
+    },
+    "Move Tab to Connection…" : {
+
+    },
     "Move Tab to New Window" : {
       "localizations" : {
         "fr" : {
@@ -108347,6 +108353,9 @@
           }
         }
       }
+    },
+    "Move “%@” to Connection" : {
+
     },
     "Moving through this tab's history replaces what it is showing and will discard all unsaved changes." : {
       "localizations" : {

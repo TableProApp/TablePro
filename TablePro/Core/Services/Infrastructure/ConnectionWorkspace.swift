@@ -222,13 +222,14 @@ internal final class ConnectionWorkspace {
 
     /// Opens that arrived before this workspace had a session to open them in. A connect can
     /// take seconds, and a table asked for in the meantime has to survive the wait rather than
-    /// be dropped. Both kinds share one queue, so they land in the order they were asked for and
+    /// be dropped. Every kind shares one queue, so they land in the order they were asked for and
     /// the last one is the tab left selected.
     private var pendingOpens: [PendingOpen] = []
 
     private enum PendingOpen {
         case payload(EditorTabPayload)
         case restoredTab(QueryTab, isStillClosed: () -> Bool, onAdopted: () -> Void)
+        case move(PendingTabMove)
     }
 
     internal var connection: DatabaseConnection? {
@@ -315,6 +316,32 @@ internal final class ConnectionWorkspace {
         onAdopted()
     }
 
+    /// Lands once this connection is connected and its coordinator has settled its restore. The tab
+    /// stays in its source until then, so a connect that never completes costs the user nothing. A
+    /// session state kept through an outage is not a live connection, so the phase decides.
+    internal func queueMove(_ move: PendingTabMove) {
+        guard phase == .connected, let coordinator = sessionState?.coordinator else {
+            pendingOpens.append(.move(move))
+            return
+        }
+        coordinator.land(move, afterWaiting: false)
+    }
+
+    /// A move waits on one connect. Once that connect has failed or been cancelled, landing later
+    /// would take the tab away at a moment the user did not choose.
+    internal func dropPendingMoves(reason: String) {
+        var dropped: [PendingTabMove] = []
+        pendingOpens.removeAll { pending in
+            guard case .move(let move) = pending else { return false }
+            dropped.append(move)
+            return true
+        }
+        for move in dropped {
+            move.drop(reason: reason)
+        }
+        sessionState?.coordinator.dropMovesAwaitingRestore(reason: reason)
+    }
+
     /// Runs once a session has been adopted. The payload the workspace was created with is
     /// already applied by `SessionStateFactory`, so only the opens that arrived after it are here.
     internal func drainPendingPayloads() {
@@ -327,6 +354,12 @@ internal final class ConnectionWorkspace {
                 open(payload)
             case .restoredTab(let tab, let isStillClosed, let onAdopted):
                 adoptRestoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted)
+            case .move(let move):
+                guard let coordinator = sessionState?.coordinator else {
+                    pendingOpens.append(.move(move))
+                    continue
+                }
+                coordinator.land(move, afterWaiting: true)
             }
         }
     }
@@ -339,6 +372,7 @@ internal final class ConnectionWorkspace {
     /// coordinator this tears down, and a coordinator only leaves the app-wide registry on deinit.
     internal func teardown() {
         isReleased = true
+        dropPendingMoves(reason: "workspace closed")
         browseCancellable = nil
         statusCancellable = nil
         tabsCancellable = nil

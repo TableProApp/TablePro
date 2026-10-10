@@ -4,10 +4,9 @@
 //
 //  Tests for SQL file deduplication when opening .sql files in TablePro.
 //  Validates sourceFileURL tracking on QueryTab, EditorTabPayload, and PersistedTab,
-//  and deduplication logic in QueryTabManager.
+//  deduplication logic in QueryTabManager, and the lookup that finds a file's hosted tab.
 //
 
-import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -247,72 +246,156 @@ struct PersistedTabSourceFileURLTests {
     }
 }
 
-// MARK: - WindowLifecycleMonitor Source File Tracking Tests
+// MARK: - Hosted Source File Lookup Tests
 
 @MainActor
-struct WindowLifecycleMonitorSourceFileTests {
-    @Test("window(forSourceFile:) returns nil for unregistered URL")
-    func unregisteredURLReturnsNil() {
-        let url = URL(fileURLWithPath: "/tmp/unknown.sql")
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
+struct HostedSourceFileLookupTests {
+    private func makeCoordinator() -> MainContentCoordinator {
+        SessionStateFactory.create(connection: TestFixtures.makeConnection(), payload: nil).coordinator
     }
 
-    @Test("registerSourceFile and window(forSourceFile:) round-trip when window is alive")
-    func registerAndFindSourceFile() {
-        let url = URL(fileURLWithPath: "/tmp/registered.sql")
-        let windowId = UUID()
-        let window = NSWindow()
-
-        WindowLifecycleMonitor.shared.register(
-            window: window,
-            connectionId: UUID(),
-            windowId: windowId
-        )
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
-
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) === window)
-
-        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
+    private func makeURL(_ name: String = "lookup") -> URL {
+        URL(fileURLWithPath: "/tmp/\(name)-\(UUID().uuidString).sql")
     }
 
-    @Test("unregisterSourceFiles(for:) removes all files for a window")
-    func unregisterAllFilesForWindow() {
-        let url1 = URL(fileURLWithPath: "/tmp/file1.sql")
-        let url2 = URL(fileURLWithPath: "/tmp/file2.sql")
-        let windowId = UUID()
-        let window = NSWindow()
-
-        WindowLifecycleMonitor.shared.register(
-            window: window,
-            connectionId: UUID(),
-            windowId: windowId
-        )
-        WindowLifecycleMonitor.shared.registerSourceFile(url1, windowId: windowId)
-        WindowLifecycleMonitor.shared.registerSourceFile(url2, windowId: windowId)
-
-        WindowLifecycleMonitor.shared.unregisterSourceFiles(for: windowId)
-
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url1) == nil)
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url2) == nil)
-
-        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
+    private func routing(
+        over coordinators: [MainContentCoordinator],
+        reveal: @escaping (MainContentCoordinator, UUID) -> Bool = { _, _ in true }
+    ) -> HostedTabRouting {
+        HostedTabRouting(coordinators: { _ in [] }, reveal: reveal, allCoordinators: { coordinators })
     }
 
-    @Test("window(forSourceFile:) returns nil after window is unregistered")
-    func returnsNilAfterWindowUnregistered() {
-        let url = URL(fileURLWithPath: "/tmp/closed.sql")
-        let windowId = UUID()
-        let window = NSWindow()
+    @Test("Finds the tab holding a file on whichever hosted connection has it")
+    func findsTheTabOnAnotherConnection() {
+        let dev = makeCoordinator()
+        let prod = makeCoordinator()
+        defer {
+            dev.teardown()
+            prod.teardown()
+        }
+        let url = makeURL()
+        dev.tabManager.addTab(initialQuery: "SELECT 1")
+        prod.tabManager.addTab(initialQuery: "SELECT 2", sourceFileURL: url)
 
-        WindowLifecycleMonitor.shared.register(
-            window: window,
-            connectionId: UUID(),
-            windowId: windowId
+        let match = routing(over: [dev, prod]).tab(editing: url)
+
+        #expect(match?.coordinator === prod)
+        #expect(match?.tabId == prod.tabManager.tabs.first?.id)
+    }
+
+    @Test("Finds nothing when no hosted tab holds the file")
+    func findsNothingForAFileNoTabHolds() {
+        let dev = makeCoordinator()
+        defer { dev.teardown() }
+        dev.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: makeURL("other"))
+
+        #expect(routing(over: [dev]).tab(editing: makeURL())?.tabId == nil)
+    }
+
+    @Test("A file tab the user closed is not found again")
+    func closedTabIsNotFound() {
+        let dev = makeCoordinator()
+        defer { dev.teardown() }
+        let url = makeURL()
+        dev.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+        guard let id = dev.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+
+        dev.closeTabsByUser(ids: [id])
+
+        #expect(routing(over: [dev]).tab(editing: url)?.tabId == nil)
+    }
+
+    @Test("A tab saved under another name is found by its new file only")
+    func renamedFileIsFoundUnderItsNewURL() {
+        let dev = makeCoordinator()
+        defer { dev.teardown() }
+        let original = makeURL("original")
+        let renamed = makeURL("renamed")
+        dev.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: original)
+        guard let id = dev.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+
+        dev.tabManager.mutate(tabId: id) { $0.content.sourceFileURL = renamed }
+
+        let lookup = routing(over: [dev])
+        #expect(lookup.tab(editing: original)?.tabId == nil)
+        #expect(lookup.tab(editing: renamed)?.tabId == id)
+    }
+
+    @Test("Revealing a file's tab hands its own coordinator and tab to the reveal")
+    func revealGoesToTheOwningCoordinator() {
+        let dev = makeCoordinator()
+        let prod = makeCoordinator()
+        defer {
+            dev.teardown()
+            prod.teardown()
+        }
+        let url = makeURL()
+        prod.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+        var revealedConnection: UUID?
+        var revealedTab: UUID?
+        let lookup = routing(over: [dev, prod]) { coordinator, tabId in
+            revealedConnection = coordinator.connectionId
+            revealedTab = tabId
+            return true
+        }
+
+        #expect(lookup.revealTab(editing: url))
+        #expect(revealedConnection == prod.connectionId)
+        #expect(revealedTab == prod.tabManager.tabs.first?.id)
+    }
+
+    @Test("A reveal that fails reports the file as not shown")
+    func failedRevealReportsFalse() {
+        let dev = makeCoordinator()
+        defer { dev.teardown() }
+        let url = makeURL()
+        dev.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+
+        let lookup = routing(over: [dev]) { _, _ in false }
+
+        #expect(!lookup.revealTab(editing: url))
+    }
+
+    @Test("A linked favorite open on another connection is revealed there, not opened again here")
+    func linkedFavoriteRevealsTheTabOnAnotherConnection() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hosted-source-file-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("report.sql")
+        try "SELECT 1".write(to: url, atomically: true, encoding: .utf8)
+
+        let dev = makeCoordinator()
+        let prod = makeCoordinator()
+        defer {
+            dev.teardown()
+            prod.teardown()
+        }
+        prod.tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+        dev.tabManager.addTab(initialQuery: "")
+        var revealedTab: UUID?
+        dev.hostedTabRouting = routing(over: [dev, prod]) { _, tabId in
+            revealedTab = tabId
+            return true
+        }
+        let favorite = LinkedSQLFavorite(
+            folderId: UUID(),
+            fileURL: url,
+            relativePath: "report.sql",
+            name: "report",
+            mtime: Date(),
+            fileSize: 8
         )
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
-        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
 
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
+        dev.openLinkedFavorite(favorite)
+
+        #expect(revealedTab == prod.tabManager.tabs.first?.id)
+        #expect(dev.tabManager.tabs.allSatisfy { $0.content.sourceFileURL == nil })
     }
 }

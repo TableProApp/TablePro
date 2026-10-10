@@ -755,6 +755,11 @@ internal final class MainSplitViewController: NSSplitViewController {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let phaseChanged = workspace.phase != next
         workspace.phase = next
+        /// Whoever started the connect, a window attempt or a link calling the manager directly, a
+        /// move waiting on it must not land on a later retry the user did not tie to it.
+        if case .unavailable = next {
+            workspace.dropPendingMoves(reason: "connection unavailable")
+        }
         syncPanes(of: workspace)
         /// `syncPanes` rebuilds the roots but parents none of them: which ones are hosted is decided
         /// by the `showSelected` functions, and none of their other callers is on the adoption path.

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProEditorKit
 import Testing
 
 @Suite("Main split view background pane synchronization", .serialized)
@@ -213,6 +214,342 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(harness.controller.workspaces.selectedConnectionId == harness.background.connectionId)
     }
 
+    // MARK: - Move Tab to Connection
+
+    @Test("A tab moved into a connected background connection lands there at once and leaves its source")
+    func moveIntoConnectedWorkspaceLandsAtOnce() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let staying = QueryTab(title: "Query 2", query: "SELECT 2", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving, staying])
+
+        /// Landing in the same call that asked for it is never "the user went back to it".
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { true })
+
+        #expect(source.tabManager.tabs.map(\.id) == [staying.id])
+        #expect(target.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.selectedTabId == moving.id)
+        #expect(target.tabManager.tabs.first?.content.query == "SELECT 1")
+        #expect(target.tabManager.tabs.first?.tableContext.databaseName == harness.backgroundConnection.database)
+    }
+
+    @Test("A tab moved into a connection still connecting stays in its source until its restore has run")
+    func moveIntoConnectingWorkspaceWaitsForTheSession() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        #expect(harness.background.sessionState == nil)
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let target = try #require(harness.background.sessionState?.coordinator)
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+
+        #expect(source.tabManager.tabs.isEmpty)
+        #expect(target.tabManager.tabs.map(\.id) == [moving.id])
+    }
+
+    @Test("A queued move is dropped when the connect it waits on fails")
+    func queuedMoveIsDroppedWhenTheConnectFails() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        let attempt = UUID()
+        harness.background.attemptToken = attempt
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        harness.controller.finishAttempt(
+            attempt,
+            for: harness.background.connectionId,
+            outcome: .failed(ConnectionFailureInfo(message: "refused"))
+        )
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+    }
+
+    @Test("A queued move is dropped when its connect is cancelled")
+    func queuedMoveIsDroppedWhenTheConnectIsCancelled() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        harness.controller.cancelConnectionAttempt(for: harness.background.connectionId)
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+    }
+
+    /// Move to a slow connection, then elsewhere, then back. The first move finishing late must not
+    /// take the tab away from where the user last put it.
+    @Test("A queued move superseded by a later move of the same tab never lands")
+    func supersededMoveNeverLands() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        let elsewhere = SessionStateFactory.create(
+            connection: TestFixtures.makeConnection(name: "Elsewhere"),
+            payload: nil
+        ).coordinator
+        defer { elsewhere.teardown() }
+
+        source.persistence.markObservedTabs()
+        elsewhere.persistence.markObservedTabs()
+        let stale = PendingTabMove(tabId: moving.id, source: source) { false }
+        harness.background.queueMove(stale)
+        let away = PendingTabMove(tabId: moving.id, source: source) { false }
+        #expect(away.land(in: elsewhere, afterWaiting: false))
+        let back = PendingTabMove(tabId: moving.id, source: elsewhere) { false }
+        #expect(back.land(in: source, afterWaiting: false))
+        #expect(stale.isSuperseded)
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+    }
+
+    @Test("A queued move is refused when the user has gone back to the tab")
+    func queuedMoveIsRefusedWhenTheUserReturned() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        var sourceOnScreen = false
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { sourceOnScreen })
+
+        sourceOnScreen = true
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+    }
+
+    @Test("A file tab is refused when the target already has that file open")
+    func moveIsRefusedWhenTheTargetHoldsTheFile() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let url = URL(fileURLWithPath: "/tmp/move-tab-same-file.sql")
+        target.tabManager.addTab(initialQuery: "SELECT 0", sourceFileURL: url)
+        var moving = QueryTab(title: "move-tab-same-file.sql", query: "SELECT 1", tabType: .query)
+        moving.content.sourceFileURL = url
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.count == 1)
+        #expect(!target.tabManager.tabs.contains { $0.id == moving.id })
+    }
+
+    @Test("Moving a connection's last tab clears its saved tabs")
+    func movingTheLastTabClearsTheSavedSet() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        defer { TabDiskActor.clearSync(connectionId: harness.foregroundConnection.id) }
+        source.persistence.markObservedTabs()
+        source.persistence.saveNowSync(tabs: [moving], selectedTabId: moving.id)
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        #expect(target.tabManager.tabs.map(\.id) == [moving.id])
+        let saved = await TabDiskActor.shared.load(connectionId: harness.foregroundConnection.id)
+        #expect(saved == nil || saved?.tabs.isEmpty == true)
+    }
+
+    @Test("Moving a window's last tab keeps the saved tabs another window of that connection holds")
+    func movingTheLastTabKeepsTabsHeldElsewhere() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let held = QueryTab(title: "Query 2", query: "SELECT 2", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+        let otherWindow = SessionStateFactory.create(connection: harness.foregroundConnection, payload: nil)
+        otherWindow.tabManager.tabs = [held]
+        defer {
+            otherWindow.coordinator.teardown()
+            TabDiskActor.clearSync(connectionId: harness.foregroundConnection.id)
+        }
+        source.persistence.markObservedTabs()
+        source.persistence.saveNowSync(tabs: [moving, held], selectedTabId: moving.id)
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        var saved = await TabDiskActor.shared.load(connectionId: harness.foregroundConnection.id)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while saved?.tabs.contains(where: { $0.id == moving.id }) == true, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            saved = await TabDiskActor.shared.load(connectionId: harness.foregroundConnection.id)
+        }
+        #expect(saved?.tabs.map(\.id) == [held.id])
+    }
+
+    /// A session state kept through an outage still has a settled coordinator, which is not a live
+    /// connection: the tab must wait for the reconnect rather than land in a connection that is down.
+    @Test("A tab moved into a connection that dropped waits for it to come back")
+    func moveIntoDroppedConnectionWaitsForTheReconnect() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.background.connectionId)
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(target.tabManager.tabs.isEmpty)
+
+        harness.controller.refreshFromActiveSessions()
+
+        #expect(source.tabManager.tabs.isEmpty)
+        #expect(harness.background.sessionState?.coordinator.tabManager.tabs.map(\.id) == [moving.id])
+    }
+
+    /// A connection first opened onto one table or query never read its saved tabs. The move reads
+    /// them first, so the target can write the tab before the source lets it go.
+    @Test("A target that has not read its saved tabs reads them, then takes the tab")
+    func targetReadsItsSavedTabsBeforeTakingTheMove() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        defer { TabDiskActor.clearSync(connectionId: harness.backgroundConnection.id) }
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        #expect(source.tabManager.tabs.map(\.id) == [moving.id])
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while target.tabManager.tabs.isEmpty, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(target.persistence.hasObservedTabs)
+        #expect(target.tabManager.tabs.map(\.id) == [moving.id])
+        #expect(source.tabManager.tabs.isEmpty)
+    }
+
+    /// Closing the moved tab selects its neighbour without that editor mounting, so the live caret
+    /// still belongs to the moved tab when the source saves.
+    @Test("The moved tab's caret is not written into the tab left selected")
+    func movedCaretDoesNotLeakIntoTheNeighbour() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1 FROM moved", tabType: .query)
+        let staying = QueryTab(title: "Query 2", query: "SELECT 2", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving, staying])
+        source.cursorPositions = [CursorPosition(range: NSRange(location: 12, length: 0))]
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        let neighbour = try #require(source.tabManager.selectedTab)
+        #expect(neighbour.id == staying.id)
+        #expect(source.enrichedForPersistence(neighbour).restoredCursorOffset == nil)
+        #expect(target.tabManager.tabs.first?.restoredCursorOffset == 12)
+    }
+
+    @Test("A landed tab is written to the target's saved set at once")
+    func landedTabIsSavedByTheTarget() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let target = try #require(harness.background.sessionState?.coordinator)
+        defer { TabDiskActor.clearSync(connectionId: harness.backgroundConnection.id) }
+        target.persistence.markObservedTabs()
+        target.settleTabRestore()
+        let moving = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        let source = harness.makeSourceCoordinator(tabs: [moving])
+
+        harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
+
+        let saved = await TabDiskActor.shared.load(connectionId: harness.backgroundConnection.id)
+        #expect(saved?.tabs.map(\.id) == [moving.id])
+        #expect(saved?.tabs.first?.query == "SELECT 1")
+    }
+
+    @Test("Reconnecting only when idle shows a connecting connection and leaves its attempt alone")
+    func reconnectIfIdleLeavesAConnectingWorkspaceAlone() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let attempt = UUID()
+        harness.controller.transition(to: .connecting, for: harness.background.connectionId)
+        harness.background.attemptToken = attempt
+
+        harness.controller.reconnectWorkspaceIfIdle(harness.background.connectionId)
+
+        #expect(harness.controller.workspaces.selectedConnectionId == harness.background.connectionId)
+        #expect(harness.background.attemptToken == attempt)
+        #expect(harness.background.phase == .connecting)
+    }
+
     /// One window hosting two connections, with the second one in the background. Every case here
     /// asks what that background workspace's panes hold, which is the state the window shows the
     /// moment the user switches to it.
@@ -221,11 +558,12 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         let controller: MainSplitViewController
         let foreground: ConnectionWorkspace
         let background: ConnectionWorkspace
+        let foregroundConnection: DatabaseConnection
         let backgroundConnection: DatabaseConnection
         private let window: NSWindow
 
         init() throws {
-            let foregroundConnection = TestFixtures.makeConnection(name: "Foreground")
+            foregroundConnection = TestFixtures.makeConnection(name: "Foreground")
             backgroundConnection = TestFixtures.makeConnection(name: "Background")
             foreground = Self.makeWorkspace(connection: foregroundConnection, phase: .idle)
             background = Self.makeWorkspace(connection: backgroundConnection, phase: .connecting)
@@ -251,6 +589,16 @@ struct MainSplitViewControllerPaneSynchronizationTests {
             session.status = status
             DatabaseManager.shared.injectSession(session, for: backgroundConnection.id)
             return mock
+        }
+
+        /// The foreground connection's coordinator holding `tabs`, the first one selected. Its
+        /// workspace owns it, so `tearDown` releases it with the rest.
+        func makeSourceCoordinator(tabs: [QueryTab]) -> MainContentCoordinator {
+            let state = SessionStateFactory.create(connection: foregroundConnection, payload: nil)
+            state.tabManager.tabs = tabs
+            state.tabManager.selectedTabId = tabs.first?.id
+            foreground.sessionState = state
+            return state.coordinator
         }
 
         func registerWindow(for coordinator: MainContentCoordinator) -> UUID {

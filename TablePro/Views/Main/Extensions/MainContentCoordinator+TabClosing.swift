@@ -6,10 +6,10 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// The one path that means "the user closed these tabs themselves", which is the consent
-    /// `clearForUserClosedAllTabs` requires. Every automatic path leaves the saved state alone,
-    /// because an empty tab list can equally mean a session was lost or the app is quitting, and
-    /// treating that as a delete throws away tabs nobody closed.
+    /// The path that means "the user closed these tabs themselves", which, with moving the last tab
+    /// to another connection, is the consent `clearForUserClosedAllTabs` requires. Every automatic
+    /// path leaves the saved state alone, because an empty tab list can equally mean a session was
+    /// lost or the app is quitting, and treating that as a delete throws away tabs nobody closed.
     ///
     /// Closing tabs never closes the window: the window hosts every open connection now, so the
     /// connection is simply left on its empty state.
@@ -32,6 +32,33 @@ extension MainContentCoordinator {
         }
         guard tabManager.tabs.isEmpty else { return }
         persistence.clearForUserClosedAllTabs()
+    }
+
+    /// Not a close: the tab is not going away, so nothing goes to Reopen Closed Tab. The source view is
+    /// usually unparented by now, so its structure-change save will not fire and this save is the only one.
+    internal func takeTabForMove(id: UUID) -> QueryTab? {
+        guard canMoveTabToConnection(id),
+              let tab = tabManager.tabs.first(where: { $0.id == id }) else { return nil }
+        let moved = enrichedForPersistence(tab)
+        /// The live caret is the moved tab's. Closing selects a neighbour without its editor mounting,
+        /// so the save below would otherwise write that caret into the neighbour.
+        if tabManager.selectedTabId == id {
+            cursorPositions = []
+        }
+        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        releaseResources(of: tab)
+        releaseExecution(of: tab)
+        tabSessionRegistry.unregister(id: id)
+        tabManager.closeTab(id: id)
+        cleanupTabCaches(openTabIds: Set(tabManager.tabs.map(\.id)))
+        services.schemaProviderRegistry.reclaimUnheldProviders(for: connectionId)
+        persistence.saveAggregated()
+        /// Moving the last tab out is the user emptying this connection, the same consent closing it
+        /// gives. Left on disk, the tab would come back here on the next restore as a duplicate.
+        if Self.aggregatedTabs(for: connectionId).isEmpty {
+            persistence.clearForUserClosedAllTabs()
+        }
+        return moved
     }
 
     /// The object these tabs show is gone, which is not the user closing them. Nothing goes to Reopen
@@ -88,9 +115,6 @@ extension MainContentCoordinator {
     /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
     /// retargeted at all; this is what keeps the caches honest once one without work has been.
     func releaseRetargetedTabState(for tabId: UUID) {
-        if let url = tabManager.tabs.first(where: { $0.id == tabId })?.content.sourceFileURL {
-            WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-        }
         displayStateCache.removeValue(forKey: tabId)
         tableMetadataCache.removeValue(forKey: tabId)
         tabSessionRegistry.forgetFreshness(for: tabId)
@@ -112,9 +136,6 @@ extension MainContentCoordinator {
     /// tabs to show for it, and the next Save resolves its scope through `browseScope` and runs
     /// those statements against whatever database the sidebar has since moved to.
     private func releaseResources(of tab: QueryTab) {
-        if let url = tab.content.sourceFileURL {
-            WindowLifecycleMonitor.shared.unregisterSourceFile(url)
-        }
         tabsWithStagedPrincipals.remove(tab.id)
         structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tab.id)
