@@ -44,25 +44,17 @@ extension MCPTokenStore: MCPTokenStoreProtocol {}
 
 internal extension MCPTokenStore {
     func validateBearerToken(_ bearerToken: String) async -> Result<MCPValidatedToken, MCPTokenValidationError> {
-        guard let authToken = self.validate(bearerToken: bearerToken) else {
-            return .failure(.unknownToken)
+        resolve(bearerToken: bearerToken).map { authToken in
+            MCPValidatedToken(
+                tokenId: authToken.id,
+                label: authToken.name,
+                scopes: authToken.scopes,
+                connectionAccess: authToken.connectionAccess,
+                issuedAt: authToken.createdAt,
+                expiresAt: authToken.expiresAt,
+                isBridgeCredential: authToken.isBridgeCredential
+            )
         }
-        if authToken.isExpired {
-            return .failure(.expired)
-        }
-        if !authToken.isActive {
-            return .failure(.revoked)
-        }
-        let validated = MCPValidatedToken(
-            tokenId: authToken.id,
-            label: authToken.name,
-            scopes: authToken.scopes,
-            connectionAccess: authToken.connectionAccess,
-            issuedAt: authToken.createdAt,
-            expiresAt: authToken.expiresAt,
-            isBridgeCredential: authToken.isBridgeCredential
-        )
-        return .success(validated)
     }
 }
 
@@ -122,13 +114,7 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
             )
 
         case .success(let validated):
-            let tokenKey = MCPRateLimitKey.authFailure(tokenId: validated.tokenId)
-            if let retry = await lockoutRetryAfter(key: tokenKey) {
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
-                return .deny(.rateLimited(retryAfterSeconds: retry))
-            }
             _ = await rateLimiter.recordAttempt(key: addressKey, success: true)
-            _ = await rateLimiter.recordAttempt(key: tokenKey, success: true)
 
             let principal = MCPPrincipal(
                 tokenFingerprint: Self.fingerprint(of: token),

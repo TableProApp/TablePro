@@ -124,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
 - No icon for a connection to a database type no installed plugin describes. (#3309)
 - MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
+- An expired MCP token answered as unknown, without the documented `-33008` code and `token expired` challenge.
 - A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
 - Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
 - Saving or importing connections while the connection library could not be read replacing every saved connection.

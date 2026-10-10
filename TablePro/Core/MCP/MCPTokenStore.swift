@@ -255,18 +255,21 @@ actor MCPTokenStore {
         return (token, plaintext)
     }
 
-    func validate(bearerToken: String) -> MCPAuthToken? {
-        for (index, token) in tokens.enumerated() {
-            guard token.isActive, !token.isExpired else { continue }
-
-            let candidateHash = Self.computeHash(salt: token.salt, plaintext: bearerToken)
-            guard Self.constantTimeCompare(candidateHash, token.tokenHash) else { continue }
-
-            tokens[index].lastUsedAt = Date.now
-            saveIfCooldownElapsed()
-            return tokens[index]
+    func resolve(bearerToken: String) -> Result<MCPAuthToken, MCPTokenValidationError> {
+        let match = tokens.firstIndex { token in
+            Self.constantTimeCompare(Self.computeHash(salt: token.salt, plaintext: bearerToken), token.tokenHash)
         }
-        return nil
+        guard let index = match else { return .failure(.unknownToken) }
+        if tokens[index].isExpired { return .failure(.expired) }
+        if !tokens[index].isActive { return .failure(.revoked) }
+
+        tokens[index].lastUsedAt = Date.now
+        saveIfCooldownElapsed()
+        return .success(tokens[index])
+    }
+
+    func validate(bearerToken: String) -> MCPAuthToken? {
+        try? resolve(bearerToken: bearerToken).get()
     }
 
     func revoke(tokenId: UUID) {

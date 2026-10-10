@@ -2,10 +2,8 @@
 //  MCPRateLimiterTests.swift
 //  TableProTests
 //
-//  A failure bucket is keyed on who is failing, not on what they presented. Keying it on the
-//  credential gave an attacker a fresh bucket for every guess, so the limit never fired; the
-//  subject is now the address, with a second bucket per validated token so one token's misuse
-//  cannot lock out the machine.
+//  A failure bucket is keyed on the address that is failing, not on what it presented. Keying it
+//  on the credential gave an attacker a fresh bucket for every guess, so the limit never fired.
 //
 
 import Foundation
@@ -116,19 +114,6 @@ struct MCPRateLimiterTests {
         #expect(await limiter.isLocked(key: other) == false)
     }
 
-    @Test("A validated token has a bucket of its own, separate from the address")
-    func tokenBucketIsSeparate() async {
-        let limiter = makeLimiter(clock: MCPTestClock())
-        let tokenKey = MCPRateLimitKey.authFailure(tokenId: UUID())
-
-        for _ in 0..<5 {
-            _ = await limiter.recordAttempt(key: tokenKey, success: false)
-        }
-
-        #expect(await limiter.isLocked(key: tokenKey))
-        #expect(await limiter.isLocked(key: attacker) == false)
-    }
-
     @Test("The pairing dimension is counted apart from authentication")
     func dimensionsAreIsolated() async {
         let limiter = MCPRateLimiter(
@@ -219,7 +204,7 @@ struct MCPRateLimiterTests {
     @Test("Clearing everything drops every bucket")
     func clearAllDropsEveryBucket() async {
         let limiter = makeLimiter(clock: MCPTestClock())
-        let other = MCPRateLimitKey.authFailure(tokenId: UUID())
+        let other = MCPRateLimitKey.pairingExchange(address: .loopback)
 
         for _ in 0..<5 {
             _ = await limiter.recordAttempt(key: attacker, success: false)
