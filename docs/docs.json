@@ -395,6 +395,10 @@
       {
         "label": "Support",
         "href": "mailto:hello@tablepro.app"
+      },
+      {
+        "type": "github",
+        "href": "https://github.com/TableProApp/TablePro"
       }
     ],
     "primary": {
