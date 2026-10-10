@@ -247,9 +247,19 @@ internal enum FavoritesMenuSpec {
         ]
     }
 
-    /// The empty area below the last row, a header, and a Team Library row all land here. It is the
-    /// same list the bottom bar's plus button used to carry, which is where those commands go now
-    /// that the sidebar has no bottom bar.
+    /// The footer's add button and the empty-area menu share this list.
+    internal static func creationSections() -> [FavoritesMenuSection] {
+        [
+            FavoritesMenuSection([.command(String(localized: "New Query"), .newQuery)]),
+            FavoritesMenuSection([
+                .command(String(localized: "New Favorite…"), .newFavorite(folderId: nil)),
+                .command(String(localized: "New Folder"), .newFolder(parentId: nil)),
+                .command(String(localized: "Add Linked SQL Folder…"), .addLinkedFolder)
+            ])
+        ]
+    }
+
+    /// The empty area below the last row, a header, and a Team Library row all land here.
     internal static func backgroundSections(_ context: FavoritesMenuContext) -> [FavoritesMenuSection] {
         var team: [FavoritesMenuItem] = []
         if context.teamLibraryAvailable {
@@ -258,14 +268,6 @@ internal enum FavoritesMenuSpec {
                 .publishSavedQueriesToTeam
             ))
         }
-        return [
-            FavoritesMenuSection([.command(String(localized: "New Query"), .newQuery)]),
-            FavoritesMenuSection([
-                .command(String(localized: "New Favorite…"), .newFavorite(folderId: nil)),
-                .command(String(localized: "New Folder"), .newFolder(parentId: nil)),
-                .command(String(localized: "Add Linked SQL Folder…"), .addLinkedFolder)
-            ]),
-            FavoritesMenuSection(team)
-        ]
+        return creationSections() + [FavoritesMenuSection(team)]
     }
 }

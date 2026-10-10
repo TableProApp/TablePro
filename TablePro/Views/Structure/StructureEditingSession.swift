@@ -74,6 +74,10 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var concurrentRefresh: MetadataLoadState<PluginConcurrentRefreshAvailability?> = .idle
     private var concurrentRefreshRequest = 0
 
+    @Published internal private(set) var tableComment: MetadataLoadState<String?> = .idle
+
+    internal var loadedTableComment: String? { tableComment.value ?? nil }
+
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
     /// editors: one being on Indexes must not move the other, and neither should lose its place to
     /// a trip through the Data view.
@@ -201,6 +205,22 @@ internal final class StructureEditingSession: ObservableObject {
     internal func markEveryTabStale() {
         tabData.markAllStale()
         owesRefetch = false
+    }
+
+    internal func beginTableCommentLoad() {
+        tableComment = tableComment.enteringLoad
+    }
+
+    /// A saved comment is the loaded one from the moment the save lands, so a refetch that fails
+    /// afterwards keeps it rather than the text the save replaced.
+    internal func adoptWrittenTableComment(from changes: [SchemaChange]) {
+        for case .modifyTableComment(_, let new) in changes {
+            tableComment = .loaded(new)
+        }
+    }
+
+    internal func settleTableComment(_ outcome: MetadataFetchOutcome<String?>) {
+        tableComment = tableComment.settled(by: outcome, discardingValue: false)
     }
 
     internal func reloadConcurrentRefreshAvailability(

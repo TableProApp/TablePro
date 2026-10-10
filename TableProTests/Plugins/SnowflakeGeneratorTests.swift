@@ -250,6 +250,47 @@ struct SnowflakeDDLGeneratorTests {
         )
         #expect(!generator.foreignKeyDefinitionSQL(foreignKey).contains("()"))
     }
+
+    @Test("A table, view or materialized view comment is set with its own ALTER keyword")
+    func objectCommentSetsPerKind() {
+        let name = "\"DB\".\"PUBLIC\".\"T\""
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "TABLE", comment: "Orders") ==
+            "ALTER TABLE \"DB\".\"PUBLIC\".\"T\" SET COMMENT = 'Orders'")
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "VIEW", comment: "Orders") ==
+            "ALTER VIEW \"DB\".\"PUBLIC\".\"T\" SET COMMENT = 'Orders'")
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "MATERIALIZED VIEW", comment: "x") ==
+            "ALTER MATERIALIZED VIEW \"DB\".\"PUBLIC\".\"T\" SET COMMENT = 'x'")
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "MATERIALIZED_VIEW", comment: "x") ==
+            "ALTER MATERIALIZED VIEW \"DB\".\"PUBLIC\".\"T\" SET COMMENT = 'x'")
+    }
+
+    @Test("An apostrophe followed by a combining mark is still doubled in a comment")
+    func objectCommentEscapesBeforeCombiningMark() {
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: "\"T\"", objectType: "TABLE", comment: "a'\u{0301}b") ==
+            "ALTER TABLE \"T\" SET COMMENT = 'a''\u{0301}b'")
+    }
+
+    @Test("A nil or empty comment unsets the comment")
+    func objectCommentClears() {
+        let name = "\"DB\".\"PUBLIC\".\"T\""
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "TABLE", comment: nil) ==
+            "ALTER TABLE \"DB\".\"PUBLIC\".\"T\" UNSET COMMENT")
+        #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: name, objectType: "VIEW", comment: "") ==
+            "ALTER VIEW \"DB\".\"PUBLIC\".\"T\" UNSET COMMENT")
+    }
+
+    @Test("A comment escapes the backslash before the quote")
+    func objectCommentEscapes() {
+        let sql = SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: "\"T\"", objectType: "TABLE", comment: #"it's \ fine"#)
+        #expect(sql == #"ALTER TABLE "T" SET COMMENT = 'it''s \\ fine'"#)
+    }
+
+    @Test("Kinds Snowflake cannot comment on through this route return nil")
+    func objectCommentRefusesOtherKinds() {
+        for kind in ["SEQUENCE", "FOREIGN TABLE", "SYSTEM TABLE", "PARTITIONED TABLE", "EXTERNAL TABLE"] {
+            #expect(SnowflakeDDLGenerator.objectCommentSQL(qualifiedName: "\"T\"", objectType: kind, comment: nil) == nil)
+        }
+    }
 }
 
 struct SnowflakeSchemaQueriesTests {

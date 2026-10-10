@@ -123,7 +123,7 @@ extension TableStructureView {
         )
         isReloadingAfterSave = true
         await loadColumns()
-        loadSchemaForEditing()
+        adoptFetchedBaseline()
         isReloadingAfterSave = false
         if let clearTarget {
             coordinator?.clearColumnLayout(clearTarget)

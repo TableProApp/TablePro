@@ -165,8 +165,7 @@ struct FavoritesMenuSpecTests {
         #expect(browsedSchema.contains(.showERDiagram(schema: nil)))
     }
 
-    /// These moved out of the bar at the bottom of the sidebar.
-    @Test("The empty area carries the commands the bottom bar used to")
+    @Test("The empty area carries the creation commands")
     func backgroundOffersCreation() {
         let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: nil)))
 
@@ -174,6 +173,27 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.newFavorite(folderId: nil)))
         #expect(issued.contains(.newFolder(parentId: nil)))
         #expect(issued.contains(.addLinkedFolder))
+    }
+
+    @Test("The add button's list is the empty area's first two groups, without Publish")
+    func addButtonMatchesTheEmptyArea() {
+        let creation = FavoritesMenuSpec.creationSections()
+        for teamLibraryAvailable in [false, true] {
+            let background = FavoritesMenuSpec.sections(for: context(
+                clicked: nil,
+                teamLibraryAvailable: teamLibraryAvailable
+            ))
+            #expect(Array(background.prefix(2)) == creation)
+        }
+
+        #expect(creation.count == 2)
+        #expect(commands(creation) == [
+            .newQuery,
+            .newFavorite(folderId: nil),
+            .newFolder(parentId: nil),
+            .addLinkedFolder
+        ])
+        #expect(!commands(creation).contains(.publishSavedQueriesToTeam))
     }
 
     @Test("Publishing to the team appears only when the licence allows it")

@@ -614,7 +614,19 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table, engine: "Cassandra")
+        let query = CassandraObjectQueries.tableComment(keyspace: resolveKeyspace(schema), table: table)
+        let result = try await execute(query: query)
+        let comment = result.rows.first?[safe: 0]?.asText
+        return PluginTableMetadata(tableName: table, comment: comment?.isEmpty == false ? comment : nil, engine: "Cassandra")
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        CassandraObjectQueries.tableCommentStatement(
+            keyspace: resolveKeyspace(schema),
+            table: name,
+            objectType: objectType,
+            comment: comment
+        )
     }
 
     // MARK: - Database (Keyspace) Operations

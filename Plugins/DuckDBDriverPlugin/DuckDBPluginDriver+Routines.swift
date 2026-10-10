@@ -9,7 +9,7 @@ import TableProPluginKit
 /// DuckDB has macros where other engines have functions, and no procedures or triggers.
 public enum DuckDBObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     /// duckdb_functions() also lists every built-in, so the list is restricted to macros, which are

@@ -186,6 +186,17 @@ struct CreateTableView: View {
                 .accessibilityLabel(String(localized: "Table Name"))
                 .accessibilityIdentifier("create-table-name")
 
+            if offersTableComment {
+                Text("Comment:")
+                    .font(.body.weight(.medium))
+
+                TextField("Optional", text: $draft.tableOptions.comment)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 300)
+                    .accessibilityLabel(String(localized: "Comment"))
+                    .accessibilityIdentifier("create-table-comment")
+            }
+
             if showMySQLOptions {
                 Divider()
                     .frame(height: 20)
@@ -225,6 +236,13 @@ struct CreateTableView: View {
 
     private var showMySQLOptions: Bool {
         CreateTableDraft.offersEngineOptions(for: connection.type)
+    }
+
+    /// The form path builds its own statements and has no place for a comment.
+    private var offersTableComment: Bool {
+        guard draft.hasResolvedForm, draft.form == nil else { return false }
+        let support = DatabaseObjectToolEligibility.Support.of(DatabaseManager.shared.driver(for: connection.id))
+        return support.commentableTypes.contains(.table)
     }
 
     // MARK: - Toolbar
@@ -574,13 +592,35 @@ struct CreateTableView: View {
     }
 
     private func runCreateTable(statements: [String], createdName: String, in scope: DatabaseScope) async throws {
-        try await DatabaseManager.shared.executeCreateTable(
-            statements: statements,
-            databaseType: connection.type,
-            scope: scope
+        do {
+            try await DatabaseManager.shared.executeCreateTable(
+                statements: statements,
+                databaseType: connection.type,
+                scope: scope
+            )
+        } catch let incomplete as CreateTableIncompleteError {
+            openCreatedTable(createdName, in: scope, showStructure: true)
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Table Created with Errors"),
+                message: incomplete.message,
+                recoverySuggestion: String(
+                    localized: "The table exists, but a statement after CREATE TABLE failed. Finish the change in its Structure tab."
+                ),
+                window: coordinator?.contentWindow
+            )
+            return
+        }
+        openCreatedTable(createdName, in: scope, showStructure: false)
+    }
+
+    private func openCreatedTable(_ name: String, in scope: DatabaseScope, showStructure: Bool) {
+        let created = DatabaseObjectChange(connectionId: connection.id, scope: scope, name: name, kind: .rows)
+        coordinator?.openTableTab(
+            name,
+            schema: scope.schema,
+            database: scope.database.nilIfEmpty,
+            showStructure: showStructure
         )
-        let created = DatabaseObjectChange(connectionId: connection.id, scope: scope, name: createdName, kind: .rows)
-        coordinator?.openTableTab(createdName, schema: scope.schema, database: scope.database.nilIfEmpty)
         AppCommands.shared.objectChanged.send(created)
     }
 }

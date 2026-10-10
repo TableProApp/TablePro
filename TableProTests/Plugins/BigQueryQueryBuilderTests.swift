@@ -425,3 +425,69 @@ struct BigQueryQueryBuilderExactCountTests {
         #expect(sql == "SELECT COUNT(*) FROM `proj`.`main`.`users` WHERE (`code` = '42' OR `age` > 30)")
     }
 }
+
+struct BigQueryDescriptionStatementTests {
+    private let target = "`proj`.`sales`.`orders`"
+
+    @Test("A comment sets the description option with the keyword for the kind")
+    func setsDescriptionPerKind() {
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: "Orders")
+            == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = 'Orders')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "VIEW", comment: "Orders")
+            == "ALTER VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'Orders')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "MATERIALIZED VIEW", comment: "x")
+            == "ALTER MATERIALIZED VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'x')")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "MATERIALIZED_VIEW", comment: "x")
+            == "ALTER MATERIALIZED VIEW `proj`.`sales`.`orders` SET OPTIONS (description = 'x')")
+    }
+
+    @Test("A nil or empty comment sets the description to NULL")
+    func clearsDescription() {
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: nil)
+            == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = NULL)")
+        #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "VIEW", comment: "")
+            == "ALTER VIEW `proj`.`sales`.`orders` SET OPTIONS (description = NULL)")
+    }
+
+    @Test("A quote in the comment is escaped the GoogleSQL way")
+    func escapesDescription() {
+        let sql = BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: "TABLE", comment: "O'Brien's")
+        #expect(sql == "ALTER TABLE `proj`.`sales`.`orders` SET OPTIONS (description = 'O\\'Brien\\'s')")
+    }
+
+    @Test("Kinds without a description option return nil")
+    func refusesOtherKinds() {
+        for kind in ["SEQUENCE", "FOREIGN TABLE", "SYSTEM TABLE", "PARTITIONED TABLE", "EXTERNAL TABLE"] {
+            #expect(BigQueryQueryBuilder.descriptionStatement(qualifiedTable: target, objectType: kind, comment: nil) == nil)
+        }
+    }
+}
+
+struct BigQueryTableMetadataTests {
+    @Test("The comment is the description alone, without partitioning, labels or dates")
+    func commentIsTheDescription() throws {
+        let json = """
+            {"description":"Daily orders","numRows":"10","numBytes":"2048","type":"TABLE",
+             "creationTime":"1700000000000","lastModifiedTime":"1700000100000",
+             "timePartitioning":{"type":"DAY","field":"created"},"labels":{"team":"data"},
+             "expirationTime":"1800000000000"}
+            """
+        let resource = try JSONDecoder().decode(BQTableResource.self, from: Data(json.utf8))
+        let metadata = BigQueryPluginDriver.tableMetadata(table: "orders", resource: resource)
+        #expect(metadata.comment == "Daily orders")
+        #expect(metadata.rowCount == 10)
+        #expect(metadata.dataSize == 2_048)
+        #expect(metadata.engine == "TABLE")
+        #expect(metadata.createTime == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(metadata.updateTime == Date(timeIntervalSince1970: 1_700_000_100))
+    }
+
+    @Test("A table without a description has no comment, whatever else it carries")
+    func noDescriptionMeansNoComment() throws {
+        let json = #"{"description":"","timePartitioning":{"type":"DAY"},"labels":{"team":"data"}}"#
+        let resource = try JSONDecoder().decode(BQTableResource.self, from: Data(json.utf8))
+        #expect(BigQueryPluginDriver.tableMetadata(table: "t", resource: resource).comment == nil)
+        let bare = try JSONDecoder().decode(BQTableResource.self, from: Data("{}".utf8))
+        #expect(BigQueryPluginDriver.tableMetadata(table: "t", resource: bare).comment == nil)
+    }
+}

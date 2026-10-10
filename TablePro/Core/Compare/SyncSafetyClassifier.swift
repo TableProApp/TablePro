@@ -71,7 +71,8 @@ internal struct SyncSafetyClassifier {
                     constraint.name
                 )
             )]
-        case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex:
+        case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex,
+             .modifyTableComment:
             return []
         }
     }

@@ -10,11 +10,25 @@ import Foundation
 /// as CQL when pasted back: names are quoted, and a trigger names its class as a string literal.
 public enum CassandraObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quote(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
+    }
+
+    /// A table's comment is one of its options, and an empty string is the option's default, so
+    /// that is what removes it. Materialized views are left out: their comment is not read back.
+    public static func tableCommentStatement(keyspace: String, table: String, objectType: String, comment: String?) -> String? {
+        guard objectType.uppercased() == "TABLE" else { return nil }
+        return "ALTER TABLE \(quote(keyspace)).\(quote(table)) WITH comment = '\(escapeLiteral(comment ?? ""))'"
+    }
+
+    public static func tableComment(keyspace: String, table: String) -> String {
+        """
+        SELECT comment FROM system_schema.tables
+        WHERE keyspace_name = '\(escapeLiteral(keyspace))' AND table_name = '\(escapeLiteral(table))'
+        """
     }
 
     public static func functionList(keyspace: String) -> String {

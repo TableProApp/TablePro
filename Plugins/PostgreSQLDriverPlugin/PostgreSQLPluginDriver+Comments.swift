@@ -10,8 +10,8 @@ extension PostgreSQLPluginDriver {
     /// A plain read rather than the `search_path`-emptied one `fetchViewDefinition` takes: nothing
     /// here is deparsed by the server, so the session's path cannot change the answer.
     ///
-    /// Cockroach, Redshift and PGlite inherit this, which is correct: all three keep
-    /// `obj_description` and `col_description`.
+    /// PGlite inherits this. CockroachDB and Redshift conform to `LibPQBackedDriver` directly, so
+    /// they do not.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLCommentStatements.catalogQuery(name: table, schema: resolvedSchema)

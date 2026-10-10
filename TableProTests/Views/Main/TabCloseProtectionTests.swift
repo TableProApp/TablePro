@@ -252,6 +252,26 @@ struct TabCloseProtectionTests {
         #expect(coordinator.hasUnsavedWork(in: tab))
     }
 
+    @Test("A Create Table draft holding only a comment is gated, and a blank comment is not")
+    func commentOnlyTableDraftIsGated() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        var tab = QueryTab(query: "")
+        tab.tabType = .createTable
+
+        let draft = CreateTableDraft()
+        draft.changeManager.addNewColumn()
+        coordinator.createTableDrafts[tab.id] = draft
+
+        draft.tableOptions.comment = "   "
+        #expect(!draft.holdsWork)
+
+        draft.tableOptions.comment = "Customer invoices"
+        #expect(draft.holdsWork)
+        #expect(coordinator.hasUnsavedWork(in: tab))
+    }
+
     // MARK: - The dot agrees with the prompt
 
     /// Anything that would raise the save prompt is marked before the user reaches for the close

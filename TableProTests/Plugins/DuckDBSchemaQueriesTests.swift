@@ -31,6 +31,7 @@ struct DuckDBSchemaQueriesTests {
         ("foreignKeysForTable", DuckDBSchemaQueries.foreignKeysForTable),
         ("tableDDL", DuckDBSchemaQueries.tableDDL),
         ("viewDefinition", DuckDBSchemaQueries.viewDefinition),
+        ("objectComment", DuckDBSchemaQueries.objectComment),
     ]
 
     private static let allQueries: [(name: String, sql: String)] =
@@ -256,5 +257,105 @@ struct DuckDBSchemaQueriesTests {
         let sql = DuckDBSchemaQueries.rowCountProbe(schema: "core", table: "bars", limit: 100_001)
         #expect(sql.contains(#""core"."bars""#))
         #expect(sql.contains("LIMIT 100001"))
+    }
+
+    // MARK: - Comments
+
+    @Test("The object comment is read from tables and views, by catalog, schema and name")
+    func objectCommentReadsTablesAndViews() {
+        let sql = DuckDBSchemaQueries.objectComment
+        #expect(sql.contains("FROM duckdb_tables()"))
+        #expect(sql.contains("FROM duckdb_views()"))
+        #expect(sql.contains("table_name = $3"))
+        #expect(sql.contains("view_name = $3"))
+        #expect(sql.components(separatedBy: "schema_name = $2").count == 3)
+    }
+
+    @Test("Both column queries select the column comment")
+    func columnQueriesSelectTheComment() {
+        #expect(DuckDBSchemaQueries.columnsForTable.contains("column_index, comment\n"))
+        #expect(DuckDBSchemaQueries.columnsForSchema.contains("column_index, comment\n"))
+    }
+
+    @Test("A table and a view each get their own keyword")
+    func objectCommentKeywords() {
+        #expect(DuckDBSchemaQueries.objectCommentStatement(objectType: "TABLE", schema: "s", name: "t", comment: "c")
+            == #"COMMENT ON TABLE "s"."t" IS 'c'"#)
+        #expect(DuckDBSchemaQueries.objectCommentStatement(objectType: "VIEW", schema: "s", name: "v", comment: "c")
+            == #"COMMENT ON VIEW "s"."v" IS 'c'"#)
+    }
+
+    @Test("Other kinds cannot be commented", arguments: ["MATERIALIZED VIEW", "SEQUENCE", "SYSTEM TABLE", ""])
+    func otherKindsHaveNoCommentStatement(kind: String) {
+        #expect(DuckDBSchemaQueries.objectCommentStatement(objectType: kind, schema: "s", name: "t", comment: nil) == nil)
+    }
+
+    /// Measured on 1.5.2: `IS ''` stores an empty string, and only `IS NULL` clears the comment.
+    @Test("A nil or empty comment removes it with NULL")
+    func emptyCommentClears() {
+        #expect(DuckDBSchemaQueries.objectCommentStatement(objectType: "TABLE", schema: "s", name: "t", comment: nil)
+            == #"COMMENT ON TABLE "s"."t" IS NULL"#)
+        #expect(DuckDBSchemaQueries.objectCommentStatement(objectType: "TABLE", schema: "s", name: "t", comment: "")
+            == #"COMMENT ON TABLE "s"."t" IS NULL"#)
+    }
+
+    @Test("A comment doubles its quotes and keeps a backslash as written")
+    func commentEscaping() {
+        let sql = DuckDBSchemaQueries.objectCommentStatement(
+            objectType: "TABLE", schema: #"we"ird"#, name: "t", comment: #"it's a \ table"#
+        )
+        #expect(sql == #"COMMENT ON TABLE "we""ird"."t" IS 'it''s a \ table'"#)
+    }
+
+    @Test("A quote followed by a combining mark is still doubled")
+    func quoteBeforeCombiningMark() {
+        #expect(DuckDBSchemaQueries.quoteLiteral("a'\u{301}b") == "'a''\u{301}b'")
+        #expect(DuckDBSchemaQueries.quoteIdentifier("x\"\u{301}") == "\"x\"\"\u{301}\"")
+    }
+
+    @Test("A column comment names the schema, the table and the column")
+    func columnComment() {
+        #expect(DuckDBSchemaQueries.columnCommentStatement(schema: "s", table: "t", column: "c", comment: "x'y")
+            == #"COMMENT ON COLUMN "s"."t"."c" IS 'x''y'"#)
+    }
+
+    // MARK: - Auto-increment
+
+    /// `DROP TABLE` leaves the sequence behind, so creating the table again must not fail on it.
+    @Test("The sequence is created only when it does not exist yet")
+    func sequenceIfNotExists() {
+        #expect(DuckDBSchemaQueries.createSequenceStatement(schema: "main", sequence: "t_id_seq")
+            == #"CREATE SEQUENCE IF NOT EXISTS "main"."t_id_seq""#)
+    }
+
+    @Test("The sequence is named after the table and the column, without any double quote")
+    func sequenceName() {
+        #expect(DuckDBSchemaQueries.autoIncrementSequenceName(table: "orders", column: "id") == "orders_id_984a0109_seq")
+        #expect(DuckDBSchemaQueries.autoIncrementSequenceName(table: #"q"x"#, column: "id") == "qx_id_0f74cfff_seq")
+    }
+
+    @Test("Two table and column pairs that read the same get different sequences")
+    func sequenceNamesDoNotCollide() {
+        let underscoreInTable = DuckDBSchemaQueries.autoIncrementSequenceName(table: "a_b", column: "id")
+        let underscoreInColumn = DuckDBSchemaQueries.autoIncrementSequenceName(table: "a", column: "b_id")
+        #expect(underscoreInTable != underscoreInColumn)
+        let quoted = DuckDBSchemaQueries.autoIncrementSequenceName(table: #"q"x"#, column: "id")
+        let plain = DuckDBSchemaQueries.autoIncrementSequenceName(table: "qx", column: "id")
+        #expect(quoted != plain)
+    }
+
+    @Test("nextval takes the qualified sequence as a string literal")
+    func nextvalQualifiesTheSequence() {
+        #expect(DuckDBSchemaQueries.nextvalDefault(schema: "main", sequence: "t_id_seq")
+            == #"nextval('"main"."t_id_seq"')"#)
+        #expect(DuckDBSchemaQueries.nextvalDefault(schema: "main", sequence: "t's.x_seq")
+            == #"nextval('"main"."t''s.x_seq"')"#)
+    }
+
+    /// Measured on 1.5.2: `nextval('"we""ird"."s"')` looks for `s` in no schema at all.
+    @Test("A schema holding a double quote is left to resolve as the table's own")
+    func nextvalWithQuotedSchema() {
+        #expect(DuckDBSchemaQueries.nextvalDefault(schema: #"we"ird"#, sequence: "t_id_seq")
+            == #"nextval('"t_id_seq"')"#)
     }
 }

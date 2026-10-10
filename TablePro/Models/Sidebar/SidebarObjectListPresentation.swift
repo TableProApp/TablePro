@@ -13,8 +13,8 @@ import Foundation
 /// this lives outside the view.
 ///
 /// A loaded database is always a list, whatever it holds. The outline says per section what is
-/// missing, so a database with no tables keeps its Procedures, Functions and Triggers, and keeps
-/// the Tables section whose menu is where a first table gets created.
+/// missing, so a database with no tables keeps its Procedures, Functions and Triggers, and its
+/// Tables section.
 internal enum SidebarObjectListPresentation: Equatable {
     /// Loading, and not yet for long enough to say so. An empty column is the placeholder the HIG
     /// asks for, and a local database answers in about 110ms, so a spinner there is a flash rather

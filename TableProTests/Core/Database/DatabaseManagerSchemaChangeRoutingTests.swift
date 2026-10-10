@@ -132,6 +132,10 @@ private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabase
         return "CREATE TABLE \(qualified(definition.tableName)) (\(columns))"
     }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        "ALTER TABLE \(qualified(name)) COMMENT = '\(comment ?? "")'"
+    }
+
     private func qualified(_ table: String) -> String {
         guard let schema, !schema.isEmpty else { return "`\(table)`" }
         return "`\(schema)`.`\(table)`"
@@ -215,6 +219,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     ) async throws {
         let script = try await DatabaseManager.shared.schemaChangeStatements(
             tableName: "orders",
+            objectKind: .table,
             changes: changes,
             scope: scope
         )
@@ -261,7 +266,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         pooled.review = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"])
 
         let script = try await DatabaseManager.shared.schemaChangeStatements(
-            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+            tableName: "orders", objectKind: .table, changes: [Self.makeAddColumnChange()], scope: scope
         )
         #expect(script.statements.first?.sql == "PREPARE orders;")
         #expect(script.statements.first?.isDestructive == false)
@@ -288,7 +293,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
 
         await #expect(throws: SchemaOperationRefusedError(reason: "Index email_1 uses email.")) {
             _ = try await DatabaseManager.shared.schemaChangeStatements(
-                tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+                tableName: "orders", objectKind: .table, changes: [Self.makeAddColumnChange()], scope: scope
             )
         }
         #expect(pooled.executedQueries.isEmpty)
@@ -306,7 +311,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         let pooled = try await Self.seedPooledDriver(connection, scope: scope)
 
         let script = try await DatabaseManager.shared.schemaChangeStatements(
-            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+            tableName: "orders", objectKind: .table, changes: [Self.makeAddColumnChange()], scope: scope
         )
         #expect(pooled.statementsRunBeforeEachCheck.isEmpty)
 
@@ -484,6 +489,45 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(outcome.refreshes.isEmpty)
     }
 
+    @Test("A save that only sets the comment announces a comment change, and the session driver keeps its columns")
+    func commentOnlySaveAnnouncesAComment() async throws {
+        let (connection, driver) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        _ = try await Self.seedPooledDriver(connection, scope: scope)
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(
+                changes: [.modifyTableComment(old: nil, new: "Customer orders")],
+                databaseType: .mysql,
+                scope: scope
+            )
+        }
+
+        #expect(outcome.error == nil)
+        #expect(outcome.changes == [AnnouncedChange(scope: scope, name: "orders", kind: .comment, originTabId: nil)])
+        #expect(driver.changedTableDefinitions.isEmpty)
+    }
+
+    @Test("A save that sets the comment beside a column change announces a structure change")
+    func commentWithColumnSaveAnnouncesStructure() async throws {
+        let (connection, _) = Self.makeSession(savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
+        let outcome = await Self.recordChanges(on: connection.id) {
+            try await Self.composeAndSave(
+                changes: [.modifyTableComment(old: nil, new: "Customer orders"), Self.makeAddColumnChange()],
+                databaseType: .mysql,
+                scope: scope
+            )
+        }
+
+        #expect(outcome.changes == [Self.structureChange(scope)])
+        #expect(pooled.executedQueries.last?.contains("COMMENT = 'Customer orders'") == true)
+    }
+
     /// The session driver is not the one the save ran on, and it keeps what it learned about the
     /// table's columns: a MongoDB driver typed a renamed field's writes and later pages by the old
     /// name until a first page read them again.
@@ -522,7 +566,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         let composed = PluginSchemaChangeReview(leadingStatements: ["PREPARE orders"], basis: "entry 1")
         pooled.review = composed
         let script = try await DatabaseManager.shared.schemaChangeStatements(
-            tableName: "orders", changes: [Self.makeAddColumnChange()], scope: scope
+            tableName: "orders", objectKind: .table, changes: [Self.makeAddColumnChange()], scope: scope
         )
         pooled.review = PluginSchemaChangeReview(basis: "entry 2")
         try await DatabaseManager.shared.executeSchemaChanges(script, databaseType: .mysql, scope: scope)

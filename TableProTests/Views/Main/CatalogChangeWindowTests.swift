@@ -286,6 +286,35 @@ struct CatalogChangeWindowTests {
         #expect(!coordinator.tabSessionRegistry.isStale(unrelated.id))
     }
 
+    @Test("a comment change marks the structure of a tab on that table, and one holding staged edits owes it")
+    func commentChangeMarksStructureSessions() {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection)
+        let clean = Self.loadedTab("users", rowCount: 1, in: coordinator)
+        let editing = Self.loadedTab("users", rowCount: 1, in: coordinator)
+        let unrelated = Self.loadedTab("orders", rowCount: 1, in: coordinator)
+        tabManager.tabs = [clean, editing, unrelated]
+        tabManager.selectedTabId = unrelated.id
+        for tab in [clean, editing, unrelated] {
+            let session = Self.structureSession(for: tab, connection: connection)
+            session.hasLoaded = true
+            coordinator.structureSessions[tab.id] = session
+        }
+        coordinator.structureSessions[editing.id]?.changeManager.stageTableComment("Staged here")
+
+        coordinator.applyObjectChange(
+            Self.change(connection, name: "users", database: "shop", schema: nil, kind: .comment)
+        )
+
+        #expect(coordinator.structureSessions[clean.id]?.hasLoaded == false)
+        #expect(coordinator.structureSessions[editing.id]?.hasLoaded == true)
+        #expect(coordinator.structureSessions[editing.id]?.owesRefetch == true)
+        #expect(coordinator.structureSessions[unrelated.id]?.hasLoaded == true)
+        #expect(coordinator.structureSessions[unrelated.id]?.owesRefetch == false)
+        #expect(!coordinator.tabSessionRegistry.isStale(clean.id))
+    }
+
     @Test("a structure change forgets the table's cached columns, and a rows change keeps them")
     func structureChangeForgetsCachedSchemaColumns() {
         let connection = TestFixtures.makeConnection(database: "shop")

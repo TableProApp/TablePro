@@ -50,17 +50,20 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     var isHeldForSave: Bool { heldSave != nil }
 
+    @Published private(set) var tableComment = ObjectCommentDraft(original: nil)
+
+    /// The comment text before the typing run still open, nil when none is. A run is one undo step,
+    /// registered when it ends rather than per keystroke.
+    private var tableCommentRunStart: String?
+
+    var hasTableCommentRun: Bool { tableCommentRunStart != nil }
+
+    private static var tableCommentActionName: String { String(localized: "Edit Comment") }
+
     // MARK: - Undo/Redo Support
 
-    /// Private `NSUndoManager` owned by this change manager. Each
-    /// `StructureChangeManager` instance has its own, so the registered actions
-    /// can never outlive the manager (the UndoManager is freed when the manager
-    /// is deallocated, taking its action queue with it). The app does not have
-    /// an NSDocument-backed `NSWindow.undoManager`, and no view in the
-    /// responder chain provides one, so wiring this through the window would
-    /// silently no-op. Cmd+Z is routed by the app's own `.commands` block in
-    /// `TableProApp` to `MainContentCommandActions.undoChange()`, which checks
-    /// the active tab's `resultsViewMode` and calls into this manager directly.
+    /// Owned per manager so its actions cannot outlive the editor. Cmd+Z reaches it through
+    /// `MainContentCommandActions.undoChange()`, not the window's undo manager.
     ///
     /// `groupsByEvent` is off. On it, NSUndoManager closes a group at the end of the run loop turn,
     /// which makes undo granularity a property of *timing* rather than of the operation: two
@@ -76,13 +79,26 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         return manager
     }()
 
-    var canUndo: Bool { !isHeldForSave && undoManager.canUndo }
-    var canRedo: Bool { !isHeldForSave && undoManager.canRedo }
+    var canUndo: Bool { !isHeldForSave && (undoManager.canUndo || hasTableCommentRun) }
+    var canRedo: Bool { !isHeldForSave && !hasTableCommentRun && undoManager.canRedo }
+
+    /// The DDL and Triggers sub-tabs show no grid, so undo there reaches only the comment.
+    var undoesTableCommentNext: Bool {
+        hasTableCommentRun || (undoManager.canUndo && undoManager.undoActionName == Self.tableCommentActionName)
+    }
+
+    var redoesTableCommentNext: Bool {
+        !hasTableCommentRun && undoManager.canRedo && undoManager.redoActionName == Self.tableCommentActionName
+    }
 
     /// Mirrors `DataChangeManager.registerUndo`. The `groupingLevel` check is what lets
     /// `performAsOneUndoStep` nest: inside one, a group is already open and this adds to it rather
-    /// than closing a group the batch still needs.
+    /// than closing a group the batch still needs. An open comment run ends first, so an edit made
+    /// after typing undoes before the typing does.
     private func registerUndo(_ actionName: String, _ handler: @escaping (StructureChangeManager) -> Void) {
+        if !undoManager.isUndoing, !undoManager.isRedoing {
+            endTableCommentRun()
+        }
         let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
         if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
@@ -95,6 +111,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// Cmd+Z should bring the whole selection back.
     func performAsOneUndoStep(_ body: () -> Void) {
         guard !isHeldForSave else { return }
+        endTableCommentRun()
         undoManager.beginUndoGrouping()
         defer { undoManager.endUndoGrouping() }
         body()
@@ -108,10 +125,13 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         indexes: [IndexInfo],
         foreignKeys: [ForeignKeyInfo],
         checkConstraints: [CheckConstraintInfo] = [],
-        primaryKey: [String]
+        primaryKey: [String],
+        tableComment: String? = nil
     ) {
         guard !isHeldForSave else { return }
         self.tableName = tableName
+        self.tableComment = ObjectCommentDraft(original: tableComment)
+        tableCommentRunStart = nil
 
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
@@ -672,6 +692,8 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
 
     func discardChanges() {
         guard !isHeldForSave else { return }
+        tableComment = ObjectCommentDraft(original: tableComment.original)
+        tableCommentRunStart = nil
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
@@ -690,6 +712,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     /// Takes the staged edits for a save, or nil when there are none or a save already holds them.
     /// Taken before the save's first suspension, which is what refuses a second press.
     func holdForSave() -> StructureSaveSnapshot? {
+        endTableCommentRun()
         guard heldSave == nil, hasChanges else { return nil }
         let snapshot = StructureSaveSnapshot(changes: getChangesArray())
         heldSave = snapshot
@@ -704,6 +727,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         guard heldSave?.id == snapshot.id else { return false }
         heldSave = nil
         guard written, getChangesArray() == snapshot.changes else { return false }
+        // The written comment is the new baseline now, or the field shows the old one until the refetch lands.
+        for case .modifyTableComment(_, let savedComment) in snapshot.changes {
+            tableComment = ObjectCommentDraft(original: savedComment)
+        }
         discardChanges()
         return true
     }
@@ -711,13 +738,57 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     // MARK: - Undo/Redo Operations
 
     func undo() {
-        guard !isHeldForSave, undoManager.canUndo else { return }
+        guard !isHeldForSave else { return }
+        endTableCommentRun()
+        guard undoManager.canUndo else { return }
         undoManager.undo()
     }
 
     func redo() {
-        guard !isHeldForSave, undoManager.canRedo else { return }
+        guard !isHeldForSave else { return }
+        endTableCommentRun()
+        guard undoManager.canRedo else { return }
         undoManager.redo()
+    }
+
+    // MARK: - Table Comment
+
+    func stageTableComment(_ text: String) {
+        guard !isHeldForSave, text != tableComment.text else { return }
+        if tableCommentRunStart == nil {
+            tableCommentRunStart = tableComment.text
+        }
+        tableComment.text = text
+        restageTableComment()
+    }
+
+    func endTableCommentRun() {
+        guard let start = tableCommentRunStart else { return }
+        tableCommentRunStart = nil
+        let end = tableComment.text
+        guard start != end else { return }
+        registerUndo(Self.tableCommentActionName) { target in
+            target.applySchemaUndo(.tableCommentEdit(old: start, new: end))
+        }
+    }
+
+    private func restageTableComment() {
+        let key = SchemaChangeIdentifier.tableComment
+        if tableComment.hasChanges {
+            pendingChanges[key] = .modifyTableComment(old: tableComment.original, new: tableComment.commentToSave)
+            trackChangeKey(key)
+        } else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+        }
+    }
+
+    private func applyTableCommentUndo(old: String, new: String) {
+        registerUndo(Self.tableCommentActionName) { target in
+            target.applySchemaUndo(.tableCommentEdit(old: new, new: old))
+        }
+        tableComment.text = old
+        restageTableComment()
     }
 
     private func applySchemaUndo(_ action: SchemaUndoAction) {
@@ -748,6 +819,8 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             applyDeletionUndo(constraint, at: at, using: Self.checkConstraintOperations)
         case .primaryKeyChange(let old, _):
             applyPrimaryKeyChangeUndo(old: old)
+        case .tableCommentEdit(let old, let new):
+            applyTableCommentUndo(old: old, new: new)
         }
 
         workingCopyDidChange()
@@ -907,6 +980,8 @@ enum SchemaUndoAction {
     case checkConstraintAdd(constraint: EditableCheckConstraintDefinition)
     case checkConstraintDelete(constraint: EditableCheckConstraintDefinition, at: Int?)
     case primaryKeyChange(old: [String], new: [String])
+    /// The field's raw text, so undo restores exactly what was typed.
+    case tableCommentEdit(old: String, new: String)
 }
 
 /// The staged edits a save read when it was pressed, and so the only edits it may clear.

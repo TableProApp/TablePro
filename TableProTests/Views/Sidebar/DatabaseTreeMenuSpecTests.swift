@@ -51,6 +51,8 @@ struct DatabaseTreeMenuSpecTests {
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
         canCreateTable: Bool = true,
+        canCreateView: Bool = true,
+        canCreateDatabase: Bool = false,
         supportsCreateSchema: Bool = false,
         supportsSchemaOwner: Bool = false,
         supportsSchemaPrivileges: Bool = false,
@@ -119,6 +121,8 @@ struct DatabaseTreeMenuSpecTests {
             canDuplicateDatabase: canDuplicateDatabase,
             canCreateType: canCreateType,
             canCreateTable: canCreateTable,
+            canCreateView: canCreateView,
+            canCreateDatabase: canCreateDatabase,
             objectToolSupport: objectToolSupport,
             canShowAllTables: canShowAllTables
         )
@@ -178,8 +182,6 @@ struct DatabaseTreeMenuSpecTests {
         #expect(titles(items).contains(String(localized: "View Options")))
     }
 
-    /// These moved out of the bar at the bottom of the sidebar, which the HIG reserves for nothing
-    /// critical, so the background menu is now their only sidebar-local home.
     @Test("Creating objects is reachable from the empty area")
     func emptyAreaOffersCreation() {
         let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
@@ -188,8 +190,6 @@ struct DatabaseTreeMenuSpecTests {
         #expect(issued.contains(.createView))
     }
 
-    /// MongoDB before its plugin could create a collection, and Redis, Kafka and every other engine
-    /// without a create hook, opened the grid and refused only once it was filled in.
     @Test("An engine that cannot create a table is not offered New Table")
     func emptyAreaHidesNewTableWithoutCreateSupport() {
         let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateTable: false)))
@@ -204,6 +204,44 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains(.createTable))
         #expect(!issued.contains(.createView))
+    }
+
+    @Test("An engine with no view template is not offered New View")
+    func emptyAreaHidesNewViewWithoutTemplate() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateView: false)))
+
+        #expect(!issued.contains(.createView))
+        #expect(issued.contains(.createTable))
+    }
+
+    @Test("The empty area offers New Database where the engine creates one")
+    func emptyAreaOffersNewDatabase() {
+        let offered = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil, canCreateDatabase: true)))
+        let withheld = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+        let readOnly = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: nil, isReadOnly: true, canCreateDatabase: true)
+        ))
+
+        #expect(offered.contains(.createDatabase))
+        #expect(!withheld.contains(.createDatabase))
+        #expect(!readOnly.contains(.createDatabase))
+    }
+
+    @Test("The empty area's creation items are the add button's, flattened into one group")
+    func emptyAreaCreationMatchesTheAddButton() {
+        for isReadOnly in [false, true] {
+            var base = context(
+                clicked: nil,
+                isReadOnly: isReadOnly,
+                canCreateDatabase: true,
+                supportsCreateSchema: true
+            )
+            base.offersBrowsedFolders = true
+            let sections = DatabaseTreeMenuSpec.sections(for: base)
+            let footer = DatabaseTreeMenuSpec.creationSections(base.creationFacts, hidesDatabaseWrites: isReadOnly)
+
+            #expect(sections.first.map { commands([$0]) } == commands(footer), "read-only \(isReadOnly)")
+        }
     }
 
     @Test("A nested object group refresh carries its database and schema")

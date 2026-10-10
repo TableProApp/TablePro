@@ -94,7 +94,7 @@ enum DuckDBSchemaQueries {
     }
 
     static let columnsForTable = """
-        SELECT column_name, data_type, is_nullable, column_default, column_index
+        SELECT column_name, data_type, is_nullable, column_default, column_index, comment
         FROM duckdb_columns()
         WHERE database_name = $1
           AND schema_name = $2
@@ -103,7 +103,7 @@ enum DuckDBSchemaQueries {
         """
 
     static let columnsForSchema = """
-        SELECT table_name, column_name, data_type, is_nullable, column_default, column_index
+        SELECT table_name, column_name, data_type, is_nullable, column_default, column_index, comment
         FROM duckdb_columns()
         WHERE database_name = $1
           AND schema_name = $2
@@ -186,6 +186,20 @@ enum DuckDBSchemaQueries {
           AND view_name = $3
         """
 
+    static let objectComment = """
+        SELECT comment
+        FROM duckdb_tables()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+        UNION ALL
+        SELECT comment
+        FROM duckdb_views()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND view_name = $3
+        """
+
     /// The app runs this one itself rather than through the driver's parameterized path, so
     /// both values are interpolated.
     ///
@@ -215,6 +229,59 @@ enum DuckDBSchemaQueries {
     static func rowCountProbe(schema: String, table: String, limit: Int) -> String {
         let target = "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
         return "SELECT COUNT(*) FROM (SELECT 1 FROM \(target) LIMIT \(limit)) AS _t"
+    }
+
+    static func objectCommentStatement(objectType: String, schema: String, name: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased() {
+        case "TABLE": keyword = "TABLE"
+        case "VIEW": keyword = "VIEW"
+        default: return nil
+        }
+        return "COMMENT ON \(keyword) \(quoteIdentifier(schema)).\(quoteIdentifier(name)) IS \(commentValue(comment))"
+    }
+
+    static func columnCommentStatement(schema: String, table: String, column: String, comment: String?) -> String {
+        let target = "\(quoteIdentifier(schema)).\(quoteIdentifier(table)).\(quoteIdentifier(column))"
+        return "COMMENT ON COLUMN \(target) IS \(commentValue(comment))"
+    }
+
+    /// `IS ''` stores an empty comment; only `IS NULL` removes one.
+    static func commentValue(_ comment: String?) -> String {
+        guard let comment, !comment.isEmpty else { return "NULL" }
+        return quoteLiteral(comment)
+    }
+
+    /// DuckDB 1.5.2 has no SERIAL or identity column, so an auto-increment column takes `nextval` of
+    /// a sequence of its own. `nextval` cannot resolve a name holding `"`, so none is kept, and the
+    /// hash of the exact pair keeps `a_b.id` and `a.b_id` from sharing one sequence.
+    static func autoIncrementSequenceName(table: String, column: String) -> String {
+        let readable = "\(table)_\(column)".unicodeScalars.filter { $0 != "\"" }
+        return "\(String(String.UnicodeScalarView(readable)))_\(fnv1a32(table + "\u{0}" + column))_seq"
+    }
+
+    private static func fnv1a32(_ text: String) -> String {
+        var hash: UInt32 = 0x811C_9DC5
+        for byte in text.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 0x0100_0193
+        }
+        let hex = String(hash, radix: 16)
+        return String(repeating: "0", count: 8 - hex.count) + hex
+    }
+
+    /// `DROP TABLE` leaves the sequence behind, so a table created again under the same name reuses it.
+    static func createSequenceStatement(schema: String, sequence: String) -> String {
+        "CREATE SEQUENCE IF NOT EXISTS \(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
+    }
+
+    /// A schema holding `"` is left out for the same reason, and an unqualified sequence resolves in
+    /// the table's own schema, also after the file is reopened.
+    static func nextvalDefault(schema: String, sequence: String) -> String {
+        let name = schema.contains("\"")
+            ? quoteIdentifier(sequence)
+            : "\(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
+        return "nextval(\(quoteLiteral(name)))"
     }
 
     /// What the session is holding that closing the handle would destroy, in one round trip.
@@ -268,14 +335,16 @@ enum DuckDBSchemaQueries {
         "\"\(escapeIdentifier(name))\""
     }
 
+    /// `.literal` matches by code unit: the default matches grapheme clusters and skips a quote that a
+    /// combining mark follows, which then ends the identifier or literal early.
     static func escapeIdentifier(_ name: String) -> String {
-        name.replacingOccurrences(of: "\"", with: "\"\"")
+        name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     static func quoteLiteral(_ value: String) -> String {
         let escaped = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
         return "'\(escaped)'"
     }
 }

@@ -497,4 +497,75 @@ struct StructureEditingSessionTests {
         #expect(session.tabData.needsFetch(.columns))
         #expect(!session.settleOwedRefetch())
     }
+
+    // MARK: - Table comment
+
+    @Test("A refresh keeps the loaded comment until the new one lands, and a failed refresh keeps it")
+    func refreshKeepsTheLoadedComment() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.beginTableCommentLoad()
+        #expect(session.tableComment == .loading)
+
+        session.settleTableComment(.fetched("Customer orders"))
+        session.beginTableCommentLoad()
+        #expect(session.loadedTableComment == "Customer orders")
+
+        session.settleTableComment(.failed("timed out"))
+        #expect(session.loadedTableComment == "Customer orders")
+
+        session.markStructureStale()
+        #expect(session.loadedTableComment == "Customer orders")
+
+        session.settleTableComment(.fetched(nil))
+        #expect(session.tableComment == .loaded(nil))
+        #expect(session.loadedTableComment == nil)
+    }
+
+    @Test("A saved comment stays the loaded one when the refetch after the save fails")
+    func savedCommentSurvivesAFailedRefetch() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.settleTableComment(.fetched("Customer orders"))
+
+        session.adoptWrittenTableComment(from: [.modifyTableComment(old: "Customer orders", new: "Paid orders")])
+        session.beginTableCommentLoad()
+        session.settleTableComment(.failed("timed out"))
+
+        #expect(session.loadedTableComment == "Paid orders")
+    }
+
+    @Test("A comment typed while a refresh was in flight makes the session owe the fetch, not lose the edit")
+    func stagedCommentDefersTheRefetch() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        session.changeManager.loadSchema(
+            tableName: "orders",
+            columns: [
+                ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true,
+                           defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil)
+            ],
+            indexes: [],
+            foreignKeys: [],
+            primaryKey: ["id"],
+            tableComment: "Customer orders"
+        )
+        session.changeManager.stageTableComment("Paid orders")
+
+        session.markStructureStale()
+
+        #expect(session.owesRefetch)
+        #expect(session.changeManager.tableComment.text == "Paid orders")
+        #expect(session.changeManager.hasChanges)
+    }
+
+    @Test("A first comment load that fails says so, and one cut short leaves no spinner")
+    func firstCommentLoadOutcomes() {
+        let failed = Self.makeSession(connection: TestFixtures.makeConnection())
+        failed.beginTableCommentLoad()
+        failed.settleTableComment(.failed("permission denied"))
+        #expect(failed.tableComment == .failed("permission denied"))
+
+        let cancelled = Self.makeSession(connection: TestFixtures.makeConnection())
+        cancelled.beginTableCommentLoad()
+        cancelled.settleTableComment(.cancelled)
+        #expect(cancelled.tableComment == .idle)
+    }
 }

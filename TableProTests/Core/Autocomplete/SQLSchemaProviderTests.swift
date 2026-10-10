@@ -270,10 +270,18 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func fetchTableDDL(table: String) async throws -> String { "" }
     func fetchViewDefinition(view: String) async throws -> String { "" }
 
+    var tableCommentToReturn: String?
+    var fetchTableMetadataError: Error?
+    private(set) var fetchTableMetadataCalls: [String] = []
+
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
-        TableMetadata(
+        fetchTableMetadataCalls.append(tableName)
+        if let fetchTableMetadataError {
+            throw fetchTableMetadataError
+        }
+        return TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
-            avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
+            avgRowLength: nil, rowCount: nil, comment: tableCommentToReturn, engine: nil,
             collation: nil, createTime: nil, updateTime: nil
         )
     }

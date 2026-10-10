@@ -15,6 +15,7 @@ import TableProPluginKit
 internal enum SidebarMenuCommand: Equatable {
     case createTable
     case createView
+    case createDatabase
     /// Carries the database and schema of the section it was raised from, because a tree lists
     /// every database and schema, and a template opened against the browsed one would create the
     /// type somewhere else: PostgreSQL cannot reach another database by qualifying the name.

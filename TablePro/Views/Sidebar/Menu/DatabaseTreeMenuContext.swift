@@ -62,6 +62,8 @@ internal struct DatabaseTreeMenuContext {
     internal var canCreateType: Bool = false
     /// Whether the driver can create a table, from `CreateTableEligibility`.
     internal var canCreateTable: Bool = false
+    internal var canCreateView: Bool = false
+    internal var canCreateDatabase: Bool = false
     /// Which materialized-view and comment commands the driver has statements for.
     internal var objectToolSupport: DatabaseObjectToolEligibility.Support = .none
     /// The folders a clicked table or view can be filed into, and what filing it would move. Nil on
@@ -73,6 +75,21 @@ internal struct DatabaseTreeMenuContext {
     /// Whether Show All Tables has a listing to open, so an engine without one is not offered a command
     /// that does nothing.
     internal var canShowAllTables: Bool = false
+}
+
+internal extension DatabaseTreeMenuContext {
+    // The raw capability, not `SchemaEditEligibility.canCreate`, which folds read-only in.
+    var creationFacts: SidebarCreationFacts {
+        SidebarCreationFacts(
+            canCreateTable: canCreateTable,
+            canCreateView: canCreateView,
+            supportsCreateSchema: schemaEditEligibility.supportsCreateSchema,
+            supportsCreateDatabase: canCreateDatabase,
+            offersBrowsedFolders: offersBrowsedFolders,
+            schemaEntityName: schemaEntityName,
+            activeDatabase: activeDatabase
+        )
+    }
 }
 
 /// Resolved by the coordinator rather than the spec, because which objects share a folder scope is

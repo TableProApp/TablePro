@@ -12,6 +12,29 @@ final class HanaCatalogTests: XCTestCase {
         XCTAssertEqual(HanaSQL.qualifiedName(schema: "S\"1", name: "T"), "\"S\"\"1\".\"T\"")
     }
 
+    func testCommentStatementSetsAndClearsTableAndViewComments() {
+        let target = HanaSQL.qualifiedName(schema: "APP", name: "ORDERS")
+        XCTAssertEqual(
+            HanaSQL.commentStatement(objectType: "TABLE", qualifiedName: target, comment: "it's"),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS N'it''s'"
+        )
+        XCTAssertEqual(
+            HanaSQL.commentStatement(objectType: "VIEW", qualifiedName: target, comment: "Orders"),
+            "COMMENT ON VIEW \"APP\".\"ORDERS\" IS N'Orders'"
+        )
+        XCTAssertEqual(
+            HanaSQL.commentStatement(objectType: "TABLE", qualifiedName: target, comment: nil),
+            "COMMENT ON TABLE \"APP\".\"ORDERS\" IS NULL"
+        )
+        XCTAssertEqual(
+            HanaSQL.commentStatement(objectType: "VIEW", qualifiedName: target, comment: ""),
+            "COMMENT ON VIEW \"APP\".\"ORDERS\" IS NULL"
+        )
+        for kind in ["MATERIALIZED VIEW", "SEQUENCE", "SYSTEM TABLE", "FOREIGN TABLE"] {
+            XCTAssertNil(HanaSQL.commentStatement(objectType: kind, qualifiedName: target, comment: nil), kind)
+        }
+    }
+
     func testCatalogQueriesEscapeEveryLiteral() {
         let schema = "O'Brien\u{0301}"
         let table = "T'1"

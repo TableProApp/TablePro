@@ -206,8 +206,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "``")
-        return "`\(escaped)`"
+        clickHouseQuotedIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
@@ -217,15 +216,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The backslash goes first, or every escape written after it is escaped again.
     static func escapeStringLiteral(_ value: String) -> String {
         var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\n", with: "\\n")
-        result = result.replacingOccurrences(of: "\r", with: "\\r")
-        result = result.replacingOccurrences(of: "\t", with: "\\t")
-        result = result.replacingOccurrences(of: "\0", with: "\\0")
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
+        result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+        result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
+        result = result.replacingOccurrences(of: "\n", with: "\\n", options: .literal)
+        result = result.replacingOccurrences(of: "\r", with: "\\r", options: .literal)
+        result = result.replacingOccurrences(of: "\t", with: "\\t", options: .literal)
+        result = result.replacingOccurrences(of: "\0", with: "\\0", options: .literal)
+        result = result.replacingOccurrences(of: "\u{08}", with: "\\b", options: .literal)
+        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f", options: .literal)
+        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z", options: .literal)
         return result
     }
     func beginTransaction() async throws {}
@@ -387,7 +386,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         for (index, value) in values.enumerated() {
             if value.asText == "__DEFAULT__" { continue }
             guard index < columns.count else { continue }
-            nonDefaultColumns.append("`\(columns[index].replacingOccurrences(of: "`", with: "``"))`")
+            nonDefaultColumns.append(clickHouseQuotedIdentifier(columns[index]))
             parameters.append(value)
         }
 
@@ -395,7 +394,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
         let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let sql = "INSERT INTO `\(table.replacingOccurrences(of: "`", with: "``"))` (\(columnList)) VALUES (\(placeholders))"
+        let sql = "INSERT INTO \(clickHouseQuotedIdentifier(table)) (\(columnList)) VALUES (\(placeholders))"
         return (statement: sql, parameters: parameters)
     }
 
@@ -406,11 +405,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> (statement: String, parameters: [PluginCellValue])? {
         guard !change.cellChanges.isEmpty else { return nil }
 
-        let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
+        let escapedTable = clickHouseQuotedIdentifier(table)
         var parameters: [PluginCellValue] = []
 
         let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = "`\(cellChange.columnName.replacingOccurrences(of: "`", with: "``"))`"
+            let col = clickHouseQuotedIdentifier(cellChange.columnName)
             parameters.append(cellChange.newValue)
             return "\(col) = ?"
         }.joined(separator: ", ")
@@ -428,7 +427,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [String],
         change: PluginRowChange
     ) -> (statement: String, parameters: [PluginCellValue])? {
-        let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
+        let escapedTable = clickHouseQuotedIdentifier(table)
         var parameters: [PluginCellValue] = []
 
         guard let whereClause = buildWhereClause(
@@ -449,7 +448,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var conditions: [String] = []
         for (index, columnName) in columns.enumerated() {
             guard index < originalRow.count else { continue }
-            let col = "`\(columnName.replacingOccurrences(of: "`", with: "``"))`"
+            let col = clickHouseQuotedIdentifier(columnName)
             let value = originalRow[index]
             if value.isNull {
                 conditions.append("\(col) IS NULL")

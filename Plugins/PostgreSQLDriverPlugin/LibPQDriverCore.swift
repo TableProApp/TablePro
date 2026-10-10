@@ -327,6 +327,12 @@ extension LibPQBackedDriver {
         }
     }
 
+    func fetchRelationComment(table: String, schema: String) async throws -> String? {
+        let query = PostgreSQLCommentStatements.relationCommentQuery(name: table, schema: schema)
+        let result = try await execute(query: query)
+        return result.rows.first?.first?.asText?.nilIfEmpty
+    }
+
     func connect() async throws {
         try await core.connect()
     }

@@ -32,6 +32,8 @@ struct TableStructureLoader {
         let columns: [ColumnInfo]
         let indexes: [IndexInfo]
         let foreignKeys: [ForeignKeyInfo]
+        /// Nil when the comment was not asked for.
+        let tableComment: MetadataFetchOutcome<String?>?
     }
 
     func columns() async throws -> [ColumnInfo] {
@@ -59,6 +61,11 @@ struct TableStructureLoader {
         return try await perform { try await $0.fetchTriggers(table: table) }
     }
 
+    func tableComment() async throws -> String? {
+        let table = tableName
+        return try await perform { try await $0.fetchTableMetadata(tableName: table).comment }
+    }
+
     func concurrentRefreshAvailability() async throws -> PluginConcurrentRefreshAvailability? {
         try await MaterializedViewRefreshing.concurrentRefreshAvailability(
             of: DatabaseObjectTarget(name: tableName, type: .materializedView, schema: scope.schema, scope: scope),
@@ -66,14 +73,24 @@ struct TableStructureLoader {
         )
     }
 
-    func coreTabs(includingForeignKeys: Bool) async throws -> CoreTabs {
+    /// A comment that fails to load is reported in the result, so the columns still land.
+    func coreTabs(includingForeignKeys: Bool, includingTableComment: Bool) async throws -> CoreTabs {
         let table = tableName
         return try await perform { driver in
-            CoreTabs(
-                columns: try await driver.fetchColumns(table: table),
-                indexes: try await driver.fetchIndexes(table: table),
-                foreignKeys: includingForeignKeys ? try await driver.fetchForeignKeys(table: table) : []
-            )
+            let columns = try await driver.fetchColumns(table: table)
+            let indexes = try await driver.fetchIndexes(table: table)
+            let foreignKeys = includingForeignKeys ? try await driver.fetchForeignKeys(table: table) : []
+            var comment: MetadataFetchOutcome<String?>?
+            if includingTableComment {
+                do {
+                    comment = .fetched(try await driver.fetchTableMetadata(tableName: table).comment)
+                } catch is CancellationError {
+                    comment = .cancelled
+                } catch {
+                    comment = .failed(error.localizedDescription)
+                }
+            }
+            return CoreTabs(columns: columns, indexes: indexes, foreignKeys: foreignKeys, tableComment: comment)
         }
     }
 

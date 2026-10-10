@@ -86,7 +86,7 @@ extension MainContentCoordinator {
     /// Structure the user is not editing is fetched again: now for the one on screen, on its next
     /// mount for the rest. A structure holding staged edits keeps them and the old baseline, and is
     /// fetched once they are applied, undone or discarded.
-    private func refreshStructure(ofTabs tabs: [QueryTab]) {
+    func refreshStructure(ofTabs tabs: [QueryTab]) {
         let selectedId = tabManager.selectedTabId
         for tab in tabs {
             guard let session = structureSessions[tab.id] else { continue }

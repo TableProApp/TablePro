@@ -302,4 +302,31 @@ struct CreateTableDraftBuilderTests {
         #expect(definition.indexes.isEmpty)
         #expect(result.indexes.count == 1)
     }
+
+    // MARK: - Table comment
+
+    private func plan(comment: String) -> CreateTablePlan {
+        var options = CreateTableOptions()
+        options.comment = comment
+        return CreateTableDraftBuilder.plan(
+            tableName: "child",
+            options: options,
+            columns: [column("id")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.postgresql),
+            includesEngineOptions: false
+        )
+    }
+
+    @Test("the plan carries the typed comment as typed")
+    func planCarriesTheComment() {
+        #expect(plan(comment: "Child rows").tableComment == "Child rows")
+        #expect(plan(comment: "line one\nline two").tableComment == "line one\nline two")
+    }
+
+    @Test("a blank comment plans no comment", arguments: ["", "   ", "\n\t"])
+    func blankCommentIsNil(comment: String) {
+        #expect(plan(comment: comment).tableComment == nil)
+    }
 }

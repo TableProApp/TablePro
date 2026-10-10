@@ -214,6 +214,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { String(cString: duckdb_library_version()) }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+    var supportsTransactionalDDL: Bool { true }
     var parameterStyle: ParameterStyle { .dollar }
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
@@ -705,6 +706,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
+                comment: row[safe: 5]?.asText?.nilIfEmpty,
                 allowedValues: resolveEnumValues(dataType: dataType)
             )
         }
@@ -748,6 +750,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
+                comment: row[safe: 6]?.asText?.nilIfEmpty,
                 allowedValues: resolveEnumValues(dataType: dataType)
             )
 
@@ -929,11 +932,37 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             guard let row = countResult.rows.first, let firstCell = row.first else { return nil }
             return Int64(firstCell.asText ?? "0")
         }()
+        let comment = try await fetchObjectComment(table: table, schema: schemaName)
 
         return PluginTableMetadata(
             tableName: table,
             rowCount: rowCount,
+            comment: comment,
             engine: "DuckDB"
+        )
+    }
+
+    private func fetchObjectComment(table: String, schema: String) async throws -> String? {
+        let result = try await executeParameterized(
+            query: DuckDBSchemaQueries.objectComment,
+            parameters: [.text(try requireCatalog()), .text(schema), .text(table)]
+        )
+        return result.rows.lazy.compactMap { $0[safe: 0]?.asText?.nilIfEmpty }.first
+    }
+
+    func quoteIdentifier(_ name: String) -> String {
+        DuckDBSchemaQueries.quoteIdentifier(name)
+    }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        DuckDBSchemaQueries.objectCommentStatement(
+            objectType: objectType, schema: resolveSchema(schema), name: name, comment: comment
         )
     }
 
@@ -1040,7 +1069,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
+        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private func fetchPrimaryKeyColumns(
@@ -1056,14 +1085,26 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
+    /// The shape an older app runs: the table and its indexes. The sequences and column comments
+    /// need statements of their own, which only `generateCreateTableStatements` returns.
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard let statements = generateCreateTableStatements(definition: definition) else { return nil }
+        let sequenceCount = definition.columns.filter(\.autoIncrement).count
+        let tableAndIndexes = statements.dropFirst(sequenceCount).prefix(1 + definition.indexes.count)
+        return tableAndIndexes.map { $0 + ";" }.joined(separator: "\n\n")
+    }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
         guard !definition.columns.isEmpty else { return nil }
 
         let schema = resolveSchema(nil)
-        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
+        let table = definition.tableName
+        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { duckdbColumnDefinition($0, inlinePK: inlinePK) }
+        var parts: [String] = definition.columns.map {
+            duckdbColumnDefinition($0, schema: schema, table: table, inlinePK: inlinePK, inCreateTable: true)
+        }
 
         if pkColumns.count > 1 {
             let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
@@ -1074,42 +1115,66 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             parts.append(duckdbForeignKeyDefinition(fk))
         }
 
-        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        var indexStatements: [String] = []
-        for index in definition.indexes {
-            indexStatements.append(duckdbIndexDefinition(index, qualifiedTable: qualifiedTable))
-        }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
-        }
-
-        return sql
+        let createTable = "CREATE TABLE \(qualifiedTable) (\n  " + parts.joined(separator: ",\n  ") + "\n)"
+        let indexStatements = definition.indexes.map { duckdbIndexDefinition($0, qualifiedTable: qualifiedTable) }
+        return sequenceStatements(for: definition.columns, schema: schema, table: table)
+            + [createTable]
+            + indexStatements
+            + columnCommentStatements(for: definition.columns, schema: schema, table: table)
     }
 
-    private func duckdbColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var dataType = col.dataType
-        if col.autoIncrement {
-            let upper = dataType.uppercased()
-            if upper == "BIGINT" || upper == "INT8" {
-                dataType = "BIGSERIAL"
-            } else {
-                dataType = "SERIAL"
-            }
-        }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        guard case .addColumn(let column) = operation,
+              column.autoIncrement,
+              let defaultValue = column.defaultValue,
+              !defaultValue.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return nil }
+        return String(localized: "An auto-increment column takes its values from a sequence, so it cannot also have a default.")
+    }
 
-        var def = "\(quoteIdentifier(col.name)) \(dataType)"
-        if !col.autoIncrement {
-            if col.isNullable {
-                def += " NULL"
-            } else {
+    private func sequenceStatements(for columns: [PluginColumnDefinition], schema: String, table: String) -> [String] {
+        columns.filter(\.autoIncrement).map {
+            DuckDBSchemaQueries.createSequenceStatement(
+                schema: schema,
+                sequence: DuckDBSchemaQueries.autoIncrementSequenceName(table: table, column: $0.name)
+            )
+        }
+    }
+
+    private func columnCommentStatements(
+        for columns: [PluginColumnDefinition],
+        schema: String,
+        table: String
+    ) -> [String] {
+        columns.compactMap { column in
+            guard let comment = column.comment, !comment.isEmpty else { return nil }
+            return DuckDBSchemaQueries.columnCommentStatement(
+                schema: schema, table: table, column: column.name, comment: comment
+            )
+        }
+    }
+
+    /// `ADD COLUMN` refuses every constraint, NOT NULL included, so an added auto-increment column
+    /// carries its default alone, and each existing row takes a value from the sequence.
+    private func duckdbColumnDefinition(
+        _ col: PluginColumnDefinition,
+        schema: String,
+        table: String,
+        inlinePK: Bool,
+        inCreateTable: Bool
+    ) -> String {
+        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
+        if col.autoIncrement {
+            if inCreateTable {
                 def += " NOT NULL"
             }
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(defaultValue)"
+            let sequence = DuckDBSchemaQueries.autoIncrementSequenceName(table: table, column: col.name)
+            def += " DEFAULT \(DuckDBSchemaQueries.nextvalDefault(schema: schema, sequence: sequence))"
+        } else {
+            def += col.isNullable ? " NULL" : " NOT NULL"
+            if let defaultValue = col.defaultValue {
+                def += " DEFAULT \(defaultValue)"
+            }
         }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
@@ -1143,10 +1208,13 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
+    /// One statement only: the connection refuses a text holding two. An auto-increment column needs
+    /// its sequence created first, so adding one to an existing table is reported as unsupported.
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let qt = qualifiedTableName(table)
-        let colDef = duckdbColumnDefinition(column, inlinePK: false)
-        return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
+        guard !column.autoIncrement else { return nil }
+        let schema = resolveSchema(nil)
+        let colDef = duckdbColumnDefinition(column, schema: schema, table: table, inlinePK: false, inCreateTable: false)
+        return "ALTER TABLE \(qualifiedTableName(table)) ADD COLUMN \(colDef)"
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {

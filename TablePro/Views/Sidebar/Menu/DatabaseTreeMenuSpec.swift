@@ -656,17 +656,8 @@ internal enum DatabaseTreeMenuSpec {
     /// object row: creating an object names no existing one, the diagram is the whole schema, the
     /// database filter and View Options are the sidebar's own state.
     private static func backgroundSections(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
-        var creation: [DatabaseTreeMenuItem] = []
-        if !context.isReadOnly {
-            if context.canCreateTable {
-                creation.append(.command(String(localized: "New Table…"), .createTable))
-            }
-            creation.append(.command(String(localized: "New View…"), .createView))
-        }
-        creation += newSchemaItems(database: context.activeDatabase, context: context)
-        if context.offersBrowsedFolders {
-            creation.append(.command(String(localized: "New Folder"), .tableFolder(.create(.browsed))))
-        }
+        let creation = creationSections(context.creationFacts, hidesDatabaseWrites: context.isReadOnly)
+            .flatMap(\.items)
         var filters: [DatabaseTreeMenuItem] = []
         if context.canFilterDatabases {
             filters.append(.command(String(localized: "Filter Databases…"), .filterDatabases))

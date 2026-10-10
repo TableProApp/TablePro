@@ -37,11 +37,11 @@ enum QuackConnectBuilder {
 
     private static func escapeLiteral(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     private static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 }

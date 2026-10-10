@@ -2,11 +2,11 @@ import Foundation
 
 public enum TeradataSchemaQueries {
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     public static func quoteLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
     }
 
     public static func qualifiedName(database: String?, table: String) -> String {
@@ -56,6 +56,46 @@ public enum TeradataSchemaQueries {
         WHERE DatabaseName = \(quoteLiteral(database)) AND TableName = \(quoteLiteral(view)) \
         AND TableKind = 'V'
         """
+    }
+
+    public static func tableComment(database: String, table: String) -> String {
+        """
+        SELECT CommentString FROM DBC.TablesV \
+        WHERE DatabaseName = \(quoteLiteral(database)) AND TableName = \(quoteLiteral(table))
+        """
+    }
+
+    /// The row count recorded when statistics were last collected, nil when none were. Teradata prints
+    /// a FLOAT in its own exponent format, so the cast hands back a plain integer.
+    public static func statisticsRowCount(database: String, table: String) -> String {
+        """
+        SELECT CAST(MAX(RowCount) AS BIGINT) FROM DBC.TableStatsV \
+        WHERE DatabaseName = \(quoteLiteral(database)) AND TableName = \(quoteLiteral(table))
+        """
+    }
+
+    /// Teradata's `COMMENT` takes a string literal, so an empty string is what removes a comment.
+    public static func commentStatement(objectType: String, qualifiedName: String, comment: String?) -> String? {
+        let keyword: String
+        switch objectType.uppercased() {
+        case "TABLE":
+            keyword = "TABLE"
+        case "VIEW":
+            keyword = "VIEW"
+        default:
+            return nil
+        }
+        return "COMMENT ON \(keyword) \(qualifiedName) IS \(quoteLiteral(comment ?? ""))"
+    }
+
+    public static func columnCommentStatements(
+        qualifiedTable: String,
+        comments: [(column: String, comment: String?)]
+    ) -> [String] {
+        comments.compactMap { entry in
+            guard let comment = entry.comment, !comment.isEmpty else { return nil }
+            return "COMMENT ON COLUMN \(qualifiedTable).\(quoteIdentifier(entry.column)) IS \(quoteLiteral(comment))"
+        }
     }
 
     public static func currentDatabase() -> String {

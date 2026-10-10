@@ -59,6 +59,10 @@ private final class CompositionDriver: CompositionBaseDriver, PluginDatabaseDriv
         let columns = definition.columns.map { "\"\($0.name)\" \($0.dataType)" }.joined(separator: ", ")
         return "CREATE TABLE \"\(schema ?? "")\".\"\(definition.tableName)\" (\(columns))"
     }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        "COMMENT ON \(objectType) \"\(schema ?? "")\".\"\(name)\" IS '\(comment ?? "")'"
+    }
 }
 
 @MainActor
@@ -236,6 +240,40 @@ struct CreateTableDraftCompositionTests {
 
         #expect(published > 0)
         #expect(draft.compositionKey(scope: scope) != keyBefore)
+    }
+
+    @Test("A typed comment is composed after the CREATE, on the tab's schema")
+    func commentIsComposedOnTheTabSchema() async throws {
+        let (connection, _) = Self.inject(type: .postgresql, sessionSchema: "public")
+        defer { Self.tearDown(connection) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        _ = try await Self.seedPooledDriver(connection, scope: scope)
+        let draft = Self.makeDraft(tableName: "sales")
+        draft.tableOptions.comment = "Daily sales"
+
+        await draft.recompose(databaseType: .postgresql, scope: scope)
+
+        #expect(draft.composed?.statements == [
+            "CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)",
+            "COMMENT ON TABLE \"reporting\".\"sales\" IS 'Daily sales'"
+        ])
+    }
+
+    @Test("Changing only the comment composes the draft again")
+    func changingTheCommentRecomposes() async throws {
+        let (connection, driver) = Self.inject(type: .pglite, sessionSchema: "reporting")
+        defer { Self.tearDown(connection) }
+        let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
+        let draft = Self.makeDraft(tableName: "sales")
+        await draft.recompose(databaseType: .pglite, scope: scope)
+        let keyBefore = draft.compositionKey(scope: scope)
+
+        draft.tableOptions.comment = "Daily sales"
+        await draft.recompose(databaseType: .pglite, scope: scope)
+
+        #expect(draft.compositionKey(scope: scope) != keyBefore)
+        #expect(driver.createTableRequests == 2)
+        #expect(draft.composed?.statements.last == "COMMENT ON TABLE \"reporting\".\"sales\" IS 'Daily sales'")
     }
 
     @Test("A draft with nothing to create names what is missing without a connection")

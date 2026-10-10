@@ -11,6 +11,15 @@ import AppKit
 /// so Cmd+Z takes back a folder change the way it takes back a grid edit. The undo restores only the
 /// folders and placements the edit touched, so a rename or a pull that landed in between survives it.
 extension DatabaseTreeOutlineCoordinator {
+    /// Only the flat list's folders belong to the browsed database and schema.
+    internal var offersBrowsedFolders: Bool {
+        rootShape == .flat && viewModel != nil
+    }
+
+    internal var canCreateBrowsedFolder: Bool {
+        offersBrowsedFolders && folderScope(for: .browsed) != nil
+    }
+
     internal func perform(_ command: TableFolderCommand) {
         switch command {
         case .create(let container):

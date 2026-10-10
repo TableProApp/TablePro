@@ -45,15 +45,20 @@ public enum PostgreSQLRelationSQL {
         }
     }
 
+    public static let allCommentKeywords: Set<String> = ["TABLE", "VIEW", "MATERIALIZED VIEW", "FOREIGN TABLE"]
+
     /// `COMMENT` takes a literal and nothing else, so the value is quoted here rather than bound. The
     /// quoting reads the same whatever `standard_conforming_strings` is set to.
     public static func commentStatement(
         name: String,
         schema: String,
         objectType: String,
-        comment: String?
+        comment: String?,
+        supportedKeywords: Set<String> = allCommentKeywords
     ) -> String? {
-        guard let keyword = commentKeyword(forObjectType: objectType) else { return nil }
+        guard let keyword = commentKeyword(forObjectType: objectType),
+              supportedKeywords.contains(keyword)
+        else { return nil }
         let target = PostgreSQLObjectQueries.qualifiedName(schema: schema, name: name)
         return "COMMENT ON \(keyword) \(target) IS \(commentValue(comment))"
     }
@@ -61,6 +66,18 @@ public enum PostgreSQLRelationSQL {
     public static func commentValue(_ comment: String?) -> String {
         guard let comment, !comment.isEmpty else { return "NULL" }
         return PostgreSQLObjectQueries.quoteLiteral(comment)
+    }
+
+    public static func columnCommentStatement(qualifiedTable: String, column: String, comment: String?) -> String {
+        let target = "\(qualifiedTable).\(PostgreSQLObjectQueries.quoteIdentifier(column))"
+        return "COMMENT ON COLUMN \(target) IS \(commentValue(comment))"
+    }
+
+    public static func columnCommentStatements(qualifiedTable: String, columns: [PluginColumnDefinition]) -> [String] {
+        columns.compactMap { column in
+            guard let comment = column.comment, !comment.isEmpty else { return nil }
+            return columnCommentStatement(qualifiedTable: qualifiedTable, column: column.name, comment: comment)
+        }
     }
 
     public static func refreshStatement(name: String, schema: String, concurrently: Bool) -> String {

@@ -13,10 +13,11 @@ import TableProPluginKit
 // MARK: - Schema Changes
 
 extension DatabaseManager {
-    /// Execute schema statements (ALTER TABLE, CREATE INDEX, etc.) in a transaction of their own,
-    /// on the schema change route rather than the session driver a query tab may have left
-    /// mid-transaction. The connection, database and schema all come from the editing tab's
-    /// own scope, never from ambient session state that another window or tab can move.
+    /// Execute schema statements (ALTER TABLE, CREATE INDEX, etc.) on the schema change route rather
+    /// than the session driver a query tab may have left mid-transaction, in a transaction of their
+    /// own only where the engine rolls DDL back. The connection, database and schema all come from
+    /// the editing tab's own scope, never from ambient session state that another window or tab can
+    /// move.
     ///
     /// Authorization sits outside the scoped block: it awaits a confirmation sheet and Touch ID,
     /// and holding the connection's driver gate across a human prompt would freeze every other
@@ -59,7 +60,7 @@ extension DatabaseManager {
                 cancellation: .protectedWrite
             ) { driver in
                 try await Self.refuseBeforeWriting(script, scope: scope, on: driver)
-                let useTransaction = driver.supportsTransactions
+                let useTransaction = Self.wrapsDDLInTransaction(driver)
                 if useTransaction {
                     try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
                 }
@@ -90,7 +91,7 @@ extension DatabaseManager {
             throw refusal
         } catch let failure as SchemaChangeFailedAfterWriting {
             Self.reportCatalogChangeAfterFailure(in: scope)
-            reportTableDefinitionChange(table: script.tableName, in: scope)
+            reportSavedChange(of: script, in: scope)
             throw DatabaseError.queryFailed(failure.message)
         } catch {
             Self.reportCatalogChangeAfterFailure(in: scope)
@@ -114,9 +115,26 @@ extension DatabaseManager {
             )
         }
 
-        reportTableDefinitionChange(table: script.tableName, in: scope)
+        reportSavedChange(of: script, in: scope)
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+        )
+    }
+
+    /// The rule ContainerDDL and Compare sync already follow. Where DDL commits on its own, a wrap
+    /// undoes nothing, and on Teradata it turns every statement after the first DDL into error 3932.
+    nonisolated static func wrapsDDLInTransaction(_ driver: DatabaseDriver) -> Bool {
+        driver.supportsTransactions && driver.supportsTransactionalDDL
+    }
+
+    /// A save that only set the comment changed no column, so it is announced as a comment change.
+    private func reportSavedChange(of script: SchemaChangeScript, in scope: DatabaseScope) {
+        guard script.setsCommentOnly else {
+            reportTableDefinitionChange(table: script.tableName, in: scope)
+            return
+        }
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: scope.connectionId, scope: scope, name: script.tableName, kind: .comment)
         )
     }
 
@@ -211,13 +229,14 @@ extension DatabaseManager {
     func executeCreateTable(
         statements: [String],
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         guard !statements.isEmpty else { return }
         let route = schemaChangeRoute(for: scope)
         let script = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
 
-        let authorization = await ExecutionGateProvider.shared.authorize(
+        let authorization = await gate.authorize(
             OperationRequest(
                 connectionId: scope.connectionId,
                 databaseType: databaseType,
@@ -241,12 +260,12 @@ extension DatabaseManager {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                let useTransaction = driver.supportsTransactions && statements.count > 1
+                let useTransaction = Self.wrapsDDLInTransaction(driver) && statements.count > 1
                 if useTransaction {
                     try await driver.beginTransaction(mode: .readWrite)
                 }
+                var measured: [TimeInterval] = []
                 do {
-                    var measured: [TimeInterval] = []
                     for statement in statements {
                         let startedAt = Date()
                         _ = try await driver.execute(query: statement)
@@ -263,6 +282,8 @@ extension DatabaseManager {
                         } catch {
                             Self.logger.error("Rollback failed after create table error: \(error.localizedDescription)")
                         }
+                    } else if !measured.isEmpty {
+                        throw CreateTableIncompleteError(message: error.localizedDescription)
                     }
                     throw error
                 }
@@ -301,8 +322,22 @@ extension DatabaseManager {
     }
 }
 
+/// Create Table ran its CREATE outside a transaction and a later statement, such as an index or the
+/// comment, failed: the table exists, so running the draft again would only fail on its name.
+struct CreateTableIncompleteError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? { message }
+}
+
 /// A schema save that stopped once its statements had started to run, so the table may have
 /// changed even though the save did not finish.
 private struct SchemaChangeFailedAfterWriting: Error {
     let message: String
+}
+
+private extension SchemaChangeScript {
+    var setsCommentOnly: Bool {
+        !statements.isEmpty && statements.allSatisfy(\.setsComment)
+    }
 }

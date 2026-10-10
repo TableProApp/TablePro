@@ -52,6 +52,27 @@ extension TeradataPluginDriver {
         return sql
     }
 
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        guard let createTable = generateCreateTableSQL(definition: definition) else { return nil }
+        let comments = TeradataSchemaQueries.columnCommentStatements(
+            qualifiedTable: qualified(definition.tableName),
+            comments: definition.columns.map { (column: $0.name, comment: $0.comment) }
+        )
+        return [createTable] + comments
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        TeradataSchemaQueries.commentStatement(
+            objectType: objectType,
+            qualifiedName: TeradataSchemaQueries.qualifiedName(database: effectiveDatabase(schema), table: name),
+            comment: comment
+        )
+    }
+
+    func createViewTemplate() -> String? {
+        "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+    }
+
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         guard let definition = generateColumnDefinitionSQL(column: column) else { return nil }
         return "ALTER TABLE \(qualified(table)) ADD \(definition)"

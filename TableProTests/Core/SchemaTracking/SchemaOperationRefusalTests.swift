@@ -344,7 +344,7 @@ struct SchemaOperationRefusalTests {
             indexes: [],
             issues: []
         )
-        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver())
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements.isEmpty)
         #expect(composed.issues.map(\.message) == [Self.generatedReason])
         #expect(composed.issues.first?.tab == .columns)
@@ -361,7 +361,7 @@ struct SchemaOperationRefusalTests {
             indexes: [index("ix_btree", type: .btree).toPlugin(), index("ix_brin", type: .brin).toPlugin()],
             issues: []
         )
-        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver())
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements == ["CREATE TABLE orders (...)", "CREATE INDEX ix_btree ON orders"])
         #expect(composed.issues.count == 1)
         #expect(composed.issues.first?.tab == .indexes)

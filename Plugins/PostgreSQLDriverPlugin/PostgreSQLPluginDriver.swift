@@ -792,6 +792,26 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard let parts = createTableParts(definition) else { return nil }
+        var sql = parts.createTable + ";"
+        if !parts.indexStatements.isEmpty {
+            sql += "\n\n" + parts.indexStatements.joined(separator: ";\n") + ";"
+        }
+        return sql
+    }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        guard let parts = createTableParts(definition) else { return nil }
+        let columnComments = PostgreSQLRelationSQL.columnCommentStatements(
+            qualifiedTable: parts.qualifiedTable,
+            columns: definition.columns
+        )
+        return [parts.createTable] + parts.indexStatements + columnComments
+    }
+
+    private func createTableParts(
+        _ definition: PluginCreateTableDefinition
+    ) -> (qualifiedTable: String, createTable: String, indexStatements: [String])? {
         guard !definition.columns.isEmpty,
               PostgreSQLVersionedStatements.refusal(for: definition, capabilities: versionedCapabilities) == nil
         else { return nil }
@@ -811,19 +831,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             parts.append(pgForeignKeyDefinition(fk))
         }
 
-        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
+        let createTable = "CREATE TABLE \(qualifiedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        var indexStatements: [String] = []
-        for index in definition.indexes {
-            indexStatements.append(PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTable))
+            "\n)"
+        let indexStatements = definition.indexes.map {
+            PostgreSQLIndexClauses.createStatement(for: $0, qualifiedTable: qualifiedTable)
         }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
-        }
-
-        return sql
+        return (qualifiedTable, createTable, indexStatements)
     }
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
@@ -931,7 +945,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
         let qt = qualifiedTableName(table)
         let colDef = pgColumnDefinition(column, inlinePK: false)
-        return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
+        let add = "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
+        guard let comment = column.comment, !comment.isEmpty else { return add }
+        let commentStatement = PostgreSQLRelationSQL.columnCommentStatement(
+            qualifiedTable: qt,
+            column: column.name,
+            comment: comment
+        )
+        return add + ";\n" + commentStatement
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -966,9 +987,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         if let newComment = newColumn.comment, !newComment.isEmpty, newColumn.comment != oldColumn.comment {
-            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS \(PostgreSQLRelationSQL.commentValue(newComment))")
+            stmts.append(PostgreSQLRelationSQL.columnCommentStatement(
+                qualifiedTable: qt, column: newColumn.name, comment: newComment
+            ))
         } else if oldColumn.comment != nil && (newColumn.comment == nil || newColumn.comment?.isEmpty == true) {
-            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS NULL")
+            stmts.append(PostgreSQLRelationSQL.columnCommentStatement(
+                qualifiedTable: qt, column: newColumn.name, comment: nil
+            ))
         }
 
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")

@@ -15,6 +15,16 @@ extension MSSQLPluginDriver {
         MSSQLTableDefinitionSQL.createTable(definition, schema: currentSchemaName)
     }
 
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        MSSQLTableDefinitionSQL.createTableStatements(definition, schema: currentSchemaName)
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        MSSQLTableDefinitionSQL.commentStatement(
+            objectType: objectType, schema: effectiveSchema(schema), object: name, comment: comment
+        )
+    }
+
     // MARK: - ALTER TABLE DDL
 
     private func mssqlQualifiedTable(_ table: String) -> String {
@@ -22,7 +32,13 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil))"
+        let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil)
+        let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(columnSQL)"
+        guard let comment = column.comment, !comment.isEmpty else { return addColumn }
+        let description = MSSQLTableDefinitionSQL.columnDescriptionStatement(
+            schema: currentSchemaName, table: table, column: column.name, comment: comment
+        )
+        return addColumn + ";\n" + description
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {

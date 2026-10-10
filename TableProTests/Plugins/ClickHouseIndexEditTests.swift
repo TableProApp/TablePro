@@ -66,7 +66,7 @@ struct ClickHouseIndexEditTests {
             issues: []
         )
 
-        let composed = CreateTableStatementComposer.compose(plan: plan, driver: driver)
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: driver, schema: nil)
 
         #expect(composed.statements.count == 1)
         #expect(composed.issues.map(\.message) == ["Create Table cannot add an index on this database."])

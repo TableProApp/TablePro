@@ -53,7 +53,7 @@ Click a row to reopen the table. Right-click to remove one entry or clear the li
 | The editor | Click the star above it, press `Cmd+D`, or choose **Query > Save as Favorite** |
 | Selected SQL | Right-click the selection, then **Save as Favorite** |
 | [Query history](/features/query-history) | Right-click an entry, then **Save as Favorite** |
-| The Favorites tab | Right-click empty space, then **New Favorite** |
+| The Favorites tab | Click **+** at the foot of the sidebar, then **New Favorite…** |
 
 The dialog takes a name, the SQL, and an optional keyword, 900 KB at most between them. Keep a bigger script as a `.sql` file in a [linked folder](#linked-sql-folders). Select **Global** for a query that names nothing specific to one database. Leave it off and the favorite belongs to the connection you are in, and goes with it when that connection is deleted.
 
@@ -64,7 +64,7 @@ Folders carry the same setting, so the **Folder** list offers only the ones that
   <img className="hidden dark:block" src="/images/sql-favorite-create-dark.png" alt="A dialog with Name, Query, Keyword fields and a Global checkbox" />
 </Frame>
 
-There is no plus button. The same right-click menu carries **New Query**, **New Folder**, and **Add Linked SQL Folder…**
+The same **+** menu carries **New Query**, **New Folder**, and **Add Linked SQL Folder…**, and so does the right-click menu over empty space.
 
 ## Keywords
 
@@ -121,7 +121,7 @@ Link a folder of `.sql` files on disk and they appear next to your saved queries
 This is not [Linked Folders](/features/connection-sharing#linked-folders), which watches a folder of shared `.tablepro` connection files.
 </Note>
 
-Right-click empty space, choose **Add Linked SQL Folder…**, and pick any folder. `.sql`, `.psql`, and `.pgsql` are indexed, subfolders nest the way they do on disk, and hidden files are skipped.
+Click **+** at the foot of the sidebar, choose **Add Linked SQL Folder…**, and pick any folder. `.sql`, `.psql`, and `.pgsql` are indexed, subfolders nest the way they do on disk, and hidden files are skipped.
 
 Linked folders are global, so every connection shows them. Only the first 4 KB of each file is read to build the sidebar, so a large repo stays cheap.
 

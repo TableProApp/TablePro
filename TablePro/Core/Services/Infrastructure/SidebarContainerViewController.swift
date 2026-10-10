@@ -193,6 +193,20 @@ internal final class SidebarContainerViewController: NSViewController {
         listHost.view.firstDescendant(of: SidebarOutlineView.self)
     }
 
+    // Nil on the Favorites tab, whose list is not the object tree.
+    private var mountedObjectTree: DatabaseTreeOutlineCoordinator? {
+        (mountedObjectList as? DatabaseTreeNSOutlineView)?.primaryActionTarget
+    }
+
+    var canCreateBrowsedTableFolder: Bool {
+        mountedObjectTree?.canCreateBrowsedFolder ?? false
+    }
+
+    func createBrowsedTableFolder() {
+        guard let tree = mountedObjectTree, tree.canCreateBrowsedFolder else { return }
+        tree.createFolder(in: .browsed)
+    }
+
     /// The database filter, shown from the View menu and from the object list's contextual menu
     /// rather than from a button at the bottom of the sidebar. It anchors on the filter field
     /// because that is what it scopes, and because the field is the one piece of sidebar chrome

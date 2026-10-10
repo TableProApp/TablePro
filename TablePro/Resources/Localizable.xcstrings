@@ -23352,6 +23352,10 @@
         }
       }
     },
+    "An auto-increment column takes its values from a sequence, so it cannot also have a default." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "An enum's labels in declaration order" : {
       "localizations" : {
         "fr" : {
@@ -43267,6 +43271,9 @@
           }
         }
       }
+    },
+    "Comment:" : {
+
     },
     "Comments" : {
       "localizations" : {
@@ -125755,6 +125762,10 @@
         }
       }
     },
+    "Oracle 11g has no identity columns, so a column cannot be auto-increment." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Oracle returned no definition for view '%@'." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -173796,6 +173807,9 @@
         }
       }
     },
+    "Table Created with Errors" : {
+
+    },
     "Table DDL" : {
       "localizations" : {
         "fr" : {
@@ -187097,6 +187111,9 @@
         }
       }
     },
+    "The table exists, but a statement after CREATE TABLE failed. Finish the change in its Structure tab." : {
+
+    },
     "The table has no column named %@." : {
       "localizations" : {
         "fr" : {
@@ -190261,6 +190278,9 @@
           }
         }
       }
+    },
+    "This database cannot store a table comment." : {
+
     },
     "This database did not return a query plan for the statement." : {
       "comment" : "Text displayed in a description when the database did not return a query plan for the statement.",

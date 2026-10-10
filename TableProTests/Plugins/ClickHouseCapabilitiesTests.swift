@@ -20,5 +20,18 @@ struct ClickHouseCapabilitiesTests {
     func unknownVersionIsUnsupported() {
         #expect(!ClickHouseCapabilities.parse(nil).hasWriteExceptionInOutputFormatSetting)
         #expect(!ClickHouseCapabilities.parse("garbage").hasWriteExceptionInOutputFormatSetting)
+        #expect(!ClickHouseCapabilities.parse(nil).hasModifyComment)
+        #expect(!ClickHouseCapabilities.parse("garbage").hasModifyComment)
+    }
+
+    @Test("MODIFY COMMENT needs ClickHouse 23.9 or later")
+    func modifyCommentGate() {
+        #expect(!ClickHouseCapabilities.parse("23.8").hasModifyComment)
+        #expect(!ClickHouseCapabilities.parse("23.8.16.40").hasModifyComment)
+        #expect(!ClickHouseCapabilities.parse("22.12").hasModifyComment)
+        #expect(ClickHouseCapabilities.parse("23.9").hasModifyComment)
+        #expect(ClickHouseCapabilities.parse("23.9.1.1854").hasModifyComment)
+        #expect(ClickHouseCapabilities.parse("23.12").hasModifyComment)
+        #expect(ClickHouseCapabilities.parse("24.3.2.23").hasModifyComment)
     }
 }

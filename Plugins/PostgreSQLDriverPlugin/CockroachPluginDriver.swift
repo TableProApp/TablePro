@@ -180,7 +180,23 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table, engine: "CockroachDB")
+        let comment = try await fetchRelationComment(table: table, schema: schema ?? core.currentSchema)
+        return PluginTableMetadata(tableName: table, comment: comment, engine: "CockroachDB")
+    }
+
+    // COMMENT ON names no VIEW: https://docs.cockroachlabs.com/docs/stable/comment-on
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        PostgreSQLRelationSQL.commentStatement(
+            name: name,
+            schema: schema ?? core.currentSchema,
+            objectType: objectType,
+            comment: comment,
+            supportedKeywords: ["TABLE"]
+        )
+    }
+
+    func createViewTemplate() -> String? {
+        "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
     }
 
     func fetchDatabases() async throws -> [String] {

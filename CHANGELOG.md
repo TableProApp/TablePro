@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sum, Average and Count of the selected cells in the status bar, with Minimum, Maximum and Copy in its popover.
 - Select Column in the column header menu.
 - Move Tab to Connection… (`Ctrl+Option+Cmd+C`) in the Database menu and the tab menu, which takes a query tab to another connection.
+- A + button at the foot of the sidebar for New Table, New View, New Schema, New Database and New Folder. (#3308)
+- A + button at the foot of the Favorites sidebar for New Query, New Favorite, New Folder and Add Linked SQL Folder. (#3308)
+- New Folder in the Database menu. (#3308)
+- Comment field in Create Table. (#3308)
+- Table comment in the Structure tab, saved with the other structure changes. (#3308)
+- Edit Comment… for MySQL, MariaDB, ClickHouse, CockroachDB, Redshift, SQL Server, Oracle, DuckDB and other engines with table comments. (#3308)
 
 ### Changed
 
@@ -24,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- New View… offered on Redis and other engines without views. (#3308)
+- Column comments typed in Create Table dropped on PostgreSQL, SQL Server, Oracle, DuckDB and Teradata. (#3308)
+- DuckDB Create Table failing on an auto-increment column. (#3308)
+- Oracle Create Table ignoring Auto Increment. (#3308)
+- DuckDB errors shown as "Unknown DuckDB error" instead of the message DuckDB returned. (#3308)
+- Create Table and structure saves failing on Teradata when they run more than one statement. (#3308)
+- BigQuery table comments showing partition, labels and timestamps instead of the description. (#3308)
+- Teradata Table Info counting every row of the table each time it opened. (#3308)
+- Create Table keeping a draft that could only fail again after the table was created and a later index or comment failed. (#3308)
 - An AWS IAM sign-in to MySQL failing to reconnect after an idle release, and Stop failing, once its token expired.
 - SQL Server empty strings and binaries shown as NULL, so editing a table without a primary key reverted on Save. (#3302)
 - Saves to a SQL Server or Oracle table without a primary key reporting success when the row no longer matched.
@@ -72,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
 - Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
 - "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
+
+### Security
+
+- DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
 
 ## [0.79.0] - 2026-10-09
 

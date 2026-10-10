@@ -16,6 +16,10 @@ Open a table and switch the result view to **Structure**, or right-click it in t
 
 The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first five carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers, Redis no Constraints. Every grid has a filter field, and clicking a header sorts.
 
+## Table comment
+
+On an engine that stores table comments, a **Comment** field sits above the tabs. An edit there is a structure change like any other: **Preview SQL** shows the statement, **Save Changes** (`Cmd+S`) runs it with the rest, and `Cmd+Z` takes it back. Clearing the field removes the comment. The field is dimmed while [safe mode](/features/safe-mode) blocks writes. [Table Operations](/features/table-operations#views) lists which engines comment on what.
+
 ## What each object accepts
 
 A view is not a table, and the grid offers only the edits the server will take on the object open in front of it. A refused **+** or **-** stays on screen, dimmed, with the reason in its tooltip; a cell the object will not let you change beeps instead of opening an editor.
@@ -250,7 +254,7 @@ Lists partitions and parts from `system.parts`. **Optimize** merges parts; **Dro
 
 ## Creating a new table
 
-Choose **Database > New Table…**, or right-click empty space in the sidebar and choose **New Table…**. The tab holds a **Table Name** field (with Engine, Charset, and Collation pickers on MySQL and MariaDB), the same three editing grids, and a **SQL Preview** tab carrying the live statements it will run. **Create Table** (`Cmd+Enter` or `Cmd+S`) executes it and opens the new table.
+Click **+** at the foot of the sidebar and choose **New Table…**, or choose **Database > New Table…**. The tab holds a **Table Name** field, a **Comment** field on engines that store table comments (with Engine, Charset, and Collation pickers on MySQL and MariaDB), the same three editing grids, and a **SQL Preview** tab carrying the live statements it will run. **Create Table** (`Cmd+Enter` or `Cmd+S`) executes it and opens the new table. Where the engine cannot roll DDL back, as on MySQL, a statement that fails after `CREATE TABLE` leaves the table created: it opens on its Structure tab with the error, so finish the change there.
 
 On the **Foreign Keys** grid, **Columns**, **Ref Table**, and **Ref Columns** open menus of the new table's own columns, the database's tables, and the referenced table's columns. Each menu ends in **Custom…** for a name the list does not carry, and picking a second entry in a comma-separated cell appends to it.
 

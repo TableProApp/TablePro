@@ -38,7 +38,9 @@ extension TableStructureView {
         /// A workspace switch cancels this task and SwiftUI restarts it on return, which fetches only
         /// for a session not yet loaded, so a load cut short here must not count as one.
         guard !Task.isCancelled else { return }
-        loadSchemaForEditing()
+        await loadTableComment()
+        guard !Task.isCancelled else { return }
+        adoptFetchedBaseline()
         session.hasLoaded = true
         isInitialLoading = false
     }
@@ -116,7 +118,8 @@ extension TableStructureView {
             indexes: indexes,
             foreignKeys: foreignKeys,
             checkConstraints: checkConstraints,
-            primaryKey: primaryKey
+            primaryKey: primaryKey,
+            tableComment: session.loadedTableComment
         )
     }
 
@@ -133,24 +136,35 @@ extension TableStructureView {
         }
     }
 
-    func onColumnsChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
+    /// A fetch that lands after edits were staged keeps them and the baseline they were made
+    /// against; the session owes the fetch until they are saved or discarded.
+    func adoptFetchedBaseline() {
+        guard !structureChangeManager.hasChanges else {
+            session.markStructureStale()
+            return
+        }
         loadSchemaForEditing()
+    }
+
+    func rebaselineUnlessEdited() {
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
+        adoptFetchedBaseline()
+    }
+
+    func onColumnsChanged() {
+        rebaselineUnlessEdited()
     }
 
     func onIndexesChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onCheckConstraintsChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onForeignKeysChanged() {
-        guard !isReloadingAfterSave, !isInitialLoading else { return }
-        loadSchemaForEditing()
+        rebaselineUnlessEdited()
     }
 
     func onRefreshData() {
@@ -199,8 +213,8 @@ extension TableStructureView {
         }
     }
 
-    /// Fetches columns, indexes and foreign keys together and commits them in a single
-    /// synchronous block, so the segmented picker re-lays out once instead of per tab.
+    /// Commits in a single synchronous block, so the segmented picker re-lays out once instead of per
+    /// tab, and no columns handler re-baselines against a comment that has not landed yet.
     func reloadCoreTabs() async {
         isLoading = true
         errorMessage = nil
@@ -208,8 +222,14 @@ extension TableStructureView {
 
         let includesForeignKeys = connection.type.supportsForeignKeys
         do {
-            let reloaded = try await structureLoader.coreTabs(includingForeignKeys: includesForeignKeys)
+            let reloaded = try await structureLoader.coreTabs(
+                includingForeignKeys: includesForeignKeys,
+                includingTableComment: offersTableComment
+            )
 
+            if let comment = reloaded.tableComment {
+                session.settleTableComment(comment)
+            }
             columns = reloaded.columns
             indexes = reloaded.indexes
             tabData.markFetched(.columns)

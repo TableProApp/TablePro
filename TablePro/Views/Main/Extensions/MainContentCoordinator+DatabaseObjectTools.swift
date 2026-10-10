@@ -145,6 +145,7 @@ extension MainContentCoordinator {
             if let selected, let tableName = selected.tableContext.tableName {
                 Task { await loadTableMetadata(tableName: tableName, for: selected) }
             }
+            refreshStructure(ofTabs: showing)
         case .dropped:
             closeTabsForRemovedObjects(ids: showing.map(\.id))
         case .renamed(let newName):

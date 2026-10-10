@@ -429,20 +429,22 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
     }
 
+    /// The comment bar shows on every sub-tab, so its step undoes even where no grid is on screen.
     func dataGridUndo() {
-        guard selectedTab != .ddl, selectedTab != .triggers else { return }
+        guard showsGrid || structureChangeManager.undoesTableCommentNext else { return }
         structureChangeManager.undo()
-        // Undo can revert any row's content and visual state. The SwiftUI
-        // re-render driven by `reloadVersion` only invalidates the snapshot;
-        // ask `NSTableView` to redraw visible rows so the cell text and
-        // modified-tint actually update on screen.
+        // The `reloadVersion` re-render only invalidates the snapshot; the visible cells need a redraw.
         reloadAllVisibleRows()
     }
 
     func dataGridRedo() {
-        guard selectedTab != .ddl, selectedTab != .triggers else { return }
+        guard showsGrid || structureChangeManager.redoesTableCommentNext else { return }
         structureChangeManager.redo()
         reloadAllVisibleRows()
+    }
+
+    private var showsGrid: Bool {
+        selectedTab != .ddl && selectedTab != .triggers
     }
 
     func dataGridAddRow() {
