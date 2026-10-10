@@ -69,7 +69,7 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
 | **Safe Mode** | Confirms, authenticates or refuses queries before they run. See [Safe Mode](/features/safe-mode) |
 | **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients. Shown while **Enable AI Features** is on |
-| **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
+| **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/developers/applescript). A token's own scope cannot raise it. See the [integration security model](/developers#security-model) |
 | **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. Shown while **Enable AI Features** is on. See [AI Assistant](/features/ai-assistant) |
 | **Local only** | Keeps this connection off iCloud Sync. Shown while **Sync this Mac with iCloud** is on. See [iCloud Sync](/features/icloud-sync) |
 
