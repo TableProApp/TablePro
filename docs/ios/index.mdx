@@ -132,6 +132,7 @@ A running query appears in a Live Activity on the lock screen and Dynamic Island
 - **Schema changes.** Truncating and dropping a table is the whole list; creating or altering tables, columns, indexes, triggers, and views is Mac only.
 - **Changing Redis data.** Keys open read only; change them in **Query**.
 - **Jump hosts.** A connection whose SSH tunnel goes through a bastion opens on the Mac only. Its hops sync here and back intact.
+- **Socket connections.** A MySQL or MariaDB connection that uses a socket on the Mac opens there only. Its socket path syncs here and back intact.
 - **AI.** No chat, no inline suggestions, no MCP server.
 
 ## Security
