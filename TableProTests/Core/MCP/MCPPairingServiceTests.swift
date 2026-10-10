@@ -33,6 +33,7 @@ struct MCPPairingServiceTests {
         PairingExchangeRecord(
             plaintextToken: plaintext,
             tokenId: tokenId,
+            grantedScopes: MCPScope.readOnlySet,
             challenge: challenge,
             expiresAt: Date.now.addingTimeInterval(expiresIn)
         )

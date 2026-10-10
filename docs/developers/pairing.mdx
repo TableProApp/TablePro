@@ -82,7 +82,7 @@ export async function exchange(callback: URL, port = 23508): Promise<string> {
   });
   if (!res.ok) throw new Error(`pairing failed: ${res.status}`);
 
-  const { token } = await res.json();
+  const { token, scope } = await res.json(); // scope: what the user granted, see Scopes
   return token; // Step 4. Straight into the Keychain, never a plain file.
 }
 ```
@@ -129,12 +129,35 @@ A link without `response_mode` still gets the delivery in the last row of the ta
 deprecated. A later release will read a missing `response_mode` as `query`, so send it explicitly.
 [Versioning](/developers/versioning) has the policy.
 
+## Scopes
+
+`scopes` holds one permission level (`readOnly`, `readWrite` or `fullAccess`) plus, for a launcher,
+`connections:display`, separated by spaces or commas. Unknown entries are skipped. When the list
+names more than one level, the sheet starts at the lowest.
+
+`connections:display` lets the token call [`list_connections`](/developers/mcp-tools#listing-for-display)
+with `purpose: "display"`, which adds connections hidden from AI and each connection's user name. Ask
+for it only to show the user their connections, never to feed a model. The sheet offers it only while
+**Allow apps to list connections hidden from AI** is on under **Settings > MCP**, and its checkbox
+starts off. Otherwise the token is issued without it.
+
+The exchange response names what was granted:
+
+```json
+{ "token": "tp_…", "scope": "connections:display resources:read tools:read" }
+```
+
+`scope` lists every granted scope, sorted and space separated. Read it instead of assuming the
+request went through: the user can lower the permission level or leave the checkbox off.
+
 ## What the user approves
 
 The sheet names the client and counts down the five minutes the request is good for, dimming
 **Approve** when it runs out. Three controls sit under that: **Permission Level** (starting at what
 the link asked for, movable in either direction), **Allowed Connections** (all, or a checked subset),
-and **Expiration** (never, 1, 7, 30 or 90 days). The link's parameters are a request, not a grant.
+and **Expiration** (never, 1, 7, 30 or 90 days). A link that asks for `connections:display` adds
+**List connections hidden from AI**, off until the user ticks it. The link's parameters are a
+request, not a grant.
 
 Approving mints the token, holds the plaintext against a one-time code for 5 minutes, and opens the
 redirect. Pairing again mints a second token rather than replacing the first, so an extension that

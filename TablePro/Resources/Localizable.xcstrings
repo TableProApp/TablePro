@@ -15814,6 +15814,46 @@
         }
       }
     },
+    "A paired app, such as a launcher, can ask when it pairs to show connections whose AI Policy is Never, with their user names. It still cannot query them. Turning this off stops every app at once." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une app associée, comme un lanceur, peut demander lors de l’association à afficher les connexions dont la Politique IA est Jamais, avec leurs noms d’utilisateur. Elle ne peut toujours pas les interroger. Désactiver cette option arrête toutes les apps d’un coup."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "런처 같은 페어링된 앱은 페어링할 때 AI 정책이 안 함인 연결을 사용자 이름과 함께 표시하도록 요청할 수 있습니다. 앱은 여전히 해당 연결을 쿼리할 수 없습니다. 이 옵션을 끄면 모든 앱이 한 번에 중단됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlatıcı gibi eşleştirilmiş bir uygulama, eşleşirken Yapay Zeka İlkesi Asla olan bağlantıları kullanıcı adlarıyla göstermek isteyebilir. Yine de bu bağlantıları sorgulayamaz. Bunu kapatmak tüm uygulamaları bir kerede durdurur."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ứng dụng đã ghép đôi, như một launcher, có thể yêu cầu khi ghép đôi để hiển thị các kết nối có Chính sách AI là Không bao giờ, kèm tên người dùng. Ứng dụng vẫn không thể truy vấn các kết nối đó. Tắt tùy chọn này sẽ dừng mọi ứng dụng cùng lúc."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配对的应用（例如启动器）可在配对时请求显示 AI 策略为“从不”的连接及其用户名。它仍无法查询这些连接。关闭此项会立即停止所有应用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配對的應用程式（例如啟動器）可在配對時請求顯示 AI 政策為「永不」的連線及其使用者名稱。它仍無法查詢這些連線。關閉此項會立即停止所有應用程式。"
+          }
+        }
+      }
+    },
     "A partitioned table" : {
       "localizations" : {
         "fr" : {
@@ -20219,6 +20259,46 @@
         }
       }
     },
+    "Adds connections whose AI Policy is Never to this app's list, with each user name. The app still cannot query them. Blocked connections stay hidden." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajoute à la liste de cette app les connexions dont la Politique IA est Jamais, avec chaque nom d’utilisateur. L’app ne peut toujours pas les interroger. Les connexions bloquées restent masquées."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 정책이 안 함인 연결을 사용자 이름과 함께 이 앱의 목록에 추가합니다. 앱은 여전히 해당 연결을 쿼리할 수 없습니다. 차단된 연결은 계속 숨겨집니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yapay Zeka İlkesi Asla olan bağlantıları kullanıcı adlarıyla birlikte bu uygulamanın listesine ekler. Uygulama yine de bunları sorgulayamaz. Engellenen bağlantılar gizli kalır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm các kết nối có Chính sách AI là Không bao giờ vào danh sách của ứng dụng này, kèm tên người dùng. Ứng dụng vẫn không thể truy vấn chúng. Các kết nối đã chặn vẫn bị ẩn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将 AI 策略为“从不”的连接及其用户名加入此应用的列表。该应用仍无法查询这些连接。已阻止的连接仍保持隐藏。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將 AI 政策為「永不」的連線及其使用者名稱加入此應用程式的清單。該應用程式仍無法查詢這些連線。已封鎖的連線仍保持隱藏。"
+          }
+        }
+      }
+    },
     "Adjust Limit" : {
       "localizations" : {
         "fr" : {
@@ -22459,6 +22539,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允許 AI 存取"
+          }
+        }
+      }
+    },
+    "Allow apps to list connections hidden from AI" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser les apps à lister les connexions masquées à l’IA"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱이 AI에 숨겨진 연결을 나열하도록 허용"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uygulamaların yapay zekadan gizlenen bağlantıları listelemesine izin ver"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cho phép ứng dụng liệt kê các kết nối bị ẩn khỏi AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许应用列出对 AI 隐藏的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許應用程式列出對 AI 隱藏的連線"
           }
         }
       }
@@ -47761,6 +47881,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 %@ 中找到的連線"
+          }
+        }
+      }
+    },
+    "Connections Hidden from AI" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexions masquées à l’IA"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI에 숨겨진 연결"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yapay Zekadan Gizlenen Bağlantılar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối bị ẩn khỏi AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对 AI 隐藏的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對 AI 隱藏的連線"
           }
         }
       }
@@ -98401,6 +98561,46 @@
         }
       }
     },
+    "Leave out, or send agent, for the connections an AI client may use. display is for a launcher showing the list to the user: it needs the connections:display scope and adds connections hidden from AI, with user names." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Omettez-le, ou envoyez agent, pour les connexions qu’un client IA peut utiliser. display sert à un lanceur qui affiche la liste à l’utilisateur : il exige le scope connections:display et ajoute les connexions masquées à l’IA, avec les noms d’utilisateur."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 클라이언트가 사용할 수 있는 연결을 받으려면 생략하거나 agent를 보내십시오. display는 사용자에게 목록을 보여 주는 런처용이며, connections:display 범위가 필요하고 AI에 숨겨진 연결을 사용자 이름과 함께 추가합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir yapay zeka istemcisinin kullanabileceği bağlantılar için boş bırakın veya agent gönderin. display, listeyi kullanıcıya gösteren bir başlatıcı içindir: connections:display kapsamı gerektirir ve yapay zekadan gizlenen bağlantıları kullanıcı adlarıyla birlikte ekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bỏ trống hoặc gửi agent để lấy các kết nối mà client AI được dùng. display dành cho launcher hiển thị danh sách cho người dùng: cần scope connections:display và thêm các kết nối bị ẩn khỏi AI, kèm tên người dùng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "省略或传入 agent，获取 AI 客户端可用的连接。display 用于向用户显示列表的启动器：需要 connections:display 范围，并会加入对 AI 隐藏的连接及其用户名。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "省略或傳入 agent，取得 AI 用戶端可使用的連線。display 用於向使用者顯示清單的啟動器：需要 connections:display 範圍，並會加入對 AI 隱藏的連線及其使用者名稱。"
+          }
+        }
+      }
+    },
     "Leave the comment empty to remove it." : {
       "localizations" : {
         "fr" : {
@@ -100459,6 +100659,46 @@
         }
       }
     },
+    "List connections hidden from AI" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lister les connexions masquées à l’IA"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI에 숨겨진 연결 나열"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yapay zekadan gizlenen bağlantıları listele"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liệt kê các kết nối bị ẩn khỏi AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出对 AI 隐藏的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出對 AI 隱藏的連線"
+          }
+        }
+      }
+    },
     "List Databases" : {
       "localizations" : {
         "fr" : {
@@ -101975,6 +102215,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Affiche les partitions d’une table partitionnée sous celle-ci dans la barre latérale, avec leur nombre. Désactivez cette option pour afficher chaque table partitionnée sur une seule ligne."
+          }
+        }
+      }
+    },
+    "Lists connections hidden from AI" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liste les connexions masquées à l’IA"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI에 숨겨진 연결 나열"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yapay zekadan gizlenen bağlantıları listeler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liệt kê các kết nối bị ẩn khỏi AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出对 AI 隐藏的连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列出對 AI 隱藏的連線"
           }
         }
       }
@@ -190437,6 +190717,46 @@
         }
       }
     },
+    "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette app demande aussi à lister les connexions masquées à l’IA. Pour l’autoriser, activez « Autoriser les apps à lister les connexions masquées à l’IA » dans Réglages > MCP, puis associez-la à nouveau."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 앱은 AI에 숨겨진 연결 나열도 요청합니다. 허용하려면 설정 > MCP에서 ‘앱이 AI에 숨겨진 연결을 나열하도록 허용’을 켜고 다시 페어링하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu uygulama yapay zekadan gizlenen bağlantıları listelemek de istiyor. Buna izin vermek için Ayarlar > MCP bölümünde “Uygulamaların yapay zekadan gizlenen bağlantıları listelemesine izin ver” seçeneğini açın, sonra yeniden eşleştirin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ứng dụng này cũng yêu cầu liệt kê các kết nối bị ẩn khỏi AI. Để cho phép, hãy bật “Cho phép ứng dụng liệt kê các kết nối bị ẩn khỏi AI” trong Cài đặt > MCP, rồi ghép đôi lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此应用还请求列出对 AI 隐藏的连接。如需允许，请在“设置 > MCP”中打开“允许应用列出对 AI 隐藏的连接”，然后重新配对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此應用程式也請求列出對 AI 隱藏的連線。如需允許，請在「設定 > MCP」中開啟「允許應用程式列出對 AI 隱藏的連線」，然後重新配對。"
+          }
+        }
+      }
+    },
     "this broker does not coordinate that group" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -204870,6 +205190,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用者拒絕了此連線的 MCP 存取"
+          }
+        }
+      }
+    },
+    "User name, sent only for purpose display" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nom d’utilisateur, envoyé uniquement pour purpose display"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자 이름이며 purpose가 display일 때만 전송됩니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kullanıcı adı, yalnızca purpose display için gönderilir"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên người dùng, chỉ gửi khi purpose là display"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用户名，仅在 purpose 为 display 时发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用者名稱，僅在 purpose 為 display 時傳送"
           }
         }
       }

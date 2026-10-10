@@ -10,7 +10,7 @@ import Foundation
 /// unique ID because a name is editable and need not be unique.
 ///
 /// No credential and no user name. With host and port, a user name would hand any app with
-/// Automation permission the target of a password spray; `list_connections` leaves it out too.
+/// Automation permission the target of a password spray.
 @objc(TPScriptConnection)
 internal final class ScriptConnection: NSObject, ScriptCommandReceiving {
     @objc internal let uniqueId: String

@@ -21,6 +21,8 @@ description: Token model, scopes, connection allowlists, expiry, revocation, and
 
 Anonymous loopback is the floor and cannot be raised: the scope check refuses `tools:write` and `admin` to a caller with no issued token, whatever it asks for.
 
+`connections:display` sits outside the levels. Only [pairing](/developers/pairing#scopes) grants it, and only while **Allow apps to list connections hidden from AI** is on under **Settings > MCP > Connection Access**. The **Generate Token** sheet never does, and an anonymous caller never holds it. It does one thing: lets [`list_connections`](/developers/mcp-tools#listing-for-display) take `purpose: "display"`. A token holding it reads **Lists connections hidden from AI** in the token list.
+
 `confirm_destructive_operation` also needs the connection's external access to be **Read & Write**, and no permission level skips the user's approval. [Scopes and gates](/developers/mcp-tools#scopes-and-gates) names which tools sit on which scope.
 
 ## Require authentication

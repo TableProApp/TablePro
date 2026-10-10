@@ -38,7 +38,8 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             permissions: permissions,
             connectionAccess: connectionAccess,
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: []
         ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {

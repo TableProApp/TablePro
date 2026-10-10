@@ -268,7 +268,8 @@ internal final class MCPServerManager: ObservableObject {
                 permissions: MCPTokenStore.bridgeTokenPermissions,
                 connectionAccess: .all,
                 expiresAt: expiresAt,
-                isBridgeCredential: true
+                isBridgeCredential: true,
+                extraScopes: []
             )
             return BridgeCredential(
                 tokenId: generated.token.id,

@@ -67,6 +67,15 @@ decides whether it reaches the connection at all.
 Nothing here times out. Whoever sent the request decides how long to wait for you, and an answer
 counts whenever you give it.
 
+### Connections hidden from AI in a launcher
+
+A connection whose AI policy is **Never** is left out of every client's connection list. To see it in
+a launcher such as Raycast anyway, turn on **Allow apps to list connections hidden from AI**, then
+pair the launcher and tick **List connections hidden from AI** on the approval sheet. The launcher
+then lists those connections with their user names, and opens them in TablePro. It still cannot
+query them, and Blocked connections stay hidden. Turning the setting off stops every app at once.
+Tokens that hold this grant read **Lists connections hidden from AI** in the token list.
+
 ## Authentication
 
 **Require authentication** is on by default. Turning it on for the first time with no tokens yet generates a full-access "Default token" and shows the plaintext once, so copy it then. Create, scope, allowlist, expire and revoke tokens in the same section, described in [Tokens](/developers/tokens).

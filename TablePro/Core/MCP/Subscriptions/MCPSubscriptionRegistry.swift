@@ -151,6 +151,9 @@ public actor MCPSubscriptionRegistry {
             Self.logger.debug("Dropping update for unsubscribable resource")
             return
         }
+        /// The visible set leaves out Blocked connections and those hidden from AI, whose ids a
+        /// display listing hands out.
+        guard await connectedConnections().contains(resource.connectionId) else { return }
         let canonical = resource.uri
         for (key, entry) in entries.filter({ $0.value.filter.includes(resourceUri: canonical) }) {
             guard entry.principal.connectionAccess.allows(resource.connectionId) else { continue }

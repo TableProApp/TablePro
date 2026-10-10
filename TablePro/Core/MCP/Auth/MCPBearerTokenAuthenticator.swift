@@ -56,7 +56,7 @@ internal extension MCPTokenStore {
         let validated = MCPValidatedToken(
             tokenId: authToken.id,
             label: authToken.name,
-            scopes: authToken.permissions.scopes,
+            scopes: authToken.scopes,
             connectionAccess: authToken.connectionAccess,
             issuedAt: authToken.createdAt,
             expiresAt: authToken.expiresAt,

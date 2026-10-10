@@ -195,7 +195,8 @@ final class AppSettingsManager: ObservableObject {
             permissions: .readWrite,
             connectionAccess: .all,
             expiresAt: nil,
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: []
         )
         mcp.requireAuthentication = value
         return result
