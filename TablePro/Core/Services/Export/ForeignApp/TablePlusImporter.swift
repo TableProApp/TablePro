@@ -31,7 +31,7 @@ struct TablePlusImporter: ForeignAppImporter {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
     var readViewSetting: @Sendable (_ bundleIdentifier: String) -> [String: Any]? = {
-        UserDefaults(suiteName: $0)?.dictionary(forKey: "ViewSetting")
+        CFPreferencesCopyAppValue("ViewSetting" as CFString, $0 as CFString) as? [String: Any]
     }
 
     var dataDirectoryOverride: URL?

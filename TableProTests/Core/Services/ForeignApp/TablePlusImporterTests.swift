@@ -1123,6 +1123,22 @@ struct TablePlusImporterTests {
         #expect(result.bundle.savedQueries.count == 7)
     }
 
+    @Test("The default ViewSetting reader reads the named app's defaults domain")
+    func testDefaultViewSettingReaderReadsTheForeignDomain() {
+        let domain = "com.TablePro.tests.TablePlusViewSetting.\(UUID().uuidString)"
+        let key = "ViewSetting" as CFString
+        CFPreferencesSetAppValue(key, ["SharedQueryPath": "~/Queries"] as CFDictionary, domain as CFString)
+        defer {
+            CFPreferencesSetAppValue(key, nil, domain as CFString)
+            CFPreferencesAppSynchronize(domain as CFString)
+        }
+
+        let setting = TablePlusImporter().readViewSetting(domain)
+
+        #expect(setting?["SharedQueryPath"] as? String == "~/Queries")
+        #expect(TablePlusImporter().readViewSetting("com.TablePro.tests.missing.\(UUID().uuidString)") == nil)
+    }
+
     @Test("SharedConnectionPath reads the connection files directly under that folder")
     func testCollect_sharedConnectionPathReadsMovedConnections() throws {
         try writeConnections([makeConnection(name: "Stale", id: "c1")])
