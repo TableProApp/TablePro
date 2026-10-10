@@ -1,64 +1,97 @@
 import Foundation
-@testable import TableProImport
 import Testing
+
+@testable import TableProImport
 
 @Suite("Exported icons")
 struct ExportableIconTests {
+    private typealias Fixtures = ImportFixtures
+
     private func connection(iconName: String?) -> ExportableConnection {
         ExportableConnection(
             name: "Prod", host: "db.example.com", port: 5_432, database: "app", username: "admin",
-            type: "PostgreSQL", sshConfig: nil, sslConfig: nil, color: "Red", iconName: iconName,
-            tagName: nil, groupName: "Clients", sshProfileId: nil, safeModeLevel: nil, aiPolicy: nil,
-            additionalFields: nil, redisDatabase: nil, startupCommands: "SET x = 1", localOnly: nil
+            type: "PostgreSQL", color: "Red", iconName: iconName, startupCommands: "SET x = 1"
         )
     }
 
-    private func envelope(
-        connections: [ExportableConnection],
-        groups: [ExportableGroup]? = nil
-    ) -> ConnectionExportEnvelope {
-        ConnectionExportEnvelope(
-            formatVersion: 1, exportedAt: Date(timeIntervalSince1970: 0), appVersion: "1.0",
-            connections: connections, groups: groups, tags: nil, credentials: nil
+    private func bundle(connectionIcon: String?, groupIcon: String? = nil) throws -> ConnectionBundle {
+        try Fixtures.makeBundle(
+            connections: [BundleConnection(ref: "c1", settings: connection(iconName: connectionIcon), groupRef: "g1")],
+            groups: [BundleGroup(ref: "g1", name: "Clients", color: "Red", iconName: groupIcon)]
         )
+    }
+
+    private func roundTripped(_ bundle: ConnectionBundle) throws -> ConnectionBundle {
+        try ConnectionBundleCodec.decode(ConnectionBundleCodec.encode(bundle))
+    }
+
+    private func decodedV1(_ json: String) throws -> ConnectionBundle {
+        try ConnectionBundleCodec.decode(Data(json.utf8))
     }
 
     @Test("A file written before icons existed decodes with no icon")
     func olderFileDecodesWithoutIcon() throws {
-        let json = Data(
+        let decoded = try decodedV1(
             """
             {"formatVersion":1,"exportedAt":"1970-01-01T00:00:00Z","appVersion":"0.1",\
             "connections":[{"name":"Legacy","host":"localhost","port":3306,\
-            "database":"","username":"","type":"MySQL","color":"Blue"}],\
+            "database":"","username":"","type":"MySQL","color":"Blue","groupName":"Clients"}],\
             "groups":[{"name":"Clients","color":"Red"}]}
-            """.utf8
+            """
         )
 
-        let decoded = try ConnectionImportDecoder.decodeData(json)
+        #expect(decoded.connections.first?.settings.iconName == nil)
+        #expect(decoded.connections.first?.settings.color == "Blue")
+        #expect(decoded.groups.first?.iconName == nil)
+        #expect(decoded.groups.first?.color == "Red")
+    }
 
-        #expect(decoded.connections.first?.iconName == nil)
-        #expect(decoded.connections.first?.color == "Blue")
-        #expect(decoded.groups?.first?.iconName == nil)
-        #expect(decoded.groups?.first?.color == "Red")
+    @Test("A format 1 file carrying icons upgrades with them")
+    func versionOneIconsUpgrade() throws {
+        let decoded = try decodedV1(
+            """
+            {"formatVersion":1,"exportedAt":"1970-01-01T00:00:00Z","appVersion":"0.69",\
+            "connections":[{"name":"Prod","host":"db","port":5432,"database":"","username":"",\
+            "type":"PostgreSQL","iconName":"server.rack","groupName":"clients"}],\
+            "groups":[{"name":"Clients","color":"Purple","iconName":"briefcase"},\
+            {"name":"clients","color":"Red","iconName":"flame"}]}
+            """
+        )
+
+        let chain = decoded.groupChain(decoded.connections.first?.groupRef)
+        let group = try #require(chain.first)
+        #expect(decoded.connections.first?.settings.iconName == "server.rack")
+        #expect(group.color == "Purple")
+        #expect(group.iconName == "briefcase")
+    }
+
+    @Test("A malformed icon in a format 1 file is dropped")
+    func versionOneJunkIconsAreDropped() throws {
+        let decoded = try decodedV1(
+            """
+            {"formatVersion":1,"exportedAt":"1970-01-01T00:00:00Z","appVersion":"0.69",\
+            "connections":[{"name":"Prod","host":"db","port":5432,"database":"","username":"",\
+            "type":"PostgreSQL","iconName":"Server Rack!","groupName":"Clients"}],\
+            "groups":[{"name":"Clients","iconName":"../../etc"}]}
+            """
+        )
+
+        #expect(decoded.connections.first?.settings.iconName == nil)
+        #expect(decoded.groups.first?.iconName == nil)
     }
 
     @Test("A connection icon and a group icon survive the file round trip")
     func iconsRoundTrip() throws {
-        let file = envelope(
-            connections: [connection(iconName: "server.rack")],
-            groups: [ExportableGroup(name: "Clients", color: "Red", iconName: "briefcase")]
-        )
+        let decoded = try roundTripped(bundle(connectionIcon: "server.rack", groupIcon: "briefcase"))
 
-        let decoded = try ConnectionImportDecoder.decodeData(ConnectionImportDecoder.encode(file))
-
-        #expect(decoded.connections.first?.iconName == "server.rack")
-        #expect(decoded.groups?.first?.iconName == "briefcase")
-        #expect(decoded.groups?.first?.color == "Red")
+        #expect(decoded.connections.first?.settings.iconName == "server.rack")
+        #expect(decoded.groups.first?.iconName == "briefcase")
+        #expect(decoded.groups.first?.color == "Red")
     }
 
-    @Test("A connection with no icon writes no icon key")
+    @Test("A connection or group with no icon writes no icon key")
     func noIconWritesNoKey() throws {
-        let data = try ConnectionImportDecoder.encode(envelope(connections: [connection(iconName: nil)]))
+        let data = try ConnectionBundleCodec.encode(bundle(connectionIcon: nil))
         let json = try #require(String(data: data, encoding: .utf8))
 
         #expect(!json.contains("iconName"))
@@ -69,11 +102,10 @@ struct ExportableIconTests {
         arguments: ["", "  ", "Server.Rack", "../../etc/passwd", "a..b", "rm -rf", String(repeating: "a", count: 101)]
     )
     func junkIconIsDropped(_ raw: String) throws {
-        let file = envelope(connections: [connection(iconName: raw)])
+        let decoded = try roundTripped(bundle(connectionIcon: raw, groupIcon: raw))
 
-        let decoded = try ConnectionImportDecoder.decodeData(ConnectionImportDecoder.encode(file))
-
-        #expect(decoded.connections.first?.iconName == nil)
+        #expect(decoded.connections.first?.settings.iconName == nil)
+        #expect(decoded.groups.first?.iconName == nil)
     }
 
     @Test("Import trims an icon name and keeps a well-formed one it does not know")
@@ -83,28 +115,115 @@ struct ExportableIconTests {
     }
 
     @Test("Every copy of an exported connection keeps its icon")
-    func copiesKeepIcon() {
+    func copiesKeepIcon() throws {
         let original = connection(iconName: "flame")
+        var renamed = original
+        renamed.name = "Renamed"
+        let replaced = try #require(try bundle(connectionIcon: "flame").replacingSettings(renamed, of: "c1").connection("c1"))
         let copies = [
-            original.retyped(to: "MySQL"),
-            original.renamed(to: "Renamed"),
             original.withoutStartupCommands(),
             original.withoutTunnelCommand(),
-            original.sanitizedForImport()
+            original.sanitizedForImport(),
+            replaced.settings
         ]
 
         #expect(copies.allSatisfy { $0.iconName == "flame" })
         #expect(copies.allSatisfy { $0.color == "Red" })
     }
 
-    @Test("An exported group round-trips its name, colour and icon")
+    @Test("A bundle group round-trips its name, colour and icon")
     func groupRoundTrips() throws {
-        let group = ExportableGroup(name: "Clients", color: "Purple", iconName: "person.3")
+        let group = BundleGroup(ref: "g1", name: "Clients", color: "Purple", iconName: "person.3")
 
-        let decoded = try JSONDecoder().decode(ExportableGroup.self, from: JSONEncoder().encode(group))
+        let decoded = try JSONDecoder().decode(BundleGroup.self, from: JSONEncoder().encode(group))
 
-        #expect(decoded.name == "Clients")
-        #expect(decoded.color == "Purple")
-        #expect(decoded.iconName == "person.3")
+        #expect(decoded == group)
+    }
+
+    @Test("The builder keeps the first icon a group path brings")
+    func builderKeepsFirstGroupIcon() throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(
+            Fixtures.settings(name: "One"),
+            ref: "c1",
+            groupPath: [.init(name: "Clients"), .init(name: "Prod", iconName: "flame")]
+        )
+        builder.addConnection(
+            Fixtures.settings(name: "Two"),
+            ref: "c2",
+            groupPath: [.init(name: "clients", iconName: "briefcase"), .init(name: "prod", iconName: "leaf")]
+        )
+
+        let built = try builder.build()
+
+        #expect(built.groups.map(\.name) == ["Clients", "Prod"])
+        #expect(built.groups.map(\.iconName) == ["briefcase", "flame"])
+    }
+
+    @Test("An export carries each group's icon along the connection's chain")
+    func exportCarriesGroupIcons() throws {
+        let clientId = UUID()
+        let prodId = UUID()
+        let connectionId = UUID()
+        let input = BundleExportInput(
+            connections: [
+                BundleExportInput.Connection(
+                    id: connectionId,
+                    settings: connection(iconName: "server.rack"),
+                    groupId: prodId
+                )
+            ],
+            groups: [
+                BundleExportInput.Group(id: clientId, name: "Client A", iconName: "briefcase"),
+                BundleExportInput.Group(id: prodId, name: "Prod", color: "Red", parentId: clientId)
+            ]
+        )
+
+        let exported = try BundleExportAssembler.assemble(input, options: .connectionsOnly, appVersion: "Tests")
+        let chain = exported.groupChain(exported.connection("c1")?.groupRef)
+
+        #expect(exported.connection("c1")?.settings.iconName == "server.rack")
+        #expect(chain.map(\.name) == ["Client A", "Prod"])
+        #expect(chain.map(\.iconName) == ["briefcase", nil])
+        #expect(chain.map(\.color) == [nil, "Red"])
+    }
+
+    @Test("A planned group path carries each group's icon")
+    func plannedGroupPathCarriesIcons() throws {
+        let bundle = try Fixtures.makeBundle(
+            connections: [BundleConnection(ref: "c1", settings: Fixtures.settings(), groupRef: "g2")],
+            groups: [
+                BundleGroup(ref: "g1", name: "Client A", iconName: "briefcase"),
+                BundleGroup(ref: "g2", name: "Prod", color: "Red", parentRef: "g1")
+            ]
+        )
+        let preview = Fixtures.makePreview(bundle)
+        var ids = SequentialIds()
+
+        let plan = ImportPlanner.plan(preview, selection: .defaults(for: preview), ids: &ids)
+
+        #expect(plan.connections.first?.groupPath == [
+            PathComponent(name: "Client A", scope: nil, color: nil, iconName: "briefcase"),
+            PathComponent(name: "Prod", scope: nil, color: "Red")
+        ])
+    }
+
+    @Test("Only a group the import creates takes the file's icon")
+    func iconAppliesOnlyToCreatedGroups() {
+        let existing = PathNode(id: UUID(), name: "Clients", parentId: nil, scope: nil)
+
+        let result = PathTreeResolver.resolve(
+            [[
+                PathComponent(name: "clients", scope: nil, color: "Red", iconName: "flame"),
+                PathComponent(name: "Prod", scope: nil, color: nil, iconName: "server.rack")
+            ]],
+            existing: [existing],
+            makeId: { Fixtures.uuid(1) }
+        )
+
+        #expect(result.created == [
+            PathNode(id: Fixtures.uuid(1), name: "Prod", parentId: existing.id, scope: nil, iconName: "server.rack")
+        ])
+        #expect(result.leaves == [Fixtures.uuid(1)])
     }
 }

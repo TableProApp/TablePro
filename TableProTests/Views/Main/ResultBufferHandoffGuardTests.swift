@@ -21,6 +21,7 @@ struct ResultBufferHandoffGuardTests {
     @Test("Every file that replaces a tab's results also hands the row buffer back")
     func replacementSitesFlushTheBuffer() throws {
         let offenders = try Self.filesCalling("replaceUnpinnedResults(")
+            .union(Self.filesCalling("replaceResult("))
             .subtracting(Self.filesCalling("flushBufferToActiveResult("))
 
         #expect(

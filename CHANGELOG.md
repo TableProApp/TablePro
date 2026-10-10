@@ -30,11 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL and MariaDB connections through a local Unix socket.
 - `socket` parameter in `mysql://` and `mariadb://` URLs and `tablepro://import` links.
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
+- Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
+- Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
 
 ### Changed
 
 - Settings > Integrations is now Settings > MCP, and TablePro > Integrations… is now MCP Activity….
 - Settings > Sync names what stops iCloud Sync, such as full iCloud storage or a signed-out account, with the action that clears it.
+- Value filters stay through sorting, paging and the filter bar, and clear when the tab shows another table or query.
+- Save, Refresh and sorting keep the selected rows, matched by primary key.
+- Connection files keep the full path of nested groups, and import rebuilds that path.
+- Connection files written by this version, Team Catalog files included, open only in this version or later.
+- **Keep Existing, Add Queries** in place of **Skip** for a duplicate connection on import.
+- Importing connections asks before adding their startup SQL, the same way it asks about tunnel commands.
 
 ### Deprecated
 
@@ -42,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Value filter cleared by Save, Refresh, Restore Previous Values and hiding a column. (#3316)
+- Value filter lost on a background tab whose rows were freed, or by choosing the result already shown.
+- Save in a query tab running the statement at the caret instead of reading its result again, and losing the sort.
+- Sort arrow left on a query tab's columns after Run.
+- Header sort on rows returned by an `INSERT`, `UPDATE` or `DELETE` running that statement again.
+- Header sort on a pinned result, or on one of several results, dropping the other results.
 - New View… offered on Redis and other engines without views. (#3308)
 - Column comments typed in Create Table dropped on PostgreSQL, SQL Server, Oracle, DuckDB and Teradata. (#3308)
 - DuckDB Create Table failing on an auto-increment column. (#3308)
@@ -109,6 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No icon for a connection to a database type no installed plugin describes. (#3309)
 - MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
 - A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
+- Connections exported from iPhone, or with an SSL mode TablePro did not recognize, imported with SSL off.
+- Saving or importing connections while the connection library could not be read replacing every saved connection.
+- Import counting connections it could not save and storing their passwords in the Keychain.
+- Import creating the groups, tags and credential profiles of connections left unselected.
+- An unpredictable password when two imported rows replaced the same connection.
+- TablePlus import reading the default folder instead of the data location set in TablePlus.
 
 ### Security
 

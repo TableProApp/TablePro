@@ -212,6 +212,7 @@ extension QueryExecutionCoordinator {
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:]
@@ -270,7 +271,7 @@ extension QueryExecutionCoordinator {
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
-        parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport)
+        parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport, source: source)
         /// A count that started before the change can land after it, while the tab is out of sight,
         /// and put the old total back. Kept, a total above the automatic-count threshold stops the
         /// count this read launches, so paging stays bounded by the table as it was.
@@ -310,7 +311,12 @@ extension QueryExecutionCoordinator {
             rs.baseQuery = sql
             rs.serverOutput = serverOutput
 
-            tab.display.replaceUnpinnedResults(with: [rs])
+            if case .reread(let target) = source, let outgoingId = target.resultId,
+               tab.display.resultSets.contains(where: { $0.id == outgoingId }) {
+                tab.display.replaceResult(outgoingId, with: rs)
+            } else {
+                tab.display.replaceUnpinnedResults(with: [rs])
+            }
 
             if isTruncated {
                 tab.pagination.hasMoreRows = true

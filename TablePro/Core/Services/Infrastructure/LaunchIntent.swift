@@ -17,9 +17,8 @@ internal enum LaunchIntent: @unchecked Sendable {
         objectType: TableInfo.TableType? = nil
     )
     case openQuery(connectionId: UUID, sql: String)
-    /// Open a connection in Agent mode, optionally carrying the question the user already typed.
     case openAgentSession(connectionId: UUID, prompt: String?)
-    case importConnection(ExportableConnection)
+    case importConnection(ConnectionBundle)
     case openSQLFile(URL)
     case openDatabaseFile(URL, DatabaseType)
     case openDataFile(URL)

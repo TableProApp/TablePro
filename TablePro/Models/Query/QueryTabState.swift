@@ -729,6 +729,17 @@ struct TabDisplayState: Equatable {
         leaveOutputModeWithoutOutput()
     }
 
+    /// A re-read of one result takes its place, label and pin included, and leaves the others alone.
+    @MainActor
+    mutating func replaceResult(_ outgoingId: UUID, with result: ResultSet) {
+        guard let index = resultSets.firstIndex(where: { $0.id == outgoingId }) else { return }
+        result.label = resultSets[index].label
+        result.isPinned = resultSets[index].isPinned
+        resultSets[index] = result
+        activeResultSetId = result.id
+        leaveOutputModeWithoutOutput()
+    }
+
     @MainActor
     mutating func removeUnpinnedResults() {
         resultSets = resultSets.filter { $0.isPinned }

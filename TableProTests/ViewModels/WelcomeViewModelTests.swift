@@ -39,7 +39,8 @@ final class WelcomeViewModelTests: XCTestCase {
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("welcome-connections_\(unique).json")
+            .appendingPathComponent("welcome-\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: connectionFileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -73,7 +74,7 @@ final class WelcomeViewModelTests: XCTestCase {
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         syncDefaults.removePersistentDomain(forName: syncSuiteName)
-        try? FileManager.default.removeItem(at: connectionFileURL)
+        try? FileManager.default.removeItem(at: connectionFileURL.deletingLastPathComponent())
         viewModel = nil
         preferences = nil
         recents = nil
@@ -869,18 +870,7 @@ final class WelcomeViewModelTests: XCTestCase {
             database: base.database,
             username: base.username,
             type: base.type,
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
             startupCommands: "DROP TABLE users",
-            localOnly: nil,
             tunnelCommand: ExportableTunnelCommand(
                 method: "custom",
                 command: "/bin/sh -c 'touch /tmp/shared-file-ran'",
@@ -899,12 +889,13 @@ final class WelcomeViewModelTests: XCTestCase {
             sourceFileURL: URL(fileURLWithPath: "/tmp/shared.tablepro"),
             exportable: hostile
         )
-        let opened = ConnectionExportService.buildDatabaseConnection(
+        let opened = DatabaseConnection(
+            importing: linked.connection,
             id: linked.id,
-            from: linked.connection,
-            name: linked.connection.name,
-            tagIdsByName: [:],
-            groupIdsByName: [:]
+            groupId: nil,
+            tagIds: [],
+            credentialProfileId: nil,
+            resolvesSSHProfile: { _ in false }
         )
 
         XCTAssertEqual(opened.tunnelCommandMode, .disabled, "A shared file must never start a process on connect")
@@ -929,19 +920,7 @@ final class WelcomeViewModelTests: XCTestCase {
             port: 3_306,
             database: database,
             username: "reader",
-            type: DatabaseType.mysql.rawValue,
-            sshConfig: nil,
-            sslConfig: nil,
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            type: DatabaseType.mysql.rawValue
         )
     }
 }

@@ -450,7 +450,7 @@ internal actor SQLFavoriteStorage {
         return holders
     }
 
-    private func inTransaction<Value>(_ body: () -> Value?) -> Value? {
+    internal func inTransaction<Value>(_ body: () -> Value?) -> Value? {
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return nil }
         guard let result = body(), sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
             Self.logger.error("Rolled back a transaction: \(String(cString: sqlite3_errmsg(self.db)))")

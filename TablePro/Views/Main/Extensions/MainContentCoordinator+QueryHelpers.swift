@@ -130,6 +130,7 @@ extension MainContentCoordinator {
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
         viewport: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:]
@@ -154,6 +155,7 @@ extension MainContentCoordinator {
             anchor: anchor,
             timing: timing,
             viewport: viewport,
+            source: source,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
             absentCells: absentCells

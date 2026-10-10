@@ -76,12 +76,21 @@ extension TableViewCoordinator {
         return rect
     }
 
+    /// One pass over a value filter's display order, so a large restored selection is not a search per row.
     private func displayRows(for rowIDs: [RowID], in tableRows: TableRows, rowLimit: Int) -> IndexSet {
-        IndexSet(
-            rowIDs
-                .compactMap { DisplayRowMapping.displayIndex(forRowID: $0, displayIDs: displayIDs, in: tableRows) }
-                .filter { $0 < rowLimit }
-        )
+        guard let displayIDs, rowIDs.count > 1 else {
+            return IndexSet(
+                rowIDs
+                    .compactMap { DisplayRowMapping.displayIndex(forRowID: $0, displayIDs: displayIDs, in: tableRows) }
+                    .filter { $0 < rowLimit }
+            )
+        }
+        let wanted = Set(rowIDs)
+        var rows = IndexSet()
+        for (position, id) in displayIDs.prefix(rowLimit).enumerated() where wanted.contains(id) {
+            rows.insert(position)
+        }
+        return rows
     }
 
     private func selectDisplayRows(_ rows: IndexSet, in tableView: NSTableView) {

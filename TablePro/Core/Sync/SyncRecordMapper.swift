@@ -849,8 +849,7 @@ struct SyncRecordMapper {
 
     // MARK: - Path Portability
     // Contract device-local paths to portable ~/… form before pushing to iCloud,
-    // expand them back to device-local form when pulling. Matches the proven
-    // pattern in ConnectionExportService.
+    // expand them back to device-local form when pulling, the same rule connection files use.
 
     private static func makePortable(_ ssh: SSHConfiguration) -> SSHConfiguration {
         var config = ssh

@@ -20,43 +20,41 @@ struct ConnectionImportLinkSocketTests {
         return try #require(components.url)
     }
 
-    private func imported(_ items: [URLQueryItem]) throws -> ExportableConnection {
-        guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(try importLink(items)) else {
-            throw DeeplinkError.malformedPath("not an import")
+    private func imported(_ url: URL) throws -> ExportableConnection {
+        guard case .success(.importConnection(let bundle)) = DeeplinkParser.parse(url) else {
+            Issue.record("\(url) did not parse as a connection import")
+            throw CocoaError(.coderReadCorrupt)
         }
-        return parsed
+        return try #require(bundle.connections.first?.settings)
     }
 
-    private func savedConnection(from exportable: ExportableConnection) -> DatabaseConnection {
-        ConnectionExportService.buildDatabaseConnection(
-            id: UUID(), from: exportable, name: exportable.name, tagIdsByName: [:], groupIdsByName: [:]
-        )
+    private func imported(_ items: [URLQueryItem]) throws -> ExportableConnection {
+        try imported(try importLink(items))
     }
 
     @Test("A link with a socket and no host imports a localhost socket connection")
     func socketWithoutHost() throws {
         let path = "/Users/me/Library/Application Support/Local/run/ab12/mysql/mysqld.sock"
-        let exportable = try imported([
+        let settings = try imported([
             URLQueryItem(name: "type", value: "MySQL"),
             URLQueryItem(name: "socket", value: path),
             URLQueryItem(name: "username", value: "root"),
             URLQueryItem(name: "database", value: "local")
         ])
 
-        #expect(exportable.host == "localhost")
-        let connection = savedConnection(from: exportable)
-        #expect(connection.localSocketPath == path)
-        #expect(connection.database == "local")
+        #expect(settings.host == "localhost")
+        #expect(settings.additionalFields?[MySQLLocalSocket.fieldKey] == path)
+        #expect(settings.database == "local")
     }
 
     @Test("af_localSocketPath is read like socket")
     func genericFieldStillWorks() throws {
-        let exportable = try imported([
+        let settings = try imported([
             URLQueryItem(name: "type", value: "MariaDB"),
             URLQueryItem(name: "host", value: "localhost"),
             URLQueryItem(name: "af_localSocketPath", value: "/tmp/mysql.sock")
         ])
-        #expect(savedConnection(from: exportable).localSocketPath == "/tmp/mysql.sock")
+        #expect(settings.additionalFields?[MySQLLocalSocket.fieldKey] == "/tmp/mysql.sock")
     }
 
     @Test(
@@ -97,14 +95,14 @@ struct ConnectionImportLinkSocketTests {
 
     @Test("A link through an SSH tunnel drops the socket, the tunnel decides")
     func sshDropsSocket() throws {
-        let exportable = try imported([
+        let settings = try imported([
             URLQueryItem(name: "type", value: "MySQL"),
             URLQueryItem(name: "host", value: "127.0.0.1"),
             URLQueryItem(name: "socket", value: "/tmp/mysql.sock"),
             URLQueryItem(name: "ssh", value: "1"),
             URLQueryItem(name: "sshHost", value: "bastion.example.com")
         ])
-        #expect(exportable.additionalFields?[MySQLLocalSocket.fieldKey] == nil)
+        #expect(settings.additionalFields?[MySQLLocalSocket.fieldKey] == nil)
     }
 
     @Test("A link with neither host nor socket still asks for host")
@@ -117,34 +115,35 @@ struct ConnectionImportLinkSocketTests {
     }
 
     @Test("Copy TablePro Link writes socket= in place of host and port, and reads back")
-    func builderRoundTrip() throws {
+    func shareLinkRoundTrip() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         let path = "/Users/me/Library/Application Support/Local/run/ab12/mysql/a+b.sock"
         var original = DatabaseConnection(
             name: "Local", host: "db.internal", port: 3_307, database: "local", username: "root", type: .mysql
         )
         original.localSocketPath = path
 
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: original))
+        let link = try #require(ConnectionShareLink.deeplink(for: original, exporter: library.exporter))
         let items = URLComponents(string: link)?.queryItems ?? []
         #expect(items.first { $0.name == "socket" }?.value == path)
         #expect(!items.contains { $0.name == "host" || $0.name == "port" || $0.name == "af_localSocketPath" })
 
-        let url = try #require(URL(string: link))
-        guard case .success(.importConnection(let parsed)) = DeeplinkParser.parse(url) else {
-            Issue.record("Failed to parse \(link)"); return
-        }
-        #expect(savedConnection(from: parsed).localSocketPath == path)
+        let settings = try imported(try #require(URL(string: link)))
+        #expect(settings.additionalFields?[MySQLLocalSocket.fieldKey] == path)
     }
 
-    @Test("A TCP connection's link has no socket")
-    func builderWithoutSocket() throws {
+    @Test("A tunnelled connection's link has no socket")
+    func shareLinkWithoutSocket() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
         var tunnelled = DatabaseConnection(
             name: "Tunnel", host: "127.0.0.1", port: 3_306, database: "db", username: "root", type: .mysql
         )
         tunnelled.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
         tunnelled.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.example.com"))
 
-        let link = try #require(ConnectionExportService.buildImportDeeplink(for: tunnelled))
+        let link = try #require(ConnectionShareLink.deeplink(for: tunnelled, exporter: library.exporter))
         let names = Set((URLComponents(string: link)?.queryItems ?? []).map(\.name))
         #expect(names.contains("host"))
         #expect(!names.contains("socket"))

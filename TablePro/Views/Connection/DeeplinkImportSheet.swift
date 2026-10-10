@@ -8,135 +8,145 @@ import TableProConnectionLibrary
 import TableProImport
 
 struct DeeplinkImportSheet: View {
-    let connection: ExportableConnection
-    let onImported: () -> Void
+    let bundle: ConnectionBundle
+    let onFinished: (ImportOutcome) -> Void
+
     @Environment(\.dismiss) private var dismiss
     @State private var editableName: String
-    @State private var isDuplicate = false
+    @State private var analyzedRow: ConnectionRow?
+    @State private var libraryError: String?
+    @State private var isImporting = false
 
-    init(connection: ExportableConnection, onImported: @escaping () -> Void) {
-        self.connection = connection
-        self.onImported = onImported
-        _editableName = State(initialValue: connection.name)
+    init(bundle: ConnectionBundle, onFinished: @escaping (ImportOutcome) -> Void) {
+        self.bundle = bundle
+        self.onFinished = onFinished
+        _editableName = State(initialValue: bundle.connections.first?.settings.name ?? "")
+    }
+
+    private var entry: BundleConnection? {
+        bundle.connections.first
+    }
+
+    private var trimmedName: String {
+        editableName.trimmingCharacters(in: .whitespaces)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                Section {
-                    HStack(spacing: 10) {
-                        DatabaseType(rawValue: connection.type).iconImage
-                            .frame(width: 28, height: 28)
-                        Text(DatabaseType(rawValue: connection.type).displayName)
-                            .font(.headline)
-                    }
-                }
-
-                Section(String(localized: "Connection")) {
-                    TextField(String(localized: "Name"), text: $editableName)
-                        .onChange(of: editableName) { _ in checkDuplicate() }
-
-                    if let socketPath {
-                        LabeledContent(String(localized: "Socket")) {
-                            Text(socketPath)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    } else {
-                        LabeledContent(String(localized: "Host")) {
-                            Text(hostDisplay)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if !connection.database.isEmpty {
-                        LabeledContent(String(localized: "Database")) {
-                            Text(connection.database)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if !connection.username.isEmpty {
-                        LabeledContent(String(localized: "Username")) {
-                            Text(connection.username)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if connection.sshConfig != nil {
-                    sshSection
-                }
-
-                if connection.sslConfig != nil {
-                    sslSection
-                }
-
-                if hasMetadata {
-                    metadataSection
-                }
-
-                startupCommandsSection
-
-                optionsSection
-
-                if isDuplicate {
-                    Section {
-                        Label(
-                            String(localized: "A connection with this name, host, and type already exists."),
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(.orange)
-                        .font(.callout)
-                    }
-                }
+            if let entry {
+                form(for: entry)
             }
-            .formStyle(.grouped)
 
             Divider()
 
             DialogFooter {
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isDuplicate ? String(localized: "Add as Copy") : String(localized: "Add Connection")) {
-                    performImport()
+                    .disabled(isImporting)
+                Button(analyzedRow?.duplicate == nil ? String(localized: "Add Connection") : String(localized: "Add as Copy")) {
+                    isImporting = true
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(editableName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(entry == nil || trimmedName.isEmpty || libraryError != nil || isImporting)
             }
             .padding()
         }
         .frame(width: 420)
         .frame(maxHeight: 560)
-        .onAppear { checkDuplicate() }
+        .task { await analyze() }
+        .task(id: isImporting) {
+            guard isImporting else { return }
+            await performImport()
+            isImporting = false
+        }
     }
 
-    private var socketPath: String? {
+    private func form(for entry: BundleConnection) -> some View {
+        let connection = entry.settings
+        return Form {
+            Section {
+                HStack(spacing: 10) {
+                    DatabaseType(rawValue: connection.type).iconImage
+                        .frame(width: 28, height: 28)
+                    Text(DatabaseType(rawValue: connection.type).displayName)
+                        .font(.headline)
+                }
+            }
+
+            Section(String(localized: "Connection")) {
+                TextField(String(localized: "Name"), text: $editableName)
+
+                if let socketPath = Self.socketPath(connection) {
+                    LabeledContent(String(localized: "Socket")) {
+                        Text(socketPath)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else {
+                    LabeledContent(String(localized: "Host")) {
+                        Text(Self.hostDisplay(connection))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !connection.database.isEmpty {
+                    LabeledContent(String(localized: "Database")) {
+                        Text(connection.database)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !connection.username.isEmpty {
+                    LabeledContent(String(localized: "Username")) {
+                        Text(connection.username)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let ssh = connection.sshConfig {
+                sshSection(ssh)
+            }
+
+            if let ssl = connection.sslConfig {
+                Section("SSL") {
+                    LabeledContent(String(localized: "Mode")) {
+                        Text(ssl.mode)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            metadataSection(entry)
+
+            startupCommandsSection(connection)
+
+            optionsSection(connection)
+
+            noticesSection
+        }
+        .formStyle(.grouped)
+    }
+
+    private static func socketPath(_ connection: ExportableConnection) -> String? {
         guard connection.sshConfig == nil, DatabaseType(rawValue: connection.type).supportsLocalSocket else {
             return nil
         }
         return MySQLLocalSocket.path(in: connection.additionalFields ?? [:])
     }
 
-    private var driverOptions: [String: String] {
-        guard socketPath != nil else { return connection.additionalFields ?? [:] }
-        return (connection.additionalFields ?? [:]).filter { $0.key != MySQLLocalSocket.fieldKey }
+    private static func hostDisplay(_ connection: ExportableConnection) -> String {
+        connection.port > 0 ? "\(connection.host):\(connection.port)" : connection.host
     }
 
-    private var hostDisplay: String {
-        connection.port > 0
-            ? "\(connection.host):\(connection.port)"
-            : connection.host
-    }
-
-    private func formatSSHHost(_ ssh: ExportableSSHConfig) -> String {
+    private static func formatSSHHost(_ ssh: ExportableSSHConfig) -> String {
         if let port = ssh.port, port != 22 {
             return "\(ssh.host):\(port)"
         }
         return ssh.host
     }
 
-    private func formatJumpHosts(_ ssh: ExportableSSHConfig) -> String? {
+    private static func formatJumpHosts(_ ssh: ExportableSSHConfig) -> String? {
         let hops = (ssh.jumpHosts ?? []).filter { !$0.host.isEmpty }
         guard !hops.isEmpty else { return nil }
         return hops
@@ -147,40 +157,25 @@ struct DeeplinkImportSheet: View {
             .joined(separator: ", ")
     }
 
-    @ViewBuilder
-    private var sshSection: some View {
-        if let ssh = connection.sshConfig {
-            Section("SSH") {
-                LabeledContent(String(localized: "Host")) {
-                    Text(formatSSHHost(ssh))
+    private func sshSection(_ ssh: ExportableSSHConfig) -> some View {
+        Section("SSH") {
+            LabeledContent(String(localized: "Host")) {
+                Text(Self.formatSSHHost(ssh))
+                    .foregroundStyle(.secondary)
+            }
+            if !ssh.username.isEmpty {
+                LabeledContent(String(localized: "User")) {
+                    Text(ssh.username)
                         .foregroundStyle(.secondary)
-                }
-                if !ssh.username.isEmpty {
-                    LabeledContent(String(localized: "User")) {
-                        Text(ssh.username)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                LabeledContent(String(localized: "Auth")) {
-                    Text(ssh.authMethod)
-                        .foregroundStyle(.secondary)
-                }
-                if let jumpHosts = formatJumpHosts(ssh) {
-                    LabeledContent(String(localized: "Jump Hosts")) {
-                        Text(jumpHosts)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var sslSection: some View {
-        if let ssl = connection.sslConfig {
-            Section("SSL") {
-                LabeledContent(String(localized: "Mode")) {
-                    Text(ssl.mode)
+            LabeledContent(String(localized: "Auth")) {
+                Text(ssh.authMethod)
+                    .foregroundStyle(.secondary)
+            }
+            if let jumpHosts = Self.formatJumpHosts(ssh) {
+                LabeledContent(String(localized: "Jump Hosts")) {
+                    Text(jumpHosts)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -188,7 +183,7 @@ struct DeeplinkImportSheet: View {
     }
 
     @ViewBuilder
-    private var startupCommandsSection: some View {
+    private func startupCommandsSection(_ connection: ExportableConnection) -> some View {
         if let startupCommands = connection.startupCommands,
            !startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Section {
@@ -210,8 +205,9 @@ struct DeeplinkImportSheet: View {
     }
 
     @ViewBuilder
-    private var optionsSection: some View {
-        let fields = driverOptions
+    private func optionsSection(_ connection: ExportableConnection) -> some View {
+        let shownAsSocket = Self.socketPath(connection) != nil
+        let fields = (connection.additionalFields ?? [:]).filter { !shownAsSocket || $0.key != MySQLLocalSocket.fieldKey }
         if !fields.isEmpty {
             Section(String(localized: "Driver Options")) {
                 ForEach(fields.keys.sorted(), id: \.self) { key in
@@ -225,96 +221,99 @@ struct DeeplinkImportSheet: View {
         }
     }
 
-    private var hasMetadata: Bool {
-        connection.color != nil || customSymbol != nil || !Self.tagNames(of: connection).isEmpty
-            || connection.groupName != nil
+    @ViewBuilder
+    private func metadataSection(_ entry: BundleConnection) -> some View {
+        let color = Self.displayColor(entry.settings.color)
+        let customSymbol = LibraryGlyph.customSymbol(entry.settings.iconName)
+        let groupPath = bundle.groupChain(entry.groupRef).map(\.name)
+        if color != nil || customSymbol != nil || !entry.tagNames.isEmpty || !groupPath.isEmpty {
+            Section {
+                if let color {
+                    LabeledContent(String(localized: "Color")) {
+                        Circle()
+                            .fill(color.color)
+                            .frame(width: 12, height: 12)
+                    }
+                }
+                if let customSymbol {
+                    LabeledContent(String(localized: "Icon")) {
+                        Image(systemName: customSymbol)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(LibrarySymbolCatalog.symbol(named: customSymbol)?.title ?? customSymbol)
+                    }
+                }
+                if !entry.tagNames.isEmpty {
+                    LabeledContent(entry.tagNames.count == 1 ? String(localized: "Tag") : String(localized: "Tags")) {
+                        Text(ListFormatter.localizedString(byJoining: entry.tagNames)).foregroundStyle(.secondary)
+                    }
+                }
+                if !groupPath.isEmpty {
+                    LabeledContent(String(localized: "Group")) {
+                        Text(groupPath.joined(separator: " / ")).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
-    static func tagNames(of connection: ExportableConnection) -> [String] {
-        connection.tagNames ?? connection.tagName.map { [$0] } ?? []
-    }
-
-    static func importEnvelope(for connection: ExportableConnection, named name: String) -> ConnectionExportEnvelope {
-        let tags = tagNames(of: connection).map { ExportableTag(name: $0, color: nil) }
-        return ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
-            connections: [connection.renamed(to: name)],
-            groups: connection.groupName.map { [ExportableGroup(name: $0, color: nil)] },
-            tags: tags.isEmpty ? nil : tags,
-            credentials: nil
-        )
-    }
-
-    private var customSymbol: String? {
-        LibraryGlyph.customSymbol(connection.iconName)
+    private static func displayColor(_ raw: String?) -> ConnectionColor? {
+        guard let raw, let color = ConnectionColor(rawValue: raw), color != ConnectionColor.none else { return nil }
+        return color
     }
 
     @ViewBuilder
-    private var metadataSection: some View {
-        Section {
-            if let color = connection.color,
-               let connColor = ConnectionColor(rawValue: color), connColor != .none {
-                LabeledContent(String(localized: "Color")) {
-                    Circle()
-                        .fill(connColor.color)
-                        .frame(width: 12, height: 12)
-                }
-            }
-            if let customSymbol {
-                LabeledContent(String(localized: "Icon")) {
-                    Image(systemName: customSymbol)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(LibrarySymbolCatalog.symbol(named: customSymbol)?.title ?? customSymbol)
-                }
-            }
-            let tagNames = Self.tagNames(of: connection)
-            if !tagNames.isEmpty {
-                LabeledContent(tagNames.count == 1 ? String(localized: "Tag") : String(localized: "Tags")) {
-                    Text(ListFormatter.localizedString(byJoining: tagNames)).foregroundStyle(.secondary)
-                }
-            }
-            if let groupName = connection.groupName {
-                LabeledContent(String(localized: "Group")) {
-                    Text(groupName).foregroundStyle(.secondary)
+    private var noticesSection: some View {
+        let notices = Self.notices(for: analyzedRow, libraryError: libraryError)
+        if !notices.isEmpty {
+            Section {
+                ForEach(notices, id: \.self) { notice in
+                    Label(notice, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.callout)
                 }
             }
         }
     }
 
-    private func checkDuplicate() {
-        let trimmed = editableName.trimmingCharacters(in: .whitespaces)
-        let existing = ConnectionStorage.shared.loadConnections()
-        isDuplicate = existing.contains {
-            $0.name.lowercased() == trimmed.lowercased()
-                && $0.type.rawValue.lowercased() == connection.type.lowercased()
-                && hasSameEndpoint($0)
+    static func notices(for row: ConnectionRow?, libraryError: String?) -> [String] {
+        if let libraryError {
+            return [libraryError]
+        }
+        guard let row else { return [] }
+        var notices: [String] = []
+        if let duplicate = row.duplicate {
+            notices.append(String(format: String(localized: "A connection to this server is already saved as “%@”."), duplicate.name))
+        }
+        return notices + ImportConnectionRowView.notes(for: row)
+    }
+
+    private func analyze() async {
+        guard analyzedRow == nil, libraryError == nil else { return }
+        do {
+            let preview = try await ImportReviewLoader.preview(of: CollectedImport(bundle: bundle, source: .link))
+            analyzedRow = preview.connections.first
+        } catch {
+            libraryError = ImportReviewLoader.message(for: error)
         }
     }
 
-    private func hasSameEndpoint(_ saved: DatabaseConnection) -> Bool {
-        guard let socketPath else {
-            return saved.localSocketPath == nil
-                && saved.host.lowercased() == connection.host.lowercased()
-                && saved.port == connection.port
+    private func performImport() async {
+        guard let entry, !trimmedName.isEmpty else { return }
+        var settings = entry.settings
+        settings.name = trimmedName
+        let edited = bundle.replacingSettings(settings, of: entry.ref)
+        do {
+            let preview = try await ImportReviewLoader.preview(of: CollectedImport(bundle: edited, source: .link))
+            guard !Task.isCancelled else { return }
+            let review = ImportReview(preview: preview)
+            for row in preview.connections {
+                review.setSelected(true, row)
+            }
+            // The parser drops a link's tunnel command; its startup SQL is shown in this sheet before Add.
+            let outcome = await review.commit(keepingCommands: true)
+            onFinished(outcome)
+        } catch {
+            libraryError = ImportReviewLoader.message(for: error)
         }
-        return saved.localSocketPath == socketPath
-    }
-
-    private func performImport() {
-        let trimmed = editableName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        let envelope = Self.importEnvelope(for: connection, named: trimmed)
-
-        let preview = ConnectionExportService.analyzeImport(envelope)
-        var resolutions: [UUID: ImportResolution] = [:]
-        for item in preview.items {
-            resolutions[item.id] = isDuplicate ? .importAsCopy : .importNew
-        }
-        ConnectionExportService.performImport(preview, resolutions: resolutions)
-        onImported()
-        dismiss()
     }
 }

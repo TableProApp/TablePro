@@ -1136,33 +1136,17 @@ final class MainContentCoordinator: ObservableObject {
     /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
     /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
     /// strength of a run would then be pointing at the wrong statement when the reader presses again.
-    ///
-    /// `boundParameters` are the values a result already ran with, handed back when that result runs again. They
-    /// stand in for the panel's, which may have changed since, so the panel is neither reconciled nor opened.
     @discardableResult
     private func executeResolvedSQL(
         _ sql: String,
         tabIndex index: Int,
         bypassRowLimit: Bool,
         sourceOffset: Int? = nil,
-        boundParameters: [QueryParameter]? = nil,
         extraCapabilities: CallerCapabilities = []
     ) -> Bool {
         let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
         let statements = batches.flatMap(\.statements)
         guard !statements.isEmpty else { return false }
-
-        if let boundParameters {
-            tabManager.tabStructureVersion += 1
-            dispatchParameterizedBatches(
-                batches,
-                parameters: boundParameters,
-                tabIndex: index,
-                bypassRowLimit: bypassRowLimit,
-                extraCapabilities: extraCapabilities
-            )
-            return true
-        }
 
         if services.appSettings.editor.queryParametersEnabled, bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
@@ -1201,6 +1185,7 @@ final class MainContentCoordinator: ObservableObject {
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
     /// Returns the confirmation task when Safe Mode asks before the load runs.
+    /// A table tab changes source only through `replaceTabContent`, so every run here re-reads its own.
     @discardableResult
     func executeTableTabQueryDirectly(
         trigger: TableLoadTrigger = .userInitiated,
@@ -1258,14 +1243,14 @@ final class MainContentCoordinator: ObservableObject {
                 }
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
+                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
                 case .denied(let reason, _):
                     traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
                     queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
                 }
             }
         }
-        executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
+        executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
         return nil
     }
 
@@ -1334,7 +1319,8 @@ final class MainContentCoordinator: ObservableObject {
         trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
-        viewport: GridReloadIntent = .firstRow
+        viewport: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
 
@@ -1440,7 +1426,7 @@ final class MainContentCoordinator: ObservableObject {
                         return false
                     }
                     retireQueryTask(.claim(claim))
-                    guard !Task.isCancelled else {
+                    guard !Task.isCancelled, rereadStillApplies(source) else {
                         traceStaleResultDropped(traceToken)
                         return false
                     }
@@ -1468,6 +1454,7 @@ final class MainContentCoordinator: ObservableObject {
                         anchor: anchor,
                         timing: fetchResult.resolvedTiming,
                         viewport: viewport,
+                        source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
                         absentCells: fetchResult.absentCells
@@ -1602,48 +1589,8 @@ final class MainContentCoordinator: ObservableObject {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
         guard newState != tab.sortState else { return }
 
-        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-
         if tab.tabType == .query {
-            let tabId = tab.id
-            let capturedSort = newState
-            guard supportsColumnSort, let rerun = tab.sortRerun else {
-                sortHeldRows(by: newState, tabId: tabId)
-                return
-            }
-            /// The result on screen stays clickable while the next run is in flight, and its re-run cannot start
-            /// until that run ends. The click is dropped, not kept for later: kept on the tab, it stood in for the
-            /// reader's next Run, bound to the values of a result that run had already replaced.
-            guard !tabExecution.isExecuting(tabId) else {
-                traceExecutionBlocked(tabId: tabId, site: "handleSortStateChanged")
-                return
-            }
-            let capturedColumns = tableRows.columns
-            confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
-                guard let self, confirmed, self.tabManager.selectedTabId == tabId,
-                      !self.tabExecution.isExecuting(tabId) else { return }
-                let orderClause = capturedSort.columns.compactMap { sortCol -> String? in
-                    guard sortCol.columnIndex >= 0, sortCol.columnIndex < capturedColumns.count else { return nil }
-                    let columnName = capturedColumns[sortCol.columnIndex]
-                    let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
-                    return "\(self.queryBuilder.quoteIdentifier(columnName)) \(direction)"
-                }.joined(separator: ", ")
-                let orderQuery = rerun.transformingSQL {
-                    QuerySqlParser.applyingOrderBy(orderClause, to: $0, grammar: self.lexicalGrammar)
-                }
-                guard self.tabManager.mutate(tabId: tabId, { tab in
-                    tab.sortState = capturedSort
-                    tab.hasUserInteraction = true
-                    tab.pagination.reset()
-                    tab.pagination.resetLoadMore()
-                }), let index = self.tabManager.selectedTabIndex else { return }
-                self.executeResolvedSQL(
-                    orderQuery.sql,
-                    tabIndex: index,
-                    bypassRowLimit: false,
-                    boundParameters: orderQuery.boundParameters
-                )
-            }
+            sortQueryResult(by: newState, tabId: tab.id)
             return
         }
 

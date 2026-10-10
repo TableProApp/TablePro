@@ -2,62 +2,62 @@
 //  ConnectionImportSheet.swift
 //  TablePro
 //
-//  Sheet for previewing and importing connections from a .tablepro file.
-//
 
-import AppKit
 import SwiftUI
 import TableProImport
-import UniformTypeIdentifiers
 
 struct ConnectionImportSheet: View {
     let fileURL: URL
-    var onImported: ((Int) -> Void)?
+    let onFinished: (ImportOutcome) -> Void
+
     @Environment(\.dismiss) private var dismiss
-    @State private var preview: ConnectionImportPreview?
-    @State private var error: String?
-    @State private var isLoading = true
-    @State private var selectedIds: Set<UUID> = []
-    @State private var duplicateResolutions: [UUID: ImportResolution] = [:]
-    @State private var encryptedData: Data?
+    @State private var phase: Phase = .loading
     @State private var passphrase = ""
     @State private var passphraseError: String?
     @State private var isDecrypting = false
-    @State private var wasEncryptedImport = false
+
+    private enum Phase {
+        case loading
+        case passphrase(Data)
+        case review(ImportPreview)
+        case failed(String)
+    }
+
+    private enum FileContents: Sendable {
+        case encrypted(Data)
+        case bundle(ConnectionBundle)
+        case unreadable(String)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if isLoading {
-                loadingView
-            } else if let error {
-                errorView(error)
-            } else if encryptedData != nil {
+        Group {
+            switch phase {
+            case .loading:
+                ProgressView()
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .passphrase:
                 passphraseView
-            } else if let preview {
-                header(preview)
-                Divider()
-                previewList(preview)
-                Divider()
-                footer(preview)
+            case .review(let preview):
+                ImportReviewStep(
+                    title: String(format: String(localized: "Import from %@"), fileURL.lastPathComponent),
+                    banner: nil,
+                    preview: preview,
+                    onBack: nil,
+                    onFinished: onFinished
+                )
+            case .failed(let message):
+                errorView(message)
             }
         }
-        .frame(width: 500, height: 400)
-        .onAppear { loadFile() }
-    }
-
-    // MARK: - Loading
-
-    private var loadingView: some View {
-        VStack {
-            Spacer()
-            ProgressView()
-                .controlSize(.large)
-            Spacer()
+        .importSheetFrame()
+        .task { await loadFile() }
+        .task(id: isDecrypting) {
+            guard isDecrypting else { return }
+            await decryptFile()
+            isDecrypting = false
         }
-        .frame(height: 200)
     }
-
-    // MARK: - Error
 
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
@@ -65,7 +65,7 @@ struct ConnectionImportSheet: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(message)
+            Text(verbatim: message)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -79,45 +79,6 @@ struct ConnectionImportSheet: View {
         }
         .padding(.horizontal)
     }
-
-    // MARK: - Header
-
-    private func header(_ preview: ConnectionImportPreview) -> some View {
-        HStack {
-            Text(String(localized: "Import Connections"))
-                .font(.body.weight(.semibold))
-            Text("(\(fileURL.lastPathComponent))")
-                .font(.body)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Toggle(String(localized: "Select All"), isOn: Binding(
-                get: { selectedIds.count == preview.items.count && !preview.items.isEmpty },
-                set: { newValue in
-                    if newValue {
-                        selectedIds = Set(preview.items.map(\.id))
-                    } else {
-                        selectedIds.removeAll()
-                    }
-                }
-            ))
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 16)
-    }
-
-    // MARK: - Preview List
-
-    private func previewList(_ preview: ConnectionImportPreview) -> some View {
-        ConnectionImportPreviewList(
-            items: preview.items,
-            selectedIds: $selectedIds,
-            duplicateResolutions: $duplicateResolutions
-        )
-    }
-
-    // MARK: - Passphrase
 
     private var passphraseView: some View {
         VStack(spacing: 16) {
@@ -138,7 +99,7 @@ struct ConnectionImportSheet: View {
             SecureField(String(localized: "Passphrase"), text: $passphrase)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
-                .onSubmit { decryptFile() }
+                .onSubmit { requestDecrypt() }
 
             if let passphraseError {
                 Label(passphraseError, systemImage: "exclamationmark.triangle.fill")
@@ -152,7 +113,7 @@ struct ConnectionImportSheet: View {
                 Spacer()
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(String(localized: "Decrypt")) { decryptFile() }
+                Button(String(localized: "Decrypt")) { requestDecrypt() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(passphrase.isEmpty || isDecrypting)
@@ -162,184 +123,61 @@ struct ConnectionImportSheet: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Footer
-
-    private func footer(_ preview: ConnectionImportPreview) -> some View {
-        HStack {
-            Text("\(selectedIds.count) of \(preview.items.count) selected")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button(String(localized: "Cancel")) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-
-            Button(String(localized: "Import")) {
-                performImport(preview)
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(selectedIds.isEmpty)
-        }
-        .padding(12)
-    }
-
-    // MARK: - Actions
-
-    private func loadFile() {
-        let url = fileURL
-        Task.detached(priority: .userInitiated) {
-            do {
-                let data = try Data(contentsOf: url)
-
-                if ConnectionExportCrypto.isEncrypted(data) {
-                    await MainActor.run {
-                        encryptedData = data
-                        isLoading = false
-                    }
-                    return
-                }
-
-                let envelope = try ConnectionImportDecoder.decodeData(data)
-                let result = await ConnectionExportService.analyzeImport(envelope)
-                await MainActor.run {
-                    preview = result
-                    selectReadyItems(result)
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    isLoading = false
-                }
-            }
-        }
-    }
-
-    private func decryptFile() {
-        guard let data = encryptedData, !isDecrypting else { return }
-        let currentPassphrase = passphrase
+    private func requestDecrypt() {
+        guard !passphrase.isEmpty, !isDecrypting else { return }
         isDecrypting = true
+    }
 
-        Task.detached(priority: .userInitiated) {
-            do {
-                let envelope = try await ConnectionImportDecoder.decodeEncryptedData(data, passphrase: currentPassphrase)
-                let result = await ConnectionExportService.analyzeImport(envelope)
-                await MainActor.run {
-                    passphraseError = nil
-                    encryptedData = nil
-                    wasEncryptedImport = true
-                    preview = result
-                    selectReadyItems(result)
-                    isDecrypting = false
-                }
-            } catch {
-                await MainActor.run {
-                    passphraseError = error.localizedDescription
-                    passphrase = ""
-                    isDecrypting = false
-                }
+    private func loadFile() async {
+        guard case .loading = phase else { return }
+        switch await Self.readFile(at: fileURL) {
+        case .encrypted(let data):
+            phase = .passphrase(data)
+        case .bundle(let bundle):
+            await showReview(of: bundle)
+        case .unreadable(let message):
+            phase = .failed(message)
+        }
+    }
+
+    private func decryptFile() async {
+        guard case .passphrase(let data) = phase else { return }
+        do {
+            let bundle = try await Self.decrypt(data, passphrase: passphrase)
+            passphraseError = nil
+            passphrase = ""
+            await showReview(of: bundle)
+        } catch {
+            passphraseError = error.localizedDescription
+            passphrase = ""
+        }
+    }
+
+    private func showReview(of bundle: ConnectionBundle) async {
+        let collected = CollectedImport(bundle: bundle, source: .file(name: fileURL.lastPathComponent))
+        do {
+            let preview = try await ImportReviewLoader.preview(of: collected)
+            phase = .review(preview)
+        } catch {
+            phase = .failed(ImportReviewLoader.message(for: error))
+        }
+    }
+
+    @concurrent
+    nonisolated private static func readFile(at url: URL) async -> FileContents {
+        do {
+            let data = try Data(contentsOf: url)
+            if ConnectionBundleCodec.isEncrypted(data) {
+                return .encrypted(data)
             }
+            return .bundle(try ConnectionBundleCodec.decode(data))
+        } catch {
+            return .unreadable(error.localizedDescription)
         }
     }
 
-    private func selectReadyItems(_ result: ConnectionImportPreview) {
-        selectedIds.formUnion(result.items.filter(\.status.isSelectedByDefault).map(\.id))
-    }
-
-    private func performImport(_ preview: ConnectionImportPreview) {
-        var resolutions: [UUID: ImportResolution] = [:]
-        for item in preview.items {
-            if selectedIds.contains(item.id) {
-                switch item.status {
-                case .ready, .warnings, .unsupportedType:
-                    resolutions[item.id] = .importNew
-                case .duplicate:
-                    resolutions[item.id] = duplicateResolutions[item.id] ?? .importAsCopy
-                }
-            } else {
-                resolutions[item.id] = .skip
-            }
-        }
-
-        let commanded = preview.items.filter {
-            $0.connection.carriesTunnelCommand && resolutions[$0.id] != .skip
-        }
-        guard !commanded.isEmpty else {
-            runImport(preview, resolutions: resolutions, keepTunnelCommands: false)
-            return
-        }
-
-        Task { @MainActor in
-            let choice = await AlertHelper.confirmThreeWay(
-                title: String(localized: "Import Tunnel Commands?"),
-                message: tunnelCommandConfirmation(for: commanded),
-                first: String(localized: "Import Without Commands"),
-                second: String(localized: "Import Commands"),
-                third: String(localized: "Cancel"),
-                window: NSApp.keyWindow
-            )
-            switch choice {
-            case 0:
-                runImport(preview, resolutions: resolutions, keepTunnelCommands: false)
-            case 1:
-                runImport(preview, resolutions: resolutions, keepTunnelCommands: true)
-            default:
-                break
-            }
-        }
-    }
-
-    /// Names every command the file would store, in full. A tunnel command starts a process on
-    /// this Mac every time the connection opens, so the answer has to be given against the actual
-    /// text rather than against the fact that one exists.
-    private func tunnelCommandConfirmation(for items: [ImportItem]) -> String {
-        let lines = items.map { item -> String in
-            let described = item.connection.tunnelCommand
-                .map { TunnelCommandConfiguration($0) }
-                .flatMap {
-                    TunnelCommandBuilder.previewCommand(
-                        for: $0,
-                        remoteHost: item.connection.host.isEmpty ? "localhost" : item.connection.host,
-                        remotePort: item.connection.port
-                    )
-                }
-            return "\(item.connection.name)\n\(described ?? "")"
-        }
-        return String(
-            format: String(localized: """
-                These connections open their tunnel by running a command on this Mac, every time \
-                they connect:
-
-                %@
-                """),
-            lines.joined(separator: "\n\n")
-        )
-    }
-
-    private func runImport(
-        _ preview: ConnectionImportPreview,
-        resolutions: [UUID: ImportResolution],
-        keepTunnelCommands: Bool
-    ) {
-        let result = ConnectionExportService.performImport(
-            preview,
-            resolutions: resolutions,
-            keepTunnelCommands: keepTunnelCommands
-        )
-
-        // Only restore credentials from verified encrypted imports (not plaintext files)
-        if wasEncryptedImport, preview.envelope.credentials != nil {
-            ConnectionExportService.restoreCredentials(
-                from: preview.envelope,
-                connectionIdMap: result.connectionIdMap
-            )
-        }
-
-        dismiss()
-        onImported?(result.importedCount)
+    @concurrent
+    nonisolated private static func decrypt(_ data: Data, passphrase: String) async throws -> ConnectionBundle {
+        try await ConnectionBundleCodec.decode(data, passphrase: passphrase)
     }
 }

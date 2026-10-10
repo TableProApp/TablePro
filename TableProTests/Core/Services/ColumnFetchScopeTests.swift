@@ -30,6 +30,17 @@ struct ColumnFetchScopeTests {
         #expect(result == ["id", "name", "email"])
     }
 
+    @Test("A hidden column with a value filter stays in the projection")
+    func retainsHiddenValueFilteredColumn() {
+        let result = ColumnFetchScope.selectColumns(
+            schemaColumns: columns,
+            hiddenColumns: ["email", "payload"],
+            primaryKeyColumns: ["id"],
+            valueFilteredColumns: ["email"]
+        )
+        #expect(result == ["id", "name", "email"])
+    }
+
     @Test("Empty schema means no scoping")
     func emptySchema() {
         #expect(ColumnFetchScope.selectColumns(schemaColumns: [], hiddenColumns: ["payload"], primaryKeyColumns: []) == nil)

@@ -64,23 +64,8 @@ enum RDSConnectionBuilder {
             database: sanitized(database.databaseName) ?? "",
             username: usesIAM ? "" : sanitized(database.adminUsername) ?? "",
             type: type.rawValue,
-            sshConfig: nil,
-            sslConfig: ExportableSSLConfig(
-                mode: SSLMode.required.rawValue,
-                caCertificatePath: nil,
-                clientCertificatePath: nil,
-                clientKeyPath: nil
-            ),
-            color: nil,
-            tagName: nil,
-            groupName: nil,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: additionalFields,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            sslConfig: ExportableSSLConfig(mode: SSLMode.required.rawValue),
+            additionalFields: additionalFields
         )
     }
 

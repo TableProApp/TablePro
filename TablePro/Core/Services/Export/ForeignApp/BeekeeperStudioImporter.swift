@@ -2,16 +2,6 @@
 //  BeekeeperStudioImporter.swift
 //  TablePro
 //
-//  Imports saved connections from Beekeeper Studio.
-//
-//  Beekeeper stores everything in `~/Library/Application Support/beekeeper-studio/app.db`
-//  (SQLite). Encrypted password columns are unwrapped via `BeekeeperEncryptor`
-//  using the per-install key read from `.key` next to that database.
-//
-//  Only the local workspace (workspaceId = -1) is imported. Cloud-synced
-//  workspaces require a Beekeeper account and would arrive with their own
-//  source of truth.
-//
 
 import AppKit
 import Foundation
@@ -35,13 +25,20 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     private var appDatabaseURL: URL { dataDirectoryURL.appendingPathComponent("app.db") }
     private var keyFileURL: URL { dataDirectoryURL.appendingPathComponent(".key") }
 
-    func connectionCount() -> Int {
-        guard let db = try? openDatabase() else { return 0 }
+    var savedQuerySupport: ForeignSavedQuerySupport { .globalFolder(named: displayName) }
+
+    func inventory() -> ForeignAppInventory {
+        guard let db = try? openDatabase() else {
+            return ForeignAppInventory(connections: 0, savedQueries: 0)
+        }
         defer { sqlite3_close(db) }
-        return (try? readSavedConnections(db: db).count) ?? 0
+        return ForeignAppInventory(
+            connections: (try? readSavedConnections(db: db).count) ?? 0,
+            savedQueries: BeekeeperSavedQueryReader.count(db: db)
+        )
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
         let db: OpaquePointer?
         do {
             db = try openDatabase()
@@ -54,22 +51,16 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
 
         let rows = try readSavedConnections(db: db)
         let folderMap = (try? readConnectionFolders(db: db)) ?? [:]
-        let userKey = includePasswords ? loadUserEncryptionKey() : nil
+        let userKey = request.includePasswords ? loadUserEncryptionKey() : nil
 
-        var exportableConnections: [ExportableConnection] = []
-        var groupNames: Set<String> = []
-        var credentials: [String: ExportableCredentials] = [:]
-
+        var records: [ForeignConnectionRecord] = []
         for row in rows {
             try Task.checkCancellation()
             guard let type = Self.mapDriver(row.connectionType) else {
-                Self.logger.warning("Skipping Beekeeper connection \(row.id) with no connection type")
+                Self.logger.warning("Skipping a Beekeeper connection with no connection type")
                 continue
             }
-            let groupName = row.connectionFolderId.flatMap { folderMap[$0] }
-            if let groupName { groupNames.insert(groupName) }
-
-            let exportable = ExportableConnection(
+            let settings = ExportableConnection(
                 name: row.name.isEmpty ? "Untitled" : row.name,
                 host: row.host.isEmpty ? "localhost" : row.host,
                 port: row.port ?? ForeignAppDatabaseType.defaultPort(for: type),
@@ -78,53 +69,31 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
                 type: type,
                 sshConfig: row.sshEnabled ? Self.buildSSHConfig(row) : nil,
                 sslConfig: row.ssl ? Self.buildSSLConfig(row) : nil,
-                color: Self.mapColor(row.labelColor),
-                tagName: nil,
-                groupName: groupName,
-                sshProfileId: nil,
-                safeModeLevel: nil,
-                aiPolicy: nil,
-                additionalFields: nil,
-                redisDatabase: nil,
-                startupCommands: nil,
-                localOnly: nil
+                color: Self.mapColor(row.labelColor)
             )
-            let index = exportableConnections.count
-            exportableConnections.append(exportable)
-
-            if includePasswords, let userKey {
-                let creds = Self.extractCredentials(row: row, key: userKey)
-                if creds.password != nil || creds.sshPassword != nil || creds.keyPassphrase != nil {
-                    credentials[String(index)] = creds
-                }
-            }
+            records.append(ForeignConnectionRecord(
+                sourceId: String(row.id),
+                settings: settings,
+                groupPath: row.connectionFolderId.flatMap { folderMap[$0] }.map { [$0] } ?? [],
+                credentials: userKey.flatMap { Self.extractCredentials(row: row, key: $0) }
+            ))
         }
 
-        guard !exportableConnections.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
-        }
+        let savedQueries = request.includeSavedQueries
+            ? try BeekeeperSavedQueryReader.savedQueries(db: db, limit: SavedQuerySize.maximumSyncableByteCount)
+            : []
 
-        let groups = groupNames.isEmpty ? nil : groupNames.sorted().map { ExportableGroup(name: $0, color: nil) }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "Beekeeper Studio Import",
-            connections: exportableConnections,
-            groups: groups,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: savedQueries,
+            credentialsAborted: false
         )
-
-        return ForeignAppImportResult(envelope: envelope, sourceName: displayName)
     }
 
     // MARK: - Driver Mapping
 
-    /// Beekeeper's `connectionType` strings come from the `ConnectionType`
-    /// enum in
-    /// `beekeeper-studio/apps/studio/src/lib/db/types.ts`. Update this map
-    /// when Beekeeper adds a driver TablePro now supports.
+    // Mirrors Beekeeper's `ConnectionType` enum in `apps/studio/src/lib/db/types.ts`.
     private static func mapDriver(_ raw: String?) -> String? {
         guard let raw, !raw.isEmpty else { return nil }
         switch raw.lowercased() {
@@ -227,11 +196,15 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         return key
     }
 
-    private static func extractCredentials(row: SavedConnectionRow, key: String) -> ExportableCredentials {
-        ExportableCredentials(
-            password: decrypt(row.password, key: key),
-            sshPassword: decrypt(row.sshPassword, key: key),
-            keyPassphrase: decrypt(row.sshKeyfilePassword, key: key),
+    private static func extractCredentials(row: SavedConnectionRow, key: String) -> ExportableCredentials? {
+        let password = decrypt(row.password, key: key)
+        let sshPassword = decrypt(row.sshPassword, key: key)
+        let keyPassphrase = decrypt(row.sshKeyfilePassword, key: key)
+        guard password != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
+        return ExportableCredentials(
+            password: password,
+            sshPassword: sshPassword,
+            keyPassphrase: keyPassphrase,
             sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
@@ -277,8 +250,8 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
         let connectionFolderId: Int?
     }
 
+    // A cloud workspace's rows have a positive workspaceId and belong to that workspace's server copy.
     private func readSavedConnections(db: OpaquePointer?) throws -> [SavedConnectionRow] {
-        // Only personal workspace; cloud-synced rows have positive workspaceId.
         let sql = """
             SELECT id, name, connectionType, host, port, username, defaultDatabase, password,
                    ssl, sslCaFile, sslCertFile, sslKeyFile, sslRejectUnauthorized, trustServerCertificate,
@@ -355,8 +328,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
         var db: OpaquePointer?
-        // SQLITE_OPEN_READONLY avoids journal-file creation in another app's
-        // data directory.
+        // Read-only, so no journal file appears in another app's data directory.
         let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
         guard sqlite3_open_v2(appDatabaseURL.path, &db, flags, nil) == SQLITE_OK else {
             sqlite3_close(db)

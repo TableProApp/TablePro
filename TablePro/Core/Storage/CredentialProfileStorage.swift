@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProImport
 import TableProSyncTransport
 
 extension Notification.Name {
@@ -114,6 +115,38 @@ final class CredentialProfileStorage {
         placed.sortOrder = (profiles.map { $0.sortOrder }.max() ?? -1) + 1
         profiles.append(placed)
         return saveProfiles(profiles)
+    }
+
+    /// Returns only the profiles this call created. A name already here is skipped, so a file can
+    /// never select one of this Mac's credentials by naming it. Nil when the store is unreadable
+    /// or the save failed.
+    func addImportedProfiles(_ imported: [PlannedCredentialProfile]) -> [BundleRef: UUID]? {
+        guard !imported.isEmpty else { return [:] }
+        var profiles = loadProfiles()
+        guard !lastLoadFailed else { return nil }
+
+        var takenNames = Set(profiles.map { Self.nameKey($0.name) })
+        var nextSortOrder = (profiles.map(\.sortOrder).max() ?? -1) + 1
+        var created: [BundleRef: UUID] = [:]
+        for profile in imported where created[profile.ref] == nil {
+            let key = Self.nameKey(profile.name)
+            guard !key.isEmpty, takenNames.insert(key).inserted else { continue }
+            let added = CredentialProfile(
+                name: profile.name,
+                username: profile.username,
+                // A profile never arrives with a password, so `stored` would sign in with nothing.
+                passwordMode: profile.passwordMode == .pgpass ? .pgpass : .prompt,
+                secureFieldIds: profile.secureFieldIds,
+                sortOrder: nextSortOrder
+            )
+            nextSortOrder += 1
+            profiles.append(added)
+            created[profile.ref] = added.id
+        }
+
+        guard !created.isEmpty else { return [:] }
+        guard saveProfiles(profiles) else { return nil }
+        return created
     }
 
     @discardableResult
@@ -260,6 +293,10 @@ final class CredentialProfileStorage {
         for fieldId in profile.secureFieldIds {
             deleteSecureField(fieldId: fieldId, for: profile.id)
         }
+    }
+
+    private static func nameKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private static func passwordKey(_ profileId: UUID) -> String {

@@ -23,7 +23,7 @@ extension PluginMetadataRegistry {
     ///
     /// The connection fields are libSQL's exactly, including the local-file mode. The driver
     /// reads `libsqlMode` and treats anything but `local` as remote, so a narrower list would
-    /// still connect, but `ConnectionStorage` and `ConnectionExportService` derive Keychain
+    /// still connect, but `ConnectionStorage` and `ConnectionBundleExporter` derive Keychain
     /// migration and export redaction from this list and a Turso connection saved in local mode
     /// already exists in the field.
     func tursoPluginDefaults(
