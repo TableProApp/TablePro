@@ -59,7 +59,7 @@ mysql://user:password@host:3306/database
 mysql://user:password@localhost/database?socket=%2Ftmp%2Fmysql.sock
 ```
 
-`socket` connects through the socket file instead of host and port, and only with `localhost` or no host. Opening a URL connects directly. See [Connection URL Reference](/connections/urls#unix-socket).
+`socket` replaces host and port. It needs host `localhost` or no host. Opening a URL connects directly. See [Connection URL Reference](/connections/urls#unix-socket).
 
 ## Common setups
 
