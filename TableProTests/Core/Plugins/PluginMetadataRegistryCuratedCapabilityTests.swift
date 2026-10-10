@@ -383,6 +383,12 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.browsingRequiresSelectedDatabase == true)
     }
 
+    @Test("MySQL keeps its socket on this Mac when its plugin registers")
+    func mySQLKeepsItsLocalSocket() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMySQLPlugin.self)
+        #expect(built.connection.defaultLocalSocketPath == MySQLLocalSocket.defaultPath)
+    }
+
     /// A MySQL-protocol session opened with no database has none at all, so it lists nothing until
     /// one is chosen. Databend's session falls back to its `default` database instead.
     @Test("Only the MySQL engines with no default database require a selected database to browse")

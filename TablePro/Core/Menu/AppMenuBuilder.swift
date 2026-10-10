@@ -25,8 +25,8 @@ enum AppMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Integrations…"),
-                action: #selector(AppDelegate.openIntegrations(_:))
+                String(localized: "MCP Activity…"),
+                action: #selector(AppDelegate.openMCPActivity(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(

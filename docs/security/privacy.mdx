@@ -12,7 +12,7 @@ Three requests leave a stock install without you asking: one usage heartbeat a d
 | [Plugin catalog](#the-plugin-catalog) | `raw.githubusercontent.com` | Yes | None |
 | [AI provider](#ai-providers) | whichever provider you add | No provider is configured on a fresh install | Delete the provider, or turn off **Enable AI Features** |
 | [iCloud sync](#icloud-sync) | your own iCloud account | No | **Settings > Sync** |
-| [MCP clients](#the-mcp-server) | nowhere: it listens on `127.0.0.1` | Off, but starts on demand | **Settings > Integrations** |
+| [MCP clients](#the-mcp-server) | nowhere: it listens on `127.0.0.1` | Off, but starts on demand | **Settings > MCP** |
 | [License and team library](#license-checks-and-the-team-library) | `api.tablepro.app` | Only after you activate a license | Do not activate one |
 | [Your databases](#your-database-connections) | the hosts you type into the connection form | Only what you connect to | Do not connect |
 | Crash reports | Nowhere. The app has no crash reporter. | - | - |
@@ -63,7 +63,7 @@ A chat turn carries:
 - The connection's [AI Rules](/features/ai-assistant#per-connection-ai-rules) text, if you wrote any.
 - Any images you paste into the composer, and the conversation so far.
 
-In Edit and Agent modes the model calls `execute_query` itself, and the rows it gets back become part of the conversation, so they go to the provider on the next turn. Those results are capped by the row limits in **Settings > Integrations**: 500 rows by default, 10,000 at most.
+In Edit and Agent modes the model calls `execute_query` itself, and the rows it gets back become part of the conversation, so they go to the provider on the next turn. Those results are capped by the row limits in **Settings > MCP**: 500 rows by default, 10,000 at most.
 
 Per connection, the **AI Policy** picker in the connection form's Options section takes **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, which asks once per connection per chat session before the first send. **Never** blocks the chat panel and external AI tool calls against that connection.
 
@@ -100,7 +100,7 @@ It is off by default, but it starts on demand: the bundled bridge and the pairin
 1. **Require authentication**, on by default. With it on, a request that arrives without an `Authorization` header is refused. Turn it off and a loopback caller with no header is allowed instead, capped at `tools:read` and `resources:read` however much it asks for.
 2. The token's scope and its connection allowlist.
 3. The connection's **External Clients** level: **Blocked**, **Read Only** (the default for a new connection), or **Read & Write**. The effective permission is the lower of that and the token's scope.
-4. The connection's **AI Policy** of **Never**, its [Safe Mode](/features/safe-mode) level, and the **Approval** setting under **Settings > Integrations**, which decides how often a client is asked before it reaches a connection.
+4. The connection's **AI Policy** of **Never**, its [Safe Mode](/features/safe-mode) level, and the **Approval** setting under **Settings > MCP**, which decides how often a client is asked before it reaches a connection.
 
 Loopback-only describes where the server binds, not everything that can reach it. The server returns CORS headers for two remote origins, `claude.ai` and `app.cursor.com`, so a page you have open there can call your local server from your own browser. The four gates above are what stands between such a call and your data, which is the reason to leave **Require authentication** on.
 

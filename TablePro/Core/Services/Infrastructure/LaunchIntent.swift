@@ -26,6 +26,8 @@ internal enum LaunchIntent: @unchecked Sendable {
     case openConnectionShare(URL)
     case pairIntegration(PairingRequest)
     case startMCPServer
+    /// nil opens the last-used pane.
+    case openSettings(SettingsPane?)
     case openDatabaseURL(URL)
     case installPlugin(URL)
     case reopenClosedTab(RecentlyClosedTabEntry)
@@ -49,6 +51,7 @@ internal enum LaunchIntent: @unchecked Sendable {
              .openConnectionShare,
              .pairIntegration,
              .startMCPServer,
+             .openSettings,
              .installPlugin:
             return nil
         }

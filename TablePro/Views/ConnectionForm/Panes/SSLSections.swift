@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
 /// connections leave alone.
 struct SSLSections: View {
     let databaseType: DatabaseType
+    var usesLocalSocket = false
     @Binding var sslMode: SSLMode
     @Binding var sslCaCertPath: String
     @Binding var sslClientCertPath: String
@@ -58,6 +59,9 @@ struct SSLSections: View {
                     }
                     if sslMode != .disabled {
                         Text(sslMode.description)
+                    }
+                    if usesLocalSocket && sslMode == .preferred {
+                        Text(String(localized: "Preferred leaves a socket connection unencrypted. Required encrypts it."))
                     }
                 }
                 .font(.caption)

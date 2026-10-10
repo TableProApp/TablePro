@@ -314,9 +314,11 @@
             "group": "Integrations",
             "icon": "puzzle-piece",
             "pages": [
+              "integrations/index",
               "integrations/mcp-clients",
               "integrations/raycast",
               "integrations/terminal",
+              "integrations/ddev",
               "integrations/ios-shortcuts"
             ]
           },

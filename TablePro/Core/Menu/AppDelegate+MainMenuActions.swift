@@ -29,7 +29,7 @@ extension AppDelegate: NSMenuItemValidation {
         SoftwareUpdater.shared.checkForUpdates()
     }
 
-    @objc func openIntegrations(_ sender: Any?) {
+    @objc func openMCPActivity(_ sender: Any?) {
         WindowOpener.shared.openIntegrationsActivity()
     }
 

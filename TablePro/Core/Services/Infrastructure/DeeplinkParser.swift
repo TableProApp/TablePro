@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProImport
 import TableProPluginKit
 
@@ -12,6 +13,7 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
     case unknownHost(String)
     case malformedPath(String)
     case missingRequiredParam(String)
+    case invalidParameter(String)
     case invalidUUID(String)
     case sqlTooLong(Int, limit: Int)
     case unsupportedDatabaseType(String)
@@ -26,6 +28,8 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
             return String(format: String(localized: "Malformed deep link path: %@"), path)
         case .missingRequiredParam(let name):
             return String(format: String(localized: "Missing required parameter: %@"), name)
+        case .invalidParameter(let name):
+            return String(format: String(localized: "Invalid parameter: %@"), name)
         case .invalidUUID(let raw):
             return String(format: String(localized: "Invalid UUID: %@"), raw)
         case .sqlTooLong(let length, let limit):
@@ -42,6 +46,8 @@ internal enum DeeplinkError: Error, LocalizedError, Equatable {
 internal enum DeeplinkParser {
     internal static let sqlLengthLimit = 51_200
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DeeplinkParser")
+
     internal static func parse(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
         guard url.scheme == "tablepro" else {
             return .failure(.unknownScheme(url.scheme ?? ""))
@@ -54,9 +60,24 @@ internal enum DeeplinkParser {
             return parseImport(url)
         case "integrations":
             return parseIntegrations(url)
+        case "settings":
+            return parseSettings(url)
         default:
             return .failure(.unknownHost(host))
         }
+    }
+
+    /// Never fails: an unknown id or extra segments open the last-used pane, so a link to a pane
+    /// or section added later still opens Settings on an older app.
+    private static func parseSettings(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
+        guard let identifier = pathSegments(url).first else {
+            return .success(.openSettings(nil))
+        }
+        guard let pane = SettingsPane(urlIdentifier: identifier) else {
+            logger.notice("Unknown settings pane id \(identifier, privacy: .public), opening the last-used pane")
+            return .success(.openSettings(nil))
+        }
+        return .success(.openSettings(pane))
     }
 
     private static func parseConnect(_ url: URL) -> Result<LaunchIntent, DeeplinkError> {
@@ -203,6 +224,22 @@ internal enum DeeplinkParser {
         }
 
         let scopes = value("scopes")?.nilIfEmpty
+
+        let state = value("state")
+        if let state, state.utf8.count > PairingRequest.maximumStateBytes {
+            return .failure(.invalidParameter("state"))
+        }
+
+        let responseMode: PairingResponseMode
+        if queryItems.contains(where: { $0.name == "response_mode" }) {
+            guard let mode = PairingResponseMode(parameter: value("response_mode") ?? "") else {
+                return .failure(.invalidParameter("response_mode"))
+            }
+            responseMode = mode
+        } else {
+            responseMode = .legacy
+        }
+
         /// Only an absent parameter means every connection. Naming the parameter and then handing
         /// over something unreadable used to fall back to absent, which turned a request scoped to
         /// one connection into a request for all of them with the sheet pre-ticked to All
@@ -230,7 +267,9 @@ internal enum DeeplinkParser {
                 challenge: challenge,
                 redirectURL: redirectURL,
                 requestedScopes: scopes,
-                requestedConnectionIds: connectionIds
+                requestedConnectionIds: connectionIds,
+                state: state,
+                responseMode: responseMode
             )
         ))
     }

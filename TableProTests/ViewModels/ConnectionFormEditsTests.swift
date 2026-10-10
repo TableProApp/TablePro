@@ -221,5 +221,20 @@ struct ConnectionFormEditsTests {
             ConnectionFormEdits.appManagedAdditionalFieldIDs
                 .contains(DatabaseConnection.sshForwardUnixSocketPathKey)
         )
+        #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(MySQLLocalSocket.fieldKey))
+    }
+
+    @Test("Switching a socket connection back to Host and Port removes the socket")
+    func hostAndPortRemovesTheSocket() {
+        var original = populatedConnection()
+        original.type = .mysql
+        original.additionalFields = [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+
+        let result = edits(
+            additionalFields: [:],
+            ownedAdditionalFieldIDs: ConnectionFormEdits.appManagedAdditionalFieldIDs
+        ).applied(to: original)
+
+        #expect(result.additionalFields[MySQLLocalSocket.fieldKey] == nil)
     }
 }

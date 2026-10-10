@@ -433,6 +433,11 @@ extension PluginManager {
             .connection.defaultUnixSocketPath
     }
 
+    func defaultLocalSocketPath(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .connection.defaultLocalSocketPath
+    }
+
     func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
         containerEntityName(for: databaseType) + "s"
     }

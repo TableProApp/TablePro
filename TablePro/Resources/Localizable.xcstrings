@@ -34459,11 +34459,52 @@
       }
     },
     "Change this in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modifiez ce réglage dans Réglages > Intégrations."
+          }
+        }
+      }
+    },
+    "Change this in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifiez ce réglage dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 > MCP에서 변경할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu Ayarlar > MCP bölümünden değiştirin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thay đổi trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在“设置 > MCP”中更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在「設定 > MCP」中變更。"
           }
         }
       }
@@ -93262,6 +93303,7 @@
       }
     },
     "Integrations" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93302,6 +93344,7 @@
       }
     },
     "Integrations Activity" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93383,6 +93426,7 @@
       }
     },
     "Integrations…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -94043,6 +94087,9 @@
           }
         }
       }
+    },
+    "Invalid parameter: %@" : {
+
     },
     "Invalid path: %@" : {
       "extractionState" : "manual",
@@ -105608,6 +105655,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MCP 存取要求"
+          }
+        }
+      }
+    },
+    "MCP Activity" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activité MCP"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 활동"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP Etkinliği"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoạt động MCP"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活動"
+          }
+        }
+      }
+    },
+    "MCP Activity…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activité MCP…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 활동…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP Etkinliği…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoạt động MCP…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活动…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 活動…"
           }
         }
       }
@@ -151605,6 +151732,7 @@
       }
     },
     "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -151640,6 +151768,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "執行 claude 命令列工具，因此聊天會計入你的 Claude 訂閱。資料庫工具需要在「設定 > 整合」中開啟 MCP 伺服器。"
+          }
+        }
+      }
+    },
+    "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exécute l’outil en ligne de commande claude pour que la discussion soit facturée sur votre abonnement Claude. Les outils de base de données nécessitent d’activer le serveur MCP dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "claude 명령줄 도구를 실행하므로 채팅 사용량은 Claude 구독에 청구됩니다. 데이터베이스 도구를 사용하려면 설정 > MCP에서 MCP 서버를 켜야 합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "claude komut satırı aracını çalıştırır, böylece sohbet Claude aboneliğinizden düşer. Veritabanı araçları için Ayarlar > MCP altında MCP sunucusunun açık olması gerekir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạy công cụ dòng lệnh claude nên phần chat sẽ tính vào gói đăng ký Claude của bạn. Các công cụ cơ sở dữ liệu cần bật máy chủ MCP trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行 claude 命令行工具，因此聊天会计入你的 Claude 订阅。数据库工具需要在“设置 > MCP”中开启 MCP 服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行 claude 命令列工具，因此聊天會計入你的 Claude 訂閱。資料庫工具需要在「設定 > MCP」中開啟 MCP 伺服器。"
           }
         }
       }
@@ -190678,6 +190846,10 @@
         }
       }
     },
+    "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
         "fr" : {
@@ -194620,11 +194792,52 @@
       }
     },
     "This server has no credential. Add its token in Settings > Integrations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce serveur n’a pas d’identifiant. Ajoutez son jeton dans Réglages > Intégrations."
+          }
+        }
+      }
+    },
+    "This server has no credential. Add its token in Settings > MCP." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur n’a pas d’identifiant. Ajoutez son jeton dans Réglages > MCP."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에 자격 증명이 없습니다. 설정 > MCP에서 토큰을 추가하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucunun kimlik bilgisi yok. Token'ını Ayarlar > MCP bölümünden ekleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ này chưa có thông tin xác thực. Hãy thêm token của nó trong Cài đặt > MCP."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器没有凭据。请在“设置 > MCP”中添加其令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器沒有憑證。請在「設定 > MCP」中加入其權杖。"
           }
         }
       }

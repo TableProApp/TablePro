@@ -18,6 +18,7 @@ Raycast extension with `open()` from `@raycast/api`.
 | [`import?…`](#import-a-connection) | A review sheet that saves a new connection |
 | [`integrations/pair?…`](#start-pairing) | The pairing approval sheet |
 | [`integrations/start-mcp`](#lazy-start-the-mcp-server) | Nothing. Starts the MCP server and returns |
+| [`settings/<pane>`](#open-a-settings-pane) | Settings on that pane, or on the last-used pane |
 
 ## Connection IDs are UUIDs
 
@@ -99,7 +100,7 @@ To run SQL from a script and read rows back, use the MCP
 ## Start pairing
 
 ```text
-tablepro://integrations/pair?client=<name>&challenge=<base64url>&redirect=<url>&scopes=<scope>&connection-ids=<csv>
+tablepro://integrations/pair?client=<name>&challenge=<base64url>&redirect=<url>&response_mode=<mode>&state=<state>&scopes=<scope>&connection-ids=<csv>
 ```
 
 Opens the approval sheet. The user picks scope, connections and expiry, and TablePro returns a
@@ -109,23 +110,18 @@ one-time code to `redirect`.
 |-----------|----------|-------------|
 | `client` | yes | Display name shown in the approval sheet, such as `Raycast on macbook-pro`. |
 | `challenge` | yes | Base64url SHA-256 of the verifier: exactly 43 characters (PKCE). |
-| `redirect` | yes | Where the code is delivered. A loopback `http(s)` URL or a private-use scheme registered by an installed app; anything else is refused. |
+| `redirect` | yes | Where the code is delivered. A loopback `http(s)` URL or a private-use scheme registered by an installed app; anything else is refused, including `tablepro://` and any scheme a web browser handles. |
+| `response_mode` | no | `query` for flat `code` and `state` parameters, `context` for one JSON `context` parameter. Any other value refuses the link. Leaving it out is deprecated: see [Response modes](/developers/pairing#response-modes). |
+| `state` | no | Opaque value of up to 1,024 UTF-8 bytes, returned unchanged with the code or the error. A longer one refuses the link. |
 | `scopes` | no | One value: `readWrite` or `fullAccess`. Matching is case-insensitive and takes `read_write`, `read-write`, `full_access`, `full-access` and `full`. Any other value, or none, requests `readOnly`. |
 | `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Only omitting it means every connection: an empty value, or one entry that is not a UUID, refuses the link. |
 
-These parameters are a request, not a grant: the sheet lets the user raise or lower every one of
-them.
+`scopes` and `connection-ids` are a request, not a grant: the sheet lets the user raise or lower
+both.
 
-```ts
-import { open } from "@raycast/api";
-
-const params = new URLSearchParams({
-  client: "Raycast on macbook-pro",
-  challenge: challengeB64Url,
-  redirect: "raycast://extensions/ngoquocdat/tablepro/pair-callback",
-  scopes: "readWrite",
-});
-await open(`tablepro://integrations/pair?${params}`);
+```bash
+# The challenge for the RFC 7636 sample verifier, and a loopback listener on port 7391
+open "tablepro://integrations/pair?client=My%20Launcher&challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&redirect=http%3A%2F%2F127.0.0.1%3A7391%2Fcallback&response_mode=query&state=af0ifjsldkj&scopes=readWrite"
 ```
 
 [Pairing](/developers/pairing) has the exchange step and the error codes.
@@ -140,8 +136,7 @@ Starts the MCP server if it is not running, then returns. MCP does not have to b
 first. The bundled `tablepro-mcp` CLI uses this to bootstrap on a cold launch.
 
 The server takes the configured port (`23508` by default) and falls back to a kernel-assigned free
-port when that one is busy. Either way it writes the port it actually bound to a handshake file at
-`~/Library/Application Support/TablePro/mcp-handshake.json`.
+port when that one is busy. The **Status** row in **Settings > MCP** shows the port it bound.
 
 A launch whose only reason is this URL stays in the background: no Dock icon, no app switcher entry,
 until it has a window to show.
@@ -163,6 +158,46 @@ and `type` are required; the rest of the connection form maps to query parameter
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
 ```
+
+## Open a settings pane
+
+```text
+tablepro://settings
+tablepro://settings/<pane>
+```
+
+The bare link opens Settings on the last-used pane, the same as `Cmd+,`. With a pane id it opens that
+pane. The link only navigates and never changes a setting.
+
+| Pane | id |
+|---|---|
+| General | `general` |
+| Appearance | `appearance` |
+| Editor | `editor` |
+| Data | `data` |
+| Keyboard | `keyboard` |
+| Profiles | `profiles` |
+| Notifications | `notifications` |
+| AI | `ai` |
+| MCP | `mcp` |
+| Plugins | `plugins` |
+| Sync | `sync` |
+| License | `license` |
+
+Ids are lowercase and matched exactly, and they stay the same when a pane is renamed. An unknown id
+opens the last-used pane with no error, so a link to a pane added in a later version still opens
+Settings on an older one. Path segments and query items after the id are ignored.
+
+```bash
+open "tablepro://settings/mcp"
+```
+
+## On iPhone and iPad
+
+The iOS app answers two of these paths: `connect/<uuid>` opens the connection, and
+`connect/<uuid>/table/<table-name>` opens it on that table. Any other path under a connection, such as
+`database/…` or `query`, opens the connection alone. `import`, `integrations` and `settings` links do
+nothing.
 
 ## Errors
 
