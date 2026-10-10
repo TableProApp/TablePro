@@ -6,9 +6,6 @@
 import AppKit
 import SwiftUI
 
-/// Hosts the activity log and connected clients in an AppKit window so the app no longer needs a
-/// SwiftUI scene for it. One instance is kept for the app's lifetime, matching the single-window
-/// scene it replaces.
 @MainActor
 internal final class IntegrationsActivityWindowController: NSWindowController {
     private static var shared: IntegrationsActivityWindowController?
@@ -32,7 +29,7 @@ internal final class IntegrationsActivityWindowController: NSWindowController {
             detailMinimumThickness: 520
         )
 
-        let window = NSWindow.titled(String(localized: "Integrations Activity"), contentViewController: split)
+        let window = NSWindow.titled(String(localized: "MCP Activity"), contentViewController: split)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.integrationsActivity)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.contentMinSize = NSSize(width: 720, height: 400)

@@ -112,7 +112,7 @@ Browsershot::html($html)->windowSize(2400, 1500)->setScreenshotType('png')
 - Second person, present tense. Contractions are fine here.
 - Numbers instead of adjectives: "400 MB at idle", "three round trips", never "much faster".
 - Backticks on shortcuts, SQL keywords, identifiers, paths and config keys. Bold for menu paths:
-  `**Settings > Integrations**`.
+  `**Settings > MCP**`.
 - Tables only for tabular things, two per post at most.
 - State a limit flatly and without apology. Never call a competitor bad; say what it costs.
 - No em dashes, no banned words (`scripts/banned-words.txt` in the TablePro repo), US spelling to

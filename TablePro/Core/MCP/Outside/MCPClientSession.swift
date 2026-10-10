@@ -25,7 +25,7 @@ internal enum MCPClientError: Error, Equatable, Sendable {
     internal var localizedMessage: String {
         switch self {
         case .notConfigured:
-            return String(localized: "This server has no credential. Add its token in Settings > Integrations.")
+            return String(localized: "This server has no credential. Add its token in Settings > MCP.")
         case .timedOut:
             return String(localized: "The server did not answer in time.")
         case .transport(let detail):
