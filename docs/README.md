@@ -13,8 +13,9 @@ docs/
 ├── databases/               # Database connection guides
 ├── features/                # Feature documentation
 ├── customization/           # Settings and customization
-├── external-api/            # URL scheme, MCP, pairing
-└── development/             # Developer documentation
+├── integrations/            # Using TablePro with other tools
+├── developers/              # URL scheme, AppleScript, MCP, pairing
+└── development/             # Contributing
 ```
 
 ## Local Development

@@ -137,7 +137,7 @@ Replace `23508` with the port shown in **Settings > Integrations**. Other client
 
 Three things change on this route. The server binds `127.0.0.1` over plain HTTP with no remote mode and no TLS, so a client on another machine needs an SSH port forward. `GET /mcp` answers `405`, so a client that opens a `GET` stream for notifications fails; notifications ride the response stream of the request they belong to. And `2025-11-25` and `2025-06-18` still work through the old `initialize` handshake and `Mcp-Session-Id`, while `2025-03-26` is refused.
 
-Writing a client against `2026-07-28` directly means sending the required `_meta` and headers on every request. See [MCP Protocol](/external-api/mcp-protocol).
+Writing a client against `2026-07-28` directly means sending the required `_meta` and headers on every request. See [MCP Protocol](/developers/mcp-protocol).
 
 ## Check it worked
 
@@ -147,7 +147,7 @@ Ask the client to list TablePro tools, or call `list_connections`.
 The tool list contains `list_connections`, `list_tables`, `describe_table` and `execute_query`, and `list_connections` returns your saved connections.
 </Check>
 
-Clients see the full [tool catalog](/external-api/mcp-tools), the [resources](/external-api/mcp-resources) and the [prompts](/external-api/mcp-prompts), and the server's instructions tell the model to start from `list_connections` and call `describe_table` before writing SQL. A connection's **External Clients** level and the token's scope still apply on top of that.
+Clients see the full [tool catalog](/developers/mcp-tools), the [resources](/developers/mcp-resources) and the [prompts](/developers/mcp-prompts), and the server's instructions tell the model to start from `list_connections` and call `describe_table` before writing SQL. A connection's **External Clients** level and the token's scope still apply on top of that.
 
 ## When it does not work
 
@@ -179,4 +179,4 @@ The bridge token is stale. The bridge re-reads the handshake and retries once on
 
 ### Rate limited (`-33010`)
 
-Five failed auth attempts inside 60 seconds triggered a 5-minute lockout. Wait it out, or restart TablePro. The other [rate limits](/external-api/tokens#rate-limits) return the same code.
+Five failed auth attempts inside 60 seconds triggered a 5-minute lockout. Wait it out, or restart TablePro. The other [rate limits](/developers/tokens#rate-limits) return the same code.

@@ -18,16 +18,16 @@ methods no older version can reach, and it is what a new client should be built 
 Older versions keep working through `initialize` and `Mcp-Session-Id` so a shipped client does not
 break on an app update, and they see a reduced feature set. One stays accepted for as long as the
 [specification](https://modelcontextprotocol.io) lists it as current or recent. Dropping one is a
-`Removed` entry in the CHANGELOG, never a silent change. [MCP Protocol](/external-api/mcp-protocol)
+`Removed` entry in the CHANGELOG, never a silent change. [MCP Protocol](/developers/mcp-protocol)
 has the version list and the per-era differences.
 
 For stdio clients this is somebody else's problem: the bundled `tablepro-mcp` bridge answers the
 client's `initialize` locally and speaks the newest version upstream. See
-[MCP Clients](/external-api/mcp-clients).
+[MCP Clients](/integrations/mcp-clients).
 
 ## Stability rules
 
-Within a major TablePro version the External API is additive only:
+Within a major TablePro version every covered surface is additive only:
 
 - New URL scheme actions, MCP tools, prompts, resources and error codes can appear.
 - A new tool input field can appear when it is optional and has a default.
@@ -43,14 +43,14 @@ And within a major version, none of these happen:
 
 Error codes are the one place this already moved. TablePro's own codes left the `-32000` block, which
 the specification froze, for `-33000` and above; a client that matched on the old numbers needs
-updating once. The current table is in [MCP Protocol](/external-api/mcp-protocol#errors).
+updating once. The current table is in [MCP Protocol](/developers/mcp-protocol#errors).
 
 ## Breaking changes before 1.0
 
 The app is on 0.x, so the minor version is the release boundary. A break can land between 0.67 and
 0.68, but never silently. Once 1.0 ships, breaks move to major bumps.
 
-Nothing in the External API is deprecated right now. When something is, it is deprecated in the docs
+Nothing under the contract is deprecated right now. When something is, it is deprecated in the docs
 first, with the replacement named and a CHANGELOG entry to match. It then keeps working for at least
 one more minor version. A later release removes it, marked `BREAKING` in the CHANGELOG.
 

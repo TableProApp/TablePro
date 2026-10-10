@@ -82,7 +82,7 @@ Tables using the older `INHERITS` inheritance are listed normally, each child on
 
 <DeclaredColumnType />
 
-That is what the [Structure tab](/features/table-structure) shows, what the [MCP tools](/external-api/mcp-tools) report as `data_type`, and what the AI context and autocomplete carry. An enum column keeps its value picker, and a domain column keeps the editor, formatting and sorting of the type underneath it.
+That is what the [Structure tab](/features/table-structure) shows, what the [MCP tools](/developers/mcp-tools) report as `data_type`, and what the AI context and autocomplete carry. An enum column keeps its value picker, and a domain column keeps the editor, formatting and sorting of the type underneath it.
 
 `jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 
@@ -151,7 +151,7 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 - Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
 - Session state belongs to one database. A temp table or an open transaction made on `app` is not visible from a tab on `logs`, and closing the `app` entry ends it, after asking first when a transaction is open.
 - Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew. `pg_dump` 15 and later refuse PostgreSQL 9.1, so back one up with `pg_dump` 14 or earlier.
-- Before PostgreSQL 12, the [`run_maintenance`](/external-api/mcp-tools) tool's `REINDEX` with no `table` runs without `CONCURRENTLY` and rebuilds the system catalog indexes as well. While an index rebuilds, writes to its table wait, and so do reads that use that index. Run it when the database is quiet.
+- Before PostgreSQL 12, the [`run_maintenance`](/developers/mcp-tools) tool's `REINDEX` with no `table` runs without `CONCURRENTLY` and rebuilds the system catalog indexes as well. While an index rebuilds, writes to its table wait, and so do reads that use that index. Run it when the database is quiet.
 
 ## Troubleshooting
 

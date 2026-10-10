@@ -75,7 +75,7 @@ Autocomplete is three pieces. `CompletionEngine` ranks the suggestions and knows
 
 `Core/MCP/` holds a Model Context Protocol server bound to loopback, speaking plain HTTP through `NWListener`. Nothing in it is reachable off the machine: no TLS, no remote mode. `MCPProtocolDispatcher` is an actor that resolves the protocol era from the request, checks scopes, runs each handler in its own task under a 330-second deadline, and normalizes the result envelope. `MCPServerManager` owns the lifecycle on the main actor: port binding, the bridge credential, the handshake file.
 
-The wire contract, the tool catalog, and the version policy are documented for consumers: [MCP Protocol](/external-api/mcp-protocol), [MCP Tools](/external-api/mcp-tools), [Versioning](/external-api/versioning).
+The wire contract, the tool catalog, and the version policy are documented for consumers: [MCP Protocol](/developers/mcp-protocol), [MCP Tools](/developers/mcp-tools), [Versioning](/developers/versioning).
 
 ## Connecting
 
