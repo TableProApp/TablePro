@@ -303,9 +303,11 @@ jobs:
             exit 0
           fi
 
-          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+          RELEASES=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
             -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
-                | sort_by(.publishedAt) | last | .tagName')
+                | sort_by(.publishedAt) | .[].tagName')
+          # A re-run after this tag's release went out finds it among the published ones.
+          PREVIOUS_TAG=$(printf '%s\n' "$RELEASES" | grep -vxF "${GITHUB_REF#refs/tags/}" | tail -1)
           if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "null" ] \
              && git diff --quiet "$PREVIOUS_TAG" HEAD -- .github/release-flags.json; then
             echo "::error::criticalUpdate is true but .github/release-flags.json has not changed since $PREVIOUS_TAG, which is what a flag left over from the previous release looks like"
@@ -327,20 +329,28 @@ jobs:
           path: appcast/appcast.xml
           retention-days: 90
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          files: |
-            artifacts/*.dmg
-            artifacts/*.zip
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
+      # A published release is immutable, so every asset goes on the draft first.
+      - name: Create the draft release
+        id: draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          scripts/ci/draft-release.sh --prerelease "$PRERELEASE" "$TAG" "$TAG" release_notes.md \
+            artifacts/*.dmg artifacts/*.zip
+
+      - name: Publish the release
+        if: steps.draft.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=false \
+            --jq '"Published \(.tag_name): \(.html_url)"'
 
       # Publishing the feed comes after publishing the artifacts it points at, so there is no
-      # window where Sparkle advertises a download URL that still 404s.
+      # window where Sparkle advertises a download URL that still 404s. A draft's URLs 404 too.
       #
       # This step used to be continue-on-error, which made a failed push indistinguishable from
       # a release that went out clean: every user's updater would keep reporting "up to date"

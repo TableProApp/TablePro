@@ -162,6 +162,9 @@ jobs:
       - name: Validate the DMG script's arguments
         run: bash scripts/ci/test_create_dmg_args.sh
 
+      - name: Validate the release draft script
+        run: bash scripts/ci/test_draft_release.sh
+
       - name: Validate changelog contributor credits
         run: python3 scripts/ci/test_changelog_credits.py
 

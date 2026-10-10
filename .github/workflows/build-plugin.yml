@@ -111,6 +111,11 @@ jobs:
   build-plugin:
     name: "Build ${{ matrix.tag }} (PluginKit ${{ matrix.pluginKitVersion }})"
     needs: resolve-tags
+    # A dispatch runs under main's workflow group, so a tag push for the same plugin tag would
+    # otherwise stage its release at the same time.
+    concurrency:
+      group: build-plugin-release-${{ matrix.tag }}
+      cancel-in-progress: false
     permissions:
       contents: write
     runs-on: macos-26
@@ -273,7 +278,19 @@ jobs:
             echo "x86_64=$X86_SHA"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      # The checkout above is `baseRef` when one is given, and a shipped app tag can predate
+      # draft-release.sh.
+      - name: Check out the release script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
+      # A published release is immutable, so both zips go on the draft first.
+      - name: Create the draft release
+        id: draft
         env:
           GH_TOKEN: ${{ github.token }}
           MATRIX_TAG: ${{ matrix.tag }}
@@ -299,55 +316,32 @@ jobs:
           - ARM64: \`$ARM64_SHA\`
           - x86_64: \`$X86_SHA\`"
 
-          EXISTING_PKV=$(gh release view "$TAG" --json body --jq .body 2>/dev/null \
+          EXISTING_PKV=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .body 2>/dev/null \
             | grep -oiE 'PluginKit [0-9]+' | grep -oE '[0-9]+' | head -1 || true)
           if [ -n "$EXISTING_PKV" ] && [ "$EXISTING_PKV" != "$PKV" ]; then
             echo "::error::Release $TAG already exists for PluginKit $EXISTING_PKV. Refusing to overwrite it with PluginKit $PKV; publish the new ABI under a new plugin version."
             exit 1
           fi
 
-          # Three outcomes, decided before anything is destroyed. The old form deleted the
-          # release and recreated it, so a re-run of an already-published tag briefly left
-          # plugins.json pointing at URLs that 404, and permanently replaced assets that a
-          # published registry entry may point at. release-all-plugins.sh already states the
-          # policy: an existing tag's assets are not to be replaced.
           # Tagged at the commit this job built, which is `baseRef` when one was given. Without
           # --target GitHub tags the default branch's head instead, so a plugin built against a
           # shipped release recorded whatever main had moved on to: the v0.75.0 plugins point at a
           # commit carrying PluginKit 33, while their binaries are 32.
-          BUILT_COMMIT=$(git rev-parse HEAD)
+          NOTES="$(mktemp)"
+          printf '%s' "$RELEASE_BODY" > "$NOTES"
+          .release-tooling/scripts/ci/draft-release.sh --target "$(git rev-parse HEAD)" \
+            "$TAG" "$DISPLAY_NAME v$VERSION" "$NOTES" \
+            "build/Plugins/${BUNDLE_NAME}-arm64.zip" "build/Plugins/${BUNDLE_NAME}-x86_64.zip"
 
-          if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" \
-              --target "$BUILT_COMMIT" \
-              --title "$DISPLAY_NAME v$VERSION" \
-              --notes "$RELEASE_BODY" \
-              --latest=false \
-              "build/Plugins/${BUNDLE_NAME}-arm64.zip" \
-              "build/Plugins/${BUNDLE_NAME}-x86_64.zip"
-          else
-            # A release already here is either this same build resumed, or a different binary.
-            # Only the first is safe to continue from.
-            IDENTICAL=true
-            for ARCH in arm64 x86_64; do
-              EXPECTED=$(cut -d' ' -f1 < "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip.sha256")
-              WORK=$(mktemp -d)
-              if gh release download "$TAG" --pattern "${BUNDLE_NAME}-${ARCH}.zip" --dir "$WORK" 2>/dev/null; then
-                PUBLISHED=$(shasum -a 256 "$WORK/${BUNDLE_NAME}-${ARCH}.zip" | cut -d' ' -f1)
-                [ "$PUBLISHED" = "$EXPECTED" ] || IDENTICAL=false
-              else
-                IDENTICAL=false
-              fi
-              rm -rf "$WORK"
-            done
-
-            if [ "$IDENTICAL" = true ]; then
-              echo "Release $TAG already carries these exact binaries; continuing to the registry step."
-            else
-              echo "::error::Release $TAG already exists with different binaries. Refusing to replace assets a published registry entry may point at; bump the patch version and release a new tag."
-              exit 1
-            fi
-          fi
+      # Without make_latest=false, publishing marks the plugin release Latest instead of the app's.
+      - name: Publish the release
+        if: steps.draft.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false -f make_latest=false --jq '"Published \(.tag_name): \(.html_url)"'
 
       - name: Verify published assets match the PluginKit label
         env:

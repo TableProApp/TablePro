@@ -72,7 +72,8 @@ git add Libs/checksums.sha256 && git commit -m "build: update static library che
 
 Name every library you rebuilt. `publish-libs.sh` verifies each library you did *not* name against
 the checksums at `HEAD`, regenerates `Libs/checksums.sha256`, and uploads the archive with
-`--clobber`.
+`--clobber`. `libs-v1` predates release immutability, so GitHub keeps it mutable. Both publish
+scripts stop before touching a checksum file if it ever reports immutable.
 
 The iOS xcframeworks go through their own script, which takes `--dry-run` and refuses a publish
 that changes nothing:
@@ -100,9 +101,21 @@ Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64`
 Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
 app blocks the tag.
 
-The release job then verifies the artifacts, signs both update archives with the Sparkle key,
-extracts the release notes from `CHANGELOG.md`, publishes the GitHub release, and only afterwards
-commits `appcast.xml`. A tag containing `-alpha`, `-beta` or `-rc` publishes as a prerelease.
+The release job then verifies the artifacts, signs both update archives with the Sparkle key and
+extracts the release notes from `CHANGELOG.md`. It creates the GitHub release as a draft with both
+DMGs and both ZIPs on it, publishes the draft in one step, and only then commits `appcast.xml`, whose
+download URLs 404 until the release is public. A tag containing `-alpha`, `-beta` or `-rc` publishes
+as a prerelease.
+
+A published release is immutable: GitHub refuses to add, replace or delete an asset, or to move the
+tag. When a run fails:
+
+- Before **Publish the release**, only a draft exists. Fix forward on `main`, move the tag and push it
+  again. The next run reuses the draft.
+- After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
+  the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
+  refuses the new files.
+- A published build that is wrong ships as a new version.
 
 `generate_appcast` sees only the release being published, never the existing feed, and
 `scripts/ci/merge-appcast.py` splices its two items into `appcast.xml` afterwards. Items already

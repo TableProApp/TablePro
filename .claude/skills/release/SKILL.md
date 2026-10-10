@@ -178,10 +178,19 @@ git push origin v<version>
   Conventional Commit of at most 72 characters.
 
 The tag runs `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP, Sparkle signatures,
-`appcast.xml`, and the GitHub Release with notes from `CHANGELOG.md`. It publishes only when `lint`,
-`test`, `build` and `registry-readiness` pass, and fails when the tag disagrees with
-`MARKETING_VERSION`. Nothing is public before its last job, so fix a failed run forward on `main` and
-move the tag: `git tag -f -a v<version> -m "v<version>"`, then `git push origin v<version> --force`.
+the GitHub Release with notes from `CHANGELOG.md`, then `appcast.xml`. The release is created as a
+draft holding every asset and published in one step, only when `lint`, `test`, `build` and
+`registry-readiness` pass. The job fails when the tag disagrees with `MARKETING_VERSION`.
+
+A published release is immutable: its assets and its tag are locked. When a run fails:
+
+- Before **Publish the release**, only a draft exists. Fix forward on `main` and move the tag:
+  `git tag -f -a v<version> -m "v<version>"`, then `git push origin v<version> --force`. The next run
+  reuses the draft.
+- After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
+  the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
+  refuses the new files.
+- A published build that is wrong ships as a new version.
 
 ### Withdraw a release
 
@@ -224,6 +233,8 @@ git push origin plugin-<slug>-v<version>
 - Wait for the app build first (`gh run list --workflow build.yml --limit 1`). Five macOS jobs run at
   a time, and plugin builds would queue the release's own tests.
 - Confirm a run started for each tag: `gh run list --workflow build-plugin.yml --limit 10`.
+- A published plugin release cannot take a rebuilt binary, and a rebuild never matches the published
+  bytes. A plugin run that fails after its release is published ships as the next patch version.
 
 ### PluginKit
 
