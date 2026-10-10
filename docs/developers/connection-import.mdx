@@ -11,7 +11,7 @@ field, and a review sheet the user reads before anything is saved.
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin
 ```
 
-`name`, `host` and `type` are required, except that `socket` stands in for `host`. `type` takes any registered database type name,
+`name`, `host` and `type` are required. `socket` can stand in for `host`. `type` takes any registered database type name,
 case-insensitive: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`,
 `Cassandra`, and every other type a loaded plugin registers.
 
@@ -24,7 +24,7 @@ values that contain spaces: `sslMode=Verify%20CA`.
 | Parameter | Description |
 |-----------|-------------|
 | `port` | Server port. Defaults to the type's standard port. |
-| `socket` | MySQL and MariaDB: the absolute path of the server's socket file on this Mac, at most 103 bytes. Replaces `host` and `port`, and `host` defaults to `localhost`. Ignored for other types and with `ssh=1`. A relative or longer path, or one holding a control or invisible character, refuses the link. `af_localSocketPath` is read the same way. |
+| `socket` | MySQL and MariaDB. Socket file path, in place of `host` and `port`. See [Socket](#socket). |
 | `username` | Database username. |
 | `database` | Default database name. |
 | `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, `Gray` or `None`. Falls back to `None`. |
@@ -38,6 +38,14 @@ values that contain spaces: `sslMode=Verify%20CA`.
 | `connectTimeoutSeconds` | Seconds to wait for the connection, `1` to `600`. Out of range falls back to the app default. |
 | `queryTimeoutSeconds` | Seconds a query may run before it is canceled, `0` to `2147483`. `0` turns the limit off. Out of range falls back to the app default. |
 | `localOnly` | `1` keeps the connection off iCloud sync. |
+
+### Socket
+
+- `host` becomes optional and defaults to `localhost`.
+- Other types and `ssh=1` ignore `socket`.
+- The path must start with `/` and fit in 103 bytes.
+- A path with a control or invisible character refuses the link.
+- `af_localSocketPath` is read the same way.
 
 ## SSH parameters
 
