@@ -152,6 +152,41 @@ struct ImportReviewTests {
         #expect(!review.isImporting)
     }
 
+    @Test("Unchecking the saved query header also reaches a row another selected row adds")
+    func headerReachesRowsAddedByAnotherRow() throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(Self.orders, ref: "c1")
+        var twin = Self.orders
+        twin.name = "Orders twin"
+        builder.addConnection(twin, ref: "c2")
+        builder.addSavedQuery(name: "Locks", sql: "SELECT 2", keyword: nil, connection: "c1", ref: "q1")
+        builder.addSavedQuery(name: "Locks", sql: "SELECT 2", keyword: nil, connection: "c2", ref: "q2")
+        let collected = CollectedImport(bundle: try builder.build(), source: .file(name: "Tests.tablepro"))
+        let existing = ImportLibrarySnapshot.Connection(id: UUID(), name: "Orders", matchKey: ConnectionMatchKey(Self.orders))
+        let preview = ConnectionImportAnalyzer.analyze(
+            collected,
+            library: ImportLibrarySnapshot(connections: [existing]),
+            environment: ImportEnvironment(
+                rules: ImportRules(maximumGroupDepth: 3, supportsSavedQueries: true, supportsCredentialProfiles: true),
+                registeredTypeIds: ["MySQL"],
+                fileExists: { _ in true }
+            )
+        )
+        let review = ImportReview(preview: preview, library: RecordingLibraryStore(), savedQueries: nil)
+        for row in preview.connections {
+            review.setSelected(true, row)
+        }
+        let held = try #require(query("q2", in: review))
+        #expect(review.status(of: held)?.availability == .addedByAnotherRow)
+        #expect(review.queryToggles.count == 2)
+
+        for toggle in review.queryToggles {
+            toggle.wrappedValue = false
+        }
+
+        #expect(review.plan.queries.isEmpty)
+    }
+
     private func makeReview(
         settings: ExportableConnection = ImportReviewTests.orders,
         existing: UUID? = nil,

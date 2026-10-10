@@ -57,6 +57,8 @@ internal struct ImportQueryRowView: View {
     static func note(for row: QueryRow, status: QueryStatus?) -> String? {
         guard let status else { return nil }
         switch status.availability {
+        case .addedByAnotherRow:
+            return String(localized: "Another selected row adds the same query.")
         case .connectionSkipped:
             return String(localized: "Its connection is not imported.")
         case .tooLarge:

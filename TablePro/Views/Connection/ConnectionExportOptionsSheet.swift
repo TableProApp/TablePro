@@ -251,7 +251,8 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private var exportOptions: BundleExportOptions {
-        let hasSavedQueries = (savedQueryCounts.map { $0.connectionScoped + $0.global } ?? 0) > 0
+        // Until the counts arrive the exporter reads the queries itself, so the default still applies.
+        let hasSavedQueries = savedQueryCounts.map { $0.connectionScoped + $0.global > 0 } ?? true
         let includesSavedQueries = hasSavedQueries && includeSavedQueries
         return BundleExportOptions(
             includesCredentials: includeCredentials && isProAvailable,

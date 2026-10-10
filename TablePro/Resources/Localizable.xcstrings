@@ -861,6 +861,9 @@
         }
       }
     },
+    "“%@” is not a host or host:port" : {
+
+    },
     "\"%@\" is not a library." : {
       "localizations" : {
         "fr" : {
@@ -4323,6 +4326,9 @@
           }
         }
       }
+    },
+    "%@ needs an SSL Mode other than Disabled" : {
+
     },
     "%@ needs every key in the same hash slot. Give the keys a shared hash tag, like {user}:1 and {user}:2." : {
       "extractionState" : "manual",
@@ -9250,6 +9256,16 @@
         }
       }
     },
+    "%d of %d connections selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d connections selected"
+          }
+        }
+      }
+    },
     "%d of %d rows" : {
       "localizations" : {
         "en" : {
@@ -9339,6 +9355,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已選取 %1$d / %2$d 列"
+          }
+        }
+      }
+    },
+    "%d of %d saved queries selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d saved queries selected"
           }
         }
       }
@@ -9825,6 +9851,21 @@
           }
         }
       }
+    },
+    "%d saved queries found" : {
+
+    },
+    "%d saved queries that belong to these connections, with their folders and keywords." : {
+
+    },
+    "%d saved queries that every connection shows." : {
+
+    },
+    "%d saved queries were added." : {
+
+    },
+    "%d saved queries were not imported." : {
+
     },
     "%d selected" : {
       "localizations" : {
@@ -13127,6 +13168,21 @@
         }
       }
     },
+    "1 saved query found" : {
+
+    },
+    "1 saved query that belongs to these connections, with its folder and keyword." : {
+
+    },
+    "1 saved query that every connection shows." : {
+
+    },
+    "1 saved query was added." : {
+
+    },
+    "1 saved query was not imported." : {
+
+    },
     "1 statement" : {
       "localizations" : {
         "fr" : {
@@ -14930,7 +14986,11 @@
         }
       }
     },
+    "A connection to this server is already saved as “%@”." : {
+
+    },
     "A connection with this name, host, and type already exists." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -16077,6 +16137,9 @@
           }
         }
       }
+    },
+    "A saved query with this name exists." : {
+
     },
     "A schema with this name already exists." : {
       "localizations" : {
@@ -21679,6 +21742,9 @@
         }
       }
     },
+    "All connections" : {
+
+    },
     "All Connections" : {
       "localizations" : {
         "fr" : {
@@ -21971,6 +22037,7 @@
       }
     },
     "All selected connections were skipped." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -22656,6 +22723,9 @@
         }
       }
     },
+    "already saved" : {
+
+    },
     "Also handles" : {
       "localizations" : {
         "fr" : {
@@ -22695,6 +22765,9 @@
           }
         }
       }
+    },
+    "Also include global saved queries" : {
+
     },
     "Alternate Row" : {
       "localizations" : {
@@ -24249,6 +24322,9 @@
           }
         }
       }
+    },
+    "Another selected row adds the same query." : {
+
     },
     "Another source column is mapped to the same destination column." : {
       "localizations" : {
@@ -54350,6 +54426,9 @@
         }
       }
     },
+    "Credential profiles can't be read right now, so connections keep their own credentials." : {
+
+    },
     "Credentials" : {
       "localizations" : {
         "fr" : {
@@ -72469,6 +72548,9 @@
         }
       }
     },
+    "Everything selected was already in your library." : {
+
+    },
     "Exact value" : {
       "localizations" : {
         "fr" : {
@@ -88677,6 +88759,9 @@
         }
       }
     },
+    "Import Commands?" : {
+
+    },
     "Import Complete" : {
       "localizations" : {
         "fr" : {
@@ -89051,6 +89136,9 @@
           }
         }
       }
+    },
+    "Import Failed" : {
+
     },
     "Import failed at line %lld: %@" : {
       "extractionState" : "stale",
@@ -89479,6 +89567,9 @@
         }
       }
     },
+    "Import Incomplete" : {
+
+    },
     "Import into" : {
       "localizations" : {
         "fr" : {
@@ -89680,6 +89771,7 @@
       }
     },
     "Import Tunnel Commands?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -90757,6 +90849,12 @@
           }
         }
       }
+    },
+    "Include saved queries" : {
+
+    },
+    "Include Saved Queries" : {
+
     },
     "Include the version segment your server uses, such as /v1 or /v4." : {
       "localizations" : {
@@ -94750,6 +94848,9 @@
         }
       }
     },
+    "Its connection is not imported." : {
+
+    },
     "Its definition is written in %1$@'s own SQL, which %2$@ does not parse." : {
       "localizations" : {
         "fr" : {
@@ -95495,6 +95596,9 @@
           }
         }
       }
+    },
+    "Keep Existing, Add Queries" : {
+
     },
     "Keep leading zeros in ZIP codes, phone numbers, and IDs by outputting all values as strings" : {
       "extractionState" : "stale",
@@ -96594,6 +96698,15 @@
           }
         }
       }
+    },
+    "Keyword “%@”" : {
+
+    },
+    "Keyword “%@” is in use, so it imports without one." : {
+
+    },
+    "Keyword “%@” is not valid, so it imports without one." : {
+
     },
     "Keyword cannot contain spaces" : {
       "localizations" : {
@@ -104394,6 +104507,9 @@
         }
       }
     },
+    "Matches “%@”" : {
+
+    },
     "matches regex" : {
       "localizations" : {
         "fr" : {
@@ -109803,6 +109919,9 @@
         }
       }
     },
+    "Navicat's export file has no saved queries." : {
+
+    },
     "Navigating to another page will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -112905,6 +113024,7 @@
       }
     },
     "No Connections Imported" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -120058,6 +120178,9 @@
           }
         }
       }
+    },
+    "Nothing Imported" : {
+
     },
     "Nothing in this column can be drawn. The coordinates are out of range for their coordinate system, or a line or ring has too few points." : {
 
@@ -136351,6 +136474,9 @@
           }
         }
       }
+    },
+    "Query consoles import with their data source. Consoles with a default name start unchecked." : {
+
     },
     "Query executed successfully" : {
       "localizations" : {
@@ -153347,6 +153473,15 @@
         }
       }
     },
+    "Saved queries are written as readable text unless the file is encrypted." : {
+
+    },
+    "Saved queries can't be read right now, so they are not imported." : {
+
+    },
+    "Saved queries import for every connection, in a folder named “%@”." : {
+
+    },
     "Saved Query" : {
       "localizations" : {
         "fr" : {
@@ -155071,6 +155206,9 @@
           }
         }
       }
+    },
+    "Scripts import with the connection they run on. Scripts with a default name start unchecked." : {
+
     },
     "Scroll them" : {
       "localizations" : {
@@ -168983,6 +169121,9 @@
         }
       }
     },
+    "Startup SQL: %@" : {
+
+    },
     "State" : {
       "localizations" : {
         "fr" : {
@@ -175994,6 +176135,12 @@
         }
       }
     },
+    "TablePro could not read your connection library, so nothing was imported." : {
+
+    },
+    "TablePro could not read your saved connections, so it did not save over them." : {
+
+    },
     "TablePro could not tell how this Dameng server treats backslashes, so it will not send a value that contains one. Reconnect, then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -181486,6 +181633,9 @@
         }
       }
     },
+    "The connections could not be saved." : {
+
+    },
     "the copy failed its integrity check: %@" : {
       "localizations" : {
         "fr" : {
@@ -185930,6 +186080,12 @@
         }
       }
     },
+    "The saved queries could not be read. Nothing was exported." : {
+
+    },
+    "The saved queries could not be saved." : {
+
+    },
     "The saved tags could not be read. Nothing was changed." : {
       "localizations" : {
         "fr" : {
@@ -189626,6 +189782,9 @@
         }
       }
     },
+    "These connections run commands every time they connect: a tunnel command on this Mac, SQL on the server, or both.\n\n%@" : {
+
+    },
     "These databases have open transactions: %@. Closing rolls them back and discards their uncommitted changes." : {
       "localizations" : {
         "fr" : {
@@ -190427,6 +190586,9 @@
           }
         }
       }
+    },
+    "This connection link could not be read: %@" : {
+
     },
     "This connection loads SQLite extensions that have not been approved on this Mac." : {
       "localizations" : {
@@ -197237,6 +197399,9 @@
           }
         }
       }
+    },
+    "Too large to save (%@)" : {
+
     },
     "Too many lines differ to compare line by line." : {
       "localizations" : {

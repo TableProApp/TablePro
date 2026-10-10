@@ -97,6 +97,8 @@ public struct QueryStatus: Sendable, Equatable {
     public enum Availability: Sendable, Equatable {
         case available
         case alreadySaved
+        /// Another selected row in this import adds the same query to the same connection.
+        case addedByAnotherRow
         case tooLarge
         case connectionSkipped
     }

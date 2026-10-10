@@ -92,6 +92,44 @@ struct ImportPlannerSavedQueryTests {
         #expect(!result.isEmpty)
     }
 
+    @Test("A query another selected row adds is held back, and keeps its own choice for when that row goes")
+    func queryAddedByAnotherRow() throws {
+        let bundle = try Fixtures.makeBundle(
+            connections: [
+                BundleConnection(ref: "c1", settings: Fixtures.settings(name: "One")),
+                BundleConnection(ref: "c2", settings: Fixtures.settings(name: "Two"))
+            ],
+            savedQueries: [
+                BundleSavedQuery(ref: "q1", name: "Locks", sql: "select 1", connectionRef: "c1"),
+                BundleSavedQuery(ref: "q2", name: "Locks", sql: "select 1", connectionRef: "c2")
+            ]
+        )
+        let library = ImportLibrarySnapshot(connections: [Fixtures.existing(Fixtures.settings(), id: existingId)])
+        let preview = Fixtures.makePreview(bundle, library: library)
+        let selectBoth: (inout ImportSelection) -> Void = { selection in
+            selection.setSelected(true, connection: "c1", in: preview)
+            selection.setSelected(true, connection: "c2", in: preview)
+        }
+
+        let both = plan(preview, selectBoth)
+        #expect(both.keptConnections == ["c1": existingId, "c2": existingId])
+        #expect(both.queryStatuses["q2"] == unavailable(.addedByAnotherRow))
+        #expect(both.queries.map(\.ref) == ["q1"])
+
+        let firstOff = plan(preview) { selection in
+            selectBoth(&selection)
+            selection.setIncluded(false, query: "q1")
+        }
+        #expect(firstOff.queries.map(\.ref) == ["q2"])
+
+        let noneWanted = plan(preview) { selection in
+            selectBoth(&selection)
+            selection.setIncluded(false, query: "q1")
+            selection.setIncluded(false, query: "q2")
+        }
+        #expect(noneWanted.queries.isEmpty)
+    }
+
     @Test("Replace scopes queries to the replaced connection")
     func replaceScope() throws {
         let preview = try duplicatePreview(

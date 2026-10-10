@@ -17,7 +17,8 @@ extension ImportPlanner {
             sources[query.ref] = query
         }
 
-        var ledger = SavedQueryLedger(preview.library.savedQueries)
+        let library = SavedQueryLedger(preview.library.savedQueries)
+        var ledger = library
         var plan = SavedQueryPlan()
         for row in preview.queries {
             let scope: UUID?
@@ -40,9 +41,11 @@ extension ImportPlanner {
             case .tooLarge:
                 plan.statuses[row.ref] = unavailable(.tooLarge)
             case .alreadySaved:
-                plan.statuses[row.ref] = unavailable(.alreadySaved)
+                let savedHere = library.verdict(name: row.name, sql: source.sql, keyword: row.keyword, scope: scope)
+                    == .alreadySaved
+                plan.statuses[row.ref] = unavailable(savedHere ? .alreadySaved : .addedByAnotherRow)
             case .insert(let keyword, let dropped, let nameExists):
-                let isIncluded = selection.queryOverride(row.ref) ?? row.isSuggested
+                let isIncluded = selection.wantsQuery(row)
                 plan.statuses[row.ref] = QueryStatus(
                     availability: .available,
                     isIncluded: isIncluded,

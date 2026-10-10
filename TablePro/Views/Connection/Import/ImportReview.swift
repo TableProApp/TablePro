@@ -85,12 +85,13 @@ internal final class ImportReview: ObservableObject {
         }
     }
 
+    /// Rows another selected row already adds stay in the header's set, so unchecking it reaches them too.
     var queryToggles: [Binding<Bool>] {
         preview.queries
-            .filter { status(of: $0)?.availability == .available }
+            .filter { [.available, .addedByAnotherRow].contains(status(of: $0)?.availability) }
             .map { row in
                 Binding(
-                    get: { [weak self] in self?.status(of: row)?.isIncluded ?? false },
+                    get: { [weak self] in self?.selection.wantsQuery(row) ?? false },
                     set: { [weak self] in self?.setIncluded($0, row) }
                 )
             }

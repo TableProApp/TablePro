@@ -65,6 +65,12 @@ public struct ImportSelection: Sendable, Equatable {
         queryOverrides[ref] = included
     }
 
+    /// The user's choice for a row, which can differ from whether it imports: a row another
+    /// selected row already adds keeps its choice for when that row is unchecked.
+    public func wantsQuery(_ row: QueryRow) -> Bool {
+        queryOverrides[row.ref] ?? row.isSuggested
+    }
+
     func queryOverride(_ ref: BundleRef) -> Bool? {
         queryOverrides[ref]
     }
