@@ -57,7 +57,6 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let commit: ReferenceWritableKeyPath<DatabaseTreeMetadataService, ListCommitState<Key>>
         let dedup: OnceTask<ListFetchKey<Key>, Value>
         let label: String
-        var unchanged: (MetadataLoadState<Value>?, Value) -> Bool = { $0 == .loaded($1) }
     }
 
     @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
@@ -102,10 +101,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     }
 
     private var tableLists: TreeList<ObjectsKey, [TableInfo]> {
-        TreeList(
-            state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables",
-            unchanged: Self.tableListUnchanged
-        )
+        TreeList(state: \.tablesState, commit: \.tablesCommit, dedup: tablesDedup, label: "tables")
     }
 
     private var routineLists: TreeList<ObjectsKey, [RoutineInfo]> {
@@ -639,13 +635,6 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
-    nonisolated private static func tableListUnchanged(
-        _ previous: MetadataLoadState<[TableInfo]>?,
-        _ next: [TableInfo]
-    ) -> Bool {
-        previous == .loaded(next) && !partitionCountsChanged(from: previous, to: .loaded(next))
-    }
-
     // MARK: - Read and reread
 
     private func read<Key: Hashable & Sendable, Value: Sendable & Equatable>(
@@ -653,7 +642,6 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         connectionId: UUID,
         in list: TreeList<Key, Value>,
         token explicitToken: Int? = nil,
-        overwrites: Bool = false,
         fetch: @Sendable @escaping () async throws -> Value
     ) async {
         guard isConnected(connectionId) else { return }
@@ -685,12 +673,9 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         case .fetched(let value):
             // A fetch a change overtook still delivers its rows, but the key stays stale.
             guard self[keyPath: list.commit].freshness.commit(revision, for: key) else { return }
-            if !overwrites, list.unchanged(current, value) {
-                // Same rows, but the list is current again and readers draw that.
-                objectWillChange.send()
-            } else {
-                self[keyPath: list.state][key] = .loaded(value)
-            }
+            // Always the new value: the models compare by identity, so a type recreated under the
+            // same name would otherwise keep its dead OID in a list marked current.
+            self[keyPath: list.state][key] = .loaded(value)
         case .failed:
             if let failure {
                 let label = list.label
@@ -728,7 +713,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         self[keyPath: list.commit].freshness.markChanged(key)
         let revision = self[keyPath: list.commit].freshness.revision(for: key)
         await list.dedup.cancel { $0.key == key && $0.revision != revision }
-        await read(key, connectionId: connectionId, in: list, token: token, overwrites: true, fetch: fetch)
+        await read(key, connectionId: connectionId, in: list, token: token, fetch: fetch)
     }
 
     private func schemaListFetch(_ key: DatabaseKey) -> @Sendable () async throws -> [String] {

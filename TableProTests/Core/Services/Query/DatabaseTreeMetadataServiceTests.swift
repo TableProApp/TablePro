@@ -251,6 +251,21 @@ struct DatabaseTreeListFreshnessTests {
         await disconnect(connection)
     }
 
+    @Test("A reread after a change commits the new rows even when they compare equal by identity")
+    func rereadCommitsRowsEqualByIdentity() async {
+        let (connection, driver) = connect(schemas: ["s0"])
+        driver.tablesBySchema["s0"] = [TableInfo(name: "orders", type: .table, rowCount: nil, schema: "s0", comment: "old")]
+        await loadTables(connection, "s0")
+        driver.tablesBySchema["s0"] = [TableInfo(name: "orders", type: .table, rowCount: nil, schema: "s0", comment: "new")]
+
+        await commit(connection)
+        await loadTables(connection, "s0")
+
+        let comment = service.tables(connectionId: connection.id, database: connection.database, schema: "s0").first?.comment
+        #expect(comment == "new")
+        await disconnect(connection)
+    }
+
     @Test("A change to one kind reads that kind alone when the container asks")
     func changeToOneKindReadsThatKindAlone() async {
         let (connection, driver) = connect(schemas: ["s0"])
