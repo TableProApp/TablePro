@@ -40,6 +40,21 @@ struct MainMenuStructureTests {
         #expect(MainMenuLink.changelog == "https://docs.tablepro.app/changelog")
     }
 
+    @Test("Help opens the integrations directory right after Documentation")
+    func integrationsDirectoryIsReachable() throws {
+        let help = try #require(buildMenu().items.first { $0.title == String(localized: "Help") }?.submenu)
+        let titles = help.items.map(\.title)
+        let documentation = try #require(titles.firstIndex(of: String(localized: "Documentation")))
+        let index = try #require(titles.firstIndex(of: String(localized: "Integrations")))
+        #expect(index == documentation + 1)
+        let item = help.items[index]
+        #expect(item.action == #selector(AppDelegate.openIntegrationsDirectory(_:)))
+        #expect(item.target == nil)
+        #expect(item.keyEquivalent.isEmpty)
+        #expect(AppDelegate().validateMenuItem(item))
+        #expect(MainMenuLink.integrations == "https://tablepro.app/integrations")
+    }
+
     @Test("The app menu opens MCP Activity without an active connection")
     func mcpActivityIsReachable() throws {
         let app = try #require(buildMenu().items.first { $0.title == "TablePro" }?.submenu)
