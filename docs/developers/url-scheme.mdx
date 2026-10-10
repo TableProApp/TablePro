@@ -118,18 +118,9 @@ one-time code to `redirect`.
 `scopes` and `connection-ids` are a request, not a grant: the sheet lets the user raise or lower
 both.
 
-```ts
-import { open } from "@raycast/api";
-
-const params = new URLSearchParams({
-  client: "Raycast on macbook-pro",
-  challenge: challengeB64Url,
-  redirect: "raycast://extensions/ngoquocdat/tablepro/pair-callback",
-  response_mode: "context",
-  state,
-  scopes: "readWrite",
-});
-await open(`tablepro://integrations/pair?${params}`);
+```bash
+# The challenge for the RFC 7636 sample verifier, and a loopback listener on port 7391
+open "tablepro://integrations/pair?client=My%20Launcher&challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&redirect=http%3A%2F%2F127.0.0.1%3A7391%2Fcallback&response_mode=query&state=af0ifjsldkj&scopes=readWrite"
 ```
 
 [Pairing](/developers/pairing) has the exchange step and the error codes.
@@ -144,8 +135,7 @@ Starts the MCP server if it is not running, then returns. MCP does not have to b
 first. The bundled `tablepro-mcp` CLI uses this to bootstrap on a cold launch.
 
 The server takes the configured port (`23508` by default) and falls back to a kernel-assigned free
-port when that one is busy. Either way it writes the port it actually bound to a handshake file at
-`~/Library/Application Support/TablePro/mcp-handshake.json`.
+port when that one is busy. The **Status** row in **Settings > Integrations** shows the port it bound.
 
 A launch whose only reason is this URL stays in the background: no Dock icon, no app switcher entry,
 until it has a window to show.
@@ -167,6 +157,12 @@ and `type` are required; the rest of the connection form maps to query parameter
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
 ```
+
+## On iPhone and iPad
+
+The iOS app answers two of these paths: `connect/<uuid>` opens the connection, and
+`connect/<uuid>/table/<table-name>` opens it on that table. Any other path under a connection, such as
+`database/…` or `query`, opens the connection alone. `import` and `integrations` links do nothing.
 
 ## Errors
 

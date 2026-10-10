@@ -102,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The toolbar keeping a connection's old name after it was renamed while connected. (#3309)
 - The iOS widget showing a different icon from the app for Dameng, Snowflake, Beancount, SurrealDB and Kafka connections. (#3309)
 - No icon for a connection to a database type no installed plugin describes. (#3309)
+- MCP clients on the Mac locked out for 5 minutes after five requests sent without a token.
 - A `%2B` in a pairing redirect's own query arriving at the callback as `+`.
 
 ### Security

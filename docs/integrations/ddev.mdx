@@ -1,0 +1,40 @@
+---
+title: DDEV
+description: Open a DDEV project's database in TablePro with the ddev tablepro command
+---
+
+The command ships with DDEV, not with TablePro. Run it inside a project:
+
+```bash
+cd my-project
+ddev tablepro
+```
+
+A stopped project starts first. The connection that opens is named `ddev-<project>`, carries the
+`local` tag, and is not saved. Use the command instead of a saved connection: DDEV picks a new host
+port on every `ddev start` unless the project sets `host_db_port`, and the command passes the
+current one each time. Database, user and password are all `db`.
+
+## Requirements
+
+- DDEV v1.25.4 or later.
+- A MySQL, MariaDB or PostgreSQL database in the project.
+- TablePro at `/Applications/TablePro.app`. DDEV adds the command only when the app is at that path.
+
+## The first run
+
+TablePro asks **Open External Database Connection?** before it connects. Choose **Always Allow** and
+that project stops asking, port changes included. [Trusting a link](/integrations/terminal#trusting-a-link)
+covers what the trust is keyed on and where to forget it.
+
+## From VS Code
+
+The community [DDEV Manager](https://marketplace.visualstudio.com/items?itemName=biati.ddev-manager)
+extension runs `ddev tablepro` for you when its **Default Database Manager** setting is TablePro.
+
+## Troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| `Error: unknown command "tablepro" for "ddev"` | Update DDEV to v1.25.4 or later, and check that TablePro is in `/Applications` |
+| The alert appears on every run | Choose **Always Allow**, not **Connect** |

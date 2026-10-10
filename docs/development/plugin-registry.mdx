@@ -3,9 +3,9 @@ title: Plugin Registry
 description: Registry manifest format, binary selection, publishing, and PluginKit compatibility
 ---
 
-The registry lives in TablePro's repository, so publishing there means a pull request. Signing a plugin with your own Developer ID and serving it from a manifest you host is the other route, and the format on this page is the same either way. For what install and update look like to a user, see [Plugins & Themes](/features/plugins); to build the plugin in the first place, [Plugin Development](/development/plugin-development).
+The official manifest is `plugins.json` in [TableProApp/plugins](https://github.com/TableProApp/plugins), and TablePro's release workflow writes it: a plugin gets there by being contributed to TablePro's own repository and tagged there. A plugin of yours ships the other way: signed with your own Developer ID, it installs from a file or from a manifest you host in the same format. For what install and update look like to a user, see [Plugins & Themes](/features/plugins); to build the plugin in the first place, [Plugin Development](/development/plugin-development).
 
-TablePro's manifest is `plugins.json` at [github.com/TableProApp/plugins](https://github.com/TableProApp/plugins). The app fetches it to fill **Settings > Plugins > Browse** and to auto-install a driver when someone picks a database type with no plugin loaded.
+The app fetches the manifest to fill **Settings > Plugins > Browse** and to auto-install a driver when someone picks a database type with no plugin loaded.
 
 ## Manifest format
 
@@ -100,7 +100,7 @@ The optional `metadata` object makes an entry self-describing, so the app render
 
 ## Publishing a plugin
 
-Every plugin CI can publish has an entry in `.github/plugin-registry.json`, keyed by the slug that appears in its tag. That file maps the slug to a build target, so the mapping has no derivation rule: `mssql` builds `MSSQLDriver` and `cloudflare-d1` builds `CloudflareD1DriverPlugin`. Add the entry before the first tag, or the workflow exits with `Unknown plugin`.
+Every plugin CI can publish has an entry in `.github/plugin-registry.json` in TablePro's repository, keyed by the slug that appears in its tag. That file maps the slug to a build target, so the mapping has no derivation rule: `mssql` builds `MSSQLDriver` and `cloudflare-d1` builds `CloudflareD1DriverPlugin`. Add the entry before the first tag, or the workflow exits with `Unknown plugin`.
 
 ```bash
 git tag -a plugin-oracle-v1.0.26 -m "plugin-oracle-v1.0.26"
@@ -117,9 +117,9 @@ Dispatching the workflow works too. Its `tags` input takes comma-separated `tag:
 gh workflow run build-plugin.yml --field "tags=plugin-oracle-v1.0.26"
 ```
 
-Either way CI builds both architectures, signs and notarizes the bundles, checks each bundle's declared PluginKit version against the release label, creates the GitHub release, re-verifies the published assets, and updates `plugins.json` through `.github/scripts/update-registry.py`, which writes atomically and rebases on a retry when the matrix jobs collide.
+Either way CI builds both architectures, signs and notarizes the bundles, checks each bundle's declared PluginKit version against the release label, creates the GitHub release, re-verifies the published assets, and pushes the updated `plugins.json` to TableProApp/plugins through `.github/scripts/update-registry.py`, which writes atomically and rebases on a retry when the matrix jobs collide.
 
-Most bundled plugins never appear in the registry at all, because their binaries ride with the app release. Ten of them keep a registry arm anyway (SQLite, ClickHouse, Redis, XLSX export, XLSX import, MQL export, SQL import, HTML export, Markdown export, XML export), so a fix can reach users who are already on a shipped app without waiting for the next one. A bulk ABI re-release skips them.
+Bundled plugins ride with the app release. Ten of them also have an entry in `.github/plugin-registry.json` (SQLite, ClickHouse, Redis, XLSX export, XLSX import, MQL export, SQL import, HTML export, Markdown export, XML export), so a fix to one can be tagged and published to the registry before the next app release. A bulk ABI re-release skips them. The other seven have no entry and never reach `plugins.json`.
 
 ## PluginKit compatibility
 
@@ -177,4 +177,4 @@ defaults write com.TablePro com.TablePro.customRegistryURL "https://your-registr
 defaults delete com.TablePro com.TablePro.customRegistryURL
 ```
 
-HTTP caching keys on the full URL, so a changed registry URL takes effect on the next fetch. A plugin served this way installs once the user agrees to trust its signing team by name. Both commands are also listed in [Settings](/customization/settings).
+The custom manifest replaces the official one rather than adding to it. HTTP caching keys on the full URL, so a changed registry URL takes effect on the next fetch. A plugin served this way installs once the user agrees to trust its signing team by name. Both commands are also listed in [Settings](/customization/settings).

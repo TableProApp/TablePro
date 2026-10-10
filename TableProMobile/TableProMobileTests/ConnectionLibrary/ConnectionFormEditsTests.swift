@@ -89,6 +89,24 @@ struct ConnectionFormEditsTests {
         #expect(saved.tagIds == [picked, macSecond])
     }
 
+    @Test("Editing a connection that uses a Mac socket keeps the socket path")
+    func editKeepsMacSocketPath() {
+        let snapshot = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.name = "Local MySQL"
+        viewModel.host = "127.0.0.1"
+        viewModel.port = "3307"
+
+        #expect(viewModel.applyingEdits(to: snapshot).additionalFields[MySQLLocalSocket.fieldKey] == "/tmp/mysql.sock")
+        #expect(viewModel.buildConnection().additionalFields[MySQLLocalSocket.fieldKey] == "/tmp/mysql.sock")
+    }
+
     @Test("An SSH port edit keeps the jump hosts and the Mac's own tunnel settings")
     func sshEditKeepsMacFields() {
         var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")

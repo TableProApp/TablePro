@@ -132,6 +132,7 @@ A running query appears in a Live Activity on the lock screen and Dynamic Island
 - **Schema changes.** Truncating and dropping a table is the whole list; creating or altering tables, columns, indexes, triggers, and views is Mac only.
 - **Changing Redis data.** Keys open read only; change them in **Query**.
 - **Jump hosts.** A connection whose SSH tunnel goes through a bastion opens on the Mac only. Its hops sync here and back intact.
+- **Socket connections.** A MySQL or MariaDB connection that uses a socket on the Mac opens there only. Its socket path syncs here and back intact.
 - **AI.** No chat, no inline suggestions, no MCP server.
 
 ## Security
@@ -152,4 +153,4 @@ SSH tunnels authenticate with a password or a private key, and an unknown host k
 
 Three App Intents put the app in Shortcuts, the Share Sheet, and Siri: **Open Connection**, **Add Row to Table**, **Add Rows to Table**. See [iOS Shortcuts](/integrations/ios-shortcuts) for pickers, data formats, and limits.
 
-A **Quick Connect** home screen widget opens a saved connection directly, `tablepro://connect/<uuid>` deep links work as on the Mac, Handoff carries an open connection between devices, and a `.tablepro` file from Files or AirDrop imports connections.
+A **Quick Connect** home screen widget opens a saved connection directly, and Handoff carries an open connection between devices. A `tablepro://connect/<uuid>` link opens a connection and `tablepro://connect/<uuid>/table/<name>` opens a table; the Mac's other links do less or nothing here, as [URL scheme](/developers/url-scheme#on-iphone-and-ipad) lists. A `.tablepro` file from Files or AirDrop imports connections.
