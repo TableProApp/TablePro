@@ -92,9 +92,14 @@ Treat the port as a setting that defaults to `23508`; the pane's **Status** row 
 The app is on 0.x, so the minor version is the release boundary. A break can land between 0.67 and
 0.68, but never silently. Once 1.0 ships, breaks move to major bumps.
 
-Nothing under the contract is deprecated right now. When something is, it is deprecated in the docs
-first, with the replacement named and a CHANGELOG entry to match. It then keeps working for at least
-one more minor version. A later release removes it, marked `BREAKING` in the CHANGELOG.
+Anything deprecated is deprecated in the docs first, with the replacement named and a CHANGELOG
+entry to match. It then keeps working for at least one more minor version. A later release removes
+it, marked `BREAKING` in the CHANGELOG.
+
+Deprecated now:
+
+- Pairing links without `response_mode`. Send `response_mode=query`, or `response_mode=context` for a
+  host that takes one `context` launch parameter. See [Response modes](/developers/pairing#response-modes).
 
 ## What is not under the contract
 

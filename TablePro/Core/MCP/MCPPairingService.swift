@@ -125,6 +125,11 @@ final class MCPPairingService {
         let target: PairingRedirectTarget
         do {
             target = try PairingRedirectValidator.validate(request.redirectURL)
+            try PairingRedirectValidator.validateHandler(
+                of: target,
+                handlerBundleIdentifier: Self.bundleIdentifier(ofAppOpening: target.url),
+                browserBundleIdentifiers: Self.webBrowserBundleIdentifiers()
+            )
             try PairingPkceValidator.validateChallenge(request.challenge)
         } catch let error as PairingValidationError {
             Self.logger.warning("Pairing rejected: \(error.reason, privacy: .public)")
@@ -148,10 +153,10 @@ final class MCPPairingService {
             approval = try await AlertHelper.runPairingApproval(request: request)
         } catch let error as DatabaseAccessError where error.isUserCancelled {
             Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .public)'")
-            if let redirect = buildErrorRedirect(
+            if let redirect = PairingRedirectBuilder.denied(
                 base: target.url,
-                error: "denied",
-                description: "user_denied"
+                state: request.state,
+                mode: request.responseMode
             ) {
                 NSWorkspace.shared.open(redirect)
             }
@@ -183,7 +188,12 @@ final class MCPPairingService {
             throw error
         }
 
-        guard let redirect = buildRedirectURL(base: target.url, code: code) else {
+        guard let redirect = PairingRedirectBuilder.success(
+            base: target.url,
+            code: code,
+            state: request.state,
+            mode: request.responseMode
+        ) else {
             Self.logger.error("Failed to build pairing redirect URL")
             await store.discard(code: code)
             await tokenStore.delete(tokenId: result.token.id)
@@ -234,6 +244,15 @@ final class MCPPairingService {
         }
     }
 
+    private static func bundleIdentifier(ofAppOpening url: URL) -> String? {
+        NSWorkspace.shared.urlForApplication(toOpen: url).flatMap { Bundle(url: $0)?.bundleIdentifier }
+    }
+
+    private static func webBrowserBundleIdentifiers() -> Set<String> {
+        guard let page = URL(string: "https://example.com") else { return [] }
+        return Set(NSWorkspace.shared.urlsForApplications(toOpen: page).compactMap { Bundle(url: $0)?.bundleIdentifier })
+    }
+
     private func startPruneLoop() {
         pruneTask = Task { [store] in
             while !Task.isCancelled {
@@ -242,44 +261,5 @@ final class MCPPairingService {
                 await store.pruneExpired()
             }
         }
-    }
-
-    private func buildErrorRedirect(base: URL, error: String, description: String) -> URL? {
-        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        var items = components.queryItems ?? []
-        if base.scheme == "raycast" {
-            let payload: [String: String] = ["error": error, "error_description": description]
-            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-                  let json = String(data: data, encoding: .utf8) else {
-                return nil
-            }
-            items.append(URLQueryItem(name: "context", value: json))
-        } else {
-            items.append(URLQueryItem(name: "error", value: error))
-            items.append(URLQueryItem(name: "error_description", value: description))
-        }
-        components.queryItems = items
-        return components.url
-    }
-
-    private func buildRedirectURL(base: URL, code: String) -> URL? {
-        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        var items = components.queryItems ?? []
-        if base.scheme == "raycast" {
-            let payload = ["code": code]
-            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-                  let json = String(data: data, encoding: .utf8) else {
-                return nil
-            }
-            items.append(URLQueryItem(name: "context", value: json))
-        } else {
-            items.append(URLQueryItem(name: "code", value: code))
-        }
-        components.queryItems = items
-        return components.url
     }
 }

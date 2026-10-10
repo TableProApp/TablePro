@@ -67,7 +67,7 @@ struct MCPPairingValidationTests {
             url("raycast://extensions/ngoquocdat/tablepro/pair-callback")
         )
         #expect(target.kind == .privateUseScheme)
-        #expect(target.displayValue.hasPrefix("raycast://"))
+        #expect(target.displayValue == "raycast://extensions/ngoquocdat/tablepro/pair-callback")
     }
 
     @Test("A scheme that can execute or read locally is refused")
@@ -78,6 +78,72 @@ struct MCPPairingValidationTests {
                 try PairingRedirectValidator.validate(redirect)
             }
         }
+    }
+
+    @Test("A scheme whose handler fetches from the host it names is refused")
+    func remoteSessionSchemesRefused() throws {
+        for scheme in ["smb", "afp", "cifs", "nfs", "vnc", "ssh", "sftp", "telnet", "webcal", "feed", "pcast", "ldap", "wss"] {
+            let redirect = try url("\(scheme)://evil.example.com/share")
+            #expect(throws: PairingValidationError.redirectSchemeNotAllowed(scheme)) {
+                try PairingRedirectValidator.validate(redirect)
+            }
+        }
+    }
+
+    @Test("A scheme TablePro itself handles is refused, so the code never loops back into the app")
+    func appOwnedSchemesRefused() throws {
+        for raw in ["tablepro://integrations/pair", "TablePro://connect/x", "postgresql://evil.example.com/db",
+                    "mongodb+srv://evil.example.com/db"] {
+            let redirect = try url(raw)
+            let scheme = try #require(redirect.scheme).lowercased()
+            #expect(throws: PairingValidationError.redirectSchemeNotAllowed(scheme)) {
+                try PairingRedirectValidator.validate(redirect)
+            }
+        }
+    }
+
+    @Test("A custom scheme a web browser handles is refused, since the browser can open the page it wraps")
+    func browserHandledSchemeRefused() throws {
+        let target = try PairingRedirectValidator.validate(url("google-chrome:https://evil.example.com/cb"))
+        #expect(throws: PairingValidationError.redirectSchemeNotAllowed("google-chrome")) {
+            try PairingRedirectValidator.validateHandler(
+                of: target,
+                handlerBundleIdentifier: "com.google.Chrome",
+                browserBundleIdentifiers: ["com.apple.Safari", "com.google.Chrome"]
+            )
+        }
+    }
+
+    @Test("A custom scheme an ordinary app handles, or no app handles, stays accepted")
+    func nonBrowserHandlerAccepted() throws {
+        let target = try PairingRedirectValidator.validate(
+            url("raycast://extensions/ngoquocdat/tablepro/pair-callback")
+        )
+        for handler in ["com.raycast.macos", nil] {
+            try PairingRedirectValidator.validateHandler(
+                of: target,
+                handlerBundleIdentifier: handler,
+                browserBundleIdentifiers: ["com.apple.Safari", "com.google.Chrome"]
+            )
+        }
+    }
+
+    @Test("A loopback callback is never refused for the browser that would open it")
+    func loopbackIgnoresBrowserHandler() throws {
+        let target = try PairingRedirectValidator.validate(url("http://127.0.0.1:8765/callback"))
+        try PairingRedirectValidator.validateHandler(
+            of: target,
+            handlerBundleIdentifier: "com.apple.Safari",
+            browserBundleIdentifiers: ["com.apple.Safari"]
+        )
+    }
+
+    @Test("An opaque redirect shows the address it wraps, not a bare scheme")
+    func opaqueRedirectShowsWrappedAddress() throws {
+        let target = try PairingRedirectValidator.validate(url("myapp:https://evil.example.com/cb?x=1"))
+        #expect(target.displayValue == "myapp:https://evil.example.com/cb")
+        let hierarchical = try PairingRedirectValidator.validate(url("myapp://host:7/cb?x=1"))
+        #expect(hierarchical.displayValue == "myapp://host:7/cb")
     }
 
     @Test("A verifier outside the RFC 7636 length is refused")
