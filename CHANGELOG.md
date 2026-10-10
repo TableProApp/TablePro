@@ -89,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An already open `.sql` file, linked favorite, query link or database file raising the window without showing its connection and tab.
 - Picking a database in the query editor rerunning the statement at the caret, writes included, without asking.
 - "Connection Failed: Cancelled by user." after declining a connect prompt from Switch Connection.
+- A database link with a filter replacing the filters of a tab already showing that table.
 - A cleared group, tag, AI rule, startup command or SSH profile, or a group moved to the top level, returning after iCloud sync. (#3309)
 - Exported connections taking the color of another group with the same name. (#3309)
 - Copy TablePro Link dropping the connect and query timeouts, and new tags after the first. (#3309)
@@ -100,6 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Duplicating a connection set to Blocked for external access making the copy readable over MCP. (#3309)
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
+- A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
+- A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.
 
 ## [0.79.0] - 2026-10-09
 

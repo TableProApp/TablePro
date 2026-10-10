@@ -37,6 +37,33 @@ final class AlertHelper {
         return cancel
     }
 
+    /// A text view laid inside a scroll view by hand has to be told it may grow and that its text
+    /// container tracks its width. Left at its default zero-sized container it lays out no text at
+    /// all, so the accessory reads as an empty box.
+    static func scrollingTextAccessory(_ text: String) -> NSScrollView {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 140))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+
+        let textView = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        textView.isEditable = false
+        textView.drawsBackground = false
+        textView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        textView.autoresizingMask = [.width]
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scroll.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = text
+
+        scroll.documentView = textView
+        return scroll
+    }
+
     /// The window a sheet belongs on. A sheet the user is meant to read against their work must
     /// land on a document window, so a floating panel is never a candidate: the Quick Switcher
     /// closes the moment it loses focus, taking the sheet with it. An explicit window is honoured
