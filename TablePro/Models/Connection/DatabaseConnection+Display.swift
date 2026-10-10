@@ -28,6 +28,9 @@ extension DatabaseConnection {
         if let socketPath = sshForwardUnixSocketPath, resolvedSSHConfig.enabled {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }
+        if let socketPath = localSocketPath {
+            return (socketPath as NSString).abbreviatingWithTildeInPath
+        }
         if let hostList = hostListDescription {
             return hostList
         }
@@ -58,7 +61,7 @@ extension DatabaseConnection {
     }
 
     private var databaseDescriptor: String? {
-        guard !host.isEmpty || hostListDescription != nil else { return nil }
+        guard !host.isEmpty || hostListDescription != nil || localSocketPath != nil else { return nil }
         switch type.pathFieldRole {
         case .database, .serviceName:
             let trimmed = database.trimmingCharacters(in: .whitespaces)

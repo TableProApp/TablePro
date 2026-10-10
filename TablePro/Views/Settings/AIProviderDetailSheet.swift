@@ -226,7 +226,7 @@ struct AIProviderDetailSheet: View {
         } header: {
             Text("Claude Code")
         } footer: {
-            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations.")
+            Text("Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > MCP.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

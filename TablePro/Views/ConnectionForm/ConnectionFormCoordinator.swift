@@ -900,6 +900,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             advanced.resetForType(parsed.type)
         }
 
+        // Left on Socket, normalizeTransport would drop the SSH server the URL names.
+        network.endpoint = .hostAndPort
         network.host = parsed.host
         network.port = String(parsed.resolvedPort)
         network.database = parsed.database

@@ -39,7 +39,7 @@ extension DatabaseManager {
         sshPassword: String? = nil,
         passwordOverride: String? = nil
     ) async throws -> Bool {
-        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(connection.host.nilIfEmpty ?? connection.name)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(connection.timeoutEndpointName)
         let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
             configuredSeconds: connection.queryTimeoutSeconds,
             globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds

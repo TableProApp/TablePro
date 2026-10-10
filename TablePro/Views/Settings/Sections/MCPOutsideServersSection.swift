@@ -5,12 +5,8 @@
 
 import SwiftUI
 
-/// The MCP servers somebody else runs that a session may call.
-///
-/// Its own section rather than a line in **Integrations**, because it is the opposite direction:
-/// everything above it is what an outside client may ask of TablePro, and this is what TablePro may
-/// ask of an outside server. It sits below them for that reason, and it works whether or not the
-/// built-in server is switched on.
+/// Below the built-in server's sections because it is the opposite direction: what TablePro may ask
+/// of an outside server. It works whether or not the built-in server is on.
 internal struct MCPOutsideServersSection: View {
     @ObservedObject private var store = MCPServerStore.shared
 

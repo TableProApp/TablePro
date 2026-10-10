@@ -151,6 +151,11 @@ internal class UITestCase: XCTestCase {
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE": fileURL.path])
     }
 
+    /// `TABLEPRO_UI_TEST_OPEN_URL` reaches the app's own URL handling, never another installed copy.
+    internal func launchOpeningURL(_ url: String, arguments: [String] = []) throws -> XCUIApplication {
+        try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_URL": url], arguments: arguments)
+    }
+
     /// Returning as soon as the launch was requested is what used to leave fourteen suites poking
     /// at a window that had no connection yet, and every one of those misses cost an XCUITest
     /// retry. The object browser having rows is the cheapest proof the connection is live.

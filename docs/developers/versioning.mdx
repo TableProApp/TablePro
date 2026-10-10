@@ -38,6 +38,8 @@ Within a major TablePro version every covered surface is additive only. Per surf
 ### Links and database URLs
 
 - A `tablepro://` path or parameter is never removed and never changes meaning.
+- A [settings pane id](/developers/url-scheme#open-a-settings-pane) is never removed and keeps
+  opening the same pane, whatever the pane is called.
 - On iPhone and iPad, `connect/<uuid>` and `connect/<uuid>/table/<name>` keep working. Any other
   path under a connection opens the connection alone.
 - A scheme on [Connection URLs](/connections/urls) keeps opening the same database type, and a
@@ -73,7 +75,7 @@ the specification froze, for `-33000` and above; a client that matched on the ol
 updating once. The current table is in [MCP Protocol](/developers/mcp-protocol#errors).
 
 The default port is not the port on every Mac. The user can set another under
-**Settings > Integrations**, and when `23508` is taken at start the server binds a free port instead.
+**Settings > MCP**, and when `23508` is taken at start the server binds a free port instead.
 Treat the port as a setting that defaults to `23508`; the pane's **Status** row shows the one in use.
 
 ### The tablepro command and the app's identity
@@ -90,9 +92,14 @@ Treat the port as a setting that defaults to `23508`; the pane's **Status** row 
 The app is on 0.x, so the minor version is the release boundary. A break can land between 0.67 and
 0.68, but never silently. Once 1.0 ships, breaks move to major bumps.
 
-Nothing under the contract is deprecated right now. When something is, it is deprecated in the docs
-first, with the replacement named and a CHANGELOG entry to match. It then keeps working for at least
-one more minor version. A later release removes it, marked `BREAKING` in the CHANGELOG.
+Anything deprecated is deprecated in the docs first, with the replacement named and a CHANGELOG
+entry to match. It then keeps working for at least one more minor version. A later release removes
+it, marked `BREAKING` in the CHANGELOG.
+
+Deprecated now:
+
+- Pairing links without `response_mode`. Send `response_mode=query`, or `response_mode=context` for a
+  host that takes one `context` launch parameter. See [Response modes](/developers/pairing#response-modes).
 
 ## What is not under the contract
 
@@ -102,15 +109,15 @@ These can change in any release, without notice:
   `/v1/integrations/exchange`.
 - The handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled
   `tablepro-mcp` bridge, which finds the server on its own, or connect over HTTP to the port on the
-  **Status** row in **Settings > Integrations**, `23508` by default.
+  **Status** row in **Settings > MCP**, `23508` by default.
 - The connections file at `~/Library/Application Support/TablePro/connections.json`. List
   connections with `list_connections` or AppleScript instead.
 - The preferences in `~/Library/Preferences/com.TablePro.plist`, including the connection groups
   and tags kept there.
 - Keychain items the app writes, such as connection passwords and token hashes.
 - The app's SQLite databases. Read query history with `search_query_history`, and the audit log at
-  `mcp-audit.db` in the activity window.
-- Token storage. Tokens are managed in **Settings > Integrations**.
+  `mcp-audit.db` in the **MCP Activity** window.
+- Token storage. Tokens are managed in **Settings > MCP**.
 - Where the app is installed.
 
 ## Reporting a contradiction

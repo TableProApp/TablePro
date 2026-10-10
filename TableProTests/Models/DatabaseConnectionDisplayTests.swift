@@ -93,6 +93,36 @@ struct DatabaseConnectionDisplayTests {
         #expect(connection.connectionSubtitle == "appdb on ~/run/mysql.sock")
     }
 
+    @Test("A socket connection shows its socket in place of the host")
+    func localSocketReplacesHost() {
+        let socket = (NSHomeDirectory() as NSString)
+            .appendingPathComponent("Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+        var connection = DatabaseConnection(
+            name: "Site", host: "localhost", port: 3_306, database: "local", type: .mysql
+        )
+        connection.localSocketPath = socket
+
+        #expect(connection.connectionSubtitle == "local on ~/Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+
+        connection.database = ""
+        connection.host = ""
+        #expect(connection.connectionSubtitle == "~/Library/Application Support/Local/run/abc/mysql/mysqld.sock")
+    }
+
+    @Test("A socket left under an SSH tunnel shows the host the tunnel reaches")
+    func tunnelHidesLocalSocket() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "bastion.example.com"
+        var connection = DatabaseConnection(
+            name: "Project", host: "localhost", port: 3_306,
+            database: "myapp", type: .mysql, sshConfig: sshConfig
+        )
+        connection.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
+
+        #expect(connection.connectionSubtitle == "localhost/myapp via bastion.example.com")
+    }
+
     @Test("File-based connection with no path falls back to the type name")
     func fileBasedEmptyFallsBackToType() {
         let connection = DatabaseConnection(

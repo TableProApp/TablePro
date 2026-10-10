@@ -92,10 +92,14 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
 
     /// A file-based driver reaches its database through a path, not a host and a port, and it is
     /// exactly the driver that shows this picker in order to offer Remote Database File.
-    static func directSummary(isFileBased: Bool) -> String {
-        isFileBased
-            ? String(localized: "Opens the database file on this Mac.")
-            : String(localized: "Connects straight to the host and port on the General tab.")
+    static func directSummary(isFileBased: Bool, usesLocalSocket: Bool) -> String {
+        if isFileBased {
+            return String(localized: "Opens the database file on this Mac.")
+        }
+        if usesLocalSocket {
+            return String(localized: "Connects through the socket file on the General tab.")
+        }
+        return String(localized: "Connects straight to the host and port on the General tab.")
     }
 }
 

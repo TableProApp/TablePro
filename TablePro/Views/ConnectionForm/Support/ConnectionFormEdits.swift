@@ -42,7 +42,8 @@ struct ConnectionFormEdits: Equatable {
         "promptForPassword",
         DatabaseConnection.connectTimeoutSecondsKey,
         DatabaseConnection.queryTimeoutSecondsKey,
-        DatabaseConnection.sshForwardUnixSocketPathKey
+        DatabaseConnection.sshForwardUnixSocketPathKey,
+        MySQLLocalSocket.fieldKey
     ]
 
     func applied(to base: DatabaseConnection) -> DatabaseConnection {
