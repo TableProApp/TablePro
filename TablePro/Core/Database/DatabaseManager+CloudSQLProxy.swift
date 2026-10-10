@@ -23,7 +23,7 @@ extension DatabaseManager {
             deadline: deadline
         )
 
-        return tunneledConnection(from: connection, localPort: tunnelPort)
+        return tunneledConnection(from: connection, localPort: tunnelPort, securesTransport: true)
     }
 
     func handleCloudSQLProxyTunnelDied(connectionId: UUID) async {

@@ -37,6 +37,15 @@ enum MySQLClientArguments {
         return try modeFlags(ssl.mode, flavor: flavor, toolPath: toolPath) + certificateFlags(ssl)
     }
 
+    /// An IAM token reaches the server as a cleartext password over TLS. MySQL's clients refuse to
+    /// send one unless told to; MariaDB's send it when the server asks and have no such flag.
+    static func cleartextAuthentication(flavor: NativeDumpToolFlavor) -> [String] {
+        switch flavor {
+        case .mysql: return ["--enable-cleartext-plugin"]
+        case .mariadb, .unidentified: return []
+        }
+    }
+
     /// Everything the connection holds beyond the mode. The certificate implies `--ssl` on MariaDB,
     /// so none of it is sent for a connection whose SSL is off, whatever the form left behind.
     private static func certificateFlags(_ ssl: SSLConfiguration) -> [String] {

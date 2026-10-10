@@ -79116,6 +79116,10 @@
         }
       }
     },
+    "File path or paste JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "File Properties" : {
       "localizations" : {
         "fr" : {
@@ -84242,6 +84246,14 @@
           }
         }
       }
+    },
+    "Google Cloud IAM (Application Default)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google Cloud IAM (Service Account)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Google Cloud serverless data warehouse" : {
       "localizations" : {
@@ -182278,6 +182290,9 @@
           }
         }
       }
+    },
+    "The gcloud login does not allow Cloud SQL sign-in. Run gcloud auth application-default login again, without --scopes." : {
+
     },
     "the group coordinator is not available" : {
       "extractionState" : "manual",

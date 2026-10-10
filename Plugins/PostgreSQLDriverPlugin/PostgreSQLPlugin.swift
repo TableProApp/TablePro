@@ -30,7 +30,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication,
             hidesPassword: true
         )
-    ] + AWSAuthFields.standard() + [
+    ] + GoogleCloudSQLAuthFields.standardWithAWS() + [
         AWSAuthFields.rdsEndpointField(),
         ConnectionField(
             id: "connectionOptions",

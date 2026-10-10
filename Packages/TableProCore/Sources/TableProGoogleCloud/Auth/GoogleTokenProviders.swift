@@ -9,12 +9,15 @@ public enum GoogleTokenProviders {
         serviceAccount(key, scopes: scopes, http: http, now: { Date() })
     }
 
+    /// `restrictsUserLogin` narrows a user login's token to `scopes`. Off, the token carries every
+    /// scope the login granted, because a narrower scope the login never named is refused.
     public static func applicationDefault(
         _ credentials: GoogleApplicationDefaultCredentials,
         scopes: [String],
+        restrictsUserLogin: Bool = false,
         http: any GoogleHTTPClient
     ) -> any GoogleAccessTokenProviding {
-        applicationDefault(credentials, scopes: scopes, http: http, now: { Date() })
+        applicationDefault(credentials, scopes: scopes, restrictsUserLogin: restrictsUserLogin, http: http, now: { Date() })
     }
 
     public static func oauthClient(
@@ -39,6 +42,7 @@ public enum GoogleTokenProviders {
     static func applicationDefault(
         _ credentials: GoogleApplicationDefaultCredentials,
         scopes: [String],
+        restrictsUserLogin: Bool = false,
         http: any GoogleHTTPClient,
         now: @escaping GoogleClock
     ) -> GoogleCachedAccessTokenProvider {
@@ -49,6 +53,7 @@ public enum GoogleTokenProviders {
             let source = GoogleAuthorizedUserTokenSource(
                 client: GoogleOAuthClient(clientId: clientId, clientSecret: clientSecret),
                 refreshToken: refreshToken,
+                scopes: restrictsUserLogin ? effectiveScopes(scopes) : [],
                 http: http,
                 now: now
             )

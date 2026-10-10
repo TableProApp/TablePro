@@ -165,10 +165,7 @@ struct BigQueryCredentialFactoryTests {
         let phase = PluginConnectTimeoutPhase(
             deadline: PluginConnectDeadline(milliseconds: 45_000)
         )
-        let client = BigQueryConnectHTTPClient(
-            base: base,
-            phase: phase
-        )
+        let client = GoogleDeadlineHTTPClient(base: base) { phase.remainingSeconds(or: $0) }
         let request = URLRequest(
             url: URL(string: "https://oauth2.googleapis.com/token")!,
             timeoutInterval: 30

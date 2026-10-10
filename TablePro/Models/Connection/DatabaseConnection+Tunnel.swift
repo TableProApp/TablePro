@@ -9,6 +9,7 @@ import TableProPluginKit
 extension DatabaseConnection {
     static let preTunnelHostKey = "preTunnelHost"
     static let preTunnelPortKey = "preTunnelPort"
+    static let tunnelSecuresTransportKey = "tunnelSecuresTransport"
 
     /// The endpoint this connection addressed before a tunnel rewrote it to the local
     /// forward. Absent when the driver dials the server directly. Anything that must
@@ -20,6 +21,12 @@ extension DatabaseConnection {
 
     var preTunnelPort: Int? {
         additionalFields[Self.preTunnelPortKey].flatMap(Int.init)
+    }
+
+    /// Set behind a tunnel that encrypts the hop to the server itself and listens on loopback
+    /// without TLS, which is the Cloud SQL Auth Proxy.
+    var tunnelSecuresTransport: Bool {
+        additionalFields[Self.tunnelSecuresTransportKey] == "true"
     }
 
     /// The host-list fields this connection's driver declares, if any.

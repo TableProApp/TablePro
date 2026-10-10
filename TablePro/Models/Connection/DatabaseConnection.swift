@@ -238,11 +238,6 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["promptForPassword"] = newValue ? "true" : "" }
     }
 
-    var usesAWSIAM: Bool {
-        let value = additionalFields["awsAuth"] ?? "off"
-        return value != "off" && !value.isEmpty
-    }
-
     var resolvesAWSIAMInDriver: Bool {
         type == .cassandra || type == .scylladb
     }

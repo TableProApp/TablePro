@@ -1,6 +1,6 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL 9.1 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
+description: Connect to PostgreSQL 9.1 and later with the libpq driver, including PostGIS display, AWS and Google Cloud IAM auth, and pg_dump backups
 ---
 
 import DeclaredColumnType from "/snippets/declared-column-type.mdx";
@@ -45,6 +45,10 @@ postgresql://user:password@host:5432/database
 ### AWS IAM
 
 Set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/connections/aws-iam).
+
+### Google Cloud IAM
+
+For a Cloud SQL instance you reach directly, set **Authentication** to a Google Cloud IAM option and set **Username** to the IAM database user. See [IAM sign-in without the proxy](/connections/cloud-sql-proxy#iam-sign-in-without-the-proxy).
 
 ### Password file
 

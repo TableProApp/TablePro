@@ -218,7 +218,11 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
-        /// The MySQL plugin's types only. PostgreSQL shares `awsIAMFields` and must not pick this up:
+        /// Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
+        /// MySQL and PostgreSQL forks keep the AWS-only picker.
+        let cloudIAMFields = GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()]
+
+        /// The MySQL plugin's types only. PostgreSQL shares the IAM fields and must not pick this up:
         /// its driver holds no releasable resource, so the setting would do nothing.
         let mysqlIdleReleaseField = ConnectionField(
             id: "mysqlIdleReleaseMinutes",
@@ -302,7 +306,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
+                    additionalConnectionFields: cloudIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database"),
                     defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
@@ -443,7 +447,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField, connectionOptionsField] + awsIAMFields,
+                    additionalConnectionFields: [pgpassField, connectionOptionsField] + cloudIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
                     defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"

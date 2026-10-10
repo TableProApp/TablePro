@@ -159,7 +159,7 @@ extension DatabaseManager {
                 session.liveness = .live
                 disconnectReasons.removeValue(forKey: connection.id)
                 markSessionVerified(connection.id)
-                if let passwordOverride, !connection.usesAWSIAM {
+                if let passwordOverride, !connection.usesIAMToken {
                     session.cachedPassword = passwordOverride
                     /// Only a password that actually authenticated is shared with the other
                     /// connections on this profile. Caching the prompt's answer before the connect

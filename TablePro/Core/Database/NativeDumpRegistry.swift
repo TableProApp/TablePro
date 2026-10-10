@@ -106,7 +106,9 @@ enum NativeDumpRegistry {
                         if let password = request.password, !password.isEmpty {
                             environment["PGPASSWORD"] = password
                         }
-                        environment.merge(postgresSSLEnvironment(request.connection.sslConfig)) { _, new in new }
+                        environment.merge(
+                            postgresSSLEnvironment(request.connection.transportSSLConfiguration)
+                        ) { _, new in new }
                         return environment
                     }
                 )
@@ -249,11 +251,14 @@ enum NativeDumpRegistry {
         }
         flags.append(
             contentsOf: try MySQLClientArguments.tls(
-                request.connection.sslConfig,
+                request.connection.transportSSLConfiguration,
                 flavor: resolved.flavor,
                 toolPath: resolved.path
             )
         )
+        if request.connection.usesIAMToken {
+            flags.append(contentsOf: MySQLClientArguments.cleartextAuthentication(flavor: resolved.flavor))
+        }
         return flags
     }
 

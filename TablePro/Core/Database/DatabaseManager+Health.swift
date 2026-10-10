@@ -177,7 +177,7 @@ extension DatabaseManager {
                     session.browseSchema = schemaDriver.currentSchema
                 }
                 if let cachedPassword = result.cachedPassword,
-                   !session.connection.usesAWSIAM
+                   !session.connection.usesIAMToken
                 {
                     session.cachedPassword = cachedPassword
                 }
@@ -476,7 +476,7 @@ extension DatabaseManager {
                     session.browseSchema = schemaDriver.currentSchema
                 }
                 if let cachedPassword = connectResult.cachedPassword,
-                   !session.connection.usesAWSIAM
+                   !session.connection.usesIAMToken
                 {
                     session.cachedPassword = cachedPassword
                 }

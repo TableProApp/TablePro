@@ -26,7 +26,8 @@ extension DatabaseManager {
     func tunneledConnection(
         from connection: DatabaseConnection,
         localPort: Int,
-        forwardsToUnixSocket: Bool = false
+        forwardsToUnixSocket: Bool = false,
+        securesTransport: Bool = false
     ) -> DatabaseConnection {
         var tunnelSSL = connection.sslConfig
         if forwardsToUnixSocket {
@@ -51,6 +52,7 @@ extension DatabaseManager {
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
+        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport ? "true" : nil
         /// A host list names the servers the driver would reach for itself, and behind a tunnel
         /// there is one forwarded endpoint instead, so the list has to go. An SRV connection is
         /// the exception: its host is a lookup name rather than a server to dial, the driver

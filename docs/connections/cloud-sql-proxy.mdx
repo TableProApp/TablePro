@@ -63,6 +63,36 @@ A pasted key is kept in the macOS Keychain and written to a temporary file reada
 
 <HelperPort />
 
+## IAM sign-in without the proxy
+
+When the instance is already reachable, over its private IP or an authorized network, you can skip the proxy and sign in as an IAM principal directly. This works for MySQL and PostgreSQL.
+
+On the **General** tab, set **Authentication** to one of:
+
+- **Google Cloud IAM (Application Default)**: the credentials from `gcloud auth application-default login`.
+- **Google Cloud IAM (Service Account)**: a **Service Account Key**, as a file path or pasted JSON.
+
+Set **Host** to the instance IP and **Username** to the database user of the principal:
+
+| Engine | User account | Service account |
+|--------|--------------|-----------------|
+| PostgreSQL | `name@example.com` | `name@project.iam` |
+| MySQL | `name` | `name` |
+
+The password field disappears. The token TablePro signs in with allows a Cloud SQL sign-in and nothing else, and lasts one hour. It is reused until five minutes before it expires, then replaced, including for a reconnect and for the extra connection MySQL opens to stop a query. SSL/TLS is raised to **Required** if it was lower.
+
+The principal needs the **Cloud SQL Instance User** role (`roles/cloudsql.instanceUser`), and the instance needs IAM database authentication turned on and a database user for the principal:
+
+```bash
+gcloud sql users create name@example.com --instance=INSTANCE --type=cloud_iam_user
+```
+
+<Note>
+`GOOGLE_APPLICATION_CREDENTIALS` is read from the app's environment, which never has the variables your shell profile exports. To use a key file, choose **Service Account** and give its path.
+</Note>
+
+These options also work with **Connect via > Cloud SQL Auth Proxy**. SSL then stays as set, because the proxy encrypts the connection to the instance.
+
 ## Troubleshooting
 
 ### cloud-sql-proxy was not found
@@ -80,3 +110,7 @@ cloud-sql-proxy --port 5433 --address 127.0.0.1 project:region:instance
 ### Permission or authentication errors
 
 The proxy reports these on its own output, which the failed connect shows. Usually the account is missing the **Cloud SQL Client** role, Application Default Credentials were never set up, or IAM database authentication is on with no database user for the principal.
+
+### The gcloud login does not allow Cloud SQL sign-in
+
+The login was made with `--scopes` that leave out Cloud SQL sign-in. Run `gcloud auth application-default login` again without `--scopes`.

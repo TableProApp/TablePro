@@ -687,6 +687,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLKillLatch.swift
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
+      - Plugins/MySQLDriverPlugin/MySQLBlockingPasswordRefresh.swift
       - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLPartitionBound.swift
