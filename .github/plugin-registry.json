@@ -13,8 +13,9 @@
     "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import.",
     "",
     "'bundled' marks a plugin that also ships inside the app. Those ten can still be published",
-    "individually when users on an already-shipped app need a fix sooner, but a bulk ABI re-release",
-    "skips them, because their binaries ride with the next app release."
+    "individually, but the app never applies a registry update to a bundled plugin, so a published",
+    "build reaches only users who install its zip from a file. A bulk ABI re-release skips them,",
+    "because their binaries ride with the next app release."
   ],
   "plugins": {
     "beancount": {

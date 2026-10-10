@@ -119,7 +119,7 @@ gh workflow run build-plugin.yml --field "tags=plugin-oracle-v1.0.26"
 
 Either way CI builds both architectures, signs and notarizes the bundles, checks each bundle's declared PluginKit version against the release label, creates the GitHub release, re-verifies the published assets, and pushes the updated `plugins.json` to TableProApp/plugins through `.github/scripts/update-registry.py`, which writes atomically and rebases on a retry when the matrix jobs collide.
 
-Bundled plugins ride with the app release. Ten of them also have an entry in `.github/plugin-registry.json` (SQLite, ClickHouse, Redis, XLSX export, XLSX import, MQL export, SQL import, HTML export, Markdown export, XML export), so a fix to one can be tagged and published to the registry before the next app release. A bulk ABI re-release skips them. The other seven have no entry and never reach `plugins.json`.
+Bundled plugins ride with the app release. Ten of them also have an entry in `.github/plugin-registry.json` (SQLite, ClickHouse, Redis, XLSX export, XLSX import, MQL export, SQL import, HTML export, Markdown export, XML export), so a fix to one can be tagged and published to the registry. The app never installs or offers a registry update over a bundled plugin, so that build reaches only users who download its zip and install it from a file. Everyone else gets the fix with the next app release. A bulk ABI re-release skips them. The other seven have no entry and never reach `plugins.json`.
 
 ## PluginKit compatibility
 

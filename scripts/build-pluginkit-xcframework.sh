@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds TableProPluginKit as a distributable XCFramework.
-#
-# A plugin has to link TableProPluginKit, and until now the only way to get it was to check out this
-# repository and build the whole app project. That is why every driver lives under Plugins/ here: not
-# because the plugin system requires it, but because the framework was not obtainable any other way.
-# An XCFramework is the artifact that lets a driver live in its own repository.
+# Builds TableProPluginKit as an XCFramework, so a plugin can be built outside this repository.
 #
 # The framework is built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES (declared on the target in
 # project.yml), so it emits a .swiftinterface and its ABI is resilient. That is the same setting the
@@ -17,9 +12,9 @@ set -euo pipefail
 # Usage:
 #   scripts/build-pluginkit-xcframework.sh [version]
 #
-# Produces build/TableProPluginKit.xcframework, a zip beside it, and prints the SHA-256 a consumer
-# needs to pin. Publish with:
-#   gh release upload pluginkit-v<version> build/TableProPluginKit-<version>.xcframework.zip
+# Produces build/pluginkit/TableProPluginKit.xcframework and a zip with its SHA-256. No prebuilt
+# XCFramework is published: run this at the release tag of the oldest app your plugin supports and
+# link the result as Do Not Embed (docs/development/plugin-development.mdx).
 
 FRAMEWORK="TableProPluginKit"
 PROJECT="TablePro.xcodeproj"
@@ -118,7 +113,7 @@ if ! xcodebuild -create-xcframework \
 fi
 
 # The zip is not reproducible: ditto records timestamps, so two builds of identical sources give
-# different checksums. Pin the checksum of the artifact you actually publish, not of a local rebuild.
+# different checksums.
 ARCHIVE="$BUILD_DIR/$FRAMEWORK-$VERSION.xcframework.zip"
 ditto -c -k --keepParent "$XCFRAMEWORK" "$ARCHIVE"
 CHECKSUM=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
@@ -129,5 +124,12 @@ echo "XCFramework:       $XCFRAMEWORK"
 echo "Archive:           $ARCHIVE"
 echo "SHA-256:           $CHECKSUM"
 echo
-echo "Publish:"
-echo "  gh release create pluginkit-v$VERSION \"$ARCHIVE\" --title \"TableProPluginKit $VERSION\" --repo TableProApp/TablePro"
+echo "Link it from your plugin's Xcode project as Do Not Embed. The app supplies TableProPluginKit at runtime."
+
+# The app rejects a plugin that declares a newer PluginKit than its own, and main moves ahead of the
+# shipped app each time the version is raised.
+if TAG=$(git describe --exact-match --tags --match 'v*' HEAD 2> /dev/null); then
+    echo "Built from app release $TAG."
+else
+    echo "warning: HEAD is not an app release tag. Check out v<version> of the oldest app your plugin supports and rebuild." >&2
+fi
