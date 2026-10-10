@@ -104,7 +104,7 @@ It is off by default, but it starts on demand: the bundled bridge and the pairin
 
 Loopback-only describes where the server binds, not everything that can reach it. The server returns CORS headers for two remote origins, `claude.ai` and `app.cursor.com`, so a page you have open there can call your local server from your own browser. The four gates above are what stands between such a call and your data, which is the reason to leave **Require authentication** on.
 
-Every call is written to the local activity log with the token behind it, statements as SHA-256 digests. See [Tokens](/external-api/tokens) for the whole model.
+Every call is written to the local activity log with the token behind it, statements as SHA-256 digests. See [Tokens](/developers/tokens) for the whole model.
 
 ## Update checks
 

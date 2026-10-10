@@ -5,7 +5,7 @@ description: Built-in Model Context Protocol server that lets AI clients query y
 
 The [MCP](https://modelcontextprotocol.io) server binds `127.0.0.1` and nothing else: no remote mode, no TLS certificate, no setting that opens it to your network. Claude Desktop, Claude Code, Cursor, and Zed reach your databases through the connections you already saved, and never see a password.
 
-This page covers the **Settings > Integrations** pane. The protocol itself, the tool catalog, the prompts and the token model live in the [External API](/external-api) section.
+This page covers the **Settings > Integrations** pane. The protocol itself, the tool catalog, the prompts and the token model live under [Developers](/developers).
 
 <Frame caption="MCP server settings">
   <img className="block dark:hidden" src="/images/mcp-settings.png" alt="TablePro MCP settings" />
@@ -38,7 +38,7 @@ A tool can ask for fewer rows or a shorter timeout, never for more than the maxi
 
 Click **Connect a Client…** and pick **Claude Code**, **Claude Desktop**, **Cursor**, or **Zed**. Each shows numbered steps and a copyable snippet pointing at the bundled bridge. Paste it into the client's own config; TablePro does not write to other apps' files.
 
-For VS Code, Cline, Continue, Windsurf, Antigravity, Goose, the HTTP transport, and a client that connects but lists no tools, see [MCP Clients](/external-api/mcp-clients).
+For VS Code, Cline, Continue, Windsurf, Antigravity, Goose, the HTTP transport, and a client that connects but lists no tools, see [MCP Clients](/integrations/mcp-clients).
 
 ## Connection access
 
@@ -69,7 +69,7 @@ counts whenever you give it.
 
 ## Authentication
 
-**Require authentication** is on by default. Turning it on for the first time with no tokens yet generates a full-access "Default token" and shows the plaintext once, so copy it then. Create, scope, allowlist, expire and revoke tokens in the same section, described in [Tokens](/external-api/tokens).
+**Require authentication** is on by default. Turning it on for the first time with no tokens yet generates a full-access "Default token" and shows the plaintext once, so copy it then. Create, scope, allowlist, expire and revoke tokens in the same section, described in [Tokens](/developers/tokens).
 
 With the toggle off, a caller on your own machine is accepted without a token, but only as a read-only caller: schema reads and `SELECT`. Anything beyond reading needs a token you issued.
 
@@ -87,28 +87,28 @@ With the toggle off, a caller on your own machine is accepted without a token, b
 - Tokens carry scopes and can be limited to named connections. An unauthenticated local caller is read-only and can never be more.
 - Writes go through the connection's [Safe Mode](/features/safe-mode#external-clients). `DROP` and `TRUNCATE` need a full-access token and the user's approval every time.
 - Statements that read or write files, or run server-side code, are refused before they reach the driver.
-- The reachable surface is the [tool catalog](/external-api/mcp-tools), the [resources](/external-api/mcp-resources) and the [prompts](/external-api/mcp-prompts). Nothing else.
+- The reachable surface is the [tool catalog](/developers/mcp-tools), the [resources](/developers/mcp-resources) and the [prompts](/developers/mcp-prompts). Nothing else.
 - Reaching the server from another machine means forwarding the port over SSH yourself, and owning what that exposes.
 
 ## Reference
 
 <CardGroup cols={2}>
-  <Card title="Protocol" icon="plug" href="/external-api/mcp-protocol">
+  <Card title="Protocol" icon="plug" href="/developers/mcp-protocol">
     Versions, required metadata, headers, and error codes.
   </Card>
-  <Card title="Tool catalog" icon="wrench" href="/external-api/mcp-tools">
+  <Card title="Tool catalog" icon="wrench" href="/developers/mcp-tools">
     Every tool with its arguments and result shapes.
   </Card>
-  <Card title="Prompts" icon="message" href="/external-api/mcp-prompts">
+  <Card title="Prompts" icon="message" href="/developers/mcp-prompts">
     Prompts rendered from the live schema, and completions.
   </Card>
-  <Card title="Resources" icon="database" href="/external-api/mcp-resources">
+  <Card title="Resources" icon="database" href="/developers/mcp-resources">
     Read-only resources for connections, schema, and history.
   </Card>
-  <Card title="Tokens" icon="key" href="/external-api/tokens">
+  <Card title="Tokens" icon="key" href="/developers/tokens">
     Scopes, allowlists, expiry, revocation, activity log.
   </Card>
-  <Card title="MCP Clients" icon="terminal" href="/external-api/mcp-clients">
+  <Card title="MCP Clients" icon="terminal" href="/integrations/mcp-clients">
     Setup for every supported client, plus troubleshooting.
   </Card>
 </CardGroup>

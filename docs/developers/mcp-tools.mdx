@@ -3,7 +3,7 @@ title: MCP Tools
 description: The 47 tools TablePro's MCP server exposes, with arguments, defaults, result shapes, and scope requirements
 ---
 
-If a dedicated tool covers the job, it beats hand-written SQL. It quotes identifiers for the engine in front of it, applies the user's row limits, and runs on connections where raw execution is refused. All 47 publish a JSON Schema for input and output, so a client can validate both sides without reading this page. For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol).
+If a dedicated tool covers the job, it beats hand-written SQL. It quotes identifiers for the engine in front of it, applies the user's row limits, and runs on connections where raw execution is refused. All 47 publish a JSON Schema for input and output, so a client can validate both sides without reading this page. For the wire format, headers and error codes see [MCP Protocol](/developers/mcp-protocol).
 
 ## How to read this page
 
@@ -37,7 +37,7 @@ Past the scope, a call clears three more gates:
 
 1. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
 2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. Otherwise the first call that touches a connection asks the user, as often as **Settings > Integrations > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
-3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/external-api/mcp-protocol#approvals-and-input-required).
+3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/developers/mcp-protocol#approvals-and-input-required).
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
 
@@ -225,4 +225,4 @@ Every tool ships MCP annotations so a client can decide what to auto-run:
 
 A tool that fails returns a successful JSON-RPC result with `isError: true` and a text body starting with a code: `invalid_argument`, `not_connected`, `not_found`, `denied`, `timeout`, `unsupported`, `query_failed`, `user_cancelled`, `internal_failure`.
 
-Protocol errors, with a JSON-RPC `error` envelope, are reserved for the request itself: a missing scope, an unknown tool, a bad header. The full table is in [MCP Protocol](/external-api/mcp-protocol#errors).
+Protocol errors, with a JSON-RPC `error` envelope, are reserved for the request itself: a missing scope, an unknown tool, a bad header. The full table is in [MCP Protocol](/developers/mcp-protocol#errors).

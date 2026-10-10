@@ -15,6 +15,7 @@ from urllib.parse import quote, unquote
 DOCS = Path(__file__).resolve().parent.parent
 LINK = re.compile(r"\]\((/[^)\s]*?)(?:\s+\"[^\"]*\")?\)")
 SRC = re.compile(r'src=\{?"(/[^"]+)"')
+HREF = re.compile(r'\bhref="(/[^"]*)"')
 FENCE = re.compile(r"```.*?```", re.S)
 HEADING = re.compile(r"^#{1,4} +(.+?)\s*$", re.M)
 CODE_SPAN = re.compile(r"(`[^`]*`)")
@@ -179,7 +180,7 @@ def main() -> int:
         body = FENCE.sub("", path.read_text())
         check_snippets(path, body, failures)
         for line_no, line in enumerate(body.splitlines(), 1):
-            for target in LINK.findall(line):
+            for target in LINK.findall(line) + HREF.findall(line):
                 page, _, anchor = target.partition("#")
                 page = page.rstrip("/") or "/"
                 if page in redirects:
