@@ -148,7 +148,7 @@ postgresql://user:pass@host/mydb?schema=reporting&table=monthly_sales
 
 ### Filtering
 
-These apply a filter to the table the URL opened. Applying one needs its own confirmation.
+These apply a filter to the table the URL opened. A link carrying a filter always asks first, even for a trusted database, and the alert shows the whole filter. A filter longer than 51,200 characters is refused.
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
@@ -221,5 +221,7 @@ When another client also handles the scheme, `open -b com.TablePro "mysql://…"
 Every URL opened from outside the app raises an **Open External Database Connection?** alert naming the database type, host and port, user, and database. **Connect** does not answer the Return key. Escape is the only keyboard answer, and it cancels.
 
 **Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`). A trusted link is matched on database type, host, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Remote hosts always prompt.
+
+A link with a [filter](#filtering) asks every time and offers no **Always Allow**. Read the filter in the box under the target before choosing **Connect**: it runs on the table as soon as the connection opens.
 
 Trusted links are listed under **Settings > General**, where **Forget** drops one and **Forget All** drops every one.

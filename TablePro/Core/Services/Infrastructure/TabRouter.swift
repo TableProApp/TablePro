@@ -13,6 +13,7 @@ internal enum TabRouterError: Error, LocalizedError {
     case fileNoLongerExists(URL)
     case userCancelled
     case unsupportedIntent(String)
+    case filterTooLong(Int, limit: Int)
     case connectFailedInWindow(connectionId: UUID, underlying: Error)
 
     internal var windowConnectionId: UUID? {
@@ -38,6 +39,8 @@ internal enum TabRouterError: Error, LocalizedError {
             return String(localized: "Cancelled by user.")
         case .unsupportedIntent(let detail):
             return String(format: String(localized: "Unsupported intent: %@"), detail)
+        case .filterTooLong(let length, let limit):
+            return String(format: String(localized: "SQL is too long: %d characters (limit %d)"), length, limit)
         case .connectFailedInWindow(_, let underlying):
             return underlying.localizedDescription
         }
@@ -349,6 +352,13 @@ internal final class TabRouter {
         guard case .success(let parsed) = ConnectionURLParser.parse(url.absoluteString) else {
             throw TabRouterError.malformedDatabaseURL(url)
         }
+        let filter = parsed.filter
+        if let filter {
+            let length = (filter.displayText as NSString).length
+            guard length <= DeeplinkParser.sqlLengthLimit else {
+                throw TabRouterError.filterTooLong(length, limit: DeeplinkParser.sqlLengthLimit)
+            }
+        }
 
         let connections = ConnectionStorage.shared.loadConnections()
         let matched = connections.first { conn in
@@ -369,7 +379,9 @@ internal final class TabRouter {
             isTransient = true
         }
 
-        guard await externalConnectionGate.authorize(connection, scopeName: parsed.connectionName) else {
+        guard await externalConnectionGate.authorize(
+            connection, scopeName: parsed.connectionName, filter: filter
+        ) else {
             throw TabRouterError.userCancelled
         }
 
@@ -389,8 +401,8 @@ internal final class TabRouter {
                     sshPasswordOverride: sshPasswordOverride
                 )
             }
-            if parsed.filterColumn != nil || parsed.filterCondition != nil {
-                try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
+            if let filter {
+                applyURLFilter(filter, connectionId: connection.id)
             }
             return
         }
@@ -563,36 +575,10 @@ internal final class TabRouter {
         }
     }
 
-    private func applyFilterFromParsedURL(parsed: ParsedConnectionURL, connectionId: UUID) async throws {
-        let description: String
-        if let condition = parsed.filterCondition, !condition.isEmpty {
-            description = (condition as NSString).length > 300
-                ? String(condition.prefix(300)) + "…" : condition
-        } else {
-            description = [parsed.filterColumn, parsed.filterOperation, parsed.filterValue]
-                .compactMap { $0 }.joined(separator: " ")
-        }
-        if !description.isEmpty {
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(localized: "Apply Filter from Link"),
-                message: String(
-                    format: String(localized: "An external link wants to apply a filter:\n\n%@"),
-                    description
-                ),
-                confirmButton: String(localized: "Apply Filter"),
-                cancelButton: String(localized: "Cancel"),
-                window: NSApp.keyWindow
-            )
-            guard confirmed else { throw TabRouterError.userCancelled }
-        }
-
+    /// The gate showed this filter before connecting, so it is not asked about again.
+    private func applyURLFilter(_ filter: ConnectionURLFilter, connectionId: UUID) {
         guard let coordinator = MainContentCoordinator.allActiveCoordinators()
             .first(where: { $0.connectionId == connectionId }) else { return }
-        coordinator.applyURLFilter(
-            condition: parsed.filterCondition,
-            column: parsed.filterColumn,
-            operation: parsed.filterOperation,
-            value: parsed.filterValue
-        )
+        coordinator.applyURLFilter(filter)
     }
 }

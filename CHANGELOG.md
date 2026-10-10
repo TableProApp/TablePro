@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
+- A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
 
 ## [0.79.0] - 2026-10-09
 

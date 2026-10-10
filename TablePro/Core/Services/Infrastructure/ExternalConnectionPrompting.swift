@@ -14,16 +14,22 @@ internal enum ExternalConnectionDecision: Sendable {
 
 @MainActor
 internal protocol ExternalConnectionPrompting {
-    func prompt(for connection: DatabaseConnection, offerAlwaysAllow: Bool) async -> ExternalConnectionDecision
+    func prompt(
+        for connection: DatabaseConnection,
+        filter: ConnectionURLFilter?,
+        offerAlwaysAllow: Bool
+    ) async -> ExternalConnectionDecision
 }
 
 @MainActor
 internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
     internal func prompt(
         for connection: DatabaseConnection,
+        filter: ConnectionURLFilter?,
         offerAlwaysAllow: Bool
     ) async -> ExternalConnectionDecision {
-        let response = await present(Self.makeAlert(for: connection, offerAlwaysAllow: offerAlwaysAllow))
+        let alert = Self.makeAlert(for: connection, filter: filter, offerAlwaysAllow: offerAlwaysAllow)
+        let response = await present(alert)
         switch response {
         case .alertFirstButtonReturn:
             return .connect
@@ -34,20 +40,42 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         }
     }
 
-    internal static func makeAlert(for connection: DatabaseConnection, offerAlwaysAllow: Bool) -> NSAlert {
+    internal static func makeAlert(
+        for connection: DatabaseConnection,
+        filter: ConnectionURLFilter? = nil,
+        offerAlwaysAllow: Bool
+    ) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = String(localized: "Open External Database Connection?")
-        alert.informativeText = String(
-            format: String(localized: """
-                An external link wants to connect to a %@ database:
+        let details = details(for: connection).joined(separator: "\n")
+        if let filter {
+            alert.informativeText = String(
+                format: String(localized: """
+                    An external link wants to connect to a %@ database and filter a table:
 
-                %@
+                    %@
 
-                Connect only if you trust the source of this link.
-                """),
-            connection.type.rawValue,
-            details(for: connection).joined(separator: "\n")
-        )
+                    Connect only if you trust the source of this link and the filter below.
+                    """),
+                connection.type.rawValue,
+                details
+            )
+            /// `informativeText` neither scrolls nor reveals invisible characters, so a long or
+            /// disguised filter would run with part of it unseen.
+            alert.accessoryView = AlertHelper.scrollingTextAccessory(RevealedText(filter.displayText).plainText)
+        } else {
+            alert.informativeText = String(
+                format: String(localized: """
+                    An external link wants to connect to a %@ database:
+
+                    %@
+
+                    Connect only if you trust the source of this link.
+                    """),
+                connection.type.rawValue,
+                details
+            )
+        }
         alert.alertStyle = .warning
         /// Connecting is the risky half of this decision, so it gives up Return. Escape stays on
         /// Cancel, which is the only binding that dismisses the alert from the keyboard.

@@ -18,15 +18,24 @@ internal struct ExternalConnectionGate {
         self.prompt = prompt ?? ExternalConnectionAlertPrompt()
     }
 
-    internal func authorize(_ connection: DatabaseConnection, scopeName: String?) async -> Bool {
+    /// Trust covers the target, not what a link runs on it, so a link carrying a filter asks every
+    /// time and cannot be trusted from that prompt.
+    internal func authorize(
+        _ connection: DatabaseConnection,
+        scopeName: String?,
+        filter: ConnectionURLFilter? = nil
+    ) async -> Bool {
         let key = ExternalConnectionTrustKey(connection: connection, scopeName: scopeName)
-        if key.isLoopbackHost, trustStore.isTrusted(key) { return true }
+        let trustable = key.isLoopbackHost && filter == nil
+        if trustable, trustStore.isTrusted(key) { return true }
 
-        switch await prompt.prompt(for: connection, offerAlwaysAllow: key.isLoopbackHost) {
+        switch await prompt.prompt(for: connection, filter: filter, offerAlwaysAllow: trustable) {
         case .connect:
             return true
         case .alwaysAllow:
-            trustStore.trust(key)
+            if trustable {
+                trustStore.trust(key)
+            }
             return true
         case .cancel:
             return false

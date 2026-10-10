@@ -6,34 +6,29 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func applyURLFilter(condition: String?, column: String?, operation: String?, value: String?) {
-        if let condition, !condition.isEmpty {
-            let filter = TableFilter(
+    func applyURLFilter(_ filter: ConnectionURLFilter) {
+        switch filter {
+        case .condition(let sql):
+            applySingleFilter(TableFilter(
                 id: UUID(),
                 columnName: TableFilter.rawSQLColumn,
                 filterOperator: .equal,
                 value: "",
                 isEnabled: true,
-                rawSQL: condition
-            )
-            applySingleFilter(filter)
-            return
+                rawSQL: sql
+            ))
+        case .column(let name, let operation, let value):
+            applySingleFilter(TableFilter(
+                id: UUID(),
+                columnName: name,
+                filterOperator: filterOperator(forURLOperation: operation ?? "Equal"),
+                value: value ?? "",
+                isEnabled: true
+            ))
         }
-
-        guard let column, !column.isEmpty else { return }
-
-        let filterOp = mapTablePlusOperation(operation ?? "Equal")
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: column,
-            filterOperator: filterOp,
-            value: value ?? "",
-            isEnabled: true
-        )
-        applySingleFilter(filter)
     }
 
-    private func mapTablePlusOperation(_ operation: String) -> FilterOperator {
+    private func filterOperator(forURLOperation operation: String) -> FilterOperator {
         switch operation.lowercased() {
         case "equal", "equals", "=":
             return .equal

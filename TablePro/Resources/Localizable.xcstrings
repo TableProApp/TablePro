@@ -23558,6 +23558,16 @@
         }
       }
     },
+    "An external link wants to connect to a %@ database and filter a table:\n\n%@\n\nConnect only if you trust the source of this link and the filter below." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An external link wants to connect to a %1$@ database and filter a table:\n\n%2$@\n\nConnect only if you trust the source of this link and the filter below."
+          }
+        }
+      }
+    },
     "An external link wants to connect to a %@ database:\n\n%@\n\nConnect only if you trust the source of this link." : {
       "localizations" : {
         "en" : {
