@@ -20,6 +20,7 @@ struct ConnectionSyncSchemaTests {
             username: "admin",
             database: "app",
             color: .red,
+            iconName: "server.rack",
             isReadOnly: true,
             safeModeLevel: .readOnly,
             queryTimeoutSeconds: 30,
@@ -138,6 +139,7 @@ struct ConnectionSyncSchemaTests {
         #expect(decoded?.safeModeLevel == connection.safeModeLevel)
         #expect(decoded?.groupId == connection.groupId)
         #expect(decoded?.color == connection.color)
+        #expect(decoded?.iconName == connection.iconName)
     }
 
     @Test("a query timeout survives the round trip now that the field is deployed")

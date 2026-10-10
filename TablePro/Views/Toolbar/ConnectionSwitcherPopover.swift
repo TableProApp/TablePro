@@ -302,7 +302,12 @@ struct ConnectionSwitcherPopover: View {
         let group = connection.groupId.flatMap { id in groups.first { $0.id == id } }
         let connectionTags = connection.tagIds.compactMap { id in tags.first { $0.id == id } }
         return HStack(spacing: 8) {
-            ConnectionTile(type: connection.type, identityColor: connection.identityColor, size: 22)
+            ConnectionTile(
+                type: connection.type,
+                iconName: connection.iconName,
+                identityColor: connection.identityColor,
+                size: 22
+            )
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(connection.name)
@@ -317,16 +322,10 @@ struct ConnectionSwitcherPopover: View {
                         .truncationMode(.middle)
 
                     if let group {
-                        ConnectionSymbolLabel(
-                            systemName: "folder.fill",
-                            label: WelcomeTagLabel(name: group.name, color: group.color)
-                        )
+                        ConnectionSymbolLabel(label: WelcomeRowPresentation.groupLabel(group))
                     }
                     if let tag = connectionTags.first {
-                        ConnectionSymbolLabel(
-                            systemName: "tag.fill",
-                            label: WelcomeTagLabel(name: tag.name, color: tag.color)
-                        )
+                        ConnectionSymbolLabel(label: WelcomeRowPresentation.tagLabel(tag))
                     }
                 }
             }
@@ -347,6 +346,7 @@ struct ConnectionSwitcherPopover: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .help(connection.type.displayName)
     }
 
     // MARK: - Selection

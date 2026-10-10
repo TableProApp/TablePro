@@ -8,6 +8,7 @@ struct GroupFormSheet: View {
 
     @State private var name: String
     @State private var color: ConnectionColor
+    @State private var iconName: String?
     @State private var parentId: UUID?
     @State private var failure: LibraryWriteFailure?
     private let existingGroup: ConnectionGroup?
@@ -19,11 +20,12 @@ struct GroupFormSheet: View {
         self.opening = opening
         _name = State(initialValue: opening.name)
         _color = State(initialValue: opening.color)
+        _iconName = State(initialValue: opening.iconName)
         _parentId = State(initialValue: opening.parentId)
     }
 
     private var edits: GroupFormEdits {
-        GroupFormEdits(name: name, color: color, parentId: parentId)
+        GroupFormEdits(name: name, color: color, iconName: iconName, parentId: parentId)
     }
 
     private var hasChanges: Bool { edits != opening }
@@ -41,6 +43,7 @@ struct GroupFormSheet: View {
                 Section {
                     TextField("Name", text: $name)
                         .textInputAutocapitalization(.words)
+                    SymbolPickerRow(selection: $iconName, subject: .group(color))
                 }
 
                 if !parents.isEmpty || parentId != nil {

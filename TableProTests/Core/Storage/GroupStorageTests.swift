@@ -204,6 +204,149 @@ final class GroupStorageTests: XCTestCase {
         XCTAssertNil(storage.group(for: subtreeRoot.id)?.parentId)
     }
 
+    // MARK: - Edit
+
+    func testEditGroupSavesEveryFieldAndRanksTheGroupLastUnderItsNewParent() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let sibling = ConnectionGroup(name: "Sibling", parentId: parent.id)
+        let edited = ConnectionGroup(name: "Edited", color: .green)
+        for group in [parent, sibling, edited] {
+            try storage.addGroup(group)
+        }
+        let siblingOrder = try XCTUnwrap(storage.group(for: sibling.id)?.sortOrder)
+
+        try storage.editGroup(
+            id: edited.id,
+            from: ConnectionGroupFields(edited),
+            to: ConnectionGroupFields(name: "Renamed", color: .blue, iconName: "server.rack", parentId: parent.id)
+        )
+
+        let saved = try XCTUnwrap(storage.group(for: edited.id))
+        XCTAssertEqual(saved.name, "Renamed")
+        XCTAssertEqual(saved.color, .blue)
+        XCTAssertEqual(saved.iconName, "server.rack")
+        XCTAssertEqual(saved.parentId, parent.id)
+        XCTAssertGreaterThan(saved.sortOrder, siblingOrder)
+    }
+
+    func testEditGroupReportsASiblingsName() throws {
+        let production = ConnectionGroup(name: "Production")
+        let staging = ConnectionGroup(name: "Staging")
+        try storage.addGroup(production)
+        try storage.addGroup(staging)
+
+        XCTAssertThrowsError(
+            try storage.editGroup(id: staging.id, from: ConnectionGroupFields(staging), to: ConnectionGroupFields(name: "production"))
+        ) { error in
+            XCTAssertEqual(error as? GroupStorageError, .duplicateName("production"))
+        }
+        XCTAssertEqual(storage.group(for: staging.id)?.name, "Staging")
+    }
+
+    /// Saved as two writes, the rename landed and only the move was refused.
+    func testARefusedMoveInsideItselfSavesNoPartOfTheEdit() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        try storage.addGroup(parent)
+        try storage.addGroup(child)
+
+        XCTAssertThrowsError(
+            try storage.editGroup(
+                id: parent.id,
+                from: ConnectionGroupFields(parent),
+                to: ConnectionGroupFields(name: "Renamed", parentId: child.id)
+            )
+        ) { error in
+            XCTAssertEqual(error as? GroupStorageError, .wouldCreateCycle)
+        }
+        let stored = try XCTUnwrap(storage.group(for: parent.id))
+        XCTAssertEqual(stored.name, "Parent")
+        XCTAssertNil(stored.parentId)
+    }
+
+    func testAnIconOnlyEditMarksTheGroupDirtyForSync() throws {
+        let group = ConnectionGroup(name: "Prod", color: .red)
+        try storage.addGroup(group)
+        tracker.clearAllDirty(.group)
+        changeCount = 0
+
+        try storage.editGroup(
+            id: group.id,
+            from: ConnectionGroupFields(group),
+            to: ConnectionGroupFields(name: "Prod", color: .red, iconName: "server.rack")
+        )
+
+        XCTAssertTrue(tracker.dirtyRecords(for: .group).contains(group.id.uuidString))
+        XCTAssertEqual(changeCount, 1)
+        var withIcon = group
+        withIcon.iconName = "server.rack"
+        XCTAssertNotEqual(withIcon, group)
+        XCTAssertEqual(Set([withIcon, group]).count, 2)
+    }
+
+    func testAnEditThatChangesNothingWritesNothing() throws {
+        let group = ConnectionGroup(name: "Prod", color: .red, iconName: "server.rack")
+        try storage.addGroup(group)
+        tracker.clearAllDirty(.group)
+        changeCount = 0
+
+        try storage.editGroup(id: group.id, from: ConnectionGroupFields(group), to: ConnectionGroupFields(group))
+
+        XCTAssertTrue(tracker.dirtyRecords(for: .group).isEmpty)
+        XCTAssertEqual(changeCount, 0)
+    }
+
+    func testEditGroupStoresNoEmptyIconAndKeepsOneThisMacCannotDraw() throws {
+        let group = ConnectionGroup(name: "Prod")
+        try storage.addGroup(group)
+
+        let opening = ConnectionGroupFields(group)
+        try storage.editGroup(id: group.id, from: opening, to: ConnectionGroupFields(name: "Prod", iconName: ""))
+        XCTAssertNil(storage.group(for: group.id)?.iconName)
+
+        try storage.editGroup(id: group.id, from: opening, to: ConnectionGroupFields(name: "Prod", iconName: "made.up.symbol"))
+        XCTAssertEqual(storage.group(for: group.id)?.iconName, "made.up.symbol")
+    }
+
+    func testEditingAGroupThatIsGoneReportsIt() {
+        XCTAssertThrowsError(
+            try storage.editGroup(id: UUID(), from: ConnectionGroupFields(name: "Gone"), to: ConnectionGroupFields(name: "Gone"))
+        ) { error in
+            XCTAssertEqual(error as? GroupStorageError, .groupNotFound)
+        }
+    }
+
+    func testAnIconOnlyEditKeepsAChangeSyncedInWhileTheSheetWasOpen() throws {
+        let clients = ConnectionGroup(name: "Clients")
+        let group = ConnectionGroup(name: "Prod", color: .red)
+        try storage.addGroup(clients)
+        try storage.addGroup(group)
+        let opening = ConnectionGroupFields(group)
+
+        var synced = group
+        synced.name = "Production"
+        synced.color = .orange
+        synced.parentId = clients.id
+        _ = storage.applyRemoteGroup(synced)
+
+        var edited = opening
+        edited.iconName = "flame"
+        try storage.editGroup(id: group.id, from: opening, to: edited)
+
+        let saved = try XCTUnwrap(storage.group(for: group.id))
+        XCTAssertEqual(saved.iconName, "flame")
+        XCTAssertEqual(saved.name, "Production")
+        XCTAssertEqual(saved.color, .orange)
+        XCTAssertEqual(saved.parentId, clients.id)
+    }
+
+    func testAddGroupStoresNoMalformedIcon() throws {
+        let group = ConnectionGroup(name: "Prod", iconName: "Not A Symbol")
+        try storage.addGroup(group)
+
+        XCTAssertNil(storage.group(for: group.id)?.iconName)
+    }
+
     // MARK: - Delete
 
     func testDeleteGroup() {

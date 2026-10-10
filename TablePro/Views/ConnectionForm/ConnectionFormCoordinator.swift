@@ -332,6 +332,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             sshConfig: ssh.state.buildSSHConfig(),
             sslConfig: ssl.buildConfig(),
             color: customization.color,
+            iconName: customization.iconName,
             tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,

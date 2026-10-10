@@ -6,7 +6,7 @@ import Testing
 @MainActor
 @Suite("Connection form keeps the fields it does not show")
 struct ConnectionFormViewModelPreservationTests {
-    @Test("Saving an edit keeps the order, color, timeout, favorite and extra tags")
+    @Test("Saving an edit keeps the order, color, icon, timeout, favorite and extra tags")
     func keepsUneditedFields() {
         let first = UUID()
         let second = UUID()
@@ -16,6 +16,7 @@ struct ConnectionFormViewModelPreservationTests {
             host: "db.example.com",
             port: 5_432,
             color: .red,
+            iconName: "flame",
             queryTimeoutSeconds: 30,
             tagIds: [first, second],
             sortOrder: 7,
@@ -30,9 +31,20 @@ struct ConnectionFormViewModelPreservationTests {
         #expect(built.name == "Production")
         #expect(built.sortOrder == 7)
         #expect(built.color == .red)
+        #expect(built.iconName == "flame")
         #expect(built.queryTimeoutSeconds == 30)
         #expect(built.isFavorite)
         #expect(built.tagIds == [first, second])
+    }
+
+    @Test("A new connection saves the icon picked in the form")
+    func newConnectionSavesIcon() {
+        let viewModel = ConnectionFormViewModel()
+        viewModel.host = "db.example.com"
+        viewModel.iconName = "server.rack"
+
+        #expect(viewModel.buildConnection().iconName == "server.rack")
+        #expect(ConnectionFormViewModel().buildConnection().iconName == nil)
     }
 
     @Test("The legacy read-only flag follows the Safe Mode level")

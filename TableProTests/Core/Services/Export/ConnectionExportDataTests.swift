@@ -29,6 +29,22 @@ struct ConnectionExportDataTests {
         #expect(envelope.credentials == nil)
     }
 
+    @Test("A connection's icon survives a file export and its import")
+    func testIconRoundTrip() throws {
+        var connection = makeConnection(name: "Primary")
+        connection.iconName = "server.rack"
+
+        let envelope = try ConnectionImportDecoder.decodeData(ConnectionExportService.exportData([connection]))
+        let exported = try #require(envelope.connections.first)
+        let imported = ConnectionExportService.buildDatabaseConnection(
+            id: UUID(), from: exported, name: exported.name,
+            tagIdsByName: [:], groupIdsByName: [:]
+        )
+
+        #expect(exported.iconName == "server.rack")
+        #expect(imported.iconName == "server.rack")
+    }
+
     @Test("exportEncryptedData decrypts with the right passphrase")
     func testEncryptedRoundTrip() async throws {
         let connections = [makeConnection(name: "Secret")]

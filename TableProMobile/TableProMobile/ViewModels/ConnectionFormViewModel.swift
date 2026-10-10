@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
@@ -68,6 +69,7 @@ final class ConnectionFormViewModel {
     // Organization
     var groupId: UUID?
     var tagId: UUID?
+    var iconName: String?
     var safeModeLevel: SafeModeLevel = .off
 
     // SSH
@@ -151,6 +153,7 @@ final class ConnectionFormViewModel {
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
+        iconName = conn.iconName
         safeModeLevel = conn.safeModeLevel
         if let ssh = conn.sshConfiguration {
             sshHost = ssh.host
@@ -212,6 +215,7 @@ final class ConnectionFormViewModel {
             database: database,
             groupId: groupId,
             tagId: tagId,
+            iconName: LibrarySymbolCatalog.normalizedName(iconName),
             safeModeLevel: safeModeLevel,
             sslMode: effectiveSSLMode,
             sshTunnel: sshTunnel,

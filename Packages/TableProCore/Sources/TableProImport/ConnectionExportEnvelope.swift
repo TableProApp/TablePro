@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 import UniformTypeIdentifiers
 
 // MARK: - UTType
@@ -98,30 +99,31 @@ public struct ExportableCredentialProfile: Codable, Sendable {
 
 public struct ExportableConnection: Codable, Sendable {
     private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
-    public let name: String
-    public let host: String
-    public let port: Int
-    public let database: String
-    public let username: String
-    public let type: String
-    public let sshConfig: ExportableSSHConfig?
-    public let sslConfig: ExportableSSLConfig?
-    public let color: String?
-    public let tagName: String?
-    public let tagNames: [String]?
-    public let groupName: String?
-    public let sshProfileId: String?
-    public let sshProfileName: String?
-    public let credentialProfileName: String?
-    public let safeModeLevel: String?
-    public let aiPolicy: String?
-    public let connectTimeoutSeconds: Int?
-    public let queryTimeoutSeconds: Int?
-    public let additionalFields: [String: String]?
-    public let redisDatabase: Int?
-    public let startupCommands: String?
-    public let localOnly: Bool?
-    public let tunnelCommand: ExportableTunnelCommand?
+    public private(set) var name: String
+    public private(set) var host: String
+    public private(set) var port: Int
+    public private(set) var database: String
+    public private(set) var username: String
+    public private(set) var type: String
+    public private(set) var sshConfig: ExportableSSHConfig?
+    public private(set) var sslConfig: ExportableSSLConfig?
+    public private(set) var color: String?
+    public private(set) var iconName: String?
+    public private(set) var tagName: String?
+    public private(set) var tagNames: [String]?
+    public private(set) var groupName: String?
+    public private(set) var sshProfileId: String?
+    public private(set) var sshProfileName: String?
+    public private(set) var credentialProfileName: String?
+    public private(set) var safeModeLevel: String?
+    public private(set) var aiPolicy: String?
+    public private(set) var connectTimeoutSeconds: Int?
+    public private(set) var queryTimeoutSeconds: Int?
+    public private(set) var additionalFields: [String: String]?
+    public private(set) var redisDatabase: Int?
+    public private(set) var startupCommands: String?
+    public private(set) var localOnly: Bool?
+    public private(set) var tunnelCommand: ExportableTunnelCommand?
 
     public init(
         name: String,
@@ -133,6 +135,7 @@ public struct ExportableConnection: Codable, Sendable {
         sshConfig: ExportableSSHConfig?,
         sslConfig: ExportableSSLConfig?,
         color: String?,
+        iconName: String? = nil,
         tagName: String?,
         tagNames: [String]? = nil,
         groupName: String?,
@@ -158,6 +161,7 @@ public struct ExportableConnection: Codable, Sendable {
         self.sshConfig = sshConfig
         self.sslConfig = sslConfig
         self.color = color
+        self.iconName = iconName
         self.tagName = tagName
         self.tagNames = tagNames
         self.groupName = groupName
@@ -176,33 +180,15 @@ public struct ExportableConnection: Codable, Sendable {
     }
 
     public func retyped(to newType: String) -> ExportableConnection {
-        ExportableConnection(
-            name: name, host: host, port: port, database: database,
-            username: username, type: newType, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
-            groupName: groupName, sshProfileId: sshProfileId,
-            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
-            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
-            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
-            additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly,
-            tunnelCommand: tunnelCommand
-        )
+        var copy = self
+        copy.type = newType
+        return copy
     }
 
     public func renamed(to newName: String) -> ExportableConnection {
-        ExportableConnection(
-            name: newName, host: host, port: port, database: database,
-            username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
-            groupName: groupName, sshProfileId: sshProfileId,
-            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
-            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
-            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
-            additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly,
-            tunnelCommand: tunnelCommand
-        )
+        var copy = self
+        copy.name = newName
+        return copy
     }
 }
 
@@ -279,60 +265,33 @@ public extension ExportableConnection {
     }
 
     func withoutStartupCommands() -> ExportableConnection {
-        guard startupCommands != nil else { return self }
-        return ExportableConnection(
-            name: name, host: host, port: port, database: database,
-            username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
-            groupName: groupName, sshProfileId: sshProfileId,
-            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
-            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
-            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
-            additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: nil, localOnly: localOnly,
-            tunnelCommand: tunnelCommand
-        )
+        var copy = self
+        copy.startupCommands = nil
+        return copy
     }
 
     var carriesTunnelCommand: Bool { tunnelCommand != nil }
 
     func withoutTunnelCommand() -> ExportableConnection {
-        guard tunnelCommand != nil else { return self }
-        return ExportableConnection(
-            name: name, host: host, port: port, database: database,
-            username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
-            groupName: groupName, sshProfileId: sshProfileId,
-            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
-            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
-            connectTimeoutSeconds: connectTimeoutSeconds, queryTimeoutSeconds: queryTimeoutSeconds,
-            additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly,
-            tunnelCommand: nil
-        )
+        var copy = self
+        copy.tunnelCommand = nil
+        return copy
     }
 
     func sanitizedForImport() -> ExportableConnection {
         var allowed = (additionalFields ?? [:]).filter { !Self.isImportBlockedAdditionalFieldKey($0.key) }
         let legacyConnectTimeout = allowed.removeValue(forKey: Self.connectTimeoutSecondsKey).flatMap(Int.init)
         let legacyQueryTimeout = allowed.removeValue(forKey: Self.queryTimeoutSecondsKey).flatMap(Int.init)
-        let importedConnectTimeout = connectTimeoutSeconds ?? legacyConnectTimeout
-        let importedQueryTimeout = queryTimeoutSeconds ?? legacyQueryTimeout
-        return ExportableConnection(
-            name: name, host: host, port: port, database: database,
-            username: username, type: type, sshConfig: sshConfig,
-            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
-            groupName: groupName, sshProfileId: sshProfileId,
-            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
-            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
-            connectTimeoutSeconds: importedConnectTimeout.flatMap { (1 ... 600).contains($0) ? $0 : nil },
-            queryTimeoutSeconds: importedQueryTimeout.flatMap {
-                Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
-            },
-            additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly,
-            tunnelCommand: tunnelCommand
-        )
+        var copy = self
+        copy.connectTimeoutSeconds = (connectTimeoutSeconds ?? legacyConnectTimeout).flatMap {
+            (1 ... 600).contains($0) ? $0 : nil
+        }
+        copy.queryTimeoutSeconds = (queryTimeoutSeconds ?? legacyQueryTimeout).flatMap {
+            Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
+        }
+        copy.additionalFields = allowed.isEmpty ? nil : allowed
+        copy.iconName = LibrarySymbolCatalog.normalizedName(iconName)
+        return copy
     }
 }
 
@@ -430,10 +389,12 @@ public struct ExportableSSLConfig: Codable, Sendable {
 public struct ExportableGroup: Codable, Sendable {
     public let name: String
     public let color: String?
+    public let iconName: String?
 
-    public init(name: String, color: String?) {
+    public init(name: String, color: String?, iconName: String? = nil) {
         self.name = name
         self.color = color
+        self.iconName = iconName
     }
 }
 

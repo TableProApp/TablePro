@@ -1,24 +1,27 @@
 import Foundation
+import TableProConnectionLibrary
 import TableProModels
 
 nonisolated struct GroupFormEdits: Equatable, Sendable {
     let name: String
     let color: ConnectionColor
+    let iconName: String?
     let parentId: UUID?
 
-    init(name: String, color: ConnectionColor, parentId: UUID?) {
+    init(name: String, color: ConnectionColor, iconName: String?, parentId: UUID?) {
         self.name = name.trimmingCharacters(in: .whitespaces)
         self.color = color
+        self.iconName = LibrarySymbolCatalog.normalizedName(iconName)
         self.parentId = parentId
     }
 
     init(group: ConnectionGroup) {
-        self.init(name: group.name, color: group.color, parentId: group.parentId)
+        self.init(name: group.name, color: group.color, iconName: group.iconName, parentId: group.parentId)
     }
 
     init(opening group: ConnectionGroup?, parentId: UUID?) {
         guard let group else {
-            self.init(name: "", color: .none, parentId: parentId)
+            self.init(name: "", color: .none, iconName: nil, parentId: parentId)
             return
         }
         self.init(group: group)
@@ -33,6 +36,7 @@ nonisolated struct GroupFormEdits: Equatable, Sendable {
         var group = base
         if changed(\.name) { group.name = name }
         if changed(\.color) { group.color = color }
+        if changed(\.iconName) { group.iconName = iconName }
         if changed(\.parentId) { group.parentId = parentId }
         return group
     }

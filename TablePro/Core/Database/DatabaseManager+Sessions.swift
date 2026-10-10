@@ -819,7 +819,7 @@ extension DatabaseManager {
     ///
     /// This used to reconcile `safeModeLevel` alone, so everything else stayed frozen at connect
     /// time. `WorkspaceRailStore.resolve` reads `session.connection` for any live session, which
-    /// made a rename or a recolour invisible in the rail until the next reconnect (#2398).
+    /// made a rename, a recolour or a new icon invisible in the rail until the next reconnect.
     ///
     /// The allowlist is deliberately narrow, and adopting the whole stored record instead would be
     /// unsafe: `reconnectOntoDatabase` builds its reconnect from `session.connection`, so letting
@@ -855,6 +855,7 @@ extension DatabaseManager {
         var adopted = base
         adopted.name = source.name
         adopted.color = source.color
+        adopted.iconName = source.iconName
         adopted.tagIds = source.tagIds
         return adopted
     }

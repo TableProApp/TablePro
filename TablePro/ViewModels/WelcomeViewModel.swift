@@ -24,6 +24,9 @@ internal struct WelcomeTagToken: Identifiable, Hashable {
 
 enum WelcomeActiveSheet: Identifiable {
     case newGroup(WelcomeNewGroupRequest)
+    /// Carries the group as it was when the sheet opened, so a sync that deletes it meanwhile
+    /// leaves the sheet open with an error on Save rather than empty.
+    case editGroup(ConnectionGroup)
     case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
@@ -37,6 +40,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .newGroup(let request):
             "newGroup-\(request.parentId?.uuidString ?? "root")-"
                 + request.movingConnectionIds.map(\.uuidString).joined(separator: ",")
+        case .editGroup(let group): "editGroup-\(group.id.uuidString)"
         case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
@@ -751,8 +755,14 @@ final class WelcomeViewModel: ObservableObject {
         activeSheet = .newGroup(WelcomeNewGroupRequest(parentId: parentId, movingConnectionIds: movingConnectionIds))
     }
 
-    func createGroup(name: String, color: ConnectionColor, parentId: UUID?, moving connectionIds: [UUID]) throws {
-        let group = ConnectionGroup(name: name, color: color, parentId: parentId)
+    func createGroup(
+        name: String,
+        color: ConnectionColor,
+        iconName: String?,
+        parentId: UUID?,
+        moving connectionIds: [UUID]
+    ) throws {
+        let group = ConnectionGroup(name: name, color: color, iconName: iconName, parentId: parentId)
         try groupStorage.addGroup(group)
         expandedGroupIds.insert(group.id)
         if let parentId {
@@ -762,6 +772,19 @@ final class WelcomeViewModel: ObservableObject {
         if !connectionIds.isEmpty,
            !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, validGroupIds: Set(groups.map(\.id))) {
             reportLibraryWriteFailure()
+        }
+        loadConnections()
+    }
+
+    func requestEditGroup(_ groupId: UUID) {
+        guard let group = groupsById[groupId] else { return }
+        activeSheet = .editGroup(group)
+    }
+
+    func saveGroup(id: UUID, from opening: ConnectionGroupFields, to edited: ConnectionGroupFields) throws {
+        try groupStorage.editGroup(id: id, from: opening, to: edited)
+        if let parentId = edited.parentId {
+            expandedGroupIds.formUnion(groupGraph.pathIds(to: parentId))
         }
         loadConnections()
     }

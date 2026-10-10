@@ -250,6 +250,48 @@ struct ConnectionFormEditsTests {
         #expect(saved.additionalFields[Key.role] == OracleConnectionOptions.Role.sysdba.rawValue)
     }
 
+    @Test("An edit that leaves the icon alone keeps an icon set on the Mac while the form was open")
+    func untouchedIconKeepsMacIcon() {
+        let snapshot = storedConnection()
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.iconName = "server.rack"
+
+        viewModel.port = "5433"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.port == 5_433)
+        #expect(saved.iconName == "server.rack")
+    }
+
+    @Test("Picking an icon writes it, and picking Default clears it")
+    func iconPickAndReset() {
+        var snapshot = storedConnection()
+        let picking = ConnectionFormViewModel(editing: snapshot)
+        picking.iconName = "flame"
+        snapshot = picking.applyingEdits(to: snapshot)
+        #expect(snapshot.iconName == "flame")
+
+        let resetting = ConnectionFormViewModel(editing: snapshot)
+        #expect(resetting.iconName == "flame")
+        resetting.iconName = nil
+        #expect(resetting.hasChanges)
+        #expect(resetting.applyingEdits(to: snapshot).iconName == nil)
+    }
+
+    @Test("An icon this release does not know survives an edit that did not touch it")
+    func unknownIconSurvivesAnEdit() {
+        var snapshot = storedConnection()
+        snapshot.iconName = "made.up.symbol"
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.name = "Renamed"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.name == "Renamed")
+        #expect(saved.iconName == "made.up.symbol")
+    }
+
         @Test("A Safe Mode change writes the legacy read-only flag with it")
     func safeModeWritesReadOnly() {
         let snapshot = storedConnection()

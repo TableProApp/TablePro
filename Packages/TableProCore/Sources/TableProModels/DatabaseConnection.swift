@@ -19,6 +19,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     /// This was `colorTag: String?` holding free-form hex, which synced on its own CloudKit field
     /// and meant a colour set on one platform was invisible on the other.
     public var color: ConnectionColor
+    /// An SF Symbol the user picked to draw instead of the engine icon. Nil draws the engine icon.
+    public var iconName: String?
     public var isReadOnly: Bool
     public var safeModeLevel: SafeModeLevel
     public var queryTimeoutSeconds: Int?
@@ -70,6 +72,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         username: String = "",
         database: String = "",
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         isReadOnly: Bool = false,
         safeModeLevel: SafeModeLevel = .off,
         queryTimeoutSeconds: Int? = nil,
@@ -92,6 +95,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.username = username
         self.database = database
         self.color = color
+        self.iconName = iconName
         self.isReadOnly = isReadOnly
         self.safeModeLevel = safeModeLevel
         self.queryTimeoutSeconds = queryTimeoutSeconds.flatMap {
@@ -110,7 +114,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, type, host, port, username, database, color, colorTag
+        case id, name, type, host, port, username, database, color, colorTag, iconName
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
         case groupId, tagId, tagIds, sortOrder, isFavorite, isSample
@@ -134,6 +138,7 @@ extension DatabaseConnection: Codable {
         } else {
             color = .none
         }
+        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
         isReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
         if let level = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) {
             safeModeLevel = level
@@ -169,6 +174,7 @@ extension DatabaseConnection: Codable {
         try container.encode(username, forKey: .username)
         try container.encode(database, forKey: .database)
         try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(iconName, forKey: .iconName)
         try container.encode(isReadOnly, forKey: .isReadOnly)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(queryTimeoutSeconds, forKey: .queryTimeoutSeconds)

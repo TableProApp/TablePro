@@ -3,9 +3,9 @@ title: MCP Protocol
 description: "Wire contract for TablePro MCP server: protocol versions, required metadata, headers, result envelope, cache hints, and error codes"
 ---
 
-`2026-07-28` is the revision to write against, and two older ones still answer for clients that have not moved. This page is the wire contract; for the tools themselves see [MCP Tools](/external-api/mcp-tools).
+`2026-07-28` is the revision to write against, and two older ones still answer for clients that have not moved. This page is the wire contract; for the tools themselves see [MCP Tools](/developers/mcp-tools).
 
-Most people never read it. The bundled `tablepro-mcp` stdio bridge speaks this for you, and every client in [MCP Clients](/external-api/mcp-clients) goes through the bridge. Read on if you are writing a client against the HTTP endpoint directly.
+Most people never read it. The bundled `tablepro-mcp` stdio bridge speaks this for you, and every client in [MCP Clients](/integrations/mcp-clients) goes through the bridge. Read on if you are writing a client against the HTTP endpoint directly.
 
 ## One round trip
 
@@ -224,7 +224,7 @@ The notification is answered with `202` whether or not anything matched. The can
 
 Cancellation is per principal: a token can only cancel its own requests. Revoking a token cancels everything it has in flight.
 
-The server also cancels for you. Every handler has a 330-second deadline, and the server polls for a dropped connection once a second, so a client that walks away does not leave a query running. [`subscriptions/listen`](/external-api/mcp-subscriptions#closing) is the one method that deadline does not reach.
+The server also cancels for you. Every handler has a 330-second deadline, and the server polls for a dropped connection once a second, so a client that walks away does not leave a query running. [`subscriptions/listen`](/developers/mcp-subscriptions#closing) is the one method that deadline does not reach.
 
 ## Approvals and input required
 
@@ -274,7 +274,7 @@ Present the form, then repeat the **same** call with the answer and the state ec
 
 A call that carries `inputResponses` or `requestState` is never cached, whatever the method's normal hint says.
 
-An accepted form stands in for TablePro's own dialog only on a `fullAccess` token. On a `readOnly` or `readWrite` token, and on the anonymous loopback principal, Safe Mode still puts its dialog on the Mac afterwards, so a write is confirmed twice: once in your interface, once in TablePro's. Ask for `fullAccess` at [pairing](/external-api/pairing) if the second prompt is not what you want.
+An accepted form stands in for TablePro's own dialog only on a `fullAccess` token. On a `readOnly` or `readWrite` token, and on the anonymous loopback principal, Safe Mode still puts its dialog on the Mac afterwards, so a write is confirmed twice: once in your interface, once in TablePro's. Ask for `fullAccess` at [pairing](/developers/pairing) if the second prompt is not what you want.
 
 ## Errors
 
@@ -331,7 +331,7 @@ Protocol errors are reserved for the envelope: a malformed request, a missing sc
 | Idle connection timeout | 30 seconds |
 | Handler deadline | 330 seconds |
 
-Per-caller request rates, auth lockouts and pairing lockouts are counted separately and are listed under [rate limits](/external-api/tokens#rate-limits).
+Per-caller request rates, auth lockouts and pairing lockouts are counted separately and are listed under [rate limits](/developers/tokens#rate-limits).
 
 ## Legacy era
 

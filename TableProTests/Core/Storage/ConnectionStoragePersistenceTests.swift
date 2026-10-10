@@ -177,6 +177,23 @@ struct ConnectionStoragePersistenceTests {
         #expect(reloaded?.passwordSource == .file(path: "~/.config/tablepro/db.pw"))
     }
 
+    @Test("duplicating a Blocked connection keeps it Blocked and keeps its icon")
+    func duplicateKeepsExternalAccessAndIcon() throws {
+        var connection = DatabaseConnection(name: "Production", type: .postgresql)
+        connection.externalAccess = .blocked
+        connection.iconName = "lock.shield"
+        storage.addConnection(connection)
+
+        let duplicate = try #require(storage.duplicateConnection(connection))
+        #expect(duplicate.externalAccess == .blocked)
+        #expect(duplicate.iconName == "lock.shield")
+
+        storage.invalidateCache()
+        let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
+        #expect(reloaded?.externalAccess == .blocked)
+        #expect(reloaded?.iconName == "lock.shield")
+    }
+
     @Test("connections default to not favorited")
     func defaultsToNotFavorited() {
         let connection = DatabaseConnection(name: "Plain Test")

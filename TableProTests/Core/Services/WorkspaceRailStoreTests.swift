@@ -417,11 +417,13 @@ struct WorkspaceRailCellTextTests {
         host: String = "db.internal",
         container: String = "app",
         status: ConnectionStatus = .connected,
-        containerTarget: ContainerSwitchTarget? = .database
+        containerTarget: ContainerSwitchTarget? = .database,
+        iconName: String? = nil
     ) -> WorkspaceRailEntry {
         var connection = TestFixtures.makeConnection(database: container)
         connection.name = name
         connection.host = host
+        connection.iconName = iconName
         return WorkspaceRailEntry(
             workspace: WorkspaceID(connectionId: connection.id, container: container),
             connection: connection,
@@ -587,23 +589,102 @@ struct WorkspaceRailCellTextTests {
         #expect(WorkspaceRailCellView.identityDotSize(forIcon: 24) == 9)
     }
 
+    /// The engine is named in words because a custom icon replaces the engine's logo.
     @Test("The tooltip spells out what the truncated labels cannot")
     func tooltipCarriesFullIdentity() {
         let text = WorkspaceRailCellView.tooltipText(for: makeEntry())
-        #expect(text == "staging · db.internal · app")
+        #expect(text == "staging · MySQL · db.internal · app")
     }
 
     @Test("The tooltip omits parts the connection does not have")
     func tooltipOmitsMissingParts() {
         let text = WorkspaceRailCellView.tooltipText(for: makeEntry(host: "", container: ""))
-        #expect(text == "staging")
+        #expect(text == "staging · MySQL")
     }
 
-    @Test("VoiceOver hears the name, the container, and the connection state")
+    @Test("VoiceOver hears the name, the engine, the container, and the connection state")
     func voiceOverLabelDescribesEntry() {
-        let label = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(status: .connected))
+        let label = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(status: .connected, iconName: "server.rack"))
         #expect(label.contains("staging"))
+        #expect(label.contains("MySQL"))
         #expect(label.contains("app"))
+    }
+
+    // MARK: - Custom icon
+
+    private static let customIcon = "server.rack"
+
+    private func pixels(_ image: NSImage?) -> Data? {
+        image?.tiffRepresentation
+    }
+
+    @Test("A live entry draws the connection's own icon as a template")
+    func liveGlyphIsTheConnectionIcon() throws {
+        let rack = try #require(NSImage(systemSymbolName: Self.customIcon, accessibilityDescription: nil))
+
+        for status in [ConnectionStatus.connected, .connecting] {
+            let glyph = try #require(WorkspaceRailCellView.glyph(for: makeEntry(status: status, iconName: Self.customIcon)))
+            #expect(pixels(glyph) == pixels(rack), "\(status)")
+            #expect(glyph.isTemplate, "\(status)")
+        }
+        let engine = WorkspaceRailCellView.glyph(for: makeEntry())
+        #expect(pixels(engine) != pixels(rack))
+    }
+
+    /// Shape carries the state, so a connection that failed must not look like a healthy one
+    /// because it has an icon of its own.
+    @Test("A failed or disconnected entry keeps its state glyph over the connection's icon")
+    func stateGlyphWinsOverIcon() {
+        let failed = WorkspaceRailCellView.glyph(for: makeEntry(status: .error("boom"), iconName: Self.customIcon))
+        let disconnected = WorkspaceRailCellView.glyph(for: makeEntry(status: .disconnected, iconName: Self.customIcon))
+
+        #expect(pixels(failed) == pixels(NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)))
+        #expect(pixels(disconnected) == pixels(NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: nil)))
+    }
+
+    @Test("A custom icon changes the glyph's shape and never its tint")
+    func iconKeepsTint() {
+        for status in [ConnectionStatus.connected, .connecting, .error("boom"), .disconnected] {
+            let custom = WorkspaceRailCellView.glyphTint(for: makeEntry(status: status, iconName: Self.customIcon))
+            let plain = WorkspaceRailCellView.glyphTint(for: makeEntry(status: status))
+            #expect(custom == plain, "\(status)")
+        }
+    }
+
+    /// The rail reloads its cells from `session.connection`, which takes a stored icon edit without
+    /// a reconnect, so a configured cell has to repaint from the entry it is handed.
+    @Test("Reconfiguring a cell with a new icon repaints its glyph")
+    func reconfiguredCellRepaintsGlyph() throws {
+        let cell = WorkspaceRailCellView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: WorkspaceRailMetrics.medium.width,
+            height: WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
+        ))
+        let rack = try #require(NSImage(systemSymbolName: Self.customIcon, accessibilityDescription: nil))
+
+        cell.configure(entry: makeEntry(), layout: WorkspaceRailMetrics.medium)
+        let engine = pixels(cell.imageView?.image)
+        cell.configure(entry: makeEntry(iconName: Self.customIcon), layout: WorkspaceRailMetrics.medium)
+
+        #expect(pixels(cell.imageView?.image) == pixels(rack))
+        #expect(pixels(cell.imageView?.image) != engine)
+    }
+
+    /// `NSImage(named:)` hands every caller the one cached instance, so marking it a template here
+    /// used to change the engine logo for every other surface that draws it.
+    @Test("Drawing an engine logo leaves the shared asset untouched")
+    func engineGlyphDoesNotMutateTheCachedAsset() throws {
+        let cached = try #require(NSImage(named: DatabaseType.mysql.iconName))
+        let original = cached.isTemplate
+        defer { cached.isTemplate = original }
+        cached.isTemplate = false
+
+        let glyph = try #require(WorkspaceRailCellView.glyph(for: makeEntry()))
+
+        #expect(glyph !== cached)
+        #expect(glyph.isTemplate)
+        #expect(!cached.isTemplate)
     }
 
     @Test("VoiceOver distinguishes a failed connection from a healthy one")

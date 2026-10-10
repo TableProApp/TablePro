@@ -185,6 +185,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
         var attempted = TestFixtures.makeConnection(name: "Before rename", type: .mssql)
         attempted.host = "attempted.example.com"
         attempted.color = .red
+        attempted.iconName = "cylinder"
         attempted.tagIds = [originalTag]
         attempted.preferredSafeModeLevel = .silent
         attempted.localOnly = true
@@ -206,6 +207,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
             edited.name = "Renamed while connecting"
             edited.host = "stored-edit.example.com"
             edited.color = .purple
+            edited.iconName = "server.rack"
             edited.tagIds = [reconciledTag]
             edited.preferredSafeModeLevel = .alert
             storage.updateConnection(edited)
@@ -215,6 +217,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
             #expect(whileConnecting.connection.name == "Renamed while connecting")
             #expect(whileConnecting.connection.host == "attempted.example.com")
             #expect(whileConnecting.connection.color == .purple)
+            #expect(whileConnecting.connection.iconName == "server.rack")
             #expect(whileConnecting.connection.tagIds == [reconciledTag])
             #expect(whileConnecting.connection.preferredSafeModeLevel == .alert)
             #expect(whileConnecting.safeModeLevel == .alert)
@@ -234,6 +237,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
             #expect(connected.connection.name == "Renamed while connecting")
             #expect(connected.connection.host == "attempted.example.com")
             #expect(connected.connection.color == .purple)
+            #expect(connected.connection.iconName == "server.rack")
             #expect(connected.connection.tagIds == [reconciledTag])
             #expect(connected.connection.preferredSafeModeLevel == .alert)
             #expect(connected.safeModeLevel == .alert)

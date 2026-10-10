@@ -71,7 +71,10 @@ extension SyncCoordinator {
             await collectRecords(of: .group, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let groups = groupStorage.loadGroups()
                 return groupStorage.storeIsUnreadable ? nil : groups
-            } disposition: { (group: ConnectionGroup) in .push(SyncRecordMapper.toCKRecord(group, in: zoneID)) }
+            } disposition: { (group: ConnectionGroup) in
+                let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
+                return .push(SyncRecordMapper.toCKRecord(group, in: zoneID, base: recordCache.record(for: recordID)))
+            }
         }
 
         if boundary.includes(.tag) {

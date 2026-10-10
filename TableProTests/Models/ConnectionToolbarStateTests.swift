@@ -5,6 +5,7 @@
 //  Tests for the state the toolbar and the menu bar validate against.
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -26,6 +27,54 @@ struct ConnectionToolbarStateTests {
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
         #expect(state.queryTimings.isEmpty)
+    }
+
+    // MARK: - update(from:)
+
+    @Test("update(from:) carries the name and icon the toolbar item draws")
+    func updateCarriesNameAndIcon() {
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        let state = ConnectionToolbarState(connection: connection)
+        #expect(state.connectionName == "Prod")
+        #expect(state.iconName == nil)
+
+        connection.name = "Production"
+        connection.iconName = "server.rack"
+        state.update(from: connection)
+        #expect(state.connectionName == "Production")
+        #expect(state.iconName == "server.rack")
+
+        connection.iconName = nil
+        state.update(from: connection)
+        #expect(state.iconName == nil)
+    }
+
+    /// Runs on every connection save and on a bulk iCloud pull, so an unchanged record must not
+    /// wake every window's toolbar.
+    @Test("A record that changed nothing the toolbar shows publishes nothing")
+    func unchangedRecordIsSilent() {
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.iconName = "server.rack"
+        let state = ConnectionToolbarState(connection: connection)
+        var changes = 0
+        let observation = state.objectWillChange.sink { changes += 1 }
+
+        state.update(from: connection)
+
+        #expect(changes == 0)
+        observation.cancel()
+    }
+
+    @Test("reset forgets the name and icon")
+    func resetClearsNameAndIcon() {
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.iconName = "server.rack"
+        let state = ConnectionToolbarState(connection: connection)
+
+        state.reset()
+
+        #expect(state.connectionName.isEmpty)
+        #expect(state.iconName == nil)
     }
 
     // MARK: - query timing

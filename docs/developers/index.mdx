@@ -1,5 +1,5 @@
 ---
-title: External API
+title: Developers
 description: URL scheme, AppleScript, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
 ---
 
@@ -8,23 +8,23 @@ script that asked. That split decides which page you need, and pairing is the st
 that gets a client its token.
 
 <CardGroup cols={2}>
-  <Card title="URL scheme" icon="link" href="/external-api/url-scheme">
+  <Card title="URL scheme" icon="link" href="/developers/url-scheme">
     `tablepro://` deep links open connections, tables, and queries in the GUI.
   </Card>
-  <Card title="AppleScript" icon="scroll" href="/external-api/applescript">
+  <Card title="AppleScript" icon="scroll" href="/developers/applescript">
     A scripting dictionary for connections, tabs, results and queries.
   </Card>
-  <Card title="MCP server" icon="plug" href="/external-api/mcp-tools">
+  <Card title="MCP server" icon="plug" href="/developers/mcp-tools">
     JSON-RPC tools, resources and prompts for AI clients, over stdio or local HTTP.
   </Card>
-  <Card title="Pairing" icon="handshake" href="/external-api/pairing">
+  <Card title="Pairing" icon="handshake" href="/developers/pairing">
     One-click flow that issues a scoped token to an extension.
   </Card>
 </CardGroup>
 
 Two surfaces build on those. macOS hands TablePro plain database URLs (`mysql://…`) and `.sql` files,
-which is what the [Terminal and DDEV](/external-api/terminal) integration rides on. On iPhone and
-iPad, App Intents put three actions in [Shortcuts](/external-api/ios-shortcuts).
+which is what the [Terminal and DDEV](/integrations/terminal) integration rides on. On iPhone and
+iPad, App Intents put three actions in [Shortcuts](/integrations/ios-shortcuts).
 
 ## Quick start
 
@@ -34,8 +34,8 @@ Opening something in the GUI needs no setup at all:
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
 ```
 
-Reading data back needs a token. Install the [Raycast extension](/external-api/raycast) and run
-**Pair with TablePro**, or wire stdio MCP into your own [MCP client](/external-api/mcp-clients) and
+Reading data back needs a token. Install the [Raycast extension](/integrations/raycast) and run
+**Pair with TablePro**, or wire stdio MCP into your own [MCP client](/integrations/mcp-clients) and
 skip the extension.
 
 ## Security model
@@ -43,7 +43,7 @@ skip the extension.
 The MCP server binds `127.0.0.1`, and on stock settings every request carries a token. A call is
 allowed only where the token's scope, the token's connection allowlist, and the connection's own
 **External Clients** level all permit it; the effective permission is the lowest of them.
-[Tokens](/external-api/tokens) has the full model. On top of that, an AI policy of **Never** refuses
+[Tokens](/developers/tokens) has the full model. On top of that, an AI policy of **Never** refuses
 the connection outright, and [Safe Mode](/features/safe-mode) still holds destructive statements
 behind a confirmation.
 
@@ -58,4 +58,4 @@ read it.
 ## Versioning
 
 Paths, tools and result fields are additive within a major version, and the app is still on 0.x. See
-[Versioning](/external-api/versioning) for what that means for a client you have to keep working.
+[Versioning](/developers/versioning) for what that means for a client you have to keep working.
