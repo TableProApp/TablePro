@@ -781,9 +781,9 @@ final class WelcomeViewModel: ObservableObject {
         activeSheet = .editGroup(group)
     }
 
-    func saveGroup(id: UUID, name: String, color: ConnectionColor, iconName: String?, parentId: UUID?) throws {
-        try groupStorage.editGroup(id: id, name: name, color: color, iconName: iconName, parentId: parentId)
-        if let parentId {
+    func saveGroup(id: UUID, from opening: ConnectionGroupFields, to edited: ConnectionGroupFields) throws {
+        try groupStorage.editGroup(id: id, from: opening, to: edited)
+        if let parentId = edited.parentId {
             expandedGroupIds.formUnion(groupGraph.pathIds(to: parentId))
         }
         loadConnections()

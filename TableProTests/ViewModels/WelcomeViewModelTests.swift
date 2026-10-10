@@ -267,7 +267,11 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.loadConnections()
         viewModel.expandedGroupIds = []
 
-        try viewModel.saveGroup(id: acme.id, name: "Acme Corp", color: .blue, iconName: "building.2", parentId: clients.id)
+        try viewModel.saveGroup(
+            id: acme.id,
+            from: ConnectionGroupFields(acme),
+            to: ConnectionGroupFields(name: "Acme Corp", color: .blue, iconName: "building.2", parentId: clients.id)
+        )
 
         let saved = try XCTUnwrap(groupStorage.group(for: acme.id))
         XCTAssertEqual(saved.name, "Acme Corp")
@@ -286,7 +290,11 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.loadConnections()
 
         XCTAssertThrowsError(
-            try viewModel.saveGroup(id: parent.id, name: "Renamed", color: .none, iconName: nil, parentId: child.id)
+            try viewModel.saveGroup(
+                id: parent.id,
+                from: ConnectionGroupFields(parent),
+                to: ConnectionGroupFields(name: "Renamed", parentId: child.id)
+            )
         ) { error in
             XCTAssertEqual(error as? GroupStorageError, .wouldCreateCycle)
         }

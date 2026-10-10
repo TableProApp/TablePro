@@ -5,13 +5,6 @@
 
 import SwiftUI
 
-internal struct GroupEditorDraft: Equatable {
-    internal var name: String
-    internal var color: ConnectionColor
-    internal var iconName: String?
-    internal var parentId: UUID?
-}
-
 internal enum GroupEditorMode {
     case create(parentId: UUID?)
     case edit(ConnectionGroup)
@@ -19,7 +12,7 @@ internal enum GroupEditorMode {
 
 internal struct GroupEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var draft: GroupEditorDraft
+    @State private var draft: ConnectionGroupFields
     @State private var errorMessage: String?
 
     private let mode: GroupEditorMode
@@ -27,26 +20,21 @@ internal struct GroupEditorSheet: View {
     /// Throwing, because the store refuses a duplicate sibling name, a cycle and a group nested
     /// past the cap. A sheet that dismissed on the attempt left the caller holding the id of a
     /// group that was never saved.
-    private let onSave: (GroupEditorDraft) throws -> Void
+    private let onSave: (ConnectionGroupFields) throws -> Void
 
     internal init(
         mode: GroupEditorMode,
         groups: [ConnectionGroup],
-        onSave: @escaping (GroupEditorDraft) throws -> Void
+        onSave: @escaping (ConnectionGroupFields) throws -> Void
     ) {
         self.mode = mode
         self.groups = groups
         self.onSave = onSave
         switch mode {
         case .create(let parentId):
-            _draft = State(initialValue: GroupEditorDraft(name: "", color: .none, iconName: nil, parentId: parentId))
+            _draft = State(initialValue: ConnectionGroupFields(name: "", parentId: parentId))
         case .edit(let group):
-            _draft = State(initialValue: GroupEditorDraft(
-                name: group.name,
-                color: group.color,
-                iconName: group.iconName,
-                parentId: group.parentId
-            ))
+            _draft = State(initialValue: ConnectionGroupFields(group))
         }
     }
 

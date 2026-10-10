@@ -33,3 +33,22 @@ struct ConnectionGroup: Identifiable, Hashable, Codable {
         self.sortOrder = sortOrder
     }
 }
+
+/// The fields a person edits on a group, compared one by one so a save writes only what changed.
+struct ConnectionGroupFields: Equatable {
+    var name: String
+    var color: ConnectionColor
+    var iconName: String?
+    var parentId: UUID?
+
+    init(name: String, color: ConnectionColor = .none, iconName: String? = nil, parentId: UUID? = nil) {
+        self.name = name
+        self.color = color
+        self.iconName = iconName
+        self.parentId = parentId
+    }
+
+    init(_ group: ConnectionGroup) {
+        self.init(name: group.name, color: group.color, iconName: group.iconName, parentId: group.parentId)
+    }
+}

@@ -37,10 +37,13 @@ public enum SyncRecordMapper {
 
     // MARK: - Connection -> CKRecord
 
+    /// Builds the whole record from the model, which is also how a connection whose cached record
+    /// is gone gets pushed. Under `.changedKeys` only a named key reaches the server, so every field
+    /// `updateRecord` would clear is named here too, or a cleared group, tag or icon comes back.
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
         let id = recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: id)
-        let fields = record.fields(ConnectionSyncField.self)
+        let fields = record.fields(ConnectionSyncField.self, absentValues: .clear)
 
         fields[.connectionId] = connection.id.uuidString as CKRecordValue
         fields[.name] = connection.name as CKRecordValue
@@ -58,17 +61,11 @@ public enum SyncRecordMapper {
 
         fields[.color] = connection.color.rawValue as CKRecordValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName) as CKRecordValue?
-        if let groupId = connection.groupId {
-            fields[.groupId] = groupId.uuidString as CKRecordValue
-        }
-        if !connection.tagIds.isEmpty {
-            let tagIdStrings = connection.tagIds.map { $0.uuidString }
-            fields[.tagIds] = tagIdStrings as CKRecordValue
-            fields[.tagId] = tagIdStrings[0] as CKRecordValue
-        }
-        if let queryTimeout = validQueryTimeout(connection.queryTimeoutSeconds) {
-            fields[.queryTimeoutSeconds] = Int64(queryTimeout) as CKRecordValue
-        }
+        fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
+        let tagIdStrings = connection.tagIds.map(\.uuidString)
+        fields[.tagIds] = tagIdStrings.isEmpty ? nil : tagIdStrings as CKRecordValue
+        fields[.tagId] = tagIdStrings.first as CKRecordValue?
+        fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
         if let sshConfig = connection.sshConfiguration {
             do {
@@ -77,6 +74,8 @@ public enum SyncRecordMapper {
             } catch {
                 logger.warning("Failed to encode SSH config for sync: \(error.localizedDescription)")
             }
+        } else {
+            fields[.sshConfigJson] = nil
         }
 
         if let sslConfig = connection.sslConfiguration {
@@ -86,6 +85,8 @@ public enum SyncRecordMapper {
             } catch {
                 logger.warning("Failed to encode SSL config for sync: \(error.localizedDescription)")
             }
+        } else {
+            fields[.sslConfigJson] = nil
         }
 
         let syncedAdditionalFields = syncedAdditionalFields(for: connection)
@@ -96,6 +97,8 @@ public enum SyncRecordMapper {
             } catch {
                 logger.warning("Failed to encode additional fields for sync: \(error.localizedDescription)")
             }
+        } else {
+            fields[.additionalFieldsJson] = nil
         }
 
         fields[.modifiedAtLocal] = Date() as CKRecordValue

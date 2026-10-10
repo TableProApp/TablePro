@@ -42,12 +42,17 @@ struct SyncRecordMapperIconTests {
         #expect(decoded.color == .red)
     }
 
-    @Test("A connection with no icon leaves the key out of a new record")
-    func newConnectionRecordWithoutIconNamesNothing() {
+    /// A connection whose cached record is gone is pushed through `toRecord` too, so a field the
+    /// user emptied has to be named there or the server keeps the old value.
+    @Test("A new record names every emptied field so the server clears it")
+    func newConnectionRecordNamesEmptiedFields() {
         let record = SyncRecordMapper.toRecord(makeConnection(iconName: nil), zoneID: zoneID)
+        let changed = record.changedKeys()
 
         #expect(connectionIcon(in: record) == nil)
-        #expect(record.changedKeys().contains(ConnectionSyncField.iconName.key) == false)
+        for field in [ConnectionSyncField.iconName, .groupId, .tagIds, .tagId, .queryTimeoutSeconds, .additionalFieldsJson] {
+            #expect(changed.contains(field.key), "\(field.key) should be named")
+        }
     }
 
     @Test("An update writes a newly picked icon onto the cached record")

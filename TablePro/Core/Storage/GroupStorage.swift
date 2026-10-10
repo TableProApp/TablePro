@@ -177,28 +177,30 @@ internal final class GroupStorage {
 
     /// The edit sheet's save, as one write: a rename and a move saved separately could keep the
     /// rename and then refuse the move. A new parent takes the group at its end, as a move does.
-    internal func editGroup(
-        id: UUID,
-        name: String,
-        color: ConnectionColor,
-        iconName: String?,
-        parentId: UUID?
-    ) throws {
+    /// Writes only the fields `edited` changed from `opening`, onto the group as it is stored now,
+    /// so a rename or a move synced in while the sheet was open survives a save that changed only
+    /// the icon.
+    internal func editGroup(id: UUID, from opening: ConnectionGroupFields, to edited: ConnectionGroupFields) throws {
         let groups = loadGroups()
-        guard let original = groups.first(where: { $0.id == id }) else {
+        guard let current = groups.first(where: { $0.id == id }) else {
             throw GroupStorageError.groupNotFound
         }
-        let sortOrder = parentId == original.parentId
-            ? original.sortOrder
-            : LibraryOrdering.nextSortOrder(
-                after: groups.filter { $0.parentId == parentId && $0.id != id }.map(\.sortOrder)
+        let movesParent = edited.parentId != opening.parentId && edited.parentId != current.parentId
+        let sortOrder = movesParent
+            ? LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == edited.parentId && $0.id != id }.map(\.sortOrder)
             )
+            : current.sortOrder
         try mutateGroup(id: id) { group in
-            group.name = name
-            group.color = color
-            group.iconName = LibrarySymbolCatalog.normalizedName(iconName)
-            group.parentId = parentId
-            group.sortOrder = sortOrder
+            if edited.name != opening.name { group.name = edited.name }
+            if edited.color != opening.color { group.color = edited.color }
+            if edited.iconName != opening.iconName {
+                group.iconName = LibrarySymbolCatalog.normalizedName(edited.iconName)
+            }
+            if edited.parentId != opening.parentId {
+                group.parentId = edited.parentId
+                group.sortOrder = sortOrder
+            }
         }
     }
 
