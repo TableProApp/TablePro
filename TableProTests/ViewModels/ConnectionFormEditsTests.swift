@@ -11,6 +11,7 @@ import Testing
 
 struct ConnectionFormEditsTests {
     private func edits(
+        iconName: String? = nil,
         connectTimeoutSeconds: Int? = nil,
         queryTimeoutSeconds: Int? = nil,
         additionalFields: [String: String] = [:],
@@ -26,6 +27,7 @@ struct ConnectionFormEditsTests {
             sshConfig: SSHConfiguration(),
             sslConfig: SSLConfiguration(),
             color: .blue,
+            iconName: iconName,
             tagIds: [],
             groupId: nil,
             sshProfileId: nil,
@@ -92,6 +94,39 @@ struct ConnectionFormEditsTests {
         #expect(result.username == "edited_user")
         #expect(result.type == .postgresql)
         #expect(result.color == .blue)
+    }
+
+    @Test("Applying edits stores the picked icon")
+    func storesIcon() {
+        let result = edits(iconName: "server.rack").applied(to: populatedConnection())
+
+        #expect(result.iconName == "server.rack")
+    }
+
+    @Test("Picking Default clears a stored icon")
+    func clearsIcon() {
+        var original = populatedConnection()
+        original.iconName = "server.rack"
+
+        let result = edits(iconName: nil).applied(to: original)
+
+        #expect(result.iconName == nil)
+    }
+
+    /// A Mac on an older release cannot draw a symbol a newer device picked. Dropping it on load
+    /// would write nil back on the next save and erase the icon on every device.
+    @Test("An icon this Mac cannot draw survives loading the form and saving it")
+    @MainActor
+    func keepsAnUndrawableIconThroughLoadAndSave() {
+        var original = populatedConnection()
+        original.iconName = "made.up.symbol"
+        let customization = CustomizationPaneViewModel()
+
+        customization.load(from: original)
+        let result = edits(iconName: customization.iconName).applied(to: original)
+
+        #expect(customization.iconName == "made.up.symbol")
+        #expect(result.iconName == "made.up.symbol")
     }
 
     @Test("Applying edits stores both connection timeout overrides")

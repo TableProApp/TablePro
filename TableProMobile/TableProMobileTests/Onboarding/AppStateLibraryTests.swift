@@ -339,7 +339,7 @@ struct AppStateLibraryTests {
         let opened = try #require(state.groups.first { $0.id == first.id })
 
         state.reorderGroups([second.id, first.id])
-        let edits = GroupFormEdits(name: "Renamed", color: opened.color, parentId: opened.parentId)
+        let edits = GroupFormEdits(name: "Renamed", color: opened.color, iconName: opened.iconName, parentId: opened.parentId)
         let outcome = state.mutateGroup(first.id) {
             $0 = edits.applied(to: $0, changedSince: GroupFormEdits(group: opened))
         }
@@ -453,7 +453,7 @@ struct AppStateLibraryTests {
         let opened = try #require(state.groups.first { $0.id == first.id })
 
         #expect(state.mutateGroup(second.id) { $0.parentId = first.id } == .applied)
-        let outcome = GroupFormEdits(name: "Renamed", color: opened.color, parentId: second.id)
+        let outcome = GroupFormEdits(name: "Renamed", color: opened.color, iconName: opened.iconName, parentId: second.id)
             .save(editing: opened, in: state)
 
         let failure = try #require(LibraryWriteFailure(outcome, kind: .group))
@@ -473,7 +473,7 @@ struct AppStateLibraryTests {
 
         state.deleteGroup(group.id)
         state.deleteTag(tag.id)
-        let groupOutcome = GroupFormEdits(name: "Renamed", color: .blue, parentId: nil)
+        let groupOutcome = GroupFormEdits(name: "Renamed", color: .blue, iconName: nil, parentId: nil)
             .save(editing: openedGroup, in: state)
         let tagOutcome = TagFormEdits(name: "stage", color: .orange).save(editing: tag, in: state)
 
@@ -488,7 +488,7 @@ struct AppStateLibraryTests {
         try Data("{ not json".utf8).write(to: fixture.connectionsFile)
         let state = makeState(syncEnabled: false)
 
-        let groupOutcome = GroupFormEdits(name: "Team", color: .blue, parentId: nil).save(editing: nil, in: state)
+        let groupOutcome = GroupFormEdits(name: "Team", color: .blue, iconName: nil, parentId: nil).save(editing: nil, in: state)
         let tagOutcome = TagFormEdits(name: "prod", color: .red).save(editing: nil, in: state)
 
         let groupFailure = try #require(LibraryWriteFailure(groupOutcome, kind: .group))

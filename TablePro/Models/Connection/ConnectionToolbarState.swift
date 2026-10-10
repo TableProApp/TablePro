@@ -52,6 +52,11 @@ final class ConnectionToolbarState: ObservableObject {
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
     @Published var databaseType: DatabaseType = .mysql
 
+    /// Held here because the coordinator's `connection` is fixed at connect, and the toolbar item
+    /// has to follow a rename or a new icon while the window stays open.
+    @Published var connectionName: String = ""
+    @Published var iconName: String?
+
     /// Active database (always meaningful). For schema-grouped engines like SQL Server,
     /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
     /// `currentSchema`, and the toolbar shows both.
@@ -159,6 +164,8 @@ final class ConnectionToolbarState: ObservableObject {
     /// touched nothing it displays.
     func update(from connection: DatabaseConnection) {
         if databaseType != connection.type { databaseType = connection.type }
+        if connectionName != connection.name { connectionName = connection.name }
+        if iconName != connection.iconName { iconName = connection.iconName }
 
         syncFromSession(for: connection)
     }
@@ -205,6 +212,8 @@ final class ConnectionToolbarState: ObservableObject {
     /// Reset to default disconnected state
     func reset() {
         databaseType = .mysql
+        connectionName = ""
+        iconName = nil
         currentDatabase = ""
         currentSchema = nil
         connectionState = .disconnected

@@ -274,10 +274,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 item.target = self
                 item.representedObject = connection.id
-                let iconName = connection.type.iconName
-                let original = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)
-                    ?? NSImage(named: iconName)
-                if let original {
+                if let original = LibraryGlyph.connectionNSImage(
+                    type: connection.type,
+                    iconName: connection.iconName,
+                    accessibilityDescription: nil
+                ) {
                     let resized = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
                         original.draw(in: rect)
                         return true

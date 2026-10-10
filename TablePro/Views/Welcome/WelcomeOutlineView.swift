@@ -56,10 +56,16 @@ internal final class WelcomeOutlineItem: NSObject {
 }
 
 internal final class WelcomeOutlineCellView: RenamableSidebarCellView<WelcomeOutlineRow> {
-    internal var renameSymbolName = "folder"
+    internal var renameGlyph: NSImage?
 
-    override internal var editorSymbolName: String { renameSymbolName }
     override internal var editorAccessibilityIdentifier: String { "welcome-rename-field" }
+
+    /// The base class draws a symbol by name, and most engine logos are asset images, so the row's
+    /// own glyph goes onto the editor's image view once the editor exists.
+    override internal func beginRename(text: String, delegate: any NSTextFieldDelegate) {
+        super.beginRename(text: text, delegate: delegate)
+        imageView?.image = renameGlyph
+    }
 }
 
 @MainActor

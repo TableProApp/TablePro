@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 import os
 
+import TableProConnectionLibrary
 import TableProModels
 import TableProSyncTransport
 
@@ -56,6 +57,7 @@ public enum SyncRecordMapper {
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
 
         fields[.color] = connection.color.rawValue as CKRecordValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName) as CKRecordValue?
         if let groupId = connection.groupId {
             fields[.groupId] = groupId.uuidString as CKRecordValue
         }
@@ -120,6 +122,7 @@ public enum SyncRecordMapper {
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
         let color = Self.color(from: fields)
+        let iconName = LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String)
         let groupId = (fields[.groupId] as? String).flatMap { UUID(uuidString: $0) }
         let tagIds: [UUID]
         if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
@@ -178,6 +181,7 @@ public enum SyncRecordMapper {
             username: username,
             database: database,
             color: color,
+            iconName: iconName,
             isReadOnly: isReadOnly,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: validQueryTimeout(queryTimeout ?? legacyQueryTimeout),
@@ -223,6 +227,7 @@ public enum SyncRecordMapper {
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
         fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
         fields[.color] = connection.color.rawValue as CKRecordValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName) as CKRecordValue?
         fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
 
         if !connection.tagIds.isEmpty {
@@ -288,13 +293,14 @@ public enum SyncRecordMapper {
         let id = recordID(type: .group, id: group.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: id)
 
-        let fields = record.fields(ConnectionGroupSyncField.self)
+        // Built whole from the local group, so an empty parent or icon is the user's choice and has
+        // to reach the server, which keeps any key a `.changedKeys` push leaves unnamed.
+        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: .clear)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
-        if let parentId = group.parentId {
-            fields[.parentId] = parentId.uuidString
-        }
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
+        fields[.parentId] = group.parentId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -316,9 +322,17 @@ public enum SyncRecordMapper {
 
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
         let color = (fields[.color] as? String).flatMap { ConnectionColor(rawValue: $0) } ?? .none
+        let iconName = LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String)
         let parentId = (fields[.parentId] as? String).flatMap { UUID(uuidString: $0) }
 
-        return ConnectionGroup(id: id, name: name, sortOrder: sortOrder, color: color, parentId: parentId)
+        return ConnectionGroup(
+            id: id,
+            name: name,
+            sortOrder: sortOrder,
+            color: color,
+            iconName: iconName,
+            parentId: parentId
+        )
     }
 
     // MARK: - Update Existing CKRecord with Group
@@ -328,6 +342,7 @@ public enum SyncRecordMapper {
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
         fields[.parentId] = group.parentId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
         fields[.modifiedAtLocal] = Date()

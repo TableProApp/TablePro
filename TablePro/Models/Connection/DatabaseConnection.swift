@@ -446,7 +446,7 @@ internal extension DatabaseConnection {
 extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
-        case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
+        case sshConfig, sslConfig, color, iconName, tagId, tagIds, groupId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
         case credentialMode
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
@@ -466,6 +466,7 @@ extension DatabaseConnection: Codable {
         sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
         sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()
         color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
+        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
         let decodedTagIds = try container.decodeIfPresent([UUID].self, forKey: .tagIds) ?? []
         if decodedTagIds.isEmpty {
             tagIds = try container.decodeIfPresent(UUID.self, forKey: .tagId).map { [$0] } ?? []
@@ -493,7 +494,6 @@ extension DatabaseConnection: Codable {
         socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
         tunnelCommandMode = try container.decodeIfPresent(TunnelCommandMode.self, forKey: .tunnelCommandMode) ?? .disabled
 
-        // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
             sshTunnelMode = tunnelMode
         } else {
@@ -521,6 +521,7 @@ extension DatabaseConnection: Codable {
         try container.encode(sshConfig, forKey: .sshConfig)
         try container.encode(sslConfig, forKey: .sslConfig)
         try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(iconName, forKey: .iconName)
         if !tagIds.isEmpty {
             try container.encode(tagIds, forKey: .tagIds)
             try container.encode(tagIds[0], forKey: .tagId)

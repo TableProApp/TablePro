@@ -282,26 +282,22 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     }
 
     /// Shape carries the state. A colour-only difference between a failed connection and a
-    /// disconnected one is invisible to anyone who cannot tell red from grey.
-    private static func glyph(for entry: WorkspaceRailEntry) -> NSImage? {
+    /// disconnected one is invisible to anyone who cannot tell red from grey, so the state glyphs
+    /// win over the connection's own icon.
+    internal static func glyph(for entry: WorkspaceRailEntry) -> NSImage? {
         switch entry.status {
         case .error:
             return symbol("exclamationmark.triangle.fill", label: String(localized: "connection failed"))
         case .disconnected:
             return symbol("bolt.horizontal.circle", label: String(localized: "disconnected"))
         case .connecting, .connected:
-            return engineGlyph(for: entry.connection)
+            let connection = entry.connection
+            return LibraryGlyph.connectionNSImage(
+                type: connection.type,
+                iconName: connection.iconName,
+                accessibilityDescription: connection.type.displayName
+            )
         }
-    }
-
-    private static func engineGlyph(for connection: DatabaseConnection) -> NSImage? {
-        let name = connection.type.iconName
-        if let image = symbol(name, label: connection.type.rawValue) {
-            return image
-        }
-        let image = NSImage(named: name)
-        image?.isTemplate = true
-        return image
     }
 
     private static func symbol(_ name: String, label: String) -> NSImage? {
@@ -314,7 +310,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
 
     internal static func tooltipText(for entry: WorkspaceRailEntry) -> String {
         let connection = entry.connection
-        var parts = [connection.name]
+        var parts = [connection.name, connection.type.displayName]
         if !connection.host.isEmpty {
             parts.append(connection.host)
         }
@@ -328,7 +324,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     }
 
     internal static func voiceOverLabel(for entry: WorkspaceRailEntry) -> String {
-        var parts = [entry.connection.name]
+        var parts = [entry.connection.name, entry.connection.type.displayName]
         if !entry.container.isEmpty {
             parts.append(String(format: containerFormat(for: entry.containerTarget), entry.container))
         }

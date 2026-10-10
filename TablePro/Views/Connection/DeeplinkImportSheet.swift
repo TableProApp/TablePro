@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProConnectionLibrary
 import TableProImport
 
 struct DeeplinkImportSheet: View {
@@ -204,7 +205,29 @@ struct DeeplinkImportSheet: View {
     }
 
     private var hasMetadata: Bool {
-        connection.color != nil || connection.tagName != nil || connection.groupName != nil
+        connection.color != nil || customSymbol != nil || !Self.tagNames(of: connection).isEmpty
+            || connection.groupName != nil
+    }
+
+    static func tagNames(of connection: ExportableConnection) -> [String] {
+        connection.tagNames ?? connection.tagName.map { [$0] } ?? []
+    }
+
+    static func importEnvelope(for connection: ExportableConnection, named name: String) -> ConnectionExportEnvelope {
+        let tags = tagNames(of: connection).map { ExportableTag(name: $0, color: nil) }
+        return ConnectionExportEnvelope(
+            formatVersion: 1,
+            exportedAt: Date(),
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            connections: [connection.renamed(to: name)],
+            groups: connection.groupName.map { [ExportableGroup(name: $0, color: nil)] },
+            tags: tags.isEmpty ? nil : tags,
+            credentials: nil
+        )
+    }
+
+    private var customSymbol: String? {
+        LibraryGlyph.customSymbol(connection.iconName)
     }
 
     @ViewBuilder
@@ -218,9 +241,17 @@ struct DeeplinkImportSheet: View {
                         .frame(width: 12, height: 12)
                 }
             }
-            if let tagName = connection.tagName {
-                LabeledContent(String(localized: "Tag")) {
-                    Text(tagName).foregroundStyle(.secondary)
+            if let customSymbol {
+                LabeledContent(String(localized: "Icon")) {
+                    Image(systemName: customSymbol)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(LibrarySymbolCatalog.symbol(named: customSymbol)?.title ?? customSymbol)
+                }
+            }
+            let tagNames = Self.tagNames(of: connection)
+            if !tagNames.isEmpty {
+                LabeledContent(tagNames.count == 1 ? String(localized: "Tag") : String(localized: "Tags")) {
+                    Text(ListFormatter.localizedString(byJoining: tagNames)).foregroundStyle(.secondary)
                 }
             }
             if let groupName = connection.groupName {
@@ -246,17 +277,7 @@ struct DeeplinkImportSheet: View {
         let trimmed = editableName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        let renamedConnection = connection.renamed(to: trimmed)
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
-            connections: [renamedConnection],
-            groups: connection.groupName.map { [ExportableGroup(name: $0, color: nil)] },
-            tags: connection.tagName.map { [ExportableTag(name: $0, color: nil)] },
-            credentials: nil
-        )
+        let envelope = Self.importEnvelope(for: connection, named: trimmed)
 
         let preview = ConnectionExportService.analyzeImport(envelope)
         var resolutions: [UUID: ImportResolution] = [:]

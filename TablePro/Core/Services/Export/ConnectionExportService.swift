@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import UniformTypeIdentifiers
@@ -80,12 +81,12 @@ enum ConnectionExportService {
     }
 
     static func buildEnvelope(for connections: [DatabaseConnection]) -> ConnectionExportEnvelope {
-        var groupNames: Set<String> = []
+        let groups = GroupStorage.shared.loadGroups()
+        let groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var tagNames: Set<String> = []
         var exportableConnections: [ExportableConnection] = []
 
         for connection in connections {
-            // Resolve SSH config: prefer SSH profile if linked, otherwise use inline config
             let sshConfig: SSHConfiguration
             if let profileId = connection.sshProfileId,
                let profile = SSHProfileStorage.shared.profile(for: profileId) {
@@ -97,14 +98,8 @@ enum ConnectionExportService {
             let resolvedTagNames = TagStorage.shared.tags(for: connection.tagIds).map { $0.name }
             let tagName = resolvedTagNames.first
 
-            let groupName: String?
-            if let groupId = connection.groupId {
-                groupName = GroupStorage.shared.group(for: groupId)?.name
-            } else {
-                groupName = nil
-            }
+            let groupName = connection.groupId.flatMap { groupsById[$0]?.name }
 
-            // Build exportable SSH config (nil if not enabled)
             let exportableSSH: ExportableSSHConfig?
             if sshConfig.enabled {
                 let jumpHosts: [ExportableJumpHost]? = sshConfig.jumpHosts.isEmpty ? nil : sshConfig.jumpHosts.map {
@@ -136,7 +131,6 @@ enum ConnectionExportService {
                 exportableSSH = nil
             }
 
-            // Build exportable SSL config (nil if disabled)
             let exportableSSL: ExportableSSLConfig?
             if connection.sslConfig.mode != .disabled {
                 exportableSSL = ExportableSSLConfig(
@@ -181,6 +175,7 @@ enum ConnectionExportService {
                 sshConfig: exportableSSH,
                 sslConfig: exportableSSL,
                 color: color,
+                iconName: connection.iconName,
                 tagName: tagName,
                 tagNames: resolvedTagNames.isEmpty ? nil : resolvedTagNames,
                 groupName: groupName,
@@ -201,14 +196,6 @@ enum ConnectionExportService {
             exportableConnections.append(exportable)
 
             resolvedTagNames.forEach { tagNames.insert($0) }
-            if let name = groupName { groupNames.insert(name) }
-        }
-
-        // Build group and tag arrays with their colors
-        let allGroups = GroupStorage.shared.loadGroups()
-        let exportableGroups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map { name in
-            let existing = allGroups.first { $0.name == name }
-            return ExportableGroup(name: name, color: existing?.color == .none ? nil : existing?.color.rawValue)
         }
 
         let allTags = TagStorage.shared.loadTags()
@@ -224,10 +211,41 @@ enum ConnectionExportService {
             exportedAt: Date(),
             appVersion: appVersion,
             connections: exportableConnections,
-            groups: exportableGroups,
+            groups: exportableGroups(for: connections, in: groups),
             tags: exportableTags,
             credentials: nil,
             credentialProfiles: exportableCredentialProfiles(for: connections)
+        )
+    }
+
+    /// One entry per name, taken from the group each connection is actually in. A file and its
+    /// import both key a group by name, while names are unique only among siblings, so when two
+    /// exported groups share a name the one the first connection is in decides the color and icon.
+    static func exportableGroups(
+        for connections: [DatabaseConnection],
+        in groups: [ConnectionGroup]
+    ) -> [ExportableGroup]? {
+        let groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var exportedNames: Set<String> = []
+        var exported: [ExportableGroup] = []
+        for connection in connections {
+            guard let group = connection.groupId.flatMap({ groupsById[$0] }),
+                  exportedNames.insert(group.name).inserted
+            else { continue }
+            exported.append(ExportableGroup(
+                name: group.name,
+                color: group.color == .none ? nil : group.color.rawValue,
+                iconName: group.iconName
+            ))
+        }
+        return exported.isEmpty ? nil : exported
+    }
+
+    static func importedGroup(from exportGroup: ExportableGroup) -> ConnectionGroup {
+        ConnectionGroup(
+            name: exportGroup.name,
+            color: exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(exportGroup.iconName)
         )
     }
 
@@ -419,10 +437,8 @@ enum ConnectionExportService {
                     $0.name.lowercased() == exportGroup.name.lowercased()
                 }
                 guard !alreadyExists else { continue }
-                let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
-                let group = ConnectionGroup(name: exportGroup.name, color: color)
                 do {
-                    try GroupStorage.shared.addGroup(group)
+                    try GroupStorage.shared.addGroup(importedGroup(from: exportGroup))
                 } catch {
                     Self.logger.error("Skipped importing group: \(error.publicLogShape, privacy: .public)")
                 }
@@ -647,6 +663,9 @@ enum ConnectionExportService {
         if let color = exportable.color {
             queryItems.append(URLQueryItem(name: "color", value: color))
         }
+        if let iconName = exportable.iconName {
+            queryItems.append(URLQueryItem(name: "icon", value: iconName))
+        }
         let exportableTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
         for tagName in exportableTagNames {
             queryItems.append(URLQueryItem(name: "tagName", value: tagName))
@@ -659,6 +678,12 @@ enum ConnectionExportService {
         }
         if let aiPolicy = exportable.aiPolicy {
             queryItems.append(URLQueryItem(name: "aiPolicy", value: aiPolicy))
+        }
+        if let connectTimeout = exportable.connectTimeoutSeconds {
+            queryItems.append(URLQueryItem(name: "connectTimeoutSeconds", value: String(connectTimeout)))
+        }
+        if let queryTimeout = exportable.queryTimeoutSeconds {
+            queryItems.append(URLQueryItem(name: "queryTimeoutSeconds", value: String(queryTimeout)))
         }
         if let redisDb = exportable.redisDatabase {
             queryItems.append(URLQueryItem(name: "redisDatabase", value: String(redisDb)))
@@ -744,7 +769,6 @@ enum ConnectionExportService {
         groupIdsByName: [String: UUID],
         importedProfileIds: [String: UUID] = [:]
     ) -> DatabaseConnection {
-        // Build SSH configuration
         let sshConfig: SSHConfiguration
         if let ssh = exportable.sshConfig {
             var config = SSHConfiguration()
@@ -775,7 +799,6 @@ enum ConnectionExportService {
             sshConfig = SSHConfiguration()
         }
 
-        // Build SSL configuration
         let sslConfig: SSLConfiguration
         if let ssl = exportable.sslConfig {
             sslConfig = SSLConfiguration(
@@ -788,7 +811,6 @@ enum ConnectionExportService {
             sslConfig = SSLConfiguration()
         }
 
-        // Resolve tags and group by name
         let resolvedTagNames = exportable.tagNames ?? exportable.tagName.map { [$0] } ?? []
         let tagIds = resolvedTagNames.compactMap { tagIdsByName[normalizedLookupKey($0)] }
         let groupId = exportable.groupName.flatMap { name in
@@ -834,6 +856,7 @@ enum ConnectionExportService {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: exportable.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(exportable.iconName),
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: resolvedSSHProfileId,

@@ -5,10 +5,12 @@
 
 import Combine
 import Foundation
+import TableProConnectionLibrary
 
 @MainActor
 final class CustomizationPaneViewModel: ObservableObject {
     @Published var color: ConnectionColor = .none
+    @Published var iconName: String?
     @Published var tagIds: [UUID] = []
     @Published var groupId: UUID?
     @Published var safeModeLevel: SafeModeLevel = .silent
@@ -34,6 +36,7 @@ final class CustomizationPaneViewModel: ObservableObject {
 
     func load(from connection: DatabaseConnection) {
         color = connection.color
+        iconName = LibrarySymbolCatalog.normalizedName(connection.iconName)
         tagIds = connection.tagIds
         groupId = connection.groupId
         safeModeLevel = connection.preferredSafeModeLevel

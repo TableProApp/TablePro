@@ -149,7 +149,7 @@ final class WelcomeViewModelTests: XCTestCase {
     func testCreateGroupShowsImmediatelyInTheOutline() throws {
         XCTAssertTrue(groupIds(in: viewModel.outline).isEmpty)
 
-        try viewModel.createGroup(name: "Production", color: .red, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Production", color: .red, iconName: nil, parentId: nil, moving: [])
 
         let created = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Production" })
         XCTAssertTrue(groupIds(in: viewModel.outline).contains(created.id))
@@ -157,10 +157,10 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testCreateSubgroupExpandsParentAndChild() throws {
-        try viewModel.createGroup(name: "Parent", color: .none, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Parent", color: .none, iconName: nil, parentId: nil, moving: [])
         let parentId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Parent" }?.id)
 
-        try viewModel.createGroup(name: "Child", color: .none, parentId: parentId, moving: [])
+        try viewModel.createGroup(name: "Child", color: .none, iconName: nil, parentId: parentId, moving: [])
         let childId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Child" }?.id)
 
         XCTAssertTrue(groupIds(in: viewModel.outline).contains(parentId))
@@ -170,10 +170,10 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testCreateDuplicateNameReportsWhyAndAddsNoSecondNode() throws {
-        try viewModel.createGroup(name: "Staging", color: .orange, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Staging", color: .orange, iconName: nil, parentId: nil, moving: [])
 
         XCTAssertThrowsError(
-            try viewModel.createGroup(name: "staging", color: .blue, parentId: nil, moving: [])
+            try viewModel.createGroup(name: "staging", color: .blue, iconName: nil, parentId: nil, moving: [])
         ) { error in
             XCTAssertEqual(error as? GroupStorageError, .duplicateName("staging"))
         }
@@ -190,7 +190,7 @@ final class WelcomeViewModelTests: XCTestCase {
         guard case .newGroup(let request) = viewModel.activeSheet else {
             return XCTFail("Move to Group > New Group must open the new group sheet")
         }
-        try viewModel.createGroup(name: "Acme", color: .none, parentId: nil, moving: request.movingConnectionIds)
+        try viewModel.createGroup(name: "Acme", color: .none, iconName: nil, parentId: nil, moving: request.movingConnectionIds)
 
         let group = try XCTUnwrap(groupStorage.loadGroups().first)
         XCTAssertEqual(connectionStorage.loadConnection(id: prod.id)?.groupId, group.id)
@@ -212,6 +212,7 @@ final class WelcomeViewModelTests: XCTestCase {
         try viewModel.createGroup(
             name: "2024",
             color: .none,
+            iconName: nil,
             parentId: request.parentId,
             moving: request.movingConnectionIds
         )
@@ -220,14 +221,77 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testRenamingAGroupToASiblingsNameReportsWhy() throws {
-        try viewModel.createGroup(name: "Production", color: .none, parentId: nil, moving: [])
-        try viewModel.createGroup(name: "Staging", color: .none, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Production", color: .none, iconName: nil, parentId: nil, moving: [])
+        try viewModel.createGroup(name: "Staging", color: .none, iconName: nil, parentId: nil, moving: [])
         let staging = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Staging" })
 
         viewModel.commitRename(.group(staging.id), to: "production")
 
         XCTAssertNotNil(viewModel.libraryErrorMessage)
         XCTAssertEqual(groupStorage.group(for: staging.id)?.name, "Staging")
+    }
+
+    func testANewGroupKeepsTheIconItWasCreatedWith() throws {
+        try viewModel.createGroup(name: "Production", color: .red, iconName: "server.rack", parentId: nil, moving: [])
+
+        XCTAssertEqual(groupStorage.loadGroups().first?.iconName, "server.rack")
+    }
+
+    func testEditGroupOpensTheEditSheetForThatGroup() throws {
+        let group = ConnectionGroup(name: "Production", iconName: "server.rack")
+        try groupStorage.addGroup(group)
+        viewModel.loadConnections()
+
+        viewModel.perform(.editGroup(group.id))
+
+        guard case .editGroup(let editing) = viewModel.activeSheet else {
+            return XCTFail("Edit Group… must open the group editor")
+        }
+        XCTAssertEqual(editing.id, group.id)
+        XCTAssertEqual(editing.iconName, "server.rack")
+    }
+
+    func testEditGroupForAGroupThatIsGoneOpensNothing() {
+        viewModel.loadConnections()
+
+        viewModel.requestEditGroup(UUID())
+
+        XCTAssertNil(viewModel.activeSheet)
+    }
+
+    func testSavingAGroupEditMovesItAndShowsItUnderItsNewParent() throws {
+        let clients = ConnectionGroup(name: "Clients")
+        let acme = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(clients)
+        try groupStorage.addGroup(acme)
+        viewModel.loadConnections()
+        viewModel.expandedGroupIds = []
+
+        try viewModel.saveGroup(id: acme.id, name: "Acme Corp", color: .blue, iconName: "building.2", parentId: clients.id)
+
+        let saved = try XCTUnwrap(groupStorage.group(for: acme.id))
+        XCTAssertEqual(saved.name, "Acme Corp")
+        XCTAssertEqual(saved.color, .blue)
+        XCTAssertEqual(saved.iconName, "building.2")
+        XCTAssertEqual(saved.parentId, clients.id)
+        XCTAssertTrue(viewModel.expandedGroupIds.contains(clients.id))
+        XCTAssertEqual(viewModel.groupsById[acme.id]?.name, "Acme Corp")
+    }
+
+    func testSavingAGroupEditUnderItsOwnSubgroupReportsWhyAndChangesNothing() throws {
+        let parent = ConnectionGroup(name: "Parent")
+        let child = ConnectionGroup(name: "Child", parentId: parent.id)
+        try groupStorage.addGroup(parent)
+        try groupStorage.addGroup(child)
+        viewModel.loadConnections()
+
+        XCTAssertThrowsError(
+            try viewModel.saveGroup(id: parent.id, name: "Renamed", color: .none, iconName: nil, parentId: child.id)
+        ) { error in
+            XCTAssertEqual(error as? GroupStorageError, .wouldCreateCycle)
+        }
+        XCTAssertEqual(groupStorage.group(for: parent.id)?.name, "Parent")
+        XCTAssertNil(groupStorage.group(for: parent.id)?.parentId)
     }
 
     // MARK: - List State

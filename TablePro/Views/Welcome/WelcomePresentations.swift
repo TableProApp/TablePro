@@ -80,8 +80,24 @@ internal struct WelcomePresentations: ViewModifier {
     private func activeSheetContent(_ sheet: WelcomeActiveSheet) -> some View {
         switch sheet {
         case .newGroup(let request):
-            CreateGroupSheet(parentId: request.parentId) { name, color, parentId in
-                try vm.createGroup(name: name, color: color, parentId: parentId, moving: request.movingConnectionIds)
+            GroupEditorSheet(mode: .create(parentId: request.parentId), groups: vm.groups) { draft in
+                try vm.createGroup(
+                    name: draft.name,
+                    color: draft.color,
+                    iconName: draft.iconName,
+                    parentId: draft.parentId,
+                    moving: request.movingConnectionIds
+                )
+            }
+        case .editGroup(let group):
+            GroupEditorSheet(mode: .edit(group), groups: vm.groups) { draft in
+                try vm.saveGroup(
+                    id: group.id,
+                    name: draft.name,
+                    color: draft.color,
+                    iconName: draft.iconName,
+                    parentId: draft.parentId
+                )
             }
         case .activation:
             LicenseActivationSheet()

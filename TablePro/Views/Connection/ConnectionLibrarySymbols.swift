@@ -8,10 +8,6 @@ import SwiftUI
 
 @MainActor
 internal enum ConnectionLibrarySymbols {
-    internal static func folderImage(for color: ConnectionColor, pointSize: CGFloat = 13) -> NSImage? {
-        image(systemName: "folder.fill", color: color, pointSize: pointSize)
-    }
-
     internal static func tagImage(for color: ConnectionColor, pointSize: CGFloat = 12) -> NSImage? {
         image(systemName: "tag.fill", color: color, pointSize: pointSize)
     }

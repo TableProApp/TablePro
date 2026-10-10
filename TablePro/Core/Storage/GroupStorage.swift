@@ -37,7 +37,6 @@ internal enum GroupStorageError: LocalizedError, Equatable {
     }
 }
 
-/// Service for persisting connection groups
 @MainActor
 internal final class GroupStorage {
     internal static let shared = GroupStorage()
@@ -70,8 +69,6 @@ internal final class GroupStorage {
 
     // MARK: - Group CRUD
 
-    /// Load all groups
-    ///
     /// A payload that decodes element by element keeps every group it can read: one entry written
     /// by a future version, or truncated on disk, used to take the whole list down with it.
     internal func loadGroups() -> [ConnectionGroup] {
@@ -126,14 +123,13 @@ internal final class GroupStorage {
         }
     }
 
-    /// Add a new group at the end of its parent (duplicate check scoped to siblings, enforces depth
-    /// cap and cycle prevention)
     internal func addGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         try validatePlacement(of: group, in: groups)
         try validateUniqueName(group.name, parentId: group.parentId, excluding: [group.id], in: groups)
 
         var placed = group
+        placed.iconName = LibrarySymbolCatalog.normalizedName(group.iconName)
         placed.sortOrder = LibraryOrdering.nextSortOrder(
             after: groups.filter { $0.parentId == group.parentId }.map(\.sortOrder)
         )
@@ -142,7 +138,6 @@ internal final class GroupStorage {
         notifyChanged()
     }
 
-    /// Update an existing group (enforces cycle prevention and depth cap on parentId changes)
     internal func updateGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         guard let index = groups.firstIndex(where: { $0.id == group.id }) else {
@@ -178,6 +173,33 @@ internal final class GroupStorage {
         groups[index] = updated
         guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
         notifyChanged()
+    }
+
+    /// The edit sheet's save, as one write: a rename and a move saved separately could keep the
+    /// rename and then refuse the move. A new parent takes the group at its end, as a move does.
+    internal func editGroup(
+        id: UUID,
+        name: String,
+        color: ConnectionColor,
+        iconName: String?,
+        parentId: UUID?
+    ) throws {
+        let groups = loadGroups()
+        guard let original = groups.first(where: { $0.id == id }) else {
+            throw GroupStorageError.groupNotFound
+        }
+        let sortOrder = parentId == original.parentId
+            ? original.sortOrder
+            : LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == parentId && $0.id != id }.map(\.sortOrder)
+            )
+        try mutateGroup(id: id) { group in
+            group.name = name
+            group.color = color
+            group.iconName = LibrarySymbolCatalog.normalizedName(iconName)
+            group.parentId = parentId
+            group.sortOrder = sortOrder
+        }
     }
 
     internal func moveGroups(_ ids: [UUID], toParent parentId: UUID?, before: UUID?) throws {
@@ -278,7 +300,6 @@ internal final class GroupStorage {
         return saveGroups(repaired)
     }
 
-    /// Delete a group and all descendant groups, nil-out groupId on affected connections.
     @discardableResult
     internal func deleteGroup(_ group: ConnectionGroup) -> Bool {
         var groups = loadGroups()
@@ -310,7 +331,6 @@ internal final class GroupStorage {
         return true
     }
 
-    /// Get group by ID
     internal func group(for id: UUID) -> ConnectionGroup? {
         loadGroups().first { $0.id == id }
     }
