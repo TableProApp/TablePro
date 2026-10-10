@@ -24,9 +24,9 @@ internal final class ScriptConnection: NSObject, ScriptCommandReceiving {
     @objc internal let safeMode: FourCharCode
     @objc internal let externalAccess: FourCharCode
     @objc internal let color: FourCharCode
-    @objc internal let groupPath: [String]
+    @objc internal let groupPath: ScriptTextList
     @objc internal let groupColor: FourCharCode
-    @objc internal let tagNames: [String]
+    @objc internal let tagNames: ScriptTextList
 
     internal let connectionId: UUID
 
@@ -43,9 +43,9 @@ internal final class ScriptConnection: NSObject, ScriptCommandReceiving {
         self.safeMode = ScriptEnumerations.code(for: listing.safeModeLevel)
         self.externalAccess = ScriptEnumerations.code(for: listing.externalAccess)
         self.color = ScriptEnumerations.code(for: listing.color)
-        self.groupPath = listing.group?.path ?? []
+        self.groupPath = ScriptTextList(listing.group?.path ?? [])
         self.groupColor = ScriptEnumerations.code(for: listing.group?.color ?? .none)
-        self.tagNames = listing.tags.map(\.name)
+        self.tagNames = ScriptTextList(listing.tags.map(\.name))
         super.init()
     }
 

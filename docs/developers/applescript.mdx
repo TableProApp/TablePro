@@ -80,6 +80,9 @@ end tell
 | `group color` | enumeration | `none` when the connection is in no group |
 | `tags` | list of text | Tag names, in the order the user added them |
 
+In a `whose` clause, `tags` and `group path` match whole names, ignoring case: `tags contains "prod"`
+does not match a tag named `production`.
+
 No credential is reachable from a script, and neither is the account name. Every property is read only.
 
 ### tab
