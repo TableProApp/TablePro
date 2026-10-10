@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tablepro://settings` and `tablepro://settings/<pane>` links that open Settings on a pane.
 - Saved queries in connection exports, with their folders and keywords, and an option to add global saved queries.
 - Saved queries imported with connections from TablePro files, TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio.
+- Help > Integrations, which opens the integrations directory on tablepro.app.
 
 ### Changed
 

@@ -22,6 +22,10 @@ enum HelpMenuBuilder {
                 action: #selector(AppDelegate.openDocumentation(_:))
             ),
             MenuItemFactory.item(
+                String(localized: "Integrations"),
+                action: #selector(AppDelegate.openIntegrationsDirectory(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "GitHub Repository"),
                 action: #selector(AppDelegate.openGitHubRepository(_:))
             ),

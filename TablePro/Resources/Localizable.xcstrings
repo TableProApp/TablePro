@@ -93569,7 +93569,6 @@
       }
     },
     "Integrations" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {

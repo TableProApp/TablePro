@@ -105,6 +105,10 @@ extension AppDelegate: NSMenuItemValidation {
         open(MainMenuLink.documentation)
     }
 
+    @objc func openIntegrationsDirectory(_ sender: Any?) {
+        open(MainMenuLink.integrations)
+    }
+
     /// Opens the in-app notes rather than the browser. The window's own button reaches the full
     /// changelog for anyone who wants every entry.
     @objc func openChangelog(_ sender: Any?) {
@@ -156,6 +160,7 @@ enum MainMenuLink {
     static let changelog = "https://docs.tablepro.app/changelog"
     static let website = "https://tablepro.app"
     static let documentation = "https://docs.tablepro.app"
+    static let integrations = "https://tablepro.app/integrations"
     static let repository = "https://github.com/TableProApp/TablePro"
     static let issues = "https://github.com/TableProApp/TablePro/issues"
 }
