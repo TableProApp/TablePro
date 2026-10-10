@@ -135,6 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Duplicating a connection set to Blocked for external access making the copy readable over MCP. (#3309)
+- MCP completions offering a connection for up to 15 seconds after it was set to Never or Blocked.
 - DuckDB names holding a quote followed by a combining mark, and ClickHouse names holding a backslash, ending their quoting early in generated SQL. (#3308)
 - A database link's SQL filter shown cut to 300 characters, and connecting to a trusted database before asking about it.
 - A database link through an SSH tunnel to `127.0.0.1` reusing a local database's Always Allow, whatever SSH server it named.

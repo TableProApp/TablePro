@@ -23,7 +23,6 @@ public actor MCPCompletionProvider {
     private let clock: any MCPClock
     private let cacheDuration: TimeInterval
     private var nameCache: [CacheKey: Expiring<[String]>] = [:]
-    private var connectionCache: [String: Expiring<[MCPConnectionDescriptor]>] = [:]
 
     public init(services: MCPToolServices) {
         self.init(source: MCPBridgeCompletionSchemaSource(services: services))
@@ -72,7 +71,6 @@ public actor MCPCompletionProvider {
 
     public func invalidate() {
         nameCache.removeAll()
-        connectionCache.removeAll()
     }
 
     private func candidates(
@@ -131,18 +129,10 @@ public actor MCPCompletionProvider {
         }
     }
 
+    /// Never cached: this list is the access decision, and AI Policy, External Clients and the
+    /// app-wide default can change between two keystrokes.
     private func connections(principal: MCPPrincipal) async -> [MCPConnectionDescriptor] {
-        let now = await clock.now()
-        pruneExpired(now: now)
-        if let cached = connectionCache[principal.tokenFingerprint], cached.expiresAt > now {
-            return cached.value
-        }
-        let connections = await source.connections(principal: principal)
-        connectionCache[principal.tokenFingerprint] = Expiring(
-            value: connections,
-            expiresAt: now.addingTimeInterval(cacheDuration)
-        )
-        return connections
+        await source.connections(principal: principal)
     }
 
     private func contextConnection(
@@ -223,6 +213,5 @@ public actor MCPCompletionProvider {
 
     private func pruneExpired(now: Date) {
         nameCache = nameCache.filter { $0.value.expiresAt > now }
-        connectionCache = connectionCache.filter { $0.value.expiresAt > now }
     }
 }

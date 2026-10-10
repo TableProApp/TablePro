@@ -140,4 +140,4 @@ For a `ref/resource` completion TablePro fills the context from the URI itself, 
 
 Values whose name starts with what you typed come first, then values that merely contain it, each group sorted naturally, case ignored. Fixed value lists such as `audience` keep their declared order instead. Completing `connection` with a value that matches no name falls back to matching UUIDs, so pasting an id into a field that normally takes a name still works.
 
-At most 100 values come back; `total` counts the matches before that cap and `hasMore` says whether it applied. Schema reads are cached for 15 seconds per token and per scope, so typing a table name does not hit the database on every keystroke.
+At most 100 values come back; `total` counts the matches before that cap and `hasMore` says whether it applied. Schema reads are cached for 15 seconds per token and per scope, so typing a table name does not hit the database on every keystroke. The connection list is read on every request, so a connection set to **Never** or **Blocked** stops completing at once.
