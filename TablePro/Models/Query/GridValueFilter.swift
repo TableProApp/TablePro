@@ -49,6 +49,27 @@ struct GridValueFilterState: Equatable {
         columnNames.removeAll()
     }
 
+    /// A re-read can move a column, as hiding another one does. A name that is gone or now names
+    /// more than one column drops its filter rather than guess.
+    func remapped(toColumns columns: [String]) -> GridValueFilterState {
+        var result = GridValueFilterState()
+        var moving: [(filter: ColumnValueFilter, name: String)] = []
+        for (dataIndex, filter) in filters {
+            guard let name = columnNames[dataIndex] else { continue }
+            if dataIndex < columns.count, columns[dataIndex] == name {
+                result.set(filter, columnName: name, forColumn: dataIndex)
+            } else {
+                moving.append((filter, name))
+            }
+        }
+        for entry in moving {
+            let matches = columns.indices.filter { columns[$0] == entry.name }
+            guard matches.count == 1, let target = matches.first, !result.isActive(column: target) else { continue }
+            result.set(entry.filter, columnName: entry.name, forColumn: target)
+        }
+        return result
+    }
+
     @discardableResult
     mutating func prune(againstColumns columns: [String]) -> Bool {
         var removedAny = false

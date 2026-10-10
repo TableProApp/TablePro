@@ -631,6 +631,7 @@ final class QueryTabManager: ObservableObject {
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
         tab.filterState = TabFilterState()
+        tab.valueFilter = GridValueFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
         // Retargeting points the tab at a different table, so a restore that has not been consumed

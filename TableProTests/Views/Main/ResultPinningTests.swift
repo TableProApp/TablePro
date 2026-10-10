@@ -21,6 +21,27 @@ struct ResultPinningTests {
         #expect(display.activeResultSetId == fresh.id)
     }
 
+    @Test("A re-read takes its result's place, label and pin, and leaves the other results alone")
+    @MainActor
+    func rereadReplacesItsResultInPlace() {
+        var display = TabDisplayState()
+        let pinned = Self.makeResultSet(label: "users", isPinned: true)
+        let middle = Self.makeResultSet(label: "Result 2")
+        let last = Self.makeResultSet(label: "Result 3")
+        display.resultSets = [pinned, middle, last]
+        display.activeResultSetId = middle.id
+
+        let reread = Self.makeResultSet(label: "fresh")
+        display.replaceResult(middle.id, with: reread)
+        let rereadPinned = Self.makeResultSet(label: "fresh")
+        display.replaceResult(pinned.id, with: rereadPinned)
+
+        #expect(display.resultSets.map(\.id) == [rereadPinned.id, reread.id, last.id])
+        #expect(display.activeResultSetId == rereadPinned.id)
+        #expect(reread.label == "Result 2" && !reread.isPinned)
+        #expect(rereadPinned.label == "users" && rereadPinned.isPinned)
+    }
+
     @Test("A new execution never targets a pinned result when every result is pinned")
     @MainActor
     func replaceWhenAllResultsArePinned() {

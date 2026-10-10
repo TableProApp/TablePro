@@ -18,7 +18,7 @@ extension MainContentCoordinator {
         guard !statements.isEmpty else { return }
         try await executeSidebarChanges(statements: statements)
 
-        runQuery(viewport: .keepPlace)
+        reloadActiveResult()
     }
 
     /// Each row keeps which fields it has none of, so a removal is written as one and a value
