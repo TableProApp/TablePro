@@ -2,12 +2,6 @@
 //  MCPBearerTokenAuthenticatorTests.swift
 //  TableProTests
 //
-//  The failure counter is keyed on the attacker, not on the credential the attacker presented.
-//  Keying it on the presented token let one address walk the whole token space without ever
-//  filling a bucket, and a request with no Authorization header at all was never counted. The
-//  challenge is a structured value now (RFC 6750 `WWW-Authenticate`), so the realm survives beside
-//  the error rather than being spliced into one string.
-//
 
 import Foundation
 import TableProPluginKit
@@ -260,17 +254,102 @@ struct MCPBearerTokenAuthenticatorTests {
         #expect((reason.retryAfterSeconds ?? 0) > 0)
     }
 
-    @Test("Requests with no Authorization header at all are counted as failures")
-    func missingHeaderCountsTowardsTheLockout() async throws {
+    @Test("Requests with no credential get the challenge every time and never lock the address")
+    func missingCredentialNeverLocksOut() async throws {
+        let store = FakeMCPTokenStore()
+        let plaintext = "tp_good"
+        await store.register(plaintext, validated: makeValidated())
+        let (authenticator, limiter) = makeAuthenticator(store: store)
+
+        for _ in 0..<10 {
+            for header in [nil, ""] as [String?] {
+                let decision = await authenticator.authenticate(authorizationHeader: header, clientAddress: .loopback)
+                let reason = try #require(denial(decision))
+                #expect(reason.kind == .unauthenticated)
+                #expect(reason.challenge?.headerValue == "Bearer realm=\"TablePro\"")
+            }
+        }
+        #expect(await limiter.isLocked(key: .authFailure(address: .loopback)) == false)
+        #expect(await store.presentedTokens().isEmpty)
+
+        let decision = await authenticator.authenticate(
+            authorizationHeader: "Bearer \(plaintext)",
+            clientAddress: .loopback
+        )
+        guard case .allow = decision else {
+            Issue.record("Expected allow after requests with no credential, got \(decision)")
+            return
+        }
+    }
+
+    @Test("Requests with no credential do not add to the failures bad tokens earn")
+    func missingCredentialDoesNotAddToBadTokenCount() async throws {
         let (authenticator, _) = makeAuthenticator(store: FakeMCPTokenStore())
 
-        for _ in 0..<4 {
-            _ = await authenticator.authenticate(authorizationHeader: nil, clientAddress: .loopback)
+        for index in 0..<4 {
+            _ = await authenticator.authenticate(
+                authorizationHeader: "Bearer tp_wrong_\(index)",
+                clientAddress: .loopback
+            )
         }
-        let final = await authenticator.authenticate(authorizationHeader: nil, clientAddress: .loopback)
+        for _ in 0..<10 {
+            let decision = await authenticator.authenticate(authorizationHeader: nil, clientAddress: .loopback)
+            #expect(denial(decision)?.kind == .unauthenticated)
+        }
 
+        let final = await authenticator.authenticate(
+            authorizationHeader: "Bearer tp_wrong_4",
+            clientAddress: .loopback
+        )
         let reason = try #require(denial(final))
         #expect(reason.kind == .rateLimited)
+    }
+
+    @Test("Every presented credential that fails counts toward the lockout")
+    func presentedFailuresStillLockOut() async throws {
+        let store = FakeMCPTokenStore()
+        await store.register("tp_expired", validated: makeValidated())
+        await store.markExpired("tp_expired")
+        await store.register("tp_revoked", validated: makeValidated())
+        await store.markRevoked("tp_revoked")
+        let (authenticator, _) = makeAuthenticator(store: store)
+
+        let headers = ["Basic dXNlcjpwYXNz", "Bearer", "Bearer tp_unknown", "Bearer tp_expired"]
+        for header in headers {
+            let decision = await authenticator.authenticate(authorizationHeader: header, clientAddress: .loopback)
+            #expect(denial(decision)?.httpStatus == 401)
+        }
+
+        let final = await authenticator.authenticate(
+            authorizationHeader: "Bearer tp_revoked",
+            clientAddress: .loopback
+        )
+        let reason = try #require(denial(final))
+        #expect(reason.kind == .rateLimited)
+    }
+
+    @Test("A lockout refuses requests with no credential while it lasts")
+    func lockoutRefusesMissingCredential() async throws {
+        let clock = MCPTestClock()
+        let (authenticator, _) = makeAuthenticator(store: FakeMCPTokenStore(), clock: clock)
+
+        for index in 0..<5 {
+            _ = await authenticator.authenticate(
+                authorizationHeader: "Bearer tp_wrong_\(index)",
+                clientAddress: .loopback
+            )
+        }
+
+        for header in [nil, ""] as [String?] {
+            let decision = await authenticator.authenticate(authorizationHeader: header, clientAddress: .loopback)
+            let reason = try #require(denial(decision))
+            #expect(reason.kind == .rateLimited)
+            #expect((reason.retryAfterSeconds ?? 0) > 0)
+        }
+
+        await clock.advance(by: .seconds(301))
+        let afterLockout = await authenticator.authenticate(authorizationHeader: nil, clientAddress: .loopback)
+        #expect(denial(afterLockout)?.kind == .unauthenticated)
     }
 
     @Test("A locked address is refused before its token is even looked up")

@@ -11141,6 +11141,9 @@
         }
       }
     },
+    "Open it on the Mac, or change it there to connect by host and port." : {
+
+    },
     "Open Sample Database" : {
       "localizations" : {
         "ko" : {
@@ -13914,6 +13917,9 @@
     "Snowflake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Socket Unavailable" : {
+
     },
     "Sparkles" : {
       "extractionState" : "manual",
@@ -17975,6 +17981,19 @@
         }
       }
     },
+    "The socket path is %d bytes. macOS allows %d at most." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The socket path is %1$d bytes. macOS allows %2$d at most."
+          }
+        }
+      }
+    },
+    "The socket path must start with /." : {
+
+    },
     "The server's host key has changed." : {
       "localizations" : {
         "ko" : {
@@ -18424,6 +18443,10 @@
           }
         }
       }
+    },
+    "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection's CA certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here or lower the SSL mode to Required." : {
       "extractionState" : "stale",

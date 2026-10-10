@@ -32,3 +32,7 @@ Preview at `http://localhost:3000`.
 ## Deployment
 
 Changes pushed to the default branch are deployed automatically via the [Mintlify GitHub app](https://dashboard.mintlify.com/settings/organization/github-app).
+
+## License
+
+The pages in this directory are covered by the repository's [AGPLv3 license](../LICENSE), like the rest of TablePro. The TablePro name and logo, including `logo/` and `favicon.png`, are trademarks of Ngo Quoc Dat and are not licensed under it. Screenshots of other products belong to their owners.

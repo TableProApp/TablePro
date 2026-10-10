@@ -77,6 +77,12 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         return resolved
     }
 
+    /// A tunnel replaces the socket on the Mac too, so only a direct connection would dial it.
+    private static func dialsMacSocket(_ connection: DatabaseConnection) -> Bool {
+        guard MySQLLocalSocket.path(in: connection.additionalFields) != nil else { return false }
+        return !(connection.sshEnabled && connection.sshConfiguration != nil)
+    }
+
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
@@ -86,6 +92,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .duckdb:
             return DuckDBDriver(source: try duckDBSource(for: connection))
         case .mysql, .mariadb, .tidb, .oceanbase:
+            guard !Self.dialsMacSocket(connection) else {
+                throw ConnectionError.localSocketNotSupported
+            }
             return MySQLDriver(
                 host: connection.host,
                 port: connection.port,

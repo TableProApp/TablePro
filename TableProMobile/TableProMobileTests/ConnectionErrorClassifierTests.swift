@@ -30,6 +30,19 @@ struct ConnectionErrorClassifierTests {
         #expect(error.recovery == String(localized: "Turn off the SSH tunnel for this connection."))
     }
 
+    @Test("A Mac socket connection is a configuration problem that points back to the Mac")
+    func localSocketIsConfiguration() {
+        let error = ErrorClassifier.classify(
+            ConnectionError.localSocketNotSupported,
+            context: ErrorContext(operation: "connect", host: "localhost")
+        )
+
+        #expect(error.category == .config)
+        #expect(error.title == String(localized: "Socket Unavailable"))
+        #expect(error.message == ConnectionError.localSocketNotSupported.localizedDescription)
+        #expect(error.recovery == String(localized: "Open it on the Mac, or change it there to connect by host and port."))
+    }
+
     @Test("A missing driver is a configuration problem and names the type")
     func driverNotFoundIsConfiguration() {
         let error = ErrorClassifier.classify(

@@ -1,0 +1,12 @@
+| Surface | Under the contract | Can appear within a major version |
+| --- | --- | --- |
+| `tablepro://` links on the Mac | Every path and parameter on [URL scheme](/developers/url-scheme) | New paths and optional parameters |
+| `tablepro://` links on iPhone and iPad | `connect/<uuid>` and `connect/<uuid>/table/<name>` | New paths |
+| Database URLs | Every scheme and query parameter on [Connection URLs](/connections/urls) | New schemes and parameters |
+| AppleScript | Every term in the dictionary, with its four-character code | New classes, properties, commands, enumerators and optional parameters |
+| MCP server | Tools, resources, prompts, error codes, `/mcp`, `/v1/integrations/exchange`, and the default port `23508` | New tools, resources, prompts, codes, optional inputs and output fields |
+| Pairing | The `integrations/pair` link and its parameters, the code sent to `redirect`, and the exchange | New optional parameters |
+| `tablepro` command | `/usr/local/bin/tablepro` and the arguments it takes | New kinds of argument |
+| App identity | Bundle ID `com.TablePro`, and `Contents/MacOS/tablepro-mcp` inside the bundle | Nothing |
+| Install location | Not covered | Anything. Find the app by bundle ID |
+| Files, preferences and Keychain items the app writes | Not covered | Anything. See [what is not under the contract](/developers/versioning#what-is-not-under-the-contract) |
