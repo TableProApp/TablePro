@@ -97,12 +97,13 @@ Run it before merging any change under `Plugins/TableProPluginKit/`. It builds t
 A plugin needs TableProPluginKit, not this repository. Every driver happens to live under `Plugins/` here. A new one does not have to.
 
 ```bash
+git checkout v<version>   # the oldest app release your plugin supports
 scripts/generate-project.sh
 scripts/build-pluginkit-xcframework.sh
 # build/pluginkit/TableProPluginKit.xcframework, plus a zip and its SHA-256
 ```
 
-Run that, or download a published XCFramework from the `pluginkit-v<version>` release, and link it from your own Xcode project. Your plugin target then needs nothing else from this repository.
+No prebuilt XCFramework is published, so build it this way and link the result from your own Xcode project. Build from a release tag, not `main`: the app rejects a plugin that declares a newer PluginKit than its own, and `main` moves ahead of the shipped app each time the PluginKit version is raised. Your plugin target then needs nothing else from this repository.
 
 Link it as **Do Not Embed**. The app supplies TableProPluginKit at runtime, so a copy inside your bundle is a second, conflicting one. The script refuses to emit a framework with no `.swiftinterface`, which is what a build without Library Evolution looks like: it links today and breaks every consumer on the next release.
 
