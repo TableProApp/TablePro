@@ -364,10 +364,13 @@ async fn unknown_interruption_records_unknown_outcome_and_blocks_later_writes() 
     assert_eq!(connection.attempts.load(Ordering::SeqCst), 1);
 
     let events = audit.events.lock().expect("event lock");
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert_eq!(events[0].phase, AuditRecordPhase::Intent);
     assert_eq!(events[1].phase, AuditRecordPhase::Outcome);
     assert_eq!(events[1].terminal_status, AuditTerminalStatus::Unknown);
+    assert_eq!(events[2].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[2].terminal_status, AuditTerminalStatus::Denied);
+    assert_ne!(events[2].operation_id, events[1].operation_id);
 }
 
 fn preview_harness(rollback_behavior: RollbackBehavior) -> MetadataHarness {
@@ -470,12 +473,15 @@ async fn delayed_rollback_intent_records_unknown_and_blocks_later_writes() {
     assert!(later_error.contains("governed writes are disabled"), "{later_error}");
 
     let events = harness.audit.events.lock().expect("event lock");
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
     assert_eq!(events[2].phase, AuditRecordPhase::Intent);
     assert_eq!(events[2].operation_class, AuditOperationClass::TransactionRollback);
     assert_eq!(events[3].phase, AuditRecordPhase::Outcome);
     assert_eq!(events[3].terminal_status, AuditTerminalStatus::Unknown);
     assert_eq!(events[3].transaction_outcome, AuditTransactionOutcome::Unknown);
+    assert_eq!(events[4].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[4].terminal_status, AuditTerminalStatus::Denied);
+    assert_ne!(events[4].operation_id, events[3].operation_id);
 }
 
 #[tokio::test(start_paused = true)]
@@ -510,12 +516,15 @@ async fn hanging_preview_rollback_records_unknown_and_blocks_later_writes() {
     assert!(later_error.contains("governed writes are disabled"), "{later_error}");
 
     let events = harness.audit.events.lock().expect("event lock");
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
     assert_eq!(events[2].phase, AuditRecordPhase::Intent);
     assert_eq!(events[2].operation_class, AuditOperationClass::TransactionRollback);
     assert_eq!(events[3].phase, AuditRecordPhase::Outcome);
     assert_eq!(events[3].terminal_status, AuditTerminalStatus::Unknown);
     assert_eq!(events[3].transaction_outcome, AuditTransactionOutcome::Unknown);
+    assert_eq!(events[4].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[4].terminal_status, AuditTerminalStatus::Denied);
+    assert_ne!(events[4].operation_id, events[3].operation_id);
 }
 
 struct MetadataHarness {

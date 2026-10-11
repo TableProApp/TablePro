@@ -747,3 +747,143 @@ async fn a_definite_commit_failure_closes_the_batch_instead_of_leaving_it_open()
         "a fresh BEGIN must be accepted after the batch closed"
     );
 }
+
+#[tokio::test]
+async fn read_snapshot_refusals_record_one_terminal_outcome_and_keep_the_snapshot_open() {
+    let h = harness(SessionScript::default(), false);
+    let mut session = h.guard.open_session().await.expect("open session");
+    run(&mut session, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await
+        .expect("begin");
+    for sql in ["DELETE FROM items WHERE id = 1", "SELECT pg_advisory_lock(1)"] {
+        let before = h.audit.events.lock().expect("events").len();
+        assert!(matches!(run(&mut session, sql).await, Err(DriverError::ReadOnly)));
+        let events = h.audit.events.lock().expect("events");
+        let added = &events[before..];
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0].phase, AuditRecordPhase::Outcome);
+        assert_eq!(added[0].terminal_status, AuditTerminalStatus::Denied);
+        assert!(added[0].batch_id.is_some());
+        assert!(session.transaction_open());
+    }
+    assert_eq!(
+        *h.script.sent.lock().expect("sent"),
+        vec!["BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"]
+    );
+}
+
+#[tokio::test]
+async fn structural_session_refusals_record_one_terminal_outcome_without_dispatch() {
+    for (driver, sql) in [
+        ("postgres", "BEGIN READ ONLY"),
+        ("mysql", "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"),
+        ("postgres", "SELECT 1; COMMIT"),
+        ("postgres", "COMMIT"),
+        ("postgres", "ROLLBACK"),
+    ] {
+        let h = harness_with_driver(SessionScript::default(), false, driver);
+        let mut session = h.guard.open_session().await.expect("open session");
+        assert!(
+            matches!(run(&mut session, sql).await, Err(DriverError::PolicyDenied(_))),
+            "{sql}"
+        );
+        assert!(h.script.sent.lock().expect("sent").is_empty());
+        let events = h.audit.events.lock().expect("events");
+        assert_eq!(events.len(), 1, "{sql}");
+        assert_eq!(events[0].phase, AuditRecordPhase::Outcome);
+        assert_eq!(events[0].terminal_status, AuditTerminalStatus::Denied);
+    }
+}
+
+#[tokio::test]
+async fn a_failed_refusal_audit_still_blocks_dispatch_and_preserves_the_open_snapshot() {
+    let h = harness(SessionScript::default(), false);
+    let mut session = h.guard.open_session().await.expect("open session");
+    run(&mut session, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await
+        .expect("begin");
+    h.audit
+        .failures
+        .lock()
+        .expect("failures")
+        .push(AuditRecordPhase::Outcome);
+    assert!(matches!(
+        run(&mut session, "DELETE FROM items WHERE id = 1").await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    assert_eq!(
+        *h.script.sent.lock().expect("sent"),
+        vec!["BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"]
+    );
+    assert!(session.transaction_open());
+    run(&mut session, "ROLLBACK").await.expect("rollback");
+    assert!(!session.transaction_open());
+}
+
+#[tokio::test]
+async fn a_nested_begin_and_a_retired_session_each_audit_their_refusal_once() {
+    let h = harness(
+        SessionScript {
+            disconnect_on: Some("SELECT 1"),
+            ..SessionScript::default()
+        },
+        false,
+    );
+    let mut session = h.guard.open_session().await.expect("open session");
+    run(&mut session, "BEGIN").await.expect("begin");
+    assert!(matches!(
+        run(&mut session, "BEGIN").await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    assert!(matches!(
+        run(&mut session, "SELECT 1").await,
+        Err(DriverError::Disconnected)
+    ));
+    assert!(matches!(
+        run(&mut session, "SELECT 2").await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    let events = h.audit.events.lock().expect("events");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.phase == AuditRecordPhase::Outcome
+                && event.terminal_status == AuditTerminalStatus::Denied)
+            .count(),
+        2
+    );
+    assert_eq!(*h.script.sent.lock().expect("sent"), vec!["BEGIN", "SELECT 1"]);
+}
+
+#[tokio::test]
+async fn journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available() {
+    for (begin, sql) in [
+        (true, "COMMIT"),
+        (true, "INSERT INTO items VALUES (1)"),
+        (false, "INSERT INTO items VALUES (1)"),
+    ] {
+        let h = harness(SessionScript::default(), false);
+        let mut session = h.guard.open_session().await.expect("open session");
+        if begin {
+            run(&mut session, "BEGIN").await.expect("begin");
+        }
+        h.audit_state.disable_after_audit_failure();
+        let before = h.audit.events.lock().expect("events").len();
+        assert!(matches!(
+            run(&mut session, sql).await,
+            Err(DriverError::PolicyDenied(_))
+        ));
+        {
+            let events = h.audit.events.lock().expect("events");
+            assert_eq!(events.len() - before, 1, "{sql}");
+            assert_eq!(events[before].terminal_status, AuditTerminalStatus::Denied);
+            assert_eq!(events[before].phase, AuditRecordPhase::Outcome);
+        }
+        assert_eq!(h.script.sent.lock().expect("sent").len(), usize::from(begin));
+        assert_eq!(session.transaction_open(), begin);
+        if begin {
+            run(&mut session, "ROLLBACK").await.expect("rollback");
+            assert!(!session.transaction_open());
+        }
+    }
+}

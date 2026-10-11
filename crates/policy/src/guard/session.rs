@@ -5,6 +5,8 @@ use crate::transaction_control::{TransactionControl, hides_transaction_control, 
 
 const CLOSE_ROLLBACK_TIMEOUT: Duration = Duration::from_secs(10);
 
+mod refusal;
+
 pub(crate) struct PolicySession {
     guard: PolicyGuard,
     inner: Box<dyn Session>,
@@ -59,22 +61,35 @@ impl Session for PolicySession {
         control: &OperationControl,
     ) -> Result<QueryResult, DriverError> {
         if !self.is_usable() {
-            return Err(DriverError::PolicyDenied(
-                "the session was retired after a connection fault and cannot run another statement".into(),
-            ));
+            return self
+                .refuse_policy(
+                    sql,
+                    "retired_session",
+                    "the session was retired after a connection fault and cannot run another statement",
+                )
+                .await;
         }
         match transaction_control(sql, &self.guard.ctx.driver_id) {
             Some(TransactionControl::Begin) => self.begin(sql, control).await,
-            Some(TransactionControl::BeginReadOnly) => Err(DriverError::PolicyDenied(
-                "read-only sessions require REPEATABLE READ or SERIALIZABLE isolation".into(),
-            )),
+            Some(TransactionControl::BeginReadOnly) => {
+                self.refuse_policy(
+                    sql,
+                    "snapshot_isolation",
+                    "read-only sessions require REPEATABLE READ or SERIALIZABLE isolation",
+                )
+                .await
+            }
             Some(TransactionControl::BeginReadOnlySnapshot) => self.begin_read_only(sql, control).await,
             Some(TransactionControl::Commit { chain }) => self.finish(sql, control, Finish::Commit, chain).await,
             Some(TransactionControl::Rollback { chain }) => self.finish(sql, control, Finish::Rollback, chain).await,
-            None if hides_transaction_control(sql, &self.guard.ctx.driver_id) => Err(DriverError::PolicyDenied(
-                "send BEGIN, COMMIT and ROLLBACK as separate statements so the session can track the transaction"
-                    .into(),
-            )),
+            None if hides_transaction_control(sql, &self.guard.ctx.driver_id) => {
+                self.refuse_policy(
+                    sql,
+                    "hidden_transaction_control",
+                    "send BEGIN, COMMIT and ROLLBACK as separate statements so the session can track the transaction",
+                )
+                .await
+            }
             None => self.statement(sql, params, control).await,
         }
     }
@@ -115,9 +130,13 @@ impl Session for PolicySession {
 impl PolicySession {
     async fn begin(&mut self, sql: &str, control: &OperationControl) -> Result<QueryResult, DriverError> {
         if self.batch.is_some() {
-            return Err(DriverError::PolicyDenied(
-                "a transaction is already open on this session; nested BEGIN is refused".into(),
-            ));
+            return self
+                .refuse_policy(
+                    sql,
+                    "nested_transaction",
+                    "a transaction is already open on this session; nested BEGIN is refused",
+                )
+                .await;
         }
         let result = self
             .guard
@@ -132,14 +151,22 @@ impl PolicySession {
 
     async fn begin_read_only(&mut self, sql: &str, control: &OperationControl) -> Result<QueryResult, DriverError> {
         if self.guard.ctx.driver_id != "postgres" {
-            return Err(DriverError::PolicyDenied(
-                "read-only session transactions are currently supported only by PostgreSQL".into(),
-            ));
+            return self
+                .refuse_policy(
+                    sql,
+                    "snapshot_engine",
+                    "read-only session transactions are currently supported only by PostgreSQL",
+                )
+                .await;
         }
         if self.batch.is_some() {
-            return Err(DriverError::PolicyDenied(
-                "a transaction is already open on this session; nested BEGIN is refused".into(),
-            ));
+            return self
+                .refuse_policy(
+                    sql,
+                    "nested_transaction",
+                    "a transaction is already open on this session; nested BEGIN is refused",
+                )
+                .await;
         }
         let analysis = self.guard.analyze_statement(sql);
         let authorization = Authorization {
@@ -186,7 +213,9 @@ impl PolicySession {
         if self.batch.is_some_and(|batch| {
             batch.read_only && (analysis.facts.effects.writes() || analysis.facts.effects.contains(external_effects))
         }) {
-            return Err(DriverError::ReadOnly);
+            return self
+                .refuse(sql, "read_only_snapshot_refusal", DriverError::ReadOnly)
+                .await;
         }
         let authorization = self.guard.authorize_classified(sql, analysis, Some(control)).await?;
         let writes = authorization.analysis.facts.writes();
@@ -238,7 +267,7 @@ impl PolicySession {
     ) -> Result<QueryResult, DriverError> {
         let writes = authorization.analysis.facts.writes();
         if writes {
-            self.guard.require_governed_write_available()?;
+            self.require_writable(sql).await?;
         }
         let operation = self.guard.operation(
             sql,
@@ -283,7 +312,7 @@ impl PolicySession {
         control: &OperationControl,
         authorization: Authorization,
     ) -> Result<QueryResult, DriverError> {
-        self.guard.require_governed_write_available()?;
+        self.require_writable(sql).await?;
         let operation = self.guard.operation(
             sql,
             None,
@@ -358,12 +387,12 @@ impl PolicySession {
         chain: bool,
     ) -> Result<QueryResult, DriverError> {
         let Some(batch) = self.batch else {
-            return Err(DriverError::PolicyDenied(format!(
-                "{sql} refused because no transaction is open on this session"
-            )));
+            return self
+                .refuse_policy(sql, "missing_transaction", "no transaction is open on this session")
+                .await;
         };
         if kind == Finish::Commit {
-            self.guard.require_governed_write_available()?;
+            self.require_writable(sql).await?;
         }
         let operation = finish_operation(kind, batch.id);
         self.guard.record_intent(&operation).await.map_err(|error| {

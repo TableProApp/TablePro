@@ -20,7 +20,7 @@ Every open row has one owner. `scripts/check-known-issues.py` fails when an `OPE
 | Owner | Open rows | Next |
 | --- | --- | --- |
 | B3 (types, values, drivers, result paths) | UI-14b, UI-15b, UI-19, UI-20, UI-21, TEST-2, TEST-12, TEST-33, PERF-3, PERF-4, PERF-7, PERF-9, PERF-10 | Tip: continue mutation triage and the remaining engine/type/consumer/configuration matrix. Exact-head Forgejo gate after run 101/127 still owed ([B3 retest](type-contract-strategy.md#retest-indicators)). PERF-9/10 installed GTK and comparable memory profiling remain; UI-19 deferred (C). Row evidence stays in the ledger rows below |
-| B4 (transport, guard, audit, SSH, rollback) | AUD-2, AUD-9, AUD-11, B4-7, B4-9, B4-11, B4-16, B4-17, B4-21, B4-22, UI-1b, UI-13b, TEST-15, PERF-2, PERF-8 | Tip: package-installed SSH/TLS/rollback/bundle/Kerberos and native Wayland remain open ([B4 board](b4-task-board.md)). AUD-10 DONE (#486); #506 merged the shared-analysis portion of AUD-11 step 4, with the single-AST-walk consolidation deferred in the backlog; AUD-9 lineage continues through the gate. B4-11 rollback warning wording is B4-owned; UX reviews the scoped app and changelog change in the second handoff below. UI-1b per-hop passphrase coverage is B4-owned; UX registers it in the isolated Secret Service tier and generated inventory per the handoff below. UI-1b bundle import rollback is B4-owned; UX reviews the scoped app-layer change below. GTK editor/acceptance remain ([proposal](proposals/ui-1b-ssh-jump-chain-editor.md)). Retest empty-dialog / MongoDB TLS signals stay on the board |
+| B4 (transport, guard, audit, SSH, rollback) | AUD-2, AUD-9, AUD-11, B4-7, B4-9, B4-11, B4-16, B4-17, B4-21, B4-22, UI-1b, UI-13b, TEST-15, PERF-2, PERF-8 | Tip: package-installed SSH/TLS/rollback/bundle/Kerberos and native Wayland remain open ([B4 board](b4-task-board.md)). AUD-10 DONE (#486); #506 merged the shared-analysis portion of AUD-11 step 4, with the single-AST-walk consolidation deferred in the backlog; AUD-9 lineage continues through the gate. B4-11 rollback warning wording is B4-owned; UX reviews the scoped app and changelog change in the second handoff below. UI-1b per-hop passphrase coverage is B4-owned; UX registers it in the isolated Secret Service tier and generated inventory per the handoff below. UI-1b bundle import rollback is B4-owned; UX reviews the scoped app-layer change below. GTK editor/acceptance remain ([proposal](proposals/ui-1b-ssh-jump-chain-editor.md)). #538 also owns the scoped MCP timeout-audit expectations for denied writes after lockdown. Retest empty-dialog / MongoDB TLS signals stay on the board |
 | UX lane (app layer, packaging, lab) | AUD-5, AUD-6, AUD-7, TEST-28, TEST-30, TEST-31, TEST-32, SNAP-2, SNAP-3, SNAP-4 | TEST-28 native AT-SPI; TEST-31 capacity experiment (next ten Forgejo runs); TEST-32 oracle review; AUD-5 comment sweep. Snapshots (ADR 0015) after SNAP-1 |
 | The maintainer (needs a person or a decision) | PKG-1, PKG-2, PKG-4, PKG-8, DOC-3, DOC-5, TEST-6 | PKG-1 native Wayland recipe on a real desktop; PKG-2 after PKG-1; PKG-4 Flathub + screenshots; PKG-8 Flatpak file-access decision; DOC-3 Orca/high contrast; TEST-6 manual checklist; DOC-5 lab client compare |
 
@@ -59,6 +59,12 @@ Every open row has one owner. `scripts/check-known-issues.py` fails when an `OPE
 | Row | Decision | B4 may edit | UX may edit |
 | --- | --- | --- | --- |
 | B4-11 rollback warning | B: B4 owns rollback semantics and test; UX reviews the user-facing wording and changelog entry | `apps/linux/app/src/ui/error_text.rs` and its unit test | `CHANGELOG.md` |
+
+### B4/UX terminal-refusal consumer handoff, 2026-10-11
+
+| Row | Decision | B4 may edit | UX may edit |
+| --- | --- | --- | --- |
+| TEST-15 terminal refusal audit | B: B4 keeps write-lockdown refusals on the existing guard audit path; UX reviews consumer expectations | `crates/policy/src/guard.rs`, session refusal helpers and tests, `crates/mcp/tests/timeout_audit.rs` | Review consumer audit expectations; no MCP or app runtime change outside policy |
 
 ### B4/UX handoff, 2026-10-10
 

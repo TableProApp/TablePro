@@ -176,7 +176,9 @@ impl PolicyGuard {
             return self.resolve_authorization(sql, analysis, joined, None, control).await;
         }
 
-        self.require_governed_write_available()?;
+        if let Some(decision) = self.governed_write_refusal() {
+            return self.resolve_authorization(sql, analysis, decision, None, control).await;
+        }
         let estimated_rows = if facts.contains_mutating_dml()
             && facts.class != StatementClass::Administrative
             && !effects.contains(Effects::ADMIN)
@@ -542,6 +544,18 @@ impl PolicyGuard {
             ));
         }
         Ok(())
+    }
+
+    fn governed_write_refusal(&self) -> Option<Decision> {
+        let error = self.require_governed_write_available().err()?;
+        let message = match error {
+            DriverError::PolicyDenied(message) => message,
+            error => error.to_string(),
+        };
+        Some(Decision::Deny {
+            rule: "governed_write_lockdown".into(),
+            message,
+        })
     }
 
     async fn prepare_governed_read(&self, operation: &AuditOperation<'_>) -> Result<(), DriverError> {

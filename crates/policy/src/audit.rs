@@ -401,7 +401,7 @@ mod tests {
         connection_a.disable_governed_writes(); // A late callback from the retired generation.
         assert!(!replacement_a.governed_writes_disabled());
 
-        journal.disable_globally();
+        journal.disable_after_audit_failure();
         assert!(connection_b.governed_writes_disabled());
         assert!(replacement_a.governed_writes_disabled());
     }
