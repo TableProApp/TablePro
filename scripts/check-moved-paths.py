@@ -12,7 +12,7 @@ OLD = re.compile(
     r"|Cargo\.(toml|lock)|ARCHITECTURE\.md|ROADMAP\.md)\b"
     r"|(?<![\w.\-])crates/(app|release-tests|driver-tls-tests)\b|(?<![\w.\-])testdata/value-contract"
 )
-SKIP = ("docs/archive/", "docs/evidence/", "CHANGELOG.md", "docs/proposals/folder-restructure.md",
+SKIP = ("docs/archive/", "docs/evidence/", "CHANGELOG.md",
         "scripts/check-moved-paths.py", "scripts/tests/test_check_moved_paths.py", "vendor/", "apps/linux/po/")
 
 

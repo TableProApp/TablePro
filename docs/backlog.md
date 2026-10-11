@@ -46,7 +46,7 @@ candidate inventory as a release commitment.
 
 - Enable Hyper-Threading on two lab hosts, raise executor sizes, split runners by job class, then allow two gates to overlap.
 - Stop committing the generated `docs/ignored-tests.md`. Every pull request that adds or moves an ignored test conflicts in it, and each conflict is resolved by regenerating the file. Generate it in CI and check its content there instead, or write it to a build output.
-- Folder layout: done on 2026-10-11 ([proposal](proposals/folder-restructure.md)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
+- Folder layout: done on 2026-10-11 (`crates/`, `apps/linux/`, `tests/`; see [ARCHITECTURE](../ARCHITECTURE.md#repository-layout)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
 
 ## GitHub issues
 
