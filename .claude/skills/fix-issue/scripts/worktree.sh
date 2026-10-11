@@ -2,14 +2,16 @@
 #
 # Create an isolated worktree that can actually build.
 #
-# A fresh TablePro worktree fails before compiling until four untracked, gitignored paths are
-# linked from the main checkout. The first failure is "Unable to open base configuration reference
-# file", which reads like a broken toolchain. Symlinks work fine for the linker, so this beats
-# re-running scripts/download-libs.sh per worktree.
+# A fresh worktree of the macOS app fails before compiling until four untracked, gitignored paths
+# are linked from the main checkout. The first failure is "Unable to open base configuration
+# reference file", which reads like a broken toolchain. Symlinks work fine for the linker, so this
+# beats re-running scripts/download-libs.sh per worktree. A checkout that has none of them, as on
+# a machine that does not build the macOS app, gets a plain worktree.
 #
 # Usage:
 #   worktree.sh <branch>            # new branch off a freshly fetched origin/main
-#   worktree.sh <branch> <base>     # new branch off an explicit base
+#   worktree.sh <branch> <base>     # new branch off another base, fetched first when it is
+#                                   # origin/<name>; the platform profile names the base
 #   worktree.sh --remove <branch>   # remove a clean worktree, keeping the branch
 #   worktree.sh --prune-merged [--dry-run]
 #                                   # remove every clean worktree whose pull requests are all
@@ -99,12 +101,14 @@ if [ "$1" = "--remove" ]; then
 fi
 
 BRANCH="$1"
-BASE="${2:-}"
-# A fix branch starts from what main is now, not from whatever the main checkout has checked out.
-if [ -z "$BASE" ]; then
-    git -C "$MAIN_ROOT" fetch --quiet origin main || { echo "could not fetch origin main" >&2; exit 1; }
-    BASE="origin/main"
-fi
+BASE="${2:-origin/main}"
+# A fix branch starts from what its base is now, not from what the main checkout last fetched.
+# Only the default was fetched before, so a tree cut from another remote branch started stale.
+case "$BASE" in
+    origin/*)
+        git -C "$MAIN_ROOT" fetch --quiet origin "${BASE#origin/}" || { echo "could not fetch $BASE" >&2; exit 1; }
+        ;;
+esac
 DIR="$WORKTREE_HOME/${BRANCH//\//-}"
 
 if [ -e "$DIR" ]; then
@@ -146,9 +150,12 @@ missing=""
 [ -e "$DIR/Native/HanaBridge/bin" ] || missing="$missing Native/HanaBridge/bin (verify.sh plugins builds it)"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
 ls "$DIR"/Libs/ios/*.xcframework > /dev/null 2>&1 || missing="$missing Libs/ios/*.xcframework"
-if [ -n "$missing" ]; then
+# Only a Mac builds what these feed, so anywhere else their absence is not worth a warning.
+if [ -n "$missing" ] && [ "$(uname -s)" = "Darwin" ]; then
     echo "warning: not linked, the main checkout does not have them:$missing" >&2
 fi
 
 echo "$DIR"
-echo "note: Libs/dylibs shows as untracked here because its .gitignore entry ends in a slash and it is a symlink. Stage explicit paths." >&2
+if [ -L "$DIR/Libs/dylibs" ]; then
+    echo "note: Libs/dylibs shows as untracked here because its .gitignore entry ends in a slash and it is a symlink. Stage explicit paths." >&2
+fi

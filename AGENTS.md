@@ -2,7 +2,7 @@
 
 A native macOS database client (SwiftUI + AppKit), a lightweight alternative to TablePlus. macOS 13.0+, Swift 6 language mode for the app targets (`Configs/Base.xcconfig`), Universal Binary. `TableProMobile/` is the iOS app.
 
-This file is the project guide for every agent. Claude Code loads it through `CLAUDE.md`; Codex loads it directly. Area rules live in `.claude/rules/` (index at the end), and Claude Code loads each one automatically when you touch a file its `paths:` names. Codex does not, so read the matching rule before editing those paths.
+This file is the project guide for every agent, and it covers the macOS and iOS apps. An app for another platform keeps its own guide beside its code, and that guide is the one to follow there. Claude Code loads this file through `CLAUDE.md`; Codex loads it directly. Area rules live in `.claude/rules/` (index at the end), and Claude Code loads each one automatically when you touch a file its `paths:` names. Codex does not, so read the matching rule before editing those paths.
 
 ## Principles
 
@@ -38,7 +38,7 @@ Build, test and lint through the wrapper, which keeps the full log on disk and p
 .claude/skills/fix-issue/scripts/verify.sh lint <file.swift> [...]
 ```
 
-It also has `generate`, `uitest`, `package`, `ios`, `plugins`, `abi`, `l10n`, `docs` and `agent-docs`; `verify.sh --help` lists them. The raw equivalents always pass `-skipPackagePluginValidation`:
+It also has `generate`, `uitest`, `package`, `ios`, `plugins`, `abi`, `l10n`, `docs` and `agent-docs`; `verify.sh --help` lists them. The steps are the platform's: on a Mac they are these, and `--platform <name>` picks another app's. The raw equivalents always pass `-skipPackagePluginValidation`:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
@@ -100,7 +100,8 @@ swiftlint lint --strict <files>
 6. **Atomic API changes.** A rename or signature change updates every caller and test in the same commit.
 7. **Commits and pull requests.** Squash merges use the PR title as the commit subject, so the title is the record: Conventional Commits (`<type>(<scope>): <description>`, `!` for breaking), at most 72 characters, a canonical scope when one fits. CI checks it. Branch commits follow the same format; put the explanation in the PR description, which follows `.github/pull_request_template.md`.
    - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`. The `release` skill alone writes `release: v<version>`.
-   - Scopes: `ai-chat`, `ai-providers`, `mcp`, `copilot`, `inline-suggest`, `editor`, `datagrid`, `tabs`, `coordinator`, `sidebar`, `connections`, `connection-form`, `welcome`, `settings`, `toolbar`, `hig`, `ssh`, `ios`, `windows`, `perf`, `launch`, `plugins`, `plugin-<name>`, `changelog`, `claude-md`, `docs`, `ci`, `release`.
+   - Scopes: `ai-chat`, `ai-providers`, `mcp`, `copilot`, `inline-suggest`, `editor`, `datagrid`, `tabs`, `coordinator`, `sidebar`, `connections`, `connection-form`, `welcome`, `settings`, `toolbar`, `hig`, `ssh`, `ios`, `windowing`, `perf`, `launch`, `plugins`, `plugin-<name>`, `changelog`, `claude-md`, `docs`, `ci`, `release`.
+   - Platform scopes: `ios` for the iOS app, `linux` or `linux-<area>` for the Linux app. `windows` is kept for a Windows app, which is why window management is `windowing`.
 
 ## Writing style
 
