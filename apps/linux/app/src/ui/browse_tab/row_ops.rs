@@ -448,7 +448,7 @@ impl BrowseTab {
 
     pub(super) fn handle_paste_not_supported(&mut self, sender: ComponentSender<Self>) {
         let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
-            "Pasting rows isn't supported yet"
+            "Click a cell first, then paste to fill cells from that one"
         )));
     }
 

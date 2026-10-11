@@ -335,6 +335,15 @@ pub enum BrowseTabInput {
     /// telling the user multi-row paste isn't supported. Cell-level
     /// paste continues to work via the normal text-editor path.
     PasteNotSupported,
+    Paste {
+        row: u32,
+        col: usize,
+    },
+    PasteText {
+        row: u32,
+        col: usize,
+        text: String,
+    },
     /// Ctrl+A: select every visible row.
     SelectAllRows,
     /// Home / End: scroll-and-focus the first / last row of the
@@ -411,6 +420,7 @@ mod accessors;
 mod chrome;
 mod grid_messages;
 mod grid_render;
+mod paste;
 mod reference;
 mod requests;
 mod row_ops;
@@ -730,8 +740,11 @@ impl SimpleComponent for BrowseTab {
         let sender_for_paste = sender.clone();
         let paste_shortcut = gtk::Shortcut::builder()
             .trigger(&crate::ui::shortcut::parse("<Primary>v"))
-            .action(&gtk::CallbackAction::new(move |_, _| {
-                sender_for_paste.input(BrowseTabInput::PasteNotSupported);
+            .action(&gtk::CallbackAction::new(move |widget, _| {
+                match crate::ui::grid::focused_cell_identity(widget) {
+                    Some((row, col, _)) => sender_for_paste.input(BrowseTabInput::Paste { row, col }),
+                    None => sender_for_paste.input(BrowseTabInput::PasteNotSupported),
+                }
                 glib::Propagation::Stop
             }))
             .build();
@@ -1154,6 +1167,8 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::CopySelectedRowsAsTsv => self.handle_copy_selected_rows_as_tsv(sender),
             BrowseTabInput::PasteNotSupported => self.handle_paste_not_supported(sender),
+            BrowseTabInput::Paste { row, col } => self.handle_paste(row, col, sender),
+            BrowseTabInput::PasteText { row, col, text } => self.handle_paste_text(row, col, &text, sender),
             BrowseTabInput::SelectAllRows => self.handle_select_all_rows(),
             BrowseTabInput::GoToFirstRow => self.handle_go_to_first_row(),
             BrowseTabInput::GoToLastRow => self.handle_go_to_last_row(),

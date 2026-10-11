@@ -143,6 +143,13 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] An unknown write outcome blocks only its owning connection; another connection stays usable. Restart/reconnect recovery follows the durable audit rules.
 - [ ] `SET autocommit=0`, `SET IMPLICIT_TRANSACTIONS ON`, `XA START` and an unterminated transaction batch are refused on applicable shared connections.
 
+## Paste into cells
+
+- [ ] Copy a 2 by 2 block from a spreadsheet, click a cell in a browsed table with at least two rows and columns below and right of it, press Ctrl+V: four cells show as pending changes and the unsaved-change count reads 4.
+- [ ] Paste a block that runs past the last loaded row or column: a toast says so and nothing changes.
+- [ ] Paste a value that does not parse for its column type: a toast names the column and row and nothing changes.
+- [ ] Paste with no cell focused: a toast asks you to click a cell first.
+
 ## Go to Referenced Row
 
 - [ ] In a table with a foreign key, right-click a non-empty value in the key column: Go to Referenced Row opens the referenced table with one filter rule on the referenced column.
