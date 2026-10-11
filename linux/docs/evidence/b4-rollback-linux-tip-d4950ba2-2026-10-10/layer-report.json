@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "commit": "d4950ba2a06967a0e62282840ffe08f1537d1a34",
+  "working_tree": "",
+  "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_utc": "2026-10-10T06:58:03.833843+00:00",
+  "status": "passed",
+  "layers": {
+    "b4-rollback": {
+      "status": "passed",
+      "steps": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-mysql",
+            "--test",
+            "integration",
+            "mysql_atomic",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests",
+          "status": "passed",
+          "log": "b4-rollback-1.log",
+          "exit_code": 0,
+          "seconds": 140.446
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-postgres",
+            "--test",
+            "integration",
+            "rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests",
+          "status": "passed",
+          "log": "b4-rollback-2.log",
+          "exit_code": 0,
+          "seconds": 17.158
+        }
+      ]
+    }
+  },
+  "finished_utc": "2026-10-10T07:00:41.438789+00:00"
+}

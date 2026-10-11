@@ -99,11 +99,9 @@ distribution-package or native Wayland acceptance.
 
 Implemented local slices (I2, I5, F7, MySQL atomicity matrices) live in
 [B4 history](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4).
-Live acceptance bounds stay above. Open packaging work:
-
-| ID | Small task and required assertion | Local layers |
-| --- | --- | --- |
-| I1 | In the Debian phase, build/install executable `tablepro-askpass` in debhelper rules and make validator reject its absence; inspect the rules-built package | `packaging-contracts`, Debian package build |
+Live acceptance bounds stay above. I1 is complete under ledger B4-10: the
+Debian builder includes askpass and package validation rejects its absence.
+Debian/GNOME desktop acceptance remains post-0.2.0 work under PKG-2.
 
 ## In-progress local slices
 
@@ -140,8 +138,9 @@ and the [ledger](known-issues.md).
    drivers tls postgres-release widgets ui packaging-contracts`; include keyring
    and optional-feature checks where affected. Avoid repeated overlapping suites.
 4. Installed Arch/Omarchy/Hyprland native Wayland workflows and upgrade/rollback.
-5. I1, then installed Debian/GNOME native Wayland workflows and upgrade/rollback.
-6. B7 retry-free candidate soak and release decision. Publication is separate.
+5. B7 retry-free candidate soak and the maintainer's release decision.
+6. After 0.2.0, installed Debian/GNOME native Wayland workflows and
+   upgrade/rollback under PKG-2. Publication is separate.
 
 Use the shared checkout and `linux/target` cache in the current single-agent
 session. Serialize Cargo and fixture runs. Do not clean the cache to diagnose a
@@ -155,7 +154,8 @@ failure. Record exact source hashes, commands, counts and raw sanitized logs.
 - [ ] MySQL and SQL Server TLS through SSH have positive and negative native proof.
 - [ ] Transport audit, Flatpak refusal and registered GTK session flow pass.
 - [ ] Installed Arch native Wayland and upgrade/rollback evidence recorded.
-- [ ] Debian rules/helper and installed GNOME native Wayland evidence recorded.
+- [ ] Post-0.2.0: installed GNOME native Wayland evidence recorded (PKG-2;
+  Debian rules/helper implementation is complete under B4-10).
 
 ## Historical packets
 

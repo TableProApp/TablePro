@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "task": "B4-11 MySQL failed-batch side effects and B4-12 PostgreSQL rollback failure",
+  "source_branch": "fork/linux",
+  "source_commit": "d4950ba2a06967a0e62282840ffe08f1537d1a34",
+  "date": "2026-10-10",
+  "working_tree": "clean",
+  "layer": "b4-rollback",
+  "started_utc": "2026-10-10T06:58:03.833843+00:00",
+  "finished_utc": "2026-10-10T07:00:41.438789+00:00",
+  "result": "passed",
+  "environment": {
+    "runner": "local Linux workstation",
+    "docker": "used by the integration fixtures"
+  },
+  "tests": [
+    {
+      "command": "cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1",
+      "result": "20 passed, 0 failed, 0 ignored; 73 filtered out",
+      "duration_seconds": 140.446,
+      "log": "mysql-atomic.log",
+      "sha256": "fbfb924c87186312eaf211fa695cc263b360ed7702e87d7ed5b4b83561becc41"
+    },
+    {
+      "command": "cargo test --locked -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --include-ignored --test-threads=1",
+      "result": "1 passed, 0 failed, 0 ignored; 234 filtered out",
+      "duration_seconds": 17.158,
+      "log": "postgres-rollback-failure.log",
+      "sha256": "cba0ea9deaedcdaf6cac559601ac0765e1b551f41f6740347b358f52e52830cb"
+    }
+  ],
+  "layer_report": {
+    "path": "layer-report.json",
+    "sha256": "40840a00c30ff5cc4720a342aeaa266a6a79a1b0cf3209e3c68cd7a42d8d655e"
+  },
+  "scope": "This exact-tip run confirms the current MySQL and MariaDB failed-batch selector and PostgreSQL rollback-failure selector. It does not close optional/vendor engine coverage, frozen-candidate, installed-package, hosted, or Forgejo acceptance."
+}

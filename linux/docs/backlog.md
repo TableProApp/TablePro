@@ -29,7 +29,8 @@ this page keeps the order. Draft of 2026-10-11, for the maintainer.
 
 | Row | What |
 |---|---|
-| TEST-2 | Broad mutation audit: policy and core are measured (see [TEST-32](oracle-review.md)); transport, ssh and storage are not |
+| TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; remaining survivor triage stays open (see [TEST-32](oracle-review.md) and [reports](evidence/test-quality-2026-10-11/transport-mutants.md)) |
+| AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning | Behavioural S6/S7/S8 fixes are merged; shared analysis landed in #506. Structural consolidation follows 0.2.0; candidate acceptance of the fixes stays in the ledger |
 | TEST-12 | MongoDB metadata sample consistency |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
 | TEST-30 | Remaining SonarCloud and CodeQL findings |

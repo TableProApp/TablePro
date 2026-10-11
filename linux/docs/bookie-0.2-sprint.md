@@ -4,7 +4,13 @@ Approved 2026-09-16. Delivery branch: `linux`; source version 0.1.6-dev (0.1.5 i
 0.2.0. Implementation is authorized; no 0.2 release is approved.
 
 
-## 0.2.0 readiness: 2026-10-10
+## 0.2.0 readiness: 2026-10-11
+
+The maintainer's current delivery target is the Arch/Hyprland development
+release in [0.2.0 scope](0.2.0-scope.md). That page owns the blocker list.
+Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue
+after 0.2.0 in the [backlog](backlog.md). Historical acceptance gaps below stay
+open without becoming additional release blockers.
 
 No 0.2 release is approved. Before a frozen candidate SHA, these stay open
 (owner in brackets; details in the [ledger](known-issues.md)):
@@ -52,8 +58,9 @@ Case detail lives on the [B3 board](type-contract-strategy.md),
 [ledger](known-issues.md). Dated PR-by-PR continuation notes are in
 [sprint history](archive/bookie-0.2-history.md#archived-from-active-sprint-on-2026-10-09-consolidation).
 
-Order: **B3 → B4 → installed Arch/Omarchy/Hyprland Wayland → Debian/GNOME
-Wayland → B7 qualification**. Review may overlap reserved fixtures; a lane pass
+Order for 0.2.0: **B3/B4 correctness blockers → installed
+Arch/Omarchy/Hyprland Wayland → B7 qualification**. Debian/GNOME desktop
+acceptance follows in 0.2.x. Review may overlap reserved fixtures; a lane pass
 does not close a milestone. The tip is not release-qualified. Limitations that
 0.2.0 accepts stay in [known limitations](known-limitations.md); fixes after
 0.2.0 stay in the [backlog](backlog.md).
@@ -154,19 +161,19 @@ Record binary/package SHA and checksum, actual Wayland backend, desktop/library
 versions, scale/monitor setup and light/dark screenshots. Check keyboard,
 clipboard, popovers, resizing and scaling. Xvfb regressions do not qualify Wayland.
 
-## Required next phase: GNOME on Debian Wayland
+## After 0.2.0: GNOME on Debian Wayland
 
 After UI-A1–A4, complete Debian I1 and repeat the applicable installed workflows
 on GNOME/Wayland with libraries meeting ADR 0002. Record the actual Debian/library
 versions; do not assume stable Debian meets GNOME 50 requirements. UI-D1 proves
 package contents; UI-D2 repeats A1–A3; UI-D3 proves upgrade/rollback; UI-D4 resolves
 platform differences. Source changes require a new SHA and affected Arch reruns.
-This phase is required, not a prerequisite for current B3/B4 development.
+This phase remains planned work under PKG-2; it is not a 0.2.0 prerequisite.
 
 ## Qualification and handoff
 
-B7 requires a frozen clean SHA, affected automated gates, installed Arch and
-Debian/GNOME checks, and **30 consecutive retry-free GTK attempts across at least
+B7 for 0.2.0 requires a frozen clean SHA, affected automated gates, installed
+Arch/Hyprland checks, and **30 consecutive retry-free GTK attempts across at least
 six runs** at that SHA. Failed/blocked/not-run items stay open. No recipe, version
 bump, older package or green task grants release approval.
 

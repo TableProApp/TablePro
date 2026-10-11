@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-10",
+  "scope": "B4-7, B4-9, B4-16, B4-17 and B4-22 packaged-binary GTK evidence",
+  "source_commit": "c126bfd03ed128f299e3736ed406d08622d1ec50",
+  "package_build": {
+    "filename": "bookie-0.1.6dev1-1-x86_64.pkg.tar.zst",
+    "sha256": "33766af5191aaa00f24285814f4ec34b3263b8a6fb629275c2500680fc4f864e",
+    "command": "makepkg --nodeps --noconfirm",
+    "result": "passed",
+    "toolchain": "Arch Linux, rustc 1.98.1 from rustup",
+    "validation": "PKGBUILD check() and validate-arch-package.sh passed",
+    "dependency_note": "makepkg dependency resolution was skipped because the pacman rust>=1.98 package is absent; the installed rustup toolchain is 1.98.1"
+  },
+  "package_binary": {
+    "sha256": "6409c4ea703d17381653b20536d42241949c8d66fdfafa3e34c2d14094fcc7a5",
+    "execution": "extracted from the package into the workspace target directory; not installed with pacman"
+  },
+  "postgres_release": {
+    "command": "bash scripts/test-postgres-release.sh with TABLEPRO_GTK_BINARY set to the extracted package binary",
+    "result": "passed",
+    "native_tests": {
+      "g5_system_openssh": "1 passed",
+      "mtls": "3 passed",
+      "release_tests": "59 passed across 10 integration test binaries"
+    },
+    "gtk_scenarios": [
+      "postgres_saved_mtls_connection_authenticates_and_queries",
+      "postgres_ssh_unknown_host_key_decline_is_durably_audited",
+      "postgres_ssh_setup_failure_is_durably_audited",
+      "postgres_ssh_tunnel_loss_retires_session_and_reconnects",
+      "postgres_ssh_multihop_trusts_both_hops_and_queries",
+      "postgres_ssh_second_hop_decline_does_not_learn_key",
+      "postgres_ssh_changed_second_hop_key_is_refused"
+    ],
+    "log_sha256": "774b0a0c6100f754d23c188e9991787f983af2a589d0d7f00510bcbbc4bafe72"
+  },
+  "bundle_gtk": {
+    "command": "bash scripts/test-gtk-safety.sh with TABLEPRO_GTK_BINARY set to the extracted package binary",
+    "runtime": "Xvfb/X11, private D-Bus and GTK AT-SPI",
+    "result": "passed",
+    "scenarios": [
+      "bundle_export_records_sanitized_audit_outcome",
+      "bundle_import_records_sanitized_audit_outcome",
+      "encrypted_bundle_round_trip_restores_credentials",
+      "a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile"
+    ],
+    "log_sha256": "34a2d9fd7cbb5b525492cae9bf188470d05a019d09f5835df3594e8fdea8bb7e"
+  },
+  "not_established": [
+    "System package installation, upgrade and removal acceptance; sudo requires an interactive password on this machine",
+    "Native Wayland acceptance; gnome-shell is not installed",
+    "Frozen-candidate acceptance",
+    "Hosted candidate acceptance",
+    "Windows Active Directory interoperability"
+  ]
+}

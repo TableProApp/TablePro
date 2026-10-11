@@ -10,8 +10,10 @@ for the maintainer; an entry is removed when the row closes.
   large export runs can be missed or repeated, because pages are read one after
   another. Export from a quiet database when exactness matters.
 - **Large results are capped and held in memory** (PERF-2, PERF-8). Results stop at
-  1 million rows, 10 million cells or 64 MiB estimated size. The grid uses about
-  2.5 times the memory of the result. Nothing is streamed yet.
+  1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
+  measurement was about 2.5 times the result memory; #518 now shares immutable
+  values with materialized rows, and comparable profiling remains open. Nothing
+  is streamed yet.
 - **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a
   typed preview and its byte count; View Value fetches the whole value by primary
   key. A table without a primary key cannot refetch.

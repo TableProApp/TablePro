@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-10",
+  "scope": "B4-7, B4-9, B4-16 and B4-17 exact-source PostgreSQL SSH, TLS, audit and GTK trust flow",
+  "source_commit": "b7d80b2ddb1691a4566d9b2336130b2401152cd5",
+  "linux_base_commit": "9f9d485a548453a56e05bb5527ad51e1dc20dbad",
+  "b4_policy_commit": "fc82c289b15b7d165fe90bcf3a61aae2b4acd78b",
+  "binary_path": "/home/trung/Projects/tablepro/.worktrees/b4-s6-s7-joined-verdict/linux/target/debug/tablepro-app",
+  "binary_sha256": "e92babae1a12b54a162466059a356c3505d1b1aa9b5349c3168850d103d6d936",
+  "command": "python3 scripts/run-test-layer.py postgres-release (runs bash scripts/test-postgres-release.sh)",
+  "run_started_utc": "2026-10-10T06:48:31.372513Z",
+  "run_finished_utc": "2026-10-10T06:50:02.245286Z",
+  "exit_code": 0,
+  "runtime": "Local Linux host; Docker PostgreSQL and SSH fixtures; source-build GTK binary under Xvfb/X11 with private D-Bus and GTK AT-SPI",
+  "result": "passed",
+  "native_tests": {
+    "g5_system_openssh": "1 passed",
+    "mtls": "3 passed",
+    "release_tests": "59 passed across 10 integration test binaries"
+  },
+  "gtk_scenarios": [
+    "postgres_saved_mtls_connection_authenticates_and_queries",
+    "postgres_ssh_unknown_host_key_decline_is_durably_audited",
+    "postgres_ssh_setup_failure_is_durably_audited",
+    "postgres_ssh_tunnel_loss_retires_session_and_reconnects",
+    "postgres_ssh_multihop_trusts_both_hops_and_queries",
+    "postgres_ssh_second_hop_decline_does_not_learn_key",
+    "postgres_ssh_changed_second_hop_key_is_refused"
+  ],
+  "log_sha256": {
+    "verified-run.log": "6480f9a1f344bbf122f3332a462cc8a81af28bee157ee811ded624ce8a44ba24",
+    "exit-code.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "not_established": [
+    "Frozen-candidate acceptance",
+    "Distribution-package installation and SSH trust-flow acceptance",
+    "Native Wayland trust-dialog interaction",
+    "Hosted or Forgejo acceptance",
+    "Windows Active Directory interoperability"
+  ]
+}

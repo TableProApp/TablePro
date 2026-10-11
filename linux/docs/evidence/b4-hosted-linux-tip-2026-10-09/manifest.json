@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "Hosted B4 acceptance on the merged Linux product tip",
+  "source_commit": "97e5f55bddacdfef427c51f162917fedcace3a9f",
+  "source_sha256": {
+    "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "2db5e2c451aff1d75d644f12e919961adcbcd9181a6f7366d03495d8f2d62937",
+    "crates/drivers/postgres/tests/integration.rs": "d3e61c5db07d498e121beb13eb3b8106aa15d594deffe2f22ec93c27b031d587",
+    "scripts/test-postgres-release.sh": "f1b865d96403ec596514e0edb2480ad0be3b906e4ab1523289e32621abd30b45",
+    "scripts/test-gtk-safety.sh": "adec0b08de0d0d0d9545a868e858c667259b67eee78417b066f7b33ec0e528d7",
+    "crates/app/src/services/gtk_approval.rs": "a1b360df3b04a457520d8014cbf99f9b59606f3cb00c4cc58fc238ac112d023a"
+  },
+  "workflow": {
+    "name": "Build Linux",
+    "run_id": "37955330433",
+    "url": "https://github.com/cozyGarage/BookiE/actions/runs/37955330433",
+    "head_sha": "97e5f55bddacdfef427c51f162917fedcace3a9f",
+    "conclusion": "success"
+  },
+  "results": {
+    "B4 rollback acceptance (docker)": "passed: 18 MySQL/MariaDB mysql_atomic tests and 1 PostgreSQL rollback-failure test",
+    "PostgreSQL release fixture (docker)": "passed; seven GTK SSH/mTLS scenarios and the MySQL approval-dialog regression passed",
+    "Driver TLS fixture (docker)": "passed",
+    "Installed GTK safety smoke": "passed: staged-release UI layer and Secret Service round-trip",
+    "Driver integration tests (docker)": "passed",
+    "Linux regression gate": "passed"
+  },
+  "not_established": [
+    "Distribution package manager installation of this exact source",
+    "Native Wayland acceptance",
+    "Windows AD interoperability",
+    "Optional/vendor MySQL engines and side effects beyond the tested matrix",
+    "Root cause of the earlier intermittent MySQL approval empty-dialog failures"
+  ],
+  "log_sha256": {
+    "mysql-postgres-rollback-report.json": "8bc42257dc469d5d531693779775678ef984698b9c385952d3e2424a0a1cca1b",
+    "mysql-atomic.log": "8348592eeb429cae557615e92ec1e6f7fcc71964417068f7a5cc4f8cbe632de3",
+    "postgres-rollback.log": "5c2e0ef6e2eae97248bf3a50f12df517b84019180b5fa6442b4ce6668217eeab",
+    "postgres-release-report.json": "9f30a6fb7587cc6bd1a0b271be43ec769152a72885bc3b60c524ad4957116733",
+    "postgres-release.log": "41511497e5cdf275d80db45a3ae6677fec571b9402d9ab41331c722a8a439cec",
+    "installed-gtk-report.json": "a7e6de087e2c5c18b39baf470e42e84a014a47ed5a24d36d3ac87a0da227e405",
+    "installed-gtk.log": "2e69a8b703ed5881ea345d7ba0c497b2d49a561cae9554606f4920f9dcee8980",
+    "bundle_export_records_sanitized_audit_outcome-result.json": "07172c5439634d9377b1094c188c182e4f420f24fb947ad459f7fdefdde7c971",
+    "bundle_import_records_sanitized_audit_outcome-result.json": "44b8f7c94fd7af1a3bfa054129cfcc6abcd91db99c9d40acc6b0fa20ea998926",
+    "encrypted_bundle_round_trip_restores_credentials-result.json": "0bfb6ecf9ccc3438c76126f782a5f1b38eedc3877a61a1f99656838040d282c7"
+  }
+}
