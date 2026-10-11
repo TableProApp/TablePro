@@ -31,3 +31,22 @@ implementations wholesale. The three demonstrated defects are fixed in #537,
 remain the targeted checks; the two additional local regressions pin human
 visibility and durable append sync failure. Fixture, installed acceptance and
 power-loss gaps retain their explicit boundaries.
+
+## Frozen-candidate check, 2026-10-12
+
+The maintainer designated BookiE `linux` SHA
+`bbdc39a430ede9382bc5dfa7164e51a065e2bd88` as the frozen candidate. On that
+exact checkout, the named outer-alias and human-visibility regressions passed.
+`scripts/test-ssh.sh` passed 10 built-in SSH and 12 system OpenSSH tests;
+`scripts/test-secret-service.sh` passed all 14 isolated keyring tests,
+including per-hop password/passphrase selection and bundle credential rollback.
+The pure bundle replacement rollback and injected durable append sync failure
+tests each passed. All six focused TEST-15 lost-ack selectors passed, and the
+AUD-11 policy target passed 232 tests. Exact commands and logs are in the
+[candidate manifest](../test15-bbdc39a/manifest.json).
+
+This is local Docker/Secret Service evidence. It does not establish Forgejo
+acceptance, the nightly, installed Arch/Hyprland behavior or persistence across
+power loss. AUD-9 remains OPEN only for the exact-head Forgejo PostgreSQL
+release acceptance; the policy and mutation triage found no new product-code
+change to make.

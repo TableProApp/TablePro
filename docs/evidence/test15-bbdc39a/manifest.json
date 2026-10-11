@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-12",
+  "repository": "cozyGarage/BookiE",
+  "source_commit": "bbdc39a430ede9382bc5dfa7164e51a065e2bd88",
+  "candidate_designation": "Maintainer confirmed this as the frozen candidate SHA on 2026-10-12.",
+  "scope": "Local frozen-candidate TEST-15 and bounded B4 regression checks. This is not Forgejo, nightly, installed-package, native Wayland or release acceptance.",
+  "environment": {
+    "rust_toolchain": "1.98.0",
+    "cargo_target_dir": "/home/trung/Projects/tablepro/linux/target",
+    "cargo_build_jobs": 2,
+    "driver_fixtures": "Local Docker-backed tests",
+    "secret_service": "Private D-Bus session with temporary home and keyring; desktop keyring was not used"
+  },
+  "test15": [
+    {
+      "engine": "PostgreSQL",
+      "command": "cargo test --locked -p tablepro-driver-postgres --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "postgres.log"
+    },
+    {
+      "engine": "MySQL",
+      "command": "cargo test --locked -p tablepro-driver-mysql --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "mysql.log"
+    },
+    {
+      "engine": "Redis",
+      "command": "cargo test --locked -p tablepro-driver-redis --test integration disconnection::a_lost_eval_ack_is_not_replayed_after_redis_reconnects -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "redis.log"
+    },
+    {
+      "engine": "ClickHouse",
+      "command": "cargo test --locked -p tablepro-driver-clickhouse --test integration disconnection::a_committed_insert_with_a_lost_http_ack_is_not_replayed -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "clickhouse.log"
+    },
+    {
+      "engine": "SQL Server",
+      "command": "cargo test --locked -p tablepro-driver-mssql --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "mssql.log"
+    },
+    {
+      "engine": "MongoDB",
+      "command": "cargo test --locked -p tablepro-driver-mongodb --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "mongodb.log"
+    }
+  ],
+  "additional_checks": [
+    {
+      "area": "AUD-11 behavior",
+      "command": "cargo test --locked -p tablepro-policy --lib --test aud11_s6_s7",
+      "result": "passed",
+      "passed": 232,
+      "failed": 0,
+      "log": "aud11-policy.log"
+    },
+    {
+      "area": "AUD-9 outer alias masking",
+      "command": "cargo test --locked -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_json_through_an_outer_alias -- --include-ignored --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "outer-alias.log"
+    },
+    {
+      "area": "AUD-9 human visibility",
+      "command": "cargo test --locked -p tablepro-policy --test guard_transparency a_human_guard_preserves_results_that_agent_masking_would_hide -- --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "human-visibility.log"
+    },
+    {
+      "area": "Host-key refusal and SSH transport",
+      "command": "bash scripts/test-ssh.sh",
+      "result": "passed",
+      "counts": {
+        "built_in_ssh": 10,
+        "system_openssh": 12
+      },
+      "log": "ssh.log"
+    },
+    {
+      "area": "Per-hop secrets and bundle keyring rollback",
+      "command": "bash scripts/test-secret-service.sh",
+      "result": "passed",
+      "isolated_keyring_tests": 14,
+      "log": "secret-service.log"
+    },
+    {
+      "area": "Bundle secret replacement rollback",
+      "command": "cargo test --locked -p tablepro-storage --lib connection_bundle::secret_transaction::tests::a_later_secret_write_failure_restores_values_replaced_earlier -- --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "bundle-rollback.log"
+    },
+    {
+      "area": "Durable audit sync failure",
+      "command": "cargo test --locked -p tablepro-storage --lib audit_journal::tests::durable_append_fails_when_data_sync_fails -- --exact --test-threads=1",
+      "result": "passed",
+      "passed": 1,
+      "failed": 0,
+      "log": "durable-audit.log"
+    }
+  ],
+  "not_established": [
+    "Forgejo driver and PostgreSQL release layers at this exact SHA",
+    "Full Forgejo nightly and retry-free soak",
+    "Installed Arch package and native Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22",
+    "Power-loss persistence or parent-directory sync fault injection",
+    "Re-execution of every historical mutation mutant"
+  ]
+}

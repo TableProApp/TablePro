@@ -12,13 +12,13 @@ The [0.2.0 scope](0.2.0-scope.md) owns blockers. The three demonstrated implemen
 
 | Work | Implementation | Exit before candidate freeze |
 | --- | --- | --- |
-| AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537) merged: unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | Explicit native outer-alias and human-visibility regressions pass locally; exact frozen-candidate PostgreSQL release/Forgejo acceptance remains |
+| AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537) merged: unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | Native outer-alias and human-visibility regressions pass locally on frozen candidate `bbdc39a`; exact-head Forgejo PostgreSQL release acceptance remains |
 | Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538) merged: snapshot writes, structural refusals, retired-session calls and write-lockdown refusals record a Denied terminal outcome without dispatch | No further implementation; frozen-candidate audit acceptance remains |
 | UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539) merged: unsupported full export is refused before source/destination access; loaded-result and current-page export remain | No further B4 implementation; the UX lane owns remaining app/package acceptance |
 
-The three demonstrated implementation defects are fixed and merged. B4 has no further product-code change planned for those defects. Mutation triage is bounded to masking, host-key refusal, per-hop secret selection, bundle rollback and durable audit. The current tests, new regression pins and remaining proof limits are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md). Do not turn a survivor percentage into release approval or a new blocker.
+The three demonstrated implementation defects are fixed and merged. B4 has no further product-code change planned for those defects. Mutation triage is bounded to masking, host-key refusal, per-hop secret selection, bundle rollback and durable audit. The current tests, new regression pins and remaining proof limits are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md) and the [frozen-candidate local evidence](evidence/test15-bbdc39a/manifest.json). Do not turn a survivor percentage into release approval or a new blocker.
 
-After the code merges, freeze one SHA. UX/maintainer runs the affected Forgejo layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22. Use the finite TEST-15 list below, then the sprint's retry-free soak and release decision. Source-build Xvfb, extracted package binaries and older green runs do not substitute for this candidate.
+The maintainer designated `bbdc39a430ede9382bc5dfa7164e51a065e2bd88` as the frozen candidate on 2026-10-12. All six focused TEST-15 selectors and the bounded local B4 survivor checks passed at that SHA; see the [evidence manifest](evidence/test15-bbdc39a/manifest.json). UX/maintainer still runs the exact-head Forgejo driver and PostgreSQL release layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22. Then run the sprint's retry-free soak and make the release decision. Source-build Xvfb, extracted package binaries and older green runs do not substitute for this candidate.
 
 ### TEST-15 release acceptance list
 
@@ -73,6 +73,10 @@ single-AST-walk consolidation remains in the post-0.2.0 backlog. #537's named
 outer-alias case has a dedicated native test. Exact local verification and
 acceptance boundaries are recorded below; local runs do not establish Forgejo
 gate or frozen-candidate/package acceptance.
+
+## Frozen-candidate local checks (2026-10-12)
+
+At maintainer-designated SHA `bbdc39a430ede9382bc5dfa7164e51a065e2bd88`, all six focused TEST-15 lost-ack selectors passed with their independent stored-state/request-count assertions. AUD-11's policy target passed 232 tests. The explicit AUD-9 outer-alias and human-visibility regressions passed. SSH host-key/OpenSSH tests passed 22 cases, the isolated Secret Service tier passed 14 cases, and the bundle rollback and durable audit sync-failure regressions passed. Commands and logs are in the [candidate evidence manifest](evidence/test15-bbdc39a/manifest.json). These local checks do not replace the Forgejo driver/PostgreSQL release layers, nightly, installed Arch/Hyprland acceptance or a power-loss test.
 
 ## AUD-9 query-plan masking regression (2026-10-10)
 
