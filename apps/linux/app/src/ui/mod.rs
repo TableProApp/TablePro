@@ -9,6 +9,7 @@ mod connection_row;
 mod editor;
 pub(crate) mod error_text;
 mod explain_dialog;
+mod explain_tree;
 mod export_dialog;
 mod filter_strip;
 mod grid;

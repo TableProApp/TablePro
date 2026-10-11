@@ -40,7 +40,7 @@ Ctrl+E opens a SQL editor tab for the current connection.
 - `:name` placeholders ask for values before the statement runs and send them as bound parameters, never pasted into the SQL.
 - Completion offers tables after `FROM` and `JOIN` and columns elsewhere.
 - **Session** keeps one connection for the tab, so settings, temporary tables and transactions carry over between runs.
-- **Explain** shows the plan of the selected text, or of the whole editor when nothing is selected.
+- **Explain** shows the plan of the selected text, or of the whole editor when nothing is selected. For PostgreSQL and SQLite the plan opens as a **Tree** (indented by nesting, with a bar for each step's share of the estimated cost; hover a bar for the numbers) and the **Text** tab keeps the raw plan. Other engines show the text plan only. The costs are the planner's estimates; nothing is executed.
 - Ctrl+H opens query history, Ctrl+D saves the query as a favorite, Ctrl+P opens Open Quickly for favorites, tabs and connections.
 
 ## Import and export

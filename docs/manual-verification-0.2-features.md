@@ -150,6 +150,13 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] Paste a value that does not parse for its column type: a toast names the column and row and nothing changes.
 - [ ] Paste with no cell focused: a toast asks you to click a cell first.
 
+## Explain tree
+
+- [ ] On PostgreSQL, Explain a join: the dialog opens on a Tree tab with nested steps, a cost bar per step and the filter or condition lines under their step; the Text tab shows the raw plan.
+- [ ] On SQLite, Explain a query that scans and searches: steps nest by their parent.
+- [ ] On MySQL, ClickHouse or DuckDB the dialog shows the text plan with no Tree tab.
+- [ ] Explain on an empty editor still shows the existing message.
+
 ## Go to Referenced Row
 
 - [ ] In a table with a foreign key, right-click a non-empty value in the key column: Go to Referenced Row opens the referenced table with one filter rule on the referenced column.

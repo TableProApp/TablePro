@@ -73,6 +73,17 @@ pub fn present(
     toolbar.add_top_bar(&header);
 
     let scrolled = gtk::ScrolledWindow::builder().hexpand(true).vexpand(true).build();
+    let tree_scrolled = gtk::ScrolledWindow::builder().hexpand(true).vexpand(true).build();
+    let stack = adw::ViewStack::new();
+    let tree_page = stack.add_titled(&tree_scrolled, Some("tree"), &tr!("Tree"));
+    tree_page.set_visible(false);
+    stack.add_titled(&scrolled, Some("text"), &tr!("Text"));
+    stack.set_visible_child_name("text");
+    let switcher = adw::ViewSwitcher::builder()
+        .stack(&stack)
+        .policy(adw::ViewSwitcherPolicy::Wide)
+        .build();
+    header.set_title_widget(Some(&switcher));
     let view = gtk::TextView::builder()
         .editable(false)
         .monospace(true)
@@ -84,7 +95,7 @@ pub fn present(
         .build();
     view.buffer().set_text(&tr!("Running EXPLAIN…"));
     scrolled.set_child(Some(&view));
-    toolbar.set_content(Some(&scrolled));
+    toolbar.set_content(Some(&stack));
     window.set_content(Some(&toolbar));
     window.present();
 
@@ -96,6 +107,12 @@ pub fn present(
             Ok(result) => format_explain_result(&result),
             Err(e) => format!("{e}"),
         };
+        let nodes = super::explain_tree::parse_plan(&text);
+        if !nodes.is_empty() {
+            tree_scrolled.set_child(Some(&super::explain_tree::build_tree(&nodes)));
+            tree_page.set_visible(true);
+            stack.set_visible_child_name("tree");
+        }
         buffer.set_text(&text);
     });
 }
