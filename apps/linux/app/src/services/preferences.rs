@@ -37,6 +37,44 @@ pub struct Preferences {
     pub editor_font_family: String,
     #[serde(default)]
     pub editor_vim_mode: bool,
+    #[serde(default)]
+    pub null_display: NullDisplayPref,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NullDisplayPref {
+    #[default]
+    Standard,
+    Symbol,
+    Parenthesized,
+}
+
+impl NullDisplayPref {
+    pub const ALL: [Self; 3] = [Self::Standard, Self::Symbol, Self::Parenthesized];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Symbol => "symbol",
+            Self::Parenthesized => "parenthesized",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|style| style.key() == key)
+            .unwrap_or_default()
+    }
+
+    pub fn index(self) -> u32 {
+        Self::ALL.iter().position(|style| *style == self).unwrap_or(0) as u32
+    }
+
+    pub fn from_index(index: u32) -> Self {
+        Self::ALL.get(index as usize).copied().unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +145,7 @@ impl Default for Preferences {
             color_scheme: ColorSchemePref::default(),
             editor_font_family: String::new(),
             editor_vim_mode: false,
+            null_display: NullDisplayPref::default(),
         }
     }
 }
@@ -266,6 +305,7 @@ fn read_settings(settings: &gio::Settings) -> Preferences {
         color_scheme: ColorSchemePref::from_key(settings.string("color-scheme").as_str()),
         editor_font_family: settings.string("editor-font-family").to_string(),
         editor_vim_mode: settings.boolean("editor-vim-mode"),
+        null_display: NullDisplayPref::from_key(settings.string("null-display").as_str()),
     }
 }
 
@@ -281,6 +321,7 @@ fn write_settings(settings: &gio::Settings, prefs: &Preferences) -> Result<(), S
         settings.set_string("color-scheme", prefs.color_scheme.key()),
         settings.set_string("editor-font-family", &prefs.editor_font_family),
         settings.set_boolean("editor-vim-mode", prefs.editor_vim_mode),
+        settings.set_string("null-display", prefs.null_display.key()),
     ];
     if let Some(error) = writes.into_iter().find_map(Result::err) {
         settings.revert();
@@ -726,6 +767,25 @@ mod tests {
         });
         assert!(!before.editor_vim_mode);
         assert!(after.editor_vim_mode);
+    }
+
+    #[test]
+    fn the_null_display_survives_a_gsettings_round_trip_and_defaults_to_standard() {
+        let (before, after) = after_a_round_trip("/com/tablepro/linux/null-display/", |prefs| {
+            prefs.null_display = NullDisplayPref::Symbol;
+        });
+        assert_eq!(before.null_display, NullDisplayPref::Standard);
+        assert_eq!(after.null_display, NullDisplayPref::Symbol);
+    }
+
+    #[test]
+    fn null_display_rows_and_keys_agree_and_unknown_keys_fall_back() {
+        for (position, style) in NullDisplayPref::ALL.into_iter().enumerate() {
+            assert_eq!(style.index() as usize, position);
+            assert_eq!(NullDisplayPref::from_index(position as u32), style);
+            assert_eq!(NullDisplayPref::from_key(style.key()), style);
+        }
+        assert_eq!(NullDisplayPref::from_key("nonsense"), NullDisplayPref::Standard);
     }
 
     #[test]

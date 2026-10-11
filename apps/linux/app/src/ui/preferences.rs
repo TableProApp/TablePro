@@ -2,7 +2,7 @@ use relm4::adw::prelude::*;
 use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
-use crate::services::preferences::{ColorSchemePref, PreferencesStore};
+use crate::services::preferences::{ColorSchemePref, NullDisplayPref, PreferencesStore};
 
 /// Must match `browse_tab`'s own `PAGE_SIZE_OPTIONS` (duplicated there and
 /// in `workspace_state.rs`, the same way those two already duplicate each
@@ -88,7 +88,30 @@ pub fn present(
         }
     });
 
+    let null_row = adw::ComboRow::new();
+    null_row.set_title(&crate::tr!("NULL display"));
+    null_row.set_subtitle(&crate::tr!(
+        "How a NULL cell is shown. Applies to cells drawn after the change."
+    ));
+    null_row.set_model(Some(&gtk::StringList::new(&[
+        &crate::tr!("NULL"),
+        &crate::tr!("\u{2205} (empty set)"),
+        &crate::tr!("(null)"),
+    ])));
+    null_row.set_selected(current.null_display.index());
+    null_row.connect_selected_notify({
+        let preferences = preferences.clone();
+        move |row| {
+            let style = NullDisplayPref::from_index(row.selected());
+            crate::ui::grid::set_null_display(style);
+            if let Err(error) = preferences.update(|prefs| prefs.null_display = style) {
+                tracing::warn!(%error, "preferences: null display rejected");
+            }
+        }
+    });
+
     browse_group.add(&scheme_row);
+    browse_group.add(&null_row);
     browse_group.add(&page_size_row);
     browse_group.add(&confirm_row);
     general.add(&browse_group);

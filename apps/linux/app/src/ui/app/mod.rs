@@ -486,6 +486,7 @@ impl SimpleComponent for App {
                 });
 
         adw::StyleManager::default().set_color_scheme(preferences.load().color_scheme.style());
+        crate::ui::grid::set_null_display(preferences.load().null_display);
         let default_page_size = preferences.load().default_page_size;
         let mut model = App {
             registry,

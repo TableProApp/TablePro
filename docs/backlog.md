@@ -10,7 +10,6 @@ Rows here are real work that does not block 0.2.0. The ledger keeps the evidence
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key picker and navigation, enum and set pickers, paste TSV, estimated counts | |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
-| UI-15b | Null display style preference | vim keys are already an opt-in preference |
 | UI-17b, UI-18, UI-22, UI-23, UI-26 | Preview tabs, history as a panel, code folding and split panes, typed PostgreSQL activity console, editable SSH profiles | accepted for later; PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
 | PKG-4, PKG-8 | Flatpak Flathub submission and screenshots, and the file-access decision (`--filesystem=home` or portal only) | guest build/install/launch is proven; not part of 0.2.0; decide PKG-8 before PKG-4 |
@@ -54,7 +53,6 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#548](https://github.com/cozyGarage/BookiE/issues/548) | SSH jump chains and reusable profiles in the form (UI-1b, UI-26) |
 | [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key navigation, pickers, paste TSV, estimated counts (UI-19) |
 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
-| [#551](https://github.com/cozyGarage/BookiE/issues/551) | NULL display preference (UI-15b) |
 | [#552](https://github.com/cozyGarage/BookiE/issues/552) | Preview tabs, history panel, folding, split panes, activity console (UI-17b, 18, 22, 23, 26) |
 | [#553](https://github.com/cozyGarage/BookiE/issues/553) | Consistent snapshot for full-table export (UI-13b) |
 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | Streamed results (PERF-2, 7, 8) |

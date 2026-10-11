@@ -16,6 +16,7 @@
     <key name="color-scheme" type="s"><default>'system'</default></key>
     <key name="editor-font-family" type="s"><default>''</default></key>
     <key name="editor-vim-mode" type="b"><default>false</default></key>
+    <key name="null-display" type="s"><default>'standard'</default></key>
   </schema>
   <schema id="com.tablepro.linux.Devel" path="/com/tablepro/linux/Devel/">
     <key name="migration-version" type="u"><default>0</default></key>
@@ -33,5 +34,6 @@
     <key name="color-scheme" type="s"><default>'system'</default></key>
     <key name="editor-font-family" type="s"><default>''</default></key>
     <key name="editor-vim-mode" type="b"><default>false</default></key>
+    <key name="null-display" type="s"><default>'standard'</default></key>
   </schema>
 </schemalist>

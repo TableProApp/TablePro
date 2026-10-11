@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 
@@ -7,15 +8,33 @@ use gtk4::prelude::*;
 
 use tablepro_core::{ColumnInfo, Value};
 
+use crate::services::preferences::NullDisplayPref;
+
 const DISPLAY_TEXT_MAX_CHARS: usize = 10_000;
 const DISPLAY_TEXT_BYTES_THRESHOLD: usize = DISPLAY_TEXT_MAX_CHARS * 4;
 
+thread_local! {
+    static NULL_DISPLAY: Cell<NullDisplayPref> = const { Cell::new(NullDisplayPref::Standard) };
+}
+
+pub fn set_null_display(style: NullDisplayPref) {
+    NULL_DISPLAY.set(style);
+}
+
 pub fn editable_null_sentinel() -> String {
-    crate::tr!("<NULL>")
+    match NULL_DISPLAY.get() {
+        NullDisplayPref::Standard => crate::tr!("<NULL>"),
+        NullDisplayPref::Symbol => "\u{2205}".to_owned(),
+        NullDisplayPref::Parenthesized => crate::tr!("(null)"),
+    }
 }
 
 pub(crate) fn readonly_null_sentinel() -> String {
-    crate::tr!("NULL")
+    match NULL_DISPLAY.get() {
+        NullDisplayPref::Standard => crate::tr!("NULL"),
+        NullDisplayPref::Symbol => "\u{2205}".to_owned(),
+        NullDisplayPref::Parenthesized => crate::tr!("(null)"),
+    }
 }
 
 pub(crate) fn auto_filled_sentinel() -> String {
@@ -319,6 +338,25 @@ mod tests {
         assert!(!view.inline_editable);
         assert_eq!(view.text_for_bind(true), "<undecodable NUMERIC>");
         assert_ne!(view.text_for_bind(true), editable_null_sentinel());
+    }
+
+    #[test]
+    fn the_null_display_style_changes_the_marker_and_never_the_meaning() {
+        for style in NullDisplayPref::ALL {
+            set_null_display(style);
+            let marker = readonly_null_sentinel();
+            assert_eq!(value_to_display_text(&Value::Null), marker);
+            let null = cell_view(&Value::Null, &metadata("text"));
+            assert!(null.is_null);
+            assert_eq!(null.text_for_bind(true), editable_null_sentinel());
+            let text = cell_view(&Value::Text(marker.clone()), &metadata("text"));
+            assert!(!text.is_null);
+            assert_eq!(text.text_for_bind(true), marker);
+        }
+        set_null_display(NullDisplayPref::Symbol);
+        assert_eq!(readonly_null_sentinel(), "\u{2205}");
+        set_null_display(NullDisplayPref::Parenthesized);
+        assert_eq!(readonly_null_sentinel(), "(null)");
     }
 
     #[test]
