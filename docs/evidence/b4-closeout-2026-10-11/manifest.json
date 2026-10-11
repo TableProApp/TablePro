@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-11",
+  "scope": "B4 closeout regression tests and local preflight before frozen-candidate acceptance",
+  "source_commit": "c93d653cefe2690850d2f40b0c07e8a2ca4ee610",
+  "branch_head_after_linux_merge": "3a69f935c25f4bb824a741434b58f2acf0a1d5a8",
+  "source_sha256": {
+    "crates/policy/tests/guard_transparency.rs": "b41149d5d78037418569c5b3c0cfedec12e5dd5d98c529fa947c4fc1e2dc2329",
+    "crates/policy/tests/session_postgres.rs": "85f4dc3b7ac8308f46f200f5a112873fd45be859f872ff5ca5fa4cba69574a43",
+    "crates/storage/src/audit_journal.rs": "0969c9170afcc833e852260ed80c0a7da853555846601aa508cad7dfd27fc391"
+  },
+  "commands": {
+    "outer_alias_regression": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_json_through_an_outer_alias -- --include-ignored --exact --test-threads=1",
+    "aud11_policy": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --lib --test aud11_s6_s7",
+    "masking_and_durable_audit": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test guard_transparency -p tablepro-storage --lib",
+    "preflight": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 bash scripts/preflight.sh"
+  },
+  "results": {
+    "outer_alias_regression": "passed, 1 test",
+    "aud11_policy": "passed, 232 tests",
+    "masking_and_durable_audit": "passed, 423 tests; 9 ignored",
+    "preflight": "passed",
+    "post_merge_documentation_checks": "check-known-issues.py, check-doc-links.py, check-moved-paths.py and inventory-ignored-tests.py --check passed",
+    "baselines_changed": false
+  },
+  "acceptance_not_established": [
+    "Forgejo gate for this PR head",
+    "Frozen-candidate driver and PostgreSQL release layers, including the six TEST-15 lost-ack scenarios",
+    "Installed Arch package acceptance in native Hyprland Wayland",
+    "Debian package validation; dpkg-deb is unavailable on this host",
+    "Physical power-loss durability of the audit journal"
+  ]
+}

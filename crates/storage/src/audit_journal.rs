@@ -400,6 +400,16 @@ fn append_to_file(
     event: AuditEvent,
     durable: bool,
 ) -> Result<JournalTail, StorageError> {
+    append_to_file_with_sync(file, tail, event, durable, |file| file.sync_data())
+}
+
+fn append_to_file_with_sync(
+    file: &mut File,
+    tail: JournalTail,
+    event: AuditEvent,
+    durable: bool,
+    sync_data: impl FnOnce(&File) -> std::io::Result<()>,
+) -> Result<JournalTail, StorageError> {
     let seq = tail
         .seq
         .checked_add(1)
@@ -417,7 +427,7 @@ fn append_to_file(
     file.write_all(&line)?;
     file.flush()?;
     if durable {
-        file.sync_data()?;
+        sync_data(file)?;
     }
     Ok(JournalTail { seq, hash })
 }
@@ -764,6 +774,25 @@ mod tests {
             .unwrap();
         assert_eq!(journal.verify_chain().await.unwrap(), 2);
         assert_eq!(journal.recent(10).await.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn durable_append_fails_when_data_sync_fails() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let mut file = OpenOptions::new().create(true).append(true).open(path).unwrap();
+        let error = append_to_file_with_sync(
+            &mut file,
+            JournalTail {
+                seq: 0,
+                hash: GENESIS_HASH.to_string(),
+            },
+            sample_event(Principal::human_gui()),
+            true,
+            |_| Err(std::io::Error::other("injected sync failure")),
+        );
+
+        assert!(error.is_err());
     }
 
     #[tokio::test]

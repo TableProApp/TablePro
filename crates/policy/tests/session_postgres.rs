@@ -299,7 +299,6 @@ async fn an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_proj
     let guard = PolicyGuard::new(Arc::from(raw), context);
     for sql in [
         "SELECT d.p FROM (SELECT pan AS p FROM cards) d",
-        "SELECT d.payload FROM (SELECT json_agg(c) AS payload FROM cards c) d",
         "SELECT c.p FROM cards AS c(p, amount)",
         "SELECT CAST(c AS text) AS payload FROM cards c",
         "SELECT array_agg(c)::text AS payload FROM cards c",
@@ -314,4 +313,35 @@ async fn an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_proj
         .await
         .unwrap();
     assert_eq!(visible.rows, vec![vec![Value::Int(7)]]);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_cannot_expose_sensitive_json_through_an_outer_alias() {
+    let (_container, opts) = start_pg().await;
+    let raw = connect(opts).await;
+    raw.execute("CREATE TABLE cards (pan TEXT NOT NULL, amount BIGINT NOT NULL)")
+        .await
+        .unwrap();
+    raw.execute("INSERT INTO cards VALUES ('4111111111111111', 7)")
+        .await
+        .unwrap();
+    let mut context = guard_context(Arc::new(CapturingAudit::new()), Arc::new(AuditState::new()));
+    context.environment = Environment::Prod;
+    context.principal = Principal::Agent {
+        token: "mask-test".into(),
+        client: None,
+        model: None,
+    };
+    let guard = PolicyGuard::new(Arc::from(raw), context);
+    let result = guard
+        .query_params_controlled(
+            "SELECT outer_row.payload FROM (SELECT json_agg(card) AS payload FROM cards AS card) AS outer_row",
+            &[],
+            &no_timeout(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.rows, vec![vec![Value::Text("***REDACTED***".into())]]);
 }

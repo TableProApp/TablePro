@@ -28,7 +28,7 @@ Rows here are real work that does not block 0.2.0. The ledger keeps the evidence
 | Row | What |
 |---|---|
 | TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; remaining survivor triage stays open (see [TEST-32](oracle-review.md) and [reports](evidence/test-quality-2026-10-11/transport-mutants.md)) |
-| AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning | Behavioural S6/S7/S8 fixes are merged; shared analysis landed in #506. Structural consolidation follows 0.2.0; candidate acceptance of the fixes stays in the ledger |
+| AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning | Behavioural fixes are closed on the current policy suite; shared analysis landed in #506. Structural consolidation follows 0.2.0 |
 | TEST-12 | MongoDB metadata sample consistency |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
 | TEST-30 | Remaining SonarCloud and CodeQL findings |

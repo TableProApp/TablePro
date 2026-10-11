@@ -195,6 +195,23 @@ async fn an_agent_guard_masks_sensitive_columns_in_every_result_set() {
 }
 
 #[tokio::test]
+async fn a_human_guard_preserves_results_that_agent_masking_would_hide() {
+    use tokio_util::sync::CancellationToken;
+
+    let result = guard_over(false)
+        .query_result_sets_controlled(
+            "SELECT password, api_token FROM settings",
+            &[],
+            &OperationControl::new(CancellationToken::new(), None),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.result_sets[0].rows[0][0], Value::Text("first-secret".into()));
+    assert_eq!(result.result_sets[1].rows[0][0], Value::Text("second-secret".into()));
+}
+
+#[tokio::test]
 async fn an_agent_guard_masks_json_aggregates_that_serialize_a_record() {
     use tablepro_policy::{AutoApproveSink, Principal};
     use tokio_util::sync::CancellationToken;

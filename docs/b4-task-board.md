@@ -8,15 +8,15 @@ Base scope: `aeac107a4`, branch `linux`, reviewed 2026-10-03. The active B4 inte
 
 ### Finite code finish and candidate handoff
 
-The [0.2.0 scope](0.2.0-scope.md) owns blockers. Finish the three demonstrated defects below; broader features remain in the backlog. Pending PRs do not close their ledger rows.
+The [0.2.0 scope](0.2.0-scope.md) owns blockers. The three demonstrated implementation defects below are merged; this closeout records regression coverage, candidate commands and the remaining acceptance boundary. Broader features remain in the backlog.
 
 | Work | Implementation | Exit before candidate freeze |
 | --- | --- | --- |
-| AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537): unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | GitHub and Forgejo green on its exact head, then merge; native PostgreSQL cases include `array_agg(c.*)` cast to text |
-| Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538): snapshot writes, structural refusals, retired-session calls and write-lockdown refusals record a Denied terminal outcome without dispatch | GitHub and Forgejo green on its exact head, then merge; keep transaction state and journal-failure lockdown |
-| UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539): refuse unsupported full export before source/destination access, preserve loaded-result and current-page export | Local preflight, app Clippy, 10 export tests and 26 widgets passed; GitHub and Forgejo remain the handoff gates, then merge the refusal and defer verified snapshot implementations |
+| AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537) merged: unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | Explicit native outer-alias and human-visibility regressions pass locally; exact frozen-candidate PostgreSQL release/Forgejo acceptance remains |
+| Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538) merged: snapshot writes, structural refusals, retired-session calls and write-lockdown refusals record a Denied terminal outcome without dispatch | No further implementation; frozen-candidate audit acceptance remains |
+| UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539) merged: unsupported full export is refused before source/destination access; loaded-result and current-page export remain | No further B4 implementation; the UX lane owns remaining app/package acceptance |
 
-Mutation triage is bounded to masking, host-key refusal, per-hop secret selection, bundle rollback and durable audit. Existing fixture coverage and remaining proof gaps are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md). Do not turn a survivor percentage into release approval or a new blocker.
+The three demonstrated implementation defects are fixed and merged. B4 has no further product-code change planned for those defects. Mutation triage is bounded to masking, host-key refusal, per-hop secret selection, bundle rollback and durable audit. The current tests, new regression pins and remaining proof limits are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md). Do not turn a survivor percentage into release approval or a new blocker.
 
 After the code merges, freeze one SHA. UX/maintainer runs the affected Forgejo layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22. Use the finite TEST-15 list below, then the sprint's retry-free soak and release decision. Source-build Xvfb, extracted package binaries and older green runs do not substitute for this candidate.
 
@@ -36,13 +36,43 @@ Run the existing driver layer and PostgreSQL release fixture on the frozen SHA. 
 | Allowed retry boundaries | PostgreSQL `query.rs` stale-type-cache predicate; MySQL `session.rs` prepared-protocol fallback | Source review distinguishes an explicit server rejection from a disconnect, timeout or unknown outcome; keep native session and parameter fixtures green |
 | SQLite and DuckDB | Local-file drivers, read-only and transaction fixtures | Cancellation, file state and rollback contracts; no network acknowledgement scenario is claimed |
 
+Exact focused local selectors (run from the repository root; they are ignored Docker tests):
+
+```bash
+cargo test --locked -p tablepro-driver-postgres --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-mysql --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-redis --test integration disconnection::a_lost_eval_ack_is_not_replayed_after_redis_reconnects -- --include-ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-clickhouse --test integration disconnection::a_committed_insert_with_a_lost_http_ack_is_not_replayed -- --include-ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-mssql --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed -- --include-ignored --exact --test-threads=1
+cargo test --locked -p tablepro-driver-mongodb --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+```
+
+On the frozen candidate, the Forgejo **driver** and **PostgreSQL release** layers remain the acceptance commands. Their exact source SHA must match the candidate. The focused selectors above help diagnose an engine-specific failure; they do not replace either layer.
+
+### Installed Arch/Hyprland acceptance checklist
+
+Run this once after the maintainer freezes the candidate SHA and Forgejo reports its driver and PostgreSQL release layers green. Build the Arch package with `(cd packaging/arch && makepkg --cleanbuild --clean --nodeps --noconfirm)` and install the resulting `packaging/arch/bookie-*.pkg.tar.zst` with `sudo pacman -U`. Start the installed app in the native Hyprland Wayland session, using the PostgreSQL/SSH and MySQL fixtures from the candidate release setup. Do not set `TABLEPRO_GTK_BINARY` to a source-built executable.
+
+1. **AUD-2 approval denial.** Open the MySQL fixture, run `CREATE PROCEDURE bookie_gtk_unparseable_denied() SELECT 1`, and choose Deny. Expect one intent and one terminal outcome for that statement; the outcome is `denied` with approval outcome `denied`. The procedure count remains zero. Confirm the dialog preview is bounded. If exercising the timeout path, wait through the configured 120-second deadline: it must resolve as a denied approval, produce the same terminal denied outcome and leave the procedure absent.
+2. **B4-7 host-key refusal and setup failure.** Open the unknown-host SSH profile and choose Cancel, then attempt the deliberately failing SSH profile. For each connection ID, expect exactly one `transport_attempt` outcome: host-key decline is `decision_rule=transport_attempt`, `phase=outcome`, `terminal_status=denied`, `outcome=host_key_refused`; setup failure is `phase=outcome`, `terminal_status=failed`, `outcome=connection_failed`. Declined keys are absent from `known_hosts`.
+3. **B4-16 stale session after tunnel loss.** Start a session, insert a row inside a transaction, interrupt the tunnel, wait for reconnect, then issue a write through the old session. Expect `decision_rule=retired_session`, `phase=outcome`, `terminal_status=denied`, and `error_category=policy`; the row from the open transaction and the stale-session write are absent. A new session query succeeds after reconnect.
+4. **B4-22 bundle audit.** Export the bundle, then preview and confirm its import. Each action has exactly one `intent` (`pending`) and one matching `outcome` (`succeeded`) with the same operation ID. Export affected count is 3; import affected count is 1. Neither path, imported connection name nor credential value appears in either event.
+
+Save the candidate SHA, package filename and hash, Wayland session details, sanitized journal excerpts and observed database/keyring state in one evidence manifest under `docs/evidence/`. This is installed manual acceptance; Xvfb or an extracted binary does not substitute.
+
 The current PostgreSQL session path enables the stale-type-cache retry, as do pooled query/execute paths; explicit transactions disable it. MySQL session fallback is parameter-free and limited to prepared-protocol rejection. These are reviewed code paths, not a proof that arbitrary routines have no side effects. MongoDB uses one direct endpoint with SDK defaults; its standalone lost-ack fixture must not be advertised as all-topology retry proof. Broader topologies, optional engine/effect matrices and fault-injection expansion stay open in the backlog unless the maintainer changes release scope.
 
-## Current Linux-tip B4 checkpoint (2026-10-10)
+## Current Linux-tip B4 checkpoint (2026-10-11)
 
 Tip includes #458/`Effects`, #459 engine read-only, #460 migration step 2,
 #461 explain-plan masking, #463/#486 DuckDB selected-file pinning (AUD-10
-DONE), #475 `MRG_MyISAM` rollback, #480 joined verdicts (AUD-11 step 3), #490 per-hop SSH secret identities (UI-1b storage groundwork), and the shared-analysis refactor merged in [#506](https://github.com/cozyGarage/BookiE/pull/506). AUD-11 remains open: #506 shares parsed statement analysis through guard authorization and transaction-query handling, while classification, sensitive projection and blast-radius planning still use specialized AST helpers. The single-AST-walk consolidation in migration step 4 is unfinished. Exact local verification and acceptance boundaries are recorded below; local runs do not establish Forgejo gate or frozen-candidate/package acceptance.
+DONE), #475 `MRG_MyISAM` rollback, #480 joined verdicts and #484 S6/S7 tests,
+#490 per-hop SSH secret identities, #506 shared statement analysis, and #537/#538/#539.
+AUD-11 behaviour is closed on the passing current-tip policy suite; only the
+single-AST-walk consolidation remains in the post-0.2.0 backlog. #537's named
+outer-alias case has a dedicated native test. Exact local verification and
+acceptance boundaries are recorded below; local runs do not establish Forgejo
+gate or frozen-candidate/package acceptance.
 
 ## AUD-9 query-plan masking regression (2026-10-10)
 
