@@ -143,6 +143,13 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] An unknown write outcome blocks only its owning connection; another connection stays usable. Restart/reconnect recovery follows the durable audit rules.
 - [ ] `SET autocommit=0`, `SET IMPLICIT_TRANSACTIONS ON`, `XA START` and an unterminated transaction batch are refused on applicable shared connections.
 
+## Go to Referenced Row
+
+- [ ] In a table with a foreign key, right-click a non-empty value in the key column: Go to Referenced Row opens the referenced table with one filter rule on the referenced column.
+- [ ] On a cell of a column that is not a foreign key, or on a NULL key, the item is greyed out.
+- [ ] With the referenced table already open, the same action switches to that tab and replaces its filter.
+- [ ] A composite key filters every referenced column from the same row; with one of its columns hidden, a toast says so.
+
 ## Filter by This Value
 
 - [ ] Right-click a cell in a browsed table: Filter by This Value narrows the rows and the filter strip shows the new rule.

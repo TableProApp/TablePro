@@ -22,7 +22,7 @@ Click a table in the sidebar. The sidebar groups tables and views under each sch
 
 - **Edit**: double-click a cell, or press F2 or Enter. Changes stay pending (shown with a dot on the tab) until you press Ctrl+S. Ctrl+Z and Ctrl+Y undo and redo pending changes.
 - **Insert and delete**: Ctrl+N inserts a row, Delete removes the selected rows. Ctrl+Shift+N sets the focused cell to NULL.
-- **Filter and sort**: Ctrl+F opens the filter bar. Click a column header to sort. Right-click a cell and choose **Filter by This Value** for a quick filter.
+- **Filter and sort**: Ctrl+F opens the filter bar. Click a column header to sort. Right-click a cell and choose **Filter by This Value** for a quick filter. On a foreign key cell, **Go to Referenced Row** opens the referenced table filtered to that row (composite keys use every column of the key).
 - **Columns**: the **Columns…** entry in the cell menu hides or shows columns. Drag a header to reorder columns. Both are remembered per table.
 - **Find**: Ctrl+Alt+F lists loaded rows that contain a text.
 - **Long values**: cells longer than 8 KiB show the start of the value and its size. **View Value** opens the whole value; copy, export and edits always use the full value.

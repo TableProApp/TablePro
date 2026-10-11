@@ -12,6 +12,7 @@ mod init_workspace;
 mod msg;
 mod organization;
 mod ran_statements;
+mod referenced_row;
 mod render;
 mod row_ops;
 mod schema_index;
@@ -647,6 +648,9 @@ impl SimpleComponent for App {
                 name,
                 open_mode,
             } => self.on_select_table(schema, name, open_mode, sender),
+            AppMsg::OpenReferencedRow { schema, table, filter } => {
+                self.on_open_referenced_row(schema, table, filter, sender)
+            }
             AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns, sender),
             AppMsg::FetchBrowseForeignKeys(tab_id) => self.fetch_browse_foreign_keys(tab_id, sender),
             AppMsg::ForeignKeysLoaded(tab_id, foreign_keys) => self.on_browse_foreign_keys_loaded(tab_id, foreign_keys),

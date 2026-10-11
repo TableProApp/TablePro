@@ -378,6 +378,9 @@ impl App {
         let browse = BrowseTab::builder()
             .launch(browse_init)
             .forward(sender.input_sender(), move |out| match out {
+                BrowseTabOutput::OpenReferencedRow { schema, table, filter } => {
+                    AppMsg::OpenReferencedRow { schema, table, filter }
+                }
                 BrowseTabOutput::FetchPage => AppMsg::FetchBrowsePage(tab_id),
                 BrowseTabOutput::FetchColumns => AppMsg::FetchBrowseColumns(tab_id),
                 BrowseTabOutput::FetchRowCount => AppMsg::FetchBrowseRowCount(tab_id),

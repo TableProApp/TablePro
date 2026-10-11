@@ -18,6 +18,11 @@ pub enum AppMsg {
         name: String,
         open_mode: OpenMode,
     },
+    OpenReferencedRow {
+        schema: Option<String>,
+        table: String,
+        filter: tablepro_core::FilterSet,
+    },
     ColumnsLoaded(Uuid, Vec<ColumnInfo>),
     FetchBrowseForeignKeys(Uuid),
     ForeignKeysLoaded(Uuid, Vec<ForeignKeyInfo>),

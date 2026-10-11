@@ -73,6 +73,10 @@ pub enum GridMsg {
         column: String,
         value: tablepro_core::Value,
     },
+    GoToReference {
+        column: String,
+        row: Vec<(String, tablepro_core::Value)>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -171,6 +175,7 @@ pub fn build_column_view(
             result.truncated,
             driver_id,
             tab_ctx.tab_id.is_some(),
+            tab_ctx.foreign_key_columns.clone(),
         )
     });
 

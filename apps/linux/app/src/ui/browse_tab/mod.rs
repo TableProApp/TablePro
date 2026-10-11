@@ -247,6 +247,10 @@ pub enum BrowseTabInput {
         column: String,
         value: tablepro_core::Value,
     },
+    GoToReference {
+        column: String,
+        row: Vec<(String, Value)>,
+    },
     GridSetCellNull {
         row_position: u32,
         col_index: usize,
@@ -345,6 +349,11 @@ pub enum BrowseTabInput {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum BrowseTabOutput {
+    OpenReferencedRow {
+        schema: Option<String>,
+        table: String,
+        filter: tablepro_core::FilterSet,
+    },
     /// Tab needs the next page of rows fetched (state is in the slot).
     FetchPage,
     /// Tab needs schema columns fetched.
@@ -398,9 +407,11 @@ pub enum BrowseTabOutput {
     },
 }
 
+mod accessors;
 mod chrome;
 mod grid_messages;
 mod grid_render;
+mod reference;
 mod requests;
 mod row_ops;
 mod selection;
@@ -462,46 +473,6 @@ impl BrowseTab {
 
     pub fn table(&self) -> &str {
         &self.table
-    }
-
-    pub fn current_offset(&self) -> u64 {
-        self.current_offset
-    }
-
-    pub fn begin_page_request(&self) -> BrowsePageRequest {
-        self.page_requests.begin(self.current_offset)
-    }
-
-    pub fn accepts_page_request(&self, request: BrowsePageRequest) -> bool {
-        self.page_requests.accepts(request, self.current_offset)
-    }
-
-    pub fn begin_row_count_request(&self) -> BrowseRowCountRequest {
-        self.row_count_requests.begin()
-    }
-
-    pub fn total_rows(&self) -> Option<u64> {
-        self.current_total_rows
-    }
-
-    pub fn page_size(&self) -> u64 {
-        self.page_size
-    }
-
-    pub fn current_sort(&self) -> Option<(usize, bool)> {
-        self.current_sort
-    }
-
-    pub fn current_filter(&self) -> &tablepro_core::FilterSet {
-        &self.current_filter
-    }
-
-    pub fn keyset_cursor(&self) -> Option<&[tablepro_core::Value]> {
-        self.keyset_cursor.as_deref()
-    }
-
-    pub fn driver_id(&self) -> &str {
-        &self.driver_id
     }
 
     fn emit_fetch_page(&self, sender: &ComponentSender<Self>) {
@@ -1053,6 +1024,7 @@ impl SimpleComponent for BrowseTab {
                 sel.unselect_all();
             }
             BrowseTabInput::FilterByValue { column, value } => self.filter_by_value(&column, &value, &sender),
+            BrowseTabInput::GoToReference { column, row } => self.go_to_reference(&column, &row, &sender),
             BrowseTabInput::ToggleFilterStrip => {
                 if let Some(strip) = self.filter_strip.as_ref() {
                     strip.toggle();

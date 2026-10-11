@@ -26,6 +26,8 @@ pub(super) struct GridMenus {
     editable_popover: gtk::PopoverMenu,
     readonly_popover: gtk::PopoverMenu,
     edit_action: gio::SimpleAction,
+    reference_action: gio::SimpleAction,
+    foreign_key_columns: Rc<std::collections::HashSet<String>>,
 }
 
 pub(super) fn install_grid_context_menus(
@@ -35,6 +37,7 @@ pub(super) fn install_grid_context_menus(
     truncated: bool,
     driver_id: String,
     filterable: bool,
+    foreign_key_columns: std::collections::HashSet<String>,
 ) -> GridMenus {
     let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
     let columns = Rc::new(result_columns.to_vec());
@@ -299,6 +302,7 @@ pub(super) fn install_grid_context_menus(
             .build()
     };
     let filter_action = filter_by_value_action(context.clone(), sender.clone(), column_view, columns.clone());
+    let reference_action = go_to_reference_action(context.clone(), sender.clone(), column_view, columns.clone());
     let duplicate_row_action = {
         let context = context.clone();
         let sender = sender.clone();
@@ -341,6 +345,7 @@ pub(super) fn install_grid_context_menus(
         duplicate_row_action,
         filter_action,
     ]);
+    group.add_action(&reference_action);
     column_view.insert_action_group("cell", Some(&group));
     if let Some(action) = group
         .lookup_action("copy-in-clause")
@@ -385,6 +390,8 @@ pub(super) fn install_grid_context_menus(
         editable_popover,
         readonly_popover,
         edit_action,
+        reference_action,
+        foreign_key_columns: Rc::new(foreign_key_columns),
     }
 }
 
@@ -416,6 +423,7 @@ fn build_menu(editable: bool, row_operations: bool, insert_copy: bool, filterabl
     let display = gio::Menu::new();
     if filterable {
         display.append(Some(&crate::tr!("Filter by This Value")), Some("cell.filter-by-value"));
+        display.append(Some(&crate::tr!("Go to Referenced Row")), Some("cell.go-to-reference"));
     }
     display.append(Some(&crate::tr!("View Value…")), Some("cell.view-value"));
     display.append(Some(&crate::tr!("Show Row as JSON")), Some("cell.show-row-json"));
@@ -433,6 +441,37 @@ fn build_menu(editable: bool, row_operations: bool, insert_copy: bool, filterabl
     }
     menu.append_section(None, &actions);
     menu
+}
+
+fn go_to_reference_action(
+    context: Rc<RefCell<Option<CellContext>>>,
+    sender: relm4::Sender<GridMsg>,
+    column_view: &gtk::ColumnView,
+    columns: Rc<Vec<ColumnInfo>>,
+) -> gio::SimpleAction {
+    let action = gio::SimpleAction::new("go-to-reference", None);
+    action.set_enabled(false);
+    let view = column_view.downgrade();
+    action.connect_activate(move |_, _| {
+        let context = context.borrow();
+        let Some(slot) = context.as_ref() else { return };
+        let Some(view) = view.upgrade() else { return };
+        let Some(cells) = row_at(&view, position(slot)) else {
+            return;
+        };
+        let row = columns
+            .iter()
+            .zip(cells)
+            .map(|(column, value)| (column.name.clone(), value))
+            .collect();
+        sender
+            .send(GridMsg::GoToReference {
+                column: slot.column_name.clone(),
+                row,
+            })
+            .ok();
+    });
+    action
 }
 
 fn filter_by_value_action(
@@ -507,6 +546,8 @@ pub(super) fn attach_cell_gesture(
     let view = column_view.clone();
     let context = menus.context.clone();
     let edit_action = menus.edit_action.clone();
+    let reference_action = menus.reference_action.clone();
+    let foreign_key_columns = menus.foreign_key_columns.clone();
     let gesture_popover = popover.clone();
     let gesture_name = column_name.clone();
     let gesture = gtk::GestureClick::builder()
@@ -522,6 +563,12 @@ pub(super) fn attach_cell_gesture(
             column_name: gesture_name.clone(),
         });
         edit_action.set_enabled(edit_enabled_for(&gesture_widget, is_text_editable));
+        reference_action.set_enabled(
+            foreign_key_columns.contains(&gesture_name)
+                && row_at(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0))
+                    .and_then(|row| row.get(idx).cloned())
+                    .is_some_and(|value| !matches!(value, Value::Null)),
+        );
         let local = gtk::graphene::Point::new(x as f32, y as f32);
         let (x, y) = gesture_widget
             .compute_point(&view, &local)
