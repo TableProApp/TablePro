@@ -73,3 +73,10 @@ apps/linux/packaging/arch/*.tar.gz.part
 /lcov.info
 /coverage.txt
 target-gtk2510/
+
+# toolchain caches the isolated GTK scripts create inside a checkout
+/.rustup/
+/.cargo/registry/
+/.cargo/.global-cache
+/.cargo/.package-cache
+/.cargo/.package-cache-mutate

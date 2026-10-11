@@ -25,6 +25,8 @@ pub enum AppMsg {
     },
     ColumnsLoaded(Uuid, Vec<ColumnInfo>),
     FetchBrowseForeignKeys(Uuid),
+    FetchBrowseEnumLabels(Uuid, Vec<(String, tablepro_core::QualifiedTypeName)>),
+    EnumLabelsLoaded(Uuid, Vec<(String, Vec<String>)>),
     ForeignKeysLoaded(Uuid, Vec<ForeignKeyInfo>),
     RowsLoaded(
         Uuid,

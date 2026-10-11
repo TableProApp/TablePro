@@ -115,6 +115,10 @@ impl Connection for StubConnection {
         self.server_cancellation
     }
 
+    async fn fetch_enum_labels(&self, schema: &str, name: &str) -> Result<Vec<String>, DriverError> {
+        Ok(vec![schema.to_owned(), name.to_owned()])
+    }
+
     async fn ping(&self) -> Result<(), DriverError> {
         Ok(())
     }
@@ -142,6 +146,24 @@ fn guard_over(server_cancellation: bool) -> PolicyGuard {
         audit_state: Arc::new(AuditState::new()),
     };
     PolicyGuard::new(inner, context)
+}
+
+#[tokio::test]
+async fn a_guard_forwards_enum_labels_from_its_driver_on_both_read_paths() {
+    let guard = guard_over(false);
+    assert_eq!(
+        guard.fetch_enum_labels("public", "mood").await.unwrap(),
+        ["public", "mood"]
+    );
+    let control = OperationControl::new(tokio_util::sync::CancellationToken::new(), None);
+    assert_eq!(
+        guard
+            .fetch_enum_labels_controlled("public", "mood", &control)
+            .await
+            .unwrap(),
+        ["public", "mood"],
+        "a guard dropping enum labels would silently disable every enum picker"
+    );
 }
 
 #[test]

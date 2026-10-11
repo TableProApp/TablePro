@@ -9,6 +9,7 @@ pub enum ReadScope {
     Count,
     Columns,
     ForeignKeys,
+    EnumLabels,
     Structure,
 }
 

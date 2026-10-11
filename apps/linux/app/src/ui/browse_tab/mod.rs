@@ -81,6 +81,7 @@ pub struct BrowseTab {
     /// `current_columns`. Drives the cell value picker; empty for a
     /// driver that doesn't report foreign keys or a table with none.
     foreign_keys: Vec<ForeignKeyInfo>,
+    choice_labels: crate::ui::grid::ChoiceMap,
     current_result: Option<std::sync::Arc<QueryResult>>,
     current_projection: Option<Vec<usize>>,
     /// Last row's primary-key values from the most recent page. Used
@@ -181,6 +182,7 @@ pub enum BrowseTabInput {
     /// Foreign keys for the current table arrived. Drives the cell
     /// value picker; never blocks or errors the tab on its own.
     ForeignKeysLoaded(Vec<ForeignKeyInfo>),
+    EnumLabelsLoaded(Vec<(String, Vec<String>)>),
     /// Total row count for paginator label.
     RowCountLoaded {
         request: BrowseRowCountRequest,
@@ -417,6 +419,7 @@ pub enum BrowseTabOutput {
 }
 
 mod accessors;
+mod choices;
 mod chrome;
 mod grid_messages;
 mod grid_render;
@@ -430,6 +433,7 @@ mod tests;
 mod value_parse;
 mod value_view;
 
+pub(crate) use choices::scalar_enum_columns;
 use chrome::*;
 pub use requests::{BrowseCellValueRequest, BrowseLoadFailure, BrowsePageRequest, BrowseRowCountRequest};
 use requests::{CellValueRequestTracker, PageRequestTracker, RowCountRequestTracker};
@@ -838,6 +842,7 @@ impl SimpleComponent for BrowseTab {
             current_filter: initial_filter,
             current_columns: Vec::new(),
             foreign_keys: Vec::new(),
+            choice_labels: Default::default(),
             current_result: None,
             current_projection: None,
             keyset_cursor: None,
@@ -948,6 +953,7 @@ impl SimpleComponent for BrowseTab {
                 let columns = columns_for_browse_page(&self.driver_id, &columns, self.current_result.as_deref());
                 let words: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
                 self.current_columns = columns.clone();
+                self.refresh_member_choices();
                 // Late-arriving columns: if RowsLoaded already cached a
                 // zero-row result with an empty `columns` vector (the
                 // driver derives it from the first row), refill it now
@@ -971,6 +977,7 @@ impl SimpleComponent for BrowseTab {
                 // editability map. Otherwise wait for RowsLoaded.
                 self.render_grid_if_ready(sender);
             }
+            BrowseTabInput::EnumLabelsLoaded(labels) => self.apply_enum_labels(labels),
             BrowseTabInput::ForeignKeysLoaded(foreign_keys) => {
                 self.foreign_keys = foreign_keys;
             }

@@ -5,7 +5,6 @@ pub(super) enum CellEditorKind {
     Int,
     Float,
     Json,
-    Choice,
 }
 
 pub(super) fn classify_editor_kind(data_type: &str) -> CellEditorKind {

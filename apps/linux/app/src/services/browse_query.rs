@@ -868,6 +868,7 @@ mod tests {
             .with_env_var("CLICKHOUSE_PASSWORD", "tablepro")
             .with_env_var("CLICKHOUSE_DB", "default")
             .with_env_var("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
+            .with_startup_timeout(std::time::Duration::from_secs(180))
             .start()
             .await
             .unwrap();

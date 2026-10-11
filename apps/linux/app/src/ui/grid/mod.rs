@@ -92,8 +92,10 @@ pub struct TabGridContext {
     /// Marks the column header so a reference is visible before the
     /// cell value picker (a later slice) exists.
     pub foreign_key_columns: std::collections::HashSet<String>,
-    pub choices: std::collections::HashMap<String, (bool, Vec<String>)>,
+    pub choices: ChoiceMap,
 }
+
+pub type ChoiceMap = std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, (bool, Vec<String>)>>>;
 
 const WIDE_TABLE_THRESHOLD: usize = 8;
 const MIN_COLUMN_WIDTH_PX: i32 = 120;

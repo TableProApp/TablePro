@@ -21,6 +21,8 @@ mod wire_round_trip;
 #[path = "support/shared_container.rs"]
 mod shared_container;
 
+#[path = "support/enum_labels.rs"]
+mod enum_labels;
 #[path = "support/read_only_session.rs"]
 mod read_only_session;
 

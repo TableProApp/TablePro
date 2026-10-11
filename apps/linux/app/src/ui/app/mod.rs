@@ -653,6 +653,10 @@ impl SimpleComponent for App {
             }
             AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns, sender),
             AppMsg::FetchBrowseForeignKeys(tab_id) => self.fetch_browse_foreign_keys(tab_id, sender),
+            AppMsg::FetchBrowseEnumLabels(tab_id, targets) => self.fetch_browse_enum_labels(tab_id, targets, sender),
+            AppMsg::EnumLabelsLoaded(tab_id, labels) => {
+                self.dispatch_to_tab(tab_id, crate::ui::browse_tab::BrowseTabInput::EnumLabelsLoaded(labels))
+            }
             AppMsg::ForeignKeysLoaded(tab_id, foreign_keys) => self.on_browse_foreign_keys_loaded(tab_id, foreign_keys),
             AppMsg::RowsLoaded(tab_id, request, result, projected_columns) => {
                 self.on_browse_rows_loaded(tab_id, request, result, projected_columns)

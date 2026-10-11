@@ -365,6 +365,7 @@ impl App {
         columns: Vec<ColumnInfo>,
         sender: ComponentSender<Self>,
     ) {
+        let targets = crate::ui::browse_tab::scalar_enum_columns(&columns);
         self.dispatch_to_tab(tab_id, BrowseTabInput::ColumnsLoaded(columns));
         // Page order depends on the primary-key metadata, and filters depend
         // on column types. Start both queries only after ColumnsLoaded has
@@ -372,6 +373,43 @@ impl App {
         sender.input(AppMsg::FetchBrowseRowCount(tab_id));
         sender.input(AppMsg::FetchBrowsePage(tab_id));
         sender.input(AppMsg::FetchBrowseForeignKeys(tab_id));
+        if !targets.is_empty() {
+            sender.input(AppMsg::FetchBrowseEnumLabels(tab_id, targets));
+        }
+    }
+
+    pub(super) fn fetch_browse_enum_labels(
+        &self,
+        tab_id: Uuid,
+        targets: Vec<(String, tablepro_core::QualifiedTypeName)>,
+        sender: ComponentSender<Self>,
+    ) {
+        let Some(conn) = self.window_connection() else {
+            return;
+        };
+        let timeout_secs =
+            crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let token = self.read_scopes.borrow_mut().start(tab_id, ReadScope::EnumLabels);
+        let sender_clone = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let control = crate::services::operation_control::bounded_with(timeout_secs, token);
+                    let mut labels = Vec::new();
+                    for (column, type_name) in targets {
+                        if let Ok(members) = conn
+                            .fetch_enum_labels_controlled(&type_name.schema, &type_name.name, &control)
+                            .await
+                        {
+                            labels.push((column, members));
+                        }
+                    }
+                    if !control.cancellation_token().is_cancelled() {
+                        sender_clone.input(AppMsg::EnumLabelsLoaded(tab_id, labels));
+                    }
+                })
+                .drop_on_shutdown()
+        });
     }
 
     pub(super) fn on_browse_foreign_keys_loaded(&self, tab_id: Uuid, foreign_keys: Vec<tablepro_core::ForeignKeyInfo>) {

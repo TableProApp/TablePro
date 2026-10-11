@@ -305,6 +305,17 @@ pub trait Connection: Send + Sync {
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         run_controlled(self.fetch_foreign_keys(schema, table), control).await
     }
+    async fn fetch_enum_labels(&self, _schema: &str, _name: &str) -> Result<Vec<String>, DriverError> {
+        Ok(Vec::new())
+    }
+    async fn fetch_enum_labels_controlled(
+        &self,
+        schema: &str,
+        name: &str,
+        control: &OperationControl,
+    ) -> Result<Vec<String>, DriverError> {
+        run_controlled(self.fetch_enum_labels(schema, name), control).await
+    }
     /// Open an interactive transaction for preview-then-commit flows.
     /// Default returns `Unsupported` so drivers adopt incrementally.
     async fn begin(&self) -> Result<Box<dyn Transaction>, DriverError> {

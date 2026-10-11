@@ -191,6 +191,19 @@ impl Connection for SessionConnection {
         self.inner.fetch_foreign_keys(schema, table).await
     }
 
+    async fn fetch_enum_labels(&self, schema: &str, name: &str) -> Result<Vec<String>, DriverError> {
+        self.inner.fetch_enum_labels(schema, name).await
+    }
+
+    async fn fetch_enum_labels_controlled(
+        &self,
+        schema: &str,
+        name: &str,
+        control: &OperationControl,
+    ) -> Result<Vec<String>, DriverError> {
+        self.inner.fetch_enum_labels_controlled(schema, name, control).await
+    }
+
     async fn fetch_foreign_keys_controlled(
         &self,
         schema: Option<&str>,

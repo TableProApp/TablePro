@@ -500,6 +500,40 @@ impl Connection for PolicyGuard {
         result
     }
 
+    async fn fetch_enum_labels(&self, schema: &str, name: &str) -> Result<Vec<String>, DriverError> {
+        let operation = self.metadata_operation("FETCH ENUM LABELS", vec![format!("{schema}.{name}")]);
+        self.prepare_governed_read(&operation).await?;
+        let start = Instant::now();
+        let result = self
+            .caught_read("FETCH ENUM LABELS", self.inner.fetch_enum_labels(schema, name))
+            .await;
+        let rows = result.as_ref().ok().map(|labels| labels.len() as u64);
+        self.audit_read_result(&operation, start, &result, rows).await?;
+        result
+    }
+
+    async fn fetch_enum_labels_controlled(
+        &self,
+        schema: &str,
+        name: &str,
+        control: &OperationControl,
+    ) -> Result<Vec<String>, DriverError> {
+        check_pre_dispatch(control)?;
+        let operation = self.metadata_operation("FETCH ENUM LABELS", vec![format!("{schema}.{name}")]);
+        self.prepare_governed_read(&operation).await?;
+        let start = Instant::now();
+        let result = self
+            .caught_read(
+                "FETCH ENUM LABELS",
+                self.inner.fetch_enum_labels_controlled(schema, name, control),
+            )
+            .await;
+        let rows = result.as_ref().ok().map(|labels| labels.len() as u64);
+        self.audit_controlled_read_result(&operation, start, &result, rows)
+            .await?;
+        result
+    }
+
     async fn fetch_foreign_keys_controlled(
         &self,
         schema: Option<&str>,

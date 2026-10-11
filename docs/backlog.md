@@ -13,7 +13,7 @@ candidate inventory as a release commitment.
 |---|---|---|
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 / SNAP-1 accepted the feature for 0.2.x (not a 0.2.0 blocker); limit 5 snapshots per database |
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
-| UI-19 | Foreign key value picker, PostgreSQL enum picker, estimated counts | FK navigation, paste TSV and the MySQL and MariaDB ENUM and SET pickers landed |
+| UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-17b, UI-18, UI-22, UI-23, UI-26 | Preview tabs, history as a panel, code folding and split panes, typed PostgreSQL activity console, editable SSH profiles | accepted for later; PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
@@ -56,7 +56,7 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 |---|---|
 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | Database snapshots (SNAP-2 to SNAP-4) |
 | [#548](https://github.com/cozyGarage/BookiE/issues/548) | SSH jump chains and reusable profiles in the form (UI-1b, UI-26) |
-| [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key value picker, PostgreSQL enum picker, estimated counts (UI-19); FK navigation, paste TSV and the MySQL ENUM and SET pickers are done |
+| [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key value picker, estimated counts (UI-19); FK navigation, paste TSV and the ENUM and SET pickers are done |
 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
 | [#552](https://github.com/cozyGarage/BookiE/issues/552) | Preview tabs, history panel, folding, split panes, activity console (UI-17b, 18, 22, 23, 26) |
 | [#553](https://github.com/cozyGarage/BookiE/issues/553) | Consistent snapshot for full-table export (UI-13b) |

@@ -530,6 +530,23 @@ impl Connection for PgConnection {
             .collect()
     }
 
+    async fn fetch_enum_labels(&self, schema: &str, name: &str) -> Result<Vec<String>, DriverError> {
+        let rows = sqlx::query(
+            "SELECT e.enumlabel::text
+             FROM pg_catalog.pg_enum e
+             JOIN pg_catalog.pg_type t ON t.oid = e.enumtypid
+             JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE n.nspname = $1 AND t.typname = $2
+             ORDER BY e.enumsortorder",
+        )
+        .bind(schema)
+        .bind(name)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(rows.into_iter().map(|row| row.get::<String, _>(0)).collect())
+    }
+
     async fn fetch_foreign_keys(&self, schema: Option<&str>, table: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         // pg_constraint with contype = 'f'. confkey arrays are parallel
         // to conkey via ordinality; the LATERAL join pairs them so the
