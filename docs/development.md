@@ -1,15 +1,14 @@
-# Contributing to TablePro Linux
+# Contributing to BookiE
 
 This repository is a Linux-only Rust and GTK project. The Cargo workspace is at the repository root, so run development commands from there.
 
 ## Development environment
 
-Install the native packages listed in [README.md](../README.md). Rust 1.98 is the minimum supported version and is pinned in `rust-toolchain.toml`. Arch may also provide a newer `/usr/bin/cargo`; see [docs/platforms.md#rust-toolchain](platforms.md#rust-toolchain) when comparing toolchain results.
+Install the native packages listed in [README.md](../README.md). Rust 1.98 is the minimum supported version and is pinned in `rust-toolchain.toml`. Arch may also provide a newer `/usr/bin/cargo`; see [platforms.md#rust-toolchain](platforms.md#rust-toolchain) when comparing toolchain results.
 
 Use the fast checks while iterating:
 
 ```bash
-cd linux
 ./scripts/preflight.sh
 ./scripts/ci-local.sh
 ./scripts/ci-local.sh integration
@@ -53,11 +52,7 @@ Include before and after screenshots for visible changes. Test both light and da
 
 ## Packaging
 
-GitHub Release packages are Arch x86_64 and Ubuntu 25.10 amd64. Test
-`apps/linux/packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and
-`scripts/validate-deb-package.sh` when a change affects installed files,
-native dependencies, desktop integration, or launch behavior. Public AUR
-and Flathub publication are deferred and must not define current requirements.
+GitHub Release packages are Arch x86_64 and Ubuntu 25.10 amd64. Test `apps/linux/packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and `scripts/validate-deb-package.sh` when a change affects installed files, native dependencies, desktop integration, or launch behavior. Public AUR and Flathub publication are deferred and must not define current requirements.
 
 ## Commits and pull requests
 

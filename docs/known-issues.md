@@ -1,42 +1,21 @@
 # Known issues ledger
 
-The single live list of open work outside the B3 type/value matrix. It replaces
-the per-review "remaining" sections in [docs/archive](archive/); those files stay
-as dated evidence and are not updated.
+The single live list of open work outside the B3 type/value matrix. It replaces the per-review "remaining" sections in [docs/archive](archive/); those files stay as dated evidence and are not updated.
 
 Rules:
 
-- A closed issue is crossed out (`~~text~~`) and carries the commit, PR or test
-  that closed it. A fix lands with its regression test in the same change.
-- Status is `OPEN`, `DONE`, `UNVERIFIED` (claimed but not proven here), or
-  `ACCEPTED` (a deliberate limit, with the reason).
-- Layers are the tiers in [testing](testing.md) and the
-  [validation playbook](validation-playbook.md). Nothing is `DONE` on a source
-  read alone.
-- B3 stays on its own board: [type/consumer board](type-contract-strategy.md)
-  and [value evidence index](value-contracts.md). Remaining: broader
-  engine/type/consumer/configuration matrix, mutation triage, installed grid
-  acceptance.
+- A closed issue is crossed out (`~~text~~`) and carries the commit, PR or test that closed it. A fix lands with its regression test in the same change.
+- Status is `OPEN`, `DONE`, `UNVERIFIED` (claimed but not proven here), or `ACCEPTED` (a deliberate limit, with the reason).
+- Layers are the tiers in [testing](testing.md) and the [validation playbook](validation-playbook.md). Nothing is `DONE` on a source read alone.
+- B3 stays on its own board: [type/consumer board](type-contract-strategy.md) and [value evidence index](value-contracts.md). Remaining: broader engine/type/consumer/configuration matrix, mutation triage, installed grid acceptance.
 
-Status snapshot checked 2026-10-09 against tip after PRs #441–#458 (docs tip
-`ca1080a55`; nearest code tip `c2f3f78b9`). This ledger and the
-[active sprint](bookie-0.2-sprint.md) own current status; PR-by-PR continuation
-is in [sprint history](archive/bookie-0.2-history.md#archived-from-active-sprint-on-2026-10-09-consolidation).
-Not a release qualification.
+Status snapshot checked 2026-10-09 against tip after PRs #441–#458 (docs tip `ca1080a55`; nearest code tip `c2f3f78b9`). This ledger and the [active sprint](bookie-0.2-sprint.md) own current status; PR-by-PR continuation is in [sprint history](archive/bookie-0.2-history.md#archived-from-active-sprint-on-2026-10-09-consolidation). Not a release qualification.
 
-Retest indicators (also listed on the sprint): Forgejo run 101 PostgreSQL
-driver failures; `pg-release` query-plan vs fail-closed masking; Forgejo run 88
-GTK waits for `open_editor` and `audit_failure_denies` (pre-#451/#452 tip);
-TEST-28 native Ubuntu AT-SPI; Build Linux Docker Hub rate limits near
-`c2f3f78b9`. Commit `b98ce22` addressed the earlier disconnect-test race from
-run 88; that specific race is not the open retest.
+Retest indicators (also listed on the sprint): Forgejo run 101 PostgreSQL driver failures; `pg-release` query-plan vs fail-closed masking; Forgejo run 88 GTK waits for `open_editor` and `audit_failure_denies` (pre-#451/#452 tip); TEST-28 native Ubuntu AT-SPI; Build Linux Docker Hub rate limits near `c2f3f78b9`. Commit `b98ce22` addressed the earlier disconnect-test race from run 88; that specific race is not the open retest.
 
 ## Owners and handoff
 
-Every open row has one owner. `scripts/check-known-issues.py` fails when an
-`OPEN` or `UNVERIFIED` row has no owner here, when a row is listed twice, or when
-a listed id is not in the ledger. When you move work between agents, change this
-table in the same commit.
+Every open row has one owner. `scripts/check-known-issues.py` fails when an `OPEN` or `UNVERIFIED` row has no owner here, when a row is listed twice, or when a listed id is not in the ledger. When you move work between agents, change this table in the same commit.
 
 | Owner | Open rows | Next |
 | --- | --- | --- |
@@ -88,10 +67,7 @@ table in the same commit.
 | UI-1b per-hop passphrase transport coverage | B: B4 adds the transport behavior tests; UX registers them with the isolated Secret Service tier | `crates/transport/src/lib.rs` | `scripts/isolated-tests.json` and generated `docs/ignored-tests.md` |
 | UI-1b bundle import rollback | B: B4 owns the import and credential rollback contract; UX reviews the app-layer implementation | `apps/linux/app/src/ui/app/bundle.rs` and its unit tests | Review sequencing, partial-import reporting and rollback behavior; no unrelated app changes |
 
-For PERF-9/10, preserve ADR 0007 outcomes and native stored-value oracles, and add
-the regression at the lowest applicable tier in the same commit. UX works only
-in `~/Projects/tablepro-ux2`; these file boundaries apply there. Neither lane
-edits the other lane's files without a ledger entry.
+For PERF-9/10, preserve ADR 0007 outcomes and native stored-value oracles, and add the regression at the lowest applicable tier in the same commit. UX works in its own lane worktree; these file boundaries apply there. Neither lane edits the other lane's files without a ledger entry.
 
 ## UI (app layer)
 
@@ -274,32 +250,18 @@ edits the other lane's files without a ledger entry.
 
 ### What the reference client does differently
 
-Read from dbx at `d9338d1` (a Tauri and Vue app over a Rust core), source only;
-none of it was run. These mechanisms can reduce held and drawn data; this is
-not a measured cross-client speed comparison:
+Read from dbx at `d9338d1` (a Tauri and Vue app over a Rust core), source only; none of it was run. These mechanisms can reduce held and drawn data; this is not a measured cross-client speed comparison:
 
-- pages of 100 rows by default, a 10,000-row fetch ceiling, and more rows
-  appended through result sessions on supported paths. A result session does
-  not by itself prove a server-side cursor or bounded driver buffering;
+- pages of 100 rows by default, a 10,000-row fetch ceiling, and more rows appended through result sessions on supported paths. A result session does not by itself prove a server-side cursor or bounded driver buffering;
 - result rows marked raw (`markRaw`), so no per-row reactive objects exist;
-- truncated cell previews with the full value fetched on demand, and hidden
-  columns left out of the query;
+- truncated cell previews with the full value fetched on demand, and hidden columns left out of the query;
 - a canvas renderer with a fixed row height that paints only visible cells.
 
-Our grid uses widget virtualization (`GtkColumnView`) and shares the result.
-`RowStore` weakly caches requested shared rows, preserving object identity while
-consumers hold references and recreating a clean row after those references are
-released. Draft and replacement rows stay strongly owned. Three-run scroll
-profiles reduced retained RSS growth by 80–93%; the query result itself remains
-fully resident. PERF-7 to PERF-10 track the remaining work. See the [October 7
-profile and action record](archive/grid-memory-and-fetch-action-plan-2026-10-07.md).
+Our grid uses widget virtualization (`GtkColumnView`) and shares the result. `RowStore` weakly caches requested shared rows, preserving object identity while consumers hold references and recreating a clean row after those references are released. Draft and replacement rows stay strongly owned. Three-run scroll profiles reduced retained RSS growth by 80–93%; the query result itself remains fully resident. PERF-7 to PERF-10 track the remaining work. See the [October 7 profile and action record](archive/grid-memory-and-fetch-action-plan-2026-10-07.md).
 
 ### Performance baseline, 2026-10-07
 
-Historical pre-RowStore baseline measured on the Arch runner (10 vCPU, host CPU
-type) with release builds, from the then-current `scripts/profile-baseline.sh`.
-Rows have six columns of mixed integer, real and text values (about 0.6 KB
-each). The current scroll profile is recorded separately in the action plan.
+Historical pre-RowStore baseline measured on the Arch runner (10 vCPU, host CPU type) with release builds, from the then-current `scripts/profile-baseline.sh`. Rows have six columns of mixed integer, real and text values (about 0.6 KB each). The current scroll profile is recorded separately in the action plan.
 
 | Level | Rows requested | Rows shown | Time | Memory |
 | --- | ---: | ---: | ---: | ---: |
@@ -312,28 +274,10 @@ each). The current scroll profile is recorded separately in the action plan.
 | | 300,000 | 120,019 (capped) | 3.2 s | 339 MB |
 | | 1,000,000 | 120,019 (capped) | 3.3 s | 334 MB |
 
-- Allocation profile at 100,000 rows: 4.44 million allocations (about 44 per
-  row), 59 MB peak heap.
-- The 64 MiB byte budget binds long before 1,000,000 rows for text-heavy rows,
-  so memory is bounded, but each shown row costs about 1.5 KB in the app against
-  0.6 KB in the driver result: at this baseline the grid held a second copy.
-  PERF-7 records the later lazy-row measurements. Neither set was rerun by the
-  October 7 source review on the local workstation.
-- The Xvfb run uses software rendering; resident size on a real GPU session
-  will differ and still needs a measurement.
+- Allocation profile at 100,000 rows: 4.44 million allocations (about 44 per row), 59 MB peak heap.
+- The 64 MiB byte budget binds long before 1,000,000 rows for text-heavy rows, so memory is bounded, but each shown row costs about 1.5 KB in the app against 0.6 KB in the driver result: at this baseline the grid held a second copy. PERF-7 records the later lazy-row measurements. Neither set was rerun by the October 7 source review on the local workstation.
+- The Xvfb run uses software rendering; resident size on a real GPU session will differ and still needs a measurement.
 
 ## Test environment
 
-The lab Forgejo (an internal instance; its address and repository are set through
-`FORGEJO_API` and the `forgejo` git remote) is the acceptance gate since 2026-10-08. It runs `.forgejo/workflows/ci.yml` on every
-branch push and `.forgejo/workflows/nightly.yml` each night, on three Debian 13
-internal executors (Forgejo runner label `debian-host`, Docker with the userland
-proxy off) and one native Ubuntu 24.04 executor (`ubuntu-host`). All four also carry
-`any-host`: the guards, Clippy, unit, sandbox, supply-chain, driver (the six Docker driver suites) and distro-floor jobs use it,
-while the native GTK, widget and release-fixture jobs stay on `debian-host` because the
-native Ubuntu GTK suite is not yet reliable (TEST-28).
-`scripts/forgejo-gate.sh <branch>` pushes a branch, waits for its run and lists
-the jobs that did not pass. A green GitHub pull request only means the cheap tier
-ran. The Arch lab VM was retired on 2026-10-08; Arch package checks run
-in an `archlinux` container (`scripts/test-arch-package-container.sh`). None of
-these replaces the installed Wayland pass (PKG-1).
+The lab Forgejo (an internal instance; its address and repository are set through `FORGEJO_API` and the `forgejo` git remote) is the acceptance gate since 2026-10-08. It runs `.forgejo/workflows/ci.yml` on every branch push and `.forgejo/workflows/nightly.yml` each night, on three Debian 13 internal executors (Forgejo runner label `debian-host`, Docker with the userland proxy off) and one native Ubuntu 24.04 executor (`ubuntu-host`). All four also carry `any-host`: the guards, Clippy, unit, sandbox, supply-chain, driver (the six Docker driver suites) and distro-floor jobs use it, while the native GTK, widget and release-fixture jobs stay on `debian-host` because the native Ubuntu GTK suite is not yet reliable (TEST-28). `scripts/forgejo-gate.sh <branch>` pushes a branch, waits for its run and lists the jobs that did not pass. A green GitHub pull request only means the cheap tier ran. The Arch lab VM was retired on 2026-10-08; Arch package checks run in an `archlinux` container (`scripts/test-arch-package-container.sh`). None of these replaces the installed Wayland pass (PKG-1).

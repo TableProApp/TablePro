@@ -60,19 +60,9 @@ The GUI loads `$XDG_CONFIG_HOME/tablepro/policy.toml` at startup. A missing file
 
 Each record contains a sequence number, previous hash, current hash, and audit event. Mutation intents and transaction commit records use the durable append path. File locks serialize initialization and appends across processes.
 
-The GUI and `tablepro-agentd` may hold the journal at the same time. Each live
-owner holds a shared process lock; startup recovery requires the exclusive lock,
-so a second process does not record another process's in-flight mutation as
-`Unknown`. It validates the chain without recovery. New write intents are still
-refused while an earlier write remains pending. After all owners exit, the next
-opener recovers any intents left pending by a crash.
+The GUI and `tablepro-agentd` may hold the journal at the same time. Each live owner holds a shared process lock; startup recovery requires the exclusive lock, so a second process does not record another process's in-flight mutation as `Unknown`. It validates the chain without recovery. New write intents are still refused while an earlier write remains pending. After all owners exit, the next opener recovers any intents left pending by a crash.
 
-Every append currently verifies the full journal, and `recent(limit)` reads the
-full file before trimming its result. Append cost therefore grows with journal
-size; the 1,000-append concurrency test takes about 25 seconds locally. There is
-no retention or compaction policy. Keep the full-chain integrity check until a
-checkpoint/rotation design can preserve crash recovery and tamper detection;
-do not prune audit history as a performance shortcut.
+Every append currently verifies the full journal, and `recent(limit)` reads the full file before trimming its result. Append cost therefore grows with journal size; the 1,000-append concurrency test takes about 25 seconds locally. There is no retention or compaction policy. Keep the full-chain integrity check until a checkpoint/rotation design can preserve crash recovery and tamper detection; do not prune audit history as a performance shortcut.
 
 The GTK application disables governed writes and MCP startup when the required audit journal cannot be opened or reports unresolved writes. `tablepro-agentd` also refuses startup when the journal is unavailable or reports unresolved writes.
 
@@ -106,70 +96,37 @@ When changing storage behavior:
 
 ## Connection bundles
 
-A connection bundle is a single JSON document a user exports and another
-machine imports. It is not a storage location: nothing reads or writes it
-automatically.
+A connection bundle is a single JSON document a user exports and another machine imports. It is not a storage location: nothing reads or writes it automatically.
 
 ```json
 {"format": "tablepro.connection-bundle", "version": 2, "producer": "...", "exported_at": "...", "payload": {...}}
 ```
 
-Version 2 is written by current exports. Imports continue to accept version 1
-bundles, which carry only legacy connection-level SSH secrets when encrypted.
+Version 2 is written by current exports. Imports continue to accept version 1 bundles, which carry only legacy connection-level SSH secrets when encrypted.
 
-`payload.kind` is `plaintext` or `encrypted`, matched by hand rather than
-through an internally tagged enum, because `#[serde(deny_unknown_fields)]`
-does not reach through `#[serde(tag = ...)]`.
+`payload.kind` is `plaintext` or `encrypted`, matched by hand rather than through an internally tagged enum, because `#[serde(deny_unknown_fields)]` does not reach through `#[serde(tag = ...)]`.
 
 ### What a bundle carries
 
-Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`,
-`database`, `username`, `tls_mode`, `tls_root_cert`, `read_only`,
-`auth_mode`, `environment`, `ssh`, plus the group, tags and colour from
-the organisation sidecar.
+Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`, `database`, `username`, `tls_mode`, `tls_root_cert`, `read_only`, `auth_mode`, `environment`, `ssh`, plus the group, tags and colour from the organisation sidecar.
 
-Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle
-can claim `use_tls: true, tls_mode: disabled`), `last_opened_at` (local
-telemetry), unknown keys carried from a newer version, the contents of
-`tls_root_cert` and any SSH private key (paths only), and policy
-`connection_overrides`.
+Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle can claim `use_tls: true, tls_mode: disabled`), `last_opened_at` (local telemetry), unknown keys carried from a newer version, the contents of `tls_root_cert` and any SSH private key (paths only), and policy `connection_overrides`.
 
-`BUNDLE_INCLUDED_FIELDS` and `BUNDLE_EXCLUDED_FIELDS` must together equal
-`KNOWN_CONNECTION_FIELDS`. A unit test asserts this, so a new field on
-`SavedConnection` fails the build until someone classifies it.
+`BUNDLE_INCLUDED_FIELDS` and `BUNDLE_EXCLUDED_FIELDS` must together equal `KNOWN_CONNECTION_FIELDS`. A unit test asserts this, so a new field on `SavedConnection` fails the build until someone classifies it.
 
 ### Credentials
 
-A plaintext bundle carries no credentials at all. Only the encryption
-path populates `secrets`, and the parser rejects a plaintext payload that
-arrives with a non-empty `secrets` list.
+A plaintext bundle carries no credentials at all. Only the encryption path populates `secrets`, and the parser rejects a plaintext payload that arrives with a non-empty `secrets` list.
 
-An encrypted version 2 bundle carries the database password, legacy
-connection-level SSH credentials where needed, and each versioned SSH hop's
-password or key passphrase bound to its hop ID and credential revision. A
-version 1 bundle carries only the database password and legacy SSH password
-or passphrase. Neither version carries an MCP token: a token is an
-authorization grant tied to allowlists on the exporting machine, a
-different trust class from a database credential.
+An encrypted version 2 bundle carries the database password, legacy connection-level SSH credentials where needed, and each versioned SSH hop's password or key passphrase bound to its hop ID and credential revision. A version 1 bundle carries only the database password and legacy SSH password or passphrase. Neither version carries an MCP token: a token is an authorization grant tied to allowlists on the exporting machine, a different trust class from a database credential.
 
 ### Encryption
 
-Argon2id derives the key (`memory_kib = 131072`, `iterations = 3`,
-`parallelism = 1`, 16-byte salt, 32-byte output), because a bundle is
-offline-attackable and the KDF has to be memory-hard. On import the header
-parameters are range-checked before any derivation runs: memory
-19456..=1048576 KiB, iterations 1..=16, parallelism 1..=4, salt exactly 16
-bytes. An unchecked header is a memory bomb.
+Argon2id derives the key (`memory_kib = 131072`, `iterations = 3`, `parallelism = 1`, 16-byte salt, 32-byte output), because a bundle is offline-attackable and the KDF has to be memory-hard. On import the header parameters are range-checked before any derivation runs: memory 19456..=1048576 KiB, iterations 1..=16, parallelism 1..=4, salt exactly 16 bytes. An unchecked header is a memory bomb.
 
-AES-256-GCM seals the body with a 12-byte random nonce. The header is
-bound to the ciphertext through the AAD, so an attacker cannot hand back a
-bundle whose `memory_kib` has been downgraded. The AAD has a fixed byte
-layout built by a dedicated function rather than re-serialized JSON,
-because this workspace's `serde_json` runs with `preserve_order` and a
-rewritten document is not byte-stable.
+AES-256-GCM seals the body with a 12-byte random nonce. The header is bound to the ciphertext through the AAD, so an attacker cannot hand back a bundle whose `memory_kib` has been downgraded. The AAD has a fixed byte layout built by a dedicated function rather than re-serialized JSON, because this workspace's `serde_json` runs with `preserve_order` and a rewritten document is not byte-stable.
 
-A wrong passphrase and a tampered file produce one indistinguishable
-error.
+A wrong passphrase and a tampered file produce one indistinguishable error.
 
 ### Importing
 
@@ -183,20 +140,10 @@ error.
 | Two bundle entries share an id | The whole bundle is rejected |
 | A local connection the bundle omits | Untouched; import is additive and has no delete path |
 
-An endpoint is `(driver_id, lowercased host, port, socket_dir, database,
-username, SSH hop chain)`. Name, TLS mode, read-only, environment and auth
-mode are settings, not identity.
+An endpoint is `(driver_id, lowercased host, port, socket_dir, database, username, SSH hop chain)`. Name, TLS mode, read-only, environment and auth mode are settings, not identity.
 
-On an in-place update safety never downgrades: `read_only` is the OR of
-both, `environment` the higher of Local < Dev < Staging < Prod, `tls_mode`
-the stricter of Disabled < Prefer < Require < VerifyCa < VerifyFull, and
-`last_opened_at` keeps the local value. A bundle can tighten a local
-connection and never loosen it.
+On an in-place update safety never downgrades: `read_only` is the OR of both, `environment` the higher of Local < Dev < Staging < Prod, `tls_mode` the stricter of Disabled < Prefer < Require < VerifyCa < VerifyFull, and `last_opened_at` keeps the local value. A bundle can tighten a local connection and never loosen it.
 
-`apply_import` takes the connection-file lock once and rewrites the file
-in a single pass, so a plan lands whole rather than as N upserts racing
-another process.
+`apply_import` takes the connection-file lock once and rewrites the file in a single pass, so a plan lands whole rather than as N upserts racing another process.
 
-Exporting a bundle is not recorded in the audit journal. The journal is
-hash-chained and its event schema is SQL-shaped, so carrying a non-SQL
-event through it needs its own change.
+Exporting a bundle is not recorded in the audit journal. The journal is hash-chained and its event schema is SQL-shaped, so carrying a non-SQL event through it needs its own change.

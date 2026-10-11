@@ -1,29 +1,14 @@
 # B4 task board: transport and sessions
 
-Base scope: `aeac107a4`, branch `linux`, reviewed 2026-10-03. The active B4 integration branch advances as work lands. Use each evidence
-manifest for the exact source revision and Git for the current branch tip.
-The local source includes MySQL batch/result fixes indexed in the [evidence manifest]
-(evidence/mysql-atomic-results-2026-10-03/manifest.json).
-The [sprint](bookie-0.2-sprint.md) owns release order; [ADR 0008](decisions/0008-connection-and-session-ownership.md)
-owns the decisions. Use the current Git tip for its revision because this board is updated
-independently of source commits. B4 remains open. Implementation, local execution, hosted
-execution and installed acceptance are separate states.
+Base scope: `aeac107a4`, branch `linux`, reviewed 2026-10-03. The active B4 integration branch advances as work lands. Use each evidence manifest for the exact source revision and Git for the current branch tip. The local source includes MySQL batch/result fixes indexed in the [evidence manifest] (evidence/mysql-atomic-results-2026-10-03/manifest.json). The [sprint](bookie-0.2-sprint.md) owns release order; [ADR 0008](decisions/0008-connection-and-session-ownership.md) owns the decisions. Use the current Git tip for its revision because this board is updated independently of source commits. B4 remains open. Implementation, local execution, hosted execution and installed acceptance are separate states.
 
 ## Release wrap-up review (2026-10-11)
 
-[The source and worktree review](archive/b4-release-wrapup-review-2026-10-11.md)
-records the integrated branches, the finite finish order and the scope conflicts.
-It reproduced an AUD-9 named derived-projection leak and a missing terminal
-audit outcome for a write refused inside a read-only snapshot. The old code
-branches are merged. Their unique historical evidence was preserved in
-`63f6d2eb3`, and the 16 old worktrees were retired without deleting the shared
-build cache. This review does not establish candidate acceptance.
+[The source and worktree review](archive/b4-release-wrapup-review-2026-10-11.md) records the integrated branches, the finite finish order and the scope conflicts. It reproduced an AUD-9 named derived-projection leak and a missing terminal audit outcome for a write refused inside a read-only snapshot. The old code branches are merged. Their unique historical evidence was preserved in `63f6d2eb3`, and the 16 old worktrees were retired without deleting the shared build cache. This review does not establish candidate acceptance.
 
 ### Finite code finish and candidate handoff
 
-The [0.2.0 scope](0.2.0-scope.md) owns blockers. Finish the three demonstrated
-defects below; broader features remain in the backlog. Pending PRs do not close
-their ledger rows.
+The [0.2.0 scope](0.2.0-scope.md) owns blockers. Finish the three demonstrated defects below; broader features remain in the backlog. Pending PRs do not close their ledger rows.
 
 | Work | Implementation | Exit before candidate freeze |
 | --- | --- | --- |
@@ -31,23 +16,13 @@ their ledger rows.
 | Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538): snapshot writes, structural refusals, retired-session calls and write-lockdown refusals record a Denied terminal outcome without dispatch | GitHub and Forgejo green on its exact head, then merge; keep transaction state and journal-failure lockdown |
 | UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539): refuse unsupported full export before source/destination access, preserve loaded-result and current-page export | Local preflight, app Clippy, 10 export tests and 26 widgets passed; GitHub and Forgejo remain the handoff gates, then merge the refusal and defer verified snapshot implementations |
 
-Mutation triage is bounded to masking, host-key refusal, per-hop secret selection,
-bundle rollback and durable audit. Existing fixture coverage and remaining proof
-gaps are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md).
-Do not turn a survivor percentage into release approval or a new blocker.
+Mutation triage is bounded to masking, host-key refusal, per-hop secret selection, bundle rollback and durable audit. Existing fixture coverage and remaining proof gaps are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md). Do not turn a survivor percentage into release approval or a new blocker.
 
-After the code merges, freeze one SHA. UX/maintainer runs the affected Forgejo
-layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22.
-Use the finite TEST-15 list below, then the sprint's retry-free soak and release
-decision. Source-build Xvfb, extracted package binaries and older green runs
-do not substitute for this candidate.
+After the code merges, freeze one SHA. UX/maintainer runs the affected Forgejo layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22. Use the finite TEST-15 list below, then the sprint's retry-free soak and release decision. Source-build Xvfb, extracted package binaries and older green runs do not substitute for this candidate.
 
 ### TEST-15 release acceptance list
 
-Run the existing driver layer and PostgreSQL release fixture on the frozen SHA.
-The six network-engine lost-ack scenarios below need independent stored-state
-or request-count evidence of one application, plus a usable reconnect. A later
-successful read must not dispatch the failed write again.
+Run the existing driver layer and PostgreSQL release fixture on the frozen SHA. The six network-engine lost-ack scenarios below need independent stored-state or request-count evidence of one application, plus a usable reconnect. A later successful read must not dispatch the failed write again.
 
 | Path | Existing selector or contract | Candidate evidence required |
 | --- | --- | --- |
@@ -61,62 +36,25 @@ successful read must not dispatch the failed write again.
 | Allowed retry boundaries | PostgreSQL `query.rs` stale-type-cache predicate; MySQL `session.rs` prepared-protocol fallback | Source review distinguishes an explicit server rejection from a disconnect, timeout or unknown outcome; keep native session and parameter fixtures green |
 | SQLite and DuckDB | Local-file drivers, read-only and transaction fixtures | Cancellation, file state and rollback contracts; no network acknowledgement scenario is claimed |
 
-The current PostgreSQL session path enables the stale-type-cache retry, as do
-pooled query/execute paths; explicit transactions disable it. MySQL session
-fallback is parameter-free and limited to prepared-protocol rejection. These
-are reviewed code paths, not a proof that arbitrary routines have no side
-effects. MongoDB uses one direct endpoint with SDK defaults; its standalone
-lost-ack fixture must not be advertised as all-topology retry proof. Broader
-topologies, optional engine/effect matrices and fault-injection expansion stay
-open in the backlog unless the maintainer changes release scope.
+The current PostgreSQL session path enables the stale-type-cache retry, as do pooled query/execute paths; explicit transactions disable it. MySQL session fallback is parameter-free and limited to prepared-protocol rejection. These are reviewed code paths, not a proof that arbitrary routines have no side effects. MongoDB uses one direct endpoint with SDK defaults; its standalone lost-ack fixture must not be advertised as all-topology retry proof. Broader topologies, optional engine/effect matrices and fault-injection expansion stay open in the backlog unless the maintainer changes release scope.
 
 ## Current Linux-tip B4 checkpoint (2026-10-10)
 
 Tip includes #458/`Effects`, #459 engine read-only, #460 migration step 2,
 #461 explain-plan masking, #463/#486 DuckDB selected-file pinning (AUD-10
-DONE), #475 `MRG_MyISAM` rollback, #480 joined verdicts (AUD-11 step 3), #490
-per-hop SSH secret identities (UI-1b storage groundwork), and the shared-analysis
-refactor merged in [#506](https://github.com/cozyGarage/BookiE/pull/506).
-AUD-11 remains open: #506 shares parsed statement analysis through guard
-authorization and transaction-query handling, while classification, sensitive
-projection and blast-radius planning still use specialized AST helpers. The
-single-AST-walk consolidation in migration step 4 is unfinished. Exact local
-verification and acceptance boundaries are recorded below; local runs do not
-establish Forgejo gate or frozen-candidate/package acceptance.
+DONE), #475 `MRG_MyISAM` rollback, #480 joined verdicts (AUD-11 step 3), #490 per-hop SSH secret identities (UI-1b storage groundwork), and the shared-analysis refactor merged in [#506](https://github.com/cozyGarage/BookiE/pull/506). AUD-11 remains open: #506 shares parsed statement analysis through guard authorization and transaction-query handling, while classification, sensitive projection and blast-radius planning still use specialized AST helpers. The single-AST-walk consolidation in migration step 4 is unfinished. Exact local verification and acceptance boundaries are recorded below; local runs do not establish Forgejo gate or frozen-candidate/package acceptance.
 
 ## AUD-9 query-plan masking regression (2026-10-10)
 
-PR #456's fail-closed fallback treated plain `EXPLAIN SELECT` as an unknown
-projection and redacted the plan returned by the agent `explain_query` tool.
-The PostgreSQL release fixture reproduced this twice on the post-#456 source;
-the pre-#456 parent passed the same fixture. Merged PR #461 keeps plan output
-masked for read-scoped agents and aligns the tool description and release test
-with that behavior, because a plan may contain server-generated predicates.
-The policy suite passed 216 tests with 4 Docker-only tests ignored. Code tip
-`d4d26c8` was rechecked on 2026-10-10: system OpenSSH 1/1, mTLS
-3/3, PostgreSQL release integration 59/59 (including plan denial and both
-`EXPLAIN ANALYZE` denial checks), and seven SSH/mTLS GTK scenarios passed. See
-the [AUD-9 evidence](evidence/aud9-explain-plan-mask-2026-10-10/manifest.json).
-This local result does not establish the Forgejo gate, hosted acceptance or
-frozen-candidate/installed acceptance.
+PR #456's fail-closed fallback treated plain `EXPLAIN SELECT` as an unknown projection and redacted the plan returned by the agent `explain_query` tool. The PostgreSQL release fixture reproduced this twice on the post-#456 source; the pre-#456 parent passed the same fixture. Merged PR #461 keeps plan output masked for read-scoped agents and aligns the tool description and release test with that behavior, because a plan may contain server-generated predicates. The policy suite passed 216 tests with 4 Docker-only tests ignored. Code tip `d4d26c8` was rechecked on 2026-10-10: system OpenSSH 1/1, mTLS 3/3, PostgreSQL release integration 59/59 (including plan denial and both `EXPLAIN ANALYZE` denial checks), and seven SSH/mTLS GTK scenarios passed. See the [AUD-9 evidence](evidence/aud9-explain-plan-mask-2026-10-10/manifest.json). This local result does not establish the Forgejo gate, hosted acceptance or frozen-candidate/installed acceptance.
 
 ## AUD-2 MySQL approval-dialog rerun (2026-10-10)
 
-The exact scenario `mysql_unparseable_routine_dialog_denial_preserves_database`
-passed three consecutive runs from PR #513 candidate `d4cca38` (based on Linux
-`0855cca`). Each run used
-`bash scripts/test-gtk-mysql-approval.sh` with a release binary built from
-that source, Docker MySQL 8.0, a private D-Bus session, Xvfb/X11 and GTK AT-SPI.
-The [run manifest and logs](evidence/aud2-mysql-approval-dialog-current-pr-head-2026-10-10/manifest.json)
-record the binary and log hashes. The earlier empty-dialog failure's cause is
-still unknown. These isolated Xvfb runs do not establish package-installed or
-native Wayland acceptance, and do not replace the Forgejo gate.
+The exact scenario `mysql_unparseable_routine_dialog_denial_preserves_database` passed three consecutive runs from PR #513 candidate `d4cca38` (based on Linux `0855cca`). Each run used `bash scripts/test-gtk-mysql-approval.sh` with a release binary built from that source, Docker MySQL 8.0, a private D-Bus session, Xvfb/X11 and GTK AT-SPI. The [run manifest and logs](evidence/aud2-mysql-approval-dialog-current-pr-head-2026-10-10/manifest.json) record the binary and log hashes. The earlier empty-dialog failure's cause is still unknown. These isolated Xvfb runs do not establish package-installed or native Wayland acceptance, and do not replace the Forgejo gate.
 
 ## Retest indicators (from archived checkpoints)
 
-Keep these as “test again” signals until cleared on a current candidate SHA.
-Full dated narratives are in
-[B4 history](archive/b4-history.md#archived-b4-dated-checkpoints-2026-10-09-consolidation).
+Keep these as “test again” signals until cleared on a current candidate SHA. Full dated narratives are in [B4 history](archive/b4-history.md#archived-b4-dated-checkpoints-2026-10-09-consolidation).
 
 | Signal | Status at archive | Action |
 | --- | --- | --- |
@@ -128,13 +66,7 @@ Full dated narratives are in
 
 ## Next B4 acceptance run
 
-Rerun affected layers when application or driver code changes. Remaining work
-includes distribution-package/native Wayland acceptance, optional MySQL engine
-and side-effect coverage, Windows AD interoperability, and UI-1b. Superseded
-hosted-run narratives and the MongoDB TLS intermittent failure are in
-[B4 history](archive/b4-history.md#archived-b4-dated-checkpoints-2026-10-09-consolidation)
-and the retest table above. Xvfb staged-binary runs do not establish
-distribution-package or native Wayland acceptance.
+Rerun affected layers when application or driver code changes. Remaining work includes distribution-package/native Wayland acceptance, optional MySQL engine and side-effect coverage, Windows AD interoperability, and UI-1b. Superseded hosted-run narratives and the MongoDB TLS intermittent failure are in [B4 history](archive/b4-history.md#archived-b4-dated-checkpoints-2026-10-09-consolidation) and the retest table above. Xvfb staged-binary runs do not establish distribution-package or native Wayland acceptance.
 
 | Work | Required evidence on the next candidate | Current boundary |
 | --- | --- | --- |
@@ -149,11 +81,7 @@ distribution-package or native Wayland acceptance.
 
 ## Remaining tasks
 
-Implemented local slices (I2, I5, F7, MySQL atomicity matrices) live in
-[B4 history](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4).
-Live acceptance bounds stay above. I1 is complete under ledger B4-10: the
-Debian builder includes askpass and package validation rejects its absence.
-Debian/GNOME desktop acceptance remains post-0.2.0 work under PKG-2.
+Implemented local slices (I2, I5, F7, MySQL atomicity matrices) live in [B4 history](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4). Live acceptance bounds stay above. I1 is complete under ledger B4-10: the Debian builder includes askpass and package validation rejects its absence. Debian/GNOME desktop acceptance remains post-0.2.0 work under PKG-2.
 
 ## In-progress local slices
 
@@ -165,11 +93,7 @@ Debian/GNOME desktop acceptance remains post-0.2.0 work under PKG-2.
 
 ## Completed local slices
 
-Dated local-slice narratives, the I5 event shape and the I3 route/auth/TLS
-matrix live in
-[B4 history](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation).
-Live acceptance bounds stay in [Next B4 acceptance run](#next-b4-acceptance-run)
-and the [ledger](known-issues.md).
+Dated local-slice narratives, the I5 event shape and the I3 route/auth/TLS matrix live in [B4 history](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation). Live acceptance bounds stay in [Next B4 acceptance run](#next-b4-acceptance-run) and the [ledger](known-issues.md).
 
 | ID | Tip status | Remaining |
 | --- | --- | --- |
@@ -181,22 +105,14 @@ and the [ledger](known-issues.md).
 
 ## Acceptance order
 
-1. Continue B3's bounded cases and evidence reconciliation. B3 completion
-   precedes closing B4 acceptance; independent review/preparation may proceed.
-2. C6 and G5 are merged; retain local evidence in
-   [B4 history](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation).
-   Finish headless F8 candidate acceptance and I2/I5/F7 hosted/installed bounds.
-3. Freeze an accepted B3+B4 source SHA and run affected `full security-policy
-   drivers tls postgres-release widgets ui packaging-contracts`; include keyring
-   and optional-feature checks where affected. Avoid repeated overlapping suites.
+1. Continue B3's bounded cases and evidence reconciliation. B3 completion precedes closing B4 acceptance; independent review/preparation may proceed.
+2. C6 and G5 are merged; retain local evidence in [B4 history](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation). Finish headless F8 candidate acceptance and I2/I5/F7 hosted/installed bounds.
+3. Freeze an accepted B3+B4 source SHA and run affected `full security-policy drivers tls postgres-release widgets ui packaging-contracts`; include keyring and optional-feature checks where affected. Avoid repeated overlapping suites.
 4. Installed Arch/Omarchy/Hyprland native Wayland workflows and upgrade/rollback.
 5. B7 retry-free candidate soak and the maintainer's release decision.
-6. After 0.2.0, installed Debian/GNOME native Wayland workflows and
-   upgrade/rollback under PKG-2. Publication is separate.
+6. After 0.2.0, installed Debian/GNOME native Wayland workflows and upgrade/rollback under PKG-2. Publication is separate.
 
-Use the shared checkout and `target` cache in the current single-agent
-session. Serialize Cargo and fixture runs. Do not clean the cache to diagnose a
-failure. Record exact source hashes, commands, counts and raw sanitized logs.
+Use the shared checkout and `target` cache in the current single-agent session. Serialize Cargo and fixture runs. Do not clean the cache to diagnose a failure. Record exact source hashes, commands, counts and raw sanitized logs.
 
 ## B4 completion checklist
 
@@ -206,13 +122,8 @@ failure. Record exact source hashes, commands, counts and raw sanitized logs.
 - [ ] MySQL and SQL Server TLS through SSH have positive and negative native proof.
 - [ ] Transport audit, Flatpak refusal and registered GTK session flow pass.
 - [ ] Installed Arch native Wayland and upgrade/rollback evidence recorded.
-- [ ] Post-0.2.0: installed GNOME native Wayland evidence recorded (PKG-2;
-  Debian rules/helper implementation is complete under B4-10).
+- [ ] Post-0.2.0: installed GNOME native Wayland evidence recorded (PKG-2; Debian rules/helper implementation is complete under B4-10).
 
 ## Historical packets
 
-The [October 2 dispatch plan](archive/b4-history.md#october-2-review-and-dispatch-plan),
-[October 3 checkpoint](archive/b4-history.md#october-3-integration-checkpoint), original
-lane tables, seven decision IDs, worktree reservations and detailed reproducers
-are dated history. Their old “open”, “next” and “not merged” wording does not
-override the current status above. Keep original task IDs when adding evidence.
+The [October 2 dispatch plan](archive/b4-history.md#october-2-review-and-dispatch-plan), [October 3 checkpoint](archive/b4-history.md#october-3-integration-checkpoint), original lane tables, seven decision IDs, worktree reservations and detailed reproducers are dated history. Their old “open”, “next” and “not merged” wording does not override the current status above. Keep original task IDs when adding evidence.

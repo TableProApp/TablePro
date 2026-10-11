@@ -19,17 +19,14 @@ Changing the GUI stack after product development starts would require a large re
 
 ## Decision
 
-BookiE uses Rust and the gtk-rs stack on Linux only. Two native-library floors
-apply; they are not interchangeable:
+BookiE uses Rust and the gtk-rs stack on Linux only. Two native-library floors apply; they are not interchangeable:
 
 | Floor | GTK4 | GLib | libadwaita | GtkSourceView | Where it applies |
 |---|---|---|---|---|---|
 | Build / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 distro-floor jobs, local builds that target those distros ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)) |
 | GNOME 50 package line | 4.22+ | 2.88+ | 1.9+ | 5.18+ | GitHub Release `.deb` that expects GNOME 50 libraries; Arch/Omarchy packages that ship against current GNOME |
 
-Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor
-for both. Do not treat the package line as the only supported build, and do not
-treat the build floor as the release artifact's runtime baseline.
+Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor for both. Do not treat the package line as the only supported build, and do not treat the build floor as the release artifact's runtime baseline.
 
 ## Rationale
 
@@ -47,9 +44,7 @@ Accepted:
 - GNOME behavior is the primary desktop reference.
 - KDE Plasma is supported through GTK and standard desktop services.
 - Wayland is the primary display path. X11 remains supported by GTK.
-- GTK, libadwaita, Relm4, and system GLib requirements must be upgraded together
-  within a chosen floor; raising the package line does not silently raise the
-  distro-floor CI target.
+- GTK, libadwaita, Relm4, and system GLib requirements must be upgraded together within a chosen floor; raising the package line does not silently raise the distro-floor CI target.
 - Native development packages are required for local builds.
 
 Gained:

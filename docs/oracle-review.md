@@ -1,13 +1,8 @@
 # Oracle review of the value and policy tests (before 0.2.0)
 
-A passing test only says the code agrees with the test. This review asks the
-other question: **where did the expected value come from?** If it came from the
-database, a standard or a written rule, the test defines the right behaviour. If
-it came from the code under test, a green gate proves nothing.
+A passing test only says the code agrees with the test. This review asks the other question: **where did the expected value come from?** If it came from the database, a standard or a written rule, the test defines the right behaviour. If it came from the code under test, a green gate proves nothing.
 
-Related: [value contracts](value-contracts.md) (the shared corpus and the rules
-for values), [manual verification](manual-verification-0.2-features.md) (the
-installed checks this review sits beside) and ledger row TEST-32.
+Related: [value contracts](value-contracts.md) (the shared corpus and the rules for values), [manual verification](manual-verification-0.2-features.md) (the installed checks this review sits beside) and ledger row TEST-32.
 
 ## Oracle classes
 
@@ -19,23 +14,13 @@ installed checks this review sits beside) and ledger row TEST-32.
 | C, computed | The expectation is computed by the code under test, or by a copy of its algorithm | an expected string built with the same formatter the driver uses |
 | P, policy | The expected decision comes from an ADR, `AGENTS.md` or a written rule | "TRUNCATE needs approval in Local" |
 
-N and P are strong. R is strong against loss but blind to symmetric errors (the
-code stores a value wrongly and reads it back wrongly the same way), so every R
-test needs one manual native check, which is Part B. H is acceptable when the
-literal is checked once against the real engine, with the command recorded. C is
-weak and should be replaced.
+N and P are strong. R is strong against loss but blind to symmetric errors (the code stores a value wrongly and reads it back wrongly the same way), so every R test needs one manual native check, which is Part B. H is acceptable when the literal is checked once against the real engine, with the command recorded. C is weak and should be replaced.
 
-Verdict for each test: **OK**, **WEAK** (right idea, fragile or one-sided),
-**WRONG** (the expectation is not what the engine or the rule says) or
-**UNKNOWN** (needs a person to decide).
+Verdict for each test: **OK**, **WEAK** (right idea, fragile or one-sided), **WRONG** (the expectation is not what the engine or the rule says) or **UNKNOWN** (needs a person to decide).
 
 ## Part A: sample sheet for the lane owners
 
-B3 fills the value rows and B4 the policy rows. Read the test, find where each
-expected value comes from, then fill the last three columns. The sample was drawn
-across engines and areas, and the same procedure then applies to the other
-value-contract tests (457 of them). A pull request that adds a test names its
-oracle class in the description.
+B3 fills the value rows and B4 the policy rows. Read the test, find where each expected value comes from, then fill the last three columns. The sample was drawn across engines and areas, and the same procedure then applies to the other value-contract tests (457 of them). A pull request that adds a test names its oracle class in the description.
 
 | # | Area | Test (file:line) | What it asserts | Class | Verdict | Notes |
 |---|---|---|---|---|---|---|
@@ -57,29 +42,21 @@ oracle class in the description.
 How to answer a row quickly:
 
 1. Open the test and list every expected literal or expression.
-2. For each, write where it comes from: the server (N), the corpus (R), your own
-   typing (H), the code under test (C) or a rule (P, with the rule's link).
+2. For each, write where it comes from: the server (N), the corpus (R), your own typing (H), the code under test (C) or a rule (P, with the rule's link).
 3. If it is H, say whether it was checked against the real engine, and how.
 4. Put WEAK or WRONG rows in the ledger with the file and line.
 
 ## Part B: real values by hand (maintainer and UX lane)
 
-This is the first pass and it is manual, so it belongs with the installed checks
-before 0.2.0. The point is to see the value the database really stores, without
-our code in between.
+This is the first pass and it is manual, so it belongs with the installed checks before 0.2.0. The point is to see the value the database really stores, without our code in between.
 
-For each engine you can reach (PostgreSQL, MySQL or MariaDB, SQL Server, SQLite,
-DuckDB, ClickHouse, MongoDB), use its own client and a scratch table or
-collection:
+For each engine you can reach (PostgreSQL, MySQL or MariaDB, SQL Server, SQLite, DuckDB, ClickHouse, MongoDB), use its own client and a scratch table or collection:
 
-1. Create a table with the engine's native types for an integer, a float, a
-   decimal and a text column.
+1. Create a table with the engine's native types for an integer, a float, a decimal and a text column.
 2. Insert the values below with the native client, so our code is not involved.
 3. Read them back with the native client and note the exact text it prints.
-4. Open the same table in the app and compare the grid cell, the cell's value
-   dialog and a CSV export to the native text.
-5. Edit one value in the grid, save it, and read it back with the native client.
-   The stored value must be the one you typed.
+4. Open the same table in the app and compare the grid cell, the cell's value dialog and a CSV export to the native text.
+5. Edit one value in the grid, save it, and read it back with the native client. The stored value must be the one you typed.
 6. Record the result next to each line, never blank.
 
 Values (from `tests/data/value-contract.json`):
@@ -91,9 +68,7 @@ Values (from `tests/data/value-contract.json`):
 | Decimal | `0.00000001`, `1.23000000` (trailing zeros kept), `99999999999999999999.99999999` |
 | Text | empty string, `NULL` (the word), `O'Brien`, `漢字 😀 é`, `ends in \`, a line break and a tab, and SQL NULL |
 
-The three cases people get wrong are worth looking at first: the word `NULL`
-versus an empty string versus real NULL, a decimal whose trailing zeros must
-stay, and an integer above 2^53 that must not pass through a float.
+The three cases people get wrong are worth looking at first: the word `NULL` versus an empty string versus real NULL, a decimal whose trailing zeros must stay, and an integer above 2^53 that must not pass through a float.
 
 Result record, one row per engine and kind:
 
@@ -115,8 +90,6 @@ Part B, mock for a PostgreSQL decimal:
 
 ## After the first pass
 
-- Fill Part A for the sample, then extend it to the rest of the value-contract
-  tests by area: B3 for values, B4 for policy.
+- Fill Part A for the sample, then extend it to the rest of the value-contract tests by area: B3 for values, B4 for policy.
 - Every WEAK or WRONG row becomes a ledger row or a small test pull request.
-- Every Part B failure is a product bug: record it in the ledger with the engine,
-  the value and what each side showed.
+- Every Part B failure is a product bug: record it in the ledger with the engine, the value and what each side showed.

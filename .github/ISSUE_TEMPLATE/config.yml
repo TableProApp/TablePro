@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions and ideas
-    url: https://github.com/TableProApp/TablePro/discussions
+    url: https://github.com/cozyGarage/BookiE/discussions
     about: Ask usage questions and discuss ideas before opening an issue
   - name: Security reports
-    url: https://github.com/TableProApp/TablePro/security/advisories/new
+    url: https://github.com/cozyGarage/BookiE/security/advisories/new
     about: Report a vulnerability privately. Do not include secrets or private data.

@@ -16,9 +16,7 @@ If you find yourself adding a global singleton for application state, you are no
 
 ## Component structure
 
-Use [the existing editor component](../apps/linux/app/src/ui/editor/mod.rs) for the
-message/command shape. Commands return `Result` outcomes to the update loop;
-a failed storage read must remain visible rather than becoming an empty model.
+Use [the existing editor component](../apps/linux/app/src/ui/editor/mod.rs) for the message/command shape. Commands return `Result` outcomes to the update loop; a failed storage read must remain visible rather than becoming an empty model.
 
 Naming:
 
@@ -111,5 +109,4 @@ Relm4 ships test helpers but they require a running GTK main loop, which is awkw
 
 Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. See the tests in `services/browse_query.rs` and `services/database_service.rs`.
 
-Completion identity and reconnect behavior are described in
-[architecture](../ARCHITECTURE.md) and constrained by ADR 0008.
+Completion identity and reconnect behavior are described in [architecture](../ARCHITECTURE.md) and constrained by ADR 0008.

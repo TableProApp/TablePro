@@ -1,15 +1,8 @@
 # Type and value evidence index
 
-The shared standard is [ADR 0007](decisions/0007-type-and-value-preservation.md).
-[The B3 board](type-contract-strategy.md) owns remaining tasks. This page is a
-bounded entry into case evidence, not another conversion policy or aggregate
-support claim. Updated 2026-10-09; this index links evidence but does not run tests.
+The shared standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). [The B3 board](type-contract-strategy.md) owns remaining tasks. This page is a bounded entry into case evidence, not another conversion policy or aggregate support claim. Updated 2026-10-09; this index links evidence but does not run tests.
 
-Case narratives that previously lived above and below the Scope table are in
-[value-contract history](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2).
-Prefer the Scope table and evidence manifests; do not copy counts into the sprint
-or B3 board. Open acceptance gaps stay on the
-[B3 retest table](type-contract-strategy.md#retest-indicators).
+Case narratives that previously lived above and below the Scope table are in [value-contract history](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2). Prefer the Scope table and evidence manifests; do not copy counts into the sprint or B3 board. Open acceptance gaps stay on the [B3 retest table](type-contract-strategy.md#retest-indicators).
 
 ## Run
 
@@ -20,21 +13,11 @@ From the repository root, use the existing value runner:
 ./scripts/test-value-contracts.sh --gtk --duckdb --unit-only
 ```
 
-The first selects all eight drivers and shared consumers. Six server engines
-need Docker; SQLite/DuckDB are local, and app/grid compilation needs GTK libs.
-Exclusions are recorded when features are omitted. Driver contracts use the
-`value_contract` prefix; a new selector must have execution ownership.
-Missing suites, zero matches, compilation/test errors and fixture timeouts fail.
-Each suite has a 420-second timeout; reports/logs go to `target/quality/*-values/`.
-See [testing](testing.md) and
-[validation](validation-playbook.md) for affected layers and evidence requirements.
+The first selects all eight drivers and shared consumers. Six server engines need Docker; SQLite/DuckDB are local, and app/grid compilation needs GTK libs. Exclusions are recorded when features are omitted. Driver contracts use the `value_contract` prefix; a new selector must have execution ownership. Missing suites, zero matches, compilation/test errors and fixture timeouts fail. Each suite has a 420-second timeout; reports/logs go to `target/quality/*-values/`. See [testing](testing.md) and [validation](validation-playbook.md) for affected layers and evidence requirements.
 
 ## Case lookup
 
-Detailed native oracles, exact selectors and dated results are preserved in
-[value-contract history](archive/value-contract-history.md). Use a Scope row
-below, then open only that manifest or history heading. One starting point does
-not represent all support for an engine.
+Detailed native oracles, exact selectors and dated results are preserved in [value-contract history](archive/value-contract-history.md). Use a Scope row below, then open only that manifest or history heading. One starting point does not represent all support for an engine.
 
 | Scope | Evidence entry points |
 | --- | --- |
@@ -90,15 +73,6 @@ not represent all support for an engine.
 
 ## Evidence updates
 
-Add or update one named case in the ledger with the ADR 0007 outcome, native
-type/configuration, independent oracle, selector, initial failure, source SHA/
-fingerprint and actual result. Use the [bounded record](type-contract-strategy.md#bounded-case-record).
-Link it from its task; do not copy the same result/count into the sprint and
-strategy. Checked-in test source is not execution evidence.
+Add or update one named case in the ledger with the ADR 0007 outcome, native type/configuration, independent oracle, selector, initial failure, source SHA/ fingerprint and actual result. Use the [bounded record](type-contract-strategy.md#bounded-case-record). Link it from its task; do not copy the same result/count into the sprint and strategy. Checked-in test source is not execution evidence.
 
-Some historical `target/quality` paths are unavailable in this checkout; the
-[consistency review](archive/architecture-consistency-review-2026-10-03.md#evidence-audit)
-records the known gaps. Retained hashes/summaries cannot recover missing raw logs.
-Retrieve exact-SHA artifacts or rerun the owning gate before using unavailable
-proof for acceptance. Native fixtures, hosted CI, installed GTK, package rollback
-and Wayland/soak remain separately attributed.
+Some historical `target/quality` paths may be missing from a fresh clone; the [consistency review](archive/architecture-consistency-review-2026-10-03.md#evidence-audit) records the known gaps. Retained hashes/summaries cannot recover missing raw logs. Retrieve exact-SHA artifacts or rerun the owning gate before using unavailable proof for acceptance. Native fixtures, hosted CI, installed GTK, package rollback and Wayland/soak remain separately attributed.

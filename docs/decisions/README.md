@@ -2,6 +2,8 @@
 
 These documents record the reasons behind major technical choices. Accepted decisions stay stable. A later decision may supersede an earlier one by linking to it explicitly.
 
+Which forks already have an answer (and which are still open) is listed in the [decision checklist](checklist.md). Prefer a link there over inventing a second record for the same choice.
+
 ## Format
 
 ```markdown
@@ -51,9 +53,7 @@ Other options and why they were rejected.
 | [0014](0014-full-table-export-snapshot.md) | Full table exports use one read snapshot | Accepted | Paged exports must read one guarded database snapshot or refuse before publishing a file |
 | [0015](0015-database-snapshots.md) | Database snapshots and restore | Accepted (0.2.x after 0.2.0) | Per-engine native snapshots behind a capability flag, generated names, one guarded and audited operation per action, a safety copy on restore |
 
-Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted
-means the architecture choice is recorded; implementation and runtime acceptance
-remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
+Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted means the architecture choice is recorded; implementation and runtime acceptance remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
 
 ## Adding a decision
 
@@ -61,4 +61,5 @@ remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
 2. Copy the format above into a lowercase dash-separated filename.
 3. Keep the document focused on one decision.
 4. Add it to the index in the same change.
-5. Submit it through the normal review process.
+5. Update the [checklist](checklist.md) row for that fork (Decided with a link, or leave Open).
+6. Submit it through the normal review process.

@@ -16,11 +16,7 @@ TablePro stores credentials through the Secret Service D-Bus API using the `oo7`
 
 Items use the schema `com.tablepro.linux.Password` with connection and secret-kind attributes. The storage crate exposes typed functions for database passwords, SSH passwords, SSH key passphrases, and MCP secrets.
 
-An absent keyring item returns `Ok(None)`. Unavailable, locked or cancelled
-Secret Service access returns a typed `StorageError`; saved transport assembly
-propagates the error and refuses connection assembly. Callers may offer recovery
-or an explicit credential prompt, but must not disguise failed access as an
-absent item. The application never falls back to a plain credential file.
+An absent keyring item returns `Ok(None)`. Unavailable, locked or cancelled Secret Service access returns a typed `StorageError`; saved transport assembly propagates the error and refuses connection assembly. Callers may offer recovery or an explicit credential prompt, but must not disguise failed access as an absent item. The application never falls back to a plain credential file.
 
 ## Rationale
 
@@ -52,6 +48,4 @@ Gained:
 
 **Application-managed encrypted files.** Rejected because they require a master-key lifecycle, recovery design, and cryptographic storage format that the system keyring already provides.
 
-**Prompt on every connection.** Rejected as the normal user experience. A prompt
-is an explicit recovery choice; keyring failures remain distinguishable from
-missing items.
+**Prompt on every connection.** Rejected as the normal user experience. A prompt is an explicit recovery choice; keyring failures remain distinguishable from missing items.

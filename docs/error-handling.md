@@ -17,9 +17,7 @@ Two error styles, applied per layer. Mixing them is a review red flag.
 
 ## `thiserror` patterns
 
-Use the actual [DriverError](../crates/core/src/error.rs) and
-[StorageError](../crates/storage/src/error.rs) variants. Keep examples from
-becoming a second enum definition that omits cancellation/unknown outcomes.
+Use the actual [DriverError](../crates/core/src/error.rs) and [StorageError](../crates/storage/src/error.rs) variants. Keep examples from becoming a second enum definition that omits cancellation/unknown outcomes.
 
 Rules:
 
@@ -29,10 +27,7 @@ Rules:
 
 ## Driver-side error mapping
 
-Map underlying errors into the existing domain variants. Follow the production
-mapping for the affected driver rather than copying a generic SQLx example;
-connect refusal, established loss, authentication and certificate failure have
-different meanings. Keep native negative controls in the owning driver tier.
+Map underlying errors into the existing domain variants. Follow the production mapping for the affected driver rather than copying a generic SQLx example; connect refusal, established loss, authentication and certificate failure have different meanings. Keep native negative controls in the owning driver tier.
 
 The driver does not pass through `sqlx::Error` to callers. Callers see only `DriverError`.
 
@@ -40,9 +35,7 @@ Certificate verification failures reach sqlx as I/O errors, so the PostgreSQL dr
 
 ## UI display
 
-`app` translates domain errors into recovery messages in
-[error_text](../apps/linux/app/src/ui/error_text.rs). Preserve typed categories
-through assembly and wrappers before selecting the user-facing message.
+`app` translates domain errors into recovery messages in [error_text](../apps/linux/app/src/ui/error_text.rs). Preserve typed categories through assembly and wrappers before selecting the user-facing message.
 
 Do not display raw `Debug` or `Display` output for domain errors. Always go through this layer.
 

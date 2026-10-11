@@ -1,6 +1,6 @@
-# Contributing to TablePro
+# Contributing to BookiE
 
-TablePro is a Linux-only Rust project. Current development happens on the `linux` branch, and pull requests should target that branch.
+BookiE is a Linux-only Rust project (formerly TablePro on this branch). Current development happens on the `linux` branch, and pull requests should target that branch in [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE).
 
 Every shipped feature must remain available without an account, license key, subscription, paid tier, or remote entitlement check.
 
@@ -11,12 +11,12 @@ The rules every change follows (code style, tests, security, commits, the Forgej
 The workspace requires Rust 1.98. For the build / CI floor install GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13), plus OpenSSL, Secret Service, Kerberos, Clang, `pkg-config`, and standard build tools. The GNOME 50 package line is higher; see [`README.md`](README.md) and [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md).
 
 ```bash
-git clone https://github.com/<your-name>/TablePro.git
-cd TablePro
+git clone https://github.com/<your-name>/BookiE.git
+cd BookiE
 git checkout linux
 rustc --version
 pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5
-cargo run --manifest-path Cargo.toml -p tablepro-app
+cargo run -p tablepro-app
 ```
 
 Use a short-lived local branch when useful, then open the pull request against `linux`.
@@ -70,12 +70,12 @@ Run from the repository root:
 
 ```bash
 bash scripts/check-file-size.sh
-cargo fmt --manifest-path Cargo.toml --all -- --check
-cargo clippy --manifest-path Cargo.toml --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
-cargo test --manifest-path Cargo.toml --workspace --exclude tablepro-driver-duckdb --lib --bins
-cargo test --manifest-path Cargo.toml -p tablepro-mcp --test enforce_policy
-cargo test --manifest-path Cargo.toml -p tablepro-mcp --test timeout_audit
-(cd linux && cargo deny check)
+cargo fmt --all -- --check
+cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
+cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
+cargo test -p tablepro-mcp --test enforce_policy
+cargo test -p tablepro-mcp --test timeout_audit
+cargo deny check
 ```
 
 Driver integration tests require Docker or a compatible Podman socket. See [`docs/testing.md`](docs/testing.md).
@@ -116,7 +116,7 @@ Keep one logical change per commit. Public API changes must update all callers a
 
 ## Reporting bugs
 
-Open a [bug report](https://github.com/TableProApp/TablePro/issues/new?template=bug_report.yml) with the TablePro version, Linux distribution, desktop session, reproduction steps, database type and version, and redacted logs.
+Open a [bug report](https://github.com/cozyGarage/BookiE/issues/new?template=bug_report.yml) with the BookiE version, Linux distribution, desktop session, reproduction steps, database type and version, and redacted logs.
 
 ## License
 

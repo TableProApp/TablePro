@@ -1,6 +1,6 @@
 # BookiE
 
-BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. Current development is on the `linux` branch. The Cargo workspace lives at the repository root and requires Rust 1.98.
+BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE); current development is on the `linux` branch. The Cargo workspace lives at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`) and requires Rust 1.98.
 
 Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [October 3 consistency review](docs/archive/architecture-consistency-review-2026-10-03.md) reconciles the accumulated documentation. Earlier audits prove their recorded source trees; package release approval remains separate.
 
@@ -90,26 +90,19 @@ rustc --version
 From the repository root:
 
 ```bash
-cargo run --manifest-path Cargo.toml -p tablepro-app
-```
-
-Or from the workspace directory:
-
-```bash
-cd linux
 cargo run -p tablepro-app
 ```
 
 Optional DuckDB driver:
 
 ```bash
-cargo run --manifest-path Cargo.toml -p tablepro-app --features duckdb
+cargo run -p tablepro-app --features duckdb
 ```
 
 A plain `cargo run` shares settings, saved connections, the keyring entries and the single-instance lock with an installed BookiE. To keep test data apart, build with the development profile, which uses `~/.config/tablepro-devel` and its own keyring schema:
 
 ```bash
-TABLEPRO_PROFILE=development cargo run --manifest-path Cargo.toml -p tablepro-app
+TABLEPRO_PROFILE=development cargo run -p tablepro-app
 ```
 
 Starting a second copy of the same profile asks the running one to show its window and then exits.
@@ -146,10 +139,9 @@ GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash scr
 
 ## Packaging
 
-The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [apps/linux/packaging/README.md](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit:
+The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [apps/linux/packaging/README.md](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit at the repository root:
 
 ```bash
-cd linux
 TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION=0.1.5 ./scripts/build-arch-rc.sh
 ```
 

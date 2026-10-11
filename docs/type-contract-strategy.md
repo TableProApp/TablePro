@@ -1,14 +1,8 @@
 # B3 type and consumer work board
 
-The shared technical standard is [ADR 0007](decisions/0007-type-and-value-preservation.md).
-This page owns remaining B3 work; [the sprint](bookie-0.2-sprint.md) owns order
-and acceptance. Updated 2026-10-10; new cases link to their source tests and PR
-validation comments, while this summary is not itself runtime evidence.
+The shared technical standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). This page owns remaining B3 work; [the sprint](bookie-0.2-sprint.md) owns order and acceptance. Updated 2026-10-10; new cases link to their source tests and PR validation comments, while this summary is not itself runtime evidence.
 
-Detailed case narrative formerly on this page is in
-[type-contract history](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2).
-Case proof lookup is [value-contracts.md](value-contracts.md). This board owns
-remaining B3 scope only.
+Detailed case narrative formerly on this page is in [type-contract history](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2). Case proof lookup is [value-contracts.md](value-contracts.md). This board owns remaining B3 scope only.
 
 ## Retest indicators
 
@@ -26,111 +20,15 @@ Keep these open until re-proven on a current SHA. Full wording is in the archive
 
 ## Current evidence and next targets
 
-Unfiltered, unsorted, keyed MongoDB browse switches to `_id` keyset queries at
-the shared 10,000-row threshold. The driver now accepts that generated query
-shape and applies an ascending `_id` seek. Parser tests refuse non-`_id`
-predicates and zero-sized windows. Native regressions cover integer, ObjectId
-and binary UUID `_id` cursors on MongoDB 7 ([tests](../crates/drivers/mongodb/tests/support/browse_keyset.rs)). The local 1m-row
-diagnostic measured 2.380 ms at offset 500k and 2.373 ms at offset 999,950,
-compared with 135.902 ms and 266.040 ms through direct offset reads. Raw
-samples and source fingerprints are in the [PR #493 evidence comment](https://github.com/cozyGarage/BookiE/pull/493#issuecomment-6095435772).
-Generated equality, inequality, comparison, `BETWEEN`, `IN`/`NOT IN`, null,
-`LIKE`, and `ILIKE` pages preserve filters in offset and `_id` keyset queries in
-`filtered_offset_pages_keep_filters_with_and_without_parameters`,
-`filtered_keyset_page_keeps_the_filter_and_cursor`, and
-`null_filtered_keyset_page_excludes_missing_fields` and
-`pattern_keyset_filters_match_like_wildcards_without_matching_nulls`. These
-cover OR-of-equality, bound-parameter order, explicit null versus missing,
-SQL's three-valued inequality and membership behavior, wildcard matching,
-case-insensitive matching, literal regex metacharacters, and `ESCAPE` handling.
-Repeated predicates on one field retain their conjunction through a MongoDB
-`$and` selector. Null comparison parameters are refused. Negated ranges, sorted
-and keyless deep-page behavior, installed Arch/Wayland, Debian/GNOME and
-network-latency acceptance remain open.
+Unfiltered, unsorted, keyed MongoDB browse switches to `_id` keyset queries at the shared 10,000-row threshold. The driver now accepts that generated query shape and applies an ascending `_id` seek. Parser tests refuse non-`_id` predicates and zero-sized windows. Native regressions cover integer, ObjectId and binary UUID `_id` cursors on MongoDB 7 ([tests](../crates/drivers/mongodb/tests/support/browse_keyset.rs)). The local 1m-row diagnostic measured 2.380 ms at offset 500k and 2.373 ms at offset 999,950, compared with 135.902 ms and 266.040 ms through direct offset reads. Raw samples and source fingerprints are in the [PR #493 evidence comment](https://github.com/cozyGarage/BookiE/pull/493#issuecomment-6095435772). Generated equality, inequality, comparison, `BETWEEN`, `IN`/`NOT IN`, null, `LIKE`, and `ILIKE` pages preserve filters in offset and `_id` keyset queries in `filtered_offset_pages_keep_filters_with_and_without_parameters`, `filtered_keyset_page_keeps_the_filter_and_cursor`, and `null_filtered_keyset_page_excludes_missing_fields` and `pattern_keyset_filters_match_like_wildcards_without_matching_nulls`. These cover OR-of-equality, bound-parameter order, explicit null versus missing, SQL's three-valued inequality and membership behavior, wildcard matching, case-insensitive matching, literal regex metacharacters, and `ESCAPE` handling. Repeated predicates on one field retain their conjunction through a MongoDB `$and` selector. Null comparison parameters are refused. Negated ranges, sorted and keyless deep-page behavior, installed Arch/Wayland, Debian/GNOME and network-latency acceptance remain open.
 
-The SQL Server test fixture waits for an authenticated `SELECT 1` as `sa`,
-retrying login rejection for at most 60 seconds after container readiness logs.
-On timeout it includes container stdout/stderr with the fixture password
-redacted. The integration and wide-numeric targets share this fixture.
-On the linux-synced PR #465 head, the serial integration target passed 43/43 in
-303.85 seconds and wide-numeric passed 5/5 in 15.90 seconds, including
-`a_column_comment_round_trips_from_its_extended_property`; preflight passed and
-Forgejo run 115 passed. PR #465 merged as `5727bc8`. The readiness probe does
-not prove the executor's earlier `AuthFailed` was caused by SQL Server's
-script-upgrade window.
+The SQL Server test fixture waits for an authenticated `SELECT 1` as `sa`, retrying login rejection for at most 60 seconds after container readiness logs. On timeout it includes container stdout/stderr with the fixture password redacted. The integration and wide-numeric targets share this fixture. On the linux-synced PR #465 head, the serial integration target passed 43/43 in 303.85 seconds and wide-numeric passed 5/5 in 15.90 seconds, including `a_column_comment_round_trips_from_its_extended_property`; preflight passed and Forgejo run 115 passed. PR #465 merged as `5727bc8`. The readiness probe does not prove the executor's earlier `AuthFailed` was caused by SQL Server's script-upgrade window.
 
-SQL-backed browse rows now keep an 8 KiB text/JSON/binary sample and original
-byte count in each materialized grid row. View Value refetches one column using
-the complete primary key through the policy-guarded connection; the query caps
-at two rows and refuses missing or ambiguous matches. PostgreSQL enum/domain
-key casts have planner regressions. Arbitrary SQL editor result grids now use the
-same typed 8 KiB preview and byte count. View Value reads the exact full value
-from the already-returned guarded result instead of rerunning arbitrary SQL.
-The shared result still retains full values and remains the main memory owner.
-Materialized grid rows now read from it without cloning long cell payloads;
-rows detach only when the store replaces its source, preserving held rows and
-pending edits without pinning the old result. A 1 MiB text pointer regression
-checks the full value and preview. The projection test preserves SQL NULL versus
-unfetched cells after replacement (`shared_result_rows_do_not_clone_large_cell_payloads_into_row_objects`);
-`replacing_shared_rows_preserves_edits_on_held_rows` covers pending edits during detachment.
-MongoDB refetches selected fields by `_id`; Redis string refetch binds arbitrary
-key bytes. Local SQLite and
-Docker MySQL service tests refetch a 9,000-byte BLOB by
-composite key and compare its exact returned bytes with native storage oracles;
-the MySQL test also checks `LONGBLOB`, byte length and the native hex prefix. A
-Docker PostgreSQL 16 test uses catalog enum/domain key metadata, confirms both
-native types with `pg_typeof`, and refetches the same-size BLOB through the
-typed composite key. The SQLite test also runs the same parameterized refetch
-through `PolicyGuard` and compares the exact bytes. MySQL and PostgreSQL also
-run the same guarded query; the Docker cases retain native storage and key-type
-oracles. SQL Server now covers the guarded refetch with a composite VARBINARY/
-BIGINT key and checks the 9,000-byte payload against native `DATALENGTH` and
-`fn_varbintohexstr` results (`mssql_value_query_refetches_the_exact_blob_for_a_composite_key`).
-DuckDB now has a feature-gated app-service contract that refetches a 9,000-byte
-BLOB through `PolicyGuard` using a hostile composite key; native storage class,
-length and prefix checks prove the value before refetch. ClickHouse also checks
-a guarded 12,000-byte String refetch with native type/length/prefix oracles.
-MongoDB browse cells now also preview long text, binary and structured values
-and refetch one selected field through a bound `_id` query under `PolicyGuard`.
-Its Docker app-service contract binds an ObjectId and checks exact 9,000-byte
-text, generic binary and nested BSON document values against native MongoDB
-storage. MongoDB browse and paged find requests sort by unique _id before
-applying skip/limit, so page boundaries remain deterministic. Redis string
-refetch binds arbitrary key bytes and checks an exact
-9,000-byte value through `PolicyGuard` against native Redis GET. Arbitrary SQL,
-shared result memory, installed GTK and memory profiling remain open under
-PERF-10.
-SQLite's JSON1 `json_each` runtime values are covered by
-`runtime_typed_values::json_each_values_keep_their_runtime_storage_classes`:
-SQLite `type` and `typeof` oracles distinguish integer, real, text, SQL NULL,
-boolean, object and array rows while the driver preserves primitive values and
-the text fallback for nested JSON. The app contract also round-trips the values
-through typed CSV into STRICT `ANY`, checking each restored storage class. The
-focused driver and app tests passed 5/5 and 1/1. This branch adds object-member
-key coverage for empty, numeric-looking, literal `NULL` and Unicode text, with
-native storage-class and typed-CSV restore checks. It also covers JSON1
-`json_object()` and `json_array()` as exact text, plus JSONB as native BLOB
-bytes through typed CSV restore. The JSONB driver and app selectors passed
-locally on SQLite 3.53.4. On commit `db051ced7`,
-`DISTRO_FLOOR_INSTALLED=1 bash scripts/test-distro-floor.sh debian:13` also
-passed, including the typed app tests and installed GTK suite. Forgejo run 132
-on `da6b85129` passed both JSONB selectors; the overall gate failed in the
-consumer tier when the ignored MySQL approval-router test hit
-`WaitContainer(StartupTimeout)`. That selector passed locally. PR #488's
-Forgejo run 135 passed all 28 jobs on `0a72980e`; the PR merged as
-`217e3dc7`.
+SQL-backed browse rows now keep an 8 KiB text/JSON/binary sample and original byte count in each materialized grid row. View Value refetches one column using the complete primary key through the policy-guarded connection; the query caps at two rows and refuses missing or ambiguous matches. PostgreSQL enum/domain key casts have planner regressions. Arbitrary SQL editor result grids now use the same typed 8 KiB preview and byte count. View Value reads the exact full value from the already-returned guarded result instead of rerunning arbitrary SQL. The shared result still retains full values and remains the main memory owner. Materialized grid rows now read from it without cloning long cell payloads; rows detach only when the store replaces its source, preserving held rows and pending edits without pinning the old result. A 1 MiB text pointer regression checks the full value and preview. The projection test preserves SQL NULL versus unfetched cells after replacement (`shared_result_rows_do_not_clone_large_cell_payloads_into_row_objects`); `replacing_shared_rows_preserves_edits_on_held_rows` covers pending edits during detachment. MongoDB refetches selected fields by `_id`; Redis string refetch binds arbitrary key bytes. Local SQLite and Docker MySQL service tests refetch a 9,000-byte BLOB by composite key and compare its exact returned bytes with native storage oracles; the MySQL test also checks `LONGBLOB`, byte length and the native hex prefix. A Docker PostgreSQL 16 test uses catalog enum/domain key metadata, confirms both native types with `pg_typeof`, and refetches the same-size BLOB through the typed composite key. The SQLite test also runs the same parameterized refetch through `PolicyGuard` and compares the exact bytes. MySQL and PostgreSQL also run the same guarded query; the Docker cases retain native storage and key-type oracles. SQL Server now covers the guarded refetch with a composite VARBINARY/ BIGINT key and checks the 9,000-byte payload against native `DATALENGTH` and `fn_varbintohexstr` results (`mssql_value_query_refetches_the_exact_blob_for_a_composite_key`). DuckDB now has a feature-gated app-service contract that refetches a 9,000-byte BLOB through `PolicyGuard` using a hostile composite key; native storage class, length and prefix checks prove the value before refetch. ClickHouse also checks a guarded 12,000-byte String refetch with native type/length/prefix oracles. MongoDB browse cells now also preview long text, binary and structured values and refetch one selected field through a bound `_id` query under `PolicyGuard`. Its Docker app-service contract binds an ObjectId and checks exact 9,000-byte text, generic binary and nested BSON document values against native MongoDB storage. MongoDB browse and paged find requests sort by unique _id before applying skip/limit, so page boundaries remain deterministic. Redis string refetch binds arbitrary key bytes and checks an exact 9,000-byte value through `PolicyGuard` against native Redis GET. Arbitrary SQL, shared result memory, installed GTK and memory profiling remain open under PERF-10. SQLite's JSON1 `json_each` runtime values are covered by `runtime_typed_values::json_each_values_keep_their_runtime_storage_classes`: SQLite `type` and `typeof` oracles distinguish integer, real, text, SQL NULL, boolean, object and array rows while the driver preserves primitive values and the text fallback for nested JSON. The app contract also round-trips the values through typed CSV into STRICT `ANY`, checking each restored storage class. The focused driver and app tests passed 5/5 and 1/1. This branch adds object-member key coverage for empty, numeric-looking, literal `NULL` and Unicode text, with native storage-class and typed-CSV restore checks. It also covers JSON1 `json_object()` and `json_array()` as exact text, plus JSONB as native BLOB bytes through typed CSV restore. The JSONB driver and app selectors passed locally on SQLite 3.53.4. On commit `db051ced7`, `DISTRO_FLOOR_INSTALLED=1 bash scripts/test-distro-floor.sh debian:13` also passed, including the typed app tests and installed GTK suite. Forgejo run 132 on `da6b85129` passed both JSONB selectors; the overall gate failed in the consumer tier when the ignored MySQL approval-router test hit `WaitContainer(StartupTimeout)`. That selector passed locally. PR #488's Forgejo run 135 passed all 28 jobs on `0a72980e`; the PR merged as `217e3dc7`.
 
-PostgreSQL deep enum-domain parameter inference compares COALESCE, CASE,
-GREATEST and LEAST against native literal inference at depths 63 and 64, with
-the parameter on either side of GREATEST/LEAST. Text, literal `NULL`, empty
-text and SQL NULL preserve the expected parameter, expression and column types
-with both the regular and first-position shadowed `search_path` variants. A follow-up also checks the column-first COALESCE and ELSE-branch CASE parameter positions at both depths against native inference (`value_contract_deep_enum_scalar_contexts_resolve_under_shadowed_search_path`), and the selector passed locally. The two focused PostgreSQL 16 Docker tests passed; see the [earlier run evidence and current-head rerun](https://github.com/cozyGarage/BookiE/pull/491#issuecomment-6095567613).
+PostgreSQL deep enum-domain parameter inference compares COALESCE, CASE, GREATEST and LEAST against native literal inference at depths 63 and 64, with the parameter on either side of GREATEST/LEAST. Text, literal `NULL`, empty text and SQL NULL preserve the expected parameter, expression and column types with both the regular and first-position shadowed `search_path` variants. A follow-up also checks the column-first COALESCE and ELSE-branch CASE parameter positions at both depths against native inference (`value_contract_deep_enum_scalar_contexts_resolve_under_shadowed_search_path`), and the selector passed locally. The two focused PostgreSQL 16 Docker tests passed; see the [earlier run evidence and current-head rerun](https://github.com/cozyGarage/BookiE/pull/491#issuecomment-6095567613).
 
-Pick one remaining-scope cell below. Do not treat “Retain established
-contracts” as a fresh runtime pass; look up exact cases in
-[value-contracts.md](value-contracts.md) and the linked manifests. Rows
-identify work areas, not completed engine support. State the four ADR 0007
-outcomes per concrete case.
+Pick one remaining-scope cell below. Do not treat “Retain established contracts” as a fresh runtime pass; look up exact cases in [value-contracts.md](value-contracts.md) and the linked manifests. Rows identify work areas, not completed engine support. State the four ADR 0007 outcomes per concrete case.
 
 | Owner / engine | Retain established contracts | Remaining scope to select one case from |
 | --- | --- | --- |
@@ -146,9 +44,7 @@ outcomes per concrete case.
 | Evidence / mutation | Registered fixtures, independent oracles and existing scoped mutation results; the October 6 strict GTK + DuckDB value tier passed 364 selected tests across all 11 suites on clean source at `cfc99dd1`, with no missing suites ([run evidence](evidence/local-gtk-duckdb-value-tier-results-2026-10-06-cfc99dd1/manifest.json)); includes the earlier PostgreSQL float4[] Calc contract ([case evidence](evidence/postgres-float4-array-calc-reimport-results-2026-10-05/manifest.json)); enum-array subscript and clipboard runs are retained ([subscript evidence](evidence/postgres-enum-array-generate-subscripts-results-2026-10-05/manifest.json), [clipboard run evidence](evidence/local-gtk-duckdb-value-tier-tsv-clipboard-results-2026-10-05/manifest.json)); the separate 315-test local integration result remains at `d783182f` ([run evidence](evidence/local-integration-tier-results-2026-10-04/manifest.json)); the SQL scanner's 110-mutant report and follow-up checks are recorded ([mutation evidence](evidence/sql-lex-mutation-results-2026-10-06/README.md)); the PostgreSQL array dimension parser scope caught 10 of 12 mutants, with 2 unviable and none missed or timed out ([PR #149 validation](https://github.com/cozyGarage/BookiE/pull/149#issuecomment-6032390503)); zero-length span consumers now make forward progress ([guard evidence](evidence/sql-lex-zero-progress-guards-results-2026-10-06/manifest.json)) | A focused bounded-progress selector catches all ten tested cursor arithmetic variants ([evidence](evidence/sql-lex-cursor-arithmetic-guard-results-2026-10-06/manifest.json)); wider engine/type/consumer/configuration and mutation coverage remains open |
 ## 0.2.0 accepted explicit refusals
 
-The maintainer accepted these named, tested refusals out of scope for 0.2.0.
-They remain safety requirements, not exact-support claims. Every other in-scope
-row, including untested combinations, requires exact support before B3 closes.
+The maintainer accepted these named, tested refusals out of scope for 0.2.0. They remain safety requirements, not exact-support claims. Every other in-scope row, including untested combinations, requires exact support before B3 closes.
 
 | ID | Accepted gap | Evidence |
 | --- | --- | --- |
@@ -178,20 +74,10 @@ Smallest remaining gap / next action; affected files and layer ownership:
 Status: open | reproduced | fixed with named proof | blocked/unrun acceptance
 ```
 
-Use [the scenario survey](archive/b3-test-scenario-survey.md) for candidate boundaries
-and [the validation playbook](validation-playbook.md#turn-every-finding-into-a-regression)
-for execution. A defect needs initial failure, narrow correction and valid/
-invalid neighbors. Native tests assert stored kind/value and unchanged siblings.
-Register selectors/fixture ownership and preserve sanitized evidence. Keep
-unavailable reports and mutation uncertainty explicit.
+Use [the scenario survey](archive/b3-test-scenario-survey.md) for candidate boundaries and [the validation playbook](validation-playbook.md#turn-every-finding-into-a-regression) for execution. A defect needs initial failure, narrow correction and valid/ invalid neighbors. Native tests assert stored kind/value and unchanged siblings. Register selectors/fixture ownership and preserve sanitized evidence. Keep unavailable reports and mutation uncertainty explicit.
 
-Oracle/new engines are later driver projects. They must follow ADR 0007 with
-their own native semantics; another engine's fixtures are not their proof.
+Oracle/new engines are later driver projects. They must follow ADR 0007 with their own native semantics; another engine's fixtures are not their proof.
 
 ## Historical reconciliation
 
-[Type-contract history](archive/type-contract-history.md) retains the September 28–
-October 2 native/consumer matrix, later follow-ups, and the
-[2026-10-09 board narrative](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2).
-For an exact case, search its engine/type heading and inspect only that section
-and the referenced test. Do not re-import long case descriptions into this board.
+[Type-contract history](archive/type-contract-history.md) retains the September 28– October 2 native/consumer matrix, later follow-ups, and the [2026-10-09 board narrative](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2). For an exact case, search its engine/type heading and inspect only that section and the referenced test. Do not re-import long case descriptions into this board.

@@ -1,113 +1,45 @@
 # Optional upstream reference review
 
-The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared
-Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
+The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
 ## 2026-10-03: macOS main applicability review
 
-Follow-up: [U1 SQL Server handoff](archive/upstream-u1-sql-server-2026-10-03.md)
-records the manual metadata fix for rowversion and temporal period columns,
-the failing-before/passing-after native regression, and remaining U1 consumers.
+Follow-up: [U1 SQL Server handoff](archive/upstream-u1-sql-server-2026-10-03.md) records the manual metadata fix for rowversion and temporal period columns, the failing-before/passing-after native regression, and remaining U1 consumers.
 
-Reviewed macOS main at `5c2df3b60cd40c25ba86c57e3d1c87499340cb3c` against
-BookiE `linux` at `7b08dd4786db22ac38bc341f29d0f350412af82d`.
-The [review and agent work packets](archive/upstream-main-review-2026-10-03.md)
-identify SQL Server server-owned columns and identity copying, qualified
-autocomplete keys, reconnect failure handling, client-certificate integration
-and MongoDB export coverage. Its inventory distinguishes subject screening
-from inspected diffs, and the review separates source gaps from cases still
-needing a reproduction. Existing policy and cancellation protections are retained.
-The initial review was a documentation handoff. Implementation and tests belong
-to the linked U1 follow-up.
+Reviewed macOS main at `5c2df3b60cd40c25ba86c57e3d1c87499340cb3c` against BookiE `linux` at `7b08dd4786db22ac38bc341f29d0f350412af82d`. The [review and agent work packets](archive/upstream-main-review-2026-10-03.md) identify SQL Server server-owned columns and identity copying, qualified autocomplete keys, reconnect failure handling, client-certificate integration and MongoDB export coverage. Its inventory distinguishes subject screening from inspected diffs, and the review separates source gaps from cases still needing a reproduction. Existing policy and cancellation protections are retained. The initial review was a documentation handoff. Implementation and tests belong to the linked U1 follow-up.
 
 ## 2026-09-25: system OpenSSH transport
 
-Historical adoption checkpoint. The route is now assembled by shared transport
-and used by GUI/agentd; current behavior and remaining acceptance are in
-[connection handling](connections.md) and [the B4 board](b4-task-board.md).
+Historical adoption checkpoint. The route is now assembled by shared transport and used by GUI/agentd; current behavior and remaining acceptance are in [connection handling](connections.md) and [the B4 board](b4-task-board.md).
 
-`crates/ssh/src/openssh/` ports upstream's system OpenSSH transport as a second
-backend beside the russh `SshTunnel`, which is unchanged. Nothing outside the ssh
-crate uses it yet; wiring it into `transport`, storage, the app and `agentd` is a
-later slice.
+`crates/ssh/src/openssh/` ports upstream's system OpenSSH transport as a second backend beside the russh `SshTunnel`, which is unchanged. Nothing outside the ssh crate uses it yet; wiring it into `transport`, storage, the app and `agentd` is a later slice.
 
-Source: upstream `refs/remotes/upstream/linux` at `0e542e3c1`, files
-`crates/ssh/src/{argv,askpass_bridge,destination,prompt,runtime,session,forward,stderr_classify,supervisor,sweep}.rs`,
-`src/bin/tablepro-askpass.rs`, `tests/{askpass_helper.rs,openssh_session.rs}` and
-`tests/fixtures/stderr/*`. The feature landed in `d03430020 feat(ssh): add the system
-OpenSSH transport with an askpass bridge`; `55528b854 fix(ssh): read the host key
-fingerprint line from OpenSSH 9 as well` is carried in the prompt parser, which
-closes the item the 2026-09-19 entry left open.
+Source: upstream `refs/remotes/upstream/linux` at `0e542e3c1`, files `crates/ssh/src/{argv,askpass_bridge,destination,prompt,runtime,session,forward,stderr_classify,supervisor,sweep}.rs`, `src/bin/tablepro-askpass.rs`, `tests/{askpass_helper.rs,openssh_session.rs}` and `tests/fixtures/stderr/*`. The feature landed in `d03430020 feat(ssh): add the system OpenSSH transport with an askpass bridge`; `55528b854 fix(ssh): read the host key fingerprint line from OpenSSH 9 as well` is carried in the prompt parser, which closes the item the 2026-09-19 entry left open.
 
-Taken largely as written: the ControlMaster argv and `-O` control commands, the
-destination and jump-list parser, the askpass frame format and helper, the
-handshake loop with its prompt-paused deadline, the supervisor's `-O exit`, grace
-and kill sequence, the flock-guarded sweep, and the stderr classifier with its
-fixture files copied verbatim.
+Taken largely as written: the ControlMaster argv and `-O` control commands, the destination and jump-list parser, the askpass frame format and helper, the handshake loop with its prompt-paused deadline, the supervisor's `-O exit`, grace and kill sequence, the flock-guarded sweep, and the stderr classifier with its fixture files copied verbatim.
 
 Rewritten:
 
-- Errors map to a new `OpenSshError` in the ssh crate. Upstream's
-  `tablepro_core::SshFailure`, `TransportError`, `LivenessPolicy`,
-  `NetworkEndpoint` and `Transport` trait do not exist here, so the crate keeps no
-  dependency on `core`. Timeouts are an `OpenSshTimeouts` value, and a forward
-  returns its local endpoint and the original target so a caller keeps the service
-  host for TLS verification.
-- No process-global state. Upstream's `TASKS` tracker and `SshServices`/
-  `SshRuntimeCell` singletons became an explicit `OpenSshContext` holding the
-  runtime, program paths and timeouts. The runtime base is
-  `$XDG_RUNTIME_DIR/tablepro`, falling back to a private `tablepro-<uid>` directory
-  in the temp dir.
-- Forced options add `StrictHostKeyChecking=ask`, so a user's `~/.ssh/config` cannot
-  turn host-key checking off for the destination, plus `StreamLocalBindUnlink=no`,
-  `SessionType=none` and `GatewayPorts=no`. Forwards can also use a loopback TCP
-  port, not only a Unix socket.
-- Credential answering is a security rewrite. Upstream answers the first
-  `'s password:` prompt with the stored password whatever account it names, so a
-  jump host could receive the destination's password. Here a stored password answers
-  only a prompt naming exactly the configured `user@host`, and a stored passphrase
-  only a prompt naming exactly the configured key path. Keyboard-interactive text is
-  classified before the password suffix, so a server-supplied prompt cannot pose as
-  a password prompt. Everything else, and every host-key confirmation, goes to a
-  `Prompter` trait; `UnattendedPrompter` declines all of it. Confirmations need an
-  explicit accept and secret prompts need a secret, so a mismatched answer cancels.
-- The bridge rejects a peer with another uid as an error, bounds each frame to
-  64 KiB, times out a peer that sends no prompt, and builds replies in `Zeroizing`
-  buffers. The helper keeps the reply in a `Zeroizing` buffer too.
-- Not ported: `known_hosts.rs` (`forget_host_key`) and upstream's
-  `CredentialPrompt` mapping, which belong to the UI slice.
+- Errors map to a new `OpenSshError` in the ssh crate. Upstream's `tablepro_core::SshFailure`, `TransportError`, `LivenessPolicy`, `NetworkEndpoint` and `Transport` trait do not exist here, so the crate keeps no dependency on `core`. Timeouts are an `OpenSshTimeouts` value, and a forward returns its local endpoint and the original target so a caller keeps the service host for TLS verification.
+- No process-global state. Upstream's `TASKS` tracker and `SshServices`/ `SshRuntimeCell` singletons became an explicit `OpenSshContext` holding the runtime, program paths and timeouts. The runtime base is `$XDG_RUNTIME_DIR/tablepro`, falling back to a private `tablepro-<uid>` directory in the temp dir.
+- Forced options add `StrictHostKeyChecking=ask`, so a user's `~/.ssh/config` cannot turn host-key checking off for the destination, plus `StreamLocalBindUnlink=no`, `SessionType=none` and `GatewayPorts=no`. Forwards can also use a loopback TCP port, not only a Unix socket.
+- Credential answering is a security rewrite. Upstream answers the first `'s password:` prompt with the stored password whatever account it names, so a jump host could receive the destination's password. Here a stored password answers only a prompt naming exactly the configured `user@host`, and a stored passphrase only a prompt naming exactly the configured key path. Keyboard-interactive text is classified before the password suffix, so a server-supplied prompt cannot pose as a password prompt. Everything else, and every host-key confirmation, goes to a `Prompter` trait; `UnattendedPrompter` declines all of it. Confirmations need an explicit accept and secret prompts need a secret, so a mismatched answer cancels.
+- The bridge rejects a peer with another uid as an error, bounds each frame to 64 KiB, times out a peer that sends no prompt, and builds replies in `Zeroizing` buffers. The helper keeps the reply in a `Zeroizing` buffer too.
+- Not ported: `known_hosts.rs` (`forget_host_key`) and upstream's `CredentialPrompt` mapping, which belong to the UI slice.
 
-Tests: unit tests per module, a sandbox-tier `tests/openssh_fake_ssh.rs` that drives
-a shell-script `ssh` through spawn, askpass, deadline, cancel, drop, kill-after-grace,
-forwards and the sweep, and the Docker-gated `tests/openssh_session.rs`, which adds a
-jump-host case proving the stored password never reaches the jump host's prompt.
+Tests: unit tests per module, a sandbox-tier `tests/openssh_fake_ssh.rs` that drives a shell-script `ssh` through spawn, askpass, deadline, cancel, drop, kill-after-grace, forwards and the sweep, and the Docker-gated `tests/openssh_session.rs`, which adds a jump-host case proving the stored password never reaches the jump host's prompt.
 
-Open: `-J` hops run a separate `ssh` that receives none of our `-o` options, so the
-user's config still decides host-key checking for jump hosts.
+Open: `-J` hops run a separate `ssh` that receives none of our `-o` options, so the user's config still decides host-key checking for jump hosts.
 
 ## 2026-09-19: re-survey after upstream rewrote its Linux branch
 
-`origin/linux` is 1,017 commits ahead of ours and 396 behind. The number is
-misleading in three ways, and each one matters more than the total.
+`origin/linux` is 1,017 commits ahead of ours and 396 behind. The number is misleading in three ways, and each one matters more than the total.
 
-**The old pins are gone.** Upstream force-pushed `linux`, so
-`5730238f5c72b4924669efbb7c0e79372de50a36`, the pin this document and the sprint
-plan both cite, no longer resolves in the repository. `807d280944a9…` resolves
-but is no longer an ancestor of `origin/linux`. Every "commits after X" count in
-those documents is unverifiable against the current remote. Pin by subject as
-well as SHA from now on; upstream `5730238f5` is the commit now called
-`f3cbf7361 fix(linux): rebuild the GSettings schema when it changes and cover
-SQLite in dev-env`.
+**The old pins are gone.** Upstream force-pushed `linux`, so `5730238f5c72b4924669efbb7c0e79372de50a36`, the pin this document and the sprint plan both cite, no longer resolves in the repository. `807d280944a9…` resolves but is no longer an ancestor of `origin/linux`. Every "commits after X" count in those documents is unverifiable against the current remote. Pin by subject as well as SHA from now on; upstream `5730238f5` is the commit now called `f3cbf7361 fix(linux): rebuild the GSettings schema when it changes and cover SQLite in dev-env`.
 
-**Only 200 of the 1,017 touch `linux/`.** The other 817 are Apple targets, the
-plugin system, iOS sync and AI chat, all excluded by `AGENTS.md`. Upstream now
-ships database engines as versioned plugins (`plugin-teradata`, `plugin-trino`,
-`plugin-typesense`, `plugin-weaviate` tags). That is the opposite of
-[ADR 0001](decisions/0001-no-plugin-system.md) and of compile-time driver
-registration. No action; recorded so the divergence is not rediscovered as a gap.
+**Only 200 of the 1,017 touch `linux/`.** The other 817 are Apple targets, the plugin system, iOS sync and AI chat, all excluded by `AGENTS.md`. Upstream now ships database engines as versioned plugins (`plugin-teradata`, `plugin-trino`, `plugin-typesense`, `plugin-weaviate` tags). That is the opposite of [ADR 0001](decisions/0001-no-plugin-system.md) and of compile-time driver registration. No action; recorded so the divergence is not rediscovered as a gap.
 
-**Of those 200, 19 are new since our last review.** The rest are the rewritten
-SHAs of commits the sprint plan already dispositioned. The 19 are:
+**Of those 200, 19 are new since our last review.** The rest are the rewritten SHAs of commits the sprint plan already dispositioned. The 19 are:
 
 | Kind | Commits |
 | --- | --- |
@@ -118,64 +50,29 @@ SHAs of commits the sprint plan already dispositioned. The 19 are:
 
 ### What the shared fixes cost us
 
-`3bcd8df75` found a real defect in our tree. We already emit `RenameColumn`
-ahead of the alter, but our alter guard still counted the name as a change, so a
-column whose name alone changed raised an `AlterColumn` with nothing to do.
-PostgreSQL and SQL Server swallowed it as `NoChange`. SQLite refused the entire
-save, because it refuses every alter. MySQL emitted a redundant `MODIFY COLUMN`
-that restates the definition from a model carrying no collation, character set
-or comment. Fixed with a cross-dialect regression test.
+`3bcd8df75` found a real defect in our tree. We already emit `RenameColumn` ahead of the alter, but our alter guard still counted the name as a change, so a column whose name alone changed raised an `AlterColumn` with nothing to do. PostgreSQL and SQL Server swallowed it as `NoChange`. SQLite refused the entire save, because it refuses every alter. MySQL emitted a redundant `MODIFY COLUMN` that restates the definition from a model carrying no collation, character set or comment. Fixed with a cross-dialect regression test.
 
-`55528b854` does not apply: we have no askpass bridge. Carry it forward if the
-system OpenSSH transport is ever adopted in B4.
+`55528b854` does not apply: we have no askpass bridge. Carry it forward if the system OpenSSH transport is ever adopted in B4.
 
-One older commit deserves a separate check rather than a claim.
-`92aea7112 fix(core): export values at the precision their column declares` sits
-below the boundary, inside the 60 the sprint plan already dispositioned, under
-"converge serializers". That row records an intention, not a verification, so
-whether our exporter matches the declared precision is still unconfirmed.
+One older commit deserves a separate check rather than a claim. `92aea7112 fix(core): export values at the precision their column declares` sits below the boundary, inside the 60 the sprint plan already dispositioned, under "converge serializers". That row records an intention, not a verification, so whether our exporter matches the declared precision is still unconfirmed.
 
 ### What we imported
 
-`crates/core/src/import/csv_import.rs` is adapted from upstream `d91c70a92`
-(`crates/core/src/import/csv_import.rs`). Only the parser came across, and it was
-rewritten against our `ColumnInfo` and `Value`: upstream's `CellInput`/`ColumnType` model
-is part of their B3 contract and does not exist here. Nothing of their write path was
-taken. Upstream's importer has no policy layer, so ours builds its statements with
-`sql_dialect::build_insert_from_draft` and commits through a scoped approval on
-`PolicyGuard` instead.
+`crates/core/src/import/csv_import.rs` is adapted from upstream `d91c70a92` (`crates/core/src/import/csv_import.rs`). Only the parser came across, and it was rewritten against our `ColumnInfo` and `Value`: upstream's `CellInput`/`ColumnType` model is part of their B3 contract and does not exist here. Nothing of their write path was taken. Upstream's importer has no policy layer, so ours builds its statements with `sql_dialect::build_insert_from_draft` and commits through a scoped approval on `PolicyGuard` instead.
 
 ### What the excluded trees still taught us
 
-`242b76e02 fix(plugin-postgresql): quote every catalog literal so a backslash
-cannot escape it` is a whole bug class we are immune to: our PostgreSQL catalog
-queries bind `$1`/`$2` rather than interpolating literals. The optional DuckDB
-driver is the one place that still interpolates a schema and table name into a
-quoted literal, through an `escape_literal` that doubles quotes and ignores
-backslashes. DuckDB does not treat a backslash as an escape in an ordinary
-string, so this is not the same defect, but binding the parameters would remove
-the question.
+`242b76e02 fix(plugin-postgresql): quote every catalog literal so a backslash cannot escape it` is a whole bug class we are immune to: our PostgreSQL catalog queries bind `$1`/`$2` rather than interpolating literals. The optional DuckDB driver is the one place that still interpolates a schema and table name into a quoted literal, through an `escape_literal` that doubles quotes and ignores backslashes. DuckDB does not treat a backslash as an escape in an ordinary string, so this is not the same defect, but binding the parameters would remove the question.
 
-`fix(plugin-postgresql): report each column's declared type, and compare it`
-(#2959) is the most useful thing in the whole survey for B3. Upstream concluded
-that a column needs both the name it is classified by and the spelling its own
-schema declares, because collapsing them loses collation, MySQL display width,
-enum label case and schema-qualified spellings. Our `ColumnInfo.data_type` is a
-single string. Design B3 for two fields, not one.
+`fix(plugin-postgresql): report each column's declared type, and compare it` (#2959) is the most useful thing in the whole survey for B3. Upstream concluded that a column needs both the name it is classified by and the spelling its own schema declares, because collapsing them loses collation, MySQL display width, enum label case and schema-qualified spellings. Our `ColumnInfo.data_type` is a single string. Design B3 for two fields, not one.
 
 ## 2026-09-16: script planner and safe formatting
 
-- Reference: `TableProApp/TablePro` Linux `5730238f5c72b4924669efbb7c0e79372de50a36`,
-  changes `f483e4169` and `50a515a36`.
-- Imported the standalone `sql_syntax/script` modules and grammar enumeration,
-  and the editor `format_plan`/`significant_tokens` modules with their tests.
-- Connected formatting to the owning connection's dialect. Unsupported/non-SQL
-  connections do not silently format as PostgreSQL. Existing execution/policy
-  splitting remains unchanged until its contract migration is verified.
-- Storage changes follow the upstream complete-draft and ordered-writer behavior,
-  integrated with this fork's existing workspace queue and close-time failure UI.
-- Verification is recorded in the sprint implementation ledger; imports alone
-  do not complete the planned session or driver contract switch.
+- Reference: `TableProApp/TablePro` Linux `5730238f5c72b4924669efbb7c0e79372de50a36`, changes `f483e4169` and `50a515a36`.
+- Imported the standalone `sql_syntax/script` modules and grammar enumeration, and the editor `format_plan`/`significant_tokens` modules with their tests.
+- Connected formatting to the owning connection's dialect. Unsupported/non-SQL connections do not silently format as PostgreSQL. Existing execution/policy splitting remains unchanged until its contract migration is verified.
+- Storage changes follow the upstream complete-draft and ordered-writer behavior, integrated with this fork's existing workspace queue and close-time failure UI.
+- Verification is recorded in the sprint implementation ledger; imports alone do not complete the planned session or driver contract switch.
 
 TablePro Linux is an independent Rust and GTK codebase. Other TablePro implementations may be reviewed as references for security fixes, product behavior, SQL semantics, and user expectations. This review is optional and is not a source synchronization process.
 
@@ -239,20 +136,9 @@ The entry should describe behavior, not file-by-file source movement. There shou
 
 - Reference reviewed: `TableProApp/TablePro` `origin/main` at `159be66f5` (v0.67.1), covering the `Fixed` and `Security` entries of v0.62.0 through v0.67.1. The heaviest churn was the data grid and the SQL editor.
 - Linux relevance: eleven upstream fix clusters were checked against Rust code paths. Five described a defect that also existed here; six do not apply, because the Linux architecture differs in a way that rules the defect out. Two defects found while checking were not on the upstream list at all.
-- Manual port:
-  - A statement boundary now follows the connected engine's quoting, so a PostgreSQL dollar-quoted body runs whole and a semicolon inside a MySQL `#` comment is not a boundary. One dialect-aware lexer in `tablepro_core::sql_lex` replaced the editor's own splitter.
-  - Statements that read a host file, run a program, or send SQL to another server classify as administrative, so a read-only agent token is refused.
-  - Stop and the query timeout abort the running statement on the server for MySQL, ClickHouse and SQLite, matching the PostgreSQL behaviour that was already verified. SQL Server retires the connection instead, because tiberius cannot send the TDS attention packet.
-  - Copy row as INSERT omits generated columns, which every engine rejects, and escapes each value the way the connected engine reads it.
-  - A cell edit is discarded if the row it opened on is no longer at that position, instead of being written to whichever row took its place.
-- Not applicable, with the reason:
-  - Results wrongly editable for `UNION`, joins, subqueries and CTEs: the Linux editor renders results read-only, so no table identity is ever inferred from a result set.
-  - Rows-per-page overflow crashing, a page number typed for one tab applying to another, and rows past a row-count estimate being unreachable: page size comes from a fixed dropdown, pagination state is per browse tab, row counts are exact rather than estimated, and Next is enabled from the page being full rather than from a total.
-  - A failing query showing a blank result area: the failing statement's own message is already rendered in its result tab.
-  - ClickHouse Verify Ca falling back to public roots: a named certificate authority replaces the public roots outright, and an unreadable or empty authority file is an error.
-- Found while reviewing, not on the upstream list:
-  - The rendered INSERT escaped only quotes. MySQL and ClickHouse read a backslash as an escape, so a stored value ending in one closed the literal early and the rest parsed as SQL. Confirmed against MySQL 8.1, which evaluated the payload as an expression and returned 1.
-  - Every SQLite column with no declared type decoded as NULL, so `count(*)` and any expression showed an empty cell.
+- Manual port: - A statement boundary now follows the connected engine's quoting, so a PostgreSQL dollar-quoted body runs whole and a semicolon inside a MySQL `#` comment is not a boundary. One dialect-aware lexer in `tablepro_core::sql_lex` replaced the editor's own splitter. - Statements that read a host file, run a program, or send SQL to another server classify as administrative, so a read-only agent token is refused. - Stop and the query timeout abort the running statement on the server for MySQL, ClickHouse and SQLite, matching the PostgreSQL behaviour that was already verified. SQL Server retires the connection instead, because tiberius cannot send the TDS attention packet. - Copy row as INSERT omits generated columns, which every engine rejects, and escapes each value the way the connected engine reads it. - A cell edit is discarded if the row it opened on is no longer at that position, instead of being written to whichever row took its place.
+- Not applicable, with the reason: - Results wrongly editable for `UNION`, joins, subqueries and CTEs: the Linux editor renders results read-only, so no table identity is ever inferred from a result set. - Rows-per-page overflow crashing, a page number typed for one tab applying to another, and rows past a row-count estimate being unreachable: page size comes from a fixed dropdown, pagination state is per browse tab, row counts are exact rather than estimated, and Next is enabled from the page being full rather than from a total. - A failing query showing a blank result area: the failing statement's own message is already rendered in its result tab. - ClickHouse Verify Ca falling back to public roots: a named certificate authority replaces the public roots outright, and an unreadable or empty authority file is an error.
+- Found while reviewing, not on the upstream list: - The rendered INSERT escaped only quotes. MySQL and ClickHouse read a backslash as an escape, so a stored value ending in one closed the literal early and the rest parsed as SQL. Confirmed against MySQL 8.1, which evaluated the payload as an expression and returned 1. - Every SQLite column with no declared type decoded as NULL, so `count(*)` and any expression showed an empty cell.
 - Verification: `tablepro_core::sql_lex` and `sql_literal` unit tests, `crates/core/tests/query_pipeline.rs`, the MySQL, ClickHouse, SQLite and SQL Server container suites, the PostgreSQL release fixture, and the installed GTK suite.
 
 ## 2026-09-07: PostgreSQL filters, metadata ownership and offline DuckDB
@@ -263,10 +149,4 @@ The entry should describe behavior, not file-by-file source movement. There shou
 - Not ported: Apple UI, plugins, licensing, bulk dump/restore behavior without a Linux counterpart. Timing remains a specified follow-up, not fabricated engine time.
 - Historical verification: [stabilization ledger](archive/stabilization-2026-09.md); [performance evidence](archive/performance-2026-09.md). No Apple source tree was merged.
 
-The editor now uses the imported planner for execution and run-at-cursor as well
-as formatting, following upstream `statement_cursor.rs`. Fork differences: retain
-policy/audit dispatch, parameter prompts and run-generation ownership; stop the
-whole script on errors; reject `GO n` rather than silently ignoring repetition;
-keep the existing scanner for the additional non-upstream drivers. Run-at-cursor
-passes the already planned statement directly, so MySQL custom delimiters are
-not lost by planning the isolated procedure again.
+The editor now uses the imported planner for execution and run-at-cursor as well as formatting, following upstream `statement_cursor.rs`. Fork differences: retain policy/audit dispatch, parameter prompts and run-generation ownership; stop the whole script on errors; reject `GO n` rather than silently ignoring repetition; keep the existing scanner for the additional non-upstream drivers. Run-at-cursor passes the already planned statement directly, so MySQL custom delimiters are not lost by planning the isolated procedure again.

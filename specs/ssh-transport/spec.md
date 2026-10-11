@@ -2,10 +2,7 @@
 
 > [NEEDS REVIEW] Draft written on 2026-10-11 from `tablepro-ssh`, `tablepro-transport` and ARCHITECTURE. A maintainer review is pending.
 
-**Spec tier:** buildable
-**Serves:** `Local DBA`
-**Status:** in-development
-**Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
+**Spec tier:** buildable **Serves:** `Local DBA` **Status:** in-development **Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
 
 ## Purpose
 

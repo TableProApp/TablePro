@@ -1,30 +1,20 @@
 # Validation playbook
 
-Evidence availability checked October 3: some dated `target/quality` links below are unavailable in this checkout. They remain historical references, not current passes. See [the evidence consistency review](archive/architecture-consistency-review-2026-10-03.md#evidence-audit) and its inventory for exact paths; retrieve exact-SHA artifacts or rerun before using missing raw proof for acceptance.
+Evidence availability checked October 3: some dated `target/quality` links below may be missing from a fresh clone. They remain historical references, not current passes. See [the evidence consistency review](archive/architecture-consistency-review-2026-10-03.md#evidence-audit) and its inventory for exact paths; retrieve exact-SHA artifacts or rerun before using missing raw proof for acceptance.
 
-Use this page to select checks, hand work to another agent, and review its evidence.
-The executable catalog is [test-layers.json](../scripts/test-layers.json).
-[Testing](testing.md) describes fixtures; [the sprint plan](bookie-0.2-sprint.md)
-owns B3 and B4–B6 completion. A green layer certifies only its named scope.
+Use this page to select checks, hand work to another agent, and review its evidence. The executable catalog is [test-layers.json](../scripts/test-layers.json). [Testing](testing.md) describes fixtures; [the sprint plan](bookie-0.2-sprint.md) owns B3 and B4–B6 completion. A green layer certifies only its named scope.
 
 ## Current desktop target
 
-The [current continuation](bookie-0.2-sprint.md#current-continuation)
-orders B3, B4, then Arch/Omarchy/Hyprland native Wayland UI acceptance.
-GNOME desktop on Debian is the required installed/package phase after Arch;
-current B3/B4 implementation does not require that VM. GNOME 50 in the layer catalog
-names GTK/libadwaita development-library requirements, not a required desktop shell.
-Keep existing automated Linux checks and record unavailable environments as pending.
+The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3, B4, then Arch/Omarchy/Hyprland native Wayland UI acceptance. GNOME desktop on Debian is the required installed/package phase after Arch; current B3/B4 implementation does not require that VM. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
 
 ## Start here
 
-Run from the repository root, using the repository's Rust toolchain. Agents configured with
-RTK should prefix commands with `rtk proxy` so raw diagnostics are retained.
+Run from the repository root, using the repository's Rust toolchain. Agents configured with RTK should prefix commands with `rtk proxy` so raw diagnostics are retained.
 
 ### LT-TRUNG pre-push gate
 
-LT-TRUNG has 16 CPUs, 30 GiB RAM and local Docker. Use its shared `target/`
-directory and run the available hosted-equivalent layers before pushing:
+LT-TRUNG has 16 CPUs, 30 GiB RAM and local Docker. Use its shared `target/` directory and run the available hosted-equivalent layers before pushing:
 
 ```bash
 python3 scripts/run-test-layer.py full app-server values drivers tls \
@@ -32,16 +22,9 @@ python3 scripts/run-test-layer.py full app-server values drivers tls \
   workflow-lint harness packaging-contracts change-contracts
 ```
 
-This runs the fast workspace gate, app-server and cross-driver value contracts,
-Docker driver/TLS/PostgreSQL fixtures, keyring and dependency policy checks.
-The runner saves a commit-pinned report and logs under `target/quality/`.
-Fresh local results and remaining gaps are owned by
-[the release audit](archive/release-audit-2026-10-03.md); prior October 1–2 counts and
-cache measurements are in [validation history](archive/validation-history.md).
+This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/TLS/PostgreSQL fixtures, keyring and dependency policy checks. The runner saves a commit-pinned report and logs under `target/quality/`. Fresh local results and remaining gaps are owned by [the release audit](archive/release-audit-2026-10-03.md); prior October 1–2 counts and cache measurements are in [validation history](archive/validation-history.md).
 
-Run `quick` for a short edit loop. Run the pre-push gate after changes that
-touch shared core/value paths or before handing a B3 slice to review. Keep the
-hosted workflow as the recorded platform/packaging check.
+Run `quick` for a short edit loop. Run the pre-push gate after changes that touch shared core/value paths or before handing a B3 slice to review. Keep the hosted workflow as the recorded platform/packaging check.
 
 ```bash
 python3 scripts/run-test-layer.py --list
@@ -54,41 +37,20 @@ python3 scripts/run-test-layer.py widgets app-server keyring ui
 python3 scripts/run-test-layer.py values
 ```
 
-The fast Build Linux job runs `change-contracts` before the full GTK/unit layer.
-It compares the checked-out commit with the pull request base or prior push
-commit, runs mapped exact regression tests for changed value-path files, and
-retains a report and per-command logs under `target/quality/`. Locally, check
-uncommitted work against `HEAD`, or compare a branch with its base explicitly:
+The fast Build Linux job runs `change-contracts` before the full GTK/unit layer. It compares the checked-out commit with the pull request base or prior push commit, runs mapped exact regression tests for changed value-path files, and retains a report and per-command logs under `target/quality/`. Locally, check uncommitted work against `HEAD`, or compare a branch with its base explicitly:
 
 ```bash
 python3 scripts/run-change-contract-tests.py
-python3 scripts/run-change-contract-tests.py --base fork/linux
+python3 scripts/run-change-contract-tests.py --base origin/linux
 ```
 
-Changes under `crates/core/src/`, `crates/core/tests/`, `apps/linux/app/src/`,
-`crates/mcp/src/`, and database-driver `src/` paths select focused exact
-regressions where mapped, otherwise the changed package's unit or integration
-tests. Edit `scripts/change-test-map.json` when adding a focused value
-regression. Driver integration-test files stay in the Docker `drivers` layer,
-which executes those server fixtures. The runner fails if Cargo returns success
-without a passing test summary or if an expected exact test does not appear
-exactly once as passed, with a single summary, no ignored or measured tests, and matching counts.
-The named-test runners share `scripts/rust_test_evidence.py`; full workspace
-summaries allow ignored fixture tests because their owning layers execute them.
+Use the remote that tracks [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE) for `--base` (often `origin` after cloning BookiE).
 
-Choose the layers affected by the change; the examples are separate invocations,
-not a requirement to repeat overlapping unit suites. The runner executes selected
-layers sequentially. Independent steps and later layers still run after a failure;
-the overall result remains failed. Nothing retries automatically.
-Layers can compose existing tiers; each test keeps its original tier ownership.
+Changes under `crates/core/src/`, `crates/core/tests/`, `apps/linux/app/src/`, `crates/mcp/src/`, and database-driver `src/` paths select focused exact regressions where mapped, otherwise the changed package's unit or integration tests. Edit `scripts/change-test-map.json` when adding a focused value regression. Driver integration-test files stay in the Docker `drivers` layer, which executes those server fixtures. The runner fails if Cargo returns success without a passing test summary or if an expected exact test does not appear exactly once as passed, with a single summary, no ignored or measured tests, and matching counts. The named-test runners share `scripts/rust_test_evidence.py`; full workspace summaries allow ignored fixture tests because their owning layers execute them.
 
-Each invocation writes `target/quality/<UTC timestamp>-layers/report.json` and
-one log per step. It records the commit, dirty status, tracked-diff digest, exact
-arguments, elapsed time, exit code and status. A dirty-tree report is development
-evidence, not reproducible release-candidate evidence: commit the tested changes
-before handing them off. The runner does not archive untracked file contents.
-Inspect a live log with `tail -f` in another terminal; do not pipe the test command
-through a command that discards its exit status.
+Choose the layers affected by the change; the examples are separate invocations, not a requirement to repeat overlapping unit suites. The runner executes selected layers sequentially. Independent steps and later layers still run after a failure; the overall result remains failed. Nothing retries automatically. Layers can compose existing tiers; each test keeps its original tier ownership.
+
+Each invocation writes `target/quality/<UTC timestamp>-layers/report.json` and one log per step. It records the commit, dirty status, tracked-diff digest, exact arguments, elapsed time, exit code and status. A dirty-tree report is development evidence, not reproducible release-candidate evidence: commit the tested changes before handing them off. The runner does not archive untracked file contents. Inspect a live log with `tail -f` in another terminal; do not pipe the test command through a command that discards its exit status.
 
 For the standalone security and workflow layers, match the hosted tool versions:
 
@@ -98,18 +60,9 @@ cargo install cargo-audit --locked --version 0.22.2
 go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 ```
 
-Put Go's bin directory on PATH and install ShellCheck for `workflow-lint`.
-Advisory databases remain live even with pinned tools; a later advisory failure
-is new evidence, not a reason to freeze or suppress the database.
+Put Go's bin directory on PATH and install ShellCheck for `workflow-lint`. Advisory databases remain live even with pinned tools; a later advisory failure is new evidence, not a reason to freeze or suppress the database.
 
-Missing tools, nonzero exits, timeouts, cancellations and absent required test
-summaries cannot produce a pass. Cargo layers require at least one executed test
-and no failed summaries. Environment-specific ignored tests still belong to their
-dedicated fixture layers. Value and isolated-test runners enforce stricter
-per-test execution contracts. Process exit alone is used for non-test tools and
-scripts that enforce their own evidence contract; it is not a coverage claim.
-SIGKILL, power loss or a runner crash can leave `status: running`; treat that as
-incomplete, never passed. Review every step status, not just the final log line.
+Missing tools, nonzero exits, timeouts, cancellations and absent required test summaries cannot produce a pass. Cargo layers require at least one executed test and no failed summaries. Environment-specific ignored tests still belong to their dedicated fixture layers. Value and isolated-test runners enforce stricter per-test execution contracts. Process exit alone is used for non-test tools and scripts that enforce their own evidence contract; it is not a coverage claim. SIGKILL, power loss or a runner crash can leave `status: running`; treat that as incomplete, never passed. Review every step status, not just the final log line.
 
 ## Layers and boundaries
 
@@ -148,30 +101,13 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 
 ## Hosted checks
 
-Build Linux owns the cheap-tier regression jobs (`pin-revision`, parallel `preflight` and `fast`) and its final `Linux regression gate`; its merge-tier jobs run on its weekly schedule and on dispatch, not on pushes. Each migrated layer job uploads reports even after failure. Missing artifacts
-fail visibly. Linux Security runs policy tests and supply-chain checks in
-independent jobs, including when a GTK build fails. Linux CI contracts tests the
-validation infrastructure without waiting for a Rust build. Linux test quality
-owns mutation/coverage on its weekly schedule and on `workflow_dispatch` only
-(not on push). CodeQL (Rust, Python, workflow files) and SonarCloud run
-as reference scans. Security, quality and scan results are separate from the
-Build regression gate; review all of them at the same SHA.
+Build Linux owns the cheap-tier regression jobs (`pin-revision`, parallel `preflight` and `fast`) and its final `Linux regression gate`; its merge-tier jobs run on its weekly schedule and on dispatch, not on pushes. Each migrated layer job uploads reports even after failure. Missing artifacts fail visibly. Linux Security runs policy tests and supply-chain checks in independent jobs, including when a GTK build fails. Linux CI contracts tests the validation infrastructure without waiting for a Rust build. Linux test quality owns mutation/coverage on its weekly schedule and on `workflow_dispatch` only (not on push). CodeQL (Rust, Python, workflow files) and SonarCloud run as reference scans. Security, quality and scan results are separate from the Build regression gate; review all of them at the same SHA.
 
-Scan findings are advice, not a gate. Fix a real finding in a small pull
-request. Mark a wrong one "False positive" or "Won't fix" in the tool with a one-line reason,
-and record the reasoning here when it is a framework pattern others will meet again.
+Scan findings are advice, not a gate. Fix a real finding in a small pull request. Mark a wrong one "False positive" or "Won't fix" in the tool with a one-line reason, and record the reasoning here when it is a framework pattern others will meet again.
 
-Actions are pinned to commits. Jobs use read-only repository permissions and
-ordinary `pull_request`, not privileged execution of PR code. Test fixtures use
-disposable data and synthetic credentials. Do not give untrusted PR code access
-to production databases or an unattended personal desktop/self-hosted runner.
+Actions are pinned to commits. Jobs use read-only repository permissions and ordinary `pull_request`, not privileged execution of PR code. Test fixtures use disposable data and synthetic credentials. Do not give untrusted PR code access to production databases or an unattended personal desktop/self-hosted runner.
 
-On 2026-09-27 the fork's default branch was `main`, while these changes lived on
-`linux`. GitHub schedules require the workflow on the default branch; manual
-dispatch availability also depends on workflow registration. See the official
-[schedule and dispatch rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
-Do not infer execution from a cron declaration. Push/PR runs provide current
-evidence; confirm the workflow is registered before relying on dispatch:
+On 2026-09-27 the fork's default branch was `main`, while these changes lived on `linux`. GitHub schedules require the workflow on the default branch; manual dispatch availability also depends on workflow registration. See the official [schedule and dispatch rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows). Do not infer execution from a cron declaration. Push/PR runs provide current evidence; confirm the workflow is registered before relying on dispatch:
 
 ```bash
 gh workflow list --repo cozyGarage/BookiE
@@ -181,25 +117,13 @@ gh run view <run-id> --repo cozyGarage/BookiE --log-failed
 gh run download <run-id> --repo cozyGarage/BookiE --dir /tmp/bookie-run-<run-id>
 ```
 
-Check `headSha` and the report's resolved commit. Branch names move. Registering
-these workflows on the default branch and choosing branch-protection/ruleset
-requirements remain repository-administration tasks; this change does not modify
-either. Path-filtered workflows may not run for unrelated changes. Do not require
-a permanently absent check without reviewing those path filters.
+Check `headSha` and the report's resolved commit. Branch names move. Registering these workflows on the default branch and choosing branch-protection/ruleset requirements remain repository-administration tasks; this change does not modify either. Path-filtered workflows may not run for unrelated changes. Do not require a permanently absent check without reviewing those path filters.
 
 ## Build reuse and safe parallel work
 
-Keep `target` on disk and reuse the existing lockfile/toolchain. Do not run
-`cargo clean` to fix a test failure. Feature/profile/RUSTFLAGS changes can trigger
-rebuilds; DuckDB's native build is expensive. Run narrow tests before wider layers.
+Keep `target` on disk and reuse the existing lockfile/toolchain. Do not run `cargo clean` to fix a test failure. Feature/profile/RUSTFLAGS changes can trigger rebuilds; DuckDB's native build is expensive. Run narrow tests before wider layers.
 
-The layer runner holds a nonblocking checkout lock. A second layer runner fails
-before executing commands. Raw Cargo, legacy scripts and mutation tools do not
-take that lock: coordinate them explicitly. Never run concurrent Cargo or mutation
-jobs against a shared target directory. The current single-agent session uses this checkout and cache directly. If
-parallel owners are introduced later, use separate worktrees/targets or take turns. Docker Compose fixtures also
-share project names; serialize fixture runs on a shared Docker daemon even across
-worktrees. Do not clean up another agent's containers or volumes.
+The layer runner holds a nonblocking checkout lock. A second layer runner fails before executing commands. Raw Cargo, legacy scripts and mutation tools do not take that lock: coordinate them explicitly. Never run concurrent Cargo or mutation jobs against a shared target directory. One agent uses one worktree and its `target/` directory; parallel owners need separate worktrees or turns. Docker Compose fixtures also share project names; serialize fixture runs on a shared Docker daemon even across worktrees. Do not clean up another agent's containers or volumes.
 
 ## Agent task template
 
@@ -219,30 +143,20 @@ Do not weaken assertions, ignore survivors, retry into green, raise size baselin
 or count a missing fixture as passed. Preserve unrelated changes.
 ```
 
-An agent must read `AGENTS.md`, inspect status and confirm the SHA before editing.
-If the environment is blocked, return the failing prerequisite and evidence;
-do not replace a real server test with a mock and claim equivalent coverage.
-All reports must distinguish local results, hosted results and installed acceptance.
+An agent must read `AGENTS.md`, inspect status and confirm the SHA before editing. If the environment is blocked, return the failing prerequisite and evidence; do not replace a real server test with a mock and claim equivalent coverage. All reports must distinguish local results, hosted results and installed acceptance.
 
 ## Turn every finding into a regression
 
 1. Record origin: user report, upstream issue/commit, mutation, fuzz case or CI run.
-2. State the invariant and smallest input; record engine/version and expected type
-   as well as value. Preserve a minimized sanitized fixture, never customer data.
+2. State the invariant and smallest input; record engine/version and expected type as well as value. Preserve a minimized sanitized fixture, never customer data.
 3. Add the lowest-tier reproducer and demonstrate failure before changing code.
-4. Fix the cause; cover valid, invalid and exact-boundary neighbors. Test each
-   affected consumer: decode, binding, formatting, grid editing, export and re-import.
-5. Add real-server or UI evidence where pure tests cannot prove the behavior.
-   Assert database state and returned values, not merely absence of an error.
-6. Register ignored GTK/keyring tests in `isolated-tests.json`; regenerate the
-   ignored-test ledger. New tiers need a catalog entry, local runner and hosted gate.
-7. Run focused mutation checks with a nonzero selected count and independent
-   expected values. Document each equivalent survivor with a concrete argument;
-   leave unresolved survivors/timeouts open.
+4. Fix the cause; cover valid, invalid and exact-boundary neighbors. Test each affected consumer: decode, binding, formatting, grid editing, export and re-import.
+5. Add real-server or UI evidence where pure tests cannot prove the behavior. Assert database state and returned values, not merely absence of an error.
+6. Register ignored GTK/keyring tests in `isolated-tests.json`; regenerate the ignored-test ledger. New tiers need a catalog entry, local runner and hosted gate.
+7. Run focused mutation checks with a nonzero selected count and independent expected values. Document each equivalent survivor with a concrete argument; leave unresolved survivors/timeouts open.
 8. Update scenario evidence and the owning sprint task. Keep the test with the fix.
 
-Use [the scenario survey](archive/b3-test-scenario-survey.md) and
-[value contracts](value-contracts.md) as the B3 case backlog. Current examples:
+Use [the scenario survey](archive/b3-test-scenario-survey.md) and [value contracts](value-contracts.md) as the B3 case backlog. Current examples:
 
 | Encountered scenario | Permanent regression home | Next edge to investigate |
 | --- | --- | --- |
@@ -254,48 +168,25 @@ Use [the scenario survey](archive/b3-test-scenario-survey.md) and
 | Empty/failed mutation report looked complete | Mutation summary fixtures and workflow regression | Triage core's 88 survivors/16 timeouts; no blanket exclusions |
 | Test process failed, hung or never ran | Layer-runner negative tests | Keep adding actual infrastructure failure modes |
 
-Secure connection coverage is engine-specific. Track valid auth, rejected auth,
-wrong CA/hostname, no plaintext fallback, cancellation during connect/read/write,
-disconnect/reconnect, pool reuse, partial streams, malformed lengths, NULL/empty
-distinctions, Unicode/binary boundaries and authorization on every consumer.
-An unchecked scenario is a backlog item, not an implied capability or a pass.
+Secure connection coverage is engine-specific. Track valid auth, rejected auth, wrong CA/hostname, no plaintext fallback, cancellation during connect/read/write, disconnect/reconnect, pool reuse, partial streams, malformed lengths, NULL/empty distinctions, Unicode/binary boundaries and authorization on every consumer. An unchecked scenario is a backlog item, not an implied capability or a pass.
 
 ## Release decision
 
-B3 requires closed correctness findings and their regressions. B4–B6 additionally
-require the planned installed-package, Wayland, upgrade/rollback and candidate
-soak evidence. Docker supplies deterministic servers and Xvfb supplies automated
-GTK interaction. Current installed acceptance uses Arch/Omarchy under native
-Wayland, on the host or an Arch VM with Hyprland. GNOME/Debian VM qualification
-is the required next phase after Arch. Xvfb and widget passes cannot certify
-either native Wayland target.
-No workflow here automatically publishes a release or waives an acceptance gate.
+B3 requires closed correctness findings and their regressions. B4–B6 additionally require the planned installed-package, Wayland, upgrade/rollback and candidate soak evidence. Docker supplies deterministic servers and Xvfb supplies automated GTK interaction. Current installed acceptance uses Arch/Omarchy under native Wayland, on the host or an Arch VM with Hyprland. GNOME/Debian VM qualification is the required next phase after Arch. Xvfb and widget passes cannot certify either native Wayland target. No workflow here automatically publishes a release or waives an acceptance gate.
 
 ## SonarCloud triage
 
 Confirm a framework-specific finding against the native platform before changing source.
 
-Automatic Analysis (Autoscan) and CI analysis cannot both run for
-`cozyGarage_BookiE`. Automatic Analysis is off and the `SONAR_TOKEN` repository
-secret is set, so the `sonar-rust` workflow analyses Rust, Python and the
-other files on pushes and pull requests to `linux`. Pull requests from forks
-have no secret and skip the scan.
+Automatic Analysis (Autoscan) and CI analysis cannot both run for `cozyGarage_BookiE`. Automatic Analysis is off and the `SONAR_TOKEN` repository secret is set, so the `sonar-rust` workflow analyses Rust, Python and the other files on pushes and pull requests to `linux`. Pull requests from forks have no secret and skip the scan.
 
 ### GTK CSS node selectors
 
-SonarCloud reports eight “Unknown type selector” findings on
-`apps/linux/data/resources/style.css:25-26` for `columnview`, `listview`, `row` and
-`cell`.
+SonarCloud reports eight “Unknown type selector” findings on `apps/linux/data/resources/style.css:25-26` for `columnview`, `listview`, `row` and `cell`.
 
-These are GTK CSS node names in the focus-ring selector. GTK documents
-`columnview`, `listview` and `row` as nodes in the `GtkColumnView` /
-`GtkListView` tree. GTK's `GtkColumnViewCellWidget` source sets its CSS node
-name to `cell`. The stylesheet targets those nodes to draw the grid-cell focus
-ring; converting them to classes would stop matching the widget tree.
+These are GTK CSS node names in the focus-ring selector. GTK documents `columnview`, `listview` and `row` as nodes in the `GtkColumnView` / `GtkListView` tree. GTK's `GtkColumnViewCellWidget` source sets its CSS node name to `cell`. The stylesheet targets those nodes to draw the grid-cell focus ring; converting them to classes would stop matching the widget tree.
 
-Disposition: confirmed framework-specific false positives from the web CSS
-analyzer. Keep the GTK selectors unchanged. The SonarCloud findings still need
-their status updated in the project dashboard; no source suppression was added.
+Disposition: confirmed framework-specific false positives from the web CSS analyzer. Keep the GTK selectors unchanged. The SonarCloud findings still need their status updated in the project dashboard; no source suppression was added.
 
 - [GTK ColumnView CSS nodes](https://docs.gtk.org/gtk4/class.ColumnView.html)
 - [GTK ListView CSS nodes](https://docs.gtk.org/gtk4/class.ListView.html)

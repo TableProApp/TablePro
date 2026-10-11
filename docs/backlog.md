@@ -1,7 +1,6 @@
 # Backlog after 0.2.0
 
-Rows here are real work that does not block 0.2.0. The ledger keeps the evidence;
-this page keeps the order. Draft of 2026-10-11, for the maintainer.
+Rows here are real work that does not block 0.2.0. The ledger keeps the evidence; this page keeps the order. Draft of 2026-10-11, for the maintainer.
 
 ## 0.2.x features
 
@@ -41,11 +40,6 @@ this page keeps the order. Draft of 2026-10-11, for the maintainer.
 
 ## Infrastructure
 
-- Enable Hyper-Threading on two lab hosts, raise executor sizes, split runners by
-  job class, then allow two gates to overlap.
-- Stop committing the generated `docs/ignored-tests.md`. Every pull request that adds
-  or moves an ignored test conflicts in it, and each conflict is resolved by
-  regenerating the file. Generate it in CI and check its content there instead, or
-  write it to a build output.
-- Folder layout: done on 2026-10-11 ([proposal](proposals/folder-restructure.md)). Moving every per-crate
-  integration test out of its crate stays a separate, larger step if wanted.
+- Enable Hyper-Threading on two lab hosts, raise executor sizes, split runners by job class, then allow two gates to overlap.
+- Stop committing the generated `docs/ignored-tests.md`. Every pull request that adds or moves an ignored test conflicts in it, and each conflict is resolved by regenerating the file. Generate it in CI and check its content there instead, or write it to a build output.
+- Folder layout: done on 2026-10-11 ([proposal](proposals/folder-restructure.md)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
