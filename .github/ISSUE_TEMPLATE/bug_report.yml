@@ -58,10 +58,22 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: macos
+  - type: dropdown
+    id: platform
     attributes:
-      label: macOS version & chip
+      label: Platform
+      description: Which TablePro app this is about.
+      options:
+        - macOS
+        - iOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS version & hardware
       placeholder: "macOS 15.3 / Apple Silicon"
     validations:
       required: false

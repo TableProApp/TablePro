@@ -1,6 +1,6 @@
-# Verification traps
+# Verification traps: Apple
 
-Read this when a `verify.sh` verdict needs interpreting, or before writing a UI test. The usage line is `verify.sh [--root <tree>] [--run <dir>] [--no-wait] [--offline] <step> [args]`. `--run <dir>` puts logs in `<dir>/logs`. Without `--root`, the root is the checkout the current directory is in, falling back to the one the script lives in. `verify.sh tail <log> [n]` re-reads a stored log, and `verify.sh parse <log>` prints the verdict the live run wrote to `<log>.verdict`, re-deriving it from the log only when no receipt exists.
+Read this when a `verify.sh` verdict needs interpreting on macOS or iOS, or before writing a UI test. The usage line is `verify.sh [--platform <name>] [--root <tree>] [--run <dir>] [--no-wait] [--offline] <step> [args]`, and on a Mac the platform is this one unless the option names another. `--run <dir>` puts logs in `<dir>/logs`. Without `--root`, the root is the checkout the current directory is in, falling back to the one the script lives in. `verify.sh tail <log> [n]` re-reads a stored log, and `verify.sh parse <log>` prints the verdict the live run wrote to `<log>.verdict`, re-deriving it from the log only when no receipt exists.
 
 ## Why the wrapper, always
 
@@ -8,6 +8,8 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 
 ## Build
 
+- **A step whose tool is not installed reports `INCONCLUSIVE`** and runs nothing (`xcodebuild`, `xcodegen`, `swiftlint`, `swift`). The step belongs on a Mac that has it.
+- **`xcodebuild` writes outside the tree**, to `~/Library/Developer/Xcode/DerivedData`, which a sandbox has to allow.
 - **The `TablePro` scheme builds only the bundled plugins.** A compile error in a registry-only plugin still ends `BUILD SUCCEEDED`, so run `verify.sh plugins` whenever `Plugins/` changed.
 - **`Could not resolve package dependencies`** means SwiftPM tried the network: re-run with `--offline`.
 - **`Unable to open base configuration reference file`** means `Configs/Secrets.xcconfig` is missing, which is normal in a worktree that `worktree.sh` did not create.
@@ -26,6 +28,7 @@ A raw `xcodebuild` failure comes back as a head-and-tail excerpt of about 10,000
 - **`The test runner hung before establishing connection`**, twice in a row, is a wedged `testmanagerd`, and every later run on the machine hangs the same way for about 14 minutes each. When no `xcodebuild` is running (`pgrep -f Developer/usr/bin/xcodebuild` prints nothing), `kill -9 $(pgrep testmanagerd)` (SIGTERM does not stop it); launchd starts a fresh one on the next run.
 - **Zero cases executed** is a wedged host, an empty filter, or a test target that did not compile. The live run tells the last apart and reports it as `FAIL` with the compile errors; the other two are `INCONCLUSIVE`.
 - **To run one test case**, which the wrapper cannot do because it takes suites, call `xcodebuild ... "-only-testing:TableProTests/<Suite>/<test>()"` yourself with `DEVELOPER_DIR` set and the output redirected to a scratch log. Swift Testing's expectation text is in the result bundle (`xcrun xcresulttool get test-results tests --path <xcresult>`), not in the log.
+- **A test behind `#if canImport(C...)` compiles to nothing** where that module is absent, so it looks present and never runs.
 - **To decide whether a failing suite is yours**, grep its file for the symbols you changed. Zero references plus a known environment cause is a faster answer than a baseline build.
 
 ## Package and iOS tests
