@@ -35,7 +35,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - name: Install Git before checkout
         working-directory: /tmp
@@ -71,7 +71,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-gtk-soak
       - name: Build application once
         run: |
@@ -79,7 +79,7 @@ jobs:
           install -Dm755 target/release/tablepro-app target/installed/usr/bin/tablepro
       - name: Five independent attempts
         env:
-          TABLEPRO_GTK_BINARY: ${{ github.workspace }}/linux/target/installed/usr/bin/tablepro
+          TABLEPRO_GTK_BINARY: ${{ github.workspace }}/target/installed/usr/bin/tablepro
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/gtk-artifacts"
           for attempt in 1 2 3 4 5; do

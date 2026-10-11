@@ -1,8 +1,8 @@
 # BookiE
 
-BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. Current development is on the `linux` branch. The Cargo workspace lives under `linux/` and requires Rust 1.98.
+BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. Current development is on the `linux` branch. The Cargo workspace lives at the repository root and requires Rust 1.98.
 
-Current delivery scope and evidence: [active sprint](linux/docs/bookie-0.2-sprint.md). The [October 3 consistency review](linux/docs/archive/architecture-consistency-review-2026-10-03.md) reconciles the accumulated documentation. Earlier audits prove their recorded source trees; package release approval remains separate.
+Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [October 3 consistency review](docs/archive/architecture-consistency-review-2026-10-03.md) reconciles the accumulated documentation. Earlier audits prove their recorded source trees; package release approval remains separate.
 
 The rename covers the display name, binary names (`bookie`, `bookie-agentd`) and branding assets only. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names remain `tablepro-*`.
 
@@ -10,9 +10,9 @@ Every shipped feature is free to use. BookiE has no account, license, subscripti
 
 ## Status
 
-The Linux client is under active development toward BookiE 0.2.0. B3 type/value consumer coverage remains open, followed by B4 transport/session acceptance and installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Arbitrary SQL editor results are still materialized up to configured caps; progressive server-cursor paging is accepted in [ADR 0011](linux/docs/decisions/0011-paged-query-results.md) but not implemented.
+The Linux client is under active development toward BookiE 0.2.0. B3 type/value consumer coverage remains open, followed by B4 transport/session acceptance and installed desktop qualification. Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Arbitrary SQL editor results are still materialized up to configured caps; progressive server-cursor paging is accepted in [ADR 0011](docs/decisions/0011-paged-query-results.md) but not implemented.
 
-PostgreSQL is the furthest along: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`linux/ROADMAP.md`](linux/ROADMAP.md) links to current milestone status and the detailed acceptance boards.
+PostgreSQL is the furthest along: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Packaging is not release-verified. [`ROADMAP.md`](ROADMAP.md) links to current milestone status and the detailed acceptance boards.
 
 | Database | Status |
 |---|---|
@@ -25,7 +25,7 @@ PostgreSQL is the furthest along: server-confirmed cancellation, certificate hos
 | MongoDB | Experimental |
 | DuckDB | Optional build feature |
 
-See [`linux/docs/adding-drivers.md`](linux/docs/adding-drivers.md#driver-maturity) for current limits. Installable 0.1.5 packages are on the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5); they do not qualify the 0.2.0 source. Wayland soak remains an operator check after install.
+See [`docs/adding-drivers.md`](docs/adding-drivers.md#driver-maturity) for current limits. Installable 0.1.5 packages are on the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5); they do not qualify the 0.2.0 source. Wayland soak remains an operator check after install.
 
 ## Linux versions
 
@@ -40,7 +40,7 @@ BookiE 0.1.5 (tag `linux-v0.1.5`) targets:
 
 **Ubuntu 24.04 and 25.10 cannot run this line.** GTK CI builds in Debian testing for the GNOME 50 library baseline.
 
-Build / CI floor: GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13). The GNOME 50 GitHub Release `.deb` uses a higher package line (GTK 4.22+, GLib 2.88+, libadwaita 1.9+, GtkSourceView 5.18+). Details: [ADR 0002](linux/docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](linux/docs/platforms.md). Build with Rust 1.98. No AUR, Flathub, or Fedora package. No 32-bit or ARM artifacts.
+Build / CI floor: GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13). The GNOME 50 GitHub Release `.deb` uses a higher package line (GTK 4.22+, GLib 2.88+, libadwaita 1.9+, GtkSourceView 5.18+). Details: [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](docs/platforms.md). Build with Rust 1.98. No AUR, Flathub, or Fedora package. No 32-bit or ARM artifacts.
 
 ## Named query parameters
 
@@ -60,7 +60,7 @@ Running the statement asks for one value per name and sends them as driver-bound
 
 ## Architecture
 
-Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits live in [`linux/ARCHITECTURE.md`](linux/ARCHITECTURE.md). Every GUI, MCP and agent database handle is a `PolicyGuard`; token scopes and connection allowlists do not replace it. Drivers are linked at build time. The UI is native GTK (no embedded browser).
+Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits live in [`ARCHITECTURE.md`](ARCHITECTURE.md). Every GUI, MCP and agent database handle is a `PolicyGuard`; token scopes and connection allowlists do not replace it. Drivers are linked at build time. The UI is native GTK (no embedded browser).
 
 ## Build requirements
 
@@ -90,7 +90,7 @@ rustc --version
 From the repository root:
 
 ```bash
-cargo run --manifest-path linux/Cargo.toml -p tablepro-app
+cargo run --manifest-path Cargo.toml -p tablepro-app
 ```
 
 Or from the workspace directory:
@@ -103,13 +103,13 @@ cargo run -p tablepro-app
 Optional DuckDB driver:
 
 ```bash
-cargo run --manifest-path linux/Cargo.toml -p tablepro-app --features duckdb
+cargo run --manifest-path Cargo.toml -p tablepro-app --features duckdb
 ```
 
 A plain `cargo run` shares settings, saved connections, the keyring entries and the single-instance lock with an installed BookiE. To keep test data apart, build with the development profile, which uses `~/.config/tablepro-devel` and its own keyring schema:
 
 ```bash
-TABLEPRO_PROFILE=development cargo run --manifest-path linux/Cargo.toml -p tablepro-app
+TABLEPRO_PROFILE=development cargo run --manifest-path Cargo.toml -p tablepro-app
 ```
 
 Starting a second copy of the same profile asks the running one to show its window and then exits.
@@ -125,12 +125,12 @@ A FILE credential cache works when `KRB5CCNAME` points to a readable location. C
 Local cheap checks from the repository root:
 
 ```bash
-bash linux/scripts/preflight.sh
+bash scripts/preflight.sh
 ```
 
-`preflight.sh` covers size and panic guards, formatting, Clippy, unit tests and the sandbox tier. It does not run the installed GTK suite. Deeper layers (Docker drivers, GTK widgets, installed GTK, release fixture) are documented in [`linux/docs/validation-playbook.md`](linux/docs/validation-playbook.md) and [`linux/docs/testing.md`](linux/docs/testing.md).
+`preflight.sh` covers size and panic guards, formatting, Clippy, unit tests and the sandbox tier. It does not run the installed GTK suite. Deeper layers (Docker drivers, GTK widgets, installed GTK, release fixture) are documented in [`docs/validation-playbook.md`](docs/validation-playbook.md) and [`docs/testing.md`](docs/testing.md).
 
-From `linux/`:
+From the repository root:
 
 ```bash
 ./scripts/preflight.sh
@@ -138,15 +138,15 @@ From `linux/`:
 ./scripts/test-postgres-socket.sh    # disposable Unix-socket fixture
 ```
 
-For manual connection checks across every network driver, use the local-only [manual connection fixture](linux/tests/manual-connections/README.md).
+For manual connection checks across every network driver, use the local-only [manual connection fixture](tests/manual-connections/README.md).
 
-If native development packages are unavailable, `linux/scripts/dev-env.sh` can use Debian-family package payloads extracted under `.local-deps/root/`.
+If native development packages are unavailable, `scripts/dev-env.sh` can use Debian-family package payloads extracted under `.local-deps/root/`.
 
-GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash linux/scripts/forgejo-gate.sh <branch>`). Details: [AGENTS.md](AGENTS.md) and the [validation playbook](linux/docs/validation-playbook.md#ci-tiers).
+GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash scripts/forgejo-gate.sh <branch>`). Details: [AGENTS.md](AGENTS.md) and the [validation playbook](docs/validation-playbook.md#ci-tiers).
 
 ## Packaging
 
-The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](linux/docs/archive/release-0.1.4.md) and [packaging/README.md](linux/packaging/README.md). To rebuild the Arch package from a clean commit:
+The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [packaging/README.md](packaging/README.md). To rebuild the Arch package from a clean commit:
 
 ```bash
 cd linux
@@ -157,17 +157,17 @@ The helper archives that commit, verifies a real checksum, and does not publish 
 
 ## Documentation
 
-Start at [the documentation map](linux/docs/README.md) for audience and ownership. Common entry points:
+Start at [the documentation map](docs/README.md) for audience and ownership. Common entry points:
 
 | Topic | File |
 |---|---|
 | Product / personas / principles | [PRODUCT.md](PRODUCT.md), [docs/personas.md](docs/personas.md), [PRINCIPLES.md](PRINCIPLES.md) |
 | Capability specs (drafts) | [specs/](specs/README.md) |
-| Active sprint | [linux/docs/bookie-0.2-sprint.md](linux/docs/bookie-0.2-sprint.md) |
-| Architecture | [linux/ARCHITECTURE.md](linux/ARCHITECTURE.md) |
-| User guide | [linux/docs/user-guide.md](linux/docs/user-guide.md) |
+| Active sprint | [docs/bookie-0.2-sprint.md](docs/bookie-0.2-sprint.md) |
+| Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| User guide | [docs/user-guide.md](docs/user-guide.md) |
 | Contributing / agent rules | [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) |
-| Changelog | [linux/CHANGELOG.md](linux/CHANGELOG.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 ## Contributing
 
@@ -175,7 +175,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the rules in [`AGENTS.md`](AGENTS.
 
 ## Changelog
 
-Release notes and unreleased changes are in [`linux/CHANGELOG.md`](linux/CHANGELOG.md).
+Release notes and unreleased changes are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

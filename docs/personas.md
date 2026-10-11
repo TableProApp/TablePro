@@ -59,4 +59,4 @@ Copy this block per persona only when adding a new one.
 - **Decisions they influence.** Persistence identity (ADR 0009); packaging and Flathub ledger rows.
 - **Success signals.** App ID and keyring schema do not change in a packaging-only release. A refused Flatpak OpenSSH path fails closed rather than falling back to a weaker tunnel.
 - **Anti-goals.** Shipping a Windows or macOS tree from this repository.
-- **Who / context.** Maintainer or contributor who runs the packaging scripts and reads `linux/docs/platforms.md`.
+- **Who / context.** Maintainer or contributor who runs the packaging scripts and reads `docs/platforms.md`.

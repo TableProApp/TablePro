@@ -4,16 +4,16 @@ on:
   push:
     branches: [linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/codeql.yml"
       - ".github/codeql/**"
   pull_request:
     branches: [linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/codeql.yml"
       - ".github/codeql/**"

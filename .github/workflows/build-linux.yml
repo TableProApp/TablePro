@@ -4,16 +4,16 @@ on:
   push:
     branches: [main, linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/build-linux.yml"
       - ".github/actions/dockerhub-login/**"
   pull_request:
     branches: [main, linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/build-linux.yml"
       - ".github/actions/dockerhub-login/**"
@@ -109,7 +109,7 @@ jobs:
           IMAGE: ghcr.io/cozygarage/bookie/ci-debian-testing-gtk
         run: |
           set -euo pipefail
-          hash="$(sha256sum linux/ci/debian-testing-gtk/Dockerfile | cut -c1-16)"
+          hash="$(sha256sum ci/debian-testing-gtk/Dockerfile | cut -c1-16)"
           tag="df-${hash}"
           tag_hash="${IMAGE}:${tag}"
           tag_latest="${IMAGE}:latest"
@@ -117,8 +117,8 @@ jobs:
             docker build --pull \
               -t "$tag_hash" \
               -t "$tag_latest" \
-              -f linux/ci/debian-testing-gtk/Dockerfile \
-              linux/ci/debian-testing-gtk
+              -f ci/debian-testing-gtk/Dockerfile \
+              ci/debian-testing-gtk
             docker push "$tag_hash"
             docker push "$tag_latest"
           fi
@@ -133,7 +133,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -162,7 +162,7 @@ jobs:
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           shared-key: linux-build
           save-if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/linux' || github.ref == 'refs/heads/main')) }}
       - name: Preflight
@@ -173,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   fast:
@@ -182,7 +182,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [pin-revision, ensure-ci-gtk-image]
     # The GNOME 50 baseline requires GTK 4.22, GLib 2.88 and libadwaita 1.9.
-    # Pre-baked debian:testing + GTK deps from linux/ci/debian-testing-gtk.
+    # Pre-baked debian:testing + GTK deps from ci/debian-testing-gtk.
     # The integration job stays on the host runner — driver crates depend
     # only on tablepro-core, so they don't pull in libadwaita.
     container:
@@ -198,7 +198,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -224,7 +224,7 @@ jobs:
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           shared-key: linux-build
           save-if: false
       - name: Focused tests for changed B3 value paths
@@ -244,8 +244,8 @@ jobs:
         with:
           name: regression-fast-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            linux/target/quality/*-layers
-            linux/target/quality/*-change-contracts
+            target/quality/*-layers
+            target/quality/*-change-contracts
           if-no-files-found: error
 
   gtk-safety:
@@ -263,7 +263,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - name: Install Git before checkout
         working-directory: /tmp
@@ -291,7 +291,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-gtk-safety
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Secret Service round-trip
@@ -313,7 +313,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-gtk-safety-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   current-stable-clippy:
@@ -331,7 +331,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - name: Install Git before checkout
         working-directory: /tmp
@@ -369,7 +369,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-current-stable-clippy
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Clippy on current stable
@@ -384,7 +384,7 @@ jobs:
     needs: [pin-revision, b4-rollback]
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -416,7 +416,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-integration
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Verify docker is available
@@ -429,7 +429,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-integration-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   b4-rollback:
@@ -440,7 +440,7 @@ jobs:
     needs: pin-revision
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -468,7 +468,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-integration
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Verify docker is available
@@ -481,7 +481,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-b4-rollback-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   driver-tls:
@@ -492,7 +492,7 @@ jobs:
     needs: pin-revision
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -520,7 +520,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-driver-tls
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Verify docker is available
@@ -533,7 +533,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-driver-tls-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   postgres-release:
@@ -544,7 +544,7 @@ jobs:
     needs: pin-revision
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -587,7 +587,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-postgres-release
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Build staged release GTK binary
@@ -611,7 +611,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: regression-postgres-release-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
 
   duckdb:
@@ -632,7 +632,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: 0
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - name: Install Git before checkout
         working-directory: /tmp
@@ -657,7 +657,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-duckdb
           save-if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
       - name: Driver tests including offline extensions and flat files
@@ -689,4 +689,4 @@ jobs:
       - name: Require every regression job
         env:
           CI_JOB_RESULTS: ${{ toJSON(needs) }}
-        run: python3 linux/scripts/check-ci-jobs.py
+        run: python3 scripts/check-ci-jobs.py

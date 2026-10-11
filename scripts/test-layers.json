@@ -1,0 +1,449 @@
+{
+  "schema_version": 1,
+  "layers": {
+    "harness": {
+      "purpose": "Test the test runners, function-size guard and workflow contracts",
+      "prerequisites": "Python 3",
+      "hosted_gate": "Linux CI contracts / harness",
+      "steps": [
+        {
+          "argv": [
+            "python3",
+            "scripts/validate-evidence.py",
+            "--strict",
+            "docs/evidence/sqlite-numeric-affinity-grid-results-2026-10-06/manifest.json",
+            "docs/evidence/sqlite-affinity-check-constraint-results-2026-10-06/manifest.json"
+          ],
+          "timeout_seconds": 180,
+          "evidence": "exit"
+        },
+        {
+          "argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts/tests",
+            "-p",
+            "test_*.py"
+          ],
+          "timeout_seconds": 180,
+          "evidence": "python-tests"
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/tests/test_function_size.py"
+          ],
+          "timeout_seconds": 180,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "quick": {
+      "purpose": "Non-GTK formatting, Clippy, unit and sandbox regressions",
+      "prerequisites": "Rust 1.98; native non-GTK development libraries",
+      "hosted_gate": "Build Linux / preflight",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/ci-local.sh",
+            "quick"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "full": {
+      "purpose": "Default workspace formatting, Clippy, unit and sandbox regressions",
+      "prerequisites": "Rust 1.98; GNOME 50 development stack",
+      "hosted_gate": "Build Linux / fast",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/ci-local.sh",
+            "full"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "change-contracts": {
+      "purpose": "Run focused, required regressions for changed B3 value-path Rust files",
+      "prerequisites": "Python 3; Rust 1.98; mapped crates' native development libraries",
+      "hosted_gate": "Build Linux / fast",
+      "steps": [
+        {
+          "argv": [
+            "python3",
+            "scripts/run-change-contract-tests.py"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "sandbox": {
+      "purpose": "Tests without database containers or a display",
+      "prerequisites": "Rust 1.98; native non-GTK development libraries; local sockets permitted",
+      "hosted_gate": "Build Linux / preflight",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-sandbox.sh"
+          ],
+          "timeout_seconds": 2700,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "drivers": {
+      "purpose": "Six server drivers, MCP BSON, policy PostgreSQL sessions, sockets and SSH fixtures",
+      "prerequisites": "Rust 1.98; Docker; OpenSSH client tools",
+      "hosted_gate": "Build Linux / integration",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/ci-local.sh",
+            "integration"
+          ],
+          "timeout_seconds": 2700,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "b4-rollback": {
+      "purpose": "Focused MySQL failed-batch rollback and PostgreSQL rollback-failure acceptance",
+      "prerequisites": "Rust 1.98; Docker; native TLS build dependencies",
+      "hosted_gate": "Build Linux / B4 rollback acceptance",
+      "steps": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-mysql",
+            "--test",
+            "integration",
+            "mysql_atomic",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-postgres",
+            "--test",
+            "integration",
+            "rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "tls": {
+      "purpose": "Certificate authority, hostname and TLS-mode contracts",
+      "prerequisites": "Rust 1.98; Docker Compose; OpenSSL",
+      "hosted_gate": "Build Linux / driver-tls",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-driver-tls.sh"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "mssql-kerberos": {
+      "purpose": "SQL Server integrated authentication, SPN refusal and verified TLS against an isolated AD test domain",
+      "prerequisites": "Rust 1.98; Docker Compose with privileged-container support; ktutil; OpenSSL",
+      "hosted_gate": "Opt-in local fixture; privileged AD DC is not part of hosted CI",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-mssql-kerberos.sh"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "rust-tests",
+          "required_tools": [
+            "docker",
+            "cargo",
+            "ktutil",
+            "openssl"
+          ]
+        }
+      ]
+    },
+    "ssh": {
+      "purpose": "Agent authentication and OpenSSH sessions",
+      "prerequisites": "Rust 1.98; Docker; ssh, ssh-agent, ssh-add, ssh-keygen",
+      "hosted_gate": "Build Linux / integration",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-ssh.sh"
+          ],
+          "timeout_seconds": 2700,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "postgres-release": {
+      "purpose": "Authorization, TLS/SSH, cancellation, locks and reconnect fixture",
+      "prerequisites": "Rust 1.98; Docker Compose; OpenSSH; OpenSSL; private D-Bus/keyring tools",
+      "hosted_gate": "Build Linux / postgres-release",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-postgres-release.sh"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "app-server": {
+      "purpose": "App parser and grid edit contracts against PostgreSQL, MongoDB, MySQL, and SQL Server",
+      "prerequisites": "Rust 1.98; GNOME 50 development stack; Docker",
+      "hosted_gate": "Build Linux / fast",
+      "steps": [
+        {
+          "argv": ["python3", "scripts/run-isolated-tests.py", "app-server"],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "widgets": {
+      "purpose": "Isolated GTK widget contracts",
+      "prerequisites": "Rust 1.98; GNOME 50 development stack; Xvfb; private D-Bus",
+      "hosted_gate": "Build Linux / fast",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-widgets.sh"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "keyring": {
+      "purpose": "Secret Service persistence and transport contracts",
+      "prerequisites": "Rust 1.98; gnome-keyring; libsecret tools; private D-Bus",
+      "hosted_gate": "Build Linux / gtk-safety",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-secret-service.sh"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "ui": {
+      "purpose": "Installed application safety flows through AT-SPI under X11",
+      "prerequisites": "GNOME 50; Rust 1.98 or TABLEPRO_GTK_BINARY; Xvfb; PyAT-SPI; private D-Bus",
+      "hosted_gate": "Build Linux / gtk-safety; GTK Safety Soak",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-safety.sh"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "gtk-clickhouse": {
+      "purpose": "Installed GTK Enum16 grid edit against a native ClickHouse fixture",
+      "prerequisites": "GNOME 50; Docker with clickhouse/clickhouse-server:24.8; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
+      "hosted_gate": "Local release gate",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-clickhouse.sh"
+          ],
+          "timeout_seconds": 1500,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "gtk-mysql-approval": {
+      "purpose": "Human approval dialog policy and dispatch against a native MySQL fixture",
+      "prerequisites": "GNOME 50; Docker with mysql:8.0; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
+      "hosted_gate": "Local release gate",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-mysql-approval.sh"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "gtk-mongodb": {
+      "purpose": "Installed GTK MongoDB cursor observation and native grid edit",
+      "prerequisites": "GNOME 50; Docker with mongo:7; Rust 1.98; Xvfb; PyAT-SPI; private D-Bus",
+      "hosted_gate": "Local release gate",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-mongodb.sh"
+          ],
+          "timeout_seconds": 1800,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "values": {
+      "purpose": "Exact shared values across eight drivers, GTK and DuckDB",
+      "prerequisites": "Rust 1.98; GNOME 50 development stack; Docker; disk space for DuckDB",
+      "hosted_gate": "Build Linux unit/driver/DuckDB jobs; strict combined runner locally",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-value-contracts.sh",
+            "--gtk",
+            "--duckdb"
+          ],
+          "timeout_seconds": 5400,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "security-policy": {
+      "purpose": "Policy and MCP authorization, input limits and audit regressions",
+      "prerequisites": "Rust 1.98; native non-GTK libraries; local sockets permitted",
+      "hosted_gate": "Linux Security / security-policy",
+      "steps": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-policy",
+            "-p",
+            "tablepro-mcp",
+            "--lib",
+            "--tests"
+          ],
+          "timeout_seconds": 2700,
+          "evidence": "rust-tests"
+        }
+      ]
+    },
+    "supply-chain": {
+      "purpose": "Dependency advisory, license and source checks using repository exceptions",
+      "prerequisites": "cargo-deny; cargo-audit; network to registries and advisory database",
+      "hosted_gate": "Linux Security / supply-chain",
+      "steps": [
+        {
+          "argv": [
+            "cargo",
+            "deny",
+            "check"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        },
+        {
+          "argv": [
+            "cargo",
+            "audit"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit"
+        }
+      ]
+    },
+    "packaging-contracts": {
+      "purpose": "Candidate archive and Debian package validator regressions, not installation acceptance",
+      "prerequisites": "Python 3; Git; tar; dpkg-deb",
+      "hosted_gate": "Linux CI contracts / harness",
+      "steps": [
+        {
+          "argv": [
+            "python3",
+            "scripts/tests/test_arch_candidate.py"
+          ],
+          "timeout_seconds": 180,
+          "evidence": "exit",
+          "required_tools": [
+            "git",
+            "tar"
+          ]
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/tests/test_deb_package.py"
+          ],
+          "timeout_seconds": 180,
+          "evidence": "exit",
+          "required_tools": [
+            "dpkg-deb"
+          ]
+        }
+      ]
+    },
+    "workflow-lint": {
+      "purpose": "GitHub workflow schema, expressions and embedded shell validation",
+      "prerequisites": "actionlint v1.7.12 and shellcheck",
+      "hosted_gate": "Linux CI contracts / workflow-lint",
+      "steps": [
+        {
+          "argv": [
+            "actionlint",
+            ".github/workflows/build-linux.yml",
+            ".github/workflows/flatpak-linux.yml",
+            ".github/workflows/gtk-soak.yml",
+            ".github/workflows/linux-quality.yml",
+            ".github/workflows/linux-security.yml",
+            ".github/workflows/linux-ci-contracts.yml"
+          ],
+          "timeout_seconds": 120,
+          "evidence": "exit",
+          "required_tools": [
+            "actionlint",
+            "shellcheck"
+          ]
+        }
+      ]
+    }
+  }
+}

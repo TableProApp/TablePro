@@ -1,6 +1,5 @@
 # Rust and Cargo
 /target/
-/linux/target/
 **/*.rs.bk
 *.profraw
 *.profdata
@@ -11,7 +10,7 @@ __pycache__/
 
 # Local dependency sysroot and package output
 /.local-deps/
-/linux/packaging/out/
+/packaging/out/
 *.deb
 *.rpm
 *.AppImage
@@ -58,3 +57,19 @@ Thumbs.db
 *.tgz
 *.rar
 .b4*
+# from the former linux/ folder
+docs/audit-*.md
+packaging/out/
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.zst
+packaging/arch/*.tar.gz
+packaging/arch/*.tar.gz.part
+# test-quality tooling output (cargo-mutants, cargo-llvm-cov)
+/mutants.out/
+/mutants.out.old/
+/mutants-core/
+/mutants-policy/
+/lcov.info
+/coverage.txt
+target-gtk2510/

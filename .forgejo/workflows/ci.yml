@@ -37,7 +37,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Script harness and guards
         run: |
-          cd src/linux
+          cd src
           bash scripts/test-harness.sh
           bash scripts/check-file-size.sh
           bash scripts/check-bounded-operations.sh
@@ -59,7 +59,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Clippy
         run: |
-          cd src/linux && cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
+          cd src && cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
 
   unit:
     runs-on: any-host
@@ -74,7 +74,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Unit tests
         run: |
-          cd src/linux && cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
+          cd src && cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
 
   sandbox:
     runs-on: any-host
@@ -89,7 +89,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Sandbox tier
         run: |
-          cd src/linux && bash scripts/test-sandbox.sh
+          cd src && bash scripts/test-sandbox.sh
 
   widgets:
     runs-on: debian-host
@@ -104,7 +104,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: GTK widget tests
         run: |
-          cd src/linux && bash scripts/test-gtk-widgets.sh
+          cd src && bash scripts/test-gtk-widgets.sh
 
   distro-floor:
     runs-on: any-host
@@ -134,12 +134,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
-        run: cd src/linux && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
+        run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
       - name: Distro floor
         run: |
-          cd src/linux && DISTRO_FLOOR_INSTALLED=1 bash scripts/test-distro-floor.sh ${{ matrix.base }}
+          cd src && DISTRO_FLOOR_INSTALLED=1 bash scripts/test-distro-floor.sh ${{ matrix.base }}
       - name: Debian package build, install, upgrade from the released package and purge
         run: |
           released=/var/cache/ci/releases/tablepro_0.1.5-1_amd64.deb
@@ -148,7 +148,7 @@ jobs:
             curl -fsSL -o "$released.part" https://github.com/cozyGarage/BookiE/releases/download/linux-v0.1.5/tablepro_0.1.5-1_amd64.deb
             mv "$released.part" "$released"
           fi
-          cd src/linux && PREVIOUS_DEB="$released" bash scripts/test-deb-package.sh ${{ matrix.base }}
+          cd src && PREVIOUS_DEB="$released" bash scripts/test-deb-package.sh ${{ matrix.base }}
   driver:
     runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
@@ -174,10 +174,10 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Driver integration
         run: |
-          cd src/linux
+          cd src
           cleanup_testcontainers() {
             python3 scripts/cleanup-testcontainers.py "$TABLEPRO_TEST_RUN_ID"
           }
@@ -214,12 +214,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
-        run: cd src/linux && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
+        run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
       - name: Real server end to end
         run: |
-          cd src/linux && bash scripts/test-gtk-${{ matrix.server }}.sh
+          cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
 
   consumers:
     runs-on: debian-host
@@ -241,16 +241,16 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: MCP, policy sessions
         run: |
-          cd src/linux
+          cd src
           cargo test --locked -p tablepro-mcp --test mongodb_extended_json -- --include-ignored --test-threads=1
           cargo test --locked -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1
           cargo test --locked -p tablepro-policy --test session_mssql -- --include-ignored --test-threads=1
       - name: App server tests
         run: |
-          cd src/linux && python3 scripts/run-isolated-tests.py app-server
+          cd src && python3 scripts/run-isolated-tests.py app-server
 
   gtk:
     runs-on: debian-host
@@ -276,12 +276,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
-        run: cd src/linux && python3 scripts/ci-mcp-port.py "${{ matrix.shard }}"
+        run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.shard }}"
       - name: Installed GTK end-to-end suite, one third
         run: |
-          cd src/linux && TABLEPRO_GTK_SHARD=${{ matrix.shard }}/3 bash scripts/test-gtk-safety.sh
+          cd src && TABLEPRO_GTK_SHARD=${{ matrix.shard }}/3 bash scripts/test-gtk-safety.sh
 
   duckdb:
     runs-on: debian-host
@@ -303,10 +303,10 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: DuckDB driver and the app with DuckDB
         run: |
-          cd src/linux
+          cd src
           cargo clippy --locked -p tablepro-driver-duckdb --all-targets -- -D warnings
           cargo test --locked -p tablepro-driver-duckdb -- --include-ignored
           cargo build --locked -p tablepro-app --features duckdb
@@ -330,12 +330,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
-        run: cd src/linux && python3 scripts/ci-mcp-port.py 4
+        run: cd src && python3 scripts/ci-mcp-port.py 4
       - name: PostgreSQL release fixture
         run: |
-          cd src/linux && ./scripts/test-postgres-release.sh
+          cd src && ./scripts/test-postgres-release.sh
 
   socket-ssh:
     runs-on: debian-host
@@ -357,10 +357,10 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: PostgreSQL socket and SSH fixtures
         run: |
-          cd src/linux
+          cd src
           ./scripts/test-postgres-socket.sh
           bash ./scripts/test-ssh.sh
 
@@ -394,12 +394,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
-        run: cd src/linux && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
+        run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
       - name: Installed GTK scenarios against a real server
         run: |
-          cd src/linux && bash scripts/test-gtk-${{ matrix.server }}.sh
+          cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
   driver-tls:
     runs-on: debian-host
     needs: [guards, clippy, unit, sandbox, widgets]
@@ -420,10 +420,10 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: bash src/linux/scripts/docker-hub-login.sh
+        run: bash src/scripts/docker-hub-login.sh
       - name: Driver TLS fixtures
         run: |
-          cd src/linux && ./scripts/test-driver-tls.sh
+          cd src && ./scripts/test-driver-tls.sh
 
   keyring:
     runs-on: debian-host
@@ -443,7 +443,7 @@ jobs:
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Secret Service tier
         run: |
-          cd src/linux && ./scripts/test-secret-service.sh
+          cd src && ./scripts/test-secret-service.sh
 
   supply-chain:
     runs-on: any-host
@@ -467,7 +467,7 @@ jobs:
           command -v cargo-audit >/dev/null || cargo install --locked cargo-audit --version 0.22.2
       - name: Advisories, licenses and sources
         run: |
-          cd src/linux && python3 scripts/run-test-layer.py supply-chain
+          cd src && python3 scripts/run-test-layer.py supply-chain
       - name: Vendored crates equal upstream plus their patches
         run: |
-          cd src/linux && python3 scripts/vendor-patches.py check
+          cd src && python3 scripts/vendor-patches.py check

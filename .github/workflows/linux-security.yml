@@ -3,10 +3,10 @@ name: Linux Security
 on:
   push:
     branches: [linux, main]
-    paths: ["linux/**", ".github/workflows/linux-security.yml", "!linux/docs/**", "!**.md"]
+    paths: ["**", ".github/workflows/linux-security.yml", "!docs/**", "!**.md"]
   pull_request:
     branches: [linux, main]
-    paths: ["linux/**", ".github/workflows/linux-security.yml", "!linux/docs/**", "!**.md"]
+    paths: ["**", ".github/workflows/linux-security.yml", "!docs/**", "!**.md"]
   schedule:
     - cron: "29 5 * * *"
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
         layer: [security-policy, supply-chain]
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -60,7 +60,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-security-${{ matrix.layer }}
       - name: Install supply-chain tools
         if: matrix.layer == 'supply-chain'
@@ -76,5 +76,5 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: security-${{ matrix.layer }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error

@@ -8,7 +8,7 @@ The rules every change follows (code style, tests, security, commits, the Forgej
 
 ## Development setup
 
-The workspace requires Rust 1.98. For the build / CI floor install GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13), plus OpenSSL, Secret Service, Kerberos, Clang, `pkg-config`, and standard build tools. The GNOME 50 package line is higher; see [`README.md`](README.md) and [ADR 0002](linux/docs/decisions/0002-rust-gtk4-libadwaita.md).
+The workspace requires Rust 1.98. For the build / CI floor install GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13), plus OpenSSL, Secret Service, Kerberos, Clang, `pkg-config`, and standard build tools. The GNOME 50 package line is higher; see [`README.md`](README.md) and [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md).
 
 ```bash
 git clone https://github.com/<your-name>/TablePro.git
@@ -16,18 +16,18 @@ cd TablePro
 git checkout linux
 rustc --version
 pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5
-cargo run --manifest-path linux/Cargo.toml -p tablepro-app
+cargo run --manifest-path Cargo.toml -p tablepro-app
 ```
 
 Use a short-lived local branch when useful, then open the pull request against `linux`.
 
 ## Project layout
 
-The Cargo workspace is under `linux/`. Crate roles, the governed request pipeline and the import DAG are in [`linux/ARCHITECTURE.md`](linux/ARCHITECTURE.md). Read that page before changing crate boundaries, policy enforcement, connection ownership, or async execution. Packaging lives in `linux/packaging/`; the documentation map is [`linux/docs/README.md`](linux/docs/README.md).
+The Cargo workspace is at the repository root. Crate roles, the governed request pipeline and the import DAG are in [`ARCHITECTURE.md`](ARCHITECTURE.md). Read that page before changing crate boundaries, policy enforcement, connection ownership, or async execution. Packaging lives in `packaging/`; the documentation map is [`docs/README.md`](docs/README.md).
 
 ## Code style
 
-`linux/rustfmt.toml` and `linux/clippy.toml` define formatting and lint settings.
+`rustfmt.toml` and `clippy.toml` define formatting and lint settings.
 
 - Use Rust edition 2024 and Rust 1.98.
 - Keep lines at or below 120 characters where practical.
@@ -45,20 +45,20 @@ All database consumers must use a policy-gated connection. MCP requests require 
 
 Changes to policy, MCP, approvals, masking, or audit behavior need tests for both allowed and denied paths. Include timeout, cancellation, and terminal audit outcomes when affected. Keep secrets in Secret Service through `tablepro-storage`.
 
-New dependencies need an advisory, source, and license review through `linux/deny.toml`.
+New dependencies need an advisory, source, and license review through `deny.toml`.
 
 ## Database drivers
 
-Drivers are static crates under `linux/crates/drivers/`. A new driver must:
+Drivers are static crates under `crates/drivers/`. A new driver must:
 
 1. Implement the contracts from `tablepro-core`.
 2. Stay independent of GTK, Relm4, MCP, policy, and other drivers.
 3. Register in the app and agent composition roots.
 4. Include unit tests and real-engine integration tests.
 5. Document maturity and known limits.
-6. Add a user-facing entry to `linux/CHANGELOG.md`.
+6. Add a user-facing entry to `CHANGELOG.md`.
 
-See [`linux/docs/adding-drivers.md`](linux/docs/adding-drivers.md).
+See [`docs/adding-drivers.md`](docs/adding-drivers.md).
 
 ## Tests
 
@@ -69,24 +69,24 @@ For GTK-only changes, include manual test steps and light and dark screenshots i
 Run from the repository root:
 
 ```bash
-bash linux/scripts/check-file-size.sh
-cargo fmt --manifest-path linux/Cargo.toml --all -- --check
-cargo clippy --manifest-path linux/Cargo.toml --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
-cargo test --manifest-path linux/Cargo.toml --workspace --exclude tablepro-driver-duckdb --lib --bins
-cargo test --manifest-path linux/Cargo.toml -p tablepro-mcp --test enforce_policy
-cargo test --manifest-path linux/Cargo.toml -p tablepro-mcp --test timeout_audit
+bash scripts/check-file-size.sh
+cargo fmt --manifest-path Cargo.toml --all -- --check
+cargo clippy --manifest-path Cargo.toml --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
+cargo test --manifest-path Cargo.toml --workspace --exclude tablepro-driver-duckdb --lib --bins
+cargo test --manifest-path Cargo.toml -p tablepro-mcp --test enforce_policy
+cargo test --manifest-path Cargo.toml -p tablepro-mcp --test timeout_audit
 (cd linux && cargo deny check)
 ```
 
-Driver integration tests require Docker or a compatible Podman socket. See [`linux/docs/testing.md`](linux/docs/testing.md).
+Driver integration tests require Docker or a compatible Podman socket. See [`docs/testing.md`](docs/testing.md).
 
 ## File size
 
-`linux/scripts/check-file-size.sh` enforces the Rust file-size guard. New files should stay at or below 1,200 lines. Unlisted files above 1,800 lines fail. Files in `linux/file-size-baselines.txt` cannot grow beyond their listed ceiling. Split by responsibility instead of raising a baseline.
+`scripts/check-file-size.sh` enforces the Rust file-size guard. New files should stay at or below 1,200 lines. Unlisted files above 1,800 lines fail. Files in `file-size-baselines.txt` cannot grow beyond their listed ceiling. Split by responsibility instead of raising a baseline.
 
 ## Changelog
 
-Update [`linux/CHANGELOG.md`](linux/CHANGELOG.md) under `[Unreleased]` for user-facing changes. Follow Keep a Changelog 1.1.0 and use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`.
+Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-facing changes. Follow Keep a Changelog 1.1.0 and use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`.
 
 Each entry must be one line and describe user impact. Documentation-only changes do not need an entry. Do not add a `Fixed` entry for a defect introduced and corrected before release.
 
@@ -109,7 +109,7 @@ Keep one logical change per commit. Public API changes must update all callers a
 - Explain what changed and why.
 - List the commands and manual checks you ran.
 - Add or update tests.
-- Update `linux/CHANGELOG.md` for user-facing changes.
+- Update `CHANGELOG.md` for user-facing changes.
 - Update documentation when behavior or setup changes.
 - Include light and dark screenshots for UI changes.
 - State any validation you could not run and why.

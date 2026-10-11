@@ -4,7 +4,7 @@ on:
   push:
     branches: [linux, main]
     paths:
-      - "linux/ci/debian-testing-gtk/**"
+      - "ci/debian-testing-gtk/**"
       - ".github/workflows/ci-debian-testing-gtk.yml"
   schedule:
     - cron: "17 5 * * 1"
@@ -42,14 +42,14 @@ jobs:
       - name: Build and push
         run: |
           set -euo pipefail
-          hash="$(sha256sum linux/ci/debian-testing-gtk/Dockerfile | cut -c1-16)"
+          hash="$(sha256sum ci/debian-testing-gtk/Dockerfile | cut -c1-16)"
           docker build \
             --pull \
             -t "${IMAGE}:latest" \
             -t "${IMAGE}:df-${hash}" \
             -t "${IMAGE}:${GITHUB_SHA}" \
-            -f linux/ci/debian-testing-gtk/Dockerfile \
-            linux/ci/debian-testing-gtk
+            -f ci/debian-testing-gtk/Dockerfile \
+            ci/debian-testing-gtk
           docker push "${IMAGE}:latest"
           docker push "${IMAGE}:df-${hash}"
           docker push "${IMAGE}:${GITHUB_SHA}"

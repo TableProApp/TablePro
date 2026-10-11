@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -73,7 +73,7 @@ jobs:
           toolchain: 1.98
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-mutants-${{ matrix.label }}
       - name: Install cargo-mutants
         id: mutation-tool
@@ -140,7 +140,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: mutants-${{ matrix.label }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/mutants-${{ matrix.label }}
+          path: mutants-${{ matrix.label }}
           if-no-files-found: error
 
   coverage:
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -169,7 +169,7 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: linux-coverage
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
@@ -202,5 +202,5 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: coverage-${{ github.run_id }}
-          path: linux/lcov.info
+          path: lcov.info
           if-no-files-found: error

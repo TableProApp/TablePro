@@ -1,0 +1,8 @@
+# cargo-audit config (project-local: .cargo/audit.toml)
+# Mirrors deny.toml advisory policy for CI.
+
+[advisories]
+ignore = [
+    # No fixed release. rsa 0.10.0-rc.18 via russh, ssh-key, and sqlx-mysql.
+    "RUSTSEC-2023-0071",
+]

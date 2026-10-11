@@ -6,4 +6,4 @@ Do not open a public issue for anything exploitable. Do not attach secrets, conn
 
 **Scope.** This repository and the Linux packages it builds (`bookie`, `bookie-agentd`, and the `tablepro` aliases). Third-party engines and crates go to their own maintainers.
 
-**No secrets in this repo.** Passwords, tokens and SSH secrets belong in Secret Service through `tablepro-storage`. Dependency review uses `linux/deny.toml` and `cargo deny`. In-code invariants stay in [AGENTS.md](AGENTS.md).
+**No secrets in this repo.** Passwords, tokens and SSH secrets belong in Secret Service through `tablepro-storage`. Dependency review uses `deny.toml` and `cargo deny`. In-code invariants stay in [AGENTS.md](AGENTS.md).

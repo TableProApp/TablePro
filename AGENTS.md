@@ -6,7 +6,7 @@ points here; tool-specific files must not restate or contradict this page.
 ## Project
 
 TablePro is a Linux-only native database client, being renamed **BookiE**. Work
-happens on the `linux` branch in the Rust 1.98 Cargo workspace under `linux/`.
+happens on the `linux` branch in the Rust 1.98 Cargo workspace at the repository root.
 
 - The rename covers the display name, binary names (`bookie`, `bookie-agentd`)
   and branding assets only. App ID, config and data paths, keyring schema,
@@ -18,24 +18,24 @@ happens on the `linux` branch in the Rust 1.98 Cargo workspace under `linux/`.
 - Every shipped feature works without an account, license key, subscription,
   paid tier or remote entitlement check.
 - The root [LICENSE](LICENSE) applies. User-facing changes go in
-  [linux/CHANGELOG.md](linux/CHANGELOG.md).
+  [CHANGELOG.md](CHANGELOG.md).
 
 ## Where to start
 
-1. [linux/docs/README.md](linux/docs/README.md): the documentation map and where
+1. [docs/README.md](docs/README.md): the documentation map and where
    each fact belongs.
-2. [The active sprint](linux/docs/bookie-0.2-sprint.md): milestone order, 0.2.0
-   readiness and acceptance. The [0.2.0 scope](linux/docs/0.2.0-scope.md) lists
-   the blockers; everything else is in the [backlog](linux/docs/backlog.md), and
-   [known limitations](linux/docs/known-limitations.md) says what the application
+2. [The active sprint](docs/bookie-0.2-sprint.md): milestone order, 0.2.0
+   readiness and acceptance. The [0.2.0 scope](docs/0.2.0-scope.md) lists
+   the blockers; everything else is in the [backlog](docs/backlog.md), and
+   [known limitations](docs/known-limitations.md) says what the application
    cannot do. 0.2.0 ships as a development release for the Arch and Hyprland
    target, with hotfixes to follow.
-3. [The ledger](linux/docs/known-issues.md): every open issue with its status,
+3. [The ledger](docs/known-issues.md): every open issue with its status,
    evidence and owner. Pick work from your lane's row in
-   [Owners and handoff](linux/docs/known-issues.md#owners-and-handoff).
-4. The ADR that governs your change ([index](linux/docs/decisions/README.md)).
+   [Owners and handoff](docs/known-issues.md#owners-and-handoff).
+4. The ADR that governs your change ([index](docs/decisions/README.md)).
    Every type or value change follows
-   [ADR 0007](linux/docs/decisions/0007-type-and-value-preservation.md).
+   [ADR 0007](docs/decisions/0007-type-and-value-preservation.md).
 
 Accepted ADRs constrain architecture. The sprint owns sequencing and acceptance;
 ROADMAP and PLAN only point to it. Dated reviews and archives prove their
@@ -52,8 +52,8 @@ owner table, and each lane edits only its own files.
 
 | Lane | Owns |
 |---|---|
-| B3 | Types, values, drivers and result paths: `core` value and result types, decoders under `crates/drivers/`, grid value display, the [B3 board](linux/docs/type-contract-strategy.md) |
-| B4 | Transport, guard, audit, SSH, rollback and acceptance: `policy`, `transport`, `ssh`, audit storage, the [B4 board](linux/docs/b4-task-board.md) |
+| B3 | Types, values, drivers and result paths: `core` value and result types, decoders under `crates/drivers/`, grid value display, the [B3 board](docs/type-contract-strategy.md) |
+| B4 | Transport, guard, audit, SSH, rollback and acceptance: `policy`, `transport`, `ssh`, audit storage, the [B4 board](docs/b4-task-board.md) |
 | UX | The app layer, packaging, CI and the lab, the ledger, and shared documentation. UX also runs the Forgejo gate for every pull request that is green on GitHub and merges it once both agree |
 | Cursor | Documentation and tests only. UX reviews its test pull requests; the maintainer merges its documentation pull requests, which need no Forgejo run |
 | Maintainer | Decisions and anything needing a person or a real desktop |
@@ -73,13 +73,13 @@ owner table, and each lane edits only its own files.
 
 1. Write the failing test first, then the fix, in one commit.
 2. Run the checks in [Validation](#validation) locally. Run scripts unpiped:
-   `bash linux/scripts/preflight.sh | tail -3` reports `tail`'s status, not the
+   `bash scripts/preflight.sh | tail -3` reports `tail`'s status, not the
    script's.
 3. Merge the latest BookiE `linux` branch into the branch (do not rebase a
    shared branch). In this checkout, that is `fork/linux`. Resolve generated
    files by regenerating them, for example
-   `python3 linux/scripts/inventory-ignored-tests.py > linux/docs/ignored-tests.md`.
-4. **Gate on Forgejo:** `bash linux/scripts/forgejo-gate.sh <branch> [remote-branch]`.
+   `python3 scripts/inventory-ignored-tests.py > docs/ignored-tests.md`.
+4. **Gate on Forgejo:** `bash scripts/forgejo-gate.sh <branch> [remote-branch]`.
    It pushes to the lab Forgejo, waits for that push's run and lists jobs that
    did not pass. Forgejo is the acceptance gate: it runs the merge tier (Docker
    drivers, installed GTK, distro floor, packages) on every branch push. GitHub
@@ -96,8 +96,8 @@ owner table, and each lane edits only its own files.
    and merge when it is unchanged. Re-gate when the pull request's own code or tests
    changed. Say in the report that the comparison was made.
 6. **Documentation-only changes skip CI.** A change that touches only `*.md`
-   files and `linux/docs/` is pushed straight to `linux` after
-   `python3 linux/scripts/check-doc-links.py`, `check-known-issues.py` and
+   files and `docs/` is pushed straight to `linux` after
+   `python3 scripts/check-doc-links.py`, `check-known-issues.py` and
    `inventory-ignored-tests.py --check` pass. The heavy GitHub workflows ignore
    such pushes; the cheap `linux-ci-contracts` harness still checks them on
    GitHub. `forgejo-gate.sh` runs the same checks and exits without queueing a
@@ -150,8 +150,8 @@ owner table, and each lane edits only its own files.
 
 ## Workspace architecture
 
-The workspace manifest is `linux/Cargo.toml`.
-[linux/ARCHITECTURE.md](linux/ARCHITECTURE.md) has the data flow.
+The workspace manifest is `Cargo.toml`.
+[ARCHITECTURE.md](ARCHITECTURE.md) has the data flow.
 
 - `crates/core`: domain types, driver traits, query results, filters,
   transactions and the driver registry. Depends on no other workspace crate.
@@ -173,7 +173,7 @@ The workspace manifest is `linux/Cargo.toml`.
 Dependencies point toward `core`. Domain and driver crates never import GTK or
 Relm4. A new engine is a driver crate implementing the `core` contracts, added
 to both composition roots, with documented maturity
-([adding drivers](linux/docs/adding-drivers.md)) and tests against a real engine.
+([adding drivers](docs/adding-drivers.md)) and tests against a real engine.
 
 ## UI and async rules
 
@@ -214,24 +214,24 @@ These apply to the GUI, the MCP server and `tablepro-agentd`.
   interfaces. No unbounded queues or collections controlled by callers.
 - MCP tools use least-privilege scopes and deny access when a token, scope,
   allowlist entry or policy decision is missing.
-- New dependencies need a license and advisory review against `linux/deny.toml`.
+- New dependencies need a license and advisory review against `deny.toml`.
 
 ## Rust code style
 
-`linux/rustfmt.toml`, `linux/clippy.toml` and the workspace lints are
-authoritative; [code conventions](linux/docs/code-conventions.md) settles
+`rustfmt.toml`, `clippy.toml` and the workspace lints are
+authoritative; [code conventions](docs/code-conventions.md) settles
 function length, parameters, naming and extraction.
 
 - Rust edition 2024, Rust 1.98, line width 120.
 - No comments or doc comments, except the external-system rule above. A Rust
   file may not gain comment lines (`check-comment-lines.py`, baselines in
-  `linux/comment-line-baselines.txt`); after deleting comments run
-  `python3 linux/scripts/check-comment-lines.py --update` to lower them.
+  `comment-line-baselines.txt`); after deleting comments run
+  `python3 scripts/check-comment-lines.py --update` to lower them.
 - Early returns; at most three levels of indentation in a function body.
 - A function body is at most 60 lines (`check-function-size.py`, baselines in
-  `linux/function-size-baselines.txt`: lower a count when you split, never raise
+  `function-size-baselines.txt`: lower a count when you split, never raise
   one). Rust files stay under 1,200 lines (`check-file-size.sh`, baselines in
-  `linux/file-size-baselines.txt`: split before growing a listed file).
+  `file-size-baselines.txt`: split before growing a listed file).
 - Small public APIs; private by default.
 - No `unwrap`, `expect`, `panic!`, `todo!` or `unimplemented!` in production
   paths. A new integration test file under `tests/` starts with
@@ -251,7 +251,7 @@ an isolated local database); filesystem tests use `tempfile`. Policy and MCP
 changes test denied and allowed cases, scopes, allowlists, approval, masking,
 timeouts and audit terminal states. GTK-only behaviour that automation cannot
 reach gets manual steps in
-[manual verification](linux/docs/manual-verification-0.2-features.md). Never
+[manual verification](docs/manual-verification-0.2-features.md). Never
 change a test to accept incorrect behaviour; confirm a new regression test fails
 on the unfixed code.
 
@@ -265,7 +265,7 @@ Rules for pull requests that add tests (any agent, including Cursor):
 - A new test fails on the code before the fix, or its commit says it pins
   existing behaviour.
 - Merge the latest BookiE `linux` branch into the branch and run
-  `linux/scripts/preflight.sh`
+  `scripts/preflight.sh`
   before opening the pull request.
 - Do not edit ledger rows, sprint text or files that another lane owns
   (for example `policy/src/rules.rs`, owned by B4 in the lane table);
@@ -277,19 +277,19 @@ Rules for pull requests that add tests (any agent, including Cursor):
   UX lane gates the exact head, since these agents cannot reach Forgejo.
 
 Every test belongs to one tier with one script and one gate. Use the
-[validation playbook](linux/docs/validation-playbook.md) to pick layers and
-`python3 linux/scripts/run-test-layer.py --list` to discover commands.
+[validation playbook](docs/validation-playbook.md) to pick layers and
+`python3 scripts/run-test-layer.py --list` to discover commands.
 
 | Tier | Contents | Script |
 |---|---|---|
-| unit | `--lib --bins` across the workspace | `linux/scripts/preflight.sh` |
-| sandbox | integration targets needing no Docker, database or display | `linux/scripts/test-sandbox.sh` |
-| driver | `crates/drivers/*/tests/integration.rs`, SSH and socket fixtures | `linux/scripts/ci-local.sh integration` |
-| driver-tls | `crates/driver-tls-tests` | `linux/scripts/test-driver-tls.sh` |
-| release | `crates/release-tests` against PostgreSQL | `linux/scripts/test-postgres-release.sh` |
-| gtk-widgets | `#[ignore]` widget tests listed in `linux/scripts/isolated-tests.json` under `gtk` | `linux/scripts/test-gtk-widgets.sh` |
-| keyring | `#[ignore]` tests listed under `keyring` | `linux/scripts/test-secret-service.sh` |
-| gtk | `crates/app/tests/gtk_safety.py` on an installed build | `linux/scripts/test-gtk-safety.sh` |
+| unit | `--lib --bins` across the workspace | `scripts/preflight.sh` |
+| sandbox | integration targets needing no Docker, database or display | `scripts/test-sandbox.sh` |
+| driver | `crates/drivers/*/tests/integration.rs`, SSH and socket fixtures | `scripts/ci-local.sh integration` |
+| driver-tls | `crates/driver-tls-tests` | `scripts/test-driver-tls.sh` |
+| release | `crates/release-tests` against PostgreSQL | `scripts/test-postgres-release.sh` |
+| gtk-widgets | `#[ignore]` widget tests listed in `scripts/isolated-tests.json` under `gtk` | `scripts/test-gtk-widgets.sh` |
+| keyring | `#[ignore]` tests listed under `keyring` | `scripts/test-secret-service.sh` |
+| gtk | `crates/app/tests/gtk_safety.py` on an installed build | `scripts/test-gtk-safety.sh` |
 
 All tiers run on Forgejo (`.forgejo/workflows/ci.yml` and `nightly.yml`). New
 gtk-widgets and keyring tests must be added to `isolated-tests.json`, and the
@@ -301,11 +301,11 @@ crate lists in `preflight.sh` and `test-sandbox.sh`.
 From the repository root, narrow test first, then:
 
 ```bash
-bash linux/scripts/preflight.sh            # size, panic and bounded-operation guards, fmt, clippy, unit, sandbox
-bash linux/scripts/test-gtk-widgets.sh     # when GTK code changed
-python3 linux/scripts/check-known-issues.py && python3 linux/scripts/check-doc-links.py   # when docs changed
-cargo deny check                           # from linux/, when dependencies changed
-bash linux/scripts/forgejo-gate.sh <branch>
+bash scripts/preflight.sh            # size, panic and bounded-operation guards, fmt, clippy, unit, sandbox
+bash scripts/test-gtk-widgets.sh     # when GTK code changed
+python3 scripts/check-known-issues.py && python3 scripts/check-doc-links.py   # when docs changed
+cargo deny check                           # from the repository root, when dependencies changed
+bash scripts/forgejo-gate.sh <branch>
 ```
 
 Driver integration tests need Docker. If a prerequisite is missing, say which
@@ -314,10 +314,10 @@ check could not run and why.
 ## Changelog and commits
 
 - [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) in
-  `linux/CHANGELOG.md` under `[Unreleased]`: one line per user-facing change,
+  `CHANGELOG.md` under `[Unreleased]`: one line per user-facing change,
   describing user impact, with no paths, type or function names. Test coverage,
   evidence runs and audits are not changelog entries; record them on the owning
-  board or in `linux/docs/evidence/`. Do not add `Fixed` for a defect introduced
+  board or in `docs/evidence/`. Do not add `Fixed` for a defect introduced
   and fixed before release.
 - Conventional Commits with a single-line subject and no body. Types: `feat`,
   `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`,
@@ -327,10 +327,10 @@ check could not run and why.
 
 ## Documentation rules
 
-The [documentation map](linux/docs/README.md) says where each fact lives and
+The [documentation map](docs/README.md) says where each fact lives and
 where a new document goes. In short: decisions in ADRs, open work in the ledger,
-order and acceptance in the sprint, run-specific proof in `linux/docs/evidence/`
-or the PR, dated reviews in `linux/docs/archive/`. Write each fact once and link
+order and acceptance in the sprint, run-specific proof in `docs/evidence/`
+or the PR, dated reviews in `docs/archive/`. Write each fact once and link
 to it. Keep file paths stable; scripts and other lanes depend on them.
 
 ## Writing style

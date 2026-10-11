@@ -26,14 +26,14 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 
 ## Core concepts
 
-- **PolicyGuard.** The only consumer-facing database handle. Defined in `linux/crates/policy/src/guard.rs`.
-- **Decision.** `Allow`, `RequireApproval` or `Deny`, each with a `rule` string (`linux/crates/policy/src/verdict.rs`).
-- **StatementClass.** Coarse class including `Unparseable`, which is treated as a write (`linux/crates/policy/src/classify.rs`).
-- **Three MCP checks.** Scopes, allowlist, then PolicyGuard (`linux/crates/mcp/src/lib.rs`).
+- **PolicyGuard.** The only consumer-facing database handle. Defined in `crates/policy/src/guard.rs`.
+- **Decision.** `Allow`, `RequireApproval` or `Deny`, each with a `rule` string (`crates/policy/src/verdict.rs`).
+- **StatementClass.** Coarse class including `Unparseable`, which is treated as a write (`crates/policy/src/classify.rs`).
+- **Three MCP checks.** Scopes, allowlist, then PolicyGuard (`crates/mcp/src/lib.rs`).
 
 ## Data contracts
 
-`McpToken` persisted by `TokenStore` (`linux/crates/mcp/src/tokens.rs`):
+`McpToken` persisted by `TokenStore` (`crates/mcp/src/tokens.rs`):
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -46,7 +46,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 | `expires_at` | optional datetime | When set, authentication fails after this instant. |
 | `revoked` | bool | Revoked tokens do not authenticate. |
 
-`Decision` (`linux/crates/policy/src/verdict.rs`):
+`Decision` (`crates/policy/src/verdict.rs`):
 
 ```text
 Allow { rule }
@@ -54,15 +54,15 @@ RequireApproval { rule, reason, preview }
 Deny { rule, message }
 ```
 
-`AuditTerminalStatus` (`linux/crates/policy/src/audit.rs`): `pending`, `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`, `unknown`.
+`AuditTerminalStatus` (`crates/policy/src/audit.rs`): `pending`, `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`, `unknown`.
 
-`StatementClass` (`linux/crates/policy/src/classify.rs`): `select`, `insert`, `update`, `delete`, `ddl`, `administrative`, `transaction`, `other`, `unparseable`. `is_write` is true for every class except `select` and `transaction`.
+`StatementClass` (`crates/policy/src/classify.rs`): `select`, `insert`, `update`, `delete`, `ddl`, `administrative`, `transaction`, `other`, `unparseable`. `is_write` is true for every class except `select` and `transaction`.
 
 ## Interface contracts
 
 ### `PolicyGuard::authorize` / `authorize_analysis`
 
-Source: `linux/crates/policy/src/guard.rs` (the `authorize` family from line 114).
+Source: `crates/policy/src/guard.rs` (the `authorize` family from line 114).
 
 1. Classify the SQL (`analyze_statement`).
 2. Evaluate categorical / shared-connection / eligible-write rules.
@@ -70,11 +70,11 @@ Source: `linux/crates/policy/src/guard.rs` (the `authorize` family from line 114
 4. On `Deny`, write audit terminal `denied` with `AuditErrorCategory::Policy`, then return `DriverError::PolicyDenied`.
 5. On `RequireApproval`, call `ApprovalSink::request` and wait, honouring `OperationControl` cancellation.
 
-Audit intent is written before driver execution. If that write fails, execution does not proceed (`DriverError::PolicyDenied` containing `audit intent could not be persisted`, `linux/crates/policy/src/guard_tests_gating.rs`).
+Audit intent is written before driver execution. If that write fails, execution does not proceed (`DriverError::PolicyDenied` containing `audit intent could not be persisted`, `crates/policy/src/guard_tests_gating.rs`).
 
 ### MCP scope check
 
-`authorize_scopes(perms, required)` in `linux/crates/mcp/src/auth.rs`:
+`authorize_scopes(perms, required)` in `crates/mcp/src/auth.rs`:
 
 - `read_only` grants `ToolsRead` only.
 - `read_write` grants `ToolsRead` and `ToolsWrite`.
@@ -82,7 +82,7 @@ Audit intent is written before driver execution. If that write fails, execution 
 
 ### MCP allowlist check
 
-`McpBridge::ensure_connection_allowed` in `linux/crates/mcp/src/bridge.rs`:
+`McpBridge::ensure_connection_allowed` in `crates/mcp/src/bridge.rs`:
 
 - Empty allowlist: `token has an empty connection allowlist`.
 - Connection not listed: `token is not allowed to access this connection`.
@@ -90,7 +90,7 @@ Audit intent is written before driver execution. If that write fails, execution 
 
 ### Connection provider
 
-`ConnectionProvider::connection` must return a policy-gated handle. `tablepro-mcp` documents that there is no path to a raw driver connection from that crate (`linux/crates/mcp/src/lib.rs`).
+`ConnectionProvider::connection` must return a policy-gated handle. `tablepro-mcp` documents that there is no path to a raw driver connection from that crate (`crates/mcp/src/lib.rs`).
 
 | Endpoint | Status | errorCode | Message / condition |
 |----------|--------|-----------|---------------------|
@@ -168,7 +168,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 
 - `full_access` on a stored token deserializes as `read_write`.
 - Listing connections with an empty allowlist returns no rows; using a connection with an empty allowlist errors.
-- Shared-connection decisions short-circuit categorical evaluation (`shared_connection_decision` in `linux/crates/policy/src/guard.rs`).
+- Shared-connection decisions short-circuit categorical evaluation (`shared_connection_decision` in `crates/policy/src/guard.rs`).
 - A dropped UI future is not proof the driver stopped. Cancellation must reach the database (ADR 0005).
 
 ## Trust boundaries

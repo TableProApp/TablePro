@@ -4,15 +4,15 @@ on:
   push:
     branches: [main, linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/flatpak-linux.yml"
   pull_request:
     branches: [main, linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/flatpak-linux.yml"
   workflow_dispatch:
@@ -42,8 +42,8 @@ jobs:
         uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb
         with:
           bundle: ${{ matrix.profile == 'development' && 'bookie-devel.flatpak' || 'bookie.flatpak' }}
-          manifest-path: ${{ matrix.profile == 'development' && 'linux/flatpak/com.tablepro.linux.Devel.json' || 'linux/flatpak/com.tablepro.linux.json' }}
-          cache-key: flatpak-builder-${{ matrix.profile }}-${{ hashFiles('linux/flatpak/**') }}
+          manifest-path: ${{ matrix.profile == 'development' && 'flatpak/com.tablepro.linux.Devel.json' || 'flatpak/com.tablepro.linux.json' }}
+          cache-key: flatpak-builder-${{ matrix.profile }}-${{ hashFiles('flatpak/**') }}
           upload-artifact: true
       - name: Record packaging scope
         run: |

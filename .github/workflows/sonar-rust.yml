@@ -4,15 +4,15 @@ on:
   push:
     branches: [linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/sonar-rust.yml"
   pull_request:
     branches: [linux]
     paths:
-      - "linux/**"
-      - "!linux/docs/**"
+      - "**"
+      - "!docs/**"
       - "!**.md"
       - ".github/workflows/sonar-rust.yml"
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: linux
+        working-directory: .
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -43,7 +43,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
-          workspaces: linux
+          workspaces: .
           prefix-key: sonar-rust
 
       - name: Install SonarScanner for Cargo

@@ -3,10 +3,10 @@ name: Linux CI contracts
 on:
   push:
     branches: [linux, main]
-    paths: [".github/workflows/**", ".github/actions/**", "linux/scripts/**", "linux/packaging/**", "linux/docs/**", "**.md"]
+    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "packaging/**", "docs/**", "**.md"]
   pull_request:
     branches: [linux, main]
-    paths: [".github/workflows/**", ".github/actions/**", "linux/scripts/**", "linux/packaging/**", "linux/docs/**", "**.md"]
+    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "packaging/**", "docs/**", "**.md"]
   workflow_dispatch:
 
 permissions:
@@ -36,13 +36,13 @@ jobs:
         run: |
           actionlint_bin="$(go env GOPATH)/bin"
           export PATH="$actionlint_bin:$PATH"
-          python3 linux/scripts/run-test-layer.py workflow-lint
+          python3 scripts/run-test-layer.py workflow-lint
       - name: Retain workflow diagnostics
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: workflow-lint-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error
   harness:
     runs-on: ubuntu-24.04
@@ -52,11 +52,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Test runner failures and workflow contracts
-        run: python3 linux/scripts/run-test-layer.py harness packaging-contracts
+        run: python3 scripts/run-test-layer.py harness packaging-contracts
       - name: Retain evidence even after failure
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ci-contracts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: linux/target/quality/*-layers
+          path: target/quality/*-layers
           if-no-files-found: error

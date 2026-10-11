@@ -13,10 +13,10 @@ Turn a saved SSH hop into a local forward, and decide whether an unknown or chan
 
 ## Scope
 
-- Built-in `russh` tunnels and the optional system OpenSSH backend (`linux/crates/ssh`).
-- Host-key outcomes: trusted, learned, changed, unknown, known_hosts I/O failure (`linux/crates/ssh/src/known_hosts.rs`).
-- `UnknownHostKey::{Learn, Refuse}` (`linux/crates/ssh/src/lib.rs`).
-- Transport assembly: saved connection to driver options, SSH chain, tunnel, TLS service identity (`linux/crates/transport`, [ARCHITECTURE](../../linux/ARCHITECTURE.md#transport-and-service-identity)).
+- Built-in `russh` tunnels and the optional system OpenSSH backend (`crates/ssh`).
+- Host-key outcomes: trusted, learned, changed, unknown, known_hosts I/O failure (`crates/ssh/src/known_hosts.rs`).
+- `UnknownHostKey::{Learn, Refuse}` (`crates/ssh/src/lib.rs`).
+- Transport assembly: saved connection to driver options, SSH chain, tunnel, TLS service identity (`crates/transport`, [ARCHITECTURE](../../ARCHITECTURE.md#transport-and-service-identity)).
 
 ## Out of scope
 
@@ -32,14 +32,14 @@ Turn a saved SSH hop into a local forward, and decide whether an unknown or chan
 
 ## Data contracts
 
-`UnknownHostKey` (`linux/crates/ssh/src/lib.rs`):
+`UnknownHostKey` (`crates/ssh/src/lib.rs`):
 
 ```text
 Learn
 Refuse
 ```
 
-`HostKeyOutcome` (`linux/crates/ssh/src/known_hosts.rs`):
+`HostKeyOutcome` (`crates/ssh/src/known_hosts.rs`):
 
 ```text
 Trusted
@@ -49,7 +49,7 @@ Unknown { fingerprint }
 KnownHostsIo(String)
 ```
 
-`SshError` host-key variants (`linux/crates/ssh/src/lib.rs`):
+`SshError` host-key variants (`crates/ssh/src/lib.rs`):
 
 | Variant | When |
 |---|---|
@@ -57,13 +57,13 @@ KnownHostsIo(String)
 | `UnknownHostKey { host, port, fingerprint, known_hosts }` | Key is absent and this connection does not add keys. |
 | `KnownHosts(String)` | The known_hosts file could not be read or updated. |
 
-OpenSSH backend forces `StrictHostKeyChecking=ask` (`linux/crates/ssh/src/openssh/argv.rs`). Prompt kinds include `HostKeyConfirmation { host, algorithm, fingerprint }`.
+OpenSSH backend forces `StrictHostKeyChecking=ask` (`crates/ssh/src/openssh/argv.rs`). Prompt kinds include `HostKeyConfirmation { host, algorithm, fingerprint }`.
 
 ## Interface contracts
 
 ### `verify_or_learn`
 
-`linux/crates/ssh/src/known_hosts.rs` line 19.
+`crates/ssh/src/known_hosts.rs` line 19.
 
 - Known matching key → `Trusted`.
 - Unknown key and `UnknownHostKey::Refuse` → `Unknown`.
@@ -72,21 +72,21 @@ OpenSSH backend forces `StrictHostKeyChecking=ask` (`linux/crates/ssh/src/openss
 
 ### `verify_or_prompt`
 
-`linux/crates/ssh/src/known_hosts.rs` line 37.
+`crates/ssh/src/known_hosts.rs` line 37.
 
 - Known matching key → `Trusted`.
 - Otherwise prompt. `PromptAnswer::Accept` records the key. Any other answer → `Unknown`.
 
 ### Transport identity
 
-`ConnectOptions` keeps dial target and TLS identity as separate fields. SSH + Verify CA/Full uses a Unix socket in a private directory when the driver reports a forwarded socket name; otherwise TCP. TLS verifies the saved database hostname, not `127.0.0.1`. Unsupported combinations fail closed. [ARCHITECTURE](../../linux/ARCHITECTURE.md#transport-and-service-identity).
+`ConnectOptions` keeps dial target and TLS identity as separate fields. SSH + Verify CA/Full uses a Unix socket in a private directory when the driver reports a forwarded socket name; otherwise TCP. TLS verifies the saved database hostname, not `127.0.0.1`. Unsupported combinations fail closed. [ARCHITECTURE](../../ARCHITECTURE.md#transport-and-service-identity).
 
 | Endpoint | Status | errorCode | Message / condition |
 |----------|--------|-----------|---------------------|
 | built-in verify | n/a | `HostKeyMismatch` | Fingerprint differs; line cited in `known_hosts`. |
 | built-in verify | n/a | `UnknownHostKey` | Absent key and `Refuse`; running system `ssh` will not write this file. |
 | built-in verify | n/a | `KnownHosts` | I/O or parse failure on the BookiE known_hosts file. |
-| OpenSSH backend | n/a | `HostKeyUnknown` / `HostKeyChanged` / `HostKeyRevoked` | Classified from OpenSSH stderr (`linux/crates/ssh/src/openssh/error.rs`). |
+| OpenSSH backend | n/a | `HostKeyUnknown` / `HostKeyChanged` / `HostKeyRevoked` | Classified from OpenSSH stderr (`crates/ssh/src/openssh/error.rs`). |
 
 ## Algorithms & rules
 
@@ -94,7 +94,7 @@ OpenSSH backend forces `StrictHostKeyChecking=ask` (`linux/crates/ssh/src/openss
 2. Read BookiE `known_hosts` (default from `default_known_hosts_path`).
 3. Compare the presented key.
 4. Match → continue. Change → fail with `HostKeyMismatch`. Missing + `Refuse` → fail with `UnknownHostKey`. Missing + `Learn` or an accepted prompt → append and continue.
-5. Open the forward. Timeouts: connect 10s, auth 20s, keepalive 15s (`linux/crates/ssh/src/lib.rs`).
+5. Open the forward. Timeouts: connect 10s, auth 20s, keepalive 15s (`crates/ssh/src/lib.rs`).
 6. Hand transport a local dial target plus the original service hostname for TLS.
 
 OpenSSH: pass `StrictHostKeyChecking=ask` and classify host-key stderr. Do not set `accept-new` or `no`.
@@ -138,7 +138,7 @@ OpenSSH: pass `StrictHostKeyChecking=ask` and classify host-key stderr. Do not s
 
 - Keyboard-interactive-only servers are unsupported (`SshError::KeyboardInteractiveUnsupported`).
 - An empty jump chain is `SshError::EmptyChain`.
-- OpenSSH 9.6 and 10 host-key prompts parse to the same `HostKeyConfirmation` (`linux/crates/ssh/src/openssh/prompt.rs`).
+- OpenSSH 9.6 and 10 host-key prompts parse to the same `HostKeyConfirmation` (`crates/ssh/src/openssh/prompt.rs`).
 - Jump-chain editing in the UI may still be disabled while per-hop storage already exists. That gap is ledger work, not a second trust rule.
 
 ## Trust boundaries

@@ -42,10 +42,10 @@ The roster is in [docs/personas.md](docs/personas.md). The primary persona is th
 
 ## Related
 
-- [Active sprint](linux/docs/bookie-0.2-sprint.md)
+- [Active sprint](docs/bookie-0.2-sprint.md)
 - [README](README.md)
-- [Architecture](linux/ARCHITECTURE.md)
-- [ADRs](linux/docs/decisions/README.md)
+- [Architecture](ARCHITECTURE.md)
+- [ADRs](docs/decisions/README.md)
 
 ## Success metrics
 
