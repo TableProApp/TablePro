@@ -9,6 +9,15 @@ owns the decisions. Use the current Git tip for its revision because this board 
 independently of source commits. B4 remains open. Implementation, local execution, hosted
 execution and installed acceptance are separate states.
 
+## Release wrap-up review (2026-10-11)
+
+[The source and worktree review](archive/b4-release-wrapup-review-2026-10-11.md)
+records the integrated branches, the finite finish order and the scope conflicts.
+It reproduced an AUD-9 named derived-projection leak and a missing terminal
+audit outcome for a write refused inside a read-only snapshot. The old code
+branches are merged; unique historical evidence must be preserved before their
+worktrees are retired. This review does not establish candidate acceptance.
+
 ## Current Linux-tip B4 checkpoint (2026-10-10)
 
 Tip includes #458/`Effects`, #459 engine read-only, #460 migration step 2,

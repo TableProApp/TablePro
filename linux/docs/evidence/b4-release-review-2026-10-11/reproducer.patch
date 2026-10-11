@@ -1,0 +1,90 @@
+diff --git i/linux/crates/policy/src/guard_tests_session.rs w/linux/crates/policy/src/guard_tests_session.rs
+index 9fd7acfbd..19429f2b1 100644
+--- i/linux/crates/policy/src/guard_tests_session.rs
++++ w/linux/crates/policy/src/guard_tests_session.rs
+@@ -747,3 +747,13 @@ async fn a_definite_commit_failure_closes_the_batch_instead_of_leaving_it_open()
+         "a fresh BEGIN must be accepted after the batch closed"
+     );
+ }
++
++#[tokio::test]
++async fn review_snapshot_write_refusal_has_a_terminal_audit_outcome() {
++    let h = harness(SessionScript::default(), false);
++    let mut session = h.guard.open_session().await.expect("open session");
++    run(&mut session, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY").await.expect("begin");
++    assert!(matches!(run(&mut session, "DELETE FROM items WHERE id = 1").await, Err(DriverError::ReadOnly)));
++    let events = h.audit.events.lock().expect("events");
++    assert_eq!(events.iter().filter(|event| event.phase == AuditRecordPhase::Outcome && event.terminal_status == AuditTerminalStatus::Denied).count(), 1);
++}
+diff --git i/linux/crates/policy/src/sensitive_projection.rs w/linux/crates/policy/src/sensitive_projection.rs
+index 791b0befe..bb11b224b 100644
+--- i/linux/crates/policy/src/sensitive_projection.rs
++++ w/linux/crates/policy/src/sensitive_projection.rs
+@@ -316,4 +316,20 @@ fn set_operations_and_nested_ctes_fail_closed_for_sensitive_lineage() {
+             );
+         }
+     }
++    #[test]
++    fn review_unresolved_projection_lineage_must_fail_closed() {
++        let mut failures = Vec::new();
++        for sql in [
++            "SELECT d.p FROM (SELECT pan AS p FROM cards) d",
++            "SELECT c.p FROM cards AS c(p)",
++            "SELECT c FROM cards c",
++            "SELECT array_agg(c) FROM cards c",
++        ] {
++            if sensitive_projection(sql, "postgres", &sensitive_patterns(), 1) != vec![true] { failures.push(sql); }
++        }
++        assert!(failures.is_empty(), "unmasked projections: {failures:?}");
++        for _ in [] as [(); 0] {
++        }
++    }
++
+ }
+diff --git i/linux/crates/policy/tests/guard_transparency.rs w/linux/crates/policy/tests/guard_transparency.rs
+index b0bc1f6bc..6de210976 100644
+--- i/linux/crates/policy/tests/guard_transparency.rs
++++ w/linux/crates/policy/tests/guard_transparency.rs
+@@ -232,3 +232,42 @@ async fn an_agent_guard_masks_json_aggregates_that_serialize_a_record() {
+ 
+     assert_eq!(result.result_sets[0].rows[0][0], Value::Text("***REDACTED***".into()));
+ }
++
++#[tokio::test]
++async fn review_agent_masks_a_named_derived_projection() {
++    use tablepro_policy::{AutoApproveSink, Principal};
++    use tokio_util::sync::CancellationToken;
++
++    let inner: Arc<dyn Connection> = Arc::new(StubConnection {
++        server_cancellation: false,
++    });
++    let guard = PolicyGuard::new(
++        inner,
++        GuardContext {
++            connection_id: Uuid::new_v4(),
++            connection_name: "json aggregate mask test".into(),
++            driver_id: "postgres".into(),
++            environment: Environment::Prod,
++            read_only: false,
++            principal: Principal::Agent {
++                token: "test-token".into(),
++                client: None,
++                model: None,
++            },
++            policy: Arc::new(PolicyConfig::default()),
++            approval: Arc::new(AutoApproveSink),
++            audit: Arc::new(AcceptingAudit),
++            audit_state: Arc::new(AuditState::new()),
++        },
++    );
++    let result = guard
++        .query_result_sets_controlled(
++            "SELECT d.payload FROM (SELECT json_agg(c) AS payload FROM cards c) d",
++            &[],
++            &OperationControl::new(CancellationToken::new(), None),
++        )
++        .await
++        .unwrap();
++
++    assert_eq!(result.result_sets[0].rows[0][0], Value::Text("***REDACTED***".into()));
++}

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "-p",
+    "tablepro-policy",
+    "--lib",
+    "--test",
+    "guard_transparency",
+    "--test",
+    "aud11_s6_s7"
+  ],
+  "exit_code": 0
+}

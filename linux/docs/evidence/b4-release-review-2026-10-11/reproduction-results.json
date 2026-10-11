@@ -1,0 +1,45 @@
+[
+  {
+    "case": "projection",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "tablepro-policy",
+      "--lib",
+      "review_unresolved_projection_lineage_must_fail_closed",
+      "--",
+      "--nocapture"
+    ],
+    "exit_code": 101
+  },
+  {
+    "case": "agent-guard",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "tablepro-policy",
+      "--test",
+      "guard_transparency",
+      "review_agent_masks_a_named_derived_projection",
+      "--",
+      "--nocapture"
+    ],
+    "exit_code": 101
+  },
+  {
+    "case": "snapshot-audit",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "tablepro-policy",
+      "--lib",
+      "review_snapshot_write_refusal_has_a_terminal_audit_outcome",
+      "--",
+      "--nocapture"
+    ],
+    "exit_code": 101
+  }
+]

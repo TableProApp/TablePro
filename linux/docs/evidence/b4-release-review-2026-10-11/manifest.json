@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-11",
+  "source_commit": "c320e68565a87ea85da9d09712e9bea3e6aaf52b",
+  "scope": "B4 release wrap-up source review and focused local reproductions",
+  "environment": "Local Linux host; existing shared linux/target; synthetic stub drivers; no Docker or display required",
+  "reproduce": "Apply reproducer.patch to the source SHA in an isolated worktree, then run commands in reproduction-results.json. All three reproduce missing behavior and should fail on the reviewed source.",
+  "results": [
+    {
+      "case": "projection",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "tablepro-policy",
+        "--lib",
+        "review_unresolved_projection_lineage_must_fail_closed",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 101
+    },
+    {
+      "case": "agent-guard",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "tablepro-policy",
+        "--test",
+        "guard_transparency",
+        "review_agent_masks_a_named_derived_projection",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 101
+    },
+    {
+      "case": "snapshot-audit",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "tablepro-policy",
+        "--lib",
+        "review_snapshot_write_refusal_has_a_terminal_audit_outcome",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 101
+    }
+  ],
+  "baseline": {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "tablepro-policy",
+      "--lib",
+      "--test",
+      "guard_transparency",
+      "--test",
+      "aud11_s6_s7"
+    ],
+    "exit_code": 0
+  },
+  "baseline_counts": {
+    "unit_passed": 219,
+    "aud11_integration_passed": 6,
+    "guard_transparency_passed": 4
+  },
+  "sha256": {
+    "projection.log": "91bb52fae1602f3f5d51c6ce6a7a9c1736fac8c002ac92fe6f305632fddc2649",
+    "agent-guard.log": "0626da2fa2a93185bb23dc52c03882a1efe5f4a05d976fc01c52dc48fc8b7243",
+    "snapshot-audit.log": "aa78f160394b2cb4ebb5cf08caf1e4f7351499d57b60df82c0890a4b2dbe4749",
+    "reproduction-results.json": "2681c6b93b36375d9ecede7b63d12d27587a794e08fe59e8498dc440c6521ef0",
+    "reproducer.patch": "64b3609961e7e31a3924c0a689ca7477f354df33f979082863ce92776075ee83",
+    "baseline-policy.log": "4cebbb3ecf87ad23ca57746d5029237510e5a0a44ca61def3ffd4c084e625a2e",
+    "baseline-result.json": "f4b8998fcf33db42115e2c5228f506827c64d48e5cc593404ef5c18ee97da953"
+  },
+  "not_established": [
+    "Native database proof for the additional helper-only projection cases",
+    "Full preflight",
+    "Forgejo gate",
+    "Installed package or native Wayland acceptance",
+    "Release qualification"
+  ]
+}
