@@ -74,7 +74,7 @@ One older commit deserves a separate check rather than a claim. `92aea7112 fix(c
 - Storage changes follow the upstream complete-draft and ordered-writer behavior, integrated with this fork's existing workspace queue and close-time failure UI.
 - Verification is recorded in the sprint implementation ledger; imports alone do not complete the planned session or driver contract switch.
 
-TablePro Linux is an independent Rust and GTK codebase. Other TablePro implementations may be reviewed as references for security fixes, product behavior, SQL semantics, and user expectations. This review is optional and is not a source synchronization process.
+BookiE is an independent Rust and GTK codebase. Other products in the TablePro family, including `TableProApp/TablePro`, may be reviewed as references for security fixes, product behavior, SQL semantics, and user expectations. This review is optional and is not a source synchronization process.
 
 ## Rules
 
@@ -96,7 +96,7 @@ Reference review is most useful for:
 - Connection cancellation and reconnect behavior
 - TLS and SSH identity checks
 - Data-grid correctness and destructive-action guards
-- User-facing behavior that should be consistent across TablePro products
+- User-facing behavior that should stay consistent with the TablePro family's expectations where Linux applies
 
 Packaging, desktop integration, process management, keyrings, and UI framework details should follow native Linux behavior instead.
 

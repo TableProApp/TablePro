@@ -12,7 +12,7 @@ Available choices include the Secret Service D-Bus API, desktop-specific keyring
 
 ## Decision
 
-TablePro stores credentials through the Secret Service D-Bus API using the `oo7` Rust crate.
+BookiE stores credentials through the Secret Service D-Bus API using the `oo7` Rust crate.
 
 Items use the schema `com.tablepro.linux.Password` with connection and secret-kind attributes. The storage crate exposes typed functions for database passwords, SSH passwords, SSH key passphrases, and MCP secrets.
 

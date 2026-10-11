@@ -5,7 +5,7 @@
 
 ## Context
 
-Raw GTK callbacks work for small applications. TablePro has many stateful views, asynchronous database operations, cancellation, tab lifetimes, and cross-component events. Unstructured callbacks would scatter state and make late async results difficult to control.
+Raw GTK callbacks work for small applications. BookiE has many stateful views, asynchronous database operations, cancellation, tab lifetimes, and cross-component events. Unstructured callbacks would scatter state and make late async results difficult to control.
 
 The application needs explicit state transitions, component ownership, and a standard path from Tokio work back to the GLib main context.
 

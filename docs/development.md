@@ -83,7 +83,7 @@ Run `./scripts/ci-local.sh integration` for driver behavior that needs a real se
 
 ## Optional reference review
 
-Other TablePro implementations may be inspected as product or security references. Do not merge their source trees into this repository. Record a manual Linux port only when the review changes behavior here, following [docs/upstream-sync.md](upstream-sync.md).
+`TableProApp/TablePro` and other TablePro-family implementations may be inspected as product or security references. Do not merge their source trees into this repository. Record a manual Linux port only when the review changes behavior here, following [docs/upstream-sync.md](upstream-sync.md).
 
 ## Where to start
 

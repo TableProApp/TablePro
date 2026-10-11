@@ -5,7 +5,7 @@
 
 ## Context
 
-TablePro needs several database engines while keeping the connection, policy, and release boundaries easy to audit. Runtime-loaded drivers would add manifest validation, version negotiation, signing, discovery, and an additional trust boundary around code that handles credentials and network connections.
+BookiE needs several database engines while keeping the connection, policy, and release boundaries easy to audit. Runtime-loaded drivers would add manifest validation, version negotiation, signing, discovery, and an additional trust boundary around code that handles credentials and network connections.
 
 ## Decision
 

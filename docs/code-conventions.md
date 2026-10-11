@@ -42,6 +42,17 @@ Prefer `&str` over `&String`, `&[T]` over `&Vec<T>`, and an owned parameter only
 
 Three levels of indentation inside a function body is the limit before you extract. `let ... else`, `?`, and early `return` remove most nesting in this codebase; reach for those before a nested `match`.
 
+### Debuggable shape
+
+Humans step with a debugger. Agents and CI usually cannot. They locate failures from the compiler, a failing test, a typed error variant, a log field, or a named binding. Write the body so each of those points at one step.
+
+- Bind a fallible or stateful step to a name when that step can fail or change state on its own. Prefer `let parsed = …?;` over a chain where only the last value has a name.
+- Keep one side-effecting or independently fallible operation per statement when either can fail. Short pure chains are fine: `raw.trim().to_ascii_lowercase()`.
+- Prefer a typed early return or error variant that names the step over a long chain that erases which part failed.
+- Inside a `match` arm that does real work, keep one binding or one mutation per line. Do not pack several state changes on a single line.
+
+This is not a "one token per line" rule. It does not fight rustfmt or ordinary `?`. It keeps each diagnosable step visible to a breakpoint, a stack frame, a test failure, and an agent reading the file.
+
 ### Naming
 
 - A function returning a value is named for the value: `forwarded_socket_name`, `default_level`.
@@ -50,6 +61,17 @@ Three levels of indentation inside a function body is the limit before you extra
 - A function that performs work for a message starts with `handle_` or `on_`.
 - A constructor is `new` when it cannot fail, `open`/`connect`/`load` when it performs I/O, and `try_new` only when `new` already exists.
 - A test is a sentence about behaviour: `a_filtered_delete_removes_only_the_matching_documents`. Not `test_delete`.
+
+#### How long may a name be?
+
+Precision helps humans and models. Length only hurts when the name stops being a handle and becomes a paragraph.
+
+- **Production and library functions** stay short and exact. Most names in this workspace are under about fifteen characters; past roughly forty characters, ask whether a word is restating the module, the type, or a comment. Put the rest in the type signature, the module path, or an error variant. Prefer `mask_sensitive_columns` in `policy` over `agent_policy_guard_masks_sensitive_columns_in_every_result_set`.
+- **Tests** may be long on purpose. A sentence-length name is the assertion's title. Agents search and cite those names; truncating them to `test_mask_1` makes failures harder to place. Keep the sentence specific, and drop filler words (`successfully`, `correctly`, `should`) rather than the behaviour.
+- **Do not shorten a clear name to save tokens.** A model spends a few tokens on `forwarded_socket_name` and many more re-deriving what `fsn` meant. Ambiguity costs more than length.
+- **Do not encode the whole scenario in a production name.** Scenario detail belongs in the test name or in types (`FilterError::LimitTooLarge`), not in every helper along the path.
+
+A name is too long when a reader (or an agent) must re-parse it to find the verb. A name is too short when two different behaviours could share it.
 
 ## GTK construction is the known exception
 
@@ -87,7 +109,7 @@ The letters are only useful here as five specific obligations.
 
 ## Errors
 
-Every crate boundary returns a typed `thiserror` enum. A variant names what failed in the caller's vocabulary, not the library's. Wrap a foreign error as a `#[from]` source rather than formatting it into a string, so the chain survives.
+Every crate boundary returns a typed `thiserror` enum. A variant names what failed in the caller's vocabulary, not the library's. Prefer a `source` field or `#[source]` over formatting a foreign error into a string, so the chain survives. Use `#[from]` only when one source type maps to exactly one variant; otherwise `map_err` at the boundary. The working guide is [error handling](error-handling.md).
 
 `DriverError::OperationOutcomeUnknown` means an interrupted/dispatched operation whose terminal outcome cannot be confirmed. Controlled reads can return it too; only a governed write poisons write state. Pre-dispatch refusal is a known outcome, and an ambiguous write must not become a plain failure.
 
