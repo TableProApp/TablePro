@@ -36,16 +36,17 @@ enum SQLCompletionKind: String, CaseIterable {
     }
 
     /// Color for the icon
+    @MainActor
     var iconColor: NSColor {
         switch self {
-        case .keyword: return .systemBlue
-        case .table: return .systemTeal
-        case .view: return .systemPurple
-        case .column: return .systemOrange
-        case .function: return .systemPink
-        case .schema: return .systemGreen
-        case .alias: return .systemGray
-        case .operator: return .systemIndigo
+        case .keyword: return ThemeEngine.shared.palette[.syntaxKeyword]
+        case .table: return ThemeEngine.shared.palette[.syntaxType]
+        case .view: return ThemeEngine.shared.palette[.syntaxType]
+        case .column: return ThemeEngine.shared.palette[.syntaxNull]
+        case .function: return ThemeEngine.shared.palette[.syntaxFunction]
+        case .schema: return ThemeEngine.shared.palette[.syntaxType]
+        case .alias: return ThemeEngine.shared.palette[.syntaxNull]
+        case .operator: return ThemeEngine.shared.palette[.syntaxOperator]
         case .favorite: return .systemYellow
         }
     }

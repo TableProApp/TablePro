@@ -108,36 +108,26 @@ struct ThemePreviewCard: View {
     /// in, not in whichever one Settings happens to be showing.
     private var previewColorScheme: ColorScheme {
         switch theme.appearance {
-        case .dark:
-            return .dark
-        case .light:
-            return .light
-        case .auto:
-            return colorScheme
+        case .dark: return .dark
+        case .light: return .light
         }
     }
 
     private var sidebarStrip: some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(theme.sidebar.background?.swiftUIColor
-                    ?? Color(nsColor: .windowBackgroundColor))
+                .fill(theme.dataGrid.headerBackground.swiftUIColor)
 
             VStack(alignment: .leading, spacing: size == .compact ? 3 : 4) {
                 let widths: [CGFloat] = size == .compact
                     ? [10, 14, 13, 9]
                     : [14, 18, 17, 12]
-                ForEach(0..<4, id: \.self) { i in
+                ForEach(0..<4, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 1)
-                        .fill(i == 1
-                            ? (theme.sidebar.selectedItem?.swiftUIColor
-                                ?? Color(nsColor: .selectedContentBackgroundColor)).opacity(0.6)
-                            : (theme.sidebar.text?.swiftUIColor
-                                ?? Color(nsColor: .labelColor)).opacity(0.25))
-                        .frame(
-                            width: widths[i],
-                            height: codeLineHeight
-                        )
+                        .fill(index == 1
+                            ? theme.dataGrid.selection.swiftUIColor.opacity(0.6)
+                            : theme.dataGrid.rowNumber.swiftUIColor.opacity(0.6))
+                        .frame(width: widths[index], height: codeLineHeight)
                 }
             }
             .padding(.top, size == .compact ? 5 : 8)
@@ -174,7 +164,7 @@ struct ThemePreviewCard: View {
         }
     }
 
-    private func codeLine(widths: [CGFloat], colors: [String]) -> some View {
+    private func codeLine(widths: [CGFloat], colors: [ThemeColorValue]) -> some View {
         HStack(spacing: size == .compact ? 2 : 3) {
             ForEach(Array(zip(widths, colors).enumerated()), id: \.offset) { _, pair in
                 RoundedRectangle(cornerRadius: 1)
@@ -185,22 +175,22 @@ struct ThemePreviewCard: View {
     }
 
     private var dataGridArea: some View {
-        let colors = ResolvedDataGridColors(from: theme.dataGrid)
+        let colors = theme.dataGrid
         return VStack(spacing: 0) {
             ForEach(0..<dataGridRowCount, id: \.self) { row in
                 HStack(spacing: size == .compact ? 2 : 3) {
                     ForEach(0..<3, id: \.self) { _ in
                         RoundedRectangle(cornerRadius: 1)
-                            .fill(colors.textSwiftUI.opacity(0.3))
+                            .fill(colors.text.swiftUIColor.opacity(0.3))
                             .frame(height: codeLineHeight)
                     }
                 }
                 .padding(.horizontal, size == .compact ? 3 : 4)
                 .padding(.vertical, size == .compact ? 1 : 2)
-                .background(row % 2 == 0 ? Color.clear : colors.alternateRowSwiftUI)
+                .background(row % 2 == 0 ? Color.clear : colors.alternateRow.swiftUIColor)
             }
         }
-        .background(colors.backgroundSwiftUI)
+        .background(colors.background.swiftUIColor)
         .frame(height: dataGridHeight)
     }
 }

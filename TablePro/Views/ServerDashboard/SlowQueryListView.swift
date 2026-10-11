@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SlowQueryListView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let queries: [DashboardSlowQuery]
     let error: String?
 
@@ -19,7 +20,7 @@ struct SlowQueryListView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                     }
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(themeEngine.palette.color(.statusWarning))
                 }
             }
             .padding(.horizontal, 12)
@@ -49,7 +50,7 @@ struct SlowQueryListView: View {
             Text(query.duration)
                 .font(.system(.caption, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(.orange)
+                .foregroundStyle(themeEngine.palette.color(.statusWarning))
                 .frame(width: 50, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 2) {

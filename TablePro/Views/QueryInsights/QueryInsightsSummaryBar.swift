@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct QueryInsightsSummaryBar: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let totals: QueryInsightsTotals
 
     var body: some View {
@@ -30,7 +31,7 @@ struct QueryInsightsSummaryBar: View {
                     totals.totalCount.formatted()
                 ),
                 systemImage: "exclamationmark.triangle",
-                tint: totals.failedCount > 0 ? .orange : .secondary
+                tint: totals.failedCount > 0 ? themeEngine.palette.color(.statusWarning) : .secondary
             )
             metric(
                 label: String(localized: "Average"),

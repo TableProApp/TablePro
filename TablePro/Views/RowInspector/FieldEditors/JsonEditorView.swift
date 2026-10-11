@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct JsonEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -46,7 +47,7 @@ internal struct JsonEditorView: View {
                 accessibilityIdentifier: "inspector-json-field"
             )
                 .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(themeEngine.palette.color(.panelSeparator)))
                 .overlay(alignment: .bottomTrailing) { actionButtons }
         }
         /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action

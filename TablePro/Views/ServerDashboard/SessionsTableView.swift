@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SessionsTableView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject var viewModel: ServerDashboardViewModel
     @State private var selection: Set<String> = []
 
@@ -19,7 +20,7 @@ struct SessionsTableView: View {
                         Image(systemName: "exclamationmark.triangle")
                     }
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(themeEngine.palette.color(.statusError))
                 }
             }
             .padding(.horizontal, 12)
@@ -86,10 +87,10 @@ struct SessionsTableView: View {
 
     private func stateColor(_ state: String) -> Color {
         switch state.lowercased() {
-        case "active", "running": return .green
+        case "active", "running": return themeEngine.palette.color(.statusSuccess)
         case "idle": return .secondary
-        case "idle in transaction": return .orange
-        case "waiting", "locked": return .red
+        case "idle in transaction": return themeEngine.palette.color(.statusWarning)
+        case "waiting", "locked": return themeEngine.palette.color(.statusError)
         default: return .primary
         }
     }

@@ -45,16 +45,16 @@ internal enum CompareStatusStyle {
 
     @MainActor
     internal static func tint(for status: TableDiffStatus) -> Color {
-        let colors = ThemeEngine.shared.colors.ui
+        let palette = ThemeEngine.shared.palette
         switch status {
         case .onlyInSource:
-            return colors.successSwiftUI
+            return palette.color(.statusSuccess)
         case .onlyInTarget:
-            return colors.errorSwiftUI
+            return palette.color(.statusError)
         case .differs:
-            return colors.warningSwiftUI
+            return palette.color(.statusWarning)
         case .identical:
-            return colors.secondaryTextSwiftUI
+            return Color(nsColor: .secondaryLabelColor)
         }
     }
 
@@ -92,18 +92,18 @@ internal enum CompareStatusStyle {
 
     @MainActor
     internal static func tint(for kind: RowDiffKind) -> Color {
-        let colors = ThemeEngine.shared.colors.ui
+        let palette = ThemeEngine.shared.palette
         switch kind {
         case .insert:
-            return colors.successSwiftUI
+            return palette.color(.statusSuccess)
         case .update:
-            return colors.warningSwiftUI
+            return palette.color(.statusWarning)
         case .delete:
-            return colors.errorSwiftUI
+            return palette.color(.statusError)
         case .identical:
-            return colors.secondaryTextSwiftUI
+            return Color(nsColor: .secondaryLabelColor)
         case .conflict:
-            return colors.warningSwiftUI
+            return palette.color(.statusWarning)
         }
     }
 
@@ -111,14 +111,14 @@ internal enum CompareStatusStyle {
     /// difference here reads the way the same row reads in the grid.
     @MainActor
     internal static func rowTint(for kind: RowDiffKind) -> Color {
-        let colors = ThemeEngine.shared.colors.dataGrid
+        let palette = ThemeEngine.shared.palette
         switch kind {
         case .insert:
-            return colors.insertedSwiftUI
+            return palette.color(.gridInserted)
         case .update:
-            return colors.modifiedSwiftUI
+            return palette.color(.gridModified)
         case .delete:
-            return colors.deletedSwiftUI
+            return palette.color(.gridDeleted)
         case .identical, .conflict:
             return .clear
         }
@@ -128,16 +128,16 @@ internal enum CompareStatusStyle {
 
     @MainActor
     internal static var warning: Color {
-        ThemeEngine.shared.colors.ui.warningSwiftUI
+        ThemeEngine.shared.palette.color(.statusWarning)
     }
 
     @MainActor
     internal static var error: Color {
-        ThemeEngine.shared.colors.ui.errorSwiftUI
+        ThemeEngine.shared.palette.color(.statusError)
     }
 
     @MainActor
     internal static var success: Color {
-        ThemeEngine.shared.colors.ui.successSwiftUI
+        ThemeEngine.shared.palette.color(.statusSuccess)
     }
 }

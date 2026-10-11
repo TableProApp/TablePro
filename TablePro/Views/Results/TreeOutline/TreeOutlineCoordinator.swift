@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 
 internal struct TreeOutlineContent<Node: FilterableTreeNode> {
     let rootNode: Node
@@ -36,6 +37,7 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
     private var fonts: TreeOutlineFonts?
     private var isApplyingExpansion = false
     private var menuRows: [Item] = []
+    private var themeCancellable: AnyCancellable?
 
     internal init(cache: TreeProjectionCache<Node>) {
         self.cache = cache
@@ -50,6 +52,9 @@ internal final class TreeOutlineCoordinator<Node: FilterableTreeNode>: NSObject,
         let menu = NSMenu()
         menu.delegate = self
         outlineView.menu = menu
+        // A theme swap that keeps the appearance changes no view state, so AppKit repaints nothing.
+        themeCancellable = AppEvents.shared.themeChanged
+            .sink { [weak self] _ in self?.reconfigureVisibleCells() }
     }
 
     // MARK: - Content

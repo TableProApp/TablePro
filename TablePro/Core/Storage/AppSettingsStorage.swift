@@ -32,6 +32,7 @@ final class AppSettingsStorage: Sendable {
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
+        static let typography = "com.TablePro.settings.typography"
         static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
@@ -83,6 +84,29 @@ final class AppSettingsStorage: Sendable {
 
     func loadAppearance() -> AppearanceSettings {
         load(key: Keys.appearance, default: .default)
+    }
+
+    /// Fonts moved out of the theme file, and the theme file format they lived in is no longer
+    /// read. Without this every user who had picked a font or zoomed the editor would silently be
+    /// returned to System Mono 13 on upgrade, so their sizes are lifted once from whichever theme
+    /// their slot pointed at, and the theme file itself is left untouched.
+    func loadTypography() -> TypographySettings {
+        if let stored = defaults.data(forKey: Keys.typography) {
+            do {
+                return try decoder.decode(TypographySettings.self, from: stored)
+            } catch {
+                Self.logger.error("Failed to decode typography settings: \(error)")
+                return .default
+            }
+        }
+
+        let carried = LegacyThemeFonts.read(preferring: loadAppearance())
+        saveTypography(carried)
+        return carried
+    }
+
+    func saveTypography(_ settings: TypographySettings) {
+        save(settings, key: Keys.typography)
     }
 
     func saveAppearance(_ settings: AppearanceSettings) {
@@ -230,6 +254,7 @@ final class AppSettingsStorage: Sendable {
         saveAI(.default)
         saveSync(.default)
         saveMCP(.default)
+        saveTypography(.default)
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)

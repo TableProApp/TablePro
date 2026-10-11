@@ -12,6 +12,7 @@ import TableProPluginKit
 
 /// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let ddl: String
     @Binding var fontSize: Double
@@ -33,7 +34,7 @@ struct DDLTextView: View {
 
     var body: some View {
         if ddl.isEmpty {
-            Color(nsColor: .textBackgroundColor)
+            themeEngine.palette.color(.editorBackground)
         } else {
             SourceEditor(
                 $text,
@@ -46,6 +47,9 @@ struct DDLTextView: View {
                 text = newDDL
             }
             .onChange(of: colorScheme) { _ in
+                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
+            }
+            .onReceive(AppEvents.shared.themeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }
             .onChange(of: fontSize) { newSize in

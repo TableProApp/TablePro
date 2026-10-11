@@ -7,6 +7,7 @@ import Charts
 import SwiftUI
 
 struct ResultChartCanvas: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     /// Solid first, then patterns that stay legible in monochrome and to a colour-blind reader,
     /// because colour alone does not distinguish a series.
     private static let seriesDashPatterns: [[CGFloat]] = [
@@ -41,27 +42,27 @@ struct ResultChartCanvas: View {
         .chartYAxis {
             AxisMarks(position: .leading) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                    .foregroundStyle(themeEngine.palette.color(.panelSeparator).opacity(0.55))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor))
+                    .foregroundStyle(themeEngine.palette.color(.panelSeparator))
                 AxisValueLabel()
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .foregroundStyle(themeEngine.palette.color(.panelSecondaryText))
             }
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 7)) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                    .foregroundStyle(themeEngine.palette.color(.panelSeparator).opacity(0.55))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color(nsColor: .separatorColor))
+                    .foregroundStyle(themeEngine.palette.color(.panelSeparator))
                 AxisValueLabel(collisionResolution: .greedy(minimumSpacing: 8))
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                    .foregroundStyle(themeEngine.palette.color(.panelSecondaryText))
             }
         }
         .chartPlotStyle { plotArea in
             plotArea
                 .background(
-                    Color(nsColor: .controlBackgroundColor).opacity(0.45),
+                    themeEngine.palette.color(.panelBackground).opacity(0.45),
                     in: .rect(cornerRadius: 8)
                 )
         }

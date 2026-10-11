@@ -7,6 +7,7 @@ import AppKit
 
 internal enum TreeValueStyle {
     /// Fixed system colors do not adapt on an emphasized row the way the label colors do.
+    @MainActor
     static func textColor(for tone: TreeValueTone, isEmphasized: Bool) -> NSColor {
         isEmphasized ? .alternateSelectedControlTextColor : tone.color
     }
@@ -20,6 +21,7 @@ internal enum TreeValueStyle {
 
     /// No `.link` attribute: a text field cell draws that run in the link color whatever its
     /// foreground, blue on the accent color. `TreeValueField` puts it in the field editor only.
+    @MainActor
     static func attributedValue(
         _ content: TreeRowContent,
         font: NSFont,

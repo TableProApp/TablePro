@@ -12,8 +12,8 @@ struct DataGridCellPalette: Equatable {
     let mediumFont: NSFont
     let text: NSColor
     let placeholderText: NSColor
-    let booleanTrueText: NSColor?
-    let booleanFalseText: NSColor?
+    let booleanTrueText: NSColor
+    let booleanFalseText: NSColor
     let rowNumberText: NSColor
     let deletedRowText: NSColor
     let modifiedColumnTint: NSColor
@@ -25,8 +25,8 @@ struct DataGridCellPalette: Equatable {
         mediumFont: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium),
         text: .labelColor,
         placeholderText: .secondaryLabelColor,
-        booleanTrueText: nil,
-        booleanFalseText: nil,
+        booleanTrueText: .labelColor,
+        booleanFalseText: .labelColor,
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .secondaryLabelColor,
         modifiedColumnTint: .systemYellow,
@@ -40,13 +40,13 @@ extension ThemeEngine {
             regularFont: dataGridFonts.regular,
             italicFont: dataGridFonts.italic,
             mediumFont: dataGridFonts.medium,
-            text: colors.dataGrid.text,
-            placeholderText: colors.dataGrid.nullValue,
-            booleanTrueText: colors.dataGrid.boolTrue,
-            booleanFalseText: colors.dataGrid.boolFalse,
-            rowNumberText: colors.dataGrid.rowNumber,
-            deletedRowText: colors.dataGrid.deletedText,
-            modifiedColumnTint: colors.dataGrid.modified,
+            text: resolved[.gridText],
+            placeholderText: resolved[.gridNullValue],
+            booleanTrueText: resolved[.gridBoolTrue],
+            booleanFalseText: resolved[.gridBoolFalse],
+            rowNumberText: resolved[.gridRowNumber],
+            deletedRowText: resolved[.gridDeletedText],
+            modifiedColumnTint: resolved[.gridModified],
             findMatchTint: .findHighlightColor
         )
     }

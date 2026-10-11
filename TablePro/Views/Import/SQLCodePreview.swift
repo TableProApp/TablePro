@@ -21,7 +21,7 @@ struct SQLCodePreview: View {
 
     var body: some View {
         if text.isEmpty {
-            Color(nsColor: .textBackgroundColor)
+            ThemeEngine.shared.palette.color(.editorBackground)
         } else {
             SourceEditor(
                 $text,
@@ -31,6 +31,9 @@ struct SQLCodePreview: View {
                 foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
             )
             .onChange(of: colorScheme) { _ in
+                editorConfiguration = Self.makeConfiguration()
+            }
+            .onReceive(AppEvents.shared.themeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
         }

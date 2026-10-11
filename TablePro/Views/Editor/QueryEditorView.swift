@@ -112,6 +112,5 @@ struct QueryEditorView: View {
             )
             .clipped()
         }
-        .background(Color(nsColor: .textBackgroundColor))
     }
 }

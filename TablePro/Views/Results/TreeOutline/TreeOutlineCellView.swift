@@ -145,7 +145,7 @@ internal final class TreeOutlineCellView: NSTableCellView, NSTextFieldDelegate {
         let selectedText = NSColor.alternateSelectedControlTextColor
         let secondary = isEmphasized ? selectedText.withAlphaComponent(0.7) : NSColor.secondaryLabelColor
 
-        keyField.textColor = isEmphasized ? selectedText : .systemBlue
+        keyField.textColor = isEmphasized ? selectedText : ThemeEngine.shared.palette[.syntaxKeyword]
         separatorField.textColor = secondary
         visibilityField.textColor = secondary
         swatch.isOnEmphasizedRow = isEmphasized

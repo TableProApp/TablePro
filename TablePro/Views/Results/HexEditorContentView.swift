@@ -100,11 +100,11 @@ struct HexEditorBody: View {
                         if sourceIsTruncated || isTruncated {
                             Text(String(localized: "Truncated, read only"))
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
                         } else if !isValid, !editableHex.isEmpty {
                             Text(String(localized: "Invalid hex"))
                                 .font(.caption)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
                         }
 
                         Spacer()
@@ -228,8 +228,8 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.secondaryLabelColor
+        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
+        textView.textColor = ThemeEngine.shared.palette[.panelSecondaryText]
         textView.string = text
 
         return scrollView
@@ -240,6 +240,8 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         if textView.font != font {
             textView.font = font
         }
+        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
+        textView.textColor = ThemeEngine.shared.palette[.panelSecondaryText]
         if textView.string != text {
             textView.string = text
         }
@@ -266,8 +268,8 @@ private struct HexInputTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.labelColor
+        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
+        textView.textColor = ThemeEngine.shared.palette[.panelText]
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -289,6 +291,8 @@ private struct HexInputTextView: NSViewRepresentable {
         if textView.font != font {
             textView.font = font
         }
+        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
+        textView.textColor = ThemeEngine.shared.palette[.panelText]
         if textView.string != text, !context.coordinator.isUpdating {
             textView.string = text
         }

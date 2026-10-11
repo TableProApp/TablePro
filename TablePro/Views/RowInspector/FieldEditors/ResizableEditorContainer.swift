@@ -7,6 +7,7 @@ import AppKit
 import SwiftUI
 
 internal struct ResizableEditorContainer<Content: View>: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var height: Double
     let range: ClosedRange<Double>
 
@@ -39,7 +40,7 @@ internal struct ResizableEditorContainer<Content: View>: View {
 
     private var resizeHandle: some View {
         Capsule()
-            .fill(Color(nsColor: .tertiaryLabelColor))
+            .fill(themeEngine.palette.color(.panelTertiaryText))
             .frame(width: 26, height: 4)
             .opacity(isHandleHovered ? 1 : 0.5)
             .frame(maxWidth: .infinity, minHeight: 11)

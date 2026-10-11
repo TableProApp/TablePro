@@ -414,7 +414,7 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     func indentWidth() -> Int {
-        ThemeEngine.shared.tabWidth
+        AppSettingsManager.shared.editor.clampedTabWidth
     }
 
     // MARK: - Helpers

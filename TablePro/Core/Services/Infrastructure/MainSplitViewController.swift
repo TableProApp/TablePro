@@ -830,8 +830,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// intermediate value instead of letting one run-loop turn settle on the final one.
     private func refreshPanes(of workspace: ConnectionWorkspace) {
         workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace))
-        workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
-        workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
+        workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace).themedContent())
+        workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace).themedContent())
         workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace))
         refreshAgentPanes(of: workspace)
         refreshTabStripPane(of: workspace)
@@ -1055,7 +1055,7 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// publishes those actions.
     func rebuildTrailingPanes() {
         guard let selected = workspaces.selected else { return }
-        selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected))
+        selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected).themedContent())
         selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected))
     }
 

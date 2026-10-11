@@ -29,6 +29,7 @@ private enum CreateTableTab: CaseIterable {
 }
 
 struct CreateTableView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "CreateTableView")
 
     let connection: DatabaseConnection
@@ -226,7 +227,7 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(themeEngine.palette.color(.panelBackground))
         .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first

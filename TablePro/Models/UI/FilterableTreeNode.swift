@@ -178,15 +178,16 @@ internal enum TreeValueTone: Equatable, Sendable {
     case reference
     case muted
 
+    @MainActor
     var color: NSColor {
         switch self {
-        case .container: return .systemBlue
-        case .string: return .systemRed
-        case .number: return .systemPurple
-        case .literal: return .systemOrange
-        case .serialized: return .systemTeal
+        case .container: return ThemeEngine.shared.palette[.syntaxKeyword]
+        case .string: return ThemeEngine.shared.palette[.syntaxString]
+        case .number: return ThemeEngine.shared.palette[.syntaxNumber]
+        case .literal: return ThemeEngine.shared.palette[.syntaxNull]
+        case .serialized: return ThemeEngine.shared.palette[.syntaxType]
         case .reference: return .systemGray
-        case .muted: return .secondaryLabelColor
+        case .muted: return ThemeEngine.shared.palette[.panelSecondaryText]
         }
     }
 }

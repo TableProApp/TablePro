@@ -76,6 +76,9 @@ struct TriggerEditorView: View {
         .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
+        }
         .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
         }

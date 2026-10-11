@@ -9,9 +9,12 @@ struct DataResultsSettingsView: View {
     @Binding var dataGrid: DataGridSettings
     @Binding var history: HistorySettings
     @Binding var editor: EditorSettings
+    @Binding var typography: TypographySettings
 
     var body: some View {
         Form {
+            TypographySection(domain: .dataGrid, settings: $typography)
+
             DataGridSection(settings: $dataGrid)
 
             Section("JSON Viewer") {
@@ -34,7 +37,8 @@ struct DataResultsSettingsView: View {
     DataResultsSettingsView(
         dataGrid: .constant(.default),
         history: .constant(.default),
-        editor: .constant(.default)
+        editor: .constant(.default),
+        typography: .constant(.default)
     )
     .frame(width: 450, height: 500)
 }

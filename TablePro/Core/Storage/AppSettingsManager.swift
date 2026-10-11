@@ -25,7 +25,7 @@ final class AppSettingsManager: ObservableObject {
     @Published var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            themeEngine.updateAppearanceAndTheme(
+            themeEngine.apply(
                 mode: appearance.appearanceMode,
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
@@ -37,16 +37,18 @@ final class AppSettingsManager: ObservableObject {
     @Published var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
-            themeEngine.updateEditorSettings(
-                highlightCurrentLine: editor.highlightCurrentLine,
-                highlightCurrentStatement: editor.highlightCurrentStatement,
-                showLineNumbers: editor.showLineNumbers,
-                tabWidth: editor.clampedTabWidth,
-
-                wordWrap: editor.wordWrap
-            )
             appEvents.editorSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
+        }
+    }
+
+    /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
+    /// never pushes an iCloud record and a Mac on an older build cannot reset it.
+    @Published var typography: TypographySettings {
+        didSet {
+            guard typography != oldValue else { return }
+            storage.saveTypography(typography)
+            themeEngine.apply(typography: typography)
         }
     }
 
@@ -245,21 +247,15 @@ final class AppSettingsManager: ObservableObject {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
         self.notifications = storage.loadNotifications()
+        self.typography = storage.loadTypography()
 
         general.language.apply()
 
-        themeEngine.updateAppearanceAndTheme(
+        themeEngine.apply(typography: typography)
+        themeEngine.apply(
             mode: appearance.appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
-        )
-
-        themeEngine.updateEditorSettings(
-            highlightCurrentLine: editor.highlightCurrentLine,
-            highlightCurrentStatement: editor.highlightCurrentStatement,
-            showLineNumbers: editor.showLineNumbers,
-            tabWidth: editor.clampedTabWidth,
-            wordWrap: editor.wordWrap
         )
 
         dateFormattingService.updateFormat(dataGrid.dateFormat)
@@ -302,6 +298,7 @@ final class AppSettingsManager: ObservableObject {
         ai = .default
         sync = .default
         mcp = .default
+        typography = .default
         storage.resetToDefaults()
         connectionListPreferences.resetShowsRecent()
         SoftwareUpdater.shared.resetUpdatePreferences()

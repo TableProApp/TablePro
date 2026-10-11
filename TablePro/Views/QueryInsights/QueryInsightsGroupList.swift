@@ -9,6 +9,7 @@ enum QueryInsightsGroupMetric {
 }
 
 struct QueryInsightsGroupList: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let groups: [QueryInsightsGroup]
     let metric: QueryInsightsGroupMetric
     let onCopy: (QueryInsightsGroup) -> Void
@@ -48,7 +49,7 @@ struct QueryInsightsGroupList: View {
                 if let error = group.latestErrorMessage, case .failures = metric {
                     RevealedTextView(error)
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(themeEngine.palette.color(.statusWarning))
                         .lineLimit(2)
                 }
             }
@@ -86,7 +87,7 @@ struct QueryInsightsGroupList: View {
 
     private func headlineTint(_ group: QueryInsightsGroup) -> Color {
         switch metric {
-        case .failures: return .orange
+        case .failures: return themeEngine.palette.color(.statusWarning)
         case .duration: return .primary
         case .callCount: return .primary
         }
@@ -136,6 +137,7 @@ struct QueryInsightsGroupList: View {
 }
 
 struct QueryInsightsRegressionList: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let regressions: [QueryInsightsRegression]
     let onCopy: (String) -> Void
     let onLoadInEditor: (String) -> Void
@@ -160,7 +162,7 @@ struct QueryInsightsRegressionList: View {
             .font(.system(.callout, design: .monospaced))
             .fontWeight(.medium)
             .monospacedDigit()
-            .foregroundStyle(.orange)
+            .foregroundStyle(themeEngine.palette.color(.statusWarning))
             .frame(minWidth: 76, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 3) {

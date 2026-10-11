@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ColumnValueFilterPopover: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let columnName: String
     let loadedRowCount: Int
     let onApply: (ColumnValueFilter?) -> Void
@@ -101,7 +102,7 @@ struct ColumnValueFilterPopover: View {
                         Text(value.label)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .foregroundStyle(value.isNull ? Color.secondary : Color.primary)
+                            .foregroundStyle(value.isNull ? themeEngine.palette.color(.gridNullValue) : Color.primary)
                         Spacer(minLength: 8)
                         Text("\(value.count)")
                             .font(.callout.monospacedDigit())

@@ -52,7 +52,7 @@ struct FoldPreviewView: View {
                     .padding(.vertical, 5)
             }
         }
-        .background(themeEngine.colors.editor.backgroundSwiftUI)
+        .background(themeEngine.palette.color(.editorBackground))
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)

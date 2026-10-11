@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct PhpSerializedFieldView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -18,6 +19,6 @@ internal struct PhpSerializedFieldView: View {
         .frame(height: isExpanded ? ResizableFieldMetrics.expandedHeight : nil)
         .frame(minHeight: isExpanded ? nil : 80, maxHeight: isExpanded ? nil : 200)
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(themeEngine.palette.color(.panelSeparator)))
     }
 }

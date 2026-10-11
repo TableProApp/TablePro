@@ -144,10 +144,18 @@ extension MainSplitViewController {
 /// these first, so this is what Zoom In means everywhere else.
 extension MainSplitViewController: ZoomCommandResponding {
     @objc func zoomIn(_ sender: Any?) {
-        ThemeEngine.shared.adjustEditorFontSize(by: 1)
+        adjustEditorTextSize(by: 1)
     }
 
     @objc func zoomOut(_ sender: Any?) {
-        ThemeEngine.shared.adjustEditorFontSize(by: -1)
+        adjustEditorTextSize(by: -1)
+    }
+
+    private func adjustEditorTextSize(by delta: Int) {
+        var typography = AppSettingsManager.shared.typography
+        let size = TypographySettings.clamp(typography.editorFontSize + delta)
+        guard size != typography.editorFontSize else { return }
+        typography.editorFontSize = size
+        AppSettingsManager.shared.typography = typography
     }
 }

@@ -41,6 +41,30 @@ struct TreeOutlineCoordinatorTests {
         #expect(harness.keys == ["name", "site", "brand", "theme", "ink", "deep", "count"])
     }
 
+    @Test("A theme change recolors the rows already on screen")
+    func themeChangeRecolorsVisibleRows() throws {
+        let engine = ThemeEngine.shared
+        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
+        defer { engine.adopt(restore) }
+
+        let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)
+        let row = try harness.row("theme")
+        let cell = try #require(harness.outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? TreeOutlineCellView)
+        let before = try #require(cell.keyField.textColor)
+
+        var changed = engine.activeTheme
+        changed.id = "test.tree.recolor"
+        changed.editor.syntax.keyword = .hex("#FF0000")
+        let pair = changed.appearance == .dark
+            ? ThemePair(light: engine.pair.light, dark: changed)
+            : ThemePair(light: changed, dark: engine.pair.dark)
+        engine.adopt(ThemeSelection(pair: pair, effectiveAppearance: changed.appearance))
+
+        let after = try #require(cell.keyField.textColor)
+        #expect(after !== before)
+        #expect(after == engine.palette[.syntaxKeyword])
+    }
+
     @Test("Applying the same content twice reloads nothing")
     func unchangedContentDoesNotReload() throws {
         let harness = try TreeOutlineHarness(json: TreeOutlineFixture.profile)

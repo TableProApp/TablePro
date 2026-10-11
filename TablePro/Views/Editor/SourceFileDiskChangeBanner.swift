@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct SourceFileDiskChangeBanner: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let fileName: String
     let change: SourceFileDiskChange
     let onReload: () -> Void
@@ -15,7 +16,7 @@ internal struct SourceFileDiskChangeBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
+                .foregroundStyle(themeEngine.palette.color(.statusWarning))
                 .accessibilityHidden(true)
 
             Text(message)
@@ -41,7 +42,7 @@ internal struct SourceFileDiskChangeBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.yellow.opacity(0.12))
+        .background(themeEngine.palette.color(.statusWarning).opacity(0.12))
     }
 
     private var message: String {

@@ -33,8 +33,8 @@ struct TreeValueStyleTests {
 
         #expect(text.string == "\"https://example.com/docs\"")
         #expect(TreeValueStyle.linkRange(in: content) == NSRange(location: 1, length: length - 2))
-        #expect(color(text, at: 0) == .systemRed)
-        #expect(color(text, at: length - 1) == .systemRed)
+        #expect(color(text, at: 0) == ThemeEngine.shared.palette[.syntaxString])
+        #expect(color(text, at: length - 1) == ThemeEngine.shared.palette[.syntaxString])
         #expect(!isUnderlined(text, at: 0))
         #expect(!isUnderlined(text, at: length - 1))
         for index in 1 ..< length - 1 {
@@ -77,7 +77,14 @@ struct TreeValueStyleTests {
 
     @Test("A color and a plain value are one run in the tone color")
     func otherValuesAreOneRun() throws {
-        for (key, tone) in [("brand", NSColor.systemRed), ("name", .systemRed), ("count", .systemPurple), ("theme", .systemBlue)] {
+        let palette = ThemeEngine.shared.palette
+        let tones = [
+            ("brand", palette[.syntaxString]),
+            ("name", palette[.syntaxString]),
+            ("count", palette[.syntaxNumber]),
+            ("theme", palette[.syntaxKeyword])
+        ]
+        for (key, tone) in tones {
             let content = try content(key)
             let text = TreeValueStyle.attributedValue(content, font: font, isEmphasized: false)
             var range = NSRange()
@@ -99,7 +106,7 @@ struct TreeValueStyleTests {
             }
         }
         #expect(TreeValueStyle.textColor(for: .number, isEmphasized: true) == .alternateSelectedControlTextColor)
-        #expect(TreeValueStyle.textColor(for: .number, isEmphasized: false) == .systemPurple)
+        #expect(TreeValueStyle.textColor(for: .number, isEmphasized: false) == ThemeEngine.shared.palette[.syntaxNumber])
     }
 
     @Test("The value font and tail truncation are set on the whole string")

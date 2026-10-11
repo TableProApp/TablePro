@@ -10,6 +10,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ResultSuccessView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let rowsAffected: Int
     let executionTime: TimeInterval?
     let statusMessage: String?
@@ -61,7 +62,7 @@ struct ResultSuccessView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.largeTitle)
-                .foregroundStyle(.green)
+                .foregroundStyle(themeEngine.palette.color(.statusSuccess))
             Text(primaryMessage)
                 .font(.body)
             if let time = executionTime {
