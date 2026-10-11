@@ -28,6 +28,7 @@ The roster is in [docs/personas.md](docs/personas.md). The primary persona is th
 
 - Governed SQL through `PolicyGuard` (classify, rules, approval, mask, execute, audit). See [specs/governed-sql/spec.md](specs/governed-sql/spec.md).
 - SSH transport and host-key trust. See [specs/ssh-transport/spec.md](specs/ssh-transport/spec.md).
+- Secret Service credentials (absent vs keyring failure). See [specs/secret-storage/spec.md](specs/secret-storage/spec.md).
 - Native GTK workspace: browse, SQL editor, named parameters, favorites, Open Quickly.
 - Headless MCP server with token scopes and connection allowlists. Those checks never replace `PolicyGuard`.
 - Static drivers for PostgreSQL, MySQL/MariaDB, SQLite, SQL Server, ClickHouse, Redis, MongoDB, and optional DuckDB.

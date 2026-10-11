@@ -6,3 +6,4 @@ Behaviour by capability, extracted from the code that already ships. The ledger 
 |---|---|---|
 | [governed-sql](governed-sql/spec.md) | `Local DBA`, `MCP operator` | in-development |
 | [ssh-transport](ssh-transport/spec.md) | `Local DBA` | in-development |
+| [secret-storage](secret-storage/spec.md) | `Local DBA`, `MCP operator` | in-development |

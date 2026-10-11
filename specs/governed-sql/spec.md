@@ -2,7 +2,7 @@
 
 > [NEEDS REVIEW] Draft written on 2026-10-11 from PolicyGuard, MCP auth and ARCHITECTURE. A maintainer review is pending.
 
-**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Status:** in-development **Success metric:** Every GUI, MCP and agent database handle is a `PolicyGuard`; denied and cancelled work still write a terminal audit state.
+**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Status:** in-development **Success metric:** Every issued GUI, MCP and agent database handle is a `PolicyGuard`; denied work and cancelled approval or bulk finish still write a terminal audit state.
 
 ## Purpose
 
@@ -10,23 +10,23 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 
 ## Scope
 
-- Wrapping a driver `Connection` in `PolicyGuard` before the GUI, MCP or `bookie-agentd` can use it.
+- Wrapping a driver `Connection` in `PolicyGuard` before the GUI, MCP or `bookie-agentd` issues a handle to a consumer.
 - Per-statement order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome.
-- MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`) and per-token connection allowlists.
-- Preview, transaction, retry and batch paths using the same checks as direct execution.
+- MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`), per-token rate limits and connection allowlists.
+- Preview, transaction, retry and batch paths using the same rule, approval, intent and audit pipeline as direct execution. Session mode skips the shared-connection short-circuit.
 
 ## Out of scope
 
 - Opening SSH tunnels and host-key trust ([ssh-transport](../ssh-transport/spec.md)).
-- Secret Service storage of passwords and MCP plaintext tokens after issuance.
+- Secret Service storage of passwords and MCP plaintext tokens after issuance ([secret-storage](../secret-storage/spec.md)).
 - Grid display, browse paging and export snapshot rules (later specs; ADRs 0011 and 0014).
 
 ## Core concepts
 
-- **PolicyGuard.** The only consumer-facing database handle. Defined in `crates/policy/src/guard.rs`.
-- **Decision.** `Allow`, `RequireApproval` or `Deny`, each with a `rule` string (`crates/policy/src/verdict.rs`).
-- **StatementClass.** Coarse class including `Unparseable`, which is treated as a write (`crates/policy/src/classify.rs`).
-- **Three MCP checks.** Scopes, allowlist, then PolicyGuard (`crates/mcp/src/lib.rs`).
+- **PolicyGuard.** The issued consumer-facing database handle (`PolicyGuard` in `crates/policy/src/guard.rs`). Composition roots may keep a raw driver internally for reconnect; `DatabaseService::handle` and `agentd::guarded` wrap before return.
+- **Decision.** `Allow`, `RequireApproval` or `Deny`, each with a `rule` string (`Decision` in `crates/policy/src/verdict.rs`).
+- **StatementClass.** Coarse class including `Unparseable`, which `is_write` treats as a write (`StatementClass` in `crates/policy/src/classify.rs`).
+- **MCP pre-connection steps.** Scope check, per-token rate limit, connection allowlist, then a policy-gated handle from `ConnectionProvider` (`McpBridge::start_connection_operation` in `crates/mcp/src/bridge.rs`).
 
 ## Data contracts
 
@@ -59,15 +59,15 @@ Deny { rule, message }
 
 ### `PolicyGuard::authorize` / `authorize_analysis`
 
-Source: `crates/policy/src/guard.rs` (the `authorize` family from line 114).
+Source: `PolicyGuard` authorize family in `crates/policy/src/guard.rs`.
 
 1. Classify the SQL (`analyze_statement`).
-2. Evaluate categorical / shared-connection / eligible-write rules.
-3. On `Allow`, continue to execute and mask.
+2. On a shared connection, `authorize_analysis` may return early from `shared_connection_decision` before categorical rules. Session mode calls `authorize_classified`, which skips that short-circuit and goes to `authorize_with_bound`.
+3. On `Allow`, continue to execute and mask (`should_mask` is agent-only).
 4. On `Deny`, write audit terminal `denied` with `AuditErrorCategory::Policy`, then return `DriverError::PolicyDenied`.
-5. On `RequireApproval`, call `ApprovalSink::request` and wait, honouring `OperationControl` cancellation.
+5. On `RequireApproval`, call `ApprovalSink::request` and wait. `ApprovalOutcome` is `AllowOnce` or `Deny` (`crates/policy/src/approval.rs`). Cancellation during the wait writes terminal `cancelled`. There is no approval-timeout variant.
 
-Audit intent is written before driver execution. If that write fails, execution does not proceed (`DriverError::PolicyDenied` containing `audit intent could not be persisted`, `crates/policy/src/guard_tests_gating.rs`).
+Audit intent is written before driver execution when `intent_is_required` is true. A failed required intent write returns `DriverError::PolicyDenied` mentioning that audit intent could not be persisted (`required_intent_failure_prevents_driver_execution`). Local or Dev human principals with `human_allow_unaudited_writes` may continue after a warning (`handle_intent_failure`).
 
 ### MCP scope check
 
@@ -75,15 +75,15 @@ Audit intent is written before driver execution. If that write fails, execution 
 
 - `read_only` grants `ToolsRead` only.
 - `read_write` grants `ToolsRead` and `ToolsWrite`.
-- Failure: `token lacks scope {:?}; has {:?}`.
+- Failure string is built in `authorize_scopes`. Tests assert the error mentions `scope`, not the exact format.
 
 ### MCP allowlist check
 
 `McpBridge::ensure_connection_allowed` in `crates/mcp/src/bridge.rs`:
 
-- Empty allowlist: `token has an empty connection allowlist`.
+- Empty allowlist: `token has an empty connection allowlist` (`empty_allowlist_denies_connection_access` asserts the error mentions `allowlist`).
 - Connection not listed: `token is not allowed to access this connection`.
-- `list_connections` with an empty allowlist returns an empty list rather than every saved connection.
+- `list_connections` with an empty allowlist returns an empty list rather than every saved connection (code in `McpBridge::list_connections`; no dedicated test).
 
 ### Connection provider
 
@@ -95,19 +95,19 @@ Audit intent is written before driver execution. If that write fails, execution 
 | PolicyGuard authorize | n/a | `PolicyDenied` | Audit intent could not be persisted; execution skipped. |
 | `authorize_scopes` | n/a | scope error | Token lacks `ToolsWrite` (or `ToolsRead`) for the tool. |
 | `ensure_connection_allowed` | n/a | allowlist error | Empty allowlist, or connection UUID not listed. |
-| Token authenticate | n/a | auth error | Unknown hash, revoked, or expired. |
+| Token authenticate | n/a | auth error | Unknown hash or revoked (`a_subprocess_issue_cannot_resurrect_a_revoked_token`). Expiry is implemented in `TokenStore::authenticate`; no dedicated test. |
 
 ## Algorithms & rules
 
 1. Classify the statement. Parser rejection becomes `StatementClass::Unparseable` and is a write.
 2. Evaluate policy for the principal, environment, `read_only` flag and connection-scoped `PolicyConfig`.
 3. If the decision is `Deny`, persist terminal audit `denied` and return. Do not execute.
-4. If the decision is `RequireApproval`, wait for `ApprovalOutcome`. A timeout or cancel still writes a terminal audit state.
-5. Persist audit intent. On failure, return `PolicyDenied` and do not call the driver.
+4. If the decision is `RequireApproval`, wait for `ApprovalOutcome`. A cancel during the wait writes terminal `cancelled`. Rejection writes `denied`. The sink has no timeout outcome.
+5. Persist audit intent when required. On required-intent failure, return `PolicyDenied` and do not call the driver.
 6. Execute through the inner `Connection`, honouring `OperationControl` cancellation and timeouts.
 7. Apply masking to the result (`apply_masking`).
 8. Persist the terminal audit outcome: `succeeded`, `failed`, `cancelled`, `timed_out`, or `unknown`. Audit failure after execution must not open a path around policy.
-9. MCP tools call `authorize_scopes`, rate limit, then allowlist, then `provider.connection`, which wraps the driver in `PolicyGuard` before any SQL.
+9. MCP tools call `authorize_scopes`, then `check_rate`, then `ensure_connection_allowed`, then `provider.connection`, which wraps the driver in `PolicyGuard` before any SQL. Write tools also require `ToolsWrite` before a connection opens.
 
 ## State machine
 
@@ -118,7 +118,8 @@ Audit intent is written before driver execution. If that write fails, execution 
 | classified | awaiting-approval | `Decision::RequireApproval` | rules require it |
 | classified | denied | `Decision::Deny` | rules deny; audit `denied` |
 | awaiting-approval | allowed | approval accepted | approval sink |
-| awaiting-approval | denied | approval rejected or timed out | audit terminal `denied` or `timed_out` |
+| awaiting-approval | denied | approval rejected | audit terminal `denied` |
+| awaiting-approval | cancelled | `OperationControl` cancelled during wait | audit terminal `cancelled` |
 | allowed | intent-recorded | audit intent write | fail closed if the write fails |
 | intent-recorded | succeeded | driver returns | audit `succeeded` |
 | intent-recorded | failed | driver error | audit `failed` |
@@ -131,9 +132,9 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 
 ### Guard wrapping
 
-- The system MUST wrap every consumer-facing database handle in `PolicyGuard`.
-- MCP and `bookie-agentd` MUST NOT expose a raw driver connection.
-- Preview, transaction, retry and batch paths MUST use the same authorize path as direct execution.
+- The system MUST wrap every issued consumer-facing database handle in `PolicyGuard`.
+- MCP and `bookie-agentd` MUST NOT expose a raw driver connection through `ConnectionProvider`.
+- Preview, transaction, retry and batch paths MUST use the same rule, approval, intent and audit pipeline as direct execution. Session statements MAY skip `shared_connection_decision`.
 
 ### MCP checks
 
@@ -148,10 +149,10 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 
 ## Invariants
 
-- A consumer MUST NOT hold a live `Connection` that is not a `PolicyGuard`.
+- An issued consumer handle MUST be a `PolicyGuard`. Composition roots MAY hold a raw driver internally for reconnect.
 - An empty MCP allowlist MUST deny connection use.
 - `Unparseable` SQL MUST be treated as a write.
-- A failed audit-intent write MUST prevent execution.
+- A failed audit-intent write MUST prevent execution when intent is required.
 
 ## Config & flags
 
@@ -164,7 +165,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 ## Edge cases
 
 - `full_access` on a stored token deserializes as `read_write`.
-- Listing connections with an empty allowlist returns no rows; using a connection with an empty allowlist errors.
+- Listing connections with an empty allowlist returns no rows (`McpBridge::list_connections`); using a connection with an empty allowlist errors. The list path has no dedicated test.
 - Shared-connection decisions short-circuit categorical evaluation (`shared_connection_decision` in `crates/policy/src/guard.rs`).
 - A dropped UI future is not proof the driver stopped. Cancellation must reach the database (ADR 0005).
 
@@ -183,14 +184,16 @@ Transport opens the tunnel and preserves the TLS service identity. This capabili
 
 ## Acceptance criteria
 
-- **Guard is the handle.** GIVEN a GUI, MCP or agentd consumer WHEN a database handle is obtained THEN the value is a `PolicyGuard` and not a raw driver connection.
-- **Deny audits.** GIVEN a statement the rules deny WHEN authorize runs THEN the caller receives `DriverError::PolicyDenied` AND the journal has terminal status `denied`.
-- **Audit intent fail-closed.** GIVEN an audit sink that cannot persist intent WHEN authorize would otherwise allow THEN execution does not run AND the error mentions that audit intent could not be persisted.
-- **Read-only token.** GIVEN `TokenPermissions::ReadOnly` WHEN a write tool is called THEN `authorize_scopes` fails and no `PolicyGuard` execute path for that write starts.
-- **Empty allowlist.** GIVEN a token whose `connection_allowlist` is empty WHEN `ensure_connection_allowed` runs THEN the error is `token has an empty connection allowlist`.
-- **Unparseable is a write.** GIVEN SQL the parser rejects WHEN classify runs THEN `StatementClass` is `Unparseable` AND `is_write` is true.
-- **Cancel still audits.** GIVEN an in-flight governed statement WHEN `OperationControl` is cancelled THEN the journal records terminal `cancelled`.
+Each line names the tip proof. When the proof is code only, that is marked.
+
+- **Guard is the handle.** GIVEN a GUI, MCP or agentd consumer WHEN a handle is issued THEN it is a `PolicyGuard`. Proof: `DatabaseService::handle` / `guard_with_identity`; `agentd::guarded`; MCP `ConnectionProvider` impls. The app may store a raw driver internally. No test downcasts the issued type.
+- **Deny audits.** GIVEN a statement the rules deny WHEN authorize runs THEN the caller receives `DriverError::PolicyDenied` AND the journal has terminal status `denied`. Proof: `a_denied_approval_writes_the_terminal_audit_state_and_grants_nothing`; `sql_server_batches_with_mutations_are_classified_and_denied_before_dispatch`.
+- **Audit intent fail-closed.** GIVEN required audit intent that cannot persist WHEN authorize would otherwise allow THEN execution does not run AND the error mentions that audit intent could not be persisted. Proof: `required_intent_failure_prevents_driver_execution`. Exception: Local/Dev human with `human_allow_unaudited_writes` (`handle_intent_failure`).
+- **Read-only token.** GIVEN `TokenPermissions::ReadOnly` WHEN a write tool is called THEN `authorize_scopes` fails and no connection is opened for that write. Proof: `write_without_tools_write_scope_denied`; `a_read_only_token_is_refused_a_delete_before_a_connection_opens`.
+- **Empty allowlist.** GIVEN a token whose `connection_allowlist` is empty WHEN `ensure_connection_allowed` runs THEN connection use is denied. Proof: `empty_allowlist_denies_connection_access` (asserts the error mentions `allowlist`). Code string: `token has an empty connection allowlist`.
+- **Unparseable is a write.** GIVEN SQL the parser rejects WHEN classify runs THEN `StatementClass` is `Unparseable` AND `is_write` is true. Proof: `parse_failure_fail_closed`.
+- **Cancel still audits.** GIVEN a pending approval or governed bulk finish WHEN work is cancelled THEN the journal records terminal `cancelled`. Proof: `cancelling_a_pending_approval_records_a_terminal_cancelled_outcome`; `a_cancelled_import_writes_the_cancelled_terminal_state`. Mapping `DriverError::Cancelled` after intent to journal `cancelled` is in `controlled_error_terminal_status` and has no dedicated post-intent execute test.
 
 ## Open questions
 
-None known.
+None known. Architect review of this draft is still the open checklist fork.

@@ -72,12 +72,13 @@ The secrets module uses `oo7::Keyring`, which talks to the Linux Secret Service 
 
 The implemented kinds are:
 
-- Database password
-- SSH password
-- SSH private-key passphrase
-- MCP token secret
+- Database password (`db_password`)
+- SSH password (`ssh_password`)
+- SSH private-key passphrase (`ssh_passphrase`)
+- Per-hop SSH password and passphrase (`ssh_hop_password`, `ssh_hop_passphrase`), addressed with `hop-id` and `credential-revision`
+- MCP token secret (`mcp_token`)
 
-Loaded values are returned as `secrecy::SecretString`. An absent item returns `Ok(None)`. Secret Service failures return a typed `StorageError`, distinguishing unavailable, locked and cancelled access; saved transport assembly propagates that failure instead of treating it as a missing password. It does not copy the value into a JSON file.
+Loaded values are returned as `secrecy::SecretString`. An absent item returns `Ok(None)`. Secret Service failures return a typed `StorageError`, distinguishing unavailable, locked and cancelled access; saved transport assembly propagates that failure instead of treating it as a missing password. It does not copy the value into a JSON file. Contracts for absent vs failed, hop revisions and the devel schema live in the [secret-storage](../specs/secret-storage/spec.md) capability spec.
 
 ## Change rules
 

@@ -78,6 +78,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 
 | Topic | Record |
 | --- | --- |
+| Secret Service credentials | [ADR 0004](0004-libsecret-secret-storage.md), [secret-storage spec](../../specs/secret-storage/spec.md) (draft) |
 | Server-side cancellation | [ADR 0005](0005-server-side-cancellation.md) |
 | Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted; not fully implemented) |
 | Sidebar object tree | [ADR 0012](0012-sidebar-object-tree.md) |
