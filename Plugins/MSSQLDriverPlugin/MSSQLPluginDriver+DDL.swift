@@ -12,17 +12,33 @@ extension MSSQLPluginDriver {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        MSSQLTableDefinitionSQL.createTable(definition, schema: _currentSchema)
+        MSSQLTableDefinitionSQL.createTable(definition, schema: currentSchemaName)
+    }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        MSSQLTableDefinitionSQL.createTableStatements(definition, schema: currentSchemaName)
+    }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        MSSQLTableDefinitionSQL.commentStatement(
+            objectType: objectType, schema: effectiveSchema(schema), object: name, comment: comment
+        )
     }
 
     // MARK: - ALTER TABLE DDL
 
     private func mssqlQualifiedTable(_ table: String) -> String {
-        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: _currentSchema)
+        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: currentSchemaName)
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil))"
+        let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil)
+        let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(columnSQL)"
+        guard let comment = column.comment, !comment.isEmpty else { return addColumn }
+        let description = MSSQLTableDefinitionSQL.columnDescriptionStatement(
+            schema: currentSchemaName, table: table, column: column.name, comment: comment
+        )
+        return addColumn + ";\n" + description
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -33,7 +49,7 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let path = MSSQLStringLiteral.quoted("\(_currentSchema).\(table).\(oldColumn.name)")
+            let path = MSSQLStringLiteral.quoted("\(currentSchemaName).\(table).\(oldColumn.name)")
             let renamed = MSSQLStringLiteral.quoted(newColumn.name)
             stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
         }
@@ -83,7 +99,7 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: _currentSchema))"
+        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName))"
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
@@ -151,5 +167,4 @@ extension MSSQLPluginDriver {
         }
         return stmts.isEmpty ? nil : stmts
     }
-
 }

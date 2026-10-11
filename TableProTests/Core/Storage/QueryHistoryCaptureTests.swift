@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query history capture pause")
 struct QueryHistoryCaptureTests {
     private func makeStorage() -> QueryHistoryStorage {
         QueryHistoryStorage(

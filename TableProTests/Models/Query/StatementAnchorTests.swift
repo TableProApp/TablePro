@@ -7,11 +7,11 @@
 //
 
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
+import Testing
 
-@Suite("Statement anchor")
 @MainActor
 struct StatementAnchorTests {
 

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Elasticsearch object operations")
 struct ElasticsearchOperationsTests {
     @Test("Deleting an index is the native REST request")
     func deleteIndexIsNative() {

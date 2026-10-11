@@ -5,25 +5,25 @@
 
 import SwiftUI
 
-internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
+internal struct FilterableTreeView<Node: FilterableTreeNode>: View {
     let rootNode: Node
     @Binding var searchText: String
     let fullValueModeName: String
-    let row: (Node) -> Row
 
     @State private var disclosure = TreeDisclosureState()
-    @State private var cache = TreeProjectionCache<Node>()
+    @State private var cache: TreeProjectionCache<Node>
 
+    /// The cache is made here rather than as the property's default: a default is evaluated off the
+    /// main actor, and the cache is main-actor isolated.
     internal init(
         rootNode: Node,
         searchText: Binding<String>,
-        fullValueModeName: String,
-        @ViewBuilder row: @escaping (Node) -> Row
+        fullValueModeName: String
     ) {
         self.rootNode = rootNode
         self._searchText = searchText
         self.fullValueModeName = fullValueModeName
-        self.row = row
+        self._cache = State(initialValue: TreeProjectionCache<Node>())
     }
 
     var body: some View {
@@ -52,7 +52,8 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
             NativeSearchField(
                 text: $searchText,
                 placeholder: String(localized: "Filter keys or values…"),
-                controlSize: .small
+                controlSize: .small,
+                accessibilityIdentifier: "tree-filter"
             )
             if projection.isFiltered {
                 Text(String(format: String(localized: "%lld matches"), projection.matchCount))
@@ -64,13 +65,13 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
                     )
             }
             Button(String(localized: "Expand All"), systemImage: "rectangle.expand.vertical") {
-                expandAll(projection: projection)
+                expandAll(isFiltered: projection.isFiltered)
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
             .help(String(localized: "Expand All"))
             Button(String(localized: "Collapse All"), systemImage: "rectangle.compress.vertical") {
-                collapseAll(projection: projection)
+                collapseAll(isFiltered: projection.isFiltered)
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
@@ -103,21 +104,21 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
         if projection.isFiltered, projection.nodes.isEmpty {
             noMatchesView(isTruncated: documentInfo.isTruncated)
         } else {
-            List {
-                FilterableTreeContentView(
-                    nodes: projection.nodes,
-                    disclosure: $disclosure,
-                    autoRevealedKeyPaths: projection.autoRevealedKeyPaths,
-                    defaultExpandedKeyPaths: documentInfo.defaultExpandedKeyPaths,
-                    isFiltered: projection.isFiltered,
-                    onExpandAll: { expandAll(projection: projection) },
-                    onCollapseAll: { collapseAll(projection: projection) },
-                    row: row
-                )
-            }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
-            .animation(nil, value: projection.isFiltered)
-            .animation(nil, value: searchText)
+            TreeOutlineRepresentable(
+                content: TreeOutlineContent(
+                    rootNode: rootNode,
+                    searchText: searchText,
+                    projection: projection,
+                    documentInfo: documentInfo,
+                    disclosure: disclosure
+                ),
+                cache: cache,
+                onSetExpanded: { path, isExpanded in
+                    disclosure.setExpanded(isExpanded, path: path, isFiltered: projection.isFiltered)
+                },
+                onExpandAll: { expandAll(isFiltered: projection.isFiltered) },
+                onCollapseAll: { collapseAll(isFiltered: projection.isFiltered) }
+            )
         }
     }
 
@@ -144,102 +145,17 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
 
     // MARK: - Actions
 
-    private func expandAll(projection: TreeProjection<Node>) {
-        withAnimation(nil) {
-            disclosure.expandAll(
-                containerKeyPaths: cache.documentInfo(for: rootNode).allContainerKeyPaths,
-                isFiltered: projection.isFiltered
-            )
-        }
-    }
-
-    private func collapseAll(projection: TreeProjection<Node>) {
-        withAnimation(nil) {
-            disclosure.collapseAll(
-                containerKeyPaths: cache.documentInfo(for: rootNode).allContainerKeyPaths,
-                isFiltered: projection.isFiltered
-            )
-        }
-    }
-}
-
-// MARK: - Recursive Tree Content
-
-private struct FilterableTreeContentView<Node: FilterableTreeNode, Row: View>: View {
-    let nodes: [Node]
-    @Binding var disclosure: TreeDisclosureState
-    let autoRevealedKeyPaths: Set<String>
-    let defaultExpandedKeyPaths: Set<String>
-    let isFiltered: Bool
-    let onExpandAll: () -> Void
-    let onCollapseAll: () -> Void
-    let row: (Node) -> Row
-
-    var body: some View {
-        ForEach(nodes) { node in
-            if node.children.isEmpty {
-                decorated(node)
-            } else {
-                DisclosureGroup(isExpanded: binding(for: node)) {
-                    FilterableTreeContentView(
-                        nodes: node.children,
-                        disclosure: $disclosure,
-                        autoRevealedKeyPaths: autoRevealedKeyPaths,
-                        defaultExpandedKeyPaths: defaultExpandedKeyPaths,
-                        isFiltered: isFiltered,
-                        onExpandAll: onExpandAll,
-                        onCollapseAll: onCollapseAll,
-                        row: row
-                    )
-                } label: {
-                    decorated(node)
-                }
-            }
-        }
-    }
-
-    private func decorated(_ node: Node) -> some View {
-        row(node)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(node.accessibilityDescription)
-            .contextMenu { nodeContextMenu(for: node) }
-    }
-
-    private func binding(for node: Node) -> Binding<Bool> {
-        Binding(
-            get: {
-                disclosure.isExpanded(
-                    node.keyPath,
-                    autoRevealedKeyPaths: autoRevealedKeyPaths,
-                    defaultExpandedKeyPaths: defaultExpandedKeyPaths,
-                    isFiltered: isFiltered
-                )
-            },
-            set: { expanded in
-                disclosure.setExpanded(expanded, keyPath: node.keyPath, isFiltered: isFiltered)
-            }
+    private func expandAll(isFiltered: Bool) {
+        disclosure.expandAll(
+            containerPaths: cache.documentInfo(for: rootNode).allContainerPaths,
+            isFiltered: isFiltered
         )
     }
 
-    @ViewBuilder
-    private func nodeContextMenu(for node: Node) -> some View {
-        Button(String(localized: "Copy Value")) {
-            ClipboardService.shared.writeText(node.copyableValue)
-        }
-        if !node.keyPath.isEmpty {
-            Button(String(localized: "Copy Key Path")) {
-                ClipboardService.shared.writeText(node.keyPath)
-            }
-        }
-        if let key = node.key {
-            Button(String(localized: "Copy Key")) {
-                ClipboardService.shared.writeText(key)
-            }
-        }
-        Divider()
-        if !node.children.isEmpty {
-            Button(String(localized: "Expand All")) { onExpandAll() }
-            Button(String(localized: "Collapse All")) { onCollapseAll() }
-        }
+    private func collapseAll(isFiltered: Bool) {
+        disclosure.collapseAll(
+            containerPaths: cache.documentInfo(for: rootNode).allContainerPaths,
+            isFiltered: isFiltered
+        )
     }
 }

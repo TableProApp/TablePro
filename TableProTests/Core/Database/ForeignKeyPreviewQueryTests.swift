@@ -4,7 +4,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyPreviewQuery")
 struct ForeignKeyPreviewQueryTests {
     private func dialect(
         paginationStyle: SQLDialectDescriptor.PaginationStyle,

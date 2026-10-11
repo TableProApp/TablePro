@@ -35,20 +35,79 @@ struct ConnectionLibraryEditingTests {
         let member = DatabaseConnection(name: "Member", type: .mysql, groupId: groupId, sortOrder: 3)
         let editing = DatabaseConnection(name: "Editing", type: .mysql, sortOrder: 1)
 
-        var renamed = editing
-        renamed.name = "Renamed"
-        let inPlace = try #require(ConnectionLibraryEditing.updating(
-            renamed, in: [member, editing], validGroupIds: [groupId]
-        ))
+        let inPlace = try #require(ConnectionLibraryEditing.mutatingConnection(
+            editing.id, in: [member, editing], validGroupIds: [groupId]
+        ) { $0.name = "Renamed" })
 
-        var regrouped = editing
-        regrouped.groupId = groupId
-        let moved = try #require(ConnectionLibraryEditing.updating(
-            regrouped, in: [member, editing], validGroupIds: [groupId]
-        ))
+        let moved = try #require(ConnectionLibraryEditing.mutatingConnection(
+            editing.id, in: [member, editing], validGroupIds: [groupId]
+        ) { $0.groupId = groupId })
 
         #expect(inPlace.connections.first { $0.id == editing.id }?.sortOrder == 1)
+        #expect(inPlace.changedConnectionIds == [editing.id])
         #expect(moved.connections.first { $0.id == editing.id }?.sortOrder == 4)
+    }
+
+    @Test("Editing a connection that is no longer stored changes nothing")
+    func mutatingMissingConnection() {
+        let stored = DatabaseConnection(name: "Stored", type: .mysql)
+
+        let change = ConnectionLibraryEditing.mutatingConnection(UUID(), in: [stored], validGroupIds: []) {
+            $0.name = "Resurrected"
+        }
+
+        #expect(change == nil)
+    }
+
+    @Test("An edit that leaves the record as it was reports no changed connection")
+    func mutatingWithoutChange() throws {
+        let stored = DatabaseConnection(name: "Stored", type: .mysql, sortOrder: 3)
+
+        let change = try #require(ConnectionLibraryEditing.mutatingConnection(
+            stored.id, in: [stored], validGroupIds: []
+        ) { $0.name = "Stored" })
+
+        #expect(change.changedConnectionIds.isEmpty)
+        #expect(change.connections == [stored])
+    }
+
+    @Test("A group edit keeps its place unless its parent changes")
+    func groupEditKeepsSortOrder() throws {
+        let parent = ConnectionGroup(name: "Parent", sortOrder: 0)
+        let sibling = ConnectionGroup(name: "Sibling", sortOrder: 0, parentId: parent.id)
+        let editing = ConnectionGroup(name: "Editing", sortOrder: 5)
+        let groups = [parent, sibling, editing]
+
+        let renamed = try #require(ConnectionLibraryEditing.mutatingGroup(editing.id, in: groups) {
+            $0.name = "Renamed"
+        })
+        let moved = try #require(ConnectionLibraryEditing.mutatingGroup(editing.id, in: groups) {
+            $0.parentId = parent.id
+        })
+
+        #expect(renamed.changed)
+        #expect(renamed.groups.first { $0.id == editing.id }?.sortOrder == 5)
+        #expect(moved.groups.first { $0.id == editing.id }?.sortOrder == 1)
+        #expect(ConnectionLibraryEditing.mutatingGroup(UUID(), in: groups) { $0.name = "Gone" } == nil)
+    }
+
+    @Test("A tag edit touches that one tag")
+    func mutatingTagTouchesOneTag() throws {
+        let edited = ConnectionTag(name: "staging", color: .blue)
+        let other = ConnectionTag(name: "prod", color: .red)
+
+        let result = try #require(ConnectionLibraryEditing.mutatingTag(edited.id, in: [edited, other]) {
+            $0.name = "stage"
+        })
+        let untouched = try #require(ConnectionLibraryEditing.mutatingTag(edited.id, in: [edited, other]) {
+            $0.color = .blue
+        })
+
+        #expect(result.changed)
+        #expect(result.tags.map(\.name) == ["stage", "prod"])
+        #expect(result.tags.last == other)
+        #expect(!untouched.changed)
+        #expect(ConnectionLibraryEditing.mutatingTag(UUID(), in: [edited]) { $0.name = "Gone" } == nil)
     }
 
     @Test("Moving before a sibling renumbers that group in the new order")
@@ -155,8 +214,65 @@ struct ConnectionLibraryEditingTests {
         let added = try #require(ConnectionLibraryEditing.addingGroup(ConnectionGroup(name: "Sibling", parentId: one.id), to: groups))
         #expect(added.last?.sortOrder == 1)
 
-        var cyclic = one
-        cyclic.parentId = two.id
-        #expect(ConnectionLibraryEditing.updatingGroup(cyclic, in: groups) == nil)
+        #expect(ConnectionLibraryEditing.mutatingGroup(one.id, in: groups) { $0.parentId = two.id } == nil)
+    }
+
+    @Test("Deleting a tag drops it and strips it from exactly the connections that carry it")
+    func deletingTagStripsCarriers() throws {
+        let doomed = ConnectionTag(name: "Staging")
+        let other = ConnectionTag(name: "Billing")
+        let carrier = DatabaseConnection(name: "Carrier", type: .mysql, tagIds: [doomed.id])
+        let sharer = DatabaseConnection(name: "Sharer", type: .mysql, tagIds: [other.id, doomed.id])
+        let bystander = DatabaseConnection(name: "Bystander", type: .mysql, tagIds: [other.id])
+
+        let change = try #require(ConnectionLibraryEditing.deletingTag(
+            doomed.id,
+            tags: [doomed, other],
+            connections: [carrier, sharer, bystander]
+        ))
+
+        #expect(change.tags == [other])
+        #expect(change.removedTagId == doomed.id)
+        #expect(change.connections.map(\.tagIds) == [[], [other.id], [other.id]])
+        #expect(change.connections[2] == bystander)
+        #expect(change.changedConnectionIds == [carrier.id, sharer.id])
+    }
+
+    @Test("A built-in or unknown tag cannot be deleted or offered for deletion")
+    func presetAndUnknownTagsAreRefused() throws {
+        let preset = try #require(ConnectionTag.presets.first)
+        let tags = ConnectionTag.presets
+        let carrier = DatabaseConnection(name: "Carrier", type: .mysql, tagIds: [preset.id])
+
+        #expect(ConnectionLibraryEditing.deletingTag(preset.id, tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.tagDeletionRequest(preset.id, tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.deletingTag(UUID(), tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.tagDeletionRequest(UUID(), tags: tags, connections: [carrier]) == nil)
+    }
+
+    @Test("The prompt counts exactly the connections the delete rewrites, a repeated tag once")
+    func promptCountMatchesTheChange() throws {
+        let doomed = ConnectionTag(name: "Staging")
+        let connections = [
+            DatabaseConnection(name: "Twice", type: .mysql, tagIds: [doomed.id, doomed.id]),
+            DatabaseConnection(name: "Once", type: .mysql, tagIds: [doomed.id]),
+            DatabaseConnection(name: "None", type: .mysql)
+        ]
+
+        let change = try #require(ConnectionLibraryEditing.deletingTag(doomed.id, tags: [doomed], connections: connections))
+        let request = try #require(ConnectionLibraryEditing.tagDeletionRequest(doomed.id, tags: [doomed], connections: connections))
+
+        #expect(request.tag == doomed)
+        #expect(request.connectionCount == 2)
+        #expect(request.connectionCount == change.changedConnectionIds.count)
+    }
+
+    @Test("The prompt names the tag and how many connections lose it")
+    func promptMessages() {
+        let tag = ConnectionTag(name: "Staging")
+
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 0).message == "“Staging” is not on any connection.")
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 1).message == "“Staging” will be removed from 1 connection.")
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 3).message == "“Staging” will be removed from 3 connections.")
     }
 }

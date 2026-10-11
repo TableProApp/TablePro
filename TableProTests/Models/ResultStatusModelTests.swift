@@ -4,11 +4,11 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
-@Suite("ResultStatusModel")
 struct ResultStatusModelTests {
     private func makeSnapshot(
         tabType: TabType? = .table,
@@ -66,6 +66,88 @@ struct ResultStatusModelTests {
         #expect(!result.controls.showsReadout)
     }
 
+    @Test("A query tab's first run offers the execution slot and no readout")
+    func firstRunOffersTheExecutionSlotWithoutAReadout() {
+        let result = model(queryTabSnapshot(hasResult: false, isFetching: true))
+        #expect(!result.controls.showsReadout)
+        #expect(result.controls.showsExecution)
+    }
+
+    @Test(
+        "The execution slot is offered by the mode alone, with or without a result, running or idle",
+        arguments: ResultsViewMode.allCases
+    )
+    func executionSlotFollowsTheModeAlone(mode: ResultsViewMode) {
+        let offered = [false, true].flatMap { hasResult in
+            [false, true].map { isFetching in
+                model(queryTabSnapshot(hasResult: hasResult, isFetching: isFetching), viewMode: mode)
+                    .controls.showsExecution
+            }
+        }
+        #expect(offered == Array(repeating: mode != .structure, count: 4))
+    }
+
+    @Test("A running query with a result on screen keeps its readout beside the execution slot")
+    func runWithAResultKeepsTheReadout() {
+        let result = model(queryTabSnapshot(hasResult: true, isFetching: true))
+        #expect(result.controls.showsReadout)
+        #expect(result.controls.showsExecution)
+    }
+
+    @Test("Output mode offers the execution slot and no readout, running or idle")
+    func outputModeOffersTheExecutionSlot() {
+        for isFetching in [false, true] {
+            let result = model(queryTabSnapshot(hasResult: true, isFetching: isFetching), viewMode: .output)
+            #expect(!result.controls.showsReadout)
+            #expect(result.controls.showsExecution)
+        }
+    }
+
+    @Test("A query plan gives up the readout and still offers the execution slot, running or idle")
+    func queryPlanOffersTheExecutionSlot() {
+        for isFetching in [false, true] {
+            let result = model(queryTabSnapshot(hasResult: true, isFetching: isFetching, isQueryPlan: true))
+            #expect(!result.controls.showsReadout)
+            #expect(result.controls.showsExecution)
+        }
+    }
+
+    @Test("Structure mode never offers the execution slot, running or idle")
+    func structureModeNeverOffersTheExecutionSlot() {
+        let tab = QueryTab(title: "users", query: "", tabType: .table, tableName: "users")
+        for isFetching in [false, true] {
+            let snapshot = StatusBarSnapshot(tab: tab, tableRows: Self.resultRows, isFetching: isFetching)
+            #expect(!model(snapshot, viewMode: .structure).controls.showsExecution)
+        }
+    }
+
+    @Test("A query tab that never ran reads the fetch the registry reports as loading")
+    func neverRunQueryTabTakesTheFetchFromTheRegistry() {
+        let tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        #expect(!tab.pagination.isLoading)
+
+        let snapshot = StatusBarSnapshot(tab: tab, tableRows: TableRows(), isFetching: true)
+        let result = model(snapshot)
+
+        #expect(snapshot.pagination.isLoading)
+        #expect(result.readout == .loading)
+    }
+
+    private static let resultRows = TableRows.from(
+        queryRows: [[.text("1")]],
+        columns: ["id"],
+        columnTypes: [.text(rawType: "INTEGER")]
+    )
+
+    private func queryTabSnapshot(hasResult: Bool, isFetching: Bool, isQueryPlan: Bool = false) -> StatusBarSnapshot {
+        StatusBarSnapshot(
+            tab: QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query),
+            tableRows: hasResult ? Self.resultRows : TableRows(),
+            isFetching: isFetching,
+            isQueryPlan: isQueryPlan
+        )
+    }
+
     @Test("A table with a known total reports the offset range")
     func tableReportsRange() {
         let snapshot = makeSnapshot(
@@ -104,10 +186,21 @@ struct ResultStatusModelTests {
     func truncatedQueryReportsPartialLoad() {
         var pagination = PaginationState(pageSize: 1_000)
         pagination.hasMoreRows = true
+        pagination.setBaseQueryForMore("SELECT * FROM orders", parameterValues: nil)
         let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
         let result = model(snapshot)
         #expect(result.readout == .partialLoad(1_000))
         #expect(result.controls.showsFetchAll)
+    }
+
+    @Test("A truncated result with no query to run again reports a partial load and offers no Fetch All")
+    func truncatedResultWithoutReplayableQueryOffersNoFetchAll() {
+        var pagination = PaginationState(pageSize: 1_000)
+        pagination.hasMoreRows = true
+        let snapshot = makeSnapshot(tabType: .query, rowCount: 1_000, pagination: pagination)
+        let result = model(snapshot)
+        #expect(result.readout == .partialLoad(1_000))
+        #expect(!result.controls.showsFetchAll)
     }
 
     // MARK: - Selection
@@ -214,6 +307,83 @@ struct ResultStatusModelTests {
         #expect(!model(noResult, viewMode: .data).controls.showsHighlightRules)
     }
 
+    // MARK: - Selection summary
+
+    @Test("The selection summary is offered only where the data grid draws the result")
+    func selectionSummaryFollowsTheDataGrid() {
+        let table = makeSnapshot(rowCount: 10)
+        #expect(model(table, viewMode: .data).controls.showsSelectionSummary)
+        for mode in ResultsViewMode.allCases where mode != .data {
+            #expect(!model(table, viewMode: mode).controls.showsSelectionSummary, "offered in \(mode)")
+        }
+
+        let query = makeSnapshot(tabType: .query, rowCount: 3, hasTableName: false)
+        #expect(model(query, viewMode: .data).controls.showsSelectionSummary)
+    }
+
+    @Test("A tab with no result and a query plan offer no selection summary")
+    func selectionSummaryNeedsAResult() {
+        let noResult = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
+        #expect(!model(noResult).controls.showsSelectionSummary)
+
+        let plan = model(queryTabSnapshot(hasResult: true, isFetching: false, isQueryPlan: true))
+        #expect(!plan.controls.showsSelectionSummary)
+        #expect(!plan.selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("A table's summary covers only the loaded rows while the table has more")
+    func tableSummaryScopeFollowsTheTotal() {
+        let paged = makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
+        #expect(model(paged).selectionSummaryCoversLoadedRowsOnly)
+
+        let whole = makeSnapshot(rowCount: 12, pagination: PaginationState(totalRowCount: 12, pageSize: 1_000))
+        #expect(!model(whole).selectionSummaryCoversLoadedRowsOnly)
+
+        let laterPageOfUnknownTotal = makeSnapshot(
+            rowCount: 50,
+            pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 2, currentOffset: 50)
+        )
+        #expect(model(laterPageOfUnknownTotal).selectionSummaryCoversLoadedRowsOnly)
+
+        let shortPageOfUnknownTotal = makeSnapshot(rowCount: 12, pagination: PaginationState(pageSize: 1_000))
+        #expect(!model(shortPageOfUnknownTotal).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    /// MySQL's `TABLE_ROWS` under-reports InnoDB, so an estimate below a full page says nothing about
+    /// the rows past it.
+    @Test("An estimated total is not trusted to say every row is loaded")
+    func summaryScopeIgnoresAnEstimate() {
+        var underReported = PaginationState(totalRowCount: 900, pageSize: 1_000)
+        underReported.isApproximateRowCount = true
+        #expect(model(makeSnapshot(rowCount: 1_000, pagination: underReported)).selectionSummaryCoversLoadedRowsOnly)
+
+        var overReported = PaginationState(totalRowCount: 5_000_000, pageSize: 1_000)
+        overReported.isApproximateRowCount = true
+        #expect(!model(makeSnapshot(rowCount: 12, pagination: overReported)).selectionSummaryCoversLoadedRowsOnly)
+
+        var laterPage = PaginationState(totalRowCount: 10, pageSize: 50, currentPage: 2, currentOffset: 50)
+        laterPage.isApproximateRowCount = true
+        #expect(model(makeSnapshot(rowCount: 7, pagination: laterPage)).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("A query's summary covers only the loaded rows while the row cap left some behind")
+    func querySummaryScopeFollowsTheRowCap() {
+        var truncated = PaginationState(pageSize: 1_000)
+        truncated.hasMoreRows = true
+        let capped = makeSnapshot(tabType: .query, rowCount: 1_000, hasTableName: false, pagination: truncated)
+        #expect(model(capped).selectionSummaryCoversLoadedRowsOnly)
+
+        let complete = makeSnapshot(tabType: .query, rowCount: 3, hasTableName: false)
+        #expect(!model(complete).selectionSummaryCoversLoadedRowsOnly)
+    }
+
+    @Test("Only a mode that shows a summary says what it covers")
+    func summaryScopeIsWithheldOutsideTheDataGrid() {
+        let paged = makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
+        #expect(!model(paged, viewMode: .json).selectionSummaryCoversLoadedRowsOnly)
+        #expect(!model(paged, viewMode: .chart).selectionSummaryCoversLoadedRowsOnly)
+    }
+
     @Test("A query tab never offers table-only controls")
     func queryTabHasNoTableControls() {
         var pagination = PaginationState(pageSize: 1_000)
@@ -301,6 +471,7 @@ struct ResultStatusModelTests {
             controls.showsPagination,
             controls.showsFetchAll,
             controls.showsStructureActions,
+            controls.showsSelectionSummary,
         ]
     }
 
@@ -418,12 +589,33 @@ struct ResultStatusModelTests {
     }
 }
 
-@Suite("ResultsModeAvailability")
 struct ResultsModeAvailabilityTests {
     @Test("A table tab offers every mode")
     func tableTabOffersAllModes() {
         let modes = ResultsModeAvailability.modes(tabType: .table, hasTableName: true, hasColumns: true)
         #expect(modes == [.data, .structure, .json, .chart])
+    }
+
+    @Test("Output is offered only for a query result that printed something")
+    func outputFollowsTheServerOutput() {
+        #expect(ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: true,
+            hasServerOutput: true
+        ) == [.data, .json, .chart, .output])
+        #expect(ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: false,
+            hasServerOutput: true
+        ).isEmpty)
+        #expect(ResultsModeAvailability.modes(
+            tabType: .table,
+            hasTableName: true,
+            hasColumns: true,
+            hasServerOutput: true
+        ) == [.data, .structure, .json, .chart])
     }
 
     @Test("A query result has no structure to show")
@@ -496,5 +688,4 @@ struct ResultsModeAvailabilityTests {
         }
         #expect(ResultsViewMode.json.displayName == "JSON")
     }
-
 }

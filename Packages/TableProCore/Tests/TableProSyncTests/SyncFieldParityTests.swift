@@ -41,6 +41,8 @@ struct SyncFieldParityTests {
         "SQLFavoriteFolderSyncField",
         "SSHProfileSyncField",
         "CredentialProfileSyncField",
+        "TableFolderSyncField",
+        "TableFolderItemSyncField",
     ]
 
     /// Connection fields only one platform has a model property for. Each is a feature the other
@@ -52,7 +54,7 @@ struct SyncFieldParityTests {
     ]
 
     private static let connectionIosOnly: Set<String> = [
-        "queryTimeoutSeconds", "sshEnabled", "sslEnabled",
+        "sshEnabled", "sslEnabled",
     ]
 
     /// Written by whichever mapper owns the value and never read back by it.
@@ -72,9 +74,10 @@ struct SyncFieldParityTests {
     }
 
     /// Scope follows either the accessor a function builds for itself or the one it is handed as a
-    /// parameter. Reading only the first missed `color`, which a helper reads from an argument.
+    /// parameter. Reading only the first missed `color`, which a helper reads from an argument. The
+    /// accessor may also take an `absentValues:` argument after the type.
     private static let scopePattern = try! NSRegularExpression(
-        pattern: #"\.fields\((\w+)\.self\)|SyncRecordFields<(\w+)>"#
+        pattern: #"\.fields\((\w+)\.self[,)]|SyncRecordFields<(\w+)>"#
     )
 
     private static let accessPattern = try! NSRegularExpression(

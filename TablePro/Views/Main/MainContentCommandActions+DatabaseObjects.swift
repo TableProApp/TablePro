@@ -105,8 +105,27 @@ extension MainContentCommandActions {
         isConnected && supportsContainerSwitching && !isReadOnly
     }
 
+    var canCreateTable: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return CreateTableEligibility.canCreateTable(
+            with: DatabaseManager.shared.driver(for: coordinator.connection.id)
+        )
+    }
+
+    var canCreateView: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return CreateViewEligibility.canCreateView(
+            with: DatabaseManager.shared.driver(for: coordinator.connection.id)
+        )
+    }
+
+    var canCreateSchema: Bool {
+        guard isConnected, let coordinator else { return false }
+        return SchemaEditEligibility.canCreate(context: coordinator.schemaEditContext)
+    }
+
     func createDatabase() {
-        coordinator?.activeSheet = .createDatabase
+        coordinator?.createDatabase()
     }
 
     /// The menu-bar mirrors of the sidebar's own commands. With no clicked row to carry, both act
@@ -130,11 +149,11 @@ extension MainContentCommandActions {
     }
 
     func copyObjectsToAnotherDatabase() {
-        coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, objects: [])
+        coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, preselection: .wholeScope)
     }
 
     func duplicateCurrentDatabase() {
-        coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, objects: [])
+        coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, preselection: .wholeScope)
     }
 }
 
@@ -149,7 +168,7 @@ internal extension MainContentCoordinator {
         mode: ObjectCopyMode,
         database: String?,
         schema: String?,
-        objects: [ObjectCopySelection]
+        preselection: ObjectCopyPreselection
     ) {
         let source = DatabaseEndpoint.from(
             connection: connection,
@@ -157,7 +176,7 @@ internal extension MainContentCoordinator {
             schema: schema
         )
         activeSheet = .copyObjects(ObjectCopyLaunchRequest(
-            mode: mode, source: source, preselected: objects
+            mode: mode, source: source, preselection: preselection
         ))
     }
 }

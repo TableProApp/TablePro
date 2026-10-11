@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseType CockroachDB")
 struct DatabaseTypeCockroachDBTests {
     @Test("rawValue is CockroachDB")
     func rawValue() {

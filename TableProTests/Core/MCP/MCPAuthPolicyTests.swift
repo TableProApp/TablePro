@@ -15,7 +15,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MCP Auth Policy")
 struct MCPAuthPolicyTests {
     private let connectionA = UUID()
     private let connectionB = UUID()
@@ -114,6 +113,31 @@ struct MCPAuthPolicyTests {
         }
         guard case .allowed = read else {
             Issue.record("Expected allowed for a read on a read-only connection, got \(read)")
+            return
+        }
+    }
+
+    @Test("A read-only connection refuses stopping a server session and a read-write one allows it")
+    func readOnlyConnectionRefusesStoppingASession() async throws {
+        let principal = makePrincipal()
+
+        let readOnly = try await makePolicy(makeSnapshot(externalAccess: .readOnly)).authorize(
+            principal: principal,
+            tool: StopServerSessionTool.name,
+            connectionId: connectionA
+        )
+        let readWrite = try await makePolicy(makeSnapshot(externalAccess: .readWrite)).authorize(
+            principal: principal,
+            tool: StopServerSessionTool.name,
+            connectionId: connectionA
+        )
+
+        guard case .denied = readOnly else {
+            Issue.record("Expected denied for stopping a session on a read-only connection, got \(readOnly)")
+            return
+        }
+        guard case .allowed = readWrite else {
+            Issue.record("Expected allowed for stopping a session on a read-write connection, got \(readWrite)")
             return
         }
     }
@@ -245,6 +269,22 @@ struct MCPAuthPolicyTests {
             tool: "execute_query",
             connectionId: connectionA,
             sql: "INSERT INTO users (name) VALUES ('x')"
+        )
+
+        guard case .deniedInsufficientScope(let required, _) = decision else {
+            Issue.record("Expected an insufficient scope refusal, got \(decision)")
+            return
+        }
+        #expect(required == [.toolsWrite])
+    }
+
+    @Test("A read-only token may not stop another session through execute_query")
+    func readOnlyTokenIsRefusedASessionStop() async throws {
+        let decision = try await makePolicy(makeSnapshot()).authorize(
+            principal: makePrincipal(scopes: MCPScope.readOnlySet),
+            tool: "execute_query",
+            connectionId: connectionA,
+            sql: "SELECT pg_terminate_backend(123)"
         )
 
         guard case .deniedInsufficientScope(let required, _) = decision else {
@@ -462,5 +502,52 @@ struct MCPAuthPolicyTests {
         )
 
         #expect(readable == [visible])
+    }
+
+    @Test("A token holding connections:display is still refused every tool on a connection hidden from AI")
+    func displayScopeOpensNoToolOnAHiddenConnection() async throws {
+        let policy = makePolicy(makeSnapshot(policy: .never), connectionIds: [connectionA])
+        let launcher = makePrincipal(scopes: MCPScope.fullAccessSet.union([.connectionsDisplay]))
+
+        for tool in ["list_tables", "execute_query", "describe_table", "connect", "open_connection_window", "export_data"] {
+            let decision = try await policy.authorize(
+                principal: launcher,
+                tool: tool,
+                connectionId: connectionA,
+                sql: tool == "execute_query" ? "SELECT 1" : nil
+            )
+            guard case .denied = decision else {
+                Issue.record("Expected \(tool) denied on a hidden connection, got \(decision)")
+                continue
+            }
+        }
+
+        let readable = await policy.readableConnectionIds(principal: launcher)
+        #expect(readable.isEmpty)
+    }
+
+    @Test("Access settings come from the saved record, and a connection with none is refused")
+    func snapshotReadsTheSavedRecord() throws {
+        var hidden = DatabaseConnection(name: "Prod", type: .postgresql)
+        hidden.aiPolicy = .never
+        hidden.externalAccess = .readOnly
+        var inheriting = DatabaseConnection(name: "Staging", type: .mysql)
+        inheriting.aiPolicy = nil
+
+        let hiddenSnapshot = try #require(MCPAuthPolicy.snapshot(
+            for: hidden.id,
+            saved: [hidden, inheriting],
+            defaultPolicy: .alwaysAllow
+        ))
+        let inheritingSnapshot = try #require(MCPAuthPolicy.snapshot(
+            for: inheriting.id,
+            saved: [hidden, inheriting],
+            defaultPolicy: .askEachTime
+        ))
+
+        #expect(hiddenSnapshot.policy == .never)
+        #expect(hiddenSnapshot.externalAccess == .readOnly)
+        #expect(inheritingSnapshot.policy == .askEachTime)
+        #expect(MCPAuthPolicy.snapshot(for: UUID(), saved: [hidden], defaultPolicy: .alwaysAllow) == nil)
     }
 }

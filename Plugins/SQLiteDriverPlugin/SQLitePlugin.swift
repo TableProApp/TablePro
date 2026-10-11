@@ -3,9 +3,9 @@
 //  TablePro
 //
 
+import CSQLite
 import Foundation
 import os
-import SQLite3
 import TableProPluginKit
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -48,9 +48,11 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsCheckConstraints = true
 
+    static let additionalConnectionFields: [ConnectionField] = [.loadableExtensions()]
+
     /// ALTER TABLE ... ADD/DROP CONSTRAINT arrived in SQLite 3.53.0 (2026-04-09). The plugin links
-    /// the system libsqlite3, so this tracks the user's macOS rather than the app version, and it
-    /// is a per-process constant because one dylib is linked for the process's whole lifetime.
+    /// its own SQLite (scripts/build-sqlite.sh), so this follows the version pinned there rather
+    /// than the user's macOS.
     static let supportsCheckConstraintEditing = sqlite3_libversion_number() >= 3_053_000
 
     static let supportsGeneratedColumns = true
@@ -127,6 +129,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
 
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        await backend.sessionTransactionState()
+    }
+
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries,
@@ -154,22 +160,26 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// session runs on the server's SQLite through the agent. The mark and the token are set by the
     /// app's transport when it rewrites the effective connection, never by the user.
     private static func makeBackend(config: DriverConnectionConfig) -> any SQLiteExecutionBackend {
-        guard config.additionalFields[SQLiteAgentProtocol.backendFieldKey] == SQLiteAgentProtocol.agentBackendValue else {
+        guard let helloBudget = SQLiteAgentHelloBudget.forAgent(
+            additionalFields: config.additionalFields
+        ) else {
             return SQLiteLocalBackend(path: config.database)
         }
         return SQLiteAgentBackend(
             host: config.host.isEmpty ? "127.0.0.1" : config.host,
             port: config.port,
             path: config.database,
-            token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? ""
+            token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? "",
+            helloBudget: helloBudget
         )
     }
 
     // MARK: - Connection
 
     func connect() async throws {
+        let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
         try await withTaskCancellationHandler {
-            try await backend.open()
+            try await backend.open(loading: extensions)
         } onCancel: {
             backend.abortConnect()
         }
@@ -185,7 +195,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        await backend.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
+        await backend.applyBusyTimeout(SQLiteQueryTimeout.milliseconds(seconds: seconds))
     }
 
     // MARK: - Query Execution
@@ -468,11 +478,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !pragmaRowsByTable.isEmpty else { return [:] }
 
         let createStatements = try await createTableStatements()
+        /// One query for every parent the whole database references, rather than one per table.
+        /// Omitting it made a shorthand `REFERENCES parent` resolve to the child's own column name.
+        let primaryKeysByTable = try await primaryKeys(
+            ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRowsByTable)
+        )
         return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
             foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
                 table: entry.key,
                 pragmaRows: entry.value,
-                createTableSQL: createStatements[entry.key]
+                createTableSQL: createStatements[entry.key],
+                primaryKeysByTable: primaryKeysByTable
             )
         }
     }
@@ -491,26 +507,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT il.name, il."unique", il.origin, ii.name AS col_name
-            FROM pragma_index_list('\(safeTable)') il
-            LEFT JOIN pragma_index_info(il.name) ii ON 1=1
-            ORDER BY il.seq, ii.seqno
-            """
-        let result = try await execute(query: query)
-
-        let rows = result.rows.compactMap { row -> SQLiteIndexRow? in
-            guard row.count >= 4, let indexName = row[0].asText else { return nil }
-            return SQLiteIndexRow(
-                table: table,
-                index: indexName,
-                column: row[3].asText,
-                isUnique: row[1].asText == "1",
-                origin: row[2].asText ?? "c"
-            )
-        }
-        return SQLiteIndexGrouping.group(rows)[table] ?? []
+        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -527,7 +525,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             pragmaRows: pragmaRows,
             createTableSQL: createTableSQL,
             primaryKeysByTable: try await primaryKeys(
-                ofTablesReferencedIn: pragmaRows.compactMap { $0[safe: 2]?.asText }
+                ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRows)
             )
         )
     }
@@ -796,7 +794,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        sqliteAddIndexSQL(table: table, index: index)
+        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: sqliteQuoteIdentifier)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

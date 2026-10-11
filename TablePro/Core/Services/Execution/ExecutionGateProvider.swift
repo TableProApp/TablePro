@@ -6,6 +6,13 @@
 import Foundation
 
 internal enum ExecutionGateProvider {
+    /// A driver that declares no read-only mode gets every statement treated as a write, unless the
+    /// classifier can prove reads on its engine. The declaration stays the fallback for an engine the
+    /// classifier does not know.
+    static func forcesWrite(_ databaseType: DatabaseType, supportsReadOnlyMode: Bool) -> Bool {
+        !supportsReadOnlyMode && !QueryClassifier.enginesWithProvenReads.contains(databaseType)
+    }
+
     static let shared: ExecutionGate = DefaultExecutionGate(
         confirming: AlertOperationConfirming(),
         authenticating: BiometricOperationAuthenticating(),
@@ -26,9 +33,10 @@ internal enum ExecutionGateProvider {
             )
         },
         forcesWriteResolver: { databaseType in
-            await MainActor.run {
-                !PluginManager.shared.supportsReadOnlyMode(for: databaseType)
+            let supportsReadOnlyMode = await MainActor.run {
+                PluginManager.shared.supportsReadOnlyMode(for: databaseType)
             }
+            return forcesWrite(databaseType, supportsReadOnlyMode: supportsReadOnlyMode)
         },
         connectionNameResolver: { connectionId in
             await MainActor.run {

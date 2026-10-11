@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection.aiRules")
 struct DatabaseConnectionAIRulesTests {
     @Test("aiRules defaults to nil")
     func defaultsToNil() {

@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Request Rate Limits")
 struct MCPRequestRateLimitTests {
     @Test("Failures from one address share a bucket whatever token was guessed")
     func wrongGuessesShareTheAddressBucket() async {
@@ -28,21 +27,6 @@ struct MCPRequestRateLimitTests {
             return
         }
         #expect(await limiter.isLocked(key: key) == true)
-    }
-
-    @Test("A validated token gets its own failure bucket")
-    func tokenBucketIsSeparate() async {
-        let limiter = MCPRateLimiter(clock: MCPTestClock())
-        let tokenId = UUID()
-        let addressKey = MCPRateLimitKey.authFailure(address: .loopback)
-        let tokenKey = MCPRateLimitKey.authFailure(tokenId: tokenId)
-
-        for _ in 0..<5 {
-            _ = await limiter.recordAttempt(key: addressKey, success: false)
-        }
-
-        #expect(await limiter.isLocked(key: addressKey) == true)
-        #expect(await limiter.isLocked(key: tokenKey) == false)
     }
 
     @Test("Concurrent requests are capped")

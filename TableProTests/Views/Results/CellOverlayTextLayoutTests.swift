@@ -11,7 +11,6 @@ import Testing
 /// A cell holds one value, so an inline overlay behaves like a field editor and scrolls a long line
 /// rather than wrapping it. Wrapping made TextKit 2 lay the whole paragraph out before the overlay
 /// could appear: 206ms for a 256KB value and 816ms for 1MB, against 7ms unwrapped (#2381).
-@Suite("Cell overlay text layout")
 @MainActor
 struct CellOverlayTextLayoutTests {
     private func makeTextView(width: CGFloat = 140) -> NSTextView {

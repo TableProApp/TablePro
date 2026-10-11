@@ -9,10 +9,10 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Fold preview hit testing")
 @MainActor
 struct FoldPreviewHitTestTests {
     private let script = """
@@ -37,7 +37,7 @@ struct FoldPreviewHitTestTests {
             language: .sql,
             configuration: configuration,
             cursorPositions: [CursorPosition(range: NSRange(location: 0, length: 0))],
-            foldProvider: SQLLineFoldProvider(dialect: .postgres)
+            foldProvider: SQLLineFoldProvider(grammar: TestGrammar.postgres)
         )
         controller.loadView()
         controller.textView.frame = NSRect(x: 0, y: 0, width: 900, height: 600)

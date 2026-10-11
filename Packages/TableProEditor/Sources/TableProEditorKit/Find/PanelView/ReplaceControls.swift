@@ -23,11 +23,12 @@ struct ReplaceControls: View {
     var condensed: Bool
 
     var shouldDisableSingle: Bool {
-        !viewModel.isFocused || viewModel.findText.isEmpty || viewModel.matchesEmpty
+        !viewModel.canReplace || !viewModel.isFocused || viewModel.findText.isEmpty || viewModel.matchesEmpty
+            || viewModel.currentFindMatchIndex == nil
     }
 
     var shouldDisableAll: Bool {
-        viewModel.findText.isEmpty || viewModel.matchesEmpty
+        !viewModel.canReplace || viewModel.findText.isEmpty || viewModel.matchesEmpty
     }
 
     var body: some View {
@@ -46,6 +47,7 @@ struct ReplaceControls: View {
                     .opacity(shouldDisableSingle ? 0.33 : 1)
                 }
                 .help(condensed ? "Replace" : "")
+                .accessibilityLabel("Replace")
                 .disabled(shouldDisableSingle)
                 .frame(maxWidth: .infinity)
 
@@ -64,6 +66,7 @@ struct ReplaceControls: View {
                     .opacity(shouldDisableAll ? 0.33 : 1)
                 }
                 .help(condensed ? "Replace All" : "")
+                .accessibilityLabel("Replace All")
                 .disabled(shouldDisableAll)
                 .frame(maxWidth: .infinity)
             }

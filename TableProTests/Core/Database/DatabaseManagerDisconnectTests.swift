@@ -130,7 +130,7 @@ struct DatabaseManagerDisconnectTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: .sessionDriver,
-                cancellation: .cancellableRead
+                cancellation: .cancellableRead(DriverLeaseOwner())
             ) { driver in
                 driver.connection.database
             }

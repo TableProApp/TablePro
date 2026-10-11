@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MongoDBNameValidator")
 struct MongoDBNameValidatorTests {
     @Test("A plain database name passes")
     func testValidDatabaseName() throws {

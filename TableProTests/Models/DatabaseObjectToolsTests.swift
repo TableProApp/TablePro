@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Per-object command eligibility")
 struct DatabaseObjectToolEligibilityTests {
     private let support = DatabaseObjectToolEligibility.Support(
         canRefreshMaterializedViews: true,
@@ -43,9 +42,19 @@ struct DatabaseObjectToolEligibilityTests {
         #expect(!DatabaseObjectToolEligibility.canEditComment(.table, support: support, isReadOnly: true))
         #expect(!DatabaseObjectToolEligibility.canEditComment(.table, support: .none, isReadOnly: false))
     }
+
+    @Test("An engine that comments on tables alone offers Edit Comment on tables and on no view")
+    func tableOnlyEngine() {
+        let tablesOnly = DatabaseObjectToolEligibility.Support(commentableTypes: [.table, .partitionedTable])
+
+        #expect(DatabaseObjectToolEligibility.canEditComment(.table, support: tablesOnly, isReadOnly: false))
+        #expect(DatabaseObjectToolEligibility.canEditComment(.partitionedTable, support: tablesOnly, isReadOnly: false))
+        for type in [TableInfo.TableType.view, .materializedView, .foreignTable, .externalTable] {
+            #expect(!DatabaseObjectToolEligibility.canEditComment(type, support: tablesOnly, isReadOnly: false))
+        }
+    }
 }
 
-@Suite("Materialized view refresh prompt")
 struct MaterializedViewRefreshPromptTests {
     private func prompt(
         _ availability: PluginConcurrentRefreshAvailability?,
@@ -93,7 +102,7 @@ struct MaterializedViewRefreshPromptTests {
     @Test("Each unavailable reason explains itself")
     func reasonsAreExplained() {
         #expect(prompt(.requiresUniqueIndex).concurrentOptionDescription.contains("unique index"))
-        #expect(prompt(.requiresPopulatedView).concurrentOptionDescription.contains("rows"))
+        #expect(prompt(.requiresPopulatedView).concurrentOptionDescription.contains("populated"))
         #expect(!prompt(nil, checkFailed: true).concurrentOptionDescription.isEmpty)
         #expect(prompt(nil).concurrentOptionDescription.isEmpty)
     }
@@ -109,7 +118,6 @@ struct MaterializedViewRefreshPromptTests {
     }
 }
 
-@Suite("Object comment draft")
 struct ObjectCommentDraftTests {
     @Test("A draft starts from the stored comment")
     func startsFromStoredComment() {
@@ -151,6 +159,13 @@ struct ObjectCommentDraftTests {
         #expect(!draft.hasChanges)
     }
 
+    @Test("Normalizing keeps text as typed and treats blank text as no comment")
+    func normalizedRule() {
+        #expect(ObjectCommentDraft.normalized(" daily totals ") == " daily totals ")
+        #expect(ObjectCommentDraft.normalized(" \n ") == nil)
+        #expect(ObjectCommentDraft.normalized(nil) == nil)
+    }
+
     @Test("Editing the text is a change, and multiple lines are kept")
     func editingIsAChange() {
         var draft = ObjectCommentDraft(original: "one")
@@ -163,7 +178,6 @@ struct ObjectCommentDraftTests {
 }
 
 @MainActor
-@Suite("Object source refs for views")
 struct DatabaseObjectRefViewKindTests {
     private func table(_ name: String, type: TableInfo.TableType) -> TableInfo {
         TableInfo(name: name, type: type, rowCount: nil, schema: "sales")

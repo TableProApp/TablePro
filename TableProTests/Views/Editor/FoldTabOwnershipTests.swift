@@ -12,7 +12,6 @@ import Testing
 /// They used to live in a window wide property that persistence read for whichever tab was selected, with the tab's
 /// own copy cleared the first time its view appeared. Switching between two tabs that both had folds could then write
 /// one tab's regions onto the other, and the guard against it compared document lengths.
-@Suite("Fold tab ownership")
 @MainActor
 struct FoldTabOwnershipTests {
     private func makeCoordinator(tabManager: QueryTabManager) -> MainContentCoordinator {

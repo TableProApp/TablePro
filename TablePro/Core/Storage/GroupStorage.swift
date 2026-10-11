@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProConnectionLibrary
+import TableProImport
 import TableProSyncTransport
 
 internal enum GroupStorageError: LocalizedError, Equatable {
@@ -37,7 +38,6 @@ internal enum GroupStorageError: LocalizedError, Equatable {
     }
 }
 
-/// Service for persisting connection groups
 @MainActor
 internal final class GroupStorage {
     internal static let shared = GroupStorage()
@@ -54,7 +54,7 @@ internal final class GroupStorage {
     /// Set when the stored payload could not be understood at all. Every mutation rewrites the
     /// whole array, so continuing over an unreadable store would replace the user's groups with
     /// whatever the caller happened to be holding.
-    private var storeIsUnreadable = false
+    internal private(set) var storeIsUnreadable = false
 
     internal init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -70,8 +70,6 @@ internal final class GroupStorage {
 
     // MARK: - Group CRUD
 
-    /// Load all groups
-    ///
     /// A payload that decodes element by element keeps every group it can read: one entry written
     /// by a future version, or truncated on disk, used to take the whole list down with it.
     internal func loadGroups() -> [ConnectionGroup] {
@@ -104,10 +102,11 @@ internal final class GroupStorage {
         return groups
     }
 
-    /// Save all groups. Callers that go on to write related state must check the result: a save
-    /// that failed leaves the store holding the previous set.
+    /// Callers that go on to write related state must check the result: a save that failed leaves
+    /// the store holding the previous set.
     @discardableResult
     internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
+        let previous = loadGroups()
         guard !storeIsUnreadable else {
             Self.logger.error("Refusing to overwrite an unreadable group store")
             return false
@@ -117,7 +116,7 @@ internal final class GroupStorage {
             let data = try encoder.encode(groups)
             defaults.set(data, forKey: groupsKey)
             cachedGroups = nil
-            syncTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
+            syncTracker.markDirty(.group, ids: SyncRecordChanges.changedIds(from: previous, to: groups))
             return true
         } catch {
             Self.logger.error("Failed to save groups: \(error)")
@@ -125,14 +124,13 @@ internal final class GroupStorage {
         }
     }
 
-    /// Add a new group at the end of its parent (duplicate check scoped to siblings, enforces depth
-    /// cap and cycle prevention)
     internal func addGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         try validatePlacement(of: group, in: groups)
         try validateUniqueName(group.name, parentId: group.parentId, excluding: [group.id], in: groups)
 
         var placed = group
+        placed.iconName = LibrarySymbolCatalog.normalizedName(group.iconName)
         placed.sortOrder = LibraryOrdering.nextSortOrder(
             after: groups.filter { $0.parentId == group.parentId }.map(\.sortOrder)
         )
@@ -141,7 +139,6 @@ internal final class GroupStorage {
         notifyChanged()
     }
 
-    /// Update an existing group (enforces cycle prevention and depth cap on parentId changes)
     internal func updateGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         guard let index = groups.firstIndex(where: { $0.id == group.id }) else {
@@ -177,6 +174,35 @@ internal final class GroupStorage {
         groups[index] = updated
         guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
         notifyChanged()
+    }
+
+    /// The edit sheet's save, as one write: a rename and a move saved separately could keep the
+    /// rename and then refuse the move. A new parent takes the group at its end, as a move does.
+    /// Writes only the fields `edited` changed from `opening`, onto the group as it is stored now,
+    /// so a rename or a move synced in while the sheet was open survives a save that changed only
+    /// the icon.
+    internal func editGroup(id: UUID, from opening: ConnectionGroupFields, to edited: ConnectionGroupFields) throws {
+        let groups = loadGroups()
+        guard let current = groups.first(where: { $0.id == id }) else {
+            throw GroupStorageError.groupNotFound
+        }
+        let movesParent = edited.parentId != opening.parentId && edited.parentId != current.parentId
+        let sortOrder = movesParent
+            ? LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == edited.parentId && $0.id != id }.map(\.sortOrder)
+            )
+            : current.sortOrder
+        try mutateGroup(id: id) { group in
+            if edited.name != opening.name { group.name = edited.name }
+            if edited.color != opening.color { group.color = edited.color }
+            if edited.iconName != opening.iconName {
+                group.iconName = LibrarySymbolCatalog.normalizedName(edited.iconName)
+            }
+            if edited.parentId != opening.parentId {
+                group.parentId = edited.parentId
+                group.sortOrder = sortOrder
+            }
+        }
     }
 
     internal func moveGroups(_ ids: [UUID], toParent parentId: UUID?, before: UUID?) throws {
@@ -239,10 +265,8 @@ internal final class GroupStorage {
     ///
     /// The pull that calls this raises one change notification for the batch, so this raises none.
     ///
-    /// A record identical to the one already stored is skipped, because `saveGroups` marks every
-    /// group dirty and the push uploads every dirty group. Writing an unchanged record therefore
-    /// re-uploads the whole list, which the other device receives and writes back, and two Macs
-    /// trade the same records forever. The iOS coordinator has always had this guard.
+    /// A record identical to the one already stored is skipped. The iOS coordinator has always had
+    /// this guard.
     @discardableResult
     internal func applyRemoteGroup(_ group: ConnectionGroup) -> RemoteApplyOutcome {
         var groups = loadGroups()
@@ -279,7 +303,6 @@ internal final class GroupStorage {
         return saveGroups(repaired)
     }
 
-    /// Delete a group and all descendant groups, nil-out groupId on affected connections.
     @discardableResult
     internal func deleteGroup(_ group: ConnectionGroup) -> Bool {
         var groups = loadGroups()
@@ -311,7 +334,35 @@ internal final class GroupStorage {
         return true
     }
 
-    /// Get group by ID
+    /// Matches inside this write rather than in the plan, so a group a sync pull added between
+    /// preview and import is reused instead of duplicated.
+    internal func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?] {
+        guard paths.contains(where: { !$0.isEmpty }) else { return paths.map { _ in nil } }
+        var groups = loadGroups()
+        guard !storeIsUnreadable else { throw GroupStorageError.storeUnreadable }
+
+        let existing = groups.map { PathNode(id: $0.id, name: $0.name, parentId: $0.parentId, scope: nil) }
+        let resolved = PathTreeResolver.resolve(paths, existing: existing)
+        guard !resolved.created.isEmpty else { return resolved.leaves }
+
+        for node in resolved.created {
+            let sortOrder = LibraryOrdering.nextSortOrder(
+                after: groups.filter { $0.parentId == node.parentId }.map(\.sortOrder)
+            )
+            groups.append(ConnectionGroup(
+                id: node.id,
+                name: node.name,
+                color: node.color.map(ConnectionColor.init(storedValue:)) ?? .none,
+                iconName: LibrarySymbolCatalog.normalizedName(node.iconName),
+                parentId: node.parentId,
+                sortOrder: sortOrder
+            ))
+        }
+        guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
+        notifyChanged()
+        return resolved.leaves
+    }
+
     internal func group(for id: UUID) -> ConnectionGroup? {
         loadGroups().first { $0.id == id }
     }

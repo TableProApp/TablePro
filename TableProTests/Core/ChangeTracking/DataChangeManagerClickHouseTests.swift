@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("DataChangeManager ClickHouse UPDATE Validation")
 struct DataChangeManagerClickHouseTests {
     @Test("ClickHouse ALTER TABLE UPDATE passes validation without throwing")
     func alterTableUpdatePassesValidation() async {

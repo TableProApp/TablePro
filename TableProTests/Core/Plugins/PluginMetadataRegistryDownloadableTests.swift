@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("PluginMetadataRegistry isDownloadable preservation")
 struct PluginMetadataRegistryDownloadableTests {
     @Test("register preserves isDownloadable from registry default for downloadable types")
     func registerPreservesDownloadable() {

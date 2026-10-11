@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatContentBlockWire SQL walkthrough")
 struct ChatContentBlockWireWalkthroughTests {
     private func sampleBlock() -> SqlWalkthroughBlock {
         SqlWalkthroughBlock(

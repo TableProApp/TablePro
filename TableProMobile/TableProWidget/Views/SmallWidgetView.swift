@@ -7,7 +7,7 @@ struct SmallWidgetView: View {
     var body: some View {
         if let connection = connections.first {
             VStack(alignment: .leading, spacing: 8) {
-                DatabaseTypeStyle.iconImage(for: connection.type, size: 20)
+                DatabaseTypeStyle.iconImage(for: connection.glyph, size: 20)
                     .foregroundStyle(DatabaseTypeStyle.iconColor(for: connection.type))
                     .frame(width: 36, height: 36)
                     .background(DatabaseTypeStyle.iconColor(for: connection.type).opacity(0.15))

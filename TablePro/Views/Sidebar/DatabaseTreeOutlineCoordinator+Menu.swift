@@ -35,6 +35,12 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
         let clickedRef = clicked.flatMap(DatabaseTreeSelection.tableRef)
         let settings = AppSettingsManager.shared.general
         let selected = Set(selectedRefs())
+        let creation = SidebarCreationFacts.resolve(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            offersBrowsedFolders: offersBrowsedFolders,
+            activeDatabase: activeDatabase
+        )
         return DatabaseTreeMenuContext(
             clicked: clicked?.kind,
             selectedTables: selected,
@@ -93,6 +99,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 databases: service.databases(for: connectionId),
                 showsSystem: showSystemContainers
             ),
+            canFilterSchemas: listsTablesPerSchema,
+            hasSchemaFilter: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: browsingDatabase ?? "") != nil,
             /// Not gated on this connection's safe mode: a read-only connection is a valid source,
             /// and the target picker is where a read-only target is refused.
             canCopyObjects: ObjectCopyEligibility.supportsCopying(
@@ -105,7 +113,33 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             ),
             canBackUp: backupIsAvailable(),
             canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil,
-            objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId))
+            canCreateTable: creation.canCreateTable,
+            canCreateView: creation.canCreateView,
+            canCreateDatabase: creation.supportsCreateDatabase,
+            objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
+            tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
+            offersBrowsedFolders: creation.offersBrowsedFolders,
+            canShowAllTables: mainCoordinator?.allTablesListing() != nil
+        )
+    }
+
+    /// Only a table or view row in its own section or folder files anything. A Recent row stands
+    /// for a table somewhere else, and the targets are narrowed to the clicked row's database and
+    /// schema, because a folder belongs to one of them.
+    private func tableFolderMenuOptions(
+        clicked: DatabaseTreeNode?,
+        selected: [DatabaseTreeTableRef]
+    ) -> TableFolderMenuOptions? {
+        guard case .table(let ref) = clicked?.kind, let scope = folderScope(of: ref) else { return nil }
+        let targets = SidebarMenuTarget.resolve(clicked: ref, selection: selected)
+            .filter { folderScope(of: $0) == scope }
+        let layout = tableFolderStorage.layout(in: scope)
+        let placements = Set(targets.map { layout.placements[$0.table.name] })
+        return TableFolderMenuOptions(
+            targets: targets,
+            folders: layout.folders,
+            folderHoldingEveryTarget: placements.count == 1 ? placements.first ?? nil : nil,
+            hasFiledTargets: placements.contains { $0 != nil }
         )
     }
 

@@ -18,7 +18,6 @@ struct QueryEditorView: View {
     var databaseType: DatabaseType?
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
-    var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
     var onFocusClaimed: (() -> Void)?
@@ -31,8 +30,8 @@ struct QueryEditorView: View {
     var onExecuteQuery: (() -> Void)?
     var onRunStatement: ((String, Int) -> Bool)?
     var isExecuting: Bool = false
-    var onAIExplain: ((String) -> Void)?
-    var onAIOptimize: ((String) -> Void)?
+    var currentAIAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
 
     let scope: QueryScopeBarModel
@@ -51,6 +50,11 @@ struct QueryEditorView: View {
 
     @State private var vimMode: VimMode = .normal
 
+    /// The editor takes whatever height the bar above it leaves, with no minimum of its own. The
+    /// query split's editor pane bottoms out at `VerticalCollapsibleSplitView.defaultTopMinimumThickness`,
+    /// and an editor that also insisted on that much under a bar asked for more than the pane can
+    /// ever be: at the pane's minimum the stack overflowed it, the bar was cut off at the top and the
+    /// editor's text ran up over it.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             QueryEditorBar(
@@ -59,6 +63,7 @@ struct QueryEditorView: View {
                 isExecuting: isExecuting,
                 vimMode: settingsManager.editor.vimModeEnabled ? vimMode : nil,
                 showsHistoryTip: showsHistoryTip,
+                onAIAction: { action in onAIAction?(action, .selectionOrStatementAtCursor) },
                 onRun: onRun,
                 onRunAllStatements: onRunAllStatements,
                 onRunWithoutLimit: onRunWithoutLimit,
@@ -88,7 +93,6 @@ struct QueryEditorView: View {
                 databaseType: databaseType,
                 databaseScope: databaseScope,
                 connectionId: connectionId,
-                connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
                 claimFocusOnAppear: claimFocusOnAppear,
                 onFocusClaimed: onFocusClaimed,
@@ -102,11 +106,10 @@ struct QueryEditorView: View {
                 onExecuteQuery: onExecuteQuery,
                 onRunStatement: onRunStatement,
                 isExecuting: isExecuting,
-                onAIExplain: onAIExplain,
-                onAIOptimize: onAIOptimize,
+                currentAIAvailability: currentAIAvailability,
+                onAIAction: onAIAction,
                 onSaveAsFavorite: onSaveAsFavorite
             )
-            .frame(minHeight: 100)
             .clipped()
         }
         .background(Color(nsColor: .textBackgroundColor))

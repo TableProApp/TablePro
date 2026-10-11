@@ -40,14 +40,53 @@ final class KeyHandlingTableView: NSTableView {
         )
     }
 
+    /// A reload changes which rows the pinned row gutter numbers, and the gutter is not a subview of
+    /// the table, so nothing the reload redraws reaches it. Its frame follows the table's only once
+    /// the rows outgrow the viewport, so a result with fewer rows than the one before it left the
+    /// old numbers painted beside rows that were gone.
+    override func reloadData() {
+        super.reloadData()
+        coordinator?.repaintRowGutter()
+    }
+
+    /// AppKit sizes the table to its columns, so the document ends at the last column's divider.
+    /// Widening the frame AppKit proposes, rather than insetting the clip view, keeps the header and
+    /// the row views covering the trailing space, and holds through reloads, column changes and
+    /// window resizes. Measured on macOS 27, the same padding added in `tile()` was lost on
+    /// `reloadData` and on a clip resize.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(NSSize(width: max(newSize.width, trailingExtent), height: newSize.height))
+    }
+
+    /// Measured from the last shown column, which is AppKit's own extent: hidden columns and pool
+    /// slots occupy nothing. Asking the pool which columns it presents instead cost ten times as much
+    /// with thousands of surplus slots, and mid-reconcile it can name a column not yet unhidden.
+    private var trailingExtent: CGFloat {
+        guard let last = tableColumns.lastIndex(where: { !$0.isHidden }) else { return 0 }
+        return rect(ofColumn: last).maxX + DataGridMetrics.trailingSpace
+    }
+
+    /// AppKit reorders `tableColumns` as a dragged column passes each neighbour but posts
+    /// `columnDidMoveNotification` only at mouse-up, where the coordinator settles the new order.
+    /// The body follows the drag step by step, so the map from a data column to where it now sits
+    /// has to follow each pass. The display order is read before the first pass and kept: a drag
+    /// that passes a neighbour and comes back leaves the order, and the selection, as they were.
+    override func moveColumn(_ oldIndex: Int, toColumn newIndex: Int) {
+        let isDragging = (headerView?.draggedColumn ?? -1) >= 0
+        if isDragging {
+            _ = coordinator?.presentedDataColumns
+        }
+        super.moveColumn(oldIndex, toColumn: newIndex)
+        guard isDragging else { return }
+        coordinator?.invalidateTableColumnIndexMap()
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }
         isRaisingOverlay = true
         defer { isRaisingOverlay = false }
         raiseSelectionOverlayIfNeeded(subview: subview)
-        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview)
-        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview)
     }
 
     private func raiseSelectionOverlayIfNeeded(subview: NSView) {
@@ -56,16 +95,6 @@ final class KeyHandlingTableView: NSTableView {
               subview !== selectionOverlay,
               subviews.last !== selectionOverlay else { return }
         addSubview(selectionOverlay)
-    }
-
-    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView) {
-        guard let overlay,
-              overlay.isActive,
-              let container = overlay.containerView,
-              container !== subview,
-              container.superview === self,
-              subviews.last !== container else { return }
-        overlay.raiseToFront()
     }
 
     var selection = TableSelection() {
@@ -110,6 +139,16 @@ final class KeyHandlingTableView: NSTableView {
     var focusedColumn: Int {
         get { selection.focusedColumn }
         set { selection.focusedColumn = newValue }
+    }
+
+    /// Set while the cursor is the one a row selection seeded for the keyboard, not one the user put
+    /// on a cell. A cell click, an arrow key or Tab clears it.
+    var isCursorSeededByRowSelection = false
+
+    /// The cell a Shift+click or Cmd+click starts from when no cell selection exists yet.
+    func pointerSelectionSeed() -> GridCoord? {
+        guard gridSelection?.isEmpty == true, !isCursorSeededByRowSelection else { return nil }
+        return focusedGridCoord()
     }
 
     private var gridSelection: GridSelectionController? { coordinator?.selectionController }
@@ -182,7 +221,9 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
+        let focus = pointerSelectionSeed()
+        isCursorSeededByRowSelection = false
+        let disposition = controller.beginDrag(at: coord, modifiers: modifiers, focus: focus)
         switch disposition {
         case .replaceFocus(let activeCoord):
             withProgrammaticRowSelection {
@@ -353,9 +394,10 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    /// The cell a paste would land in. Deliberately looser than `focusedDataCell()`, which also
-    /// requires a single selected row: a paste anchors on the focused cell alone.
-    private func pasteAnchorCell() -> (row: Int, column: Int)? {
+    /// The cell a paste would land in, and the cell a command about "this cell" acts on.
+    /// Deliberately looser than `focusedDataCell()`, which also requires a single selected row: a
+    /// paste anchors on the focused cell alone.
+    func pasteAnchorCell() -> (row: Int, column: Int)? {
         guard focusedRow >= 0,
               presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
@@ -496,6 +538,7 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func handleArrow(_ direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int, event: NSEvent) {
+        isCursorSeededByRowSelection = false
         if modifiers.contains(.shift) {
             if extendGridSelection(direction: direction, jumpToEdge: modifiers.contains(.command)) {
                 return
@@ -738,6 +781,7 @@ final class KeyHandlingTableView: NSTableView {
     /// inline editor's own Tab and arrow navigation.
     internal func focusCell(row: Int, column: Int) {
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        isCursorSeededByRowSelection = false
         focusedRow = row
         focusedColumn = column
         scrollRowToVisible(row)

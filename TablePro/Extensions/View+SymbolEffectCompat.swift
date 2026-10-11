@@ -34,14 +34,23 @@ private struct OpacityPulse: ViewModifier {
 
     @State private var dimmed = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Reduce Motion withdraws the pulse rather than freezing it: gating the animation alone would
+    /// leave the view parked at the dimmed end of a pulse that never runs, which reads as a control
+    /// that has been disabled.
+    private var pulses: Bool {
+        isActive && !reduceMotion
+    }
+
     func body(content: Content) -> some View {
         content
-            .opacity(isActive && dimmed ? 0.35 : 1)
-            .animation(
-                isActive ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
+            .opacity(pulses && dimmed ? 0.35 : 1)
+            .motionAnimation(
+                pulses ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
                 value: dimmed
             )
-            .onAppear { dimmed = isActive }
-            .onChange(of: isActive) { active in dimmed = active }
+            .onAppear { dimmed = pulses }
+            .onChange(of: pulses) { active in dimmed = active }
     }
 }

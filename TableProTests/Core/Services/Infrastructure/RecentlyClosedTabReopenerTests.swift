@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("RecentlyClosedTabReopener")
 struct RecentlyClosedTabReopenerTests {
     private func makeStore() -> RecentlyClosedTabStore {
         RecentlyClosedTabStore(

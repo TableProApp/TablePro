@@ -6,6 +6,13 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
     let schema: String?
     let name: String
     let isView: Bool
+
+    /// The kind the object was opened as, as a `TableInfo.TableType` raw value.
+    ///
+    /// Nil for an entry written before the kind was recorded, and for an open whose caller knew
+    /// only whether the object was a view. Kept as a string rather than the enum so an entry
+    /// naming a kind this build has dropped decodes to nil instead of failing the whole file.
+    let objectType: String?
     let openedAt: Date
 
     static func identityKey(schema: String?, name: String) -> String {
@@ -28,7 +35,16 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
     }
 
     var tableInfo: TableInfo {
-        TableInfo(name: name, type: isView ? .view : .table, rowCount: nil, schema: schema)
+        TableInfo(name: name, type: resolvedType, rowCount: nil, schema: schema)
+    }
+
+    /// `isView` alone cannot say what an object is, only that it is not a table: a MariaDB sequence
+    /// recorded through it came back as a view, so the Recent row offered Drop View and issued
+    /// `DROP VIEW`, which fails with ERROR 4092 on the sequence the tree row drops correctly.
+    /// An entry that predates the kind still resolves the way it always did.
+    private var resolvedType: TableInfo.TableType {
+        if let objectType, let type = TableInfo.TableType(rawValue: objectType) { return type }
+        return isView ? .view : .table
     }
 }
 
@@ -71,9 +87,18 @@ final class RecentTablesStore {
 
     @discardableResult
     func record(
-        connectionId: UUID, database: String?, schema: String?, name: String, isView: Bool, at date: Date = Date()
+        connectionId: UUID,
+        database: String?,
+        schema: String?,
+        name: String,
+        isView: Bool,
+        objectType: TableInfo.TableType?,
+        at date: Date = Date()
     ) -> [RecentTableEntry] {
-        let entry = RecentTableEntry(database: database, schema: schema, name: name, isView: isView, openedAt: date)
+        let entry = RecentTableEntry(
+            database: database, schema: schema, name: name,
+            isView: isView, objectType: objectType?.rawValue, openedAt: date
+        )
         let updated = Self.merged(entry, into: entries(connectionId: connectionId))
         persist(updated, connectionId: connectionId)
         return updated
@@ -115,7 +140,7 @@ final class RecentTablesStore {
             let existing = entries[index]
             let renamed = RecentTableEntry(
                 database: existing.database, schema: existing.schema, name: newName,
-                isView: existing.isView, openedAt: existing.openedAt
+                isView: existing.isView, objectType: existing.objectType, openedAt: existing.openedAt
             )
             entries.removeAll { $0.id == renamed.id }
             guard let insertion = entries.firstIndex(where: { $0.id == existing.id }) else { return false }
@@ -131,7 +156,7 @@ final class RecentTablesStore {
                 guard entry.database == oldName else { return entry }
                 return RecentTableEntry(
                     database: newName, schema: entry.schema, name: entry.name,
-                    isView: entry.isView, openedAt: entry.openedAt
+                    isView: entry.isView, objectType: entry.objectType, openedAt: entry.openedAt
                 )
             }
             return Self.deduplicate(&entries)
@@ -150,7 +175,7 @@ final class RecentTablesStore {
                 guard entry.database == database, entry.schema == oldName else { return entry }
                 return RecentTableEntry(
                     database: entry.database, schema: newName, name: entry.name,
-                    isView: entry.isView, openedAt: entry.openedAt
+                    isView: entry.isView, objectType: entry.objectType, openedAt: entry.openedAt
                 )
             }
             return Self.deduplicate(&entries)
@@ -172,7 +197,7 @@ final class RecentTablesStore {
             let existing = entries[index]
             entries[index] = RecentTableEntry(
                 database: existing.database, schema: schema, name: existing.name,
-                isView: existing.isView, openedAt: existing.openedAt
+                isView: existing.isView, objectType: existing.objectType, openedAt: existing.openedAt
             )
             return Self.deduplicate(&entries)
         }

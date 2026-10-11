@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("CloudKit environment entitlement parity")
 struct EntitlementsEnvironmentParityTests {
     private static let environmentKey = "com.apple.developer.icloud-container-environment"
     private static let macEntitlements = "TablePro/TablePro.entitlements"

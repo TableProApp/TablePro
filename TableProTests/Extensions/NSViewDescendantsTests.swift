@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("View subtree search")
 @MainActor
 struct NSViewDescendantsTests {
     private func nested(_ leaf: NSView) -> NSView {

@@ -1,8 +1,9 @@
 import Foundation
-import Testing
 import TableProDatabase
-import TableProModels
 @testable import TableProMobile
+import TableProModels
+import TableProPluginKit
+import Testing
 
 @Suite("RowInserter")
 struct RowInserterTests {
@@ -55,7 +56,64 @@ struct RowInserterTests {
         #expect(!driver.didCommitTransaction)
     }
 
-    @Test("does not open a transaction for a single row")
+    @Test("opens the transaction read-write so a read-only session default cannot refuse the batch")
+    func multiRowOpensReadWrite() async throws {
+        let driver = makeDriver(results: [ok(), ok()])
+        let rows = [
+            PayloadRow(values: ["name": .text("Ada")]),
+            PayloadRow(values: ["name": .text("Grace")])
+        ]
+        _ = try await RowInserter.insert(
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
+        )
+        #expect(driver.beganTransactionModes == [.readWrite])
+    }
+
+    @Test("wraps a single row when the session reports it is idle")
+    func idleSingleRowWraps() async throws {
+        let driver = makeDriver(results: [ok()])
+        driver.scriptedTransactionState = .idle
+        let rows = [PayloadRow(values: ["name": .text("Ada")])]
+        let affected = try await RowInserter.insert(
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
+        )
+        #expect(affected == 1)
+        #expect(driver.beganTransactionModes == [.readWrite])
+        #expect(driver.didCommitTransaction)
+    }
+
+    @Test("joins a transaction the session already holds instead of opening one")
+    func explicitTransactionIsJoined() async throws {
+        let driver = makeDriver(results: [ok(), ok()])
+        driver.scriptedTransactionState = .explicitTransaction
+        let rows = [
+            PayloadRow(values: ["name": .text("Ada")]),
+            PayloadRow(values: ["name": .text("Grace")])
+        ]
+        let affected = try await RowInserter.insert(
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
+        )
+        #expect(affected == 2)
+        #expect(!driver.didBeginTransaction)
+        #expect(!driver.didCommitTransaction)
+    }
+
+    @Test("wraps and commits when autocommit is off, so the rows persist")
+    func implicitTransactionWraps() async throws {
+        let driver = makeDriver(results: [ok(), ok()])
+        driver.scriptedTransactionState = .implicitTransaction
+        let rows = [
+            PayloadRow(values: ["name": .text("Ada")]),
+            PayloadRow(values: ["name": .text("Grace")])
+        ]
+        _ = try await RowInserter.insert(
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
+        )
+        #expect(driver.beganTransactionModes == [.readWrite])
+        #expect(driver.didCommitTransaction)
+    }
+
+    @Test("does not open a transaction for a single row on a driver that cannot report its session")
     func singleRowNoTransaction() async throws {
         let driver = makeDriver(results: [ok()])
         let rows = [PayloadRow(values: ["name": .text("Ada")])]

@@ -50,7 +50,7 @@ extension TextLayoutManager: NSTextStorageDelegate {
         insertNewLines(for: editedRange)
         forgetWidths(ofLinesIn: editedRange)
 
-        attachments.textUpdated(atOffset: editedRange.location, delta: delta)
+        attachments.textUpdated(replacing: insertedStringRange, delta: delta)
 
         invalidateLayoutForRange(insertedStringRange)
     }

@@ -53,7 +53,7 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     @Published var saveError: String?
 
-    @Published var clipboardCandidate: ParsedConnection?
+    @Published var clipboardCandidate: ClipboardConnectionCandidate?
     @Published var clipboardBannerDismissed: Bool = false
 
     @Published var isChoosingType: Bool = false
@@ -272,6 +272,11 @@ final class ConnectionFormCoordinator: ObservableObject {
         pluginInstallError = nil
     }
 
+    func didChangePort() {
+        guard hasLoadedData else { return }
+        ssl.reconcile(port: network.resolvedPort, type: network.type)
+    }
+
     private func applyTypeDefaults(_ newType: DatabaseType, includeNetwork: Bool) {
         if includeNetwork {
             network.applyTypeDefaults(forNewType: newType)
@@ -300,14 +305,14 @@ final class ConnectionFormCoordinator: ObservableObject {
         var resolvedHost = network.resolvedHost
         var resolvedPort = network.resolvedPort
 
-        if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = fields["mongoHosts"],
-           !mongoHosts.isEmpty
-        {
-            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            fields["mongoHosts"] = result.hosts
-            resolvedHost = result.primaryHost
-            resolvedPort = result.primaryPort
+        // An empty list means what its placeholder shows, never the Host it hid.
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {
+            let type = network.type
+            let endpoints = HostListEndpoint.parseList(fields[hostList.id] ?? "", defaultPort: type.defaultPort)
+            fields[hostList.id] = endpoints.map(\.entry).joined(separator: ",")
+            let primary = endpoints.first ?? HostListEndpoint(host: type.defaultHost ?? "localhost", port: type.defaultPort)
+            resolvedHost = primary.host
+            resolvedPort = primary.port
         }
 
         let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -327,6 +332,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             sshConfig: ssh.state.buildSSHConfig(),
             sslConfig: ssl.buildConfig(),
             color: customization.color,
+            iconName: customization.iconName,
             tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
@@ -340,7 +346,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
             externalAccess: advanced.externalAccess,
-            redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
+            connectTimeoutSeconds: customization.connectTimeoutSeconds,
+            queryTimeoutSeconds: customization.queryTimeoutSeconds,
+            redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
+                RedisDatabaseIndex.parse($0) ?? 0
+            },
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
@@ -398,6 +408,10 @@ final class ConnectionFormCoordinator: ObservableObject {
     }
 
     private func saveConnection(connect: Bool) {
+        guard !storage.isLibraryUnreadable else {
+            saveError = Self.unreadableLibraryMessage
+            return
+        }
         let finalId = connectionId ?? UUID()
 
         var edits = buildEdits()
@@ -479,10 +493,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
             clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -504,16 +519,26 @@ final class ConnectionFormCoordinator: ObservableObject {
             }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {
-                saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+                saveError = saveFailureMessage
                 return
             }
             clearedSecrets.forEach { $0() }
+            approveEditedExtensions(for: connectionToSave.id)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             services.appEvents.connectionUpdated.send(connectionToSave.id)
         }
+    }
+
+    private static var unreadableLibraryMessage: String {
+        String(localized: "TablePro could not read your saved connections, so it did not save over them.")
+    }
+
+    private var saveFailureMessage: String {
+        guard !storage.isLibraryUnreadable else { return Self.unreadableLibraryMessage }
+        return String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
@@ -534,7 +559,7 @@ final class ConnectionFormCoordinator: ObservableObject {
 
         if !WindowManager.shared.hasOpenWindow(for: connection.id) {
             Self.logger.info(
-                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
             return
         }
 
@@ -546,7 +571,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             return
         }
 
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
         WelcomeRouter.shared.routeError(error, for: connection)
     }
 
@@ -617,6 +642,14 @@ final class ConnectionFormCoordinator: ObservableObject {
         )
 
         testTask = Task { [weak self, services] in
+            guard await self?.authorizeExtensionsForTest(testConnectionId: testConn.id) == true else {
+                await MainActor.run {
+                    self?.cleanupTestSecrets(for: testConn.id)
+                    self?.isTesting = false
+                    self?.testTask = nil
+                }
+                return
+            }
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
@@ -792,6 +825,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
         let secureFieldIds = services.pluginManager.secureConnectionFieldIds(for: network.type)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
+        LoadableExtensionApprovalStore.shared.revoke(for: [testId])
         temporaryTestIds.remove(testId)
     }
 
@@ -866,12 +900,20 @@ final class ConnectionFormCoordinator: ObservableObject {
             advanced.resetForType(parsed.type)
         }
 
+        if let socketPath = parsed.localSocketPath, network.supportsLocalSocket {
+            network.endpoint = .localSocket
+            network.localSocketPath = socketPath
+            transport = nil
+        } else {
+            // Left on Socket, normalizeTransport would drop the SSH server the URL names.
+            network.endpoint = .hostAndPort
+        }
         network.host = parsed.host
-        network.port = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
+        network.port = String(parsed.resolvedPort)
         network.database = parsed.database
         auth.username = parsed.username
         auth.password = parsed.password
-        ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
+        ssl.applyImported(parsed.sslModeResolution)
 
         if let sshHostValue = parsed.sshHost {
             /// Through the transport setter rather than the flag, so a URL naming an SSH server
@@ -895,11 +937,15 @@ final class ConnectionFormCoordinator: ObservableObject {
             }
         }
 
-        if let multiHost = parsed.multiHost, !multiHost.isEmpty {
-            network.additionalFieldValues["mongoHosts"] = multiHost
-        } else if parsed.type.pluginTypeId == "MongoDB" {
-            let portStr = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
-            network.additionalFieldValues["mongoHosts"] = "\(parsed.host):\(portStr)"
+        if let hostList = PluginManager.shared.additionalConnectionFields(for: parsed.type).endpointHostList {
+            if let multiHost = parsed.multiHost, !multiHost.isEmpty {
+                network.additionalFieldValues[hostList.id] = multiHost
+            } else {
+                network.additionalFieldValues[hostList.id] = HostListEndpoint.parse(
+                    parsed.host,
+                    defaultPort: parsed.resolvedPort
+                )?.entry
+            }
         }
 
         let mongoKeysAuth = auth.additionalFieldValues.keys.filter {
@@ -920,9 +966,6 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
         if parsed.useSrv {
             writeFieldByRegistry("mongoUseSrv", value: "true")
-            if ssl.mode == .disabled {
-                ssl.mode = .required
-            }
         }
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
             switch key {
@@ -941,6 +984,9 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
         if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
             writeFieldByRegistry("oracleServiceName", value: svcName)
+        }
+        for (fieldId, value) in parsed.additionalFields where fieldId != MySQLLocalSocket.fieldKey {
+            writeFieldByRegistry(fieldId, value: value)
         }
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
@@ -1008,66 +1054,17 @@ final class ConnectionFormCoordinator: ObservableObject {
         pasteboard: NSPasteboard = .general
     ) {
         guard isNew, !clipboardBannerDismissed, clipboardCandidate == nil else { return }
-        guard let raw = pasteboard.string(forType: .string) else { return }
-        let firstLine = raw
-            .components(separatedBy: .newlines)
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !firstLine.isEmpty else { return }
-
-        let parsed: ParsedConnection
-        do {
-            parsed = try ConnectionStringParser.parse(firstLine)
-        } catch {
-            return
-        }
-
-        if matchesExistingConnection(parsed: parsed, connectionStorage: connectionStorage) {
-            return
-        }
-
-        clipboardCandidate = parsed
+        guard let raw = pasteboard.string(forType: .string),
+              let candidate = ClipboardConnectionCandidate(clipboardText: raw),
+              !matchesExistingConnection(candidate.parsed, connectionStorage: connectionStorage)
+        else { return }
+        clipboardCandidate = candidate
     }
 
-    func applyClipboardCandidate(_ parsed: ParsedConnection) {
-        let oldType = network.type
-        network.type = parsed.type
-        if oldType != parsed.type {
-            applyTypeDefaults(parsed.type, includeNetwork: false)
-            auth.resetForType(parsed.type)
-            advanced.resetForType(parsed.type)
-        }
-
-        network.host = parsed.host
-        if parsed.port > 0 {
-            network.port = String(parsed.port)
-        } else {
-            network.port = String(parsed.type.defaultPort)
-        }
-        auth.username = parsed.username ?? ""
-        auth.password = parsed.password ?? ""
-        network.database = parsed.database ?? ""
+    func applyClipboardCandidate(_ candidate: ClipboardConnectionCandidate) {
+        applyParsed(candidate.parsed)
         auth.promptForPassword = false
-
-        if network.name.isEmpty {
-            let suggestion = parsed.database.map { "\(parsed.type.rawValue) \(parsed.host)/\($0)" }
-                ?? "\(parsed.type.rawValue) \(parsed.host)"
-            network.name = suggestion
-        }
-
-        if parsed.useSSL {
-            ssl.mode = .required
-        }
-
-        if parsed.type == .mongodb {
-            if let authSource = parsed.queryParameters["authSource"], !authSource.isEmpty {
-                writeFieldByRegistry("mongoAuthSource", value: authSource)
-            }
-            if parsed.rawScheme == "mongodb+srv" {
-                writeFieldByRegistry("mongoUseSrv", value: "true")
-            }
-        }
-
+        normalizeTransport()
         clipboardCandidate = nil
     }
 
@@ -1077,44 +1074,15 @@ final class ConnectionFormCoordinator: ObservableObject {
     }
 
     private func matchesExistingConnection(
-        parsed: ParsedConnection,
+        _ parsed: ParsedConnectionURL,
         connectionStorage: ConnectionStorage
     ) -> Bool {
         connectionStorage.loadConnections().contains { saved in
-            saved.host == parsed.host
-                && saved.port == parsed.port
-                && saved.username == (parsed.username ?? "")
-        }
-    }
-
-    // MARK: - Mongo helpers
-
-    struct NormalizedHosts {
-        let hosts: String
-        let primaryHost: String
-        let primaryPort: Int
-    }
-
-    static func normalizeMongoHosts(_ raw: String, defaultPort: Int) -> NormalizedHosts {
-        let normalized = raw.split(separator: ",", omittingEmptySubsequences: false)
-            .map { segment -> String in
-                let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { return "localhost:\(defaultPort)" }
-                if !trimmed.contains(":") { return "\(trimmed):\(defaultPort)" }
-                return trimmed
+            guard saved.username == parsed.username, saved.localSocketPath == parsed.localSocketPath else {
+                return false
             }
-            .joined(separator: ",")
-        let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
-        let parts = firstSegment.split(separator: ":", maxSplits: 1)
-        var host = "localhost"
-        var port = defaultPort
-        if let first = parts.first {
-            let derived = String(first).trimmingCharacters(in: .whitespaces)
-            if !derived.isEmpty { host = derived }
+            return parsed.localSocketPath != nil
+                || (saved.host == parsed.host && saved.port == parsed.resolvedPort)
         }
-        if parts.count > 1, let portValue = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-            port = portValue
-        }
-        return NormalizedHosts(hosts: normalized, primaryHost: host, primaryPort: port)
     }
 }

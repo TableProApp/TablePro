@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Postgres Array Literal Codec")
 struct PostgresArrayLiteralCodecTests {
     private let hostileLiteral =
         #"{"a,b","has \"quote\"","back\\slash"," lead","trail ","","NULL","null","{brace}",NULL}"#

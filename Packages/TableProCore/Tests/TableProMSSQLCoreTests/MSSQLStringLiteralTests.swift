@@ -94,4 +94,19 @@ final class MSSQLStringLiteralTests: XCTestCase {
         XCTAssertNil(MSSQLStringLiteral.likeCondition(quotedColumn: "[n]", op: "IS NULL", value: ""))
         XCTAssertNil(MSSQLStringLiteral.likeCondition(quotedColumn: "[n]", op: "REGEX", value: "x"))
     }
+
+    /// A default `replacingOccurrences` matches whole grapheme clusters, so an apostrophe followed by a combining or
+    /// format mark was left single and ended the literal early.
+    func testApostropheBeforeCombiningMarkIsDoubled() {
+        XCTAssertEqual(MSSQLStringLiteral.escaped("a'\u{301}b"), "a''\u{301}b")
+    }
+
+    func testApostropheBeforeZeroWidthJoinerIsDoubled() {
+        XCTAssertEqual(MSSQLStringLiteral.quoted("a'\u{200D}b"), "N'a''\u{200D}b'")
+    }
+
+    func testLikeWildcardBeforeCombiningMarkIsEscaped() {
+        XCTAssertEqual(MSSQLStringLiteral.escapeForLike("5%\u{301}"), "5\\%\u{301}")
+        XCTAssertEqual(MSSQLStringLiteral.escapeForLike("a_\u{200D}[\u{301}"), "a\\_\u{200D}\\[\u{301}")
+    }
 }

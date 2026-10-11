@@ -6,15 +6,15 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 
-@Suite("Remove invisible characters")
 struct InvisibleCharacterRemoverTests {
     private func clean(
         _ text: String,
         scope: NSRange? = nil,
-        rules: SQLLexicalRules = SQLLexicalRules(dialect: .mysql),
+        grammar: SQLLexicalGrammar = TestGrammar.mysql,
         lineEnding: String = "\n"
     ) -> String {
         let nsText = text as NSString
@@ -23,7 +23,7 @@ struct InvisibleCharacterRemoverTests {
             in: nsText,
             scope: range,
             skippingLiteralsAndComments: scope == nil,
-            rules: rules,
+            grammar: grammar,
             lineEnding: lineEnding
         )
         let result = NSMutableString(string: text)
@@ -67,8 +67,15 @@ struct InvisibleCharacterRemoverTests {
 
     @Test("A PostgreSQL dollar-quoted body is kept")
     func dollarQuotedBodyIsKept() {
-        let text = "SELECT\u{A0}$$a\u{A0}b$$"
-        #expect(clean(text, rules: SQLLexicalRules(dialect: .postgres)) == "SELECT $$a\u{A0}b$$")
+        let text = "SELECT $$a\u{A0}b$$"
+        #expect(clean(text, grammar: TestGrammar.postgres) == text)
+    }
+
+    /// Measured on PostgreSQL 17: `SELECT<NBSP>$$a b$$` is a syntax error, because every byte over 0x7F continues an
+    /// identifier there and a `$` glued to one opens no literal. So the text is code, and its blanks are cleaned.
+    @Test("A dollar sign glued to a non-ASCII blank opens no literal")
+    func dollarQuoteBehindABlankIsCode() {
+        #expect(clean("SELECT\u{A0}$$a\u{A0}b$$", grammar: TestGrammar.postgres) == "SELECT $$a b$$")
     }
 
     @Test("A MySQL conditional comment runs, so it is cleaned like code")
@@ -79,21 +86,21 @@ struct InvisibleCharacterRemoverTests {
 
     @Test("A backslash-escaped quote does not end the literal on engines that escape with a backslash")
     func backslashEscapedQuote() {
-        let rules = SQLLexicalRules(dialect: .generic, backslashEscapes: true, bracketsDelimitIdentifiers: false)
-        #expect(clean("SELECT\u{A0}'it\\'s\u{A0}x'", rules: rules) == "SELECT 'it\\'s\u{A0}x'")
+        let grammar = TestGrammar.standard.union(.backslashEscapesInSingleQuotes)
+        #expect(clean("SELECT\u{A0}'it\\'s\u{A0}x'", grammar: grammar) == "SELECT 'it\\'s\u{A0}x'")
     }
 
     @Test("A PostgreSQL escape string and a nested block comment keep their characters")
     func postgresEscapeStringAndNestedComment() {
-        let rules = SQLLexicalRules(dialect: .postgres)
-        #expect(clean("SELECT\u{A0}E'a\\'\u{A0}b'", rules: rules) == "SELECT E'a\\'\u{A0}b'")
-        #expect(clean("/* a /* b */\u{A0} */ SELECT\u{A0}1", rules: rules) == "/* a /* b */\u{A0} */ SELECT 1")
+        let grammar = TestGrammar.postgres
+        #expect(clean("SELECT\u{A0}E'a\\'\u{A0}b'", grammar: grammar) == "SELECT E'a\\'\u{A0}b'")
+        #expect(clean("/* a /* b */\u{A0} */ SELECT\u{A0}1", grammar: grammar) == "/* a /* b */\u{A0} */ SELECT 1")
     }
 
     @Test("A bracketed identifier keeps its characters where brackets quote names")
     func bracketedIdentifier() {
-        let rules = SQLLexicalRules(dialect: .sqlite, backslashEscapes: false, bracketsDelimitIdentifiers: true)
-        #expect(clean("SELECT\u{A0}[a\u{A0}b]", rules: rules) == "SELECT [a\u{A0}b]")
+        let grammar = TestGrammar.sqlite
+        #expect(clean("SELECT\u{A0}[a\u{A0}b]", grammar: grammar) == "SELECT [a\u{A0}b]")
     }
 
     @Test("A MySQL hash comment is kept")
@@ -130,7 +137,7 @@ struct InvisibleCharacterRemoverTests {
             in: text,
             scope: NSRange(location: 0, length: text.length),
             skippingLiteralsAndComments: true,
-            rules: SQLLexicalRules(dialect: .mysql),
+            grammar: TestGrammar.mysql,
             lineEnding: "\n"
         )
         #expect(replacements.isEmpty)
@@ -143,7 +150,7 @@ struct InvisibleCharacterRemoverTests {
             in: text,
             scope: NSRange(location: 0, length: text.length),
             skippingLiteralsAndComments: true,
-            rules: SQLLexicalRules(dialect: .mysql),
+            grammar: TestGrammar.mysql,
             lineEnding: "\n"
         )
         #expect(InvisibleCharacterRemover.mappedOffset(0, through: replacements) == 0)

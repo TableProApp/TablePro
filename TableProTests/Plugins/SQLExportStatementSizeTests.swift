@@ -9,7 +9,6 @@ import Testing
 
 /// The size limit through a whole export, rather than through the accumulator alone: the dump on
 /// disk, the summary the dialog shows, and the engine-specific literals inside the statements.
-@Suite("SQL export statement size")
 struct SQLExportStatementSizeTests {
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String

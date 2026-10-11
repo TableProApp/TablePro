@@ -17,6 +17,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     private struct Session {
         var candidates: [SQLCompletionItem]
         var replacementRange: NSRange
+        var tokenStart: Int
     }
 
     private struct Configuration: Equatable {
@@ -88,10 +89,8 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
-    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+    ) async -> CodeSuggestionResponse? {
         guard !textView.textView.hasMarkedText() else { return nil }
-
-        seedSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
 
         do {
             try await Task.sleep(nanoseconds: debounceNanoseconds)
@@ -106,6 +105,10 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
+        let tokenStart = service.tokenStart(in: text, endingAt: offset)
+        let prefixRange = NSRange(location: tokenStart, length: offset - tokenStart)
+        let prefix = CodeSuggestionPrefix(range: prefixRange, text: text.substring(with: prefixRange))
+
         guard let result = await service.completions(
             in: text,
             at: offset,
@@ -114,23 +117,17 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
-        session = Session(candidates: result.candidates, replacementRange: result.replacementRange)
+        session = Session(
+            candidates: result.candidates,
+            replacementRange: result.replacementRange,
+            tokenStart: tokenStart
+        )
 
-        return (windowPosition: liveCursorPosition, items: result.items.map { SQLSuggestionEntry(item: $0) })
-    }
-
-    private func seedSessionIfNeeded(textView: TextViewController, cursorPosition: CursorPosition) {
-        guard session == nil else { return }
-
-        let items = service.seedItems()
-        guard !items.isEmpty else { return }
-
-        let offset = cursorPosition.range.location
-        guard let text = textView.textView.textStorage?.string as NSString?,
-              offset >= 0, offset <= text.length else { return }
-
-        let start = service.tokenStart(in: text, endingAt: offset)
-        session = Session(candidates: items, replacementRange: NSRange(location: start, length: offset - start))
+        return CodeSuggestionResponse(
+            items: result.items.map { SQLSuggestionEntry(item: $0) },
+            windowPosition: liveCursorPosition,
+            prefix: prefix
+        )
     }
 
     /// Filters and ranks the open session's candidates for the token the cursor sits at the end of.
@@ -154,6 +151,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               offset >= 0, offset <= text.length else { return nil }
 
         let start = service.tokenStart(in: text, endingAt: offset)
+        guard start == session.tokenStart else { return nil }
         let length = offset - start
         guard length > 0, length <= maximumPrefixLength else { return nil }
 

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloud SQL Auth Proxy binary manager")
 struct CloudSQLProxyBinaryManagerTests {
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory

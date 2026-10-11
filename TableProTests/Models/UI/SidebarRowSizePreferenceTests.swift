@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Sidebar row size")
 struct SidebarRowSizePreferenceTests {
     @Test("Match System takes whatever size the system reports")
     func matchSystemFollowsTheSystem() {

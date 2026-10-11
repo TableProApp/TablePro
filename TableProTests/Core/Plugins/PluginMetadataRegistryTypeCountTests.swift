@@ -8,10 +8,10 @@ import Foundation
 import Testing
 
 /// The number of engines TablePro offers is published in three places that cannot see each other:
-/// this registry, `docs/snippets/driver-counts.mdx`, and the marketing site. Nothing at runtime
+/// this registry, `snippets/driver-counts.mdx` in TableProApp/docs, and the marketing site. Nothing at runtime
 /// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
 ///
-/// The answer is 35, and the reason it once read 28 is worth keeping. Turso is served by
+/// The answer is 37, and the reason it once read 28 is worth keeping. Turso is served by
 /// the libSQL plugin and was the only alias in `reverseTypeIndex` with no curated entry of its
 /// own, so it was the only type the picker could not offer before its plugin was installed.
 /// ScyllaDB is the shape every other alias already had: an alias of Cassandra with a curated
@@ -19,22 +19,21 @@ import Testing
 /// being asserted on top of it. Do not "correct" it downwards by deleting that entry.
 ///
 /// A failure here means a driver was added or removed, which is a deliberate act. Update
-/// `expectedTypeIds`, then `docs/snippets/driver-counts.mdx`, the `and N more` count in the
-/// `docs/index.mdx` frontmatter, and the engine count on tablepro.app in the same change.
-/// `docs/scripts/check-docs-against-source.py` reads the registry and holds the docs half.
+/// `expectedTypeIds`, then, in TableProApp/docs, `snippets/driver-counts.mdx` and the `and N more`
+/// count in the `index.mdx` frontmatter, and the engine count on tablepro.app. The docs repository's
+/// `scripts/check-docs-against-source.py` reads this registry and holds the docs half.
 ///
 /// The count is taken from the built-in defaults rather than from `allRegisteredTypeIds()`.
-/// Both answer 35 under XCTest, where no plugin bundle ever loads, but the registry is a
+/// Both answer 37 under XCTest, where no plugin bundle ever loads, but the registry is a
 /// process-global singleton and suites that register a synthetic type run alongside this one.
 @MainActor
-@Suite("PluginMetadataRegistry engine count")
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [
         "Beancount", "BigQuery", "Cassandra", "ClickHouse", "Cloudflare D1", "Cloudflare R2 SQL",
         "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
         "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
-        "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB", "Trino",
-        "Turso", "Typesense", "Weaviate", "OceanBase"
+        "SAP HANA", "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB",
+        "Trino", "Turso", "Typesense", "Weaviate", "OceanBase"
     ]
 
     private static func builtInTypeIds() -> Set<String> {
@@ -43,10 +42,10 @@ struct PluginMetadataRegistryTypeCountTests {
         return Set(curated + registry)
     }
 
-    @Test("The app ships 36 database types before any plugin loads")
+    @Test("The app ships 37 database types before any plugin loads")
     func builtInDefaultsCoverTwentyNineTypes() {
         let ids = Self.builtInTypeIds()
-        #expect(ids.count == 36)
+        #expect(ids.count == 37)
         #expect(ids == Self.expectedTypeIds)
     }
 

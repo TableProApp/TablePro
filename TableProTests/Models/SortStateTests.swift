@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SortDirection")
 struct SortDirectionTests {
     @Test("Ascending equals ascending")
     func ascendingEquality() {
@@ -51,7 +50,6 @@ struct SortDirectionTests {
 
 }
 
-@Suite("SortColumn")
 struct SortColumnTests {
     @Test("Stores columnIndex and direction")
     func storesProperties() {
@@ -89,7 +87,6 @@ struct SortColumnTests {
     }
 }
 
-@Suite("SortState")
 struct SortStateTests {
     @Test("Empty init has no columns")
     func emptyInit() {

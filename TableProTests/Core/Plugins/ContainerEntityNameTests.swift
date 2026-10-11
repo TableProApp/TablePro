@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Container entity name and switch target")
 struct ContainerEntityNameTests {
     private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)

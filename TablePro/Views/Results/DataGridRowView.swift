@@ -154,28 +154,62 @@ class DataGridRowView: NSTableRowView {
     /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
     /// and where each one sits; only the cell content is drawn rather than mounted.
     func drawCells(in dirtyRect: NSRect, of view: NSView) {
-        guard let coordinator, let tableView = coordinator.tableView else { return }
+        guard let tableView = coordinator?.tableView else { return }
         let inTableView = view.convert(dirtyRect, to: tableView)
-        let onEmphasizedSelection = isSelected && isEmphasized
-        let row = rowIndex
+        let dragged = Self.draggedColumnIndex(of: tableView)
 
-        for tableColumnIndex in tableView.columnIndexes(in: inTableView) {
-            guard tableColumnIndex < tableView.tableColumns.count else { continue }
-            let identifier = tableView.tableColumns[tableColumnIndex].identifier
-            guard let dataColumn = coordinator.dataColumnIndex(from: identifier) else { continue }
-            guard let appearance = coordinator.cellAppearance(
-                row: row,
-                columnIndex: dataColumn,
-                onEmphasizedSelection: onEmphasizedSelection
-            ) else { continue }
-
-            let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
-            coordinator.cellRenderer.draw(
-                appearance,
-                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
-                controlView: view
-            )
+        for tableColumnIndex in tableView.columnIndexes(in: inTableView) where tableColumnIndex != dragged {
+            drawCell(atTableColumnIndex: tableColumnIndex, in: tableView.rect(ofColumn: tableColumnIndex), of: view)
         }
+    }
+
+    /// Draws the column a header drag is moving at the pointer, the way `NSTableView` floats a dragged
+    /// column's cell views: over its neighbours and the separators, its own slot left empty.
+    ///
+    /// The position is read at draw time. `draggedDistance` is measured from the column's current
+    /// slot, which moves as it passes each neighbour, and the two disagree for a moment inside that
+    /// move, measured on macOS 27.
+    func drawDraggedColumn(in dirtyRect: NSRect, of view: NSView) {
+        guard let tableView = coordinator?.tableView,
+              let dragged = Self.draggedColumnIndex(of: tableView),
+              let distance = tableView.headerView?.draggedDistance,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let floating = tableView.rect(ofColumn: dragged).offsetBy(dx: distance, dy: 0)
+        guard floating.intersects(view.convert(dirtyRect, to: tableView)) else { return }
+        context.saveGState()
+        context.setAlpha(Self.draggedColumnAlpha)
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        drawCell(atTableColumnIndex: dragged, in: floating, of: view)
+        context.endTransparencyLayer()
+        context.restoreGState()
+    }
+
+    /// The `alphaValue` AppKit gives the view it floats a dragged column's cells in, measured on
+    /// macOS 27; AppKit does not publish it.
+    private static let draggedColumnAlpha: CGFloat = 0.6
+
+    private static func draggedColumnIndex(of tableView: NSTableView) -> Int? {
+        guard let dragged = tableView.headerView?.draggedColumn,
+              dragged >= 0, dragged < tableView.numberOfColumns else { return nil }
+        return dragged
+    }
+
+    private func drawCell(atTableColumnIndex tableColumnIndex: Int, in rectInTable: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView,
+              tableColumnIndex < tableView.tableColumns.count,
+              let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier),
+              let appearance = coordinator.cellAppearance(
+                  row: rowIndex,
+                  columnIndex: dataColumn,
+                  onEmphasizedSelection: isSelected && isEmphasized
+              ) else { return }
+
+        let columnRect = view.convert(rectInTable, from: tableView)
+        coordinator.cellRenderer.draw(
+            appearance,
+            in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
+            controlView: view
+        )
     }
 
     /// Draws the column separators crossing this row. See `DataGridBodyChrome`.
@@ -473,9 +507,12 @@ class DataGridRowView: NSTableRowView {
             copyAsMenu.addItem(inClauseItem)
         }
 
+        /// The statements leave out the columns the server owns, which only the schema names, so the items stay away
+        /// until it has arrived, as Duplicate does.
         if let dbType = coordinator.databaseType,
            dbType != .mongodb && dbType != .redis,
-           coordinator.tableName != nil {
+           coordinator.tableName != nil,
+           coordinator.tableRowsProvider().hasAuthoritativeSchema {
             copyAsMenu.addItem(NSMenuItem.separator())
 
             let insertItem = NSMenuItem(
@@ -485,17 +522,23 @@ class DataGridRowView: NSTableRowView {
             insertItem.target = self
             copyAsMenu.addItem(insertItem)
 
-            let updateItem = NSMenuItem(
-                title: String(localized: "UPDATE Statement(s)"),
-                action: #selector(copyAsUpdate),
-                keyEquivalent: "")
-            updateItem.target = self
-            copyAsMenu.addItem(updateItem)
+            /// A table without a key is matched on every column, so one no match can compare leaves nothing to find
+            /// the row by.
+            let matchPolicy = coordinator.tableRowsProvider().rowMatchPolicy
+            if !coordinator.primaryKeyColumns.isEmpty || matchPolicy.excludedColumns.isEmpty {
+                let updateItem = NSMenuItem(
+                    title: String(localized: "UPDATE Statement(s)"),
+                    action: #selector(copyAsUpdate),
+                    keyEquivalent: "")
+                updateItem.target = self
+                copyAsMenu.addItem(updateItem)
+            }
         }
 
         let copyAsItem = NSMenuItem(title: String(localized: "Copy as"), action: nil, keyEquivalent: "")
         copyAsItem.submenu = copyAsMenu
         menu.addItem(copyAsItem)
+        addSelectionSummaryCopyItems(to: menu, coordinator: coordinator)
 
         if coordinator.isEditable {
             let pasteItem = NSMenuItem(
@@ -516,13 +559,7 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(jsonViewItem)
         }
 
-        if dataColumnIndex >= 0,
-           let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
-               forRow: rowIndex,
-               dataColumn: dataColumnIndex
-           ) {
-            menu.addItem(highlightItem)
-        }
+        addCellValueMenuItems(to: menu, dataColumnIndex: dataColumnIndex, delegate: coordinator.delegate)
 
         let tableRows = coordinator.tableRowsProvider()
         addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
@@ -531,13 +568,7 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(NSMenuItem.separator())
         }
 
-        let namesWritableColumn = dataColumnIndex >= 0 && dataColumnIndex < tableRows.columns.count
-            && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
-        if coordinator.isEditable && namesWritableColumn {
-            let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
-            setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
-            menu.addItem(setValueItem)
-        }
+        addValueEditingItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows, coordinator: coordinator)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -570,6 +601,14 @@ class DataGridRowView: NSTableRowView {
                 }
             }
 
+            let documentItems = coordinator.delegate?.dataGridDocumentMenuItems(forRow: rowIndex) ?? []
+            if !documentItems.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+                for item in documentItems {
+                    menu.addItem(item)
+                }
+            }
+
             /// The copy resets the columns the server owns, which only the schema names, so the item
             /// stays away until it has arrived rather than appearing and doing nothing.
             if tableRows.hasAuthoritativeSchema {
@@ -589,6 +628,45 @@ class DataGridRowView: NSTableRowView {
         }
 
         return menu
+    }
+
+    private func addCellValueMenuItems(
+        to menu: NSMenu,
+        dataColumnIndex: Int,
+        delegate: (any DataGridViewDelegate)?
+    ) {
+        guard dataColumnIndex >= 0, let delegate else { return }
+        if let filterItem = delegate.dataGridFilterMenuItem(forRow: rowIndex, dataColumn: dataColumnIndex) {
+            menu.addItem(filterItem)
+        }
+        if let highlightItem = delegate.dataGridHighlightMenuItem(forRow: rowIndex, dataColumn: dataColumnIndex) {
+            menu.addItem(highlightItem)
+        }
+    }
+
+    /// Set Value, and Remove Field on an engine that tells a missing field from NULL while the cell
+    /// still has a field to remove.
+    private func addValueEditingItems(
+        to menu: NSMenu,
+        dataColumnIndex: Int,
+        tableRows: TableRows,
+        coordinator: TableViewCoordinator
+    ) {
+        let namesWritableColumn = dataColumnIndex >= 0 && dataColumnIndex < tableRows.columns.count
+            && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
+        guard coordinator.isEditable, namesWritableColumn else { return }
+
+        let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
+        setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
+        menu.addItem(setValueItem)
+
+        guard coordinator.supportsFieldRemoval,
+              coordinator.displayRow(at: rowIndex)?.isAbsent(dataColumnIndex) == false else { return }
+        let removeFieldItem = NSMenuItem(
+            title: String(localized: "Remove Field"), action: #selector(removeFieldValue(_:)), keyEquivalent: "")
+        removeFieldItem.representedObject = dataColumnIndex
+        removeFieldItem.target = self
+        menu.addItem(removeFieldItem)
     }
 
     private func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {
@@ -686,6 +764,26 @@ class DataGridRowView: NSTableRowView {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
+    private func addSelectionSummaryCopyItems(to menu: NSMenu, coordinator: TableViewCoordinator) {
+        guard let numbers = coordinator.selectionSummaryTracker.currentSummary?.numbers else { return }
+        for figure in [SelectionSummaryFigures.Figure.sum, .average] {
+            guard let text = SelectionSummaryFigures.copyText(figure, of: numbers) else { continue }
+            let item = NSMenuItem(
+                title: figure.copyTitle,
+                action: #selector(copySelectionSummaryFigure(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = text
+            item.target = self
+            menu.addItem(item)
+        }
+    }
+
+    @objc private func copySelectionSummaryFigure(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        ClipboardService.shared.writeText(text)
+    }
+
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
               tableView.focusedRow == rowIndex,
@@ -700,6 +798,11 @@ class DataGridRowView: NSTableRowView {
     @objc private func setNullValue(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         coordinator?.setCellValueAtColumn(nil, at: rowIndex, columnIndex: columnIndex)
+    }
+
+    @objc private func removeFieldValue(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int else { return }
+        coordinator?.removeField(row: rowIndex, columnIndex: columnIndex)
     }
 
     @objc private func setEmptyValue(_ sender: NSMenuItem) {
@@ -858,6 +961,7 @@ final class DataGridRowContentView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         rowView?.drawCells(in: dirtyRect, of: self)
         rowView?.drawColumnSeparators(in: dirtyRect, of: self)
+        rowView?.drawDraggedColumn(in: dirtyRect, of: self)
     }
 
     override func mouseDown(with event: NSEvent) {

@@ -12,7 +12,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("ResultSetPolicy")
 struct ResultSetPolicyTests {
     @Test("A query tab with a result offers the chooser and can pin")
     func queryTabWithResult() {

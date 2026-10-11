@@ -3,7 +3,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Dameng parameter binder")
 struct DamengParameterBinderTests {
     @Test("binds text, null, and binary values")
     func bindsSupportedValues() throws {

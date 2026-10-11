@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProMSSQLCore
 import TableProOracleCore
 
 nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
@@ -9,6 +10,11 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     let clientKeyPath: String?
 
     static let disabled = DriverSSLConfiguration(mode: .disable)
+
+    static let oracleVerifyCaUnavailableMessage = String(localized: """
+        Verify CA needs a CA certificate, and an Oracle connection on this device cannot use one. Set SSL \
+        Mode to Verify Identity to check the server's certificate and hostname against the system trust store.
+        """)
 
     init(
         mode: SSLConfiguration.SSLMode,
@@ -58,10 +64,10 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         }
     }
 
-    var freetdsEncryptionFlag: String {
+    var mssqlEncryptionLevel: MSSQLEncryptionLevel {
         switch mode {
-        case .disable: return "off"
-        case .require, .verifyCa, .verifyFull: return "require"
+        case .disable: return .request
+        case .require, .verifyCa, .verifyFull: return .require
         }
     }
 

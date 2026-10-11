@@ -18,9 +18,12 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case connectionFailed(String)
     case queryFailed(String)
     case cancelled
+    case connectionClosed
     case protocolError
     case loginTimedOut
+    case connectTimedOut
     case queryTimedOut
+    case transactionLost
     case authVerifierUnsupported(flag: String)
     case authVersionNotSupported
     case authConnectionDropped(phase: String?)
@@ -29,6 +32,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case nativeEncryptionRequired
     case tlsHandshakeFailed(kind: OracleTLSFailureKind, serverMessage: String)
     case certificateUnavailable(field: OracleCertificateField, path: String)
+    case certificateAuthorityRequired
 
     public var errorDescription: String? {
         switch self {
@@ -40,12 +44,18 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return detail.isEmpty ? String(localized: "Query execution failed") : detail
         case .cancelled:
             return String(localized: "Query was cancelled")
+        case .connectionClosed:
+            return String(localized: "The Oracle connection closed while the statement was running. Run it again.")
         case .protocolError:
             return String(localized: "The server sent an unexpected message and the connection was reset. Run the query again.")
         case .loginTimedOut:
             return String(localized: "Timed out during the Oracle login handshake. The server accepted the network connection but did not finish logging in.")
+        case .connectTimedOut:
+            return String(localized: "The Oracle connection did not finish setup within the configured connection timeout.")
         case .queryTimedOut:
             return String(localized: "The query did not finish within the configured timeout, so the connection was reset. Run the query again.")
+        case .transactionLost:
+            return String(localized: "The connection was lost while a transaction was open. Check which of its changes were saved before running them again.")
         case .authVerifierUnsupported:
             return String(localized: "This account uses a password verifier the database driver does not support.")
         case .authVersionNotSupported:
@@ -75,8 +85,15 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: String(localized: "TLS handshake failed: %@"), serverMessage)
         case .certificateUnavailable(let field, let path):
             return String(format: Self.certificateUnavailableFormat(for: field), path)
+        case .certificateAuthorityRequired:
+            return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
         }
     }
+
+    /// What a driver failure with no server message behind it says to the user. OracleNIO's own
+    /// error description is a struct dump it documents as unfit to show, so the code's name is
+    /// what carries across.
+    public static let driverErrorFormat = String(localized: "The Oracle driver reported an error (%@).")
 
     /// The driver names the handshake step in its own vocabulary. These are the names
     /// a user can act on, and an unrecognized one falls back to the raw label rather

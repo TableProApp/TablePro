@@ -49,12 +49,100 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
         XCTAssertTrue(sql.contains("'VIEW'"))
     }
 
+    func testOneSchemaListingIsFilteredByTheSchemaAlone() {
+        let sql = MSSQLSchemaQueries.tables(in: .schema("sales"))
+        XCTAssertEqual(sql, MSSQLSchemaQueries.tables(schema: "sales"))
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA = N'sales'"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE\n"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_NAME"))
+        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+    }
+
+    /// The all-schema listing is filtered by the schema list query itself, so a table is listed exactly when its schema
+    /// is one `fetchSchemas()` returns. SQL Server rejects an `ORDER BY` inside that subquery, which is why the list is
+    /// split from its ordering.
+    func testAllSchemaListingIsFilteredByTheSchemaListQuery() {
+        let sql = MSSQLSchemaQueries.tables(in: .allSchemas)
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (\n\(MSSQLSchemaQueries.listedSchemaNames)\n)"))
+        XCTAssertFalse(sql.contains("ORDER BY SCHEMA_NAME"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+    }
+
+    func testSchemaSetListingIsFilteredByTheNamedSchemasAlone() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas(["sales", "dbo"]))
+        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (N'sales', N'dbo')\n"))
+        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+    }
+
+    func testSchemaSetListingQuotesEachName() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas(["O'Brien", "日本"]))
+        XCTAssertTrue(sql.contains("t.TABLE_SCHEMA IN (N'O''Brien', N'日本')"))
+        XCTAssertFalse(sql.contains("N'O'Brien'"))
+    }
+
+    func testEmptySchemaSetListingMatchesNothing() {
+        let sql = MSSQLSchemaQueries.tables(in: .schemas([]))
+        XCTAssertTrue(sql.contains("WHERE 1 = 0\n"))
+        XCTAssertFalse(sql.contains("IN ()"))
+    }
+
+    func testSchemaListIsTheListedSchemasInOrder() {
+        XCTAssertEqual(MSSQLSchemaQueries.schemas, MSSQLSchemaQueries.listedSchemaNames + "\nORDER BY SCHEMA_NAME")
+        XCTAssertFalse(MSSQLSchemaQueries.listedSchemaNames.contains("ORDER BY"))
+    }
+
+    func testParseTableRowReadsTheSchemaColumnWhenPresent() {
+        XCTAssertEqual(
+            MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE", "sales"]),
+            MSSQLTableRow(name: "orders", isView: false, schema: "sales")
+        )
+        XCTAssertNil(MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE"])?.schema)
+    }
+
     func testColumnsQueryIncludesIdentityAndPrimaryKey() {
         let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
         XCTAssertTrue(sql.contains("IsIdentity"))
         XCTAssertTrue(sql.contains("PRIMARY KEY"))
         XCTAssertTrue(sql.contains("N'Users'"))
         XCTAssertTrue(sql.contains("N'dbo'"))
+    }
+
+    func testColumnsQueryQuotesBothNamesBeforeResolvingTheObject() {
+        let sql = MSSQLSchemaQueries.columns(schema: "x.y", table: "a.b")
+        XCTAssertTrue(sql.contains("OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"))
+        XCTAssertFalse(sql.contains("OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME)"))
+    }
+
+    func testColumnsQueryReportsRowversionAndPeriodColumnsAsServerGenerated() {
+        let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
+        XCTAssertTrue(sql.contains("WHEN c.DATA_TYPE = 'timestamp' THEN 1"))
+        XCTAssertTrue(sql.contains("'GeneratedAlwaysType') > 0 THEN 1"))
+        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED"))
+    }
+
+    func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
+        let sql = MSSQLSchemaQueries.allColumns(schema: "dbo")
+        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))
+        XCTAssertTrue(sql.contains("c.TABLE_SCHEMA = N'dbo'"))
+        XCTAssertEqual(MSSQLSchemaQueries.allColumnsTableNameIndex, 11)
+    }
+
+    func testParseColumnRowReadsServerGeneratedColumns() {
+        let rowversion: [String?] = ["RV", "timestamp", nil, nil, nil, "NO", nil, "0", "0", "0", "1"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isServerGenerated, true)
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isGenerated, true)
+
+        let computed: [String?] = ["Doubled", "int", nil, "10", "0", "YES", nil, "0", "0", "1", "0"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isGenerated, true)
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isServerGenerated, false)
+
+        let plain: [String?] = ["Name", "nvarchar", "50", nil, nil, "YES", nil, "0", "0", "0", "0"]
+        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(plain)?.isGenerated, false)
     }
 
     func testIndexesQueryUsesBracketedIdentifier() {

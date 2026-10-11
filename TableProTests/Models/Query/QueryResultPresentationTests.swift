@@ -10,9 +10,9 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
-@Suite("QueryResultPresentation")
 struct QueryResultPresentationTests {
     @Test("A fresh query tab shows nothing rather than an empty grid")
     func idleTab() {
@@ -39,6 +39,55 @@ struct QueryResultPresentationTests {
         inputs.isExecuting = true
 
         #expect(QueryResultPresentation(inputs: inputs).content == .executing)
+    }
+
+    /// The state every retarget passes through: the buffer was emptied for the new table and its
+    /// first page is in flight. It used to resolve to `.executing`, which drew a blank pane for the
+    /// whole fetch and unmounted the grid.
+    @Test("A table tab loading its first page keeps its grid")
+    func tableTabLoadingKeepsGrid() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.tableName = "orders"
+        inputs.isExecuting = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
+    }
+
+    @Test("A table tab loading in a mode that draws no grid reports the load")
+    func tableTabLoadingInOtherModes() {
+        for mode in [ResultsViewMode.json, .chart, .map] {
+            var inputs = QueryResultInputs()
+            inputs.tabType = .table
+            inputs.tableName = "orders"
+            inputs.viewMode = mode
+            inputs.isExecuting = true
+
+            #expect(
+                QueryResultPresentation(inputs: inputs).content == .executing,
+                "a table tab loading in \(mode) has nothing to draw yet"
+            )
+        }
+    }
+
+    /// A failed first load leaves no result set, and Dismiss clears the error, which used to leave
+    /// a blank pane that no tab switch reloaded.
+    @Test("A table tab whose failed load was dismissed still draws its grid")
+    func dismissedTableFailureKeepsGrid() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.tableName = "secret"
+        inputs.hasExecuted = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
+    }
+
+    @Test("A query tab whose run left no result stays idle")
+    func queryTabWithoutResultStaysIdle() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .idle)
     }
 
     /// Retargeting a tab empties its buffer before the replacing fetch starts. Reporting "no rows"
@@ -95,8 +144,56 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .statementSucceeded(
             rowsAffected: 7,
             executionTime: 0.1,
-            statusMessage: "OK"
+            statusMessage: "OK",
+            serverOutput: .none
         ))
+    }
+
+    @Test("A block that printed shows its output with the success view")
+    func statementSucceededCarriesItsOutput() {
+        let output = PluginServerOutput(lines: ["Hello from PL/SQL"], isTruncated: false)
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = false
+        inputs.activeResultServerOutput = output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .statementSucceeded(
+            rowsAffected: 0,
+            executionTime: nil,
+            statusMessage: nil,
+            serverOutput: output
+        ))
+    }
+
+    @Test("Output mode shows what a query that returned rows printed")
+    func outputModeShowsTheOutput() {
+        let output = PluginServerOutput(lines: ["row printed"], isTruncated: false)
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = true
+        inputs.loadedColumnCount = 1
+        inputs.loadedRowCount = 1
+        inputs.viewMode = .output
+        inputs.activeResultServerOutput = output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .serverOutput(output))
+    }
+
+    /// Switching to a result that printed nothing leaves the tab in Output mode until the next install reconciles
+    /// it, and the pane must not go blank in the meantime.
+    @Test("Output mode over a result that printed nothing shows the grid")
+    func outputModeWithoutOutputFallsBackToTheGrid() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = true
+        inputs.loadedColumnCount = 1
+        inputs.loadedRowCount = 1
+        inputs.viewMode = .output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
     }
 
     @Test("A failed execution shows the banner and does not claim success")

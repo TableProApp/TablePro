@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Pgpass Effective Username")
 struct PgpassReaderUsernameTests {
     @Test("A blank username matches ~/.pgpass as the operating system user")
     func blankUsernameResolvesToOSUser() {

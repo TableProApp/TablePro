@@ -13,9 +13,31 @@ import TableProPluginKit
 
 enum MSSQLTableDefinitionSQL {
     static func createTable(_ definition: PluginCreateTableDefinition, schema: String) -> String? {
+        guard let createTable = createTableStatement(definition, schema: schema) else { return nil }
+        var sql = createTable + ";"
+        let indexes = indexStatements(definition, schema: schema)
+        if !indexes.isEmpty {
+            sql += "\n\n" + indexes.joined(separator: ";\n") + ";"
+        }
+        return sql
+    }
+
+    /// Column descriptions ride only here: ``createTable(_:schema:)`` keeps the shape an older app
+    /// already sends.
+    static func createTableStatements(_ definition: PluginCreateTableDefinition, schema: String) -> [String]? {
+        guard let createTable = createTableStatement(definition, schema: schema) else { return nil }
+        let descriptions = definition.columns.compactMap { column -> String? in
+            guard let comment = column.comment, !comment.isEmpty else { return nil }
+            return columnDescriptionStatement(
+                schema: schema, table: definition.tableName, column: column.name, comment: comment
+            )
+        }
+        return [createTable] + indexStatements(definition, schema: schema) + descriptions
+    }
+
+    private static func createTableStatement(_ definition: PluginCreateTableDefinition, schema: String) -> String? {
         guard !definition.columns.isEmpty else { return nil }
 
-        let table = qualifiedTable(definition.tableName, schema: schema)
         let primaryKey = primaryKeyClause(for: definition.indexes)
         let primaryKeyColumns = definition.columns.filter(\.isPrimaryKey)
         let inlinePrimaryKey = primaryKeyColumns.count == 1 ? primaryKey : nil
@@ -30,13 +52,64 @@ enum MSSQLTableDefinitionSQL {
             parts.append(foreignKeyDefinition(foreignKey, defaultSchema: schema))
         }
 
-        var sql = "CREATE TABLE \(table) (\n  " + parts.joined(separator: ",\n  ") + "\n);"
+        let table = qualifiedTable(definition.tableName, schema: schema)
+        return "CREATE TABLE \(table) (\n  " + parts.joined(separator: ",\n  ") + "\n)"
+    }
 
-        let indexStatements = definition.indexes.map { indexDefinition($0, qualifiedTable: table) }
-        if !indexStatements.isEmpty {
-            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
+    private static func indexStatements(_ definition: PluginCreateTableDefinition, schema: String) -> [String] {
+        let table = qualifiedTable(definition.tableName, schema: schema)
+        return definition.indexes.map { indexDefinition($0, qualifiedTable: table) }
+    }
+
+    // MARK: - Descriptions
+
+    /// SQL Server keeps a comment as the `MS_Description` extended property. Adding one that exists
+    /// fails, and so does dropping one that does not, so both are guarded in the same batch.
+    static func commentStatement(objectType: String, schema: String, object: String, comment: String?) -> String? {
+        let kind: String
+        switch objectType.uppercased() {
+        case "TABLE": kind = "TABLE"
+        case "VIEW": kind = "VIEW"
+        default: return nil
         }
-        return sql
+        let target = descriptionTarget(schema: schema, kind: kind, object: object, column: nil)
+        let exists = "IF EXISTS (SELECT 1 FROM \(descriptionSource(schema: schema, kind: kind, object: object)))"
+        guard let comment, !comment.isEmpty else {
+            return "\(exists)\n    EXEC sys.sp_dropextendedproperty @name = N'MS_Description', \(target)"
+        }
+        let value = "@value = \(MSSQLStringLiteral.quoted(comment))"
+        return """
+            \(exists)
+                EXEC sys.sp_updateextendedproperty @name = N'MS_Description', \(value), \(target)
+            ELSE
+                EXEC sys.sp_addextendedproperty @name = N'MS_Description', \(value), \(target)
+            """
+    }
+
+    /// The column is new, so there is no description to update yet.
+    static func columnDescriptionStatement(schema: String, table: String, column: String, comment: String) -> String {
+        let target = descriptionTarget(schema: schema, kind: "TABLE", object: table, column: column)
+        return "EXEC sys.sp_addextendedproperty @name = N'MS_Description', "
+            + "@value = \(MSSQLStringLiteral.quoted(comment)), \(target)"
+    }
+
+    static func descriptionQuery(schema: String, objectKind: String, object: String) -> String {
+        let source = descriptionSource(schema: schema, kind: objectKind, object: object)
+        return "SELECT CAST(value AS NVARCHAR(MAX)) FROM \(source)"
+    }
+
+    private static func descriptionSource(schema: String, kind: String, object: String) -> String {
+        "sys.fn_listextendedproperty(N'MS_Description', N'SCHEMA', \(MSSQLStringLiteral.quoted(schema)), "
+            + "N'\(kind)', \(MSSQLStringLiteral.quoted(object)), NULL, NULL)"
+    }
+
+    private static func descriptionTarget(schema: String, kind: String, object: String, column: String?) -> String {
+        var target = "@level0type = N'SCHEMA', @level0name = \(MSSQLStringLiteral.quoted(schema)), "
+            + "@level1type = N'\(kind)', @level1name = \(MSSQLStringLiteral.quoted(object))"
+        if let column {
+            target += ", @level2type = N'COLUMN', @level2name = \(MSSQLStringLiteral.quoted(column))"
+        }
+        return target
     }
 
     /// A table holds one clustered index, and a primary key is clustered unless it says otherwise.

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SOCKS proxy model")
 struct SOCKSProxyModelTests {
     @Test("SOCKSProxyConfiguration round-trips through Codable")
     func configurationRoundTrip() throws {

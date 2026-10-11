@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TeamRole")
 struct TeamRoleTests {
     @Test("The roles the server writes are recognised, whatever their casing")
     func knownRolesDecode() {

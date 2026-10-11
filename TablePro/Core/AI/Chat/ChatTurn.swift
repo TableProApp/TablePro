@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 
 enum ChatRole: String, Codable, Sendable {
     case user
@@ -363,8 +364,8 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
         modelId = try container.decodeIfPresent(String.self, forKey: .modelId)
         providerId = try container.decodeIfPresent(String.self, forKey: .providerId)
 
-        if let decodedBlocks = try container.decodeIfPresent([ChatContentBlockWire].self, forKey: .blocks) {
-            blocks = decodedBlocks
+        if let decodedBlocks = try container.decodeIfPresent([LossyContentBlockWire].self, forKey: .blocks) {
+            blocks = decodedBlocks.compactMap(\.block)
         } else {
             let legacyContainer = try decoder.container(keyedBy: LegacyKeys.self)
             if let legacyText = try legacyContainer.decodeIfPresent(String.self, forKey: .content) {
@@ -402,6 +403,38 @@ struct ChatTurnWire: Codable, Equatable, Sendable, Identifiable {
 
     private enum LegacyKeys: String, CodingKey {
         case content
+    }
+}
+
+private struct LossyContentBlockWire: Decodable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ChatTurnWire")
+
+    let block: ChatContentBlockWire?
+
+    init(from decoder: Decoder) throws {
+        do {
+            block = try ChatContentBlockWire(from: decoder)
+        } catch {
+            block = nil
+            let kind = Self.describeKind(in: decoder)
+            Self.logger.warning("Skipped a chat block that could not be decoded: kind=\(kind, privacy: .public)")
+        }
+    }
+
+    private enum ProbeKeys: String, CodingKey {
+        case kind, attachment
+    }
+
+    private static func describeKind(in decoder: Decoder) -> String {
+        guard let container = try? decoder.container(keyedBy: ProbeKeys.self),
+              let kind = try? container.decode(String.self, forKey: .kind) else {
+            return "unreadable"
+        }
+        guard let attachment = try? container.nestedContainer(keyedBy: ProbeKeys.self, forKey: .attachment),
+              let attachmentKind = try? attachment.decode(String.self, forKey: .kind) else {
+            return kind
+        }
+        return "\(kind)/\(attachmentKind)"
     }
 }
 

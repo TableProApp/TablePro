@@ -12,7 +12,8 @@ extension DatabaseManager {
     /// Starts the cloudflared process and returns a connection pointing at the
     /// local loopback port the tunnel listens on.
     func buildCloudflareEffectiveConnection(
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         guard let config = connection.resolvedCloudflareConfig else { return connection }
 
@@ -30,7 +31,8 @@ extension DatabaseManager {
             connectionId: connection.id,
             config: config,
             tokenId: tokenId,
-            tokenSecret: tokenSecret
+            tokenSecret: tokenSecret,
+            deadline: deadline
         )
 
         return tunneledConnection(from: connection, localPort: tunnelPort)

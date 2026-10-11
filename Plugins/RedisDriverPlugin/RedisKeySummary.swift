@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum RedisKeyKind: String, CaseIterable {
+nonisolated enum RedisKeyKind: String, CaseIterable {
     case string
     case hash
     case list
@@ -18,7 +18,7 @@ enum RedisKeyKind: String, CaseIterable {
     }
 }
 
-enum RedisKeySummary {
+nonisolated enum RedisKeySummary {
     static let collectionPreviewLimit = 100
     static let streamPreviewLimit = 5
 

@@ -10,7 +10,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("MacAnalyticsProvider write-once timestamp semantics")
 struct MacAnalyticsProviderTests {
     private static let suiteCounter = SuiteCounter()
 

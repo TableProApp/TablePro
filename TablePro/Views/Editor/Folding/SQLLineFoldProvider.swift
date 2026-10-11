@@ -5,7 +5,7 @@
 
 import Foundation
 import TableProEditorKit
-import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 /// Answers the editor's per-line fold queries from a whole-document scan.
@@ -13,13 +13,13 @@ import TableProTextEngine
 /// The editor restarts its walk at line zero every time the document changes, so the scan is refreshed there and every
 /// other line is a dictionary lookup. That keeps the main-thread cost of a pass linear in the document, not quadratic.
 final class SQLLineFoldProvider: LineFoldProvider {
-    var dialect: SqlDialect
+    var grammar: SQLLexicalGrammar
 
     private var structure: SQLFoldStructure = .empty
     private var scannedLength: Int = -1
 
-    init(dialect: SqlDialect = .generic) {
-        self.dialect = dialect
+    init(grammar: SQLLexicalGrammar = .ansi) {
+        self.grammar = grammar
     }
 
     func foldLevelAtLine(
@@ -32,7 +32,7 @@ final class SQLLineFoldProvider: LineFoldProvider {
         guard text.length <= controller.configuration.peripherals.foldingSizeLimit else { return [] }
 
         if lineNumber == 0 || scannedLength != text.length {
-            structure = SQLFoldScanner.scan(text, dialect: dialect)
+            structure = SQLFoldScanner.scan(text, grammar: grammar)
             scannedLength = text.length
         }
 

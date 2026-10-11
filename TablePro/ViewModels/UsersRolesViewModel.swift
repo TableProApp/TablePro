@@ -80,6 +80,7 @@ final class UsersRolesViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isResolvingDrop = false
     @Published var previewStatements: [SchemaStatement] = []
+    @Published var editorScript = PrincipalStatementGenerator.EditorScript.empty
     @Published var applyFailure: String?
 
     @Published var selection: PluginPrincipalRef?
@@ -99,10 +100,30 @@ final class UsersRolesViewModel: ObservableObject {
 
     @Published var scopeSearchTask: Task<Void, Never>?
 
+    private var changeManagerForwarding: AnyCancellable?
+    private var privilegeTreeForwarding: AnyCancellable?
+
+    /// The tab's view loads again on every tab or connection switch, and a non-forced load resets
+    /// the change manager, so once a snapshot is in only a forced load may replace it.
+    private var hasLoadedSnapshot = false
+
+    /// Every view on this tab observes the view model, not `changeManager`, and reads the staged
+    /// grants, the change count and each principal's stage through it. A change the manager
+    /// published reached none of them: a ticked privilege stayed unticked, and Review & Apply and
+    /// "Modified" stayed stale until the view model happened to publish something of its own.
+    ///
+    /// The scope outline reads the tree's structure version through the view model the same way,
+    /// so a search result or a switch to Granted reached it only when something else published.
+    /// The tree publishes only when its roots are replaced, so a lazy expand does not reload the
+    /// whole outline through this.
     init(connectionId: UUID, databaseType: DatabaseType) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         expansionStore = PrivilegeExpansionStore(connectionId: connectionId)
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+        privilegeTreeForwarding = privilegeTree.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
     }
 
     // MARK: - Derived
@@ -179,6 +200,7 @@ final class UsersRolesViewModel: ObservableObject {
     // MARK: - Loading
 
     func load(forceReload: Bool = false) async {
+        guard forceReload || !hasLoadedSnapshot else { return }
         guard let driver = DatabaseManager.shared.principalDriver(for: connectionId) else {
             loadError = String(
                 localized: "This connection does not support user and role management."
@@ -206,14 +228,20 @@ final class UsersRolesViewModel: ObservableObject {
 
         do {
             let snapshot = try await loader.load(forceReload: forceReload)
-            databases = try await loader.databases()
-            connectedPrincipal = try await loader.currentPrincipal()
+            let databases = try await loader.databases()
+            let connectedPrincipal = try await loader.currentPrincipal()
+            /// Another load put its snapshot in while this one waited, and work may be staged on it.
+            guard forceReload || !hasLoadedSnapshot else { return }
+
+            self.databases = databases
+            self.connectedPrincipal = connectedPrincipal
 
             if forceReload {
                 changeManager.reload(principals: snapshot.principals, catalog: snapshot.catalog)
             } else {
                 changeManager.load(principals: snapshot.principals, catalog: snapshot.catalog)
             }
+            hasLoadedSnapshot = true
 
             privilegeTree.configure(
                 databases: databases,

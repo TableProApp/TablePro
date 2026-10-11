@@ -129,7 +129,8 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             required: true,
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
-        )
+        ),
+        .loadableExtensions(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
     ]
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

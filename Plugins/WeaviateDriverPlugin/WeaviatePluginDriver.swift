@@ -37,6 +37,11 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
         )
         let skipTLS = settings.skipTLSVerify
             || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
+        )
+        let deadline = PluginConnectDeadline(milliseconds: connectTimeoutMilliseconds)
         let timeout = queryTimeout
         let transport = URLSessionWeaviateTransport(
             resourceTimeout: HttpQueryTimeout.sessionResourceTimeout,
@@ -47,7 +52,7 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
             transport: transport,
             timeout: { timeout.requestTimeoutInterval }
         )
-        try await client.connect()
+        try await client.connect(requestTimeout: { deadline.remainingSeconds() })
         lock.withLock {
             self.client = client
             cachedCollections.removeAll()

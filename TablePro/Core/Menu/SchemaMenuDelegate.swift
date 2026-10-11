@@ -30,15 +30,17 @@ final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
             return
         }
         let connectionId = coordinator.connection.id
+        let current = DatabaseManager.shared.session(for: connectionId)?.browseSchema
         let sections = SchemaMenuModel.sections(
             all: SchemaService.shared.schemas(for: connectionId),
-            system: Set(PluginManager.shared.systemSchemaNames(for: coordinator.connection.type))
+            system: Set(PluginManager.shared.systemSchemaNames(for: coordinator.connection.type)),
+            selected: SharedSidebarState.forConnection(connectionId).schemaFilter(for: coordinator.browseDatabaseName),
+            active: current
         )
         guard !sections.isEmpty else {
             addPlaceholder(to: menu)
             return
         }
-        let current = DatabaseManager.shared.session(for: connectionId)?.browseSchema
         addManagementItems(to: menu, coordinator: coordinator, current: current)
         for schema in sections.user {
             menu.addItem(item(for: schema, current: current))

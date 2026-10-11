@@ -233,6 +233,8 @@ final class AppSettingsStorage: Sendable {
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldHeight.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldMode.name)
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
     }
 

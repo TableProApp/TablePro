@@ -177,7 +177,7 @@ extension MainContentCoordinator {
             )
         } catch {
             navigationHistoryLogger.error(
-                "restore replaceTabContent failed: \(error.localizedDescription, privacy: .public)"
+                "restore replaceTabContent failed: \(error.publicLogShape, privacy: .public)"
             )
             return false
         }

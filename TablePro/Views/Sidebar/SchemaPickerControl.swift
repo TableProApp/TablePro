@@ -13,7 +13,7 @@ import TableProPluginKit
 /// list is scoped to the active schema, so the schema belongs beside the list it filters.
 ///
 /// A picker is where a schema is reached by name, so system schemas are always offered, after the
-/// ones a user works in, the way Database > Schema lists them.
+/// ones a user works in, the way Database > Schema lists them. The schema filter narrows the rest.
 struct SchemaPickerControl: View {
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -21,6 +21,14 @@ struct SchemaPickerControl: View {
 
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var sidebarState: SharedSidebarState
+
+    init(connectionId: UUID, databaseType: DatabaseType, coordinator: MainContentCoordinator?) {
+        self.connectionId = connectionId
+        self.databaseType = databaseType
+        self.coordinator = coordinator
+        _sidebarState = ObservedObject(wrappedValue: SharedSidebarState.forConnection(connectionId))
+    }
 
     private var currentSchema: String? {
         databaseManager.session(for: connectionId)?.browseSchema
@@ -29,7 +37,9 @@ struct SchemaPickerControl: View {
     private var sections: SchemaMenuModel.Sections {
         SchemaMenuModel.sections(
             all: schemaService.schemas(for: connectionId),
-            system: Set(PluginManager.shared.systemSchemaNames(for: databaseType))
+            system: Set(PluginManager.shared.systemSchemaNames(for: databaseType)),
+            selected: sidebarState.schemaFilter(for: databaseManager.browseScope(for: connectionId)?.database),
+            active: currentSchema
         )
     }
 

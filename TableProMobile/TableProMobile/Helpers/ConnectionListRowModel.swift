@@ -7,6 +7,12 @@ nonisolated struct ConnectionListLabel: Hashable, Sendable {
     let color: ConnectionColor
 }
 
+nonisolated struct ConnectionListGroupLabel: Hashable, Sendable {
+    let name: String
+    let color: ConnectionColor
+    let iconName: String?
+}
+
 nonisolated struct ConnectionListRowModel: Hashable, Sendable {
     static let visibleTagLimit = 2
 
@@ -14,11 +20,12 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
     let title: String
     let detail: String
     let type: DatabaseType
+    let iconName: String?
     let color: ConnectionColor
     let tags: [ConnectionListLabel]
     let hiddenTagCount: Int
     let tagNames: [String]
-    let groupLabel: ConnectionListLabel?
+    let groupLabel: ConnectionListGroupLabel?
     let isFavorite: Bool
     let showsFavoriteMark: Bool
 
@@ -32,6 +39,7 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
         title = connection.name.isEmpty ? connection.host : connection.name
         detail = ConnectionDetailFormatter.detail(for: connection)
         type = connection.type
+        iconName = connection.iconName
         color = connection.color
         isFavorite = connection.isFavorite
         showsFavoriteMark = connection.isFavorite && section == .connections
@@ -44,7 +52,9 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
 
         let showsGroup = section == .favorites || section == .recent
         let group = connection.groupId.flatMap { id in groups.first { $0.id == id } }
-        groupLabel = showsGroup ? group.map { ConnectionListLabel(name: $0.name, color: $0.color) } : nil
+        groupLabel = showsGroup
+            ? group.map { ConnectionListGroupLabel(name: $0.name, color: $0.color, iconName: $0.iconName) }
+            : nil
     }
 
     var accessibilityLabel: String {

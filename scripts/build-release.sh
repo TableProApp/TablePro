@@ -152,7 +152,7 @@ build_for_arch() {
 
     # Prepare architecture-specific libraries
     echo "📦 Preparing static libraries for $arch..."
-    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl
+    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl libsqlite3_vendored
 
     # Create OpenSSL shared dylibs for this architecture
     echo "📦 Creating OpenSSL shared dylibs for $arch..."
@@ -190,9 +190,6 @@ build_for_arch() {
         CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         CODE_SIGN_STYLE=Manual \
         DEVELOPMENT_TEAM="$TEAM_ID" \
-        GCC_OPTIMIZATION_LEVEL=s \
-        SWIFT_OPTIMIZATION_LEVEL=-O \
-        LLVM_LTO=YES_THIN \
         CLANG_COVERAGE_MAPPING=NO \
         ENABLE_CODE_COVERAGE=NO \
         ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} \

@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Service Empty Prefix")
 struct SQLCompletionServiceEmptyPrefixTests {
     private static func dialect(dataTypes: Set<String>) -> SQLDialectDescriptor {
         SQLDialectDescriptor(

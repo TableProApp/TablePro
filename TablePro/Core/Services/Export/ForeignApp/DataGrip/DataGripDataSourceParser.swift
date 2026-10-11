@@ -82,7 +82,7 @@ struct DataGripSSHConfig {
 
 enum DataGripDataSourceParser {
     static func parseFragments(_ data: Data) -> [DataGripDataSourceFragment] {
-        guard let document = try? XMLDocument(data: data),
+        guard let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
               let nodes = try? document.nodes(forXPath: "//data-source") else { return [] }
 
         return nodes.compactMap { node in
@@ -92,7 +92,7 @@ enum DataGripDataSourceParser {
     }
 
     static func parseSSHConfigs(_ data: Data) -> [String: DataGripSSHConfig] {
-        guard let document = try? XMLDocument(data: data),
+        guard let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
               let nodes = try? document.nodes(forXPath: "//sshConfig") else { return [:] }
 
         var result: [String: DataGripSSHConfig] = [:]

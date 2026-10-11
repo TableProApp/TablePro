@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ForeignKeyConstraintSpan")
 struct ForeignKeyConstraintSpanTests {
     private func info(
         name: String,

@@ -72,7 +72,6 @@ private func waitForWaiters(_ count: Int, on gate: SessionDriverGate, _ connecti
     }
 }
 
-@Suite("SessionDriverGate")
 @MainActor
 struct SessionDriverGateTests {
     @Test("A second caller for the same connection runs only after the first completes")

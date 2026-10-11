@@ -30,24 +30,8 @@ extension TableStructureView {
             return
         }
 
-        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver else {
-            toolbarState.previewStatements = ["-- Error: no plugin driver available for DDL generation"]
-            coordinator?.activeSheet = .sqlPreview
-            return
-        }
-
-        let generator = SchemaStatementGenerator(
-            tableName: tableName,
-            pluginDriver: pluginDriver
-        )
-
-        do {
-            let schemaStatements = try generator.generate(changes: changes)
-            toolbarState.previewStatements = schemaStatements.map(\.sql)
-        } catch {
-            toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
-        }
-        coordinator?.activeSheet = .sqlPreview
+        guard let coordinator else { return }
+        Task { await session.previewStagedChanges(coordinator: coordinator) }
     }
 
     /// The part of a save only a mounted view can do: refetch the sub-tab the user is looking at
@@ -56,7 +40,7 @@ extension TableStructureView {
     func refreshAfterApply() async {
         isReloadingAfterSave = true
         await reloadCoreTabs()
-        loadSchemaForEditing()
+        adoptFetchedBaseline()
         await loadTabDataIfNeeded(selectedTab)
 
         /// Save resets the manager (pendingChanges cleared, working state refetched from the
@@ -128,7 +112,7 @@ extension TableStructureView {
                 .buttonStyle(.bordered)
 
                 Button(action: exportDDL) {
-                    Label("Export", systemImage: "square.and.arrow.down")
+                    Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
             }
@@ -193,7 +177,7 @@ extension TableStructureView {
             do {
                 try ddlStatement.write(to: url, atomically: true, encoding: .utf8)
             } catch {
-                Self.logger.error("Failed to export: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to export: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Could not export the schema"),
                     message: error.localizedDescription,

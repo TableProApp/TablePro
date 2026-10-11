@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("SQL statement ordering")
 struct SQLStatementGeneratorOrderingTests {
     private let columns = ["id", "email"]
 

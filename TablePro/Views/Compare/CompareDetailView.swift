@@ -95,6 +95,14 @@ internal struct CompareDefinitionsPane: View {
                 targetLines: result.targetDefinition
             )
 
+            if result.showsIndexes {
+                StructureDefinitionDiffView(
+                    title: String(localized: "Indexes"),
+                    sourceLines: result.sourceIndexLines,
+                    targetLines: result.targetIndexLines
+                )
+            }
+
             if !result.changes.isEmpty {
                 changesSection(result.changes)
             }

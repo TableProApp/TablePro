@@ -11,7 +11,6 @@ import Testing
 /// Emptying a password field and saving has to delete the stored secret. Leaving it behind means
 /// the next connect still authenticates with the old password, an encrypted export still carries
 /// it, and a duplicate copies it.
-@Suite("Cleared secrets are deleted on save")
 @MainActor
 struct ClearedSecretSaveTests {
     private final class ScriptedKeychain: KeychainStoring, @unchecked Sendable {

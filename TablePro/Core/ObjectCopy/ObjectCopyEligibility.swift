@@ -121,7 +121,31 @@ internal enum ObjectCopyEligibility {
         target: DatabaseEndpoint
     ) -> String? {
         guard sharesObjectSpace(source, target) else { return nil }
-        return String(localized: "The source and the target are the same database. Choose a different target.")
+        return sameTargetMessage
+    }
+
+    internal static func concurrentReadMessage(
+        for refusal: ConcurrentReadRefusal,
+        source: DatabaseEndpoint,
+        target: DatabaseEndpoint
+    ) -> String {
+        switch refusal {
+        case .sameScope:
+            return sameTargetMessage
+        case .sharedConnection(let databaseType):
+            let format = source.database == target.database
+                ? String(
+                    localized: "%@ reads and writes through one connection, so it cannot copy rows between two of its schemas. Use a second connection for the target."
+                )
+                : String(
+                    localized: "%@ reads and writes through one connection, so it cannot copy rows between two of its databases. Use a second connection for the target."
+                )
+            return String(format: format, databaseType.rawValue)
+        }
+    }
+
+    private static var sameTargetMessage: String {
+        String(localized: "The source and the target are the same database. Choose a different target.")
     }
 
     /// Whether the two sides can resolve to one set of objects.
@@ -162,18 +186,6 @@ internal enum ObjectCopyEligibility {
         String(
             localized: "Its definition names the source's own database or schema, so it is only copied where that name is the same."
         )
-    }
-
-    /// A definition the driver reports as a bare body rather than as a statement.
-    ///
-    /// ClickHouse, Oracle, Dameng and BigQuery answer `fetchViewDefinition` with the view's SELECT,
-    /// not its `CREATE`. Executing that runs a read, which the runner would then report as the view
-    /// copied, after Replace had already dropped the target's.
-    internal static func isExecutableDefinition(_ definition: String) -> Bool {
-        definition
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-            .hasPrefix("CREATE")
     }
 
     internal static var definitionNotExecutableRefusal: String {

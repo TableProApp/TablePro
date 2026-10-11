@@ -13,6 +13,8 @@ struct CreateTablePlan {
     let definition: PluginCreateTableDefinition?
     let indexes: [PluginIndexDefinition]
     let issues: [SchemaDraftIssue]
+    /// Nil writes no comment. Set after the `CREATE TABLE`, as its own statement.
+    var tableComment: String?
 
     var isReadyToCreate: Bool { definition != nil && issues.isEmpty }
 }
@@ -55,7 +57,8 @@ enum CreateTableDraftBuilder {
         indexes: [EditableIndexDefinition],
         foreignKeys: [EditableForeignKeyDefinition],
         dialect: ForeignKeyDialect,
-        includesEngineOptions: Bool
+        includesEngineOptions: Bool,
+        suppliesItsOwnKey: Bool = false
     ) -> CreateTablePlan {
         var issues: [SchemaDraftIssue] = []
 
@@ -72,14 +75,14 @@ enum CreateTableDraftBuilder {
                 tab: .columns, row: nil, message: String(localized: "The table needs a name.")
             ))
         }
-        if resolvedColumns.isEmpty {
+        if resolvedColumns.isEmpty, !suppliesItsOwnKey {
             issues.append(SchemaDraftIssue(
                 tab: .columns, row: nil,
                 message: String(localized: "The table needs at least one column with a name and a type.")
             ))
         }
 
-        guard !trimmedName.isEmpty, !resolvedColumns.isEmpty else {
+        guard !trimmedName.isEmpty, !resolvedColumns.isEmpty || suppliesItsOwnKey else {
             return CreateTablePlan(definition: nil, indexes: [], issues: issues)
         }
 
@@ -99,7 +102,8 @@ enum CreateTableDraftBuilder {
         return CreateTablePlan(
             definition: definition,
             indexes: resolvedIndexes.map { $0.toPlugin() },
-            issues: issues
+            issues: issues,
+            tableComment: ObjectCommentDraft.normalized(options.comment)
         )
     }
 
@@ -134,6 +138,12 @@ enum CreateTableDraftBuilder {
                 ))
                 continue
             }
+            if !column.isNullable, column.hasNullDefault {
+                issues.append(SchemaDraftIssue(
+                    tab: .columns, row: row,
+                    message: String(localized: "This column does not allow NULL, so its default cannot be NULL.")
+                ))
+            }
             var normalized = column
             normalized.name = name
             normalized.dataType = type
@@ -145,7 +155,7 @@ enum CreateTableDraftBuilder {
            resolved.contains(where: { $0.autoIncrement }) {
             for index in resolved.indices where resolved[index].autoIncrement {
                 resolved[index].isPrimaryKey = true
-                resolved[index].isNullable = false
+                resolved[index].setNullable(false)
             }
         }
 

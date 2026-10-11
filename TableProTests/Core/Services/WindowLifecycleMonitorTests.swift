@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("WindowLifecycleMonitor")
 @MainActor
 struct WindowLifecycleMonitorTests {
     private var monitor: WindowLifecycleMonitor { WindowLifecycleMonitor.shared }

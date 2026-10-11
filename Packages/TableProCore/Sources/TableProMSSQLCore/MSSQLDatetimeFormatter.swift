@@ -6,6 +6,17 @@ public enum MSSQLDatetimeFormatter {
         return parse(raw)
     }
 
+    /// db-lib's text for a `datetimeoffset` is the local wall clock with no offset, which SQL Server reads back as
+    /// +00:00. The ISO 8601 form carries the offset, so the value reads back as the same instant.
+    public static func dateTimeOffset(_ raw: String, offsetMinutes: Int) -> String? {
+        guard let local = parse(raw) else { return nil }
+        let sign = offsetMinutes < 0 ? "-" : "+"
+        let magnitude = abs(offsetMinutes)
+        let offset = sign + String(format: "%02d:%02d", magnitude / 60, magnitude % 60)
+        guard let separator = local.firstIndex(of: " ") else { return local + offset }
+        return local.replacingCharacters(in: separator...separator, with: "T") + offset
+    }
+
     public static func parse(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

@@ -88,7 +88,7 @@ final class CustomSlashCommandStorage: ObservableObject {
                 syncTracker.markDirty(.settings, id: Self.syncCategory)
             }
         } catch {
-            Self.logger.warning("Failed to persist custom slash commands: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to persist custom slash commands: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -97,7 +97,7 @@ final class CustomSlashCommandStorage: ObservableObject {
         do {
             return try JSONDecoder().decode([CustomSlashCommand].self, from: data)
         } catch {
-            Self.logger.warning("Failed to load custom slash commands: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load custom slash commands: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }

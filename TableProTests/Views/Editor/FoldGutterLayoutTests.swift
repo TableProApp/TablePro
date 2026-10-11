@@ -11,7 +11,6 @@ import TableProGrammars
 import TableProTextEngine
 import Testing
 
-@Suite("Fold gutter layout")
 @MainActor
 struct FoldGutterLayoutTests {
 

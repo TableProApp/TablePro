@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL schema statement planner")
 struct PostgreSQLSchemaStatementPlannerTests {
     @Test("A bare create names the schema and nothing else")
     func createWithoutOwner() {

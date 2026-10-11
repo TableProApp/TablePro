@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MongoDBAuthSourceResolver")
 struct MongoDBAuthSourceResolverTests {
     @Test("An explicit auth source wins over everything else")
     func testExplicitWins() {

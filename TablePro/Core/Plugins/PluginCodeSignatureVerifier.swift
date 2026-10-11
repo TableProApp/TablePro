@@ -37,6 +37,12 @@ enum PluginCodeSignatureVerifier {
     /// The gate that carries the weight is therefore the user's own decision: a Developer ID bundle
     /// reaches `PluginDeveloperTrustStore` and installs only once the user trusts that team by name.
     /// Do not narrow that prompt on the strength of a notarization claim this code cannot make.
+    ///
+    /// The app carries `com.apple.security.cs.disable-library-validation` because it loads plugins
+    /// signed by other teams, so dyld checks nothing and this call is the whole load decision.
+    /// `kSecCSCheckNestedCode` is what reaches a Mach-O embedded inside the bundle, and
+    /// `kSecCSStrictValidate` is what rejects the resource-envelope anomalies `SecStaticCodeCheckValidity`
+    /// otherwise permits; without both, a bundle `codesign --verify --strict` rejects loads here.
     static func evaluate(bundle: Bundle) throws -> PluginSignatureTrust {
         #if DEBUG
         if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
@@ -57,7 +63,7 @@ enum PluginCodeSignatureVerifier {
             throw PluginError.signatureInvalid(detail: describeOSStatus(createStatus))
         }
 
-        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
+        let flags = SecCSFlags(rawValue: Self.validationFlags)
 
         if SecStaticCodeCheckValidity(code, flags, requirement(Self.firstPartyRequirement)) == errSecSuccess {
             return .firstParty
@@ -73,6 +79,8 @@ enum PluginCodeSignatureVerifier {
         }
         return .developerID(identity)
     }
+
+    static let validationFlags = kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate
 
     private static var firstPartyRequirement: String {
         "anchor apple generic and certificate leaf[subject.OU] = \"\(resolvedSigningTeamId)\""

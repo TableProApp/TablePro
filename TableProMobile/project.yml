@@ -6,7 +6,7 @@ name: TableProMobile
 
 options:
   minimumXcodeGenVersion: "2.46.0"
-  projectFormat: xcode16_0
+  projectFormat: xcode16_3
   defaultConfig: Release
   developmentLanguage: en
   createIntermediateGroups: true
@@ -44,14 +44,21 @@ targets:
       - TableProWidget/Shared/QueryActivityAttributes.swift
       - TableProWidget/Shared/SharedConnectionStore.swift
       - TableProWidget/Shared/WidgetConnectionItem.swift
+      # The sample database the macOS app ships, opened from the empty connection list.
+      - path: ../TablePro/Resources/SampleDatabases/Chinook.sqlite
+        buildPhase: resources
       # FreeTDS bridging the iOS build compiles directly; there is no plugin
       # bundle on iOS, so the driver links into the app.
       - ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
-      # Redis credential rules the iOS driver shares with the macOS plugin.
+      # Redis credential rules, key kinds and TLS setup the iOS driver shares with the macOS plugin.
       - ../Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - ../Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - ../Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - ../Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSFailure.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSOptions.swift
+      - ../Plugins/RedisDriverPlugin/RedisTLSSession.swift
       # MySQL session character set and result decoding the iOS driver shares with the macOS plugin.
       - ../Plugins/MySQLDriverPlugin/DatabendResultShape.swift
       - ../Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
@@ -62,16 +69,54 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLErrorText.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLStatementKeyword.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
-      # Foreign key catalog read the iOS PostgreSQL driver shares with the macOS plugin, plus the
-      # single owner of the plugin's literal quoting that it builds its SQL with, and the version
-      # gate that owner projects against.
+      # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
+      # through a socket.
+      - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      - ../Plugins/Shared/PluginQueryTimeout.swift
+      # The column default reading both apps show, plus the literal spellings it writes and the
+      # version floor that says which catalog quotes its defaults. The DDL writers stay on macOS.
+      - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLLiteralSQL.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
+      - ../Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
+      # Catalog reads the iOS PostgreSQL driver shares with the macOS plugin: the table listing,
+      # the materialized view columns, the index list and the Redshift table and key reads, with
+      # the catalog probe that gates them. Plus the single owner of the plugin's literal quoting
+      # that it builds its SQL with, and the version gate that owner projects against.
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogForeignKeys.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLMaterializedViewColumnSource.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListing.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
+      - ../Plugins/PostgreSQLDriverPlugin/RedshiftTableCatalog.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       # libpq COPY handling the iOS PostgreSQL driver shares with the macOS plugin.
       - ../Plugins/PostgreSQLDriverPlugin/LibPQPendingResultDrain.swift
       - ../Plugins/PostgreSQLDriverPlugin/LibPQCopyState.swift
+      # The read-write BEGIN both platforms open a write transaction with.
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
+      # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
+      # The C-free half is the TableProSSHTransport package target; these three touch libssh2
+      # and cannot be, because a manifest cannot express the slice-dependent header path the
+      # iOS xcframework needs. Both CLibSSH2 shims declare the same module and the same four
+      # tablepro_* wrappers, so `import CLibSSH2` resolves on either platform.
+      - ../TablePro/Core/SSH/LibSSH2ChannelIO.swift
+      - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
+      - ../TablePro/Core/SSH/SSHKeepAliveResult.swift
+      # License texts behind the Acknowledgements screen, copied whole so each keeps the
+      # texts/ path Acknowledgements.json names it by.
+      - path: ../TablePro/Resources/ThirdPartyLicenses/texts
+        type: folder
+        buildPhase: resources
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig
@@ -86,6 +131,7 @@ targets:
         products:
           - TableProAnalytics
           - TableProConnectionLibrary
+          - TableProCoreTypes
           - TableProDatabase
           - TableProGeometry
           - TableProImport
@@ -93,8 +139,10 @@ targets:
           - TableProMSSQLCore
           - TableProPluginKit
           - TableProQuery
+          - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport
+          - TableProTabularIO
       - package: TableProOracle
         product: TableProOracleCore
       - framework: ../Libs/ios/DuckDB.xcframework
@@ -126,7 +174,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: TableProMobile/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: TablePro
-        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -192,6 +240,8 @@ targets:
       - TableProMobileTests
     dependencies:
       - target: TableProMobile
+      - package: TableProCore
+        product: TableProTLSTestFixtures
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

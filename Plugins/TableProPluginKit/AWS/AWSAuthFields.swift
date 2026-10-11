@@ -2,6 +2,10 @@ import Foundation
 
 public enum AWSAuthFields {
     public static func standard() -> [ConnectionField] {
+        standard(additionalMethods: [])
+    }
+
+    static func standard(additionalMethods: [ConnectionField.DropdownOption]) -> [ConnectionField] {
         [
             ConnectionField(
                 id: "awsAuth",
@@ -12,7 +16,7 @@ public enum AWSAuthFields {
                     .init(value: "accessKey", label: String(localized: "AWS IAM (Access Key)")),
                     .init(value: "profile", label: String(localized: "AWS IAM (Profile)")),
                     .init(value: "sso", label: String(localized: "AWS IAM (SSO)"))
-                ]),
+                ] + additionalMethods),
                 section: .authentication,
                 hidesPassword: true
             ),

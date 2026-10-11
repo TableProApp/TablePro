@@ -40,6 +40,19 @@ final class StructureGridDelegate: DataGridViewDelegate {
         guard let adding = StructureFooterPolicy.operation(forAdding: selectedTab) else { return false }
         return editGate.allows(adding)
     }
+
+    var canStageRemoveForSelectedTab: Bool {
+        guard let removing = StructureFooterPolicy.operation(forRemoving: selectedTab) else { return false }
+        return editGate.allows(removing)
+    }
+
+    var lockedFieldIndices: Set<Int> {
+        editGate.lockedFieldIndices(
+            on: selectedTab,
+            orderedFields: orderedFields,
+            fieldCount: currentProvider?.columns.count ?? 0
+        )
+    }
     let tableName: String
     /// The lists behind the Foreign Keys grid's reference cells, shared with the Create Table tab.
     let referenceMenus: ForeignKeyReferenceMenus
@@ -152,7 +165,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridDidEditCell(row displayRow: Int, column: Int, newValue: String?) {
-        guard column >= 0 else { return }
+        guard column >= 0,
+              !editGate.locksField(at: column, on: selectedTab, orderedFields: orderedFields) else { return }
         let sourceRowIndex = sourceRow(for: displayRow)
 
         switch selectedTab {
@@ -165,7 +179,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .indexes:
             guard sourceRowIndex < structureChangeManager.workingIndexes.count else { return }
             var idx = structureChangeManager.workingIndexes[sourceRowIndex]
-            StructureEditingSupport.updateIndex(&idx, at: column, with: newValue ?? "")
+            StructureEditingSupport.updateIndex(
+                &idx,
+                at: column,
+                with: newValue ?? "",
+                keys: StructureEditingSupport.indexKeyContext(for: structureChangeManager, on: connection)
+            )
             structureChangeManager.updateIndex(id: idx.id, with: idx)
 
         case .foreignKeys:
@@ -181,8 +200,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             }
 
         case .checkConstraints:
-            guard editGate.allows(.addCheckConstraint),
-                  sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
+            guard sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
             var constraint = structureChangeManager.workingCheckConstraints[sourceRowIndex]
             StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
             structureChangeManager.updateCheckConstraint(id: constraint.id, with: constraint)
@@ -248,7 +266,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .checkConstraints:
-            guard editGate.allows(.addCheckConstraint) else { return }
+            guard editGate.allows(.dropCheckConstraint) else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingCheckConstraints.count else { continue }
@@ -411,20 +429,22 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
     }
 
+    /// The comment bar shows on every sub-tab, so its step undoes even where no grid is on screen.
     func dataGridUndo() {
-        guard selectedTab != .ddl, selectedTab != .triggers else { return }
+        guard showsGrid || structureChangeManager.undoesTableCommentNext else { return }
         structureChangeManager.undo()
-        // Undo can revert any row's content and visual state. The SwiftUI
-        // re-render driven by `reloadVersion` only invalidates the snapshot;
-        // ask `NSTableView` to redraw visible rows so the cell text and
-        // modified-tint actually update on screen.
+        // The `reloadVersion` re-render only invalidates the snapshot; the visible cells need a redraw.
         reloadAllVisibleRows()
     }
 
     func dataGridRedo() {
-        guard selectedTab != .ddl, selectedTab != .triggers else { return }
+        guard showsGrid || structureChangeManager.redoesTableCommentNext else { return }
         structureChangeManager.redo()
         reloadAllVisibleRows()
+    }
+
+    private var showsGrid: Bool {
+        selectedTab != .ddl && selectedTab != .triggers
     }
 
     func dataGridAddRow() {
@@ -518,7 +538,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
         rowView.coordinator = coordinator
         rowView.rowIndex = row
         rowView.structureTab = selectedTab
-        rowView.isStructureEditable = connection.type.supportsSchemaEditing
+        rowView.canDuplicate = canStageAddForSelectedTab
+        rowView.canDelete = canStageRemoveForSelectedTab
 
         let src = sourceRow(for: row)
 

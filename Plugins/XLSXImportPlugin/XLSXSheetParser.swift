@@ -25,6 +25,14 @@ enum XLSXSheetParser {
     }
 
     /// A cell's column index, from the letters in its reference. `A` is 0, `Z` 25, `AA` 26.
+    static func headerNames(from row: [String?]) -> [String] {
+        ImportFieldNaming.uniqueNames(for: row, placeholder: placeholderName)
+    }
+
+    static func placeholderName(_ index: Int) -> String {
+        "column\(index + 1)"
+    }
+
     static func columnIndex(fromReference reference: String) -> Int? {
         var index = 0
         var sawLetter = false

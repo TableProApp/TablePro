@@ -1,7 +1,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseSwitchList")
 struct DatabaseSwitchListTests {
     private let databases: [DatabaseMetadata] = [
         .minimal(name: "analytics"),

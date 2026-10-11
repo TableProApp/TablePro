@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("FavoriteSelection")
 struct FavoriteSelectionTests {
     private func roundTrip(_ selection: FavoriteSelection) -> FavoriteSelection? {
         FavoriteSelection(rawValue: selection.rawValue)

@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("PostgreSQL Plan Parser")
 struct PostgreSQLPlanParserTests {
     private let parser = PostgreSQLPlanParser()
 

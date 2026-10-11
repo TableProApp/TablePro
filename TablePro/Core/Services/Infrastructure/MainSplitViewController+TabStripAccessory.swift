@@ -40,7 +40,11 @@ internal extension MainSplitViewController {
     func applyTabStripVisibility() {
         let tabCount = workspaces.selected?.sessionState?.tabManager.tabs.count ?? 0
         tabStripAccessory.setBandVisible(
-            ConnectionWindowPaneResolver.showsTabStrip(for: currentPane, tabCount: tabCount)
+            ConnectionWindowPaneResolver.showsTabStrip(
+                for: currentPane,
+                tabCount: tabCount,
+                contentMode: contentMode
+            )
         )
         armTabStripObservation()
     }
@@ -159,6 +163,17 @@ internal extension MainSplitViewController {
                     isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?
                         .reportedStatus.isConnected == true
                 )
+            },
+            /// The selection is left alone: selecting first would judge the tab against the grid edits
+            /// of the tab it replaced, which the change manager still holds until the switch lands.
+            moveToConnection: { [weak self] id in
+                self?.presentMoveTabPicker(tabId: id)
+            },
+            offersMoveToConnection: { [weak manager] id in
+                manager?.tabs.first { $0.id == id }?.tabType == .query
+            },
+            canMoveToConnection: { [weak workspace] id in
+                workspace?.sessionState?.coordinator.canMoveTabToConnection(id) ?? false
             },
             /// The resolver's description, not the drawn title: a table tab carries its database
             /// and schema there even when the short title is unique, and the tooltip is where a

@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginColumnInfo Codable")
 struct PluginColumnInfoCodableTests {
     @Test("allowedValues round-trips through JSON encoding")
     func allowedValuesRoundTrip() throws {

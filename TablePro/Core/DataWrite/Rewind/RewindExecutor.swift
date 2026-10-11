@@ -40,14 +40,22 @@ struct RewindExecutor {
         )
         let queries = planner.readQueries()
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let recordedColumns = record.operations.first?.columns ?? []
+        let matchingByName = PluginManager.shared.supportsFieldRemoval(for: connection.type)
+        /// Untracked: nothing offers a Stop for a rewind plan, so registering it only exposed the
+        /// read to whatever else on the connection was being cancelled.
         let currentRows = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
             route: route,
-            cancellation: .cancellableRead
+            cancellation: .untracked
         ) { driver in
-            var rows: [[PluginCellValue]] = []
+            var rows: [RewindCurrentRow] = []
             for query in queries {
-                rows.append(contentsOf: try await driver.execute(query: query).rows)
+                rows.append(contentsOf: RewindCurrentRow.rows(
+                    of: try await driver.execute(query: query),
+                    alignedTo: recordedColumns,
+                    matchingByName: matchingByName
+                ))
             }
             return rows
         }
@@ -73,6 +81,27 @@ struct RewindExecutor {
         }
     }
 
+    /// `SET IDENTITY_INSERT` runs outside the transaction, so it is not a step and would otherwise be missing from the
+    /// record of a restore that depended on it.
+    private func recordSideStatementHistory(_ statements: [String]) {
+        for statement in statements {
+            let sql = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !sql.isEmpty else { continue }
+            let request = QueryHistoryRecordRequest(
+                query: sql.hasSuffix(";") ? sql : sql + ";",
+                connectionId: connection.id,
+                databaseName: scope.database,
+                databaseType: connection.type,
+                schemaName: scope.schema,
+                source: .rowEdit,
+                executionTime: 0,
+                rowCount: -1,
+                wasSuccessful: true
+            )
+            Task(priority: .utility) { await QueryHistoryManager.shared.record(request) }
+        }
+    }
+
     /// Keeps the restore itself restorable, by storing it as the save it is: the rows it touched,
     /// with the images the other way round. Undoing an undo is then the same operation again
     /// rather than a special case.
@@ -88,7 +117,9 @@ struct RewindExecutor {
                 preImage: source.postImage,
                 postImage: source.preImage,
                 writtenColumns: source.writtenColumns,
-                refusal: nil
+                refusal: nil,
+                preImageAbsentColumns: source.postImageAbsentColumns,
+                postImageAbsentColumns: source.preImageAbsentColumns
             )
         }
         guard !operations.isEmpty else { return }
@@ -102,15 +133,15 @@ struct RewindExecutor {
                 target: plan.record.target,
                 capturedAt: Date(),
                 generatedColumns: plan.record.generatedColumns,
+                identityColumns: plan.record.identityColumns,
+                columnTypeNames: plan.record.columnTypeNames,
                 operations: operations
             )
         )
     }
 
     func apply(_ plan: RewindPlan) async throws -> RewindApplyResult {
-        let displaySQL = plan.statements
-            .map { SQLParameterInliner.inline($0, databaseType: connection.type) }
-            .joined(separator: "\n")
+        let displaySQL = plan.displayStatements.joined(separator: "\n")
 
         let writePlan = DataWritePlan(
             scope: scope,
@@ -122,7 +153,10 @@ struct RewindExecutor {
                     expectedRowCount: 1,
                     tableName: plan.record.target.table
                 )
-            }
+            },
+            prologue: plan.prologue,
+            epilogue: plan.epilogue,
+            prologueIsRequired: true
         )
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
@@ -147,6 +181,7 @@ struct RewindExecutor {
         }
 
         recordHistory(for: plan, results: run.results)
+        recordSideStatementHistory(run.sideStatements)
         await captureInverseRecord(for: plan)
 
         Self.logger.info(

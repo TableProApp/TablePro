@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Saved query plans")
 struct QueryPlanSnapshotStorageTests {
     // MARK: - Identity
 

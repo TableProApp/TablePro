@@ -23,15 +23,23 @@ internal final class TrailingPaneState: ObservableObject {
     /// which is what lets a reveal put back what the user was last looking at.
     @Published internal var surface: TrailingPaneSurface {
         didSet {
-            guard let connectionId else { return }
+            guard let connectionId, surface.isUserSelectable else { return }
             defaults.set(surface.rawValue, forKey: Self.surfaceKey(connectionId))
         }
     }
 
     internal let inspector: RowInspectorState
-    internal let assistant = AssistantState()
+    internal let assistant: AssistantState
 
-    internal init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
+    /// `AppStorageEnvironment.shared.defaults` rather than `.standard`, which is what every other
+    /// per-connection preference already resolves through. Both of this object's keys escaped the
+    /// UI-test sandbox, so a test run read and wrote the surface and inspector mode of whoever was
+    /// running it.
+    internal init(
+        connectionId: UUID? = nil,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        sessionRegistry: AgentSessionRegistry = .shared
+    ) {
         self.connectionId = connectionId
         self.defaults = defaults
         /// Before anything reads the keys it writes. `RowInspectorState` takes its view mode in its
@@ -41,9 +49,11 @@ internal final class TrailingPaneState: ObservableObject {
             Self.migrateLegacyTabIfNeeded(connectionId: connectionId, defaults: defaults)
         }
         self.inspector = RowInspectorState(connectionId: connectionId, defaults: defaults)
+        self.assistant = AssistantState(connectionId: connectionId, registry: sessionRegistry)
         if let connectionId,
            let raw = defaults.string(forKey: Self.surfaceKey(connectionId)),
-           let stored = TrailingPaneSurface(rawValue: raw) {
+           let stored = TrailingPaneSurface(rawValue: raw),
+           stored.isUserSelectable {
             self.surface = stored
         } else {
             self.surface = .inspector

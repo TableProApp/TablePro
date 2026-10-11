@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgreSQL type catalog queries")
 struct PostgreSQLTypeQueryTests {
     @Test("The listing reads pg_type for enums, composites, domains and ranges in one schema")
     func listReadsPgType() {
@@ -68,6 +67,34 @@ struct PostgreSQLTypeQueryTests {
         )
         #expect(sql.contains("AND t.oid = 16387::oid"))
         #expect(!sql.contains("n.nspname ="))
+    }
+
+    @Test("A schema-set listing names its schemas in one IN list and orders by schema, then name")
+    func schemaSetListing() {
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(
+            schemas: ["app", "o'brien"], capabilities: .assumingModernWhenUnknown(170_000)
+        )
+        #expect(sql.contains("AND n.nspname IN ('app', 'o''brien')"))
+        #expect(sql.hasSuffix("ORDER BY n.nspname, t.typname"))
+        #expect(!sql.contains("AND t.oid = "))
+        #expect(sql.contains("AS schema"))
+    }
+
+    @Test("An empty schema set lists nothing rather than every schema")
+    func emptySchemaSetListsNothing() {
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schemas: [], capabilities: .assumingModernWhenUnknown(170_000))
+        #expect(sql.contains("AND false"))
+        #expect(!sql.contains("n.nspname IN"))
+    }
+
+    @Test("The set listing and the one-schema listing share one projection")
+    func setListingSharesTheProjection() {
+        let capabilities = PostgreSQLCapabilities.assumingModernWhenUnknown(170_000)
+        let one = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: capabilities)
+        let set = PostgreSQLObjectQueries.userDefinedTypeList(schemas: ["app"], capabilities: capabilities)
+        let projection: (String) -> Substring = { $0[..<($0.range(of: "WHERE t.typtype")?.lowerBound ?? $0.endIndex)] }
+        #expect(projection(one) == projection(set))
+        #expect(one.hasSuffix("ORDER BY t.typname"))
     }
 
     @Test("A listing escapes the schema literal")

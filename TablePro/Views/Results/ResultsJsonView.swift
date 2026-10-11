@@ -25,6 +25,7 @@ internal struct ResultsJsonView: View {
     @State private var resolvedRowCount: Int
     @State private var heldBackDeletionCount = 0
     @State private var hasRendered = false
+    @State private var renderedKey: RenderKey?
     @State private var copied = false
     @State private var copyCooldownTask: Task<Void, Never>?
 
@@ -104,7 +105,7 @@ internal struct ResultsJsonView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(id: renderKey) {
-            await rebuild()
+            await rebuild(for: renderKey)
         }
         .onChange(of: viewMode) { _ in
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
@@ -121,11 +122,12 @@ internal struct ResultsJsonView: View {
 
             Spacer()
 
-            Picker("", selection: $viewMode) {
+            Picker("View Mode", selection: $viewMode) {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .fixedSize()
 
             Spacer()
@@ -205,7 +207,12 @@ internal struct ResultsJsonView: View {
 
     // MARK: - JSON Generation
 
-    private func rebuild() async {
+    /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with an unchanged
+    /// key; re-serializing every row then gives the tree a new root and recomputes its whole
+    /// projection, so a document already rendered for that key is kept. A cancelled render records
+    /// no key, so the next appearance renders it.
+    private func rebuild(for key: RenderKey) async {
+        guard renderedKey != key else { return }
         let snapshot = tableRows
         let ids = displayIDs
         let selectedIndices = selectedRowIndices
@@ -236,6 +243,7 @@ internal struct ResultsJsonView: View {
             parseError = error
         }
         hasRendered = true
+        renderedKey = key
     }
 
     struct RenderedJson {
@@ -266,7 +274,7 @@ internal struct ResultsJsonView: View {
             pretty: output.json.prettyPrintedAsJson() ?? output.json,
             resolvedCount: output.rowCount,
             skippedDeletedCount: output.skippedDeletedCount,
-            parseResult: JSONTreeParser.parse(output.json)
+            parseResult: JSONTreeDocument.parse(output.json)
         )
     }
 }

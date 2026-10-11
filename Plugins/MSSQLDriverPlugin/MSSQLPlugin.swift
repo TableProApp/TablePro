@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProCoreTypes
 import TableProMSSQLCore
 import TableProPluginKit
 
@@ -28,7 +29,67 @@ private extension MSSQLRawResult {
             rows: rows.map { row in row.map { $0.asPluginCell } },
             rowsAffected: affectedRows,
             executionTime: executionTime,
-            isTruncated: isTruncated
+            isTruncated: isTruncated,
+            statusMessage: resultSetsNotShownNote
+        )
+    }
+
+    /// A statement run on its own returns one result, so T-SQL written without semicolons, where several statements
+    /// read as one, shows only the first of what it returned. The note says so rather than letting the rest vanish.
+    private var resultSetsNotShownNote: String? {
+        guard resultSetsNotShown > 0 else { return nil }
+        return String(
+            format: String(
+                localized: "Showing the first of %d result sets. End each statement with a semicolon to see every result."
+            ),
+            resultSetsNotShown + 1
+        )
+    }
+}
+
+private extension MSSQLBatchReadout {
+    func toPluginBatchResult(
+        executionTime: TimeInterval,
+        binding: MSSQLParameterBatch.BoundBatch?
+    ) -> PluginBatchResult {
+        PluginBatchResult(
+            resultSets: resultSets.map { $0.toPluginResult(executionTime: 0) },
+            rowsAffected: rowsAffected,
+            errors: errors.map { $0.pluginBatchError(binding: binding) } + [errorsNotKeptNotice].compactMap { $0 },
+            discardedResultSetCount: resultSetsReadPast,
+            executionTime: executionTime
+        )
+    }
+
+    /// The errors a read counted without keeping, as one last error that says how many there were, so a loop that
+    /// failed on every pass does not read as having failed only as often as the read kept.
+    private var errorsNotKeptNotice: PluginBatchError? {
+        guard errorsNotKept > 0 else { return nil }
+        return PluginBatchError(
+            message: String(format: String(localized: "%d more errors were not kept."), errorsNotKept),
+            code: nil,
+            line: nil,
+            procedure: nil,
+            precedingResultSetCount: resultSets.count
+        )
+    }
+}
+
+private extension MSSQLPlacedError {
+    /// A line inside a procedure counts from the procedure's own start, which the binding never moved.
+    func pluginBatchError(binding: MSSQLParameterBatch.BoundBatch?) -> PluginBatchError {
+        let procedure = message.procedure.isEmpty ? nil : message.procedure
+        let reported = message.line > 0 ? message.line : nil
+        let line = reported.map { line in
+            guard procedure == nil, let binding else { return line }
+            return binding.batchLine(forReportedLine: line)
+        }
+        return PluginBatchError(
+            message: message.text,
+            code: message.number,
+            line: line,
+            procedure: procedure,
+            precedingResultSetCount: precedingResultSetCount
         )
     }
 }
@@ -78,7 +139,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRenameTable = true
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
-    static let defaultPort = 1433
+    static let defaultPort = 1_433
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
@@ -212,20 +273,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     var freeTDSConn: FreeTDSConnection?
-    var _currentSchema: String
+    var currentSchemaName: String
     private var _serverVersion: String?
-
-    /// IDENTITY columns observed during `fetchColumns`, keyed by table name.
-    /// `generateMssqlInsert` reads this to skip IDENTITY columns: SQL Server
-    /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
-    /// and the value the user typed is server-allocated anyway.
-    var identityColumnsByTable: [String: Set<String>] = [:]
-
-    /// Computed columns observed during a column fetch, keyed by table name. SQL Server rejects an
-    /// explicit value for one the same way it does for IDENTITY: "The column cannot be modified
-    /// because it is either a computed column or is the result of a UNION operator."
-    var computedColumnsByTable: [String: Set<String>] = [:]
-    let identityCacheLock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
@@ -237,7 +286,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private struct KerberosRealmResolutionTimeout: Error {}
 
-    var currentSchema: String? { _currentSchema }
+    var currentSchema: String? { currentSchemaName }
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -252,6 +301,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .batchExecute,
             .schemaCompare,
             .dataCompare,
+            .resultSetBatches,
         ]
     }
 
@@ -284,26 +334,43 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
+        self.currentSchemaName = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         let authMethod = MSSQLConnectionOptions.authMethod(from: config.additionalFields)
+        let deadline = MSSQLConnectDeadline(
+            timeoutMilliseconds: MSSQLConnectionOptions.connectTimeoutMilliseconds(from: config.additionalFields)
+        )
         let conn: FreeTDSConnection
         do {
-            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
-            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
+            let kerberosCachePath = try await acquireKerberosTicketIfNeeded(
+                authMethod: authMethod,
+                deadline: deadline
+            )
+            var connectionOwnsKerberosCache = false
+            defer {
+                if !connectionOwnsKerberosCache, let kerberosCachePath {
+                    try? FileManager.default.removeItem(atPath: kerberosCachePath)
+                }
+            }
+            let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(
+                authMethod: authMethod,
+                deadline: deadline
+            )
             let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
+            let remainingMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
             var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
                 password: config.password,
                 database: config.database,
-                schema: _currentSchema,
-                encryptionFlag: MSSQLSSLMapping.freetdsEncryptionFlag(for: config.ssl.mode),
+                schema: currentSchemaName,
+                encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: config.ssl.mode),
+                loginTimeoutSeconds: max(1, (remainingMilliseconds + 999) / 1_000),
                 authMethod: authMethod,
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
@@ -311,7 +378,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
             options.caCertificatePath = config.ssl.caCertificatePath
             options.fedAuthToken = fedAuthToken
-            conn = FreeTDSConnection(options: options)
+            conn = FreeTDSConnection(options: options, connectTimeoutMilliseconds: remainingMilliseconds)
+            connectionOwnsKerberosCache = true
             try await conn.connect()
         } catch let error as MSSQLCoreError {
             switch error {
@@ -330,14 +398,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if let result = try? await executeInternal("SELECT SCHEMA_NAME()"),
            let serverSchema = result.rows.first?.first?.asText,
            !serverSchema.isEmpty {
-            _currentSchema = serverSchema
+            currentSchemaName = serverSchema
         } else {
-            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self._currentSchema, privacy: .public)")
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .public)")
         }
 
         let formSchema = config.additionalFields["mssqlSchema"]
-        if let formSchema, !formSchema.isEmpty, formSchema != _currentSchema {
-            _currentSchema = formSchema
+        if let formSchema, !formSchema.isEmpty, formSchema != currentSchemaName {
+            currentSchemaName = formSchema
         }
 
         if let result = try? await executeInternal("SELECT @@VERSION"),
@@ -346,14 +414,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func resolveKerberosServicePrincipal(authMethod: MSSQLAuthMethod) async throws -> String? {
+    private func resolveKerberosServicePrincipal(
+        authMethod: MSSQLAuthMethod,
+        deadline: MSSQLConnectDeadline
+    ) async throws -> String? {
         guard authMethod == .windows else { return nil }
         let host = config.host
         let port = config.port
+        let timeoutMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
         do {
             return try await runCancellableBlocking(
                 on: Self.kerberosResolveQueue,
-                deadline: .seconds(Self.kerberosResolveTimeoutSeconds),
+                deadline: .milliseconds(min(Self.kerberosResolveTimeoutSeconds * 1_000, timeoutMilliseconds)),
                 timeoutError: { KerberosRealmResolutionTimeout() },
                 work: {
                     MSSQLKerberosRealmResolver.canonicalService(forHost: host)
@@ -361,6 +433,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             )
         } catch is KerberosRealmResolutionTimeout {
+            if deadline.remainingMilliseconds == 0 {
+                throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
+            }
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
@@ -370,10 +445,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
     private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
         guard authMethod == .entra else { return nil }
-        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
+        return try await EntraCredentialResolver.shared.accessToken(
+            fields: config.additionalFields,
+            session: MSSQLEntraConnectSession.shared
+        )
     }
 
-    private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+    private func acquireKerberosTicketIfNeeded(
+        authMethod: MSSQLAuthMethod,
+        deadline: MSSQLConnectDeadline
+    ) async throws -> String? {
         guard authMethod == .windows else { return nil }
         let principal = (config.additionalFields[MSSQLKerberosField.principal] ?? "")
             .trimmingCharacters(in: .whitespaces)
@@ -382,8 +463,19 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await MSSQLKerberosCredentials.acquireTicket(
             principal: principal,
             password: password,
-            timeoutSeconds: MSSQLConnectionOptions.defaultLoginTimeoutSeconds
+            timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod)
         )
+    }
+
+    private func remainingConnectTimeout(
+        _ deadline: MSSQLConnectDeadline,
+        authMethod: MSSQLAuthMethod
+    ) throws -> Int {
+        let milliseconds = deadline.remainingMilliseconds
+        guard milliseconds > 0 else {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: authMethod == .windows)
+        }
+        return milliseconds
     }
 
     private func executeInternal(_ query: String) async throws -> PluginQueryResult {
@@ -412,6 +504,18 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func beginTransaction() async throws {
         _ = try await execute(query: "BEGIN TRANSACTION")
+    }
+
+    /// One round trip, and only when a caller is about to own a transaction on this session. It
+    /// goes through `executeInternal` rather than `execute` so the app's query cancellation and
+    /// history never see it.
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let result = try? await executeInternal(MSSQLSessionTransaction.probe) else { return .unknown }
+        let row = result.rows.first
+        return MSSQLSessionTransaction.state(
+            tranCount: row?.first?.asText,
+            transactionState: row?.dropFirst().first?.asText
+        )
     }
 
     // MARK: - Query Execution
@@ -448,162 +552,85 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let qualifiedTable = MSSQLSchemaQueries.qualifiedName(schema: schema, table: table)
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        var deleteChanges: [PluginRowChange] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateMssqlInsert(
-                        table: table, qualifiedTable: qualifiedTable, columns: columns, values: values
-                    ) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateMssqlUpdate(
-                    qualifiedTable: qualifiedTable, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                deleteChanges.append(change)
-            }
-        }
-
-        if !deleteChanges.isEmpty {
-            for change in deleteChanges {
-                if let stmt = generateMssqlDelete(
-                    qualifiedTable: qualifiedTable, columns: columns,
-                    primaryKeyColumns: primaryKeyColumns, change: change
-                ) {
-                    statements.append(stmt)
-                }
-            }
-        }
-
+        let generator = MSSQLStatementGenerator(
+            qualifiedTable: MSSQLSchemaQueries.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
+        let statements = generator.statements(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
         return statements.isEmpty ? nil : statements
     }
 
-    private func generateMssqlInsert(
+    func generateRowWrites(
         table: String,
-        qualifiedTable: String,
-        columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var nonDefaultColumns: [String] = []
-        var parameters: [PluginCellValue] = []
-        let identityColumns = cachedIdentityColumns(for: table)
-        let computedColumns = cachedComputedColumns(for: table)
-
-        for (index, value) in values.enumerated() {
-            if value.asText == "__DEFAULT__" { continue }
-            guard index < columns.count else { continue }
-            let columnName = columns[index]
-            // SQL Server IDENTITY columns are server-allocated. INSERTs that include
-            // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
-            // so always omit them and let the server assign the next value.
-            if identityColumns.contains(columnName) { continue }
-            if computedColumns.contains(columnName) { continue }
-            nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
-            parameters.append(value)
-        }
-
-        guard !nonDefaultColumns.isEmpty else { return nil }
-
-        let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let sql = "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(placeholders))"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlUpdate(
-        qualifiedTable: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-        guard let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = "[\(cellChange.columnName.replacingOccurrences(of: "]", with: "]]"))]"
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        var conditions: [String] = []
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "UPDATE \(topClause)\(qualifiedTable) SET \(setClauses) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateMssqlDelete(
-        qualifiedTable: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        var parameters: [PluginCellValue] = []
-        var conditions: [String] = []
-
-        let whereColumns: [String] = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-
-        for whereColumn in whereColumns {
-            guard let columnIndex = columns.firstIndex(of: whereColumn),
-                  columnIndex < originalRow.count
-            else { continue }
-            let col = "[\(whereColumn.replacingOccurrences(of: "]", with: "]]"))]"
-            let value = originalRow[columnIndex]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-
-        let whereClause = conditions.joined(separator: " AND ")
-        let topClause = primaryKeyColumns.isEmpty ? "TOP (1) " : ""
-        let sql = "DELETE \(topClause)FROM \(qualifiedTable) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        var generator = MSSQLStatementGenerator(
+            qualifiedTable: MSSQLSchemaQueries.qualifiedName(schema: schema, table: table),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns
+        )
+        generator.context = context
+        let writes = try generator.rowWrites(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+        return writes.isEmpty ? nil : writes
     }
 
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        guard let conn = freeTDSConn else {
+            throw MSSQLPluginError.notConnected
+        }
+        let startTime = Date()
+        do {
+            let raw = try await conn.executeQuery(query, rowCap: rowCap)
+            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
+        }
+    }
+
+    func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
+        guard let conn = freeTDSConn else {
+            throw MSSQLPluginError.notConnected
+        }
+        let binding = parameters.flatMap { values in
+            MSSQLParameterBatch.boundBatch(query: query, parameters: values.map(Self.parameter))
+        }
+        let startTime = Date()
+        do {
+            let readout = try await conn.executeBatch(
+                binding?.text ?? query,
+                rowCap: rowCap,
+                countsToSkip: binding?.prependedStatementCount ?? 0
+            )
+            return readout.toPluginBatchResult(executionTime: Date().timeIntervalSince(startTime), binding: binding)
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
+        }
+    }
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        guard let conn = freeTDSConn else { return .none }
+        let output = try await conn.takeServerOutput()
+        return PluginServerOutput(lines: output.lines, isTruncated: output.isTruncated)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -648,6 +675,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         }
                     }
                     continuation.finish()
+                } catch let error as MSSQLCoreError {
+                    continuation.finish(throwing: MSSQLPluginError(coreError: error))
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -661,27 +690,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
-        let ms = seconds * 1_000
+        let ms = seconds > 0 ? PluginQueryTimeout.milliseconds(seconds) : -1
         _ = try await execute(query: "SET LOCK_TIMEOUT \(ms)")
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard !parameters.isEmpty else {
+        let statement = MSSQLParameterBatch.spExecuteSql(query: query, parameters: parameters.map(Self.parameter))
+        guard !parameters.isEmpty, !statement.isEmpty else {
             return try await execute(query: query)
         }
-
-        let statement = MSSQLParameterBatch.spExecuteSql(
-            query: query, parameters: parameters.map(Self.parameter)
-        )
-
-        guard !statement.isEmpty else {
-            return try await execute(query: query)
-        }
-
-        let sql = "EXEC sp_executesql N'\(Self.escapeNString(statement.query))', "
-            + "N'\(statement.declarations)', \(statement.assignments)"
-        return try await execute(query: sql)
+        return try await execute(query: statement.executeSqlText)
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
@@ -847,19 +865,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// Escape single quotes for N'...' string literals in SQL Server.
-    private static func escapeNString(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
 
     func effectiveSchema(_ schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return _currentSchema }
+        guard let schema, !schema.isEmpty else { return currentSchemaName }
         return schema
     }
 
     func effectiveSchemaQuoted(_ schema: String?) -> String {
         MSSQLStringLiteral.quoted(effectiveSchema(schema))
     }
-
 }
 
 // MARK: - Kerberos

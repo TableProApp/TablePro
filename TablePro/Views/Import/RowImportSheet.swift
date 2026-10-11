@@ -21,6 +21,9 @@ struct RowImportSheet: View {
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
     let fileURL: URL
+    /// What the sheet, the proposed table name, the error report and history call the source.
+    /// It differs from `fileURL` when the rows arrive through a snapshot the app wrote.
+    let sourceName: String
     let formatId: String
 
     private enum Destination: Hashable {
@@ -28,25 +31,32 @@ struct RowImportSheet: View {
         case newTable
     }
 
-    private struct FieldMapping: Identifiable {
-        let field: PluginImportField
-        var include: Bool
-        var targetColumn: String?
-        var id: String { field.name }
+    /// The identity of a read. `.task(id:)` cancels the read in flight when it changes.
+    private struct SourceRead: Hashable {
+        let destination: Destination
+        let scope: DatabaseScope?
+        let table: String?
+        let signature: String
+        let attempt: Int
     }
 
-    private struct NewColumn: Identifiable {
-        let field: PluginImportField
-        var include: Bool
-        var name: String
-        var type: String
-        var isPrimaryKey: Bool
-        var isNullable: Bool
-        var defaultValue: String
-        var id: String { field.name }
+    private struct ImportPlan {
+        let targetTable: String
+        let fields: [String]
+        let columns: [String]
+        let columnMapping: [String: String]
+        let newTable: PluginCreateTableDefinition?
     }
 
     @State private var destination: Destination = .existingTable
+
+    /// The database and schema every read and write of this sheet goes to: where the connection was
+    /// browsing when the sheet opened. The sheet is modal to its window, but another window on the
+    /// same connection, or an MCP client, can move the browse database while it is open. Resolving
+    /// it again at each step listed one database's tables and mapped one table's columns, then
+    /// created, cleared and filled tables in another. Nil only while the connection has no session,
+    /// and taken once one exists.
+    @State private var scope: DatabaseScope?
 
     /// Every object the connection holds, not just the tables the destination picker offers. A
     /// `CREATE TABLE` collides with a view, a materialized view or a foreign table under the same
@@ -65,16 +75,19 @@ struct RowImportSheet: View {
     /// Concurrent callers wait for the one in flight, per the schema-loading invariant.
     @State private var isLoadingTables = false
     @State private var selectedTargetTable: String?
-    @State private var targetColumns: [String] = []
-    @State private var mappings: [FieldMapping] = []
+    @StateObject private var mapping = RowImportMapping()
     @State private var newTableName: String = ""
 
     /// The last name this sheet proposed, so a second pass can tell its own guess from what
     /// the user typed over it.
     @State private var proposedTableName: String = ""
-    @State private var newColumns: [NewColumn] = []
-    @State private var newColumnsLoaded = false
+    @State private var newTable = NewTableDraft()
     @State private var isLoadingContext = false
+
+    /// Copied from the plugin, whose options are edited in its own view that this sheet does not observe.
+    @State private var detectionSignature = ""
+    @State private var readAttempts: [Destination: Int] = [:]
+    @State private var lastNewColumnsRead: SourceRead?
     @State private var loadError: String?
 
     /// Moving focus here also selects the whole proposed name, measured rather than assumed:
@@ -91,34 +104,50 @@ struct RowImportSheet: View {
 
     @State private var importService: ImportService?
     @State private var importResult: PluginImportResult?
+    @State private var importedRows: DatabaseObjectChange?
     @State private var importError: (any Error)?
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
 
-    /// Tables this sheet created, against the CREATE that made each one. A failed import leaves its
-    /// table behind, so a retry has to know it already owns that table rather than trying to create
-    /// it a second time and failing on the name.
-    @State private var createdTables: [String: String] = [:]
+    /// Knows the tables this sheet created. A failed import leaves its table behind, so a retry has to
+    /// know it already owns that table rather than trying to create it a second time and failing on
+    /// the name.
+    @State private var newTablePlanner = NewTableImportPlanner()
 
     /// The window this sheet is hosted in, used for presenting its alerts.
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
 
+    init(
+        isPresented: Binding<Bool>,
+        connection: DatabaseConnection,
+        fileURL: URL,
+        sourceName: String,
+        formatId: String
+    ) {
+        _isPresented = isPresented
+        self.connection = connection
+        self.fileURL = fileURL
+        self.sourceName = sourceName
+        self.formatId = formatId
+        _scope = State(initialValue: DatabaseManager.shared.browseScope(for: connection.id))
+    }
+
     // MARK: - Derived catalog state
 
     /// Tables alone, because they are the only objects the existing-table branch can insert into.
+    /// A partitioned table is one of them: the server routes an INSERT to the right partition.
     private var availableTables: [TableInfo] {
-        databaseObjects.filter { $0.type == .table }
+        databaseObjects.filter(\.type.acceptsImportedRows)
     }
 
     /// A table this sheet created is not in the way of this sheet: a failed import leaves its table
     /// behind, and `NewTableImportPlanner` exists to reuse that one on the retry, so reporting the
-    /// name as taken would block the very attempt that mechanism exists to allow. Checked against
-    /// `createdTables` by key rather than folded into `catalogNameKeys`, which is rebuilt only when
-    /// the catalog is.
+    /// name as taken would block the very attempt that mechanism exists to allow. Asked of the
+    /// planner rather than folded into `catalogNameKeys`, which is rebuilt only when the catalog is.
     private var newTableNameProblem: NewTableNameProblem? {
         let trimmed = newTableName.trimmingCharacters(in: .whitespaces)
         let problem = NewTableNaming.problem(
@@ -126,7 +155,9 @@ struct RowImportSheet: View {
             style: NewTableNameStyle.forDatabaseType(connection.type),
             existingNames: catalogNameKeys
         )
-        guard problem == .nameTaken, createdTables[trimmed] != nil else { return problem }
+        guard problem == .nameTaken, let scope, newTablePlanner.created(TableScope(table: trimmed, in: scope)) else {
+            return problem
+        }
         return nil
     }
 
@@ -159,26 +190,26 @@ struct RowImportSheet: View {
                 hostWindow = window
             }
         }
+        .background { detectionSignatureObserver }
         .task {
             settingsSnapshot = PluginSettingsSnapshot(
                 plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
             suggestNewTableName()
             await loadTables()
-            await loadNewColumns()
+        }
+        .task(id: sourceRead) {
+            await read(sourceRead)
         }
         .onChange(of: destination) { newValue in
             guard newValue == .newTable else { return }
             suggestNewTableName()
             newTableNameFocused = true
         }
-        .onChange(of: selectedTargetTable) { newValue in
-            mappings = []
-            targetColumns = []
-            guard destination == .existingTable, let table = newValue else { return }
-            Task { await loadExistingContext(table: table) }
+        .onChange(of: selectedTargetTable) { _ in
+            mapping.clear()
         }
-        .onChange(of: currentPlugin?.fieldDetectionSignature) { _ in
-            Task { await redetectFields() }
+        .onChange(of: currentPlugin?.fieldDetectionSignature) { newValue in
+            detectionSignature = newValue ?? ""
         }
         .onDisappear {
             importTask?.cancel()
@@ -196,12 +227,14 @@ struct RowImportSheet: View {
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
                 window: hostWindow,
-                sourceFileName: fileURL.lastPathComponent,
+                sourceFileName: sourceName,
                 targetTable: selectedTargetTable
             ) {
                 showSuccessDialog = false
                 isPresented = false
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+                if let importedRows {
+                    AppCommands.shared.objectChanged.send(importedRows)
+                }
             }
         }
         .onChange(of: showErrorDialog) { isShowing in
@@ -220,7 +253,7 @@ struct RowImportSheet: View {
                 .font(.title)
                 .foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
-                Text(fileURL.lastPathComponent)
+                Text(sourceName)
                     .font(.headline)
                 Text("Import rows into a table")
                     .font(.subheadline)
@@ -265,6 +298,7 @@ struct RowImportSheet: View {
                     TextField("", text: $newTableName, prompt: Text("table_name"))
                         .frame(maxWidth: 280)
                         .focused($newTableNameFocused)
+                        .accessibilityLabel(String(localized: "New table"))
                 }
             }
 
@@ -341,19 +375,25 @@ struct RowImportSheet: View {
             case .existingTable:
                 if selectedTargetTable == nil {
                     placeholder("Choose a destination table to map fields.")
-                } else if mappings.isEmpty {
-                    placeholder("No fields found in the file.")
+                } else if mapping.rows.isEmpty {
+                    placeholder(currentReadHasLanded ? "No fields found in the file." : readingPlaceholder)
                 } else {
                     mappingTable
                 }
             case .newTable:
-                if newColumns.isEmpty {
-                    placeholder("No columns found in the file.")
+                if newTable.columns.isEmpty {
+                    placeholder(currentReadHasLanded ? "No columns found in the file." : readingPlaceholder)
                 } else {
                     newColumnsTable
                 }
             }
         }
+    }
+
+    /// A read takes seconds on a large file, and until it lands the list is empty, which the other
+    /// placeholders would report as a file with nothing in it.
+    private var readingPlaceholder: String {
+        String(localized: "Reading the file…")
     }
 
     /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
@@ -370,19 +410,11 @@ struct RowImportSheet: View {
         }
     }
 
+    /// Per destination, so Try Again for one never reads the other again over its edits.
     @MainActor
     private func retryLoad() async {
         loadError = nil
-        newColumnsLoaded = false
-        newColumns = []
-        mappings = []
-        switch destination {
-        case .newTable:
-            await loadNewColumns()
-        case .existingTable:
-            guard let table = selectedTargetTable else { return }
-            await loadExistingContext(table: table)
-        }
+        readAttempts[destination, default: 0] += 1
     }
 
     private func placeholder(_ message: String) -> some View {
@@ -396,8 +428,30 @@ struct RowImportSheet: View {
         .frame(maxWidth: .infinity)
     }
 
+    @ViewBuilder
+    private var detectionSignatureObserver: some View {
+        if let observer = ImportDetectionSignatureObservation.observer(
+            for: currentPlugin,
+            onChange: { detectionSignature = $0 }
+        ) {
+            observer
+        }
+    }
+
+    private var mappingToolbar: some View {
+        RowImportMappingToolbar(
+            mapping: mapping,
+            tableName: selectedTargetTable ?? "",
+            fieldsFollowFileOrder: currentPlugin.map { type(of: $0).sourceFieldsFollowFileOrder } ?? false
+        )
+    }
+
     private var mappingTable: some View {
         VStack(spacing: 0) {
+            mappingToolbar
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+            Divider()
             HStack(spacing: 12) {
                 Toggle(String(localized: "Import all fields"), isOn: allMappingsIncluded)
                     .labelsHidden()
@@ -419,7 +473,7 @@ struct RowImportSheet: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(mappings) { row in
+                    ForEach(mapping.rows) { row in
                         mappingRow(row)
                     }
                 }
@@ -429,9 +483,9 @@ struct RowImportSheet: View {
         }
     }
 
-    private func mappingRow(_ row: FieldMapping) -> some View {
+    private func mappingRow(_ row: RowImportMapping.Row) -> some View {
         HStack(spacing: 12) {
-            Toggle(row.field.name, isOn: mappingBinding(row).include)
+            Toggle(row.field.name, isOn: mappingBinding(row).choice.include)
                 .labelsHidden()
                 .accessibilityLabel(Text(String(format: String(localized: "Import %@"), row.field.name)))
                 .frame(width: 16)
@@ -443,15 +497,15 @@ struct RowImportSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Picker(String(format: String(localized: "Column for %@"), row.field.name),
-                   selection: mappingBinding(row).targetColumn) {
+                   selection: mappingBinding(row).choice.column) {
                 Text("Skip").tag(String?.none)
-                ForEach(targetColumns, id: \.self) { column in
+                ForEach(mapping.columns, id: \.self) { column in
                     Text(column).tag(String?.some(column))
                 }
             }
             .labelsHidden()
             .frame(width: 240, alignment: .leading)
-            .disabled(!row.include)
+            .disabled(!row.choice.include)
         }
     }
 
@@ -490,7 +544,7 @@ struct RowImportSheet: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(newColumns) { row in
+                    ForEach(newTable.columns) { row in
                         newColumnRow(row)
                     }
                 }
@@ -500,81 +554,83 @@ struct RowImportSheet: View {
         }
     }
 
-    private func newColumnRow(_ row: NewColumn) -> some View {
-        HStack(spacing: 10) {
-            Toggle(row.name, isOn: columnBinding(row).include)
+    private func newColumnRow(_ row: NewTableColumn) -> some View {
+        let column = row.settings
+        let settings = columnBinding(row).settings
+        return HStack(spacing: 10) {
+            Toggle(column.name, isOn: settings.include)
                 .labelsHidden()
-                .accessibilityLabel(Text(String(format: String(localized: "Create %@"), row.name)))
+                .accessibilityLabel(Text(String(format: String(localized: "Create %@"), column.name)))
                 .frame(width: 16)
-            TextField("name", text: columnBinding(row).name)
+            TextField("name", text: settings.name)
+                .accessibilityLabel(String(localized: "Column name"))
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 150)
-                .disabled(!row.include)
+                .disabled(!column.include)
             Picker(String(localized: "Type"), selection: typeBinding(row)) {
-                ForEach(typeOptions(including: row.type), id: \.self) { type in
+                ForEach(typeOptions(including: column.type), id: \.self) { type in
                     Text(type).tag(type)
                 }
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .accessibilityLabel(Text(String(format: String(localized: "Type of %@"), row.name)))
+            .accessibilityLabel(Text(String(format: String(localized: "Type of %@"), column.name)))
             .frame(width: 150)
-            .disabled(!row.include)
-            Toggle(String(localized: "Primary key"), isOn: columnBinding(row).isPrimaryKey)
+            .disabled(!column.include)
+            Toggle(String(localized: "Primary key"), isOn: settings.isPrimaryKey)
                 .labelsHidden()
-                .accessibilityLabel(Text(String(format: String(localized: "%@ is a primary key"), row.name)))
+                .accessibilityLabel(Text(String(format: String(localized: "%@ is a primary key"), column.name)))
                 .frame(minWidth: 30)
-                .disabled(!row.include)
-            Toggle(String(localized: "Nullable"), isOn: columnBinding(row).isNullable)
+                .disabled(!column.include)
+            Toggle(String(localized: "Nullable"), isOn: settings.isNullable)
                 .labelsHidden()
-                .accessibilityLabel(Text(String(format: String(localized: "%@ accepts null"), row.name)))
+                .accessibilityLabel(Text(String(format: String(localized: "%@ accepts null"), column.name)))
                 .frame(minWidth: 30)
-                .disabled(!row.include)
-            TextField(String(localized: "Default, as SQL"), text: columnBinding(row).defaultValue)
+                .disabled(!column.include)
+            TextField(String(localized: "Default, as SQL"), text: settings.defaultValue)
                 .labelsHidden()
-                .accessibilityLabel(Text(String(format: String(localized: "Default SQL for %@"), row.name)))
+                .accessibilityLabel(Text(String(format: String(localized: "Default SQL for %@"), column.name)))
                 .help(String(localized: "The SQL after DEFAULT. A text value needs its own quotes."))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: .infinity)
-                .disabled(!row.include)
+                .disabled(!column.include)
         }
     }
 
     // MARK: - Bindings
 
-    private func mappingBinding(_ row: FieldMapping) -> Binding<FieldMapping> {
-        guard let index = mappings.firstIndex(where: { $0.id == row.id }) else {
+    private func mappingBinding(_ row: RowImportMapping.Row) -> Binding<RowImportMapping.Row> {
+        guard let index = mapping.rows.firstIndex(where: { $0.id == row.id }) else {
             return .constant(row)
         }
-        return $mappings[index]
+        return $mapping.rows[index]
     }
 
-    private func columnBinding(_ row: NewColumn) -> Binding<NewColumn> {
-        guard let index = newColumns.firstIndex(where: { $0.id == row.id }) else {
+    private func columnBinding(_ row: NewTableColumn) -> Binding<NewTableColumn> {
+        guard let index = newTable.columns.firstIndex(where: { $0.id == row.id }) else {
             return .constant(row)
         }
-        return $newColumns[index]
+        return $newTable.columns[index]
     }
 
     private var allMappingsIncluded: Binding<Bool> {
         Binding(
-            get: { !mappings.isEmpty && mappings.allSatisfy(\.include) },
-            set: { value in for index in mappings.indices { mappings[index].include = value } }
+            get: { !mapping.rows.isEmpty && mapping.rows.allSatisfy(\.choice.include) },
+            set: { mapping.setAllIncluded($0) }
         )
     }
 
     private var allColumnsIncluded: Binding<Bool> {
         Binding(
-            get: { !newColumns.isEmpty && newColumns.allSatisfy(\.include) },
-            set: { value in for index in newColumns.indices { newColumns[index].include = value } }
+            get: { newTable.includesEveryColumn },
+            set: { newTable.setAllIncluded($0) }
         )
     }
 
     private var validationMessage: String? {
         switch destination {
         case .existingTable:
-            let columns = mappings.filter { $0.include }.compactMap { $0.targetColumn?.lowercased() }
-            if Set(columns).count != columns.count {
+            if mapping.mapsOneColumnTwice {
                 return String(localized: "Each column can be mapped from only one field.")
             }
             return nil
@@ -600,16 +656,14 @@ struct RowImportSheet: View {
                     )
                 }
             }
-            let names = newColumns
-                .filter { $0.include }
-                .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
-            if names.contains(where: \.isEmpty) {
+            switch newTable.problem {
+            case .unnamedColumn:
                 return String(localized: "Every included column needs a name.")
-            }
-            if Set(names).count != names.count {
+            case .duplicateName:
                 return String(localized: "Column names must be unique.")
+            case nil:
+                return nil
             }
-            return nil
         }
     }
 
@@ -623,11 +677,12 @@ struct RowImportSheet: View {
     /// The selection has to be one of the options by exact spelling or the menu draws blank, and
     /// `typeOptions` suppresses its insert on a case-insensitive match. The getter resolves through
     /// the same comparison so a differently-cased stored type still selects its own row.
-    private func typeBinding(_ row: NewColumn) -> Binding<String> {
-        let options = typeOptions(including: row.type)
+    private func typeBinding(_ row: NewTableColumn) -> Binding<String> {
+        let type = row.settings.type
+        let options = typeOptions(including: type)
         return Binding(
-            get: { options.first { $0.caseInsensitiveCompare(row.type) == .orderedSame } ?? row.type },
-            set: { columnBinding(row).type.wrappedValue = $0 }
+            get: { options.first { $0.caseInsensitiveCompare(type) == .orderedSame } ?? type },
+            set: { columnBinding(row).settings.type.wrappedValue = $0 }
         )
     }
 
@@ -646,13 +701,31 @@ struct RowImportSheet: View {
     }
 
     private var canImport: Bool {
-        guard !(importService?.state.isImporting ?? false), validationMessage == nil else { return false }
+        guard !(importService?.state.isImporting ?? false), validationMessage == nil, currentReadIsReady else {
+            return false
+        }
         switch destination {
         case .existingTable:
-            return selectedTargetTable != nil && mappings.contains { $0.include && $0.targetColumn != nil }
+            return selectedTargetTable != nil && mapping.hasMappedField
         case .newTable:
-            return !newTableName.trimmingCharacters(in: .whitespaces).isEmpty
-                && newColumns.contains { $0.include && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            return !newTableName.trimmingCharacters(in: .whitespaces).isEmpty && newTable.hasNamedColumn
+        }
+    }
+
+    /// Import runs only what the rows show: a read of the file with the current options, into the current
+    /// table and database, that finished without an error.
+    private var currentReadIsReady: Bool {
+        guard !isLoadingContext, loadError == nil else { return false }
+        return currentReadHasLanded
+    }
+
+    /// The rows on screen answer the read for the current destination, table, database and options.
+    private var currentReadHasLanded: Bool {
+        switch destination {
+        case .existingTable:
+            return mapping.loadedRead == AnyHashable(sourceRead)
+        case .newTable:
+            return lastNewColumnsRead == sourceRead
         }
     }
 
@@ -662,23 +735,25 @@ struct RowImportSheet: View {
     /// "Select a table…" and nothing else with no way to tell an empty database from an unreachable
     /// one, and no way to ask again.
     ///
-    /// Read through the browse scope, which is what the import itself writes to. The shared session
-    /// driver is wherever a tab's execution last pinned it and nothing puts it back, so reading from
-    /// it listed one database's tables and mapped their columns while the rows went to another's.
+    /// Read through the sheet's own scope, the browse scope it took on opening, which is what the
+    /// import writes to. The shared session driver is wherever a tab's execution last pinned it and
+    /// nothing puts it back, so reading from it listed one database's tables and mapped their columns
+    /// while the rows went to another's.
     @MainActor
     private func loadTables() async {
         guard !isLoadingTables else { return }
         isLoadingTables = true
         defer { isLoadingTables = false }
-        guard DatabaseManager.shared.browseScope(for: connection.id) != nil else {
+        if scope == nil {
+            scope = DatabaseManager.shared.browseScope(for: connection.id)
+        }
+        guard let scope else {
             catalogNameKeys = nil
             tableListError = String(localized: "This connection is not open.")
             return
         }
         do {
-            databaseObjects = try await DatabaseManager.shared.withBrowseMetadataDriver(
-                connectionId: connection.id
-            ) { driver in
+            databaseObjects = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchTables()
             }
             catalogNameKeys = NewTableNaming.comparisonKeys(for: databaseObjects.map(\.name))
@@ -687,7 +762,7 @@ struct RowImportSheet: View {
         } catch {
             catalogNameKeys = nil
             tableListError = error.localizedDescription
-            Self.logger.warning("Failed to load tables: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load tables: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -702,9 +777,9 @@ struct RowImportSheet: View {
     @MainActor
     private func suggestNewTableName() {
         guard newTableName.isEmpty || newTableName == proposedTableName else { return }
-        let ours = NewTableNaming.comparisonKeys(for: createdTables.keys)
+        let ours = NewTableNaming.comparisonKeys(for: scope.map(newTablePlanner.createdTableNames(in:)) ?? [])
         let suggestion = NewTableNaming.suggestion(
-            forFileNamed: fileURL.lastPathComponent,
+            forFileNamed: sourceName,
             style: NewTableNameStyle.forDatabaseType(connection.type),
             avoiding: (catalogNameKeys ?? []).subtracting(ours)
         )
@@ -712,179 +787,187 @@ struct RowImportSheet: View {
         newTableName = suggestion
     }
 
-    /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the
-    /// whole workbook, the CSV one reads a megabyte. Every state write stays on the main actor,
-    /// only the parse leaves it.
-    nonisolated private static func detectFields(
-        plugin: any ImportFormatPlugin,
-        at url: URL,
-        targetTable: String?
-    ) async throws -> [PluginImportField] {
-        try await Task.detached {
-            try plugin.detectSourceFields(at: url, targetTable: targetTable)
-        }.value
+    private var sourceRead: SourceRead {
+        let isExisting = destination == .existingTable
+        return SourceRead(
+            destination: destination,
+            scope: isExisting ? scope : nil,
+            table: isExisting ? selectedTargetTable : nil,
+            signature: detectionSignature,
+            attempt: readAttempts[destination, default: 0]
+        )
     }
 
+    /// A read that succeeded is not repeated when switching back to its destination, and it clears an
+    /// error the other destination left on screen.
     @MainActor
-    private func loadNewColumns() async {
-        guard !newColumnsLoaded, let plugin = currentPlugin else { return }
-        isLoadingContext = true
-        loadError = nil
-        defer { isLoadingContext = false }
-        do {
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
-            let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
-            newColumns = fields.map { field in
-                NewColumn(
-                    field: field,
-                    include: true,
-                    name: field.name,
-                    type: ImportTypeMapper.sqlType(
-                        for: field.inferredType,
-                        databaseType: connection.type,
-                        serverVersion: serverVersion
-                    ),
-                    isPrimaryKey: false,
-                    isNullable: true,
-                    defaultValue: ""
-                )
+    private func read(_ request: SourceRead) async {
+        switch request.destination {
+        case .existingTable:
+            guard let table = request.table else {
+                isLoadingContext = false
+                return
             }
-            newColumnsLoaded = true
-        } catch {
-            loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            guard mapping.loadedRead != AnyHashable(request) else {
+                showCachedRead()
+                return
+            }
+            await loadExistingContext(table: table, for: request)
+        case .newTable:
+            guard lastNewColumnsRead != request else {
+                showCachedRead()
+                return
+            }
+            await loadNewColumns(for: request)
         }
     }
 
+    private func showCachedRead() {
+        isLoadingContext = false
+        loadError = nil
+    }
+
     @MainActor
-    private func loadExistingContext(table: String) async {
-        guard let plugin = currentPlugin,
-              DatabaseManager.shared.browseScope(for: connection.id) != nil else { return }
+    private func loadNewColumns(for request: SourceRead) async {
+        guard let plugin = currentPlugin else {
+            isLoadingContext = false
+            return
+        }
         isLoadingContext = true
         loadError = nil
-        defer { isLoadingContext = false }
         do {
-            let columns = try await DatabaseManager.shared.withBrowseMetadataDriver(
-                connectionId: connection.id
-            ) { driver in
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
+            guard !Task.isCancelled else { return }
+            let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
+            newTable.load(fields: fields) { inferredType in
+                ImportTypeMapper.sqlType(for: inferredType, databaseType: connection.type, serverVersion: serverVersion)
+            }
+            lastNewColumnsRead = request
+        } catch {
+            guard !Task.isCancelled else { return }
+            loadError = error.localizedDescription
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
+        }
+        isLoadingContext = false
+    }
+
+    @MainActor
+    private func loadExistingContext(table: String, for request: SourceRead) async {
+        guard let plugin = currentPlugin, let scope = request.scope else {
+            isLoadingContext = false
+            return
+        }
+        isLoadingContext = true
+        loadError = nil
+        do {
+            let columns = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchColumns(table: table)
             }.map(\.name)
-            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
-            targetColumns = columns
-            mappings = fields.map { field in
-                let match = columns.first { $0.caseInsensitiveCompare(field.name) == .orderedSame }
-                return FieldMapping(field: field, include: match != nil, targetColumn: match)
-            }
+            guard !Task.isCancelled else { return }
+            let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: table)
+            guard !Task.isCancelled else { return }
+            mapping.load(fields: fields, columns: columns, for: TableScope(table: table, in: scope), read: request)
         } catch {
+            guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
-    }
-
-    @MainActor
-    private func redetectFields() async {
-        switch destination {
-        case .existingTable:
-            guard let table = selectedTargetTable else { return }
-            await loadExistingContext(table: table)
-        case .newTable:
-            newColumnsLoaded = false
-            await loadNewColumns()
-        }
+        isLoadingContext = false
     }
 
     // MARK: - Import
 
     private func performImport() {
+        guard let scope else {
+            importError = DatabaseError.notConnected
+            showErrorDialog = true
+            return
+        }
+        guard currentReadIsReady else {
+            if !isLoadingContext {
+                readAttempts[destination, default: 0] += 1
+            }
+            return
+        }
         switch destination {
         case .existingTable:
             guard let table = selectedTargetTable else { return }
-            runImport(targetTable: table, mapping: existingMapping(), createTableSQL: nil)
+            runImport(
+                ImportPlan(
+                    targetTable: table,
+                    fields: mapping.fields,
+                    columns: mapping.columns,
+                    columnMapping: mapping.columnMapping,
+                    newTable: nil
+                ),
+                scope: scope
+            )
         case .newTable:
             let name = newTableName.trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty, let sql = buildCreateTableSQL(tableName: name) else {
-                importError = NSError(
-                    domain: "RowImport", code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not build the CREATE TABLE statement")]
-                )
+            guard !name.isEmpty, let definition = newTable.definition(tableName: name) else {
+                importError = Self.createTableStatementError
                 showErrorDialog = true
                 return
             }
-            runImport(targetTable: name, mapping: newTableMapping(), createTableSQL: sql)
+            let columnMapping = newTable.columnMapping
+            let fields = newTable.fields
+            runImport(
+                ImportPlan(
+                    targetTable: name,
+                    fields: fields,
+                    columns: fields.compactMap { columnMapping[$0] },
+                    columnMapping: columnMapping,
+                    newTable: definition
+                ),
+                scope: scope
+            )
         }
     }
 
-    private func existingMapping() -> [String: String] {
-        var mapping: [String: String] = [:]
-        for entry in mappings where entry.include {
-            if let column = entry.targetColumn {
-                mapping[entry.field.name] = column
-            }
-        }
-        return mapping
-    }
-
-    private func newTableMapping() -> [String: String] {
-        var mapping: [String: String] = [:]
-        for column in newColumns where column.include && !column.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            mapping[column.field.name] = column.name
-        }
-        return mapping
-    }
-
-    private func buildCreateTableSQL(tableName: String) -> String? {
-        let included = newColumns.filter {
-            $0.include
-                && !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
-                && !$0.type.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        guard !included.isEmpty else { return nil }
-
-        let definition = PluginCreateTableDefinition(
-            tableName: tableName,
-            columns: included.map { column in
-                PluginColumnDefinition(
-                    name: column.name,
-                    dataType: column.type,
-                    isNullable: column.isNullable,
-                    defaultValue: column.defaultValue.isEmpty ? nil : column.defaultValue,
-                    isPrimaryKey: column.isPrimaryKey,
-                    autoIncrement: false,
-                    comment: nil,
-                    unsigned: false,
-                    onUpdate: nil,
-                    charset: nil,
-                    collation: nil
-                )
-            },
-            primaryKeyColumns: included.filter(\.isPrimaryKey).map(\.name)
+    private static var createTableStatementError: NSError {
+        NSError(
+            domain: "RowImport", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not build the CREATE TABLE statement")]
         )
-
-        let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
-        return pluginDriver?.generateCreateTableSQL(definition: definition)
     }
 
-    private func runImport(targetTable: String, mapping: [String: String], createTableSQL: String?) {
+    private func runImport(_ plan: ImportPlan, scope: DatabaseScope) {
         let service = ImportService(connection: connection)
         importService = service
         showProgressDialog = true
+        let targetTable = plan.targetTable
 
         importTask = Task {
             do {
-                if let createTableSQL {
-                    try await prepareTable(named: targetTable, sql: createTableSQL)
+                if let newTable = plan.newTable {
+                    try await prepareTable(newTable, scope: scope)
                 }
+                mapping.remember(
+                    fields: plan.fields,
+                    columns: plan.columns,
+                    columnMapping: plan.columnMapping,
+                    in: TableScope(table: targetTable, in: scope)
+                )
                 let result = try await service.importFile(
                     from: fileURL,
+                    sourceName: sourceName,
                     formatId: formatId,
                     encoding: .utf8,
+                    scope: scope,
                     targetTable: targetTable,
-                    columnMapping: mapping
+                    columnMapping: plan.columnMapping,
+                    sourceFields: Set(plan.fields)
                 )
                 await MainActor.run {
                     showProgressDialog = false
                     importSucceeded = true
                     importResult = result
+                    importedRows = DatabaseObjectChange(
+                        connectionId: connection.id,
+                        scope: scope,
+                        name: targetTable,
+                        kind: .rows
+                    )
                     showSuccessDialog = true
                 }
             } catch is PluginImportCancellationError {
@@ -906,15 +989,28 @@ struct RowImportSheet: View {
     }
 
     @MainActor
-    private func prepareTable(named tableName: String, sql: String) async throws {
-        switch NewTableImportPlanner.plan(
-            forTable: tableName, createTableSQL: sql, alreadyCreated: createdTables
-        ) {
+    private func prepareTable(_ definition: PluginCreateTableDefinition, scope: DatabaseScope) async throws {
+        guard ImportDataSinkAdapter.canWriteRows(into: connection.type) else {
+            throw PluginImportError.importFailed(String(
+                format: String(localized: "%@ cannot take rows from this file, so no table was created."),
+                connection.type.rawValue
+            ))
+        }
+        let tableName = definition.tableName
+        let table = TableScope(table: tableName, in: scope)
+        let statements = try await DatabaseManager.shared.createTableStatements(
+            definition: definition,
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope)
+        )
+        guard !statements.isEmpty else { throw Self.createTableStatementError }
+        let sql = statements.joined(separator: "\n")
+        switch newTablePlanner.plan(forTable: table, createTableSQL: sql) {
         case .create:
-            try await createTable(sql: sql)
-            createdTables[tableName] = sql
+            try await createTable(statements: statements, scope: scope)
+            newTablePlanner.recordCreated(table, createTableSQL: sql)
         case .reuseAfterClearing:
-            try await clearRows(of: tableName)
+            try await clearRows(of: tableName, scope: scope)
         case .nameTakenWithDifferentColumns:
             throw PluginImportError.importFailed(
                 String(
@@ -926,7 +1022,7 @@ struct RowImportSheet: View {
     }
 
     @MainActor
-    private func clearRows(of tableName: String) async throws {
+    private func clearRows(of tableName: String, scope: DatabaseScope) async throws {
         let generator = try SQLStatementGenerator(
             tableName: tableName,
             columns: [],
@@ -937,15 +1033,22 @@ struct RowImportSheet: View {
         try await authorize(
             sql: sql, kind: .destructiveQuery, description: String(localized: "Clear Table")
         )
-        try await runOnLeasedDriver(sql)
+        try await runOnLeasedDriver(sql, scope: scope)
     }
 
-    private func createTable(sql: String) async throws {
+    /// One call per statement the driver wrote, because an engine that runs one statement per call refuses a table
+    /// and its indexes sent together.
+    private func createTable(statements: [String], scope: DatabaseScope) async throws {
+        let script = SQLScriptText(databaseType: connection.type).script(statements)
         try await authorize(
-            sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
+            sql: script, kind: .schemaMutation, description: String(localized: "Create Table")
         )
-        try await runOnLeasedDriver(sql)
-        CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .tables)))
+        for statement in statements {
+            try await runOnLeasedDriver(statement, scope: scope)
+        }
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .tables))
+        )
     }
 
     /// The sheet's own statements take the same lease the import does, one at a time and always
@@ -953,10 +1056,7 @@ struct RowImportSheet: View {
     /// across a safe-mode confirmation the user has not answered yet, and the gate is not
     /// reentrant, so the import that follows would then wait on a sheet waiting on the user.
     @MainActor
-    private func runOnLeasedDriver(_ sql: String) async throws {
-        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
-            throw DatabaseError.notConnected
-        }
+    private func runOnLeasedDriver(_ sql: String, scope: DatabaseScope) async throws {
         let route = DatabaseManager.shared.executionRoute(for: scope)
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,

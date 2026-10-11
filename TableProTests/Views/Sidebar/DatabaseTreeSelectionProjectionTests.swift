@@ -11,7 +11,6 @@ import Testing
 
 /// The tree publishes this projection into `windowState.selectedTables`, which is what the Table
 /// menu's Truncate, Copy Name and Delete commands read.
-@Suite("Database tree selection projection")
 struct DatabaseTreeSelectionProjectionTests {
     private func table(_ name: String, schema: String? = "public") -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: nil, schema: schema)

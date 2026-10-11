@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Container tab history")
 @MainActor
 struct ContainerTabHistoryTests {
     private func tableTab(_ name: String, database: String, schema: String? = nil) -> QueryTab {

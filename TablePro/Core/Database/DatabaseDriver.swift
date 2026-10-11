@@ -25,6 +25,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
 
+    /// The lexical facts the server decided for this session and the driver has read. See
+    /// `PluginDatabaseDriver.sessionLexicalState`.
+    var sessionLexicalState: PluginSessionLexicalState? { get }
+
     // MARK: - Connection Management
 
     /// Connect to the database
@@ -88,12 +92,28 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
+    /// result set it produced.
+    var supportsResultSetBatches: Bool { get }
+
+    /// Send `query` as one batch and read it to the end. Returns nil when the driver cannot, and the caller runs the
+    /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
+    func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
     func fetchTables() async throws -> [TableInfo]
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
+
+    /// Every schema's tables in one call, or nil when the engine has no such call and the caller
+    /// has to ask each schema itself. `CatalogTableListing` is the caller that does.
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]?
+
+    /// What `fetchTables(schema:)` lists for each named schema, in one call, each row with its own
+    /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
 
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
@@ -149,6 +169,33 @@ protocol DatabaseDriver: AnyObject, Sendable {
     var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
     var unsupportedIndexTypes: Set<String> { get }
 
+    /// Why the connected server has no check constraints to list or edit, or nil when it has.
+    var checkConstraintRefusal: String? { get }
+
+    /// The save-level questions of a Structure save. See `PluginDatabaseDriver` for each. The
+    /// defaults approve every save, find every save finished and keep nothing to forget.
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String?
+
+    func tableDefinitionDidChange(table: String, schema: String?)
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -172,6 +219,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch an exact row count for a user-initiated request. Drivers that cap their automatic
     /// counts to keep browsing responsive must not apply that cap here.
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+
+    /// The exact count of a browse narrowed by a search the plugin defines, such as Redis's key
+    /// pattern and type, rather than by table filters. Nil when the driver has no such count.
+    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
 
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
@@ -220,6 +271,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch every named type the user created in the given schema, or the current schema if nil.
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo]
 
+    /// Every named type of each listed schema in one call, sorted by schema then name. Nil means the
+    /// caller asks each schema itself.
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]?
+
     /// Read one type again, definition and labels included. The type must be one this driver
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
@@ -245,6 +300,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func createDatabase(_ request: CreateDatabaseRequest) async throws
 
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec?
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String]
+
     func dropDatabase(name: String) async throws
 
     func dropSchema(name: String) async throws
@@ -254,6 +313,12 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func renameDatabase(name: String, to newName: String) async throws
 
     func renameSchema(name: String, to newName: String) async throws
+
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String?
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws
+
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String?
 
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
 
@@ -325,6 +390,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Rollback the current transaction
     func rollbackTransaction() async throws
 
+    /// What the session is holding, so nothing the app owns opens, commits or rolls back a
+    /// transaction over one the user already has open on the same session.
+    func sessionTransactionState() async -> PluginSessionTransactionState
+
+    /// Reads and consumes what the session printed on the server since the last read.
+    func fetchServerOutput() async throws -> PluginServerOutput
+
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
 
@@ -381,11 +453,17 @@ extension DatabaseDriver {
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
 
+    var sessionLexicalState: PluginSessionLexicalState? { nil }
+
     func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         try await connect()
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    var supportsResultSetBatches: Bool { false }
+
+    func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
 
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
@@ -403,6 +481,10 @@ extension DatabaseDriver {
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
         try await beginTransaction()
     }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
+    func fetchServerOutput() async throws -> PluginServerOutput { .none }
 
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)
@@ -469,6 +551,35 @@ extension DatabaseDriver {
 
     var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
     var unsupportedIndexTypes: Set<String> { [] }
+    var checkConstraintRefusal: String? { nil }
+
+    func reviewSchemaChange(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation]
+    ) async throws -> PluginSchemaChangeReview {
+        PluginSchemaChangeReview()
+    }
+
+    func schemaChangeRefusalBeforeWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func schemaChangeShortfallAfterWriting(
+        table: String,
+        schema: String?,
+        operations: [PluginSchemaOperation],
+        review: PluginSchemaChangeReview
+    ) async throws -> String? {
+        nil
+    }
+
+    func tableDefinitionDidChange(table: String, schema: String?) {}
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
@@ -506,6 +617,18 @@ extension DatabaseDriver {
         throw PluginDriverUnsupportedOperation.renameSchema
     }
 
+    func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
+    func executeDocumentWrite(_ write: PluginDocumentWrite) async throws {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
+    func fetchDocument(table: String, schema: String?, locator: String) async throws -> String? {
+        throw PluginDriverUnsupportedOperation.writeDocument
+    }
+
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
 
     func renameSchemaStatements(name: String, to newName: String) -> [String]? { nil }
@@ -518,6 +641,12 @@ extension DatabaseDriver {
     func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
+
+    func createTableFormSpec(schema: String?) -> PluginCreateTableFormSpec? { nil }
+
+    func createTableStatements(for request: PluginCreateTableRequest, schema: String?) throws -> [String] {
+        throw PluginCreateTableFormError(message: String(localized: "This database has no Create Table form"))
+    }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
 
@@ -652,6 +781,7 @@ extension DatabaseDriver {
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
     }
+    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int? { nil }
 
     func maintenanceOperations() -> [PluginMaintenanceOperation]? { nil }
     func maintenanceStatements(
@@ -683,6 +813,10 @@ extension DatabaseDriver {
         try await fetchTables()
     }
 
+    func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
+
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
@@ -690,6 +824,8 @@ extension DatabaseDriver {
     }
 
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [UserDefinedTypeInfo]? { nil }
 
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {
@@ -730,65 +866,247 @@ extension DatabaseDriver {
     }
 }
 
+/// Which of the app's connections a driver is, so a plugin can name it to the server.
+enum DriverPurpose: String, Sendable {
+    case session
+    case metadata
+}
+
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
+    struct PreparedDriverConfiguration: Sendable {
+        fileprivate let connectionId: UUID
+        fileprivate let databaseTypeId: String
+        fileprivate let purpose: DriverPurpose
+        fileprivate let username: String
+        fileprivate let sourceAdditionalFields: [String: String]
+        fileprivate let additionalFields: [String: String]
+    }
+
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+
+    static func prepareConfiguration(
+        for connection: DatabaseConnection,
+        purpose: DriverPurpose = .session
+    ) async throws -> PreparedDriverConfiguration {
+        try await PluginManager.shared.prepareForConnecting(to: connection.type)
+        guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
+            throw PluginManager.shared.driverUnavailableError(for: connection.type)
+        }
+
+        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
+        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
+           !sslClientKeyPassphrase.isEmpty {
+            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
+        if connection.usesIAMToken {
+            additionalFields["enableCleartextPlugin"] = "true"
+        }
+        additionalFields["connectionId"] = connection.id.uuidString
+        additionalFields["connectionPurpose"] = purpose.rawValue
+        additionalFields = try LoadableExtensionGate.authorizedFields(additionalFields, for: connection)
+
+        return PreparedDriverConfiguration(
+            connectionId: connection.id,
+            databaseTypeId: connection.type.pluginTypeId,
+            purpose: purpose,
+            username: ConnectionCredentialResolver.resolveUsername(for: connection),
+            sourceAdditionalFields: connection.additionalFields,
+            additionalFields: additionalFields
+        )
+    }
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.
     static func createDriver(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil,
-        awaitPlugins: Bool
+        awaitPlugins: Bool,
+        purpose: DriverPurpose = .session,
+        deadline: ConnectionDeadline? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
+        effectiveQueryTimeoutSeconds: Int? = nil,
+        preparedConfiguration: PreparedDriverConfiguration? = nil
     ) async throws -> DatabaseDriver {
-        try await PluginManager.shared.prepareForConnecting(to: connection.type)
-        return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+        let prepared: PreparedDriverConfiguration
+        if let preparedConfiguration {
+            prepared = preparedConfiguration
+        } else {
+            prepared = try await prepareConfiguration(
+                for: connection,
+                purpose: purpose
+            )
+        }
+        guard prepared.connectionId == connection.id,
+              prepared.databaseTypeId == connection.type.pluginTypeId,
+              prepared.purpose == purpose
+        else {
+            throw DatabaseError.connectionFailed(String(localized: "The prepared connection no longer matches this driver."))
+        }
+        let connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
+        let endpoint = timeoutEndpoint ?? .database(connection.timeoutEndpointName)
+        let requiresHostDeadline = ConnectionTimeoutPolicy.requiresHostDeadline(for: connection)
+        if requiresHostDeadline {
+            try connectionDeadline.check(endpoint: endpoint)
+        }
+        return try await createDriverFromPlugin(
+            for: connection,
+            preparedConfiguration: prepared,
+            passwordOverride: passwordOverride,
+            deadline: connectionDeadline,
+            timeoutEndpoint: endpoint,
+            effectiveQueryTimeoutSeconds: effectiveQueryTimeoutSeconds,
+            requiresHostDeadline: requiresHostDeadline
+        )
     }
 
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
-        passwordOverride: String? = nil
+        preparedConfiguration: PreparedDriverConfiguration,
+        passwordOverride: String?,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        effectiveQueryTimeoutSeconds providedQueryTimeoutSeconds: Int?,
+        requiresHostDeadline: Bool
     ) async throws -> DatabaseDriver {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
         }
-        var ssl = connection.sslConfig
-        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
-        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
-           !sslClientKeyPassphrase.isEmpty {
-            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
-        }
-        if connection.usesAWSIAM {
-            if ssl.mode == .disabled || ssl.mode == .preferred {
-                ssl.mode = .required
+        var additionalFields = mergeEffectiveAdditionalFields(
+            prepared: preparedConfiguration.additionalFields,
+            source: preparedConfiguration.sourceAdditionalFields,
+            effective: connection.additionalFields
+        )
+        let credentialFields = additionalFields
+        let passwordMinter = ConnectionCredentialResolver.iamPasswordMinter(for: connection, fields: credentialFields)
+        let password: String
+        if requiresHostDeadline {
+            password = try await resolvePasswordWithinDeadline(
+                deadline: deadline,
+                endpoint: timeoutEndpoint
+            ) {
+                try await ConnectionCredentialResolver.resolvePassword(
+                    for: connection,
+                    fields: credentialFields,
+                    override: passwordOverride,
+                    deadline: deadline
+                )
             }
-            additionalFields["enableCleartextPlugin"] = "true"
+        } else {
+            password = try await ConnectionCredentialResolver.resolvePassword(
+                for: connection,
+                fields: credentialFields,
+                override: passwordOverride,
+                deadline: nil
+            )
         }
-        additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
-        additionalFields["connectionId"] = connection.id.uuidString
+        let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: providedQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+        let configurationSample = ContinuousClock.now
+        if requiresHostDeadline {
+            try deadline.check(endpoint: timeoutEndpoint, at: configurationSample)
+        }
+        for (key, value) in timeoutAdditionalFields(
+            deadline: deadline,
+            effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
+            databaseType: connection.type,
+            usesRemainingBudget: requiresHostDeadline,
+            at: configurationSample
+        ) {
+            additionalFields[key] = value
+        }
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: ConnectionCredentialResolver.resolveUsername(for: connection),
-            password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
+            username: preparedConfiguration.username,
+            password: password,
             database: connection.database,
-            ssl: ssl,
-            additionalFields: additionalFields
+            ssl: connection.transportSSLConfiguration,
+            additionalFields: additionalFields,
+            refreshPassword: passwordMinter?.refreshPassword
         )
         let pluginDriver = plugin.createDriver(config: config)
-        return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        return PluginDriverAdapter(
+            connection: connection,
+            pluginDriver: pluginDriver,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
+            requiresHostDeadline: requiresHostDeadline
+        )
     }
 
-    private static func resolvePassword(
-        for connection: DatabaseConnection,
-        fields: [String: String],
-        override: String? = nil
+    static func mergeEffectiveAdditionalFields(
+        prepared: [String: String],
+        source: [String: String],
+        effective: [String: String]
+    ) -> [String: String] {
+        var merged = prepared
+        for key in Set(source.keys).union(effective.keys) where source[key] != effective[key] {
+            merged[key] = effective[key]
+        }
+        return merged
+    }
+
+    static func timeoutAdditionalFields(
+        deadline: ConnectionDeadline,
+        effectiveQueryTimeoutSeconds: Int,
+        databaseType: DatabaseType? = nil,
+        usesRemainingBudget: Bool = true,
+        at now: ContinuousClock.Instant = .now
+    ) -> [String: String] {
+        let connectTimeoutSeconds = usesRemainingBudget
+            ? max(1, deadline.remainingSeconds(at: now))
+            : deadline.configuredSeconds
+        let connectTimeoutMilliseconds = usesRemainingBudget
+            ? max(1, deadline.remainingMilliseconds(at: now))
+            : deadline.configuredSeconds * 1_000
+        var fields = [
+            "connectTimeoutSeconds": String(connectTimeoutSeconds),
+            "connectTimeoutMilliseconds": String(connectTimeoutMilliseconds),
+            "queryTimeoutSeconds": String(effectiveQueryTimeoutSeconds)
+        ]
+        if databaseType == .kafka {
+            fields["kafkaConnectTimeout"] = fields["connectTimeoutSeconds"]
+        }
+        return fields
+    }
+
+    static func resolvePasswordWithinDeadline(
+        deadline: ConnectionDeadline,
+        endpoint: ConnectionTimeoutEndpoint,
+        resolver: @escaping @MainActor @Sendable () async throws -> String
     ) async throws -> String {
-        try await ConnectionCredentialResolver.resolvePassword(
-            for: connection,
-            fields: fields,
-            override: override
+        try deadline.check(endpoint: endpoint)
+        let gate = ConnectionSingleResumeGate<String>()
+        let operation = Task { @MainActor in
+            do {
+                gate.resume(with: .success(try await resolver()))
+            } catch {
+                gate.resume(with: .failure(error))
+            }
+        }
+        let timeout = Task.detached {
+            do {
+                try await ContinuousClock().sleep(until: deadline.instant)
+            } catch {
+                return
+            }
+            if gate.resume(with: .failure(deadline.timeoutError(for: endpoint))) {
+                operation.cancel()
+            }
+        }
+        defer { timeout.cancel() }
+        return try await withTaskCancellationHandler(
+            operation: { try await gate.wait() },
+            onCancel: {
+                if gate.resume(with: .failure(CancellationError())) {
+                    operation.cancel()
+                }
+            }
         )
     }
 
@@ -816,7 +1134,7 @@ enum DatabaseDriverFactory {
         /// The superset, not the rendered form's list. A connection saved while a variant was
         /// still being offered its primary's whole form holds those values in the Keychain, and
         /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
-        /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
+        /// `AWSIAMTokenSigner`, which reads `awsSecretAccessKey` from here. Loading only what the
         /// form renders today would leave that secret behind and fail the connect, with no AWS
         /// section left in the form to turn it off.
         let credentialProfile = connection.credentialMode.profileId
@@ -843,7 +1161,7 @@ enum DatabaseDriverFactory {
             fields["mongoReadPreference"] = connection.mongoReadPreference ?? ""
             fields["mongoWriteConcern"] = connection.mongoWriteConcern ?? ""
         case .redis:
-            fields["redisDatabase"] = String(connection.redisDatabase ?? 0)
+            fields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
         case .mssql:
             fields["mssqlSchema"] = connection.mssqlSchema ?? "dbo"
         case .oracle:

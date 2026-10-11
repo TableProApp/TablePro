@@ -71,15 +71,15 @@ private final class CountStubDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
-@Suite("Exact row count routing")
 struct ExactRowCounterTests {
     private static let countSQL = "SELECT COUNT(*) FROM `Orders`"
 
     private func count(
         _ stub: CountStubDriver,
-        countSQL: String? = ExactRowCounterTests.countSQL
+        countSQL: String? = ExactRowCounterTests.countSQL,
+        type: DatabaseType = .spanner
     ) async throws -> Int? {
-        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .spanner), pluginDriver: stub)
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: type), pluginDriver: stub)
         return try await ExactRowCounter.count(
             on: adapter, table: "Orders", filters: [], logicMode: .and, countSQL: countSQL
         )
@@ -88,23 +88,100 @@ struct ExactRowCounterTests {
     @Test("A driver that builds its own queries is asked first, and the host SQL follows it")
     func routesQueryBuildingDriversThroughTheDriverFirst() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true)
-                == .driverCountThenHostSQL(Self.countSQL)
+            ExactRowCounter.route(
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: false
+            ) == .driverCountThenHostSQL(Self.countSQL)
         )
     }
 
     @Test("Every other SQL engine keeps the host COUNT query alone")
     func keepsHostSQLForOtherEngines() {
         #expect(
-            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false)
-                == .hostCountSQL(Self.countSQL)
+            ExactRowCounter.route(
+                countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: false
+            ) == .hostCountSQL(Self.countSQL)
         )
     }
 
     @Test("Without host SQL the driver is the only source, whoever builds the queries")
     func withoutHostSQLTheDriverCounts() {
-        #expect(ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true) == .driverCount)
-        #expect(ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false) == .driverCount)
+        #expect(
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: false)
+                == .driverCount
+        )
+        #expect(
+            ExactRowCounter.route(countSQL: nil, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: false)
+                == .driverCount
+        )
+    }
+
+    @Test("A driver that writes a full-scan engine's queries is its only count, whatever host SQL exists")
+    func fullScanEnginesCountThroughTheDriverOnly() {
+        #expect(
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: true, exactRowCountIsFullScan: true)
+                == .driverCount
+        )
+    }
+
+    /// An older Cassandra plugin leaves every query to the app and has no count of its own, so the host's
+    /// `COUNT(*)` is the only count it can give. Routing it to the driver answered Count Exactly with nothing.
+    @Test("A driver that leaves the queries to the app is counted by the host, full scan or not")
+    func driverWithoutQueryBuildingCountsThroughTheHost() {
+        #expect(
+            ExactRowCounter.route(countSQL: Self.countSQL, driverOwnsQueryBuilding: false, exactRowCountIsFullScan: true)
+                == .hostCountSQL(Self.countSQL)
+        )
+    }
+
+    @Test("A Cassandra plugin that builds its browse counts in CQL, and a failure never runs a second scan")
+    func cassandraCountsThroughItsDriver() async throws {
+        let counting = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(7))
+        #expect(try await count(counting, type: .cassandra) == 7)
+        #expect(counting.executedQueries.isEmpty)
+
+        let failing = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
+        await #expect(throws: CountStubError.self) { _ = try await count(failing, type: .cassandra) }
+        #expect(failing.executedQueries.isEmpty)
+    }
+
+    @Test("An older Cassandra plugin is still counted, through the host COUNT")
+    func olderCassandraPluginCountsThroughTheHost() async throws {
+        let older = CountStubDriver(ownsQueryBuilding: false, driverCount: .success(nil))
+
+        _ = try await count(older, type: .cassandra)
+
+        #expect(older.executedQueries == [Self.countSQL])
+    }
+
+    @Test("DynamoDB's driver count is the only count, and the host COUNT never runs")
+    func dynamoDBCountsThroughTheDriver() async throws {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(42))
+
+        let result = try await count(stub, type: .dynamodb)
+
+        #expect(result == 42)
+        #expect(stub.executedQueries.isEmpty)
+    }
+
+    @Test("A DynamoDB driver that has no count leaves it unknown rather than running PartiQL COUNT(*)")
+    func dynamoDBNilCountDoesNotFallBack() async throws {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .success(nil))
+
+        let result = try await count(stub, type: .dynamodb)
+
+        #expect(result == nil)
+        #expect(stub.executedQueries.isEmpty)
+    }
+
+    @Test("A failed DynamoDB count reaches the caller instead of a host COUNT")
+    func dynamoDBFailureIsReported() async {
+        let stub = CountStubDriver(ownsQueryBuilding: true, driverCount: .failure(.refused))
+
+        await #expect(throws: CountStubError.self) {
+            _ = try await count(stub, type: .dynamodb)
+        }
+        #expect(stub.driverCountCallCount == 1)
+        #expect(stub.executedQueries.isEmpty)
     }
 
     @Test("The driver's own count wins and the host COUNT never runs")

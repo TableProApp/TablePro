@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ChatToolArgumentDecoder")
 struct ChatToolArgumentDecoderTests {
     @Test("requireString returns value when key exists and is a string")
     func requireStringPresent() throws {

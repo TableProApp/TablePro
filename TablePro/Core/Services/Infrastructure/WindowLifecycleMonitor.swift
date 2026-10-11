@@ -25,7 +25,6 @@ internal final class WindowLifecycleMonitor {
     }
 
     private var entries: [UUID: Entry] = [:]
-    private var sourceFileWindows: [URL: UUID] = [:]
     private var lastFocusedWindowIds: [UUID: UUID] = [:]
 
     private init() {}
@@ -119,7 +118,6 @@ internal final class WindowLifecycleMonitor {
         }
         guard !staleIds.isEmpty else { return }
         for windowId in staleIds {
-            unregisterSourceFiles(for: windowId)
             guard let entry = entries.removeValue(forKey: windowId) else { continue }
             for observer in entry.observers {
                 NotificationCenter.default.removeObserver(observer)
@@ -131,7 +129,6 @@ internal final class WindowLifecycleMonitor {
 
     /// Remove the UUID mapping for a window.
     internal func unregisterWindow(for windowId: UUID) {
-        unregisterSourceFiles(for: windowId)
         guard let entry = entries.removeValue(forKey: windowId) else { return }
 
         for observer in entry.observers {
@@ -264,29 +261,6 @@ internal final class WindowLifecycleMonitor {
         return entries[windowId]?.window
     }
 
-    // MARK: - Source File Tracking
-
-    internal func registerSourceFile(_ url: URL, windowId: UUID) {
-        sourceFileWindows[url] = windowId
-    }
-
-    internal func unregisterSourceFile(_ url: URL) {
-        sourceFileWindows.removeValue(forKey: url)
-    }
-
-    internal func unregisterSourceFiles(for windowId: UUID) {
-        sourceFileWindows = sourceFileWindows.filter { $0.value != windowId }
-    }
-
-    internal func window(forSourceFile url: URL) -> NSWindow? {
-        guard let windowId = sourceFileWindows[url] else { return nil }
-        guard let window = entries[windowId]?.window else {
-            sourceFileWindows.removeValue(forKey: url)
-            return nil
-        }
-        return window
-    }
-
     // MARK: - Private
 
     /// Remove entries whose window has already been deallocated.
@@ -338,7 +312,6 @@ internal final class WindowLifecycleMonitor {
             for observer in entry.observers {
                 NotificationCenter.default.removeObserver(observer)
             }
-            unregisterSourceFiles(for: windowId)
             entries.removeValue(forKey: windowId)
             forgetFocus(windowId: windowId, connectionId: entry.connectionId)
         }

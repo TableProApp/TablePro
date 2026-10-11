@@ -14,7 +14,6 @@ import UniformTypeIdentifiers
 
 @testable import TablePro
 
-@Suite("Database file types")
 struct DatabaseFileTypesTests {
     private func accepts(_ types: [UTType], _ fileExtension: String) -> Bool {
         types.contains { type in

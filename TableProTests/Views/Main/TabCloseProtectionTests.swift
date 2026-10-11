@@ -13,7 +13,7 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Tab close protection")
+@MainActor
 struct TabCloseProtectionTests {
     private static let columns = ["id", "name", "email"]
     private static let originalRow: [PluginCellValue] = [.text("1"), .text("ada"), .text("ada@example.com")]
@@ -252,6 +252,26 @@ struct TabCloseProtectionTests {
         #expect(coordinator.hasUnsavedWork(in: tab))
     }
 
+    @Test("A Create Table draft holding only a comment is gated, and a blank comment is not")
+    func commentOnlyTableDraftIsGated() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        var tab = QueryTab(query: "")
+        tab.tabType = .createTable
+
+        let draft = CreateTableDraft()
+        draft.changeManager.addNewColumn()
+        coordinator.createTableDrafts[tab.id] = draft
+
+        draft.tableOptions.comment = "   "
+        #expect(!draft.holdsWork)
+
+        draft.tableOptions.comment = "Customer invoices"
+        #expect(draft.holdsWork)
+        #expect(coordinator.hasUnsavedWork(in: tab))
+    }
+
     // MARK: - The dot agrees with the prompt
 
     /// Anything that would raise the save prompt is marked before the user reaches for the close
@@ -368,28 +388,5 @@ struct TabCloseProtectionTests {
 
         #expect(coordinator.structureSessions[id] == nil)
         #expect(coordinator.createTableDrafts[id] == nil)
-    }
-
-    /// A closed tab's file registration used to outlive it, and `TabRouter.openSQLFile` trusts that
-    /// registry without re-checking, so the file could not be reopened while the window lived.
-    @Test("Closing a file-backed tab releases its source-file registration")
-    func closingReleasesTheSourceFileRegistration() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-
-        let url = URL(fileURLWithPath: "/tmp/tabclose-\(UUID().uuidString).sql")
-        let windowId = UUID()
-        coordinator.windowId = windowId
-        coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        guard let id = coordinator.tabManager.selectedTabId else {
-            Issue.record("expected a selected tab")
-            return
-        }
-        coordinator.tabManager.mutate(tabId: id) { $0.content.sourceFileURL = url }
-        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
-
-        coordinator.closeTabsByUser(ids: [id])
-
-        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
     }
 }

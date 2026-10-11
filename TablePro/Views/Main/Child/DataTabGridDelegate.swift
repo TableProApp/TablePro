@@ -115,18 +115,43 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridEmptySpaceMenu() -> NSMenu? {
-        guard let onAddRow else { return nil }
+        var items: [NSMenuItem] = []
+        if let onAddRow, coordinator?.canAddRow == true {
+            items.append(Self.menuItem(String(localized: "Add Row"), action: onAddRow))
+        }
+        if let coordinator, coordinator.canInsertDocument {
+            items.append(Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
+                coordinator?.presentInsertDocument()
+            })
+        }
+        guard !items.isEmpty else { return nil }
         let menu = NSMenu()
-        let target = StructureMenuTarget { onAddRow() }
-        let item = NSMenuItem(
-            title: String(localized: "Add Row"),
-            action: #selector(StructureMenuTarget.runAction),
-            keyEquivalent: ""
-        )
+        items.forEach(menu.addItem)
+        return menu
+    }
+
+    /// The row's locator is read while the menu is built and carried by the item, so a reload that
+    /// lands while the menu is open cannot turn the click into an edit of another document.
+    func dataGridDocumentMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        guard let coordinator, coordinator.canInsertDocument else { return [] }
+        var items: [NSMenuItem] = []
+        if let locator = coordinator.documentLocator(forDisplayRow: displayRow) {
+            items.append(Self.menuItem(String(localized: "Edit Document…")) { [weak coordinator] in
+                coordinator?.presentEditDocument(locator: locator)
+            })
+        }
+        items.append(Self.menuItem(String(localized: "Insert Document…")) { [weak coordinator] in
+            coordinator?.presentInsertDocument()
+        })
+        return items
+    }
+
+    private static func menuItem(_ title: String, action: @escaping () -> Void) -> NSMenuItem {
+        let target = StructureMenuTarget(action: action)
+        let item = NSMenuItem(title: title, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
         item.target = target
         item.representedObject = target
-        menu.addItem(item)
-        return menu
+        return item
     }
 
     func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
@@ -160,6 +185,17 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return HighlightMenuBuilder.menuItem(for: context, actions: actions)
     }
 
+    /// Offered only for a value the server holds: a row the reader inserted, or a cell they edited,
+    /// is not on the server yet, so a filter built from it cannot find the row it came from.
+    func dataGridFilterMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
+        guard let coordinator, coordinator.canFilterRows,
+              let grid = tableViewCoordinator,
+              let tabId = coordinator.tabManager.selectedTab?.id else { return nil }
+        return grid.cellFilterMenuItem(forRow: displayRow, dataColumn: dataColumn) { [weak coordinator] filter in
+            coordinator?.applyCellFilter(filter, forTab: tabId)
+        }
+    }
+
     func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem? {
         guard coordinator != nil, let grid = tableViewCoordinator else { return nil }
         let columns = grid.tableRowsProvider().columns
@@ -187,5 +223,9 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridDidReplaceAllRows() {
         tableViewCoordinator?.applyFullReplace()
+    }
+
+    func dataGridDidCloseCellOverlay() {
+        coordinator?.resumeDeferredTableRefresh()
     }
 }

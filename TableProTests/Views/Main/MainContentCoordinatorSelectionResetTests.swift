@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator selection reset")
 @MainActor
 struct MainContentCoordinatorSelectionResetTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

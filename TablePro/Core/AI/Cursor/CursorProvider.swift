@@ -74,7 +74,7 @@ final class CursorProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Cursor model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Cursor model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
         }
         guard let httpResponse = response as? HTTPURLResponse,

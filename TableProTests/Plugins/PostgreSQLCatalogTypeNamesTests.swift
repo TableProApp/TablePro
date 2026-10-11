@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL catalog type names")
 struct PostgreSQLCatalogTypeNamesTests {
     private func row(
         oid: UInt32 = 16_385,

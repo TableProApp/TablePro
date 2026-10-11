@@ -6,10 +6,12 @@ public struct ExecuteQueryTool: MCPToolImplementation {
     public static let title: String? = String(localized: "Execute Query")
     public static let description = String(
         localized: """
-        Run one statement. Reads need tools:read; anything that writes needs tools:write and is subject \
-        to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through \
-        confirm_destructive_operation instead. Statements that read or write files, or run server-side \
-        code, are refused. Send one statement per call.
+        Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes \
+        needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. \
+        DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write \
+        files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where \
+        a script runs batch by batch at its GO lines and result_sets lists every result set when there is \
+        more than one.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
@@ -26,7 +28,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
     public static let inputSchema = MCPToolSchema.object(
         properties: [
             "connection_id": MCPToolSchema.connectionId,
-            "query": MCPToolSchema.string(String(localized: "One SQL or NoSQL statement")),
+            "query": MCPToolSchema.string(String(localized: "One SQL or NoSQL statement, or a SQL Server script")),
             "max_rows": MCPToolSchema.integer(
                 String(localized: "Maximum rows to return. Defaults to the server's configured row limit."),
                 minimum: 1
@@ -41,7 +43,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         required: ["connection_id", "query"]
     )
 
-    public static let outputSchema: JsonValue? = MCPToolSchema.resultSet
+    public static let outputSchema: JsonValue? = MCPToolSchema.scriptResult
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -77,6 +79,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             sql: query,
             meta: meta,
             allowsDestructive: false,
+            allowsMultiStatement: ExternalStatementGate.acceptsScripts(on: meta.databaseType),
             operationLabel: String(localized: "a query"),
             context: context,
             services: services
@@ -100,7 +103,8 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             context: context,
-            secrets: meta.redactionSecrets
+            secrets: meta.redactionSecrets,
+            unit: .script
         )
 
         await context.progress.emit(progress: 1.0, total: 1.0, message: "Done")

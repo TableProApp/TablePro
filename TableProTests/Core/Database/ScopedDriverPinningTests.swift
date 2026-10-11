@@ -78,7 +78,7 @@ struct ScopedDriverPinningTests {
         try await DatabaseManager.shared.withScopedDriver(
             scope: foreign,
             route: DatabaseManager.shared.executionRoute(for: foreign),
-            cancellation: .cancellableRead
+            cancellation: .cancellableRead(DriverLeaseOwner())
         ) { driver in
             _ = try await driver.execute(query: "SELECT 1")
         }

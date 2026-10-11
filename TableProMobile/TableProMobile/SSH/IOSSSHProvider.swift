@@ -5,53 +5,46 @@ import TableProModels
 final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     private let tunnelStore = TunnelStore()
     private let secureStore: SecureStore
+    private let container: AppContainerPaths
 
-    init(secureStore: SecureStore) {
+    init(secureStore: SecureStore, container: AppContainerPaths = .live) {
         self.secureStore = secureStore
+        self.container = container
     }
 
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
-
-        let sshPassword = try? secureStore.retrieve(
-            forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
-        let keyPassphrase = try? secureStore.retrieve(
-            forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
-
-        if resolvedConfig.privateKeyData == nil || resolvedConfig.privateKeyData?.isEmpty == true {
-            resolvedConfig.privateKeyData = try? secureStore.retrieve(
-                forKey: "com.TablePro.sshkeydata.\(connectionId.uuidString)")
-        }
+        resolvedConfig.privateKeyPath = config.privateKeyPath.map(container.localPath(forStoredPath:))
 
         let tunnel = try await SSHTunnelFactory.create(
             config: resolvedConfig,
             remoteHost: remoteHost,
             remotePort: remotePort,
-            sshPassword: sshPassword,
-            keyPassphrase: keyPassphrase
+            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore),
+            prompter: prompter
         )
 
         let tunnelId = UUID()
         await tunnelStore.add(tunnel, id: tunnelId, connectionId: connectionId)
 
-        let port = await tunnel.port
-        return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: port)
+        return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: tunnel.localPort)
     }
 
     func closeTunnel(for connectionId: UUID) async throws {
         for tunnel in await tunnelStore.removeAll(connectionId: connectionId) {
-            await tunnel.close()
+            tunnel.close()
         }
     }
 
     func closeTunnel(id: UUID) async throws {
         guard let tunnel = await tunnelStore.remove(id: id) else { return }
-        await tunnel.close()
+        tunnel.close()
     }
 }
 

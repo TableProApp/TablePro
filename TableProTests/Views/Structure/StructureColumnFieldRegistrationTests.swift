@@ -13,7 +13,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("Structure column field registration")
+@MainActor
 struct StructureColumnFieldRegistrationTests {
     @Test("MySQL and MariaDB expose the same structure fields")
     func mysqlAndMariaDBAgree() {

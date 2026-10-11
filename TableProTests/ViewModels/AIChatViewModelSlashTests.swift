@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AIChatViewModel runSlashCommand")
 @MainActor
 struct AIChatViewModelSlashTests {
     @Test("/help appends an assistant turn with the command list")

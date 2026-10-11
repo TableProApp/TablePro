@@ -53,7 +53,6 @@ typedef struct loginrec LOGINREC;
 #define DBSETNATLANG    7
 #define DBSETCHARSET    10
 #define DBSETPACKET     11
-#define DBSETENCRYPT    12
 #define DBSETDBNAME     14
 #define DBSETSERVERPRINCIPAL 103
 
@@ -66,19 +65,26 @@ typedef struct loginrec LOGINREC;
 // TDS version constants — verified against FreeTDS 1.4 sybdb.h
 #define DBVERSION_74    8   // TDS 7.4 (SQL Server 2012+)
 
-// Encryption
-#define ENCRYPT_OFF     0
-
 // Error handler return codes
 #define INT_CANCEL  2
 #define INT_CONTINUE 1
 #define INT_EXIT    4
+// Valid only for SYBETIME: libtds sends an attention from the thread that timed out and keeps reading.
+#define INT_TIMEOUT 3
+
+// db-lib error numbers the driver acts on
+#define SYBETIME    20003
 
 // Error handler function types
 typedef int (*EHANDLEFUNC)(DBPROCESS *dbproc, int severity, int dberr, int oserr,
                            const char *dberrstr, const char *oserrstr);
 typedef int (*MHANDLEFUNC)(DBPROCESS *dbproc, DBINT msgno, int msgstate, int severity,
                            char *msgtext, char *srvname, char *proc, int line);
+
+// Interrupt handler function types. db-lib calls the check once a second while it waits on the socket,
+// and a handler answering INT_CANCEL reaches the error handler as SYBETIME.
+typedef int (*DB_DBCHKINTR_FUNC)(void *dbproc);
+typedef int (*DB_DBHNDLINTR_FUNC)(void *dbproc);
 
 // Core db-lib API
 extern RETCODE dbinit(void);
@@ -88,6 +94,10 @@ extern LOGINREC *dblogin(void);
 extern void dbloginfree(LOGINREC *loginrec);
 extern RETCODE dbsetlname(LOGINREC *loginrec, const char *value, int which);
 extern RETCODE dbsetlversion(LOGINREC *loginrec, BYTE version);
+
+// The file libtds reads a server's freetds.conf entry from before any other: the encryption level, the CA file and
+// the hostname check exist only there, because dbsetlname has no field for them.
+extern void dbsetifile(char *filename);
 
 // Microsoft Entra ID access token, sent in the LOGIN7 FEDAUTH feature extension instead of a
 // user name and password. Added by scripts/patches/freetds/freetds-fedauth.patch; upstream
@@ -121,10 +131,32 @@ extern DBINT dbdatlen(DBPROCESS *dbproc, int colnum);
 
 extern RETCODE dbcancel(DBPROCESS *dbproc);
 extern RETCODE dbcanquery(DBPROCESS *dbproc);
+extern void dbsetinterrupt(DBPROCESS *dbproc, DB_DBCHKINTR_FUNC chkintr, DB_DBHNDLINTR_FUNC hndlintr);
 
 // Type conversion — converts a column value to a different TDS type (e.g. to SYBCHAR for display)
 extern DBINT dbconvert(DBPROCESS *dbproc, int srctype, const BYTE *src, DBINT srclen,
                        int desttype, BYTE *dest, DBINT destlen);
+
+// dbconvert's text for a datetimeoffset leaves the offset out; dbanydatecrack reports it in tzone, in minutes.
+// FreeTDS 1.4.22 declares a Microsoft and a Sybase spelling of this struct with the same twelve DBINTs.
+#ifndef TABLEPRO_DBDATEREC2
+#define TABLEPRO_DBDATEREC2
+typedef struct dbdaterec2 {
+    DBINT year;
+    DBINT quarter;
+    DBINT month;
+    DBINT day;
+    DBINT dayofyear;
+    DBINT week;
+    DBINT weekday;
+    DBINT hour;
+    DBINT minute;
+    DBINT second;
+    DBINT nanosecond;
+    DBINT tzone;
+} DBDATEREC2;
+#endif
+extern RETCODE dbanydatecrack(DBPROCESS *dbproc, DBDATEREC2 *di, int type, const void *data);
 
 extern EHANDLEFUNC dberrhandle(EHANDLEFUNC handler);
 extern MHANDLEFUNC dbmsghandle(MHANDLEFUNC handler);

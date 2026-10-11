@@ -26,21 +26,106 @@ public struct OraclePartitionRow: Sendable, Equatable {
 
 public struct OracleColumnRow: Sendable, Equatable {
     public let name: String
-    public let dataType: String
-    public let dataLength: String?
-    public let precision: String?
-    public let scale: String?
+    public let typeSpelling: OracleColumnTypeSpelling
     public let isNullable: Bool
     public let isPrimaryKey: Bool
+    /// The exact SQL that follows `DEFAULT`, or nil when the column has no default. ``OracleColumnDefault`` decides it.
+    public let defaultValue: String?
+    public let identityGeneration: OracleIdentityGeneration?
+    public let isVirtual: Bool
+    /// The expression of a virtual column, nil for every other column. ``OracleColumnDefault`` decides it.
+    public let generationExpression: String?
 
-    public var displayType: String {
-        OracleSchemaQueries.fullType(
-            dataType: dataType,
-            dataLength: dataLength,
-            precision: precision,
-            scale: scale
+    public init(
+        name: String,
+        typeSpelling: OracleColumnTypeSpelling,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String?,
+        identityGeneration: OracleIdentityGeneration? = nil,
+        isVirtual: Bool = false,
+        generationExpression: String? = nil
+    ) {
+        self.name = name
+        self.typeSpelling = typeSpelling
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.identityGeneration = identityGeneration
+        self.isVirtual = isVirtual
+        self.generationExpression = generationExpression
+    }
+
+    /// Without `CHAR_LENGTH` and `CHAR_USED`, a character type is spelled from its byte length as a `BYTE` column.
+    public init(
+        name: String,
+        dataType: String,
+        dataLength: String?,
+        precision: String?,
+        scale: String?,
+        isNullable: Bool,
+        isPrimaryKey: Bool,
+        defaultValue: String?,
+        identityGeneration: OracleIdentityGeneration? = nil,
+        isVirtual: Bool = false,
+        generationExpression: String? = nil
+    ) {
+        self.init(
+            name: name,
+            typeSpelling: OracleColumnTypeSpelling(
+                dataType: dataType,
+                dataLength: dataLength.flatMap(OracleSchemaQueries.integer),
+                precision: precision.flatMap(OracleSchemaQueries.integer),
+                scale: scale.flatMap(OracleSchemaQueries.integer)
+            ),
+            isNullable: isNullable,
+            isPrimaryKey: isPrimaryKey,
+            defaultValue: defaultValue,
+            identityGeneration: identityGeneration,
+            isVirtual: isVirtual,
+            generationExpression: generationExpression
         )
     }
+
+    /// `DATA_TYPE` as the dictionary reports it.
+    public var dataType: String {
+        typeSpelling.dataType
+    }
+
+    /// `DATA_LENGTH`, in bytes for every type.
+    public var dataLength: String? {
+        typeSpelling.dataLength.map(String.init)
+    }
+
+    public var precision: String? {
+        typeSpelling.precision.map(String.init)
+    }
+
+    public var scale: String? {
+        typeSpelling.scale.map(String.init)
+    }
+
+    /// The declared type, the spelling `CREATE TABLE` takes back.
+    public var displayType: String {
+        typeSpelling.declaration
+    }
+
+    /// See ``OracleColumnTypeSpelling/classificationTypeName``.
+    public var classificationTypeName: String? {
+        typeSpelling.classificationTypeName
+    }
+
+    /// The declared length of a `VARCHAR2`, `CHAR`, `NVARCHAR2` or `NCHAR` column, nil for every other type.
+    public var charLength: Int? {
+        typeSpelling.characterLength
+    }
+}
+
+/// How an identity column takes its value, as `ALL_TAB_IDENTITY_COLS.GENERATION_TYPE` spells it. `ALWAYS` refuses any
+/// value a statement supplies (ORA-32795 on insert, ORA-32796 on update); `BY DEFAULT` takes one.
+public enum OracleIdentityGeneration: String, Sendable, Equatable {
+    case always = "ALWAYS"
+    case byDefault = "BY DEFAULT"
 }
 
 public struct OracleIndexRow: Sendable, Equatable {
@@ -60,10 +145,10 @@ public struct OracleForeignKeyRow: Sendable, Equatable {
 }
 
 public enum OracleSchemaQueries {
-    public static let ping = "SELECT 1 FROM DUAL"
-    public static let currentSchema = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL"
-    public static let serverVersion = "SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1"
-    public static let users = "SELECT USERNAME FROM ALL_USERS ORDER BY USERNAME"
+    public static let ping = "SELECT 1 FROM \(OracleDictionary.dual)"
+    public static let currentSchema = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM \(OracleDictionary.dual)"
+    public static let serverVersion = "SELECT BANNER FROM \(OracleDictionary.versionView) WHERE ROWNUM = 1"
+    public static let users = "SELECT USERNAME FROM \(OracleDictionary.allUsers) ORDER BY USERNAME"
     public static let commitTransaction = "COMMIT"
     public static let rollbackTransaction = "ROLLBACK"
 
@@ -93,11 +178,11 @@ public enum OracleSchemaQueries {
             SELECT t.table_name, 'BASE TABLE' AS table_type,
                    CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END AS is_partitioned,
                    CASE WHEN pt.interval IS NULL THEN pt.partition_count END AS partition_count
-            FROM all_tables t
-            LEFT JOIN all_part_tables pt ON pt.owner = t.owner AND pt.table_name = t.table_name
+            FROM \(OracleDictionary.allTables) t
+            LEFT JOIN \(OracleDictionary.allPartTables) pt ON pt.owner = t.owner AND pt.table_name = t.table_name
             WHERE t.owner = '\(owner)'
             UNION ALL
-            SELECT view_name, 'VIEW', 'N', NULL FROM all_views WHERE owner = '\(owner)'
+            SELECT view_name, 'VIEW', 'N', NULL FROM \(OracleDictionary.allViews) WHERE owner = '\(owner)'
             ORDER BY 1
             """
     }
@@ -108,7 +193,7 @@ public enum OracleSchemaQueries {
     public static func partitions(schema: String, table: String) -> String {
         """
         SELECT p.partition_name, p.partition_position, p.num_rows, p.subpartition_count
-        FROM all_tab_partitions p
+        FROM \(OracleDictionary.allTabPartitions) p
         WHERE p.table_owner = '\(escapeLiteral(schema))'
           AND p.table_name = '\(escapeLiteral(table))'
         ORDER BY p.partition_position
@@ -121,30 +206,34 @@ public enum OracleSchemaQueries {
     public static func subpartitions(schema: String, table: String) -> String {
         """
         SELECT s.partition_name, s.subpartition_name, s.subpartition_position, s.num_rows
-        FROM all_tab_subpartitions s
+        FROM \(OracleDictionary.allTabSubpartitions) s
         WHERE s.table_owner = '\(escapeLiteral(schema))'
           AND s.table_name = '\(escapeLiteral(table))'
         ORDER BY s.partition_name, s.subpartition_position
         """
     }
 
-    public static func columns(schema: String, table: String) -> String {
+    /// One table's columns, each with what ``parseColumnRow(_:)`` needs to decide its default.
+    ///
+    /// The rows come from `ALL_TAB_COLS` because `VIRTUAL_COLUMN` is only there, filtered to exactly the rows
+    /// `ALL_TAB_COLUMNS` returns: from 12.1 that view is `ALL_TAB_COLS` where `USER_GENERATED = 'YES'` (read from
+    /// the view's own text on 23ai), which keeps invisible columns and drops the hidden ones Oracle adds for a
+    /// function-based index or an unused column; on 11g it is the rows that are not hidden, and 11g has no
+    /// invisible columns.
+    ///
+    /// `DATA_DEFAULT` is a LONG, which OracleNIO decodes (measured on 23ai). `DATA_DEFAULT_VC` is a VARCHAR2 that may
+    /// truncate the value, and neither 11g nor 21c has it.
+    public static func columns(schema: String, table: String, release: OracleServerRelease) -> String {
         let owner = escapeLiteral(schema)
         let tableName = escapeLiteral(table)
         return """
             SELECT
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.DATA_LENGTH,
-                c.DATA_PRECISION,
-                c.DATA_SCALE,
-                c.NULLABLE,
-                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-            FROM ALL_TAB_COLUMNS c
+                \(columnProjection(release: release))
+            FROM \(OracleDictionary.allTabCols) c
             LEFT JOIN (
                 SELECT acc.COLUMN_NAME
-                FROM ALL_CONS_COLUMNS acc
-                JOIN ALL_CONSTRAINTS ac ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
+                FROM \(OracleDictionary.allConsColumns) acc
+                JOIN \(OracleDictionary.allConstraints) ac ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
                     AND acc.OWNER = ac.OWNER
                 WHERE ac.CONSTRAINT_TYPE = 'P'
                     AND ac.OWNER = '\(owner)'
@@ -152,8 +241,51 @@ public enum OracleSchemaQueries {
             ) cc ON c.COLUMN_NAME = cc.COLUMN_NAME
             WHERE c.OWNER = '\(owner)'
               AND c.TABLE_NAME = '\(tableName)'
+              AND \(tableColumnFilter(release: release))
             ORDER BY c.COLUMN_ID
             """
+    }
+
+    /// The columns ``parseColumnRow(_:)`` reads, in its order. A column the release does not have is a literal in its
+    /// place (`'NO'` for a flag, `NULL` otherwise), because naming a missing dictionary column fails the whole statement
+    /// and the parser reads by position.
+    ///
+    /// `CHAR_LENGTH`, `CHAR_USED`, `DATA_TYPE_OWNER` and `DATA_TYPE_MOD` are on 11.2 and later; `OWNER` is the table's,
+    /// which decides whether a type of the same schema needs its owner spelled.
+    private static func columnProjection(release: OracleServerRelease) -> String {
+        let identity = release.hasIdentityColumns ? "c.IDENTITY_COLUMN" : "'NO'"
+        let onNull = release.hasIdentityColumns ? "c.DEFAULT_ON_NULL" : "'NO'"
+        let onNullForUpdate = release.hasDefaultOnNullForUpdate ? "c.DEFAULT_ON_NULL_UPD" : "'NO'"
+        let generation = release.hasIdentityColumns ? """
+            (SELECT i.GENERATION_TYPE FROM \(OracleDictionary.allTabIdentityCols) i
+                    WHERE i.OWNER = c.OWNER AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = c.COLUMN_NAME)
+            """ : "NULL"
+        let vectorInfo = release.hasVectorInfo ? "c.VECTOR_INFO" : "NULL"
+        return """
+            c.COLUMN_NAME,
+                c.DATA_TYPE,
+                c.DATA_LENGTH,
+                c.DATA_PRECISION,
+                c.DATA_SCALE,
+                c.NULLABLE,
+                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK,
+                c.DATA_DEFAULT,
+                c.VIRTUAL_COLUMN,
+                \(identity) AS IDENTITY_COLUMN,
+                \(onNull) AS DEFAULT_ON_NULL,
+                \(onNullForUpdate) AS DEFAULT_ON_NULL_UPD,
+                \(generation) AS GENERATION_TYPE,
+                c.CHAR_LENGTH,
+                c.CHAR_USED,
+                c.DATA_TYPE_OWNER,
+                c.DATA_TYPE_MOD,
+                \(vectorInfo) AS VECTOR_INFO,
+                c.OWNER
+            """
+    }
+
+    private static func tableColumnFilter(release: OracleServerRelease) -> String {
+        release.hasIdentityColumns ? "c.USER_GENERATED = 'YES'" : "c.HIDDEN_COLUMN = 'NO'"
     }
 
     public static func indexes(schema: String, table: String) -> String {
@@ -162,9 +294,9 @@ public enum OracleSchemaQueries {
         return """
             SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME,
                    CASE WHEN c.CONSTRAINT_TYPE = 'P' THEN 'Y' ELSE 'N' END AS IS_PK
-            FROM ALL_INDEXES i
-            JOIN ALL_IND_COLUMNS ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
-            LEFT JOIN ALL_CONSTRAINTS c ON i.INDEX_NAME = c.INDEX_NAME AND i.OWNER = c.OWNER
+            FROM \(OracleDictionary.allIndexes) i
+            JOIN \(OracleDictionary.allIndColumns) ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
+            LEFT JOIN \(OracleDictionary.allConstraints) c ON i.INDEX_NAME = c.INDEX_NAME AND i.OWNER = c.OWNER
                 AND c.CONSTRAINT_TYPE = 'P'
             WHERE i.TABLE_NAME = '\(tableName)'
               AND i.OWNER = '\(owner)'
@@ -183,18 +315,147 @@ public enum OracleSchemaQueries {
                 rcc.COLUMN_NAME AS REF_COLUMN,
                 ac.DELETE_RULE,
                 rc.OWNER AS REF_SCHEMA
-            FROM ALL_CONSTRAINTS ac
-            JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
+            FROM \(OracleDictionary.allConstraints) ac
+            JOIN \(OracleDictionary.allConsColumns) acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
                 AND ac.OWNER = acc.OWNER
-            JOIN ALL_CONSTRAINTS rc ON ac.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+            JOIN \(OracleDictionary.allConstraints) rc ON ac.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME
                 AND ac.R_OWNER = rc.OWNER
-            JOIN ALL_CONS_COLUMNS rcc ON rc.CONSTRAINT_NAME = rcc.CONSTRAINT_NAME
+            JOIN \(OracleDictionary.allConsColumns) rcc ON rc.CONSTRAINT_NAME = rcc.CONSTRAINT_NAME
                 AND rc.OWNER = rcc.OWNER AND acc.POSITION = rcc.POSITION
             WHERE ac.CONSTRAINT_TYPE = 'R'
               AND ac.TABLE_NAME = '\(tableName)'
               AND ac.OWNER = '\(owner)'
             ORDER BY ac.CONSTRAINT_NAME, acc.POSITION
             """
+    }
+
+    /// Every column of every table in a schema, for the bulk structure read, from the same rows and with the same
+    /// columns as ``columns(schema:table:release:)``. Rows carry the table name first so the caller groups them.
+    public static func allColumns(schema: String, release: OracleServerRelease) -> String {
+        let owner = escapeLiteral(schema)
+        return """
+            SELECT
+                c.TABLE_NAME,
+                \(columnProjection(release: release))
+            FROM \(OracleDictionary.allTabCols) c
+            LEFT JOIN (
+                SELECT acc.TABLE_NAME, acc.COLUMN_NAME
+                FROM \(OracleDictionary.allConsColumns) acc
+                JOIN \(OracleDictionary.allConstraints) ac ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
+                    AND acc.OWNER = ac.OWNER
+                WHERE ac.CONSTRAINT_TYPE = 'P' AND ac.OWNER = '\(owner)'
+            ) cc ON c.TABLE_NAME = cc.TABLE_NAME AND c.COLUMN_NAME = cc.COLUMN_NAME
+            WHERE c.OWNER = '\(owner)'
+              AND \(tableColumnFilter(release: release))
+            ORDER BY c.TABLE_NAME, c.COLUMN_ID
+            """
+    }
+
+    /// Every foreign key of every table in a schema, for the bulk structure read. Rows carry the table name first so
+    /// the caller groups them.
+    public static func allForeignKeys(schema: String) -> String {
+        let owner = escapeLiteral(schema)
+        return """
+            SELECT
+                ac.TABLE_NAME,
+                ac.CONSTRAINT_NAME,
+                acc.COLUMN_NAME,
+                rc.TABLE_NAME AS REF_TABLE,
+                rcc.COLUMN_NAME AS REF_COLUMN,
+                ac.DELETE_RULE,
+                rc.OWNER AS REF_SCHEMA
+            FROM \(OracleDictionary.allConstraints) ac
+            JOIN \(OracleDictionary.allConsColumns) acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
+                AND ac.OWNER = acc.OWNER
+            JOIN \(OracleDictionary.allConstraints) rc ON ac.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+                AND ac.R_OWNER = rc.OWNER
+            JOIN \(OracleDictionary.allConsColumns) rcc ON rc.CONSTRAINT_NAME = rcc.CONSTRAINT_NAME
+                AND rc.OWNER = rcc.OWNER AND acc.POSITION = rcc.POSITION
+            WHERE ac.CONSTRAINT_TYPE = 'R' AND ac.OWNER = '\(owner)'
+            ORDER BY ac.TABLE_NAME, ac.CONSTRAINT_NAME, acc.POSITION
+            """
+    }
+
+    /// The name and table count of every schema, for the databases list. The size is read separately with
+    /// ``schemaSegmentSizes()`` because it needs a dictionary view a non-DBA cannot read, and joining it here would
+    /// fail the whole statement for such a reader.
+    public static let databaseSummaries = """
+        SELECT u.USERNAME,
+               NVL(t.table_count, 0) AS table_count
+        FROM \(OracleDictionary.allUsers) u
+        LEFT JOIN (
+            SELECT OWNER, COUNT(*) AS table_count FROM \(OracleDictionary.allTables) GROUP BY OWNER
+        ) t ON u.USERNAME = t.OWNER
+        ORDER BY u.USERNAME
+        """
+
+    /// The total segment bytes of every schema. `DBA_SEGMENTS` needs `SELECT` on the DBA views, so the caller runs this
+    /// best-effort and leaves the sizes blank when it is refused. `ALL_SEGMENTS` does not exist on Oracle (ORA-00942
+    /// even as `SYSTEM`), so it is never used.
+    public static let schemaSegmentSizes = """
+        SELECT OWNER, SUM(BYTES) AS size_bytes FROM \(OracleDictionary.dbaSegments) GROUP BY OWNER
+        """
+
+    /// The table count of one schema.
+    public static func databaseTableCount(schema: String) -> String {
+        "SELECT COUNT(*) FROM \(OracleDictionary.allTables) WHERE OWNER = '\(escapeLiteral(schema))'"
+    }
+
+    /// The row count and comment of one table, without its size. The size is read separately with
+    /// ``segmentSize(schema:table:ownedByCurrentSchema:)``.
+    public static func tableMetadata(schema: String, table: String) -> String {
+        """
+        SELECT t.NUM_ROWS, tc.COMMENTS
+        FROM \(OracleDictionary.allTables) t
+        LEFT JOIN \(OracleDictionary.allTabComments) tc ON t.TABLE_NAME = tc.TABLE_NAME AND t.OWNER = tc.OWNER
+        WHERE t.TABLE_NAME = '\(escapeLiteral(table))' AND t.OWNER = '\(escapeLiteral(schema))'
+        """
+    }
+
+    /// The comment of one view, the fallback when ``tableMetadata(schema:table:)`` finds no base table.
+    public static func viewComment(schema: String, view: String) -> String {
+        """
+        SELECT tc.COMMENTS
+        FROM \(OracleDictionary.allTabComments) tc
+        WHERE tc.TABLE_NAME = '\(escapeLiteral(view))' AND tc.OWNER = '\(escapeLiteral(schema))'
+        """
+    }
+
+    /// The total segment bytes of one table or schema.
+    ///
+    /// A reader can always see its own schema's segments through `USER_SEGMENTS`, so the own-schema case avoids needing
+    /// the DBA privilege `DBA_SEGMENTS` wants. `ALL_SEGMENTS` does not exist, so it is never used, and the caller runs
+    /// this best-effort and leaves the size blank when a cross-schema read is refused.
+    public static func segmentSize(schema: String, table: String?, ownedByCurrentSchema: Bool) -> String {
+        let filter = table.map { "SEGMENT_NAME = '\(escapeLiteral($0))'" } ?? "1 = 1"
+        if ownedByCurrentSchema {
+            return "SELECT NVL(SUM(BYTES), 0) FROM \(OracleDictionary.userSegments) WHERE \(filter)"
+        }
+        let owner = escapeLiteral(schema)
+        let scoped = table.map { "SEGMENT_NAME = '\(escapeLiteral($0))' AND " } ?? ""
+        return "SELECT NVL(SUM(BYTES), 0) FROM \(OracleDictionary.dbaSegments) WHERE \(scoped)OWNER = '\(owner)'"
+    }
+
+    /// The view's `SELECT` text, without the LONG `TEXT` column OracleNIO cannot decode. `TEXT_VC` is `VARCHAR2(4000)`.
+    public static func viewDefinition(schema: String, view: String) -> String {
+        """
+        SELECT TEXT_VC FROM \(OracleDictionary.allViews) \
+        WHERE VIEW_NAME = '\(escapeLiteral(view))' AND OWNER = '\(escapeLiteral(schema))'
+        """
+    }
+
+    /// The tables of one schema for the object tree's bulk metadata read.
+    public static func allTablesMetadata(schema: String) -> String {
+        """
+        SELECT
+            OWNER as schema_name,
+            TABLE_NAME as name,
+            'TABLE' as kind,
+            NUM_ROWS as estimated_rows
+        FROM \(OracleDictionary.allTables)
+        WHERE OWNER = '\(escapeLiteral(schema))'
+        ORDER BY TABLE_NAME
+        """
     }
 
     public static func parseTableRow(_ row: [OracleRawCell]) -> OracleTableRow? {
@@ -231,17 +492,57 @@ public enum OracleSchemaQueries {
         )
     }
 
+    /// A row of ``columns(schema:table:release:)``, read by position in the projection's order.
     public static func parseColumnRow(_ row: [OracleRawCell]) -> OracleColumnRow? {
         guard let name = row[safe: 0]?.stringValue else { return nil }
+        let columnDefault = OracleColumnDefault(
+            storedText: row[safe: 7]?.stringValue,
+            isIdentity: row[safe: 9]?.stringValue == "YES",
+            isVirtual: row[safe: 8]?.stringValue == "YES",
+            onNull: OracleDefaultOnNull(
+                onInsert: row[safe: 10]?.stringValue == "YES",
+                onUpdate: row[safe: 11]?.stringValue == "YES"
+            )
+        )
+        let typeSpelling = OracleColumnTypeSpelling(
+            dataType: row[safe: 1]?.stringValue ?? "VARCHAR2",
+            dataLength: integer(in: row[safe: 2]),
+            precision: integer(in: row[safe: 3]),
+            scale: integer(in: row[safe: 4]),
+            charLength: integer(in: row[safe: 13]),
+            charUsed: row[safe: 14]?.stringValue,
+            typeOwner: row[safe: 15]?.stringValue,
+            typeModifier: row[safe: 16]?.stringValue,
+            vectorInfo: row[safe: 17]?.stringValue,
+            tableOwner: row[safe: 18]?.stringValue
+        )
         return OracleColumnRow(
             name: name,
-            dataType: (row[safe: 1]?.stringValue)?.lowercased() ?? "varchar2",
-            dataLength: row[safe: 2]?.stringValue,
-            precision: row[safe: 3]?.stringValue,
-            scale: row[safe: 4]?.stringValue,
+            typeSpelling: typeSpelling,
             isNullable: row[safe: 5]?.stringValue == "Y",
-            isPrimaryKey: row[safe: 6]?.stringValue == "Y"
+            isPrimaryKey: row[safe: 6]?.stringValue == "Y",
+            defaultValue: columnDefault.clause,
+            identityGeneration: columnDefault.isIdentity
+                ? row[safe: 12]?.stringValue.flatMap(OracleIdentityGeneration.init(rawValue:)) ?? .always
+                : nil,
+            isVirtual: columnDefault.isVirtual,
+            generationExpression: columnDefault.generationExpression
         )
+    }
+
+    private static func integer(in cell: OracleRawCell?) -> Int? {
+        cell?.stringValue.flatMap(integer)
+    }
+
+    static func integer(_ text: String) -> Int? {
+        Int(text.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// A row of ``allColumns(schema:release:)``: the table name, then a row ``parseColumnRow(_:)`` reads.
+    public static func parseTableColumnRow(_ row: [OracleRawCell]) -> (table: String, column: OracleColumnRow)? {
+        guard let table = row[safe: 0]?.stringValue,
+              let column = parseColumnRow(Array(row.dropFirst())) else { return nil }
+        return (table, column)
     }
 
     public static func parseIndexRow(_ row: [OracleRawCell]) -> OracleIndexRow? {
@@ -268,32 +569,6 @@ public enum OracleSchemaQueries {
             referencedSchema: row[safe: 5]?.stringValue,
             deleteRule: row[safe: 4]?.stringValue ?? "NO ACTION"
         )
-    }
-
-    public static func fullType(
-        dataType: String,
-        dataLength: String?,
-        precision: String?,
-        scale: String?
-    ) -> String {
-        let fixedTypes: Set<String> = [
-            "date", "clob", "nclob", "blob", "bfile", "long", "long raw",
-            "rowid", "urowid", "binary_float", "binary_double", "xmltype"
-        ]
-        if fixedTypes.contains(dataType) {
-            return dataType
-        }
-        if dataType == "number" {
-            guard let precision, let precisionValue = Int(precision) else { return dataType }
-            if let scale, let scaleValue = Int(scale), scaleValue > 0 {
-                return "number(\(precisionValue),\(scaleValue))"
-            }
-            return "number(\(precisionValue))"
-        }
-        if let dataLength, let lengthValue = Int(dataLength), lengthValue > 0 {
-            return "\(dataType)(\(lengthValue))"
-        }
-        return dataType
     }
 }
 

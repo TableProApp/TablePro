@@ -13,12 +13,57 @@ import CFreeTDS
 import Darwin
 import Foundation
 import os
+import TableProCoreTypes
 import TableProMSSQLCore
 
 nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
+/// What one connection's current request has said, collected by the process-wide handlers db-lib calls.
+///
+/// Every server message is kept in arrival order, because a batch keeps going past most errors and the only place an
+/// error inside a `SELECT` shows up is the message handler. Both kinds are capped so a loop that prints or fails on
+/// every pass cannot grow this without bound; the first errors are the ones kept, because the first is what a run
+/// reports. It is always mutated in place: the handlers run under a process-wide lock, and copying the log out to
+/// append one message made a batch raising 50,000 errors spend 22 seconds in the handler.
+nonisolated private struct FreeTDSDiagnostics {
+    static let outputMessageLimit = 1_000
+    static let errorMessageLimit = 1_000
+
+    var messages: [MSSQLServerMessage] = []
+    var outputMessageCount = 0
+    var outputTruncated = false
+    var outputTaken = false
+    var errorMessageCount = 0
+    var droppedErrorCount = 0
+    var libraryError = ""
+    var connectionEnded = false
+
+    mutating func record(_ message: MSSQLServerMessage) {
+        if message.isError {
+            guard errorMessageCount < Self.errorMessageLimit || message.endsConnection else {
+                droppedErrorCount += 1
+                return
+            }
+            errorMessageCount += 1
+            messages.append(message)
+            return
+        }
+        guard outputMessageCount < Self.outputMessageLimit else {
+            outputTruncated = true
+            return
+        }
+        outputMessageCount += 1
+        messages.append(message)
+    }
+
+    mutating func recordLibraryError(_ text: String, number: Int) {
+        if libraryError.isEmpty { libraryError = text }
+        if MSSQLLibraryError.endsConnection(number) { connectionEnded = true }
+    }
+}
+
 nonisolated private struct FreeTDSErrorState {
-    var perConnection: [UInt: String] = [:]
+    var perConnection: [UInt: FreeTDSDiagnostics] = [:]
     var global = ""
 }
 
@@ -31,8 +76,11 @@ nonisolated private func freetdsConnectionKey(_ dbproc: UnsafeMutablePointer<DBP
 nonisolated private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
     let key = dbproc.map(freetdsConnectionKey)
     return freetdsErrors.withLock { state in
-        guard let key else { return state.global }
-        return state.perConnection[key] ?? state.global
+        guard let key, let diagnostics = state.perConnection[key] else { return state.global }
+        if let error = diagnostics.messages.first(where: \.isError) {
+            return error.text
+        }
+        return diagnostics.libraryError.isEmpty ? state.global : diagnostics.libraryError
     }
 }
 
@@ -43,47 +91,136 @@ nonisolated private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPR
             state.global = ""
             return
         }
-        state.perConnection[key] = nil
+        state.perConnection[key] = FreeTDSDiagnostics()
     }
 }
 
-nonisolated private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
-    let key = dbproc.map(freetdsConnectionKey)
+nonisolated private func freetdsDiagnostics(for dbproc: UnsafeMutablePointer<DBPROCESS>) -> FreeTDSDiagnostics {
+    let key = freetdsConnectionKey(dbproc)
+    return freetdsErrors.withLock { $0.perConnection[key] ?? FreeTDSDiagnostics() }
+}
+
+/// The output of the connection's latest request, handed over once.
+nonisolated private func freetdsTakeOutput(
+    for dbproc: UnsafeMutablePointer<DBPROCESS>
+) -> (lines: [String], isTruncated: Bool) {
+    let key = freetdsConnectionKey(dbproc)
+    return freetdsErrors.withLock { state in
+        guard state.perConnection[key]?.outputTaken == false else { return ([], false) }
+        state.perConnection[key]?.outputTaken = true
+        guard let diagnostics = state.perConnection[key] else { return ([], false) }
+        return (diagnostics.messages.filter(\.isOutput).map(\.text), diagnostics.outputTruncated)
+    }
+}
+
+/// The messages the connection's current request received from `index` on, so a reader that asks after every result
+/// copies only what is new.
+nonisolated private func freetdsMessages(
+    for dbproc: UnsafeMutablePointer<DBPROCESS>,
+    from index: Int
+) -> (messages: [MSSQLServerMessage], droppedErrorCount: Int) {
+    let key = freetdsConnectionKey(dbproc)
+    return freetdsErrors.withLock { state in
+        guard let diagnostics = state.perConnection[key] else { return ([], 0) }
+        let arrived = diagnostics.messages.count > index ? Array(diagnostics.messages[index...]) : []
+        return (arrived, diagnostics.droppedErrorCount)
+    }
+}
+
+nonisolated private func freetdsRecordMessage(_ message: MSSQLServerMessage, for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
+    guard let dbproc else {
+        guard message.isError else { return }
+        freetdsErrors.withLock { $0.global = message.text }
+        return
+    }
+    let key = freetdsConnectionKey(dbproc)
     freetdsErrors.withLock { state in
-        guard let key else {
-            if overwrite || state.global.isEmpty { state.global = msg }
-            return
+        state.perConnection[key, default: FreeTDSDiagnostics()].record(message)
+    }
+}
+
+nonisolated private func freetdsRecordLibraryError(
+    _ text: String,
+    number: Int,
+    for dbproc: UnsafeMutablePointer<DBPROCESS>?
+) {
+    guard number != MSSQLLibraryError.serverMessageNotice else { return }
+    guard let dbproc else {
+        freetdsErrors.withLock { state in
+            if state.global.isEmpty { state.global = text }
         }
-        if overwrite || (state.perConnection[key]?.isEmpty ?? true) {
-            state.perConnection[key] = msg
-        }
+        return
+    }
+    let key = freetdsConnectionKey(dbproc)
+    freetdsErrors.withLock { state in
+        state.perConnection[key, default: FreeTDSDiagnostics()].recordLibraryError(text, number: number)
     }
 }
 
 nonisolated private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
     let key = freetdsConnectionKey(dbproc)
     freetdsErrors.withLock { $0.perConnection[key] = nil }
+    freetdsGates.withLock { $0[key] = nil }
 }
+
+nonisolated private let freetdsConfigFile = MSSQLFreeTDSConfigFile(
+    path: (NSTemporaryDirectory() as NSString).appendingPathComponent("tablepro-freetds-\(UUID().uuidString).conf")
+)
+
+/// Each open connection's gate, found by its DBPROCESS, because db-lib's interrupt and error handlers are C functions
+/// that receive nothing else. A gate stays registered until the queue closes its handle: a read that a Stop or a
+/// disconnect is ending finds the interrupt through it, and without it the read ran on until the server finished.
+nonisolated private let freetdsGates = OSAllocatedUnfairLock(initialState: [UInt: MSSQLRequestGate]())
+
+nonisolated private func freetdsRegister(_ gate: MSSQLRequestGate, for dbproc: UnsafeMutablePointer<DBPROCESS>) {
+    let key = freetdsConnectionKey(dbproc)
+    freetdsGates.withLock { $0[key] = gate }
+}
+
+nonisolated private func freetdsGate(forKey key: UInt) -> MSSQLRequestGate? {
+    freetdsGates.withLock { $0[key] }
+}
+
+/// db-lib's interrupt pair. The check runs once a second on the thread waiting on the socket; answering `INT_CANCEL`
+/// ends that wait as a timeout, which the error handler turns into an attention sent from the same thread.
+nonisolated private let freetdsInterruptCheck: DB_DBCHKINTR_FUNC = { dbproc in
+    guard let gate = freetdsGate(forKey: UInt(bitPattern: dbproc)), gate.isInterruptRaised else { return 0 }
+    return 1
+}
+
+nonisolated private let freetdsInterruptHandler: DB_DBHNDLINTR_FUNC = { _ in INT_CANCEL }
 
 nonisolated private let freetdsInitOnce: Void = {
     _ = dbinit()
+    freetdsConfigFile.path.withCString { dbsetifile(UnsafeMutablePointer(mutating: $0)) }
     _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
+        if dberr == SYBETIME, let dbproc, freetdsGate(forKey: freetdsConnectionKey(dbproc))?.takeInterrupt() == true {
+            freetdsLogger.debug("FreeTDS: a Stop interrupted the wait, sending the attention")
+            return INT_TIMEOUT
+        }
         var msg = "db-lib error \(dberr)"
         if let s = dberrstr { msg += ": \(String(cString: s))" }
         if let s = oserrstr, String(cString: s) != "Success" { msg += " (os: \(String(cString: s)))" }
         freetdsLogger.error("FreeTDS: \(msg)")
-        freetdsSetError(msg, for: dbproc)
+        freetdsRecordLibraryError(msg, number: Int(dberr), for: dbproc)
         return INT_CANCEL
     }
-    _ = dbmsghandle { dbproc, msgno, _, severity, msgtext, _, _, _ in
+    _ = dbmsghandle { dbproc, msgno, msgstate, severity, msgtext, _, procname, line in
         guard let text = msgtext else { return 0 }
-        let msg = String(cString: text)
-        if severity > 10 {
-            freetdsSetError(msg, for: dbproc, overwrite: true)
-            freetdsLogger.error("FreeTDS msg \(msgno) sev \(severity): \(msg)")
+        let message = MSSQLServerMessage(
+            number: Int(msgno),
+            severity: Int(severity),
+            state: Int(msgstate),
+            line: Int(line),
+            procedure: procname.map { String(cString: $0) } ?? "",
+            text: String(cString: text)
+        )
+        if message.isError {
+            freetdsLogger.error("FreeTDS msg \(msgno) sev \(severity): \(message.text)")
         } else {
-            freetdsLogger.debug("FreeTDS msg \(msgno): \(msg)")
+            freetdsLogger.debug("FreeTDS msg \(msgno): \(message.text)")
         }
+        freetdsRecordMessage(message, for: dbproc)
         return 0
     }
 }()
@@ -127,14 +264,17 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var dbproc: UnsafeMutablePointer<DBPROCESS>?
     private let queue: DispatchQueue
     private let options: MSSQLConnectionOptions
+    private let connectTimeoutMilliseconds: Int
     private let lock = NSLock()
     private var _isConnected = false
-    private var _isCancelled = false
+
+    /// Which calls a Stop reaches. A Stop and a disconnect are the only things here that run off the queue, so they
+    /// stop a call through this gate and never through db-lib.
+    private let requestGate = MSSQLRequestGate()
 
     private static let kerberosEnvLock = NSLock()
-    private static let freetdsConfEnvLock = NSLock()
+    private static let loginStartLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
-    private static let connectDeadlineMarginSeconds = 5
 
     var isConnected: Bool {
         lock.lock()
@@ -142,60 +282,124 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         return _isConnected
     }
 
-    init(options: MSSQLConnectionOptions) {
+    init(options: MSSQLConnectionOptions, connectTimeoutMilliseconds: Int? = nil) {
         self.options = options
+        let fallbackSeconds = max(1, min(options.loginTimeoutSeconds, Int(Int32.max)))
+        self.connectTimeoutMilliseconds = connectTimeoutMilliseconds ?? fallbackSeconds * 1_000
         self.queue = DispatchQueue(label: "com.TablePro.freetds.\(options.host).\(options.port)", qos: .userInitiated)
         _ = freetdsInitOnce
     }
 
     func connect() async throws {
-        let gate = SingleResumeGate<Void>()
-        let isKerberos = options.authMethod == .windows
-        let deadline = DispatchTimeInterval.seconds(options.loginTimeoutSeconds + Self.connectDeadlineMarginSeconds)
-
-        Self.deadlineQueue.asyncAfter(deadline: .now() + deadline) {
-            gate.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos))
-        }
+        let attempt = SingleResumeGate<Void>()
+        let deadline = MSSQLConnectDeadline(timeoutMilliseconds: connectTimeoutMilliseconds)
+        armDeadline(for: attempt, milliseconds: deadline.remainingMilliseconds)
 
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                gate.install(continuation, alreadyCancelled: Task.isCancelled)
+                attempt.install(continuation, alreadyCancelled: Task.isCancelled)
                 queue.async { [self] in
                     do {
-                        let proc = try openConnection()
-                        if gate.win(()) {
+                        let proc = try openConnection(for: attempt, deadline: deadline)
+                        if attempt.win(()) {
                             adopt(proc)
                         } else {
                             teardown(proc)
                         }
                     } catch {
-                        gate.fail(error)
+                        attempt.fail(error)
                     }
                 }
             }
         } onCancel: {
-            gate.fail(CancellationError())
+            attempt.fail(CancellationError())
+            freetdsConfigFile.interruptWaits()
         }
     }
 
-    private func openConnection() throws -> UnsafeMutablePointer<DBPROCESS> {
+    private func openConnection(
+        for attempt: SingleResumeGate<Void>,
+        deadline: MSSQLConnectDeadline
+    ) throws -> UnsafeMutablePointer<DBPROCESS> {
+        defer { discardKerberosCache() }
+        let entry: MSSQLFreeTDSServerEntry
+        do {
+            entry = try MSSQLFreeTDSServerEntry(options: options)
+        } catch {
+            throw MSSQLCoreError.connectionFailed(error.localizedDescription)
+        }
         guard let login = dblogin() else {
             throw MSSQLCoreError.connectionFailed("Failed to create login")
         }
         defer { dbloginfree(login) }
+        try configure(login)
 
+        let opened: UnsafeMutablePointer<DBPROCESS>?
+        do {
+            opened = try freetdsConfigFile.withEntry(
+                entry,
+                waitingAtMost: TimeInterval(deadline.remainingMilliseconds) / 1_000,
+                givingUpWhen: { attempt.isSettled }
+            ) {
+                guard !attempt.isSettled else { throw CancellationError() }
+                freetdsClearError(for: nil)
+                return try open(login, serverName: entry.name, deadline: deadline)
+            }
+        } catch MSSQLFreeTDSConfigError.nameInUse {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+        } catch let error as MSSQLFreeTDSConfigError {
+            throw MSSQLCoreError.connectionFailed(error.localizedDescription)
+        }
+        guard let proc = opened else {
+            throw openFailure()
+        }
+        return proc
+    }
+
+    private func armDeadline(for attempt: SingleResumeGate<Void>, milliseconds: Int) {
+        let isKerberos = options.authMethod == .windows
+        Self.deadlineQueue.asyncAfter(deadline: .now() + .milliseconds(milliseconds)) {
+            if attempt.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos)) {
+                freetdsConfigFile.interruptWaits()
+            }
+        }
+    }
+
+    private func open(
+        _ login: UnsafeMutablePointer<LOGINREC>,
+        serverName: String,
+        deadline: MSSQLConnectDeadline
+    ) throws -> UnsafeMutablePointer<DBPROCESS>? {
+        Self.loginStartLock.lock()
+        defer { Self.loginStartLock.unlock() }
+        let timeoutMilliseconds = deadline.remainingMilliseconds
+        guard timeoutMilliseconds > 0 else {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+        }
+        let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
+        _ = dbsetlogintime(seconds)
+        return withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
+    }
+
+    private func discardKerberosCache() {
+        guard let cachePath = options.kerberosCachePath else { return }
+        try? FileManager.default.removeItem(atPath: cachePath)
+    }
+
+    private func configure(_ login: UnsafeMutablePointer<LOGINREC>) throws {
         for parameter in MSSQLLoginParameters.build(
             user: options.user,
             password: options.password,
             applicationName: options.applicationName,
-            encryptionFlag: options.encryptionFlag,
             database: options.database
         ) {
-            _ = dbsetlname(login, parameter.value, parameter.field.dbsetName)
+            guard dbsetlname(login, parameter.value, parameter.field.dbsetName) == SUCCEED else {
+                throw MSSQLCoreError.connectionFailed(parameter.field.refusal)
+            }
         }
-        _ = dbsetlversion(login, UInt8(DBVERSION_74))
-        _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
-
+        guard dbsetlversion(login, UInt8(DBVERSION_74)) == SUCCEED else {
+            throw MSSQLCoreError.connectionFailed(String(localized: "FreeTDS could not set up the login."))
+        }
         // Entra ID replaces the user name and password with an access token in the LOGIN7
         // FEDAUTH feature extension. Not macOS-only: iOS links the same patched FreeTDS.
         if options.authMethod == .entra {
@@ -210,75 +414,18 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 )
             }
         }
-
-        #if os(macOS)
-        // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
-        // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We
-        // resolve the canonical host + realm up front and hand FreeTDS the full SPN, so cross-realm
-        // and short-name/CNAME hosts authenticate like the JDBC driver does.
-        if options.authMethod == .windows, let spn = options.kerberosServicePrincipal, !spn.isEmpty {
-            _ = dbsetlname(login, spn, Int32(DBSETSERVERPRINCIPAL))
-        }
-        #endif
-
-        freetdsClearError(for: nil)
-        let verifies = options.certificateVerification != .none
-        let serverName = verifies ? MSSQLFreeTDSConfig.serverEntryName : "\(options.host):\(options.port)"
-        guard let proc = withFreeTDSConfigIfNeeded({
-            self.withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
-        }) else {
-            let detail = freetdsGetError(for: nil)
-            let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
-            if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
-                throw MSSQLCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
-            }
-            if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
-                throw MSSQLCoreError.kerberosAuthFailed(kind: kind, serverMessage: detail)
-            }
-            throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
-        }
-        return proc
     }
 
-    /// A verifying mode needs `ca file` and `check certificate hostname`, which dblib cannot set.
-    /// The generated config is written 0600 and FREETDSCONF points at it only for this dbopen, so
-    /// a machine's own freetds.conf is untouched on every other connection.
-    private func withFreeTDSConfigIfNeeded(
-        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
-    ) -> UnsafeMutablePointer<DBPROCESS>? {
-        guard options.certificateVerification != .none else { return body() }
-
-        let contents = MSSQLFreeTDSConfig.configuration(
-            host: options.host,
-            port: options.port,
-            encryptionFlag: options.encryptionFlag,
-            verification: options.certificateVerification,
-            caCertificatePath: options.caCertificatePath
-        )
-
-        let path = NSTemporaryDirectory() + "tablepro-freetds-\(UUID().uuidString).conf"
-        guard let data = contents.data(using: .utf8),
-              FileManager.default.createFile(
-                  atPath: path,
-                  contents: data,
-                  attributes: [.posixPermissions: 0o600]
-              ) else {
-            return body()
+    private func openFailure() -> MSSQLCoreError {
+        let detail = freetdsGetError(for: nil)
+        let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
+        if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
+            return .tlsHandshakeFailed(kind: kind, serverMessage: detail)
         }
-
-        Self.freetdsConfEnvLock.lock()
-        let previous = getenv("FREETDSCONF").map { String(cString: $0) }
-        setenv("FREETDSCONF", path, 1)
-        defer {
-            if let previous {
-                setenv("FREETDSCONF", previous, 1)
-            } else {
-                unsetenv("FREETDSCONF")
-            }
-            Self.freetdsConfEnvLock.unlock()
-            try? FileManager.default.removeItem(atPath: path)
+        if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
+            return .kerberosAuthFailed(kind: kind, serverMessage: detail)
         }
-        return body()
+        return .connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
     }
 
     private func withKerberosEnvironmentIfNeeded(
@@ -295,7 +442,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 unsetenv("KRB5CCNAME")
             }
             Self.kerberosEnvLock.unlock()
-            try? FileManager.default.removeItem(atPath: cachePath)
         }
         return body()
     }
@@ -305,6 +451,8 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         dbproc = proc
         _isConnected = true
         lock.unlock()
+        freetdsRegister(requestGate, for: proc)
+        dbsetinterrupt(proc, freetdsInterruptCheck, freetdsInterruptHandler)
         establishSession(proc)
     }
 
@@ -336,16 +484,23 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 
     func switchDatabase(_ database: String) async throws {
+        let call = requestGate.enqueue()
         try await freetdsDispatchAsync(on: queue) { [self] in
             guard let proc = self.dbproc else {
                 throw MSSQLCoreError.notConnected
             }
-            if dbuse(proc, database) == FAIL {
+            try self.requestGate.beginRequest(call)
+            defer { self.requestGate.endRequest() }
+            guard dbuse(proc, database) != FAIL else {
+                if self.requestGate.isCancelled(call) { throw CancellationError() }
                 throw MSSQLCoreError.queryFailed("Cannot switch to database '\(database)'")
             }
         }
     }
 
+    /// Closing a connection ends what it is running, as it does for any SQL Server client: measured, a statement whose
+    /// client closed the socket wrote nothing. Only the queue may close the handle and the queue may be inside a read,
+    /// so the read is stopped the way a Stop stops it and the handle is closed behind it.
     func disconnect() {
         let handle = dbproc
         dbproc = nil
@@ -354,283 +509,147 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _isConnected = false
         lock.unlock()
 
-        if let handle {
-            freetdsUnregister(handle)
-            queue.async {
-                _ = dbclose(handle)
-            }
+        requestGate.stop()
+        guard let handle else { return }
+        queue.async { [self] in
+            teardown(handle)
         }
     }
 
+    /// A Stop. Safe from any thread, because it only marks the calls: see ``MSSQLRequestGate``.
     func cancelCurrentQuery() {
-        lock.lock()
-        _isCancelled = true
-        let proc = dbproc
-        lock.unlock()
-
-        guard let proc else { return }
-        dbcancel(proc)
+        requestGate.stop()
     }
 
     func executeQuery(_ query: String) async throws -> MSSQLRawResult {
+        try await read(query, plan: .singleResult).singleResult()
+    }
+
+    /// A read the host has classified as a query, capped at `rowCap`. Reaching the cap ends the request on the server
+    /// the way ``MSSQLRequestEnding`` allows, so the statement does not stay behind holding its locks.
+    func executeQuery(_ query: String, rowCap: Int) async throws -> MSSQLRawResult {
+        try await read(query, plan: .boundedQuery(rowCap: rowCap)).singleResult()
+    }
+
+    /// Sends `batch` in one request and reads it to the end. A server error inside it is part of the answer, because
+    /// the server carries on past most of them.
+    ///
+    /// `countsToSkip` is how many statements the caller put in front of the batch, whose row counts are not the batch's.
+    func executeBatch(_ batch: String, rowCap: Int?, countsToSkip: Int = 0) async throws -> MSSQLBatchReadout {
+        try await read(batch, plan: .batch(rowCap: rowCap, countsToSkip: countsToSkip))
+    }
+
+    /// What the latest request printed, handed over once.
+    func takeServerOutput() async throws -> (lines: [String], isTruncated: Bool) {
+        try await freetdsDispatchAsync(on: queue) { [self] in
+            guard let proc = self.dbproc else { return (lines: [], isTruncated: false) }
+            return freetdsTakeOutput(for: proc)
+        }
+    }
+
+    private func read(_ query: String, plan: FreeTDSReadPlan) async throws -> MSSQLBatchReadout {
         let queryToRun = String(query)
+        let call = requestGate.enqueue()
         return try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
-                try self.executeQuerySync(queryToRun)
+                try self.readSync(queryToRun, call: call, plan: plan, sink: .buffer, isAborted: nil)
             }
         } onCancel: { [weak self] in
             self?.cancelCurrentQuery()
         }
     }
 
-    private func executeQuerySync(_ query: String) throws -> MSSQLRawResult {
+    /// Runs one call's request to its end. A read that may stop early asks the session first, in the same call so
+    /// nothing runs between the answer and the read, and a read that cannot costs no extra round trip.
+    private func readSync(
+        _ query: String,
+        call: UInt64,
+        plan: FreeTDSReadPlan,
+        sink: FreeTDSRowSink,
+        isAborted: (@Sendable () -> Bool)?
+    ) throws -> MSSQLBatchReadout {
         guard let proc = dbproc else {
             throw MSSQLCoreError.notConnected
         }
 
-        _ = dbcanquery(proc)
+        try requestGate.beginRequest(call)
+        defer { requestGate.endRequest() }
 
-        lock.lock()
-        _isCancelled = false
-        lock.unlock()
+        let mayStopEarly = plan.endsRequestAtRowCap || isAborted != nil
+        let ending = try mayStopEarly ? sessionRequestEnding(proc, call: call) : MSSQLRequestEnding.readRest
 
         freetdsClearError(for: proc)
         if dbcmd(proc, query) == FAIL {
             throw MSSQLCoreError.queryFailed("Failed to prepare query")
         }
-        if dbsqlexec(proc) == FAIL {
-            let detail = freetdsGetError(for: proc)
-            let msg = detail.isEmpty ? "Query execution failed" : detail
-            throw MSSQLCoreError.queryFailed(msg)
-        }
-
-        var allColumns: [MSSQLColumnDescriptor] = []
-        var allRows: [[MSSQLRawCell]] = []
-        var firstResultSet = true
-        var truncated = false
-        var rowsWritten = 0
-
-        while true {
-            lock.lock()
-            let cancelledBetweenResults = _isCancelled
-            if cancelledBetweenResults { _isCancelled = false }
-            lock.unlock()
-            if cancelledBetweenResults {
-                throw CancellationError()
-            }
-
-            let resCode = dbresults(proc)
-            if resCode == FAIL {
-                throw MSSQLCoreError.queryFailed("Query execution failed")
-            }
-            if resCode == Int32(NO_MORE_RESULTS) {
-                break
-            }
-
-            let numCols = dbnumcols(proc)
-            if numCols <= 0 {
-                rowsWritten += Int(dbcount(proc))
-                continue
-            }
-
-            var descriptors: [MSSQLColumnDescriptor] = []
-            for i in 1...numCols {
-                let name = dbcolname(proc, Int32(i)).map { String(cString: $0) } ?? "col\(i)"
-                let type = Self.columnType(fromFreeTDSToken: dbcoltype(proc, Int32(i)))
-                descriptors.append(MSSQLColumnDescriptor(name: name, type: type))
-            }
-
-            if firstResultSet {
-                allColumns = descriptors
-                firstResultSet = false
-            }
-
-            while true {
-                let rowCode = dbnextrow(proc)
-                if rowCode == Int32(NO_MORE_ROWS) { break }
-                if rowCode == FAIL { break }
-
-                lock.lock()
-                let cancelled = _isCancelled
-                if cancelled { _isCancelled = false }
-                lock.unlock()
-                if cancelled {
-                    throw CancellationError()
-                }
-
-                var row: [MSSQLRawCell] = []
-                for i in 1...numCols {
-                    let len = dbdatlen(proc, Int32(i))
-                    let colToken = dbcoltype(proc, Int32(i))
-                    let colType = descriptors[Int(i - 1)].type
-                    if len <= 0 && colToken != Int32(SYBBIT) {
-                        row.append(.null)
-                    } else if let ptr = dbdata(proc, Int32(i)) {
-                        if colType.isBinary {
-                            row.append(.bytes(Data(bytes: ptr, count: Int(len))))
-                        } else if let str = Self.columnValueAsString(proc: proc, ptr: ptr, srcToken: colToken, srcLen: len, type: colType) {
-                            row.append(.string(str))
-                        } else {
-                            row.append(.null)
-                        }
-                    } else {
-                        row.append(.null)
-                    }
-                }
-                allRows.append(row)
-                if allRows.count >= MSSQLRowLimits.emergencyMax {
-                    truncated = true
-                    break
-                }
-            }
-        }
-
-        // A statement that returns no rows still reports how many it wrote, and db-lib carries that
-        // in dbcount() for the result set just walked. Deriving the count from the rows read instead
-        // answered 0 for every INSERT, UPDATE and DELETE, so nothing downstream could tell a write
-        // that changed nothing from one that changed everything it meant to.
-        let affectedRows = allColumns.isEmpty ? rowsWritten : allRows.count
-        return MSSQLRawResult(
-            columns: allColumns,
-            rows: allRows,
-            affectedRows: affectedRows,
-            isTruncated: truncated
+        var reader = FreeTDSBatchReader(
+            proc: proc,
+            plan: plan,
+            sink: sink,
+            ending: ending,
+            userCancelled: { [requestGate] in requestGate.isCancelled(call) },
+            consumerStopped: isAborted ?? { false }
         )
+        return try reader.read()
+    }
+
+    /// One round trip, about a millisecond against a local server, the same as `SELECT 1`. A server error in the answer
+    /// reads the rest rather than trusting it.
+    private func sessionRequestEnding(
+        _ proc: UnsafeMutablePointer<DBPROCESS>,
+        call: UInt64
+    ) throws -> MSSQLRequestEnding {
+        freetdsClearError(for: proc)
+        guard dbcmd(proc, MSSQLRequestEnding.sessionQuery) != FAIL else { return .readRest }
+        var reader = FreeTDSBatchReader(
+            proc: proc,
+            plan: .singleResult,
+            sink: .buffer,
+            ending: .readRest,
+            userCancelled: { [requestGate] in requestGate.isCancelled(call) },
+            consumerStopped: { false }
+        )
+        let answer = try reader.read()
+        return MSSQLRequestEnding(sessionAnswer: answer.errors.isEmpty ? answer.resultSets.first : nil)
     }
 
     /// `isAborted` is how a consumer that stopped reaches this loop. It is a closure rather than a
     /// PluginKit type because this file is compiled into the iOS app too and may not import
     /// PluginKit. It is polled instead of `Task.isCancelled`, which is always false here: the body
-    /// runs inside a bare `queue.async` with no task context.
+    /// runs inside a bare `queue.async` with no task context. A consumer that stops ends the request
+    /// the way a capped read does.
+    ///
+    /// Only the request's first result set is streamed. A later one is read past, so the statements behind it still
+    /// run, and a server error anywhere in the request finishes the stream with that error.
     func streamQuery(
         _ query: String,
-        isAborted: @escaping @Sendable () -> Bool = { false },
+        isAborted: (@Sendable () -> Bool)? = nil,
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) async throws {
         let queryToRun = String(query)
+        let call = requestGate.enqueue()
         try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
-                try self.streamQuerySync(queryToRun, isAborted: isAborted, continuation: continuation)
+                do {
+                    let readout = try self.readSync(
+                        queryToRun,
+                        call: call,
+                        plan: .stream,
+                        sink: .stream(continuation),
+                        isAborted: isAborted
+                    )
+                    if let error = readout.errors.first {
+                        continuation.finish(throwing: MSSQLCoreError.queryFailed(error.message.text))
+                        return
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
         } onCancel: { [weak self] in
             self?.cancelCurrentQuery()
         }
-    }
-
-    private func streamQuerySync(
-        _ query: String,
-        isAborted: @escaping @Sendable () -> Bool,
-        continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
-    ) throws {
-        guard let proc = dbproc else {
-            throw MSSQLCoreError.notConnected
-        }
-
-        _ = dbcanquery(proc)
-
-        lock.lock()
-        _isCancelled = false
-        lock.unlock()
-
-        freetdsClearError(for: proc)
-        if dbcmd(proc, query) == FAIL {
-            throw MSSQLCoreError.queryFailed("Failed to prepare query")
-        }
-        if dbsqlexec(proc) == FAIL {
-            let detail = freetdsGetError(for: proc)
-            let msg = detail.isEmpty ? "Query execution failed" : detail
-            throw MSSQLCoreError.queryFailed(msg)
-        }
-
-        var headerSent = false
-        var currentDescriptors: [MSSQLColumnDescriptor] = []
-
-        while true {
-            lock.lock()
-            let cancelledBetweenResults = _isCancelled || isAborted()
-            if cancelledBetweenResults { _isCancelled = false }
-            lock.unlock()
-            if cancelledBetweenResults {
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            let resCode = dbresults(proc)
-            if resCode == FAIL {
-                continuation.finish(throwing: MSSQLCoreError.queryFailed("Query execution failed"))
-                return
-            }
-            if resCode == Int32(NO_MORE_RESULTS) {
-                break
-            }
-
-            let numCols = dbnumcols(proc)
-            if numCols <= 0 { continue }
-
-            if !headerSent {
-                var descriptors: [MSSQLColumnDescriptor] = []
-                for i in 1...numCols {
-                    let name = dbcolname(proc, Int32(i)).map { String(cString: $0) } ?? "col\(i)"
-                    let type = Self.columnType(fromFreeTDSToken: dbcoltype(proc, Int32(i)))
-                    descriptors.append(MSSQLColumnDescriptor(name: name, type: type))
-                }
-                currentDescriptors = descriptors
-                continuation.yield(.header(columns: descriptors))
-                headerSent = true
-            }
-
-            var batch: [[MSSQLRawCell]] = []
-            batch.reserveCapacity(MSSQLRowLimits.streamBatchSize)
-
-            while true {
-                let rowCode = dbnextrow(proc)
-                if rowCode == Int32(NO_MORE_ROWS) { break }
-                if rowCode == FAIL { break }
-
-                lock.lock()
-                let cancelled = _isCancelled || isAborted()
-                if cancelled { _isCancelled = false }
-                lock.unlock()
-                if cancelled {
-                    if !batch.isEmpty {
-                        continuation.yield(.rows(batch))
-                    }
-                    continuation.finish(throwing: CancellationError())
-                    return
-                }
-
-                var row: [MSSQLRawCell] = []
-                for i in 1...numCols {
-                    let len = dbdatlen(proc, Int32(i))
-                    let colToken = dbcoltype(proc, Int32(i))
-                    let colType = currentDescriptors[Int(i - 1)].type
-                    if len <= 0 && colToken != Int32(SYBBIT) {
-                        row.append(.null)
-                    } else if let ptr = dbdata(proc, Int32(i)) {
-                        if colType.isBinary {
-                            row.append(.bytes(Data(bytes: ptr, count: Int(len))))
-                        } else if let str = Self.columnValueAsString(proc: proc, ptr: ptr, srcToken: colToken, srcLen: len, type: colType) {
-                            row.append(.string(str))
-                        } else {
-                            row.append(.null)
-                        }
-                    } else {
-                        row.append(.null)
-                    }
-                }
-                batch.append(row)
-                if batch.count >= MSSQLRowLimits.streamBatchSize {
-                    continuation.yield(.rows(batch))
-                    batch.removeAll(keepingCapacity: true)
-                }
-            }
-
-            if !batch.isEmpty {
-                continuation.yield(.rows(batch))
-            }
-        }
-
-        continuation.finish()
     }
 
     static func columnType(fromFreeTDSToken token: Int32) -> MSSQLColumnType {
@@ -662,11 +681,15 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         case 42: return .dateTime2
         case 43: return .dateTimeOffset
         case Int32(SYBUNIQUE): return .uniqueIdentifier
+        case 98: return .sqlVariant
+        // db-lib has no conversion for a CLR type (geography, geometry, hierarchyid), whose value on the wire is the
+        // type's serialized bytes.
+        case 240: return .varbinary
         default: return .unknown(token)
         }
     }
 
-    private static func columnValueAsString(
+    fileprivate static func columnValueAsString(
         proc: UnsafeMutablePointer<DBPROCESS>,
         ptr: UnsafePointer<BYTE>,
         srcToken: Int32,
@@ -689,6 +712,14 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         guard converted > 0,
               let raw = String(bytes: buf.prefix(Int(converted)), encoding: .utf8)
         else { return nil }
+        if type == .dateTimeOffset {
+            var parts = DBDATEREC2()
+            if dbanydatecrack(proc, &parts, srcToken, ptr) == SUCCEED,
+               let value = MSSQLDatetimeFormatter.dateTimeOffset(raw, offsetMinutes: Int(parts.tzone)) {
+                return value
+            }
+            freetdsLogger.warning("dbanydatecrack failed on a datetimeoffset, so the value reads without its offset")
+        }
         if type.isDateOrTime {
             return MSSQLDatetimeFormatter.reformat(raw, type: type) ?? raw
         }
@@ -704,8 +735,376 @@ nonisolated private extension MSSQLLoginField {
         case .application: return Int32(DBSETAPP)
         case .nationalLanguage: return Int32(DBSETNATLANG)
         case .charset: return Int32(DBSETCHARSET)
-        case .encryption: return Int32(DBSETENCRYPT)
         case .database: return Int32(DBSETDBNAME)
         }
+    }
+
+    var refusal: String {
+        switch self {
+        case .user:
+            return String(localized: "The user name is longer than the 128 bytes FreeTDS takes.")
+        case .password:
+            return String(localized: "The password is longer than the 128 bytes FreeTDS takes.")
+        case .database:
+            return String(localized: "The database name is longer than the 128 bytes FreeTDS takes.")
+        case .application, .nationalLanguage, .charset:
+            return String(localized: "FreeTDS could not set up the login.")
+        }
+    }
+}
+
+/// How much of a request one call keeps.
+///
+/// A bounded read's row cap ends the whole request (`endsRequestAtRowCap`), the way ``MSSQLRequestEnding`` allows.
+/// Every other limit is one the request goes on past: the rest of that result set is read and dropped, and the read
+/// carries on with the next, because a batch's later statements still have to run.
+nonisolated private struct FreeTDSReadPlan: Sendable {
+    let keptResultSetLimit: Int
+    let rowCap: Int?
+    let endsRequestAtRowCap: Bool
+    let rowBudget: Int
+
+    /// Results without columns at the head of the request whose counts are not the request's own: a statement the
+    /// caller put in front of the batch, such as the declaration that binds its parameters.
+    var leadingCountsToSkip = 0
+
+    static let singleResult = FreeTDSReadPlan(
+        keptResultSetLimit: 1,
+        rowCap: nil,
+        endsRequestAtRowCap: false,
+        rowBudget: MSSQLRowLimits.emergencyMax
+    )
+
+    static let stream = FreeTDSReadPlan(
+        keptResultSetLimit: 1,
+        rowCap: nil,
+        endsRequestAtRowCap: false,
+        rowBudget: .max
+    )
+
+    static func boundedQuery(rowCap: Int) -> FreeTDSReadPlan {
+        FreeTDSReadPlan(
+            keptResultSetLimit: 1,
+            rowCap: max(rowCap, 1),
+            endsRequestAtRowCap: true,
+            rowBudget: MSSQLRowLimits.emergencyMax
+        )
+    }
+
+    static func batch(rowCap: Int?, countsToSkip: Int) -> FreeTDSReadPlan {
+        FreeTDSReadPlan(
+            keptResultSetLimit: MSSQLRowLimits.batchResultSetLimit,
+            rowCap: rowCap.map { max($0, 1) },
+            endsRequestAtRowCap: false,
+            rowBudget: MSSQLRowLimits.emergencyMax,
+            leadingCountsToSkip: countsToSkip
+        )
+    }
+}
+
+nonisolated private enum FreeTDSRowSink {
+    case buffer
+    case stream(AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation)
+}
+
+/// Reads one request to its end, or ends it early, so the connection is never left with results nobody will read.
+///
+/// db-lib reports a failed statement as a `FAIL` from `dbresults` and then carries on to the next one, and it refuses
+/// `dbresults` while a result set still has rows unread, failing with 20019 for as long as nothing reads them. So every
+/// exit here reads on to `NO_MORE_RESULTS` or ends the request with an attention. None leaves the rest for the next
+/// call: a statement left unread stays suspended on the server holding its locks, and the next call has to read all of
+/// it before the server answers.
+///
+/// This is the only thread that reads the connection, so it is the one that answers a Stop. It looks for one after
+/// every db-lib call and ends the request with `dbcancel`; a Stop that lands while db-lib waits on the socket reaches
+/// that wait through the interrupt handler, which sends the attention from here and ends the wait. Rows are skipped one
+/// at a time rather than with `dbcanquery`, which reads a whole result set without once waiting a second on the socket,
+/// so a Stop during it was never seen: measured over 30 million rows.
+///
+/// A result set counts only when no server error arrived while it was read: `SELECT 1/0` sends its columns and then
+/// its error, and a conversion error cuts a scan short with `dbnextrow` answering `NO_MORE_ROWS`, so both would
+/// otherwise read as a successful result with too few rows.
+nonisolated private struct FreeTDSBatchReader {
+    private enum ResultSetEnd {
+        case readToEnd
+        case stoppedEarly
+    }
+
+    private let proc: UnsafeMutablePointer<DBPROCESS>
+    private let plan: FreeTDSReadPlan
+    private let sink: FreeTDSRowSink
+    private let ending: MSSQLRequestEnding
+    private let userCancelled: () -> Bool
+    private let consumerStopped: () -> Bool
+
+    private var kept: [MSSQLRawResult] = []
+    private var keptCount = 0
+    private var readPastCount = 0
+    private var rowsAffected = 0
+    private var rowsKept = 0
+    private var errors: [MSSQLPlacedError] = []
+    private var droppedErrorCount = 0
+    private var absorbedMessageCount = 0
+    private var headerStreamed = false
+    private var countsSkipped = 0
+
+    /// Set when the read stopped keeping results early in a session that may not be sent an attention, so it reads
+    /// past the rest of the request instead.
+    private var isReadingPastRest = false
+
+    /// Every error the request raised, the ones past the stored cap included. Whether a `FAIL` has a server error behind
+    /// it is read off this, not off the kept errors: once the cap was reached a failing statement added nothing to
+    /// those, and read as db-lib failing the whole request.
+    private var errorTotal: Int {
+        errors.count + droppedErrorCount
+    }
+
+    init(
+        proc: UnsafeMutablePointer<DBPROCESS>,
+        plan: FreeTDSReadPlan,
+        sink: FreeTDSRowSink,
+        ending: MSSQLRequestEnding,
+        userCancelled: @escaping () -> Bool,
+        consumerStopped: @escaping () -> Bool
+    ) {
+        self.proc = proc
+        self.plan = plan
+        self.sink = sink
+        self.ending = ending
+        self.userCancelled = userCancelled
+        self.consumerStopped = consumerStopped
+    }
+
+    mutating func read() throws -> MSSQLBatchReadout {
+        let executed = dbsqlexec(proc)
+        try cancelIfUserAsked()
+        absorbMessages()
+        if executed == FAIL, errorTotal == 0 {
+            try failWithoutServerError()
+        }
+
+        while true {
+            if !isReadingPastRest, consumerStopped() {
+                guard try stopEarly() else { break }
+            }
+            let errorsBefore = errorTotal
+            let code = dbresults(proc)
+            try cancelIfUserAsked()
+            absorbMessages()
+            if code == Int32(NO_MORE_RESULTS) {
+                break
+            }
+            if code == FAIL {
+                if errorTotal == errorsBefore {
+                    try failWithoutServerError()
+                }
+                continue
+            }
+            let columnCount = Int(dbnumcols(proc))
+            guard columnCount > 0 else {
+                recordCount()
+                continue
+            }
+            guard keptCount < plan.keptResultSetLimit, !headerStreamed, !isReadingPastRest else {
+                try readPast(errorsBefore: errorsBefore)
+                continue
+            }
+            if try readResultSet(columnCount: columnCount, errorsBefore: errorsBefore) == .stoppedEarly {
+                guard try stopEarly() else { break }
+            }
+        }
+
+        try failIfConnectionEnded()
+        finishCountOnlyStream()
+        return MSSQLBatchReadout(
+            resultSets: kept,
+            rowsAffected: rowsAffected,
+            errors: errors,
+            errorsNotKept: droppedErrorCount,
+            resultSetsReadPast: readPastCount
+        )
+    }
+
+    private mutating func readResultSet(columnCount: Int, errorsBefore: Int) throws -> ResultSetEnd {
+        let descriptors = (1...columnCount).map(describeColumn)
+        if case .stream(let continuation) = sink {
+            continuation.yield(.header(columns: descriptors))
+            headerStreamed = true
+        }
+
+        var rows: [[MSSQLRawCell]] = []
+        var rowCount = 0
+        var isTruncated = false
+        var end = ResultSetEnd.readToEnd
+
+        while true {
+            let rowCode = dbnextrow(proc)
+            try cancelIfUserAsked()
+            if rowCode == Int32(NO_MORE_ROWS) || rowCode == FAIL {
+                break
+            }
+            if consumerStopped() {
+                end = .stoppedEarly
+                break
+            }
+            if let cap = plan.rowCap, rowCount >= cap {
+                isTruncated = true
+                guard plan.endsRequestAtRowCap else {
+                    try skipRows()
+                    break
+                }
+                end = .stoppedEarly
+                break
+            }
+            if rowsKept >= plan.rowBudget {
+                isTruncated = true
+                try skipRows()
+                break
+            }
+            rows.append(readRow(descriptors))
+            rowCount += 1
+            rowsKept += 1
+            streamIfFull(&rows)
+        }
+        streamRemaining(&rows)
+
+        absorbMessages()
+        guard errorTotal == errorsBefore else { return end }
+        keptCount += 1
+        if case .buffer = sink {
+            kept.append(MSSQLRawResult(columns: descriptors, rows: rows, affectedRows: rows.count, isTruncated: isTruncated))
+        }
+        return end
+    }
+
+    /// Stops keeping anything more of the request, and answers whether the read goes on. An attention ends the request
+    /// on the server now. Otherwise the rest of the current result set is skipped here and the loop reads past what
+    /// follows, so the request still ends inside this call.
+    private mutating func stopEarly() throws -> Bool {
+        switch ending {
+        case .attention:
+            _ = dbcancel(proc)
+            return false
+        case .readRest:
+            try skipRows()
+            isReadingPastRest = true
+            return true
+        }
+    }
+
+    private mutating func readPast(errorsBefore: Int) throws {
+        try skipRows()
+        absorbMessages()
+        guard errorTotal == errorsBefore else { return }
+        readPastCount += 1
+    }
+
+    private func skipRows() throws {
+        while true {
+            let code = dbnextrow(proc)
+            try cancelIfUserAsked()
+            if code == Int32(NO_MORE_ROWS) || code == FAIL { return }
+        }
+    }
+
+    private mutating func recordCount() {
+        guard countsSkipped >= plan.leadingCountsToSkip else {
+            countsSkipped += 1
+            return
+        }
+        let count = Int(dbcount(proc))
+        guard count >= 0 else { return }
+        rowsAffected += count
+    }
+
+    private func describeColumn(_ index: Int) -> MSSQLColumnDescriptor {
+        let column = Int32(index)
+        let name = dbcolname(proc, column).map { String(cString: $0) } ?? "col\(index)"
+        return MSSQLColumnDescriptor(name: name, type: FreeTDSConnection.columnType(fromFreeTDSToken: dbcoltype(proc, column)))
+    }
+
+    private func readRow(_ descriptors: [MSSQLColumnDescriptor]) -> [MSSQLRawCell] {
+        descriptors.indices.map { offset in
+            let column = Int32(offset + 1)
+            let pointer = dbdata(proc, column)
+            let length = dbdatlen(proc, column)
+            let type = descriptors[offset].type
+            let reading = MSSQLCellReading(type: type, hasData: pointer != nil, length: Int(length))
+            guard let pointer else { return .null }
+            switch reading {
+            case .null, .unreadable:
+                return .null
+            case .emptyText:
+                return .string("")
+            case .bytes:
+                return .bytes(Data(bytes: pointer, count: Int(length)))
+            case .text:
+                guard let text = FreeTDSConnection.columnValueAsString(
+                    proc: proc,
+                    ptr: pointer,
+                    srcToken: dbcoltype(proc, column),
+                    srcLen: length,
+                    type: type
+                ) else { return .null }
+                return .string(text)
+            }
+        }
+    }
+
+    private func streamIfFull(_ rows: inout [[MSSQLRawCell]]) {
+        guard case .stream(let continuation) = sink, rows.count >= MSSQLRowLimits.streamBatchSize else { return }
+        continuation.yield(.rows(rows))
+        rows.removeAll(keepingCapacity: true)
+    }
+
+    private func streamRemaining(_ rows: inout [[MSSQLRawCell]]) {
+        guard case .stream(let continuation) = sink, !rows.isEmpty else { return }
+        continuation.yield(.rows(rows))
+        rows.removeAll()
+    }
+
+    private func finishCountOnlyStream() {
+        guard case .stream(let continuation) = sink, !headerStreamed, errorTotal == 0 else { return }
+        continuation.yield(.affectedRows(rowsAffected))
+    }
+
+    private mutating func absorbMessages() {
+        let arrival = freetdsMessages(for: proc, from: absorbedMessageCount)
+        droppedErrorCount = arrival.droppedErrorCount
+        for message in arrival.messages where message.isError {
+            errors.append(MSSQLPlacedError(message: message, precedingResultSetCount: keptCount))
+        }
+        absorbedMessageCount += arrival.messages.count
+    }
+
+    /// A Stop the user asked for ends the request on the server, which is what they asked for, whatever the session
+    /// holds. When the interrupt handler already sent the attention, `dbcancel` finds the request over and returns at
+    /// once: measured, 0 ms.
+    private func cancelIfUserAsked() throws {
+        guard userCancelled() else { return }
+        _ = dbcancel(proc)
+        throw CancellationError()
+    }
+
+    /// db-lib failed the request with no server error to explain it: the connection is gone, or db-lib refused the
+    /// call. Reading further would never end, so on a live connection an attention ends whatever the request left, and
+    /// the next call does not find it pending.
+    private func failWithoutServerError() throws -> Never {
+        let diagnostics = freetdsDiagnostics(for: proc)
+        if diagnostics.connectionEnded {
+            throw MSSQLCoreError.connectionFailed(diagnostics.libraryError)
+        }
+        _ = dbcancel(proc)
+        let detail = diagnostics.libraryError.isEmpty ? "Query execution failed" : diagnostics.libraryError
+        throw MSSQLCoreError.queryFailed(detail)
+    }
+
+    private func failIfConnectionEnded() throws {
+        if let fatal = errors.first(where: { $0.message.endsConnection }) {
+            throw MSSQLCoreError.connectionFailed(fatal.message.text)
+        }
+        let diagnostics = freetdsDiagnostics(for: proc)
+        guard diagnostics.connectionEnded else { return }
+        throw MSSQLCoreError.connectionFailed(diagnostics.libraryError)
     }
 }

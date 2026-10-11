@@ -183,7 +183,6 @@ actor PluginInstaller {
             (
                 kit: PluginManager.currentPluginKitVersion,
                 minimumKit: PluginManager.minimumCompatiblePluginKitVersion,
-                inspector: PluginManager.currentInspectorKitVersion,
                 session: RegistryClient.shared.session
             )
         }
@@ -238,8 +237,7 @@ actor PluginInstaller {
         try Self.validateStagedABI(
             bundleURL: bundleURL,
             currentKit: context.kit,
-            minimumKit: context.minimumKit,
-            currentInspector: context.inspector
+            minimumKit: context.minimumKit
         )
         Self.stripQuarantine(at: bundleURL)
 
@@ -300,34 +298,21 @@ actor PluginInstaller {
     nonisolated static func validateStagedABI(
         bundleURL: URL,
         currentKit: Int,
-        minimumKit: Int,
-        currentInspector: Int
+        minimumKit: Int
     ) throws {
         guard let bundle = Bundle(url: bundleURL),
               let info = bundle.infoDictionary
         else {
             throw PluginError.invalidBundle("Cannot read Info.plist")
         }
-        let declaredKit = info["TableProPluginKitVersion"] as? Int
-        let declaredInspector = info["TableProInspectorKitVersion"] as? Int
-        if declaredKit == nil && declaredInspector == nil {
+        guard let version = info["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(pluginVersion: 0, requiredVersion: currentKit)
         }
-        if let version = declaredKit {
-            if version > currentKit {
-                throw PluginError.incompatibleVersion(required: version, current: currentKit)
-            }
-            if version < minimumKit {
-                throw PluginError.pluginOutdated(pluginVersion: version, requiredVersion: currentKit)
-            }
+        if version > currentKit {
+            throw PluginError.incompatibleVersion(required: version, current: currentKit)
         }
-        if let version = declaredInspector {
-            if version > currentInspector {
-                throw PluginError.incompatibleVersion(required: version, current: currentInspector)
-            }
-            if version < currentInspector {
-                throw PluginError.pluginOutdated(pluginVersion: version, requiredVersion: currentInspector)
-            }
+        if version < minimumKit {
+            throw PluginError.pluginOutdated(pluginVersion: version, requiredVersion: currentKit)
         }
     }
 

@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("WelcomeImportMenuButton")
 struct WelcomeImportMenuButtonTests {
     private final class Recorder {
         var fired: [String] = []

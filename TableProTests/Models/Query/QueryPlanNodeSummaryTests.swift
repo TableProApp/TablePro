@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Node Summary")
 struct QueryPlanNodeSummaryTests {
     private func makeNode(
         operation: String = "Seq Scan",

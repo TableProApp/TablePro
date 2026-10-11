@@ -15,7 +15,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Window busy state guard")
 struct WindowBusyStateGuardTests {
     @Test("Nothing stores or writes a second copy of whether the window is busy")
     func noStoredWindowExecutionFlag() throws {
@@ -80,6 +79,29 @@ struct WindowBusyStateGuardTests {
         #expect(readout(tab).isExecuting)
         registry.endUnclaimedWork(work, for: tab)
         #expect(readout(tab).isExecuting == false)
+    }
+
+    /// The Stop button in the status bar is a second question about the same registry: whether the
+    /// work can still be stopped, which a batch whose `COMMIT` is on the wire cannot. It is part of
+    /// `==` so the bar redraws when the commit phase starts.
+    @Test("The readout dims its Stop while a batch is committing, and stays busy")
+    func executionReadoutDimsStopWhileCommitting() {
+        var registry = TabExecutionRegistry()
+        let tab = UUID()
+        func readout() -> ExecutionReadout {
+            ExecutionReadout(tabId: tab, execution: registry, lastTiming: nil, onCancel: {})
+        }
+
+        let claim = registry.claim(tab)
+        #expect(readout().isExecuting)
+        #expect(readout().canStop)
+        let before = readout()
+
+        let marked = registry.enterUninterruptiblePhase(claim)
+        #expect(marked)
+        #expect(readout().isExecuting)
+        #expect(readout().canStop == false)
+        #expect(before != readout())
     }
 
     private struct SourceLine {

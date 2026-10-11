@@ -105,6 +105,9 @@ extension MainContentCoordinator {
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
             syncQueryToolbarState(for: newTab)
 
+            /// Consumed once restored. The change manager is the selected tab's edits from here, and
+            /// a copy left on the tab went stale with the first undo: it went on reporting edits the
+            /// reader had taken back, and a reload put off for them never ran.
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
                 changeManager.restoreState(
@@ -113,8 +116,10 @@ extension MainContentCoordinator {
                     schemaName: newTab.tableContext.schemaName,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchPolicy: newRows.rowMatchPolicy
+                    rowMatchPolicy: newRows.rowMatchPolicy,
+                    columnTypeNames: newRows.columnTypeNames
                 )
+                tabManager.mutate(at: newIndex) { $0.pendingChanges = TabChangeSnapshot() }
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
@@ -124,6 +129,7 @@ extension MainContentCoordinator {
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
                     rowMatchPolicy: newRows.rowMatchPolicy,
+                    columnTypeNames: newRows.columnTypeNames,
                     triggerReload: false
                 )
             }

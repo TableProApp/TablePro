@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 /// One execution's product: its rows, and the facts about how they were produced.
 ///
@@ -31,10 +32,17 @@ final class ResultSet: ObservableObject, Identifiable {
     @Published var rowsAffected: Int = 0
     @Published var errorMessage: String?
     @Published var statusMessage: String?
+    /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`, read right after it ran.
+    @Published var serverOutput: PluginServerOutput = .none
     @Published var isPinned: Bool = false
     @Published var isTruncated: Bool = false
     @Published var baseQuery: String?
     @Published var baseQueryParameterValues: [String?]?
+
+    /// The statement a parameterized run produced these rows from, as written, with the values it bound. `baseQuery`
+    /// and `baseQueryParameterValues` are the same run in the driver's positional form, which Fetch All sends as it
+    /// is and which a sort cannot edit safely. Nil for rows no parameterized statement stands behind.
+    @Published var namedParameterStatement: NamedParameterStatement?
 
     /// The table these rows came from, captured when the statement ran. Nil means the rows have no
     /// single writable table, which `ResultEditability` treats as a refusal rather than a licence

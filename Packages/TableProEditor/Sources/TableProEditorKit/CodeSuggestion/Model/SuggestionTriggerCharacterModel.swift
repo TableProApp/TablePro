@@ -57,6 +57,11 @@ final class SuggestionTriggerCharacterModel {
         )
     }
 
+    /// A programmatic edit is not typing, so it neither triggers completions nor leaves a typed position behind.
+    func programmaticEditDidReplaceContents() {
+        lastPosition = nil
+    }
+
     func selectionUpdated(_ position: CursorPosition) {
         guard let controller, let completionDelegate = controller.completionDelegate else {
             return

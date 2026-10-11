@@ -57,13 +57,15 @@ internal extension MainContentCommandActions {
         coordinator?.switcherPresenter?.dismiss()
     }
 
-    /// Anchored to the Database subitem, which is the capsule the user pressed. The group is two
-    /// capsules wide, so anchoring to it points the chooser at the seam between them; the presenter
-    /// falls back to the group by itself once AppKit clips it into the overflow menu.
+    /// Anchored to the Database item, which is the capsule the user pressed. It is a top-level
+    /// centred item, so it anchors on its own capsule, measured within 2pt of where the old subitem
+    /// anchor landed at a 1200pt window. Clipped, AppKit anchors it on the clipped-items indicator
+    /// itself; hidden by the context, the presenter takes the floating panel.
     private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
         coordinator.switcherPresenter?.present(
             from: coordinator.contentWindow,
             anchoredTo: MainWindowToolbar.database,
+            hiddenBy: coordinator.splitViewController?.toolbarOwner?.visibility,
             subject: .container(target),
             contentSize: DatabaseSwitcherPopover.contentSize
         ) { dismiss in

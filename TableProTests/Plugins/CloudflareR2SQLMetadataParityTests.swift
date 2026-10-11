@@ -14,7 +14,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Cloudflare R2 SQL curated metadata parity")
 struct CloudflareR2SQLMetadataParityTests {
     private func curated() throws -> PluginMetadataSnapshot {
         try #require(

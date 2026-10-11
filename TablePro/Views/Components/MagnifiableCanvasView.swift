@@ -16,9 +16,14 @@ import SwiftUI
 final class DiagramViewportController: ObservableObject {
     @Published private(set) var magnification: CGFloat = 1.0
 
+    private enum Placement {
+        case fit
+        case offset(CGPoint)
+    }
+
     private weak var scrollView: DiagramScrollView?
     private var magnificationObservation: NSKeyValueObservation?
-    private var savedDocumentOrigin: CGPoint?
+    private var pendingPlacement: Placement?
 
     var visibleDocumentRect: CGRect {
         scrollView?.documentVisibleRect ?? .zero
@@ -44,14 +49,12 @@ final class DiagramViewportController: ObservableObject {
     /// Fits the whole diagram, but never zooms past 100%: a two-node plan blown up to fill the
     /// window reads worse than the same plan at its natural size.
     func fitToWindow() {
-        guard let scrollView, let documentView = scrollView.documentView else { return }
-        let content = documentView.bounds.size
-        let visible = scrollView.contentSize
-        guard content.width > 0, content.height > 0, visible.width > 0, visible.height > 0 else { return }
+        fitWholeDocument()
+    }
 
-        apply(min(1.0, min(visible.width / content.width, visible.height / content.height)))
-        scrollView.contentView.scroll(to: .zero)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+    func fitToWindowOnceLaidOut() {
+        pendingPlacement = .fit
+        placeDocumentIfLaidOut()
     }
 
     /// Clamped through the clip view's own rule, so a fast pan or a node dragged against the edge
@@ -97,34 +100,61 @@ final class DiagramViewportController: ObservableObject {
                 self?.magnification = value
             }
         }
-        restoreScrollPositionIfLaidOut()
+        placeDocumentIfLaidOut()
     }
 
     /// An offset applied while the clip view has no size is rescaled by AppKit when the frame arrives,
     /// measured at 1.5x as the saved origin divided by the zoom. So it waits for a size: at once when
     /// the scroll view already has one, otherwise on the scroll view's first tile that gives it one.
-    func restoreScrollPositionIfLaidOut() {
-        guard let scrollView, let origin = savedDocumentOrigin else { return }
-        let clipView = scrollView.contentView
-        guard !clipView.bounds.isEmpty else { return }
-        savedDocumentOrigin = nil
-        let proposed = CGRect(origin: origin, size: clipView.bounds.size)
-        clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
-        scrollView.reflectScrolledClipView(clipView)
+    func placeDocumentIfLaidOut() {
+        guard let scrollView, let placement = pendingPlacement, !scrollView.contentView.bounds.isEmpty else { return }
+        switch placement {
+        case .fit:
+            guard fitWholeDocument() else { return }
+        case .offset(let origin):
+            restoreOffset(origin, in: scrollView)
+        }
+        pendingPlacement = nil
     }
 
     /// SwiftUI makes a replacement canvas before it dismantles the one it replaces, so the controller
-    /// can already belong to the new scroll view when the old one is torn down. A scroll view that
-    /// never had a size has no offset worth keeping over the one still waiting to be restored.
+    /// can already belong to the new scroll view when the old one is torn down.
     func detach(from scrollView: DiagramScrollView) {
         guard self.scrollView === scrollView else { return }
         if !scrollView.contentView.bounds.isEmpty {
-            savedDocumentOrigin = scrollView.contentView.bounds.origin
+            pendingPlacement = .offset(scrollView.contentView.bounds.origin)
         }
         magnificationObservation?.invalidate()
         magnificationObservation = nil
         scrollView.zoomController = nil
         self.scrollView = nil
+    }
+
+    @discardableResult
+    private func fitWholeDocument() -> Bool {
+        guard let scrollView, let documentView = scrollView.documentView else { return false }
+        let content = documentView.bounds.size
+        let visible = NSScrollView.contentSize(
+            forFrameSize: scrollView.frame.size,
+            horizontalScrollerClass: nil,
+            verticalScrollerClass: nil,
+            borderType: scrollView.borderType,
+            controlSize: .regular,
+            scrollerStyle: scrollView.scrollerStyle
+        )
+        guard content.width > 0, content.height > 0, visible.width > 0, visible.height > 0 else { return false }
+
+        apply(min(1.0, min(visible.width / content.width, visible.height / content.height)))
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        return true
+    }
+
+    private func restoreOffset(_ origin: CGPoint, in scrollView: DiagramScrollView) {
+        let clipView = scrollView.contentView
+        let proposed = CGRect(origin: origin, size: clipView.bounds.size)
+        clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     private func apply(_ value: CGFloat) {

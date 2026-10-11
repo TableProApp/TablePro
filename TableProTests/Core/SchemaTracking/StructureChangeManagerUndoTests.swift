@@ -12,7 +12,6 @@ import Testing
 
 // MARK: - StructureChangeManager Undo Integration Tests
 
-@Suite("Structure Change Manager Undo/Redo Integration")
 struct StructureChangeManagerUndoTests {
 
     // MARK: - Helpers

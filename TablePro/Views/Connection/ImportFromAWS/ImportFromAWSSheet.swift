@@ -3,8 +3,7 @@ import TableProImport
 import TableProPluginKit
 
 struct ImportFromAWSSheet: View {
-    @ObservedObject private var pluginManager = PluginManager.shared
-    var onImported: ((Int) -> Void)?
+    let onFinished: (ImportOutcome) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session = AWSDiscoverySession()
@@ -14,8 +13,9 @@ struct ImportFromAWSSheet: View {
     private enum Step {
         case configure
         case discovering
-        case preview(ConnectionImportPreview, String?)
+        case review(ImportPreview, String?)
         case empty(String?)
+        case failed(String)
     }
 
     var body: some View {
@@ -31,36 +31,39 @@ struct ImportFromAWSSheet: View {
             case .discovering:
                 AWSDiscoveryProgressStep(session: session, onCancel: cancelDiscovery)
 
-            case .preview(let preview, let notice):
-                AWSDiscoveryPreviewStep(
+            case .review(let preview, let notice):
+                ImportReviewStep(
+                    title: String(localized: "Databases found in AWS"),
+                    banner: notice.map(ImportReviewBanner.notice),
                     preview: preview,
-                    notice: notice,
-                    deselectedHosts: readerEndpointHosts,
                     onBack: { step = .configure },
-                    onImported: onImported
+                    onFinished: onFinished
                 )
 
             case .empty(let notice):
-                emptyView(notice)
+                messageView(emptyMessage, symbol: "magnifyingglass", notice: notice)
+
+            case .failed(let message):
+                messageView(message, symbol: "exclamationmark.triangle", notice: nil)
             }
         }
-        .frame(width: 520, height: 440)
+        .importSheetFrame()
         .task(id: discoveryToken) {
             guard isDiscovering else { return }
             await session.run()
             guard !Task.isCancelled, isDiscovering else { return }
-            finishDiscovery()
+            await finishDiscovery()
         }
         .onAppear { preselectProfileRegion() }
     }
 
-    private func emptyView(_ notice: String?) -> some View {
+    private func messageView(_ message: String, symbol: String, notice: String?) -> some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "magnifyingglass")
+            Image(systemName: symbol)
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(verbatim: emptyMessage)
+            Text(verbatim: message)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -131,21 +134,27 @@ struct ImportFromAWSSheet: View {
         discoveryToken += 1
     }
 
-    private func finishDiscovery() {
+    private func finishDiscovery() async {
         guard session.credentialFailure == nil else {
             step = .configure
             return
         }
         let notice = notice()
-        let preview = makePreview()
-        guard !preview.items.isEmpty else {
-            step = .empty(notice)
-            return
+        do {
+            let preview = try await makePreview()
+            guard !Task.isCancelled, isDiscovering else { return }
+            guard !preview.connections.isEmpty else {
+                step = .empty(notice)
+                return
+            }
+            step = .review(preview, notice)
+        } catch {
+            guard !Task.isCancelled, isDiscovering else { return }
+            step = .failed(ImportReviewLoader.message(for: error))
         }
-        step = .preview(preview, notice)
     }
 
-    private func makePreview() -> ConnectionImportPreview {
+    private func makePreview() async throws -> ImportPreview {
         let existing = ConnectionStorage.shared.loadConnections()
         let connections = RDSConnectionBuilder.exportables(
             for: session.importableDatabases,
@@ -163,14 +172,8 @@ struct ImportFromAWSSheet: View {
                 )
             }
         )
-        let analyzed = ConnectionExportService.analyzeImport(
-            RDSDiscoveryReconciler.envelope(for: adopted)
-        )
-        return RDSDiscoveryReconciler.markingMissingDrivers(analyzed) { typeId in
-            let type = DatabaseType(rawValue: typeId)
-            guard case .notInstalled = pluginManager.driverUnavailability(for: type) else { return nil }
-            return PluginManager.registryDisplayName(of: type)
-        }
+        let collected = try RDSDiscoveryReconciler.collected(for: adopted, deselectedHosts: readerEndpointHosts)
+        return try await ImportReviewLoader.preview(of: collected)
     }
 
     private func notice() -> String? {

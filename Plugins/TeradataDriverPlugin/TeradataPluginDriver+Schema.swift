@@ -3,7 +3,7 @@ import TableProPluginKit
 import TableProTeradataCore
 
 extension TeradataPluginDriver {
-    private func effectiveDatabase(_ schema: String?) -> String? {
+    func effectiveDatabase(_ schema: String?) -> String? {
         if let schema, !schema.isEmpty { return schema }
         return currentDatabaseName
     }
@@ -100,12 +100,20 @@ extension TeradataPluginDriver {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let rowCount = try await fetchApproximateRowCount(table: table, schema: schema)
-        return PluginTableMetadata(tableName: table, rowCount: rowCount.map { Int64($0) })
+        let comment = try await tableComment(table: table, schema: schema)
+        return PluginTableMetadata(tableName: table, rowCount: rowCount.map { Int64($0) }, comment: comment)
+    }
+
+    private func tableComment(table: String, schema: String?) async throws -> String? {
+        guard let database = effectiveDatabase(schema) else { return nil }
+        let result = try await execute(query: TeradataSchemaQueries.tableComment(database: database, table: table))
+        guard let comment = text(result.rows.first?.first), !comment.isEmpty else { return nil }
+        return comment
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let target = TeradataSchemaQueries.qualifiedName(database: effectiveDatabase(schema), table: table)
-        let result = try await execute(query: "SELECT COUNT(*) FROM \(target)")
+        guard let database = effectiveDatabase(schema) else { return nil }
+        let result = try await execute(query: TeradataSchemaQueries.statisticsRowCount(database: database, table: table))
         return text(result.rows.first?.first).flatMap { Int($0) }
     }
 

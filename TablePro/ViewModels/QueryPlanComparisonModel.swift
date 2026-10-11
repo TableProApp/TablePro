@@ -199,9 +199,7 @@ final class QueryPlanComparisonModel: ObservableObject {
         }
     }
 
-    /// Parsing and diffing are the only expensive part, and neither touches the model, so they run
-    /// off the main actor. `nonisolated async` is what moves them there; a detached task would
-    /// escape the model's isolation for no benefit.
+    @concurrent
     nonisolated private static func makeContent(
         baselineRawText: String,
         format: ExplainPlanFormat,

@@ -16,6 +16,7 @@ struct SidebarView: View {
     @State private var showsSchemaProgress = false
 
     @ObservedObject private var schemaService = SchemaService.shared
+    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
 
     @ObservedObject var sidebarState: SharedSidebarState
     @ObservedObject var windowState: WindowSidebarState
@@ -44,7 +45,42 @@ struct SidebarView: View {
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
-        }
+        } || !otherSchemaMatches.isEmpty
+    }
+
+    /// The schemas the flat outline lists below its own sections. Counted here too, or a search
+    /// whose only matches are in another schema is shown as "No Results" and the outline that would
+    /// have listed them is never drawn.
+    private var otherSchemaMatches: [String] {
+        guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
+              DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy) else { return [] }
+        let searchText = viewModel.filterQuery
+        let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
+        let pending = Set(pendingTruncates.union(pendingDeletes).compactMap { ref -> String? in
+            (ref.database ?? database) == database ? ref.qualifyingSchema : nil
+        })
+        return DatabaseTreeFilter.otherSchemaMatches(
+            database: database,
+            browsedSchema: coordinator?.toolbarState.currentSchema,
+            searchText: searchText,
+            hiddenSchemas: settingsManager.general.showSystemContainers ? [] : systemSchemas,
+            allSchemaTables: treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database),
+            keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database)?
+                .union(pending),
+            covered: DatabaseTreeFilter.coveredSchemas(
+                treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            ),
+            loadedContent: { schema, listingMatches in
+                DatabaseTreeFilter.loadedObjectBuckets(
+                    in: treeMetadata,
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema,
+                    searchText: searchText,
+                    listingMatches: listingMatches
+                )
+            }
+        )
     }
 
     private var groupingStrategy: GroupingStrategy {
@@ -118,7 +154,6 @@ struct SidebarView: View {
                         connectionId: connectionId,
                         databaseType: viewModel.databaseType,
                         sharedSidebarState: sidebarState,
-                        tables: tables,
                         coordinator: coordinator
                     )
                 } else {
@@ -167,22 +202,22 @@ struct SidebarView: View {
 
     // MARK: - Footer
 
-    /// The schema picker belongs to the flat table list alone, and the support link belongs to
-    /// anyone without a license, so the bar draws when either has something to put in it.
-    private var showsSchemaPicker: Bool {
-        supportsSchemaFooter && sidebarState.selectedSidebarTab == .tables
-    }
-
+    /// The Tables tab's bar. Favorites draws its own, because its commands belong to that view.
     @ViewBuilder
     private var sidebarFooter: some View {
-        if showsSchemaPicker || licenseManager.supportAudience == .prospect {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 8) {
-                    SupportPromptLink()
-                        .font(.caption)
-                    Spacer()
-                    if showsSchemaPicker {
+        if sidebarState.selectedSidebarTab == .tables {
+            let offersCreation = SidebarCreationFacts.offersAnyCreation(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                offersBrowsedFolders: rootShape == .flat
+            )
+            if offersCreation || supportsSchemaFooter || licenseManager.supportAudience == .prospect {
+                SidebarFooterBar {
+                    if offersCreation {
+                        SidebarAddButton(sections: { creationSections() }, isEnabled: isConnected)
+                    }
+                } trailing: {
+                    if supportsSchemaFooter {
                         SchemaPickerControl(
                             connectionId: connectionId,
                             databaseType: viewModel.databaseType,
@@ -190,10 +225,21 @@ struct SidebarView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
             }
         }
+    }
+
+    // Built when the menu opens, so the driver probes stay off the redraw path.
+    private func creationSections() -> [DatabaseTreeMenuSection] {
+        DatabaseTreeMenuSpec.creationSections(
+            SidebarCreationFacts.resolve(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                offersBrowsedFolders: rootShape == .flat,
+                activeDatabase: activeDatabase
+            ),
+            hidesDatabaseWrites: false
+        )
     }
 
     // MARK: - Tables Content

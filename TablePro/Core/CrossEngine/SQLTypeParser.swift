@@ -197,9 +197,9 @@ internal enum SQLTypeParser {
     /// The precision a decimal that declares none is read with, everywhere but PostgreSQL.
     ///
     /// MySQL, SQL Server and ClickHouse report one on every column, and a spelling without one means
-    /// a fixed default rather than no limit. Oracle reports none both for an unconstrained `NUMBER`
-    /// and for an `INTEGER`, whose scale is zero, and 38 digits with no scale keeps every such
-    /// integer exact on the target.
+    /// a fixed default rather than no limit. Oracle reports none for an unconstrained `NUMBER` and
+    /// writes `*` for it in `NUMBER(*,s)`, and 38 digits keeps every such value's integer part exact
+    /// on the target.
     internal static let undeclaredDecimalPrecision = 38
 
     internal static func decimalKind(_ params: String?) -> CanonicalTypeKind {

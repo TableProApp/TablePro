@@ -69,6 +69,8 @@ internal enum EditorTabOpener {
                 title: payload.tabTitle,
                 databaseName: payload.databaseName ?? browseDatabaseName,
                 sourceFileURL: payload.sourceFileURL,
+                sourceFileStamp: payload.sourceFileStamp,
+                sourceFileEncoding: payload.sourceFileEncoding,
                 claimFocus: true
             )
         case .createTable:
@@ -87,6 +89,9 @@ internal enum EditorTabOpener {
         case .objectSource:
             guard let objectRef = payload.objectRef else { return }
             tabManager.addObjectSourceTab(objectRef: objectRef)
+        case .versionHistory:
+            guard let subject = payload.versionHistorySubject else { return }
+            tabManager.addVersionHistoryTab(subject: subject, title: payload.tabTitle ?? QueryTabManager.versionHistoryFallbackTitle)
         }
     }
 
@@ -119,7 +124,7 @@ internal enum EditorTabOpener {
                 allowsDuplicate: payload.forcesNewTab
             )
         } catch {
-            logger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("create tab for table failed: \(error.publicLogShape, privacy: .public)")
             return
         }
 

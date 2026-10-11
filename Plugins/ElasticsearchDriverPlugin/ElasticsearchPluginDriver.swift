@@ -207,7 +207,7 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         Self.logger.debug("""
         buildFilteredQuery table=\(table, privacy: .public) logic=\(logicMode, privacy: .public) limit=\(limit) offset=\(offset) \
         columns=[\(columns.joined(separator: ","), privacy: .public)] \
-        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .public) \
+        filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .private) \
         sortColumns=\(sortColumns.map { "[\($0.columnIndex)]=\($0.ascending ? "asc" : "desc")" }.joined(separator: " "), privacy: .public) \
         resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public)
         """)
@@ -238,18 +238,19 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let typeNames = columnTypeNames(for: columns, index: table)
         let generator = ElasticsearchStatementGenerator(index: table, columns: columns, columnTypeNames: typeNames)
-        return generator.generateStatements(
+        return try generator.generateRowWrites(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,

@@ -28,7 +28,7 @@ public struct OracleTLSDescription: Sendable, Equatable {
     public var verifiesCertificate: Bool { mode == .verifyCA || mode == .verifyIdentity }
 
     private static func normalized(_ path: String?) -> String? {
-        guard let path, !path.isEmpty else { return nil }
+        guard let path, !path.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return path
     }
 }

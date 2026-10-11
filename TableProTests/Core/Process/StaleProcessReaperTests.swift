@@ -40,7 +40,6 @@ private final class FakeProcessTable: @unchecked Sendable {
     }
 }
 
-@Suite("Stale process reaper")
 struct StaleProcessReaperTests {
     private static let fast = StaleProcessReaper.Timings(
         grace: .milliseconds(60),

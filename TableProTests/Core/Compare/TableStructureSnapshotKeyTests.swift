@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableStructureSnapshot indexes and foreign keys")
 struct TableStructureSnapshotKeyTests {
     private func snapshot(
         indexes: [PluginIndexInfo] = [],

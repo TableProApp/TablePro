@@ -1,7 +1,6 @@
 import CloudKit
 import Foundation
 import os
-import Security
 
 public struct PullResult: Sendable {
     public let changedRecords: [CKRecord]
@@ -25,16 +24,14 @@ public actor CloudKitSyncEngine {
     public static let zoneName = "TableProSync"
     public static let defaultContainerID = "iCloud.com.TablePro"
 
-    private static let maxBatchSize = 400
     private static let maxRetries = 3
 
+    /// What a build without the iCloud entitlement reports, in CloudKit's own terms, so it is
+    /// classified like the server's answer to the same fault.
+    private static var unavailable: CKError { CKError(.missingEntitlement) }
+
     public static func hasICloudEntitlement() -> Bool {
-        #if os(macOS)
-        guard let task = SecTaskCreateFromSelf(nil) else { return false }
-        return SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) != nil
-        #else
-        return true
-        #endif
+        CloudKitEntitlement.isGrantedToCurrentProcess()
     }
 
     public init(containerIdentifier: String = defaultContainerID) {
@@ -55,21 +52,23 @@ public actor CloudKitSyncEngine {
     // MARK: - Account Status
 
     public func accountStatus() async throws -> CKAccountStatus {
-        guard let container else { throw SyncError.accountUnavailable }
+        guard let container else { throw Self.unavailable }
         return try await container.accountStatus()
     }
 
-    public func currentAccountId() async throws -> String? {
-        guard let container else { throw SyncError.accountUnavailable }
+    public func currentAccountId() async throws -> String {
+        guard let container else { throw Self.unavailable }
         return try await container.userRecordID().recordName
     }
 
     // MARK: - Zone Management
 
     public func ensureZoneExists() async throws {
-        guard let database else { throw SyncError.accountUnavailable }
+        guard let database else { throw Self.unavailable }
         let zone = CKRecordZone(zoneID: zoneID)
-        _ = try await database.save(zone)
+        _ = try await withRetry {
+            try await database.save(zone)
+        }
         Self.logger.trace("Created or confirmed sync zone: \(Self.zoneName)")
     }
 
@@ -88,20 +87,28 @@ public actor CloudKitSyncEngine {
         let publishableDeletions = SyncSchemaGate.publishable(deletions: deletions)
         guard !publishableRecords.isEmpty || !publishableDeletions.isEmpty else { return PushOutcome() }
 
-        var remainingSaves = publishableRecords[...]
-        var remainingDeletions = publishableDeletions[...]
         var outcome = PushOutcome()
+        let plans = SyncPushBatchPlanner.plans(
+            saveCount: publishableRecords.count,
+            deletionCount: publishableDeletions.count
+        )
 
-        while !remainingSaves.isEmpty || !remainingDeletions.isEmpty {
-            let savesCount = min(remainingSaves.count, Self.maxBatchSize)
-            let batchSaves = Array(remainingSaves.prefix(savesCount))
-            remainingSaves = remainingSaves.dropFirst(savesCount)
-
-            let deletionsCount = min(remainingDeletions.count, Self.maxBatchSize - savesCount)
-            let batchDeletions = Array(remainingDeletions.prefix(deletionsCount))
-            remainingDeletions = remainingDeletions.dropFirst(deletionsCount)
-
-            outcome.merge(try await pushBatch(records: batchSaves, deletions: batchDeletions))
+        for plan in plans {
+            do {
+                outcome.merge(try await push(
+                    plan: plan,
+                    records: publishableRecords,
+                    deletions: publishableDeletions
+                ))
+            } catch {
+                throw SyncPushInterruption.after(outcome, failingWith: error)
+            }
+            /// Full storage, a signed-out account or a deleted zone fails every item that follows the
+            /// same way. The unsent items stay pending, exactly as the failed ones do.
+            if let failure = outcome.failure, failure.stopsUpload {
+                Self.logger.notice("Stopped the upload after a batch every later one would fail the same way")
+                break
+            }
         }
 
         let saved = outcome.savedRecords.count
@@ -109,15 +116,52 @@ public actor CloudKitSyncEngine {
         let failed = outcome.failures.count
         Self.logger.info("Pushed \(saved) records, \(deleted) deletions, \(failed) rejected")
 
-        for (recordID, failure) in outcome.failures {
-            Self.logger.error("CloudKit rejected \(recordID.recordName): \(failure.message)")
+        let failuresByCode = Dictionary(grouping: outcome.failures.values, by: \.code)
+        for (code, failures) in failuresByCode {
+            let example = failures.first?.message ?? ""
+            Self.logger.error(
+                "CloudKit rejected \(failures.count, privacy: .public) items with code \(code.rawValue, privacy: .public), for example: \(example)"
+            )
         }
 
         return outcome
     }
 
+    private func push(
+        plan: SyncPushBatchPlan,
+        records: [CKRecord],
+        deletions: [CKRecord.ID]
+    ) async throws -> PushOutcome {
+        guard !plan.isEmpty else { return PushOutcome() }
+
+        do {
+            return try await pushBatch(
+                records: Array(records[plan.saves]),
+                deletions: Array(deletions[plan.deletions])
+            )
+        } catch let error as CKError where error.code == .limitExceeded {
+            let halves = SyncPushBatchPlanner.halves(of: plan)
+            guard !halves.isEmpty else { throw error }
+
+            Self.logger.notice(
+                "CloudKit refused a batch of \(plan.itemCount, privacy: .public) items, splitting it"
+            )
+
+            var outcome = PushOutcome()
+            for half in halves {
+                do {
+                    outcome.merge(try await push(plan: half, records: records, deletions: deletions))
+                } catch {
+                    throw SyncPushInterruption.after(outcome, failingWith: error)
+                }
+                if let failure = outcome.failure, failure.stopsUpload { break }
+            }
+            return outcome
+        }
+    }
+
     private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
-        guard let database else { throw SyncError.accountUnavailable }
+        guard let database else { throw Self.unavailable }
         return try await withRetry {
             let operation = CKModifyRecordsOperation(
                 recordsToSave: records,
@@ -198,7 +242,7 @@ public actor CloudKitSyncEngine {
     }
 
     private func performPull(since token: CKServerChangeToken?) async throws -> PullPage {
-        guard let database else { throw SyncError.accountUnavailable }
+        guard let database else { throw Self.unavailable }
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
 
@@ -211,6 +255,7 @@ public actor CloudKitSyncEngine {
         var deletedRecordIDs: [CKRecord.ID] = []
         var newToken: CKServerChangeToken?
         var moreComing = false
+        var zoneError: Error?
 
         return try await withCheckedThrowingContinuation { continuation in
             operation.recordWasChangedBlock = { _, result in
@@ -234,10 +279,18 @@ public actor CloudKitSyncEngine {
                     moreComing = hasMore
                 case .failure(let error):
                     Self.logger.warning("Zone fetch result error: \(error.localizedDescription)")
+                    zoneError = error
                 }
             }
 
+            /// The zone's own error is the specific one. CloudKit reports an expired token or a
+            /// deleted zone per zone and wraps the operation in a partial failure that says only
+            /// that some items failed, so the wrapper is never what decides the run.
             operation.fetchRecordZoneChangesResultBlock = { result in
+                if let zoneError {
+                    continuation.resume(throwing: zoneError)
+                    return
+                }
                 switch result {
                 case .success:
                     continuation.resume(returning: PullPage(
@@ -249,11 +302,7 @@ public actor CloudKitSyncEngine {
                         moreComing: moreComing
                     ))
                 case .failure(let error):
-                    guard let ckError = error as? CKError, ckError.code == .changeTokenExpired else {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    continuation.resume(throwing: SyncError.tokenExpired)
+                    continuation.resume(throwing: error)
                 }
             }
 
@@ -263,41 +312,31 @@ public actor CloudKitSyncEngine {
 
     // MARK: - Retry Logic
 
+    /// The last attempt's error is thrown as it arrives, without the wait meant for an attempt that
+    /// will not come.
     private func withRetry<T>(_ operation: () async throws -> T) async throws -> T {
-        var lastError: Error?
-
-        for attempt in 0..<Self.maxRetries {
+        var attempt = 0
+        while true {
             do {
                 return try await operation()
-            } catch let error as CKError where isTransientError(error) {
-                lastError = error
+            } catch let error as CKError where isTransientError(error) && attempt < Self.maxRetries - 1 {
                 let delay = retryDelay(for: error, attempt: attempt)
                 Self.logger.warning(
                     "Transient CK error (attempt \(attempt + 1)/\(Self.maxRetries)): \(error.localizedDescription)"
                 )
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                throw error
+                /// A retry that waits out a rate limit has no deadline of its own, so it can
+                /// ride whichever wake the system was going to make anyway.
+                try await Task.sleep(for: .seconds(delay), tolerance: .seconds(delay / 2))
+                attempt += 1
             }
         }
-
-        throw lastError ?? SyncError.unknown("Max retries exceeded")
     }
 
     private func isTransientError(_ error: CKError) -> Bool {
-        switch error.code {
-        case .networkUnavailable, .networkFailure, .serviceUnavailable,
-             .requestRateLimited, .zoneBusy:
-            return true
-        default:
-            return false
-        }
+        SyncRetryPolicy.isTransient(error.code)
     }
 
     private func retryDelay(for error: CKError, attempt: Int) -> Double {
-        if let suggestedDelay = error.retryAfterSeconds {
-            return suggestedDelay
-        }
-        return Double(1 << attempt)
+        SyncRetryPolicy.delay(retryAfterSeconds: error.retryAfterSeconds, attempt: attempt)
     }
 }

@@ -11,7 +11,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@MainActor @Suite("Schema metadata generated columns")
+@MainActor
 struct SchemaMetadataGeneratedColumnTests {
     private func makeSchema(_ columns: [ColumnInfo]) -> FetchedTableSchema {
         FetchedTableSchema(columns: columns, foreignKeys: nil, approximateRowCount: nil)
@@ -97,7 +97,7 @@ struct SchemaMetadataGeneratedColumnTests {
 /// The metadata a rerun inherits is captured when the cache decision is made, not read back when the
 /// result lands. Reading it late read whichever result was active by then, so selecting a pinned
 /// result mid-flight made the rerun adopt that other result's identity and non-writable sets.
-@MainActor @Suite("Cached schema metadata snapshot")
+@MainActor
 struct CachedSchemaMetadataTests {
     private func rows(
         columnIdentity: [String: IdentityKind] = [:],
@@ -156,7 +156,7 @@ struct CachedSchemaMetadataTests {
 
 /// Only the table's own schema names the columns the server owns. A result set reports far less, so
 /// treating its silence as "this table owns nothing" staged NULL into an identity column.
-@MainActor @Suite("Schema metadata authoritativeness")
+@MainActor
 struct SchemaMetadataAuthoritativenessTests {
     @Test("A parsed table schema is authoritative")
     func parsedSchemaIsAuthoritative() {

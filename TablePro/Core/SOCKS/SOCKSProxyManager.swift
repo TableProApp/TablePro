@@ -49,6 +49,8 @@ actor SOCKSProxyManager: TunnelManaging {
     private struct TunnelState {
         let listener: NWListener
         let localPort: Int
+        let relayDeadlines: ConnectionRelayDeadlineProvider
+        var connectionFailure: ConnectionTimeoutError?
         var relays: [UUID: RelayPair] = [:]
 
         /// Shared by every relay pair the listener accepts, so the readout describes the proxy
@@ -72,9 +74,33 @@ actor SOCKSProxyManager: TunnelManaging {
         targetHost: String,
         targetPort: Int
     ) async throws -> Int {
+        do {
+            return try await createTunnel(
+                connectionId: connectionId,
+                config: config,
+                password: password,
+                targetHost: targetHost,
+                targetPort: targetPort,
+                deadline: ConnectionDeadline(configuredSeconds: Int(connectTimeout.rounded(.up)))
+            )
+        } catch is ConnectionTimeoutError {
+            throw SOCKSProxyError.connectTimedOut(proxyHost: config.host, proxyPort: config.port)
+        }
+    }
+
+    func createTunnel(
+        connectionId: UUID,
+        config: SOCKSProxyConfiguration,
+        password: String?,
+        targetHost: String,
+        targetPort: Int,
+        deadline: ConnectionDeadline
+    ) async throws -> Int {
         guard config.isValid, Self.nwPort(config.port) != nil, Self.nwPort(targetPort) != nil else {
             throw SOCKSProxyError.invalidConfiguration
         }
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.proxy("\(config.host):\(config.port)")
+        try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
@@ -86,7 +112,15 @@ actor SOCKSProxyManager: TunnelManaging {
             throw SOCKSProxyError.unsupportedOnThisSystem
         }
         let privacyContext = Self.makePrivacyContext(connectionId: connectionId, config: config, password: password)
-        try await probeProxyPath(config: config, privacyContext: privacyContext, targetHost: targetHost, targetPort: targetPort)
+        try await probeProxyPath(
+            config: config,
+            privacyContext: privacyContext,
+            targetHost: targetHost,
+            targetPort: targetPort,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint
+        )
+        try deadline.check(endpoint: timeoutEndpoint)
 
         let listener = try makeListener()
         listener.newConnectionHandler = { [weak self] inbound in
@@ -110,8 +144,24 @@ actor SOCKSProxyManager: TunnelManaging {
             Task { await self?.handleListenerDeath(connectionId: connectionId, listener: listener, error: error) }
         }
 
-        let localPort = try await Self.startListener(listener)
-        let state = TunnelState(listener: listener, localPort: localPort)
+        let localPort = try await Self.startListener(
+            listener,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint
+        )
+        do {
+            try deadline.check(endpoint: timeoutEndpoint)
+        } catch {
+            listener.stateUpdateHandler = nil
+            listener.cancel()
+            throw error
+        }
+        let state = TunnelState(
+            listener: listener,
+            localPort: localPort,
+            relayDeadlines: ConnectionRelayDeadlineProvider(initialDeadline: deadline),
+            connectionFailure: nil
+        )
         tunnels[connectionId] = state
         TransportActivityRegistry.shared.register(state.byteCounter, for: connectionId)
         updateAppNapState()
@@ -145,6 +195,12 @@ actor SOCKSProxyManager: TunnelManaging {
         tunnels[connectionId]?.localPort
     }
 
+    func consumeLastConnectionFailure(connectionId: UUID) -> ConnectionTimeoutError? {
+        guard let failure = tunnels[connectionId]?.connectionFailure else { return nil }
+        tunnels[connectionId]?.connectionFailure = nil
+        return failure
+    }
+
     private func makeListener() throws -> NWListener {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
@@ -160,11 +216,19 @@ actor SOCKSProxyManager: TunnelManaging {
         config: SOCKSProxyConfiguration,
         privacyContext: NWParameters.PrivacyContext,
         targetHost: String,
-        targetPort: Int
+        targetPort: Int,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
     ) async throws {
         let probe = Self.makeProxiedConnection(privacyContext: privacyContext, targetHost: targetHost, targetPort: targetPort)
         defer { probe.cancel() }
-        try await Self.waitUntilReady(probe, timeout: connectTimeout, proxyHost: config.host, proxyPort: config.port)
+        try await Self.waitUntilReady(
+            probe,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            proxyHost: config.host,
+            proxyPort: config.port
+        )
     }
 
     private func acceptClient(
@@ -182,6 +246,10 @@ actor SOCKSProxyManager: TunnelManaging {
 
         let relayId = UUID()
         let outbound = Self.makeProxiedConnection(privacyContext: privacyContext, targetHost: targetHost, targetPort: targetPort)
+        guard let relayBudget = tunnels[connectionId]?.relayDeadlines.next() else {
+            inbound.cancel()
+            return
+        }
         tunnels[connectionId]?.relays[relayId] = RelayPair(inbound: inbound, outbound: outbound)
 
         inbound.stateUpdateHandler = { [weak self] state in
@@ -194,9 +262,15 @@ actor SOCKSProxyManager: TunnelManaging {
         }
         inbound.start(queue: Self.networkQueue)
 
-        Task { [connectTimeout, byteCounter] in
+        Task { [byteCounter] in
             do {
-                try await Self.waitUntilReady(outbound, timeout: connectTimeout, proxyHost: config.host, proxyPort: config.port)
+                try await Self.waitUntilReady(
+                    outbound,
+                    deadline: relayBudget.deadline,
+                    timeoutEndpoint: .proxy("\(config.host):\(config.port)"),
+                    proxyHost: config.host,
+                    proxyPort: config.port
+                )
                 outbound.stateUpdateHandler = { [weak self] state in
                     switch state {
                     case .failed, .cancelled:
@@ -217,10 +291,20 @@ actor SOCKSProxyManager: TunnelManaging {
                 Self.pump(inbound, into: outbound, record: byteCounter.recordSent, onFinished: onDirectionFinished)
                 Self.pump(outbound, into: inbound, record: byteCounter.recordReceived, onFinished: onDirectionFinished)
             } catch {
+                if relayBudget.isInitial, let timeout = error as? ConnectionTimeoutError {
+                    await self.recordConnectionFailure(timeout, connectionId: connectionId)
+                }
                 Self.logger.warning("SOCKS relay setup failed for \(connectionId.uuidString, privacy: .public): \(error.localizedDescription)")
                 await self.removeRelay(connectionId: connectionId, relayId: relayId)
             }
         }
+    }
+
+    private func recordConnectionFailure(
+        _ failure: ConnectionTimeoutError,
+        connectionId: UUID
+    ) {
+        tunnels[connectionId]?.connectionFailure = failure
     }
 
     private func removeRelay(connectionId: UUID, relayId: UUID) {
@@ -290,8 +374,13 @@ actor SOCKSProxyManager: TunnelManaging {
         )
     }
 
-    private static func startListener(_ listener: NWListener) async throws -> Int {
-        try await withTaskCancellationHandler {
+    private static func startListener(
+        _ listener: NWListener,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint
+    ) async throws -> Int {
+        try deadline.check(endpoint: timeoutEndpoint)
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, Error>) in
                 let resumed = OSAllocatedUnfairLock(initialState: false)
                 let existingHandler = listener.stateUpdateHandler
@@ -323,6 +412,17 @@ actor SOCKSProxyManager: TunnelManaging {
                         break
                     }
                 }
+                networkQueue.asyncAfter(deadline: .now() + .milliseconds(deadline.remainingMilliseconds)) {
+                    let timedOut = resumed.withLock { done -> Bool in
+                        guard !done else { return false }
+                        done = true
+                        return true
+                    }
+                    guard timedOut else { return }
+                    listener.stateUpdateHandler = existingHandler
+                    listener.cancel()
+                    continuation.resume(throwing: deadline.timeoutError(for: timeoutEndpoint))
+                }
                 listener.start(queue: networkQueue)
             }
         } onCancel: {
@@ -332,7 +432,25 @@ actor SOCKSProxyManager: TunnelManaging {
 
     private static func waitUntilReady(
         _ connection: NWConnection,
-        timeout: TimeInterval,
+        deadline: ConnectionDeadline,
+        timeoutEndpoint: ConnectionTimeoutEndpoint,
+        proxyHost: String,
+        proxyPort: Int
+    ) async throws {
+        try deadline.check(endpoint: timeoutEndpoint)
+        try await waitUntilReady(
+            connection,
+            timeoutMilliseconds: deadline.remainingMilliseconds,
+            timeoutError: deadline.timeoutError(for: timeoutEndpoint),
+            proxyHost: proxyHost,
+            proxyPort: proxyPort
+        )
+    }
+
+    private static func waitUntilReady(
+        _ connection: NWConnection,
+        timeoutMilliseconds: Int,
+        timeoutError: any Error,
         proxyHost: String,
         proxyPort: Int
     ) async throws {
@@ -366,7 +484,7 @@ actor SOCKSProxyManager: TunnelManaging {
                         break
                     }
                 }
-                networkQueue.asyncAfter(deadline: .now() + timeout) {
+                networkQueue.asyncAfter(deadline: .now() + .milliseconds(timeoutMilliseconds)) {
                     let timedOut = resumed.withLock { done -> Bool in
                         guard !done else { return false }
                         done = true
@@ -374,7 +492,7 @@ actor SOCKSProxyManager: TunnelManaging {
                     }
                     guard timedOut else { return }
                     connection.cancel()
-                    continuation.resume(throwing: SOCKSProxyError.connectTimedOut(proxyHost: proxyHost, proxyPort: proxyPort))
+                    continuation.resume(throwing: timeoutError)
                 }
                 connection.start(queue: networkQueue)
             }

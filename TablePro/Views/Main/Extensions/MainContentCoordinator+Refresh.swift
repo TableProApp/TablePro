@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 extension MainContentCoordinator {
@@ -41,6 +42,10 @@ extension MainContentCoordinator {
         onDiscard: @escaping () -> Void
     ) {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
+        if tab.tabType == .versionHistory {
+            AppEvents.shared.versionHistoryRefreshRequested.send(tab.id)
+            return
+        }
         if tab.display.resultsViewMode == .structure {
             structureActions?.refresh?()
             return
@@ -74,8 +79,8 @@ extension MainContentCoordinator {
         }
     }
 
-    private func reloadTableTab(at tabIndex: Int) {
-        cancelCurrentQuery()
+    func reloadTableTab(at tabIndex: Int) {
+        stopExecution(for: tabManager.tabs[tabIndex].id)
         /// A refresh asks for the table as it is now, so the exact count the user requested earlier
         /// describes a table that may have moved on. Retiring it here is what lets the automatic
         /// count re-derive a total, which it otherwise refuses to do rather than downgrade an exact

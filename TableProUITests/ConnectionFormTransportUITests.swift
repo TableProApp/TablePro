@@ -13,7 +13,7 @@ final class ConnectionFormTransportUITests: UITestCase {
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         let form = try openConnectionForm(for: "PostgreSQL", in: app)
-        selectTab("network", in: form)
+        selectConnectionFormTab("network", in: form)
 
         let picker = form.popUpButtons[transportPicker]
         XCTAssertTrue(picker.waitToExist(timeout: 10), "The Network tab should offer a Connect via picker")
@@ -70,24 +70,6 @@ final class ConnectionFormTransportUITests: UITestCase {
     }
 
     // MARK: - Helpers
-
-    /// The sections are a `NavigationSplitView` sidebar, so each row publishes as an outline row
-    /// rather than the radio button an `NSSegmentedControl` gave. Reached by the row's own
-    /// identifier, because a sidebar row's label is nested and does not answer a subscript by title.
-    ///
-    /// Not finding the row fails the test rather than skipping it: a section list the accessibility
-    /// tree cannot see is a section list VoiceOver cannot drive.
-    private func selectTab(_ tab: String, in form: XCUIElement) {
-        let row = form.descendants(matching: .any)
-            .matching(identifier: "connection-form-section-\(tab)")
-            .firstMatch
-        XCTAssertTrue(
-            row.waitToExist(timeout: 10),
-            "No sidebar row identified connection-form-section-\(tab)"
-        )
-        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
-        row.click()
-    }
 
     private func openConnectionForm(for type: String, in app: XCUIApplication) throws -> XCUIElement {
         let newConnection = app.menuBars.menuItems["New Connection…"]

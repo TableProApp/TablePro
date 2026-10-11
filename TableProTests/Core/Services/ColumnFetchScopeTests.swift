@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ColumnFetchScope")
 struct ColumnFetchScopeTests {
     private let columns = ["id", "name", "email", "payload"]
 
@@ -27,6 +26,17 @@ struct ColumnFetchScopeTests {
             schemaColumns: columns,
             hiddenColumns: ["id", "payload"],
             primaryKeyColumns: ["id"]
+        )
+        #expect(result == ["id", "name", "email"])
+    }
+
+    @Test("A hidden column with a value filter stays in the projection")
+    func retainsHiddenValueFilteredColumn() {
+        let result = ColumnFetchScope.selectColumns(
+            schemaColumns: columns,
+            hiddenColumns: ["email", "payload"],
+            primaryKeyColumns: ["id"],
+            valueFilteredColumns: ["email"]
         )
         #expect(result == ["id", "name", "email"])
     }

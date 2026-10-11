@@ -122,7 +122,7 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
     /// qualified name is the whole identity. The definition and the labels are deliberately left
     /// out: an edited enum must still be the same row.
     var id: String {
-        "type_\(qualifiedName)"
+        "type_\(IdentityPath.qualified(name: name, schema: schema))"
     }
 
     static func == (lhs: UserDefinedTypeInfo, rhs: UserDefinedTypeInfo) -> Bool {

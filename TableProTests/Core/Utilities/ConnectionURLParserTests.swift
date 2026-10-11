@@ -6,11 +6,10 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
-@Suite("Connection URL Parser")
 struct ConnectionURLParserTests {
-
     // MARK: - PostgreSQL
 
     @Test("Full PostgreSQL URL")
@@ -318,7 +317,10 @@ struct ConnectionURLParserTests {
 
     @Test("Full mysql+ssh URL")
     func testFullMySQLSSHURL() {
-        let result = ConnectionURLParser.parse("mysql+ssh://root@123.123.123.123:1234/database_user:database_password@127.0.0.1/database_name?name=FlashPanel&usePrivateKey=true&env=production")
+        let result = ConnectionURLParser.parse(
+            "mysql+ssh://root@123.123.123.123:1234/database_user:database_password@127.0.0.1/database_name"
+                + "?name=FlashPanel&usePrivateKey=true&env=production"
+        )
         guard case .success(let parsed) = result else {
             Issue.record("Expected success"); return
         }
@@ -329,7 +331,7 @@ struct ConnectionURLParserTests {
         #expect(parsed.username == "database_user")
         #expect(parsed.password == "database_password")
         #expect(parsed.sshHost == "123.123.123.123")
-        #expect(parsed.sshPort == 1234)
+        #expect(parsed.sshPort == 1_234)
         #expect(parsed.sshUsername == "root")
         #expect(parsed.usePrivateKey == true)
         #expect(parsed.connectionName == "FlashPanel")
@@ -388,7 +390,7 @@ struct ConnectionURLParserTests {
         guard case .success(let parsed) = result else {
             Issue.record("Expected success"); return
         }
-        #expect(parsed.port == 5433)
+        #expect(parsed.port == 5_433)
         #expect(parsed.sshPort == 22)
     }
 
@@ -398,7 +400,7 @@ struct ConnectionURLParserTests {
         guard case .success(let parsed) = result else {
             Issue.record("Expected success"); return
         }
-        #expect(parsed.port == 5433)
+        #expect(parsed.port == 5_433)
     }
 
     @Test("MariaDB SSH URL")
@@ -409,7 +411,7 @@ struct ConnectionURLParserTests {
         }
         #expect(parsed.type == .mariadb)
         #expect(parsed.sshHost == "192.168.1.1")
-        #expect(parsed.sshPort == 2222)
+        #expect(parsed.sshPort == 2_222)
         #expect(parsed.sshUsername == "admin")
         #expect(parsed.host == "127.0.0.1")
         #expect(parsed.database == "production")
@@ -743,6 +745,79 @@ struct ConnectionURLParserTests {
         #expect(parsed.database == "")
     }
 
+    @Test("Redis URL with a negative database index is refused")
+    func redisURLWithNegativeIndexIsRefused() {
+        let result = ConnectionURLParser.parse("redis://localhost:6379/-1")
+        guard case .failure(let error) = result else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex("-1"))
+        #expect(
+            error.localizedDescription
+                == String(format: String(localized: "%@ is not a Redis database index."), "-1")
+        )
+    }
+
+    @Test(
+        "Redis URL whose path is not a database index is refused",
+        arguments: ["1.5", "abc", "2147483647", "3/"]
+    )
+    func redisURLWithInvalidIndexIsRefused(path: String) {
+        guard case .failure(let error) = ConnectionURLParser.parse("redis://localhost/\(path)") else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex(path))
+    }
+
+    @Test("Redis URL accepts the highest selectable database index")
+    func redisURLAcceptsHighestIndex() {
+        let result = ConnectionURLParser.parse("redis://localhost/2147483646")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 2_147_483_646)
+    }
+
+    @Test("Redis URL reads a db-prefixed path as the database index")
+    func redisURLReadsDbPrefixedPath() {
+        let result = ConnectionURLParser.parse("redis://localhost/db4")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 4)
+        #expect(parsed.database == "")
+    }
+
+    @Test("Redis URL with an empty path names no database index")
+    func redisURLWithEmptyPath() {
+        let result = ConnectionURLParser.parse("redis://localhost/")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == nil)
+        #expect(parsed.database == "")
+    }
+
+    @Test("Redis over SSH reads the database index from the path")
+    func redisOverSSHReadsDatabaseIndex() {
+        let result = ConnectionURLParser.parse("redis+ssh://user@bastion:22/localhost:6379/3")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.redisDatabase == 3)
+        #expect(parsed.database == "")
+        #expect(parsed.sshHost == "bastion")
+    }
+
+    @Test("Redis over SSH refuses a negative database index")
+    func redisOverSSHRefusesNegativeIndex() {
+        let result = ConnectionURLParser.parse("redis+ssh://user@bastion:22/localhost:6379/-1")
+        guard case .failure(let error) = result else {
+            Issue.record("Expected failure"); return
+        }
+        #expect(error == .invalidRedisDatabaseIndex("-1"))
+    }
+
     // MARK: - TablePlus Query Parameters
 
     @Test("Parse statusColor parameter")
@@ -968,7 +1043,7 @@ struct ConnectionURLParserTests {
         #expect(parsed.useSSHAgent == true)
         #expect(parsed.agentSocket == SSHAgentSocketOption.onePasswordSocketPath)
         #expect(parsed.sshHost == "bastion")
-        #expect(parsed.sshPort == 2222)
+        #expect(parsed.sshPort == 2_222)
     }
 
     // MARK: - DuckDB
@@ -1018,21 +1093,23 @@ struct ConnectionURLParserTests {
 
     // MARK: - etcds TLS
 
-    @Test("etcds scheme enables SSL")
-    func testEtcdsSchemeEnablesSSL() {
+    @Test("etcds scheme turns on the etcd TLS Mode, not the generic SSL Mode the driver ignores")
+    func testEtcdsSchemeEnablesTLSMode() {
         let result = ConnectionURLParser.parse("etcds://host:2379")
         guard case .success(let parsed) = result else {
             Issue.record("Expected success"); return
         }
-        #expect(parsed.sslMode == .required)
+        #expect(parsed.additionalFields["etcdTlsMode"] == "Required")
+        #expect(parsed.sslMode == nil)
     }
 
-    @Test("etcd scheme does not enable SSL")
-    func testEtcdSchemeNoSSL() {
+    @Test("etcd scheme leaves the etcd TLS Mode disabled")
+    func testEtcdSchemeNoTLS() {
         let result = ConnectionURLParser.parse("etcd://host:2379")
         guard case .success(let parsed) = result else {
             Issue.record("Expected success"); return
         }
+        #expect(parsed.additionalFields["etcdTlsMode"] == "Disabled")
         #expect(parsed.sslMode == nil)
     }
 

@@ -80,8 +80,9 @@ internal enum SplitViewAutosaveName {
 
     /// What a call site uses. Reads the running environment so a caller cannot forget the rule.
     @MainActor
-    internal static func current(_ name: String) -> String {
+    internal static func current(_ name: String) -> String? {
         let environment = AppStorageEnvironment.shared
+        guard !environment.isUnitTestHost else { return nil }
         return resolved(
             name,
             isIsolated: environment.isIsolated,

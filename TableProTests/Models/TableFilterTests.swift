@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Table Filter")
 struct TableFilterTests {
 
     @Test("Requires value returns false for isNull")

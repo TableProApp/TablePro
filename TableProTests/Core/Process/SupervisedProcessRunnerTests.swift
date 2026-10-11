@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Supervised process runner")
 struct SupervisedProcessRunnerTests {
     private func runner(script: String) throws -> ProcessSupervisedRunner {
         let runner = ProcessSupervisedRunner()

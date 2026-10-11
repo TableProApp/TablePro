@@ -20,7 +20,7 @@ struct ConnectionDetailFormatterTests {
     @Test("A file database shows its file name, and an in-memory one says so")
     func fileDatabases() {
         let sqlite = DatabaseConnection(type: .sqlite, database: "/var/mobile/Documents/app.sqlite")
-        let memory = DatabaseConnection(type: .duckdb, database: ConnectionDetailFormatter.inMemoryDatabasePath)
+        let memory = DatabaseConnection(type: .duckdb, database: LocalDatabaseLocation.inMemoryPath)
 
         #expect(ConnectionDetailFormatter.detail(for: sqlite) == "app.sqlite")
         #expect(ConnectionDetailFormatter.detail(for: memory) == String(localized: "In Memory"))
@@ -42,5 +42,63 @@ struct ConnectionDetailFormatterTests {
         #expect(detail.hasPrefix("10.0.0.5/shop"))
         #expect(detail.hasSuffix("bastion.acme.io"))
         #expect(!detail.contains("·"))
+    }
+
+    @Test(
+        "A connection that dials a socket on the Mac names the socket, not a host and port",
+        arguments: [DatabaseType.mysql, .mariadb, .tidb, .oceanbase]
+    )
+    func macSocket(type: DatabaseType) {
+        let withDatabase = DatabaseConnection(
+            type: type,
+            host: "localhost",
+            port: 3_307,
+            database: "shop",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+        let withoutDatabase = DatabaseConnection(
+            type: type,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: " /tmp/mysql.sock "]
+        )
+
+        #expect(ConnectionDetailFormatter.detail(for: withDatabase) == "shop on Mac socket /tmp/mysql.sock")
+        #expect(ConnectionDetailFormatter.detail(for: withoutDatabase) == "Mac socket /tmp/mysql.sock")
+    }
+
+    @Test("An SSH tunnel replaces the socket, so the row shows the forwarded host")
+    func sshTunnelReplacesTheSocket() {
+        let connection = DatabaseConnection(
+            type: .mariadb,
+            host: "10.0.0.5",
+            database: "shop",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"],
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.acme.io", username: "deploy")
+        )
+
+        let detail = ConnectionDetailFormatter.detail(for: connection)
+
+        #expect(detail.hasPrefix("10.0.0.5/shop"))
+        #expect(!detail.contains("socket"))
+    }
+
+    @Test("A blank socket path, or one on an engine without sockets, leaves the host and port")
+    func socketKeyIgnored() {
+        let blank = DatabaseConnection(
+            type: .mysql,
+            host: "db.acme.io",
+            port: 3_307,
+            additionalFields: [MySQLLocalSocket.fieldKey: "  "]
+        )
+        let postgres = DatabaseConnection(
+            type: .postgresql,
+            host: "db.acme.io",
+            port: 5_432,
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+
+        #expect(ConnectionDetailFormatter.detail(for: blank) == "db.acme.io:3307")
+        #expect(ConnectionDetailFormatter.detail(for: postgres) == "db.acme.io")
     }
 }

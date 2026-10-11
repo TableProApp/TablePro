@@ -78,7 +78,7 @@ final class XAIOAuthClient: XAITokenRefreshing {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("xAI token request failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("xAI token request failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(error.localizedDescription)
         }
 

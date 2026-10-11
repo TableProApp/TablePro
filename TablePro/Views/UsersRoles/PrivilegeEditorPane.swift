@@ -27,7 +27,7 @@ struct PrivilegeEditorPane: View {
                 )
                 .accessibilityIdentifier("usersroles-scope-filter")
 
-                Picker("", selection: $viewModel.scopeMode) {
+                Picker(String(localized: "Show"), selection: $viewModel.scopeMode) {
                     ForEach(UsersRolesViewModel.ScopeMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }

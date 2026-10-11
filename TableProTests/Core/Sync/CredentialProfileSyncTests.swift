@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Credential profile sync")
 struct CredentialProfileSyncTests {
     private static let zoneID = CKRecordZone.ID(
         zoneName: "TableProSync",

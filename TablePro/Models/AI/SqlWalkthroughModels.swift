@@ -134,17 +134,25 @@ struct SqlWalkthroughBlock: Codable, Equatable, Sendable {
     let beforeSQL: String
     var envelope: SqlWalkthroughEnvelope
     var diffStyle: SqlWalkthroughDiffStyle
+    let source: QueryEditorAnchor?
 
-    init(beforeSQL: String, envelope: SqlWalkthroughEnvelope, diffStyle: SqlWalkthroughDiffStyle = .unified) {
+    init(
+        beforeSQL: String,
+        envelope: SqlWalkthroughEnvelope,
+        diffStyle: SqlWalkthroughDiffStyle = .unified,
+        source: QueryEditorAnchor? = nil
+    ) {
         self.beforeSQL = beforeSQL
         self.envelope = envelope
         self.diffStyle = diffStyle
+        self.source = source
     }
 
     private enum CodingKeys: String, CodingKey {
         case beforeSQL
         case envelope
         case diffStyle
+        case source
     }
 
     init(from decoder: Decoder) throws {
@@ -152,6 +160,7 @@ struct SqlWalkthroughBlock: Codable, Equatable, Sendable {
         beforeSQL = try container.decode(String.self, forKey: .beforeSQL)
         envelope = try container.decode(SqlWalkthroughEnvelope.self, forKey: .envelope)
         diffStyle = (try container.decodeIfPresent(SqlWalkthroughDiffStyle.self, forKey: .diffStyle)) ?? .unified
+        source = try container.decodeIfPresent(QueryEditorAnchor.self, forKey: .source)
     }
 
     var hasDiff: Bool {

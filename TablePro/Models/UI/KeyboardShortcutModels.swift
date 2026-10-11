@@ -64,6 +64,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case newConnection
     case openDatabase
     case switchConnection
+    case moveTabToConnection
 
     // Editor & Query
     case openFile
@@ -88,6 +89,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case findNext
     case findPrevious
     case useSelectionForFind
+    case aiReviewQuery
     case aiExplainQuery
     case aiOptimizeQuery
 
@@ -105,6 +107,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case clearSelection
     case addRow
     case duplicateRow
+    case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
     case previewFKReference
@@ -129,8 +132,16 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case reopenClosedTab
     case quickSwitcher
     case toggleTableBrowser
+    case showTablesList
+    case showFavoritesList
     case toggleInspector
     case toggleAssistant
+    case toggleAgentMode
+    case newAgentSession
+    case openAgentSession
+    case closeAgentSession
+    case deleteAgentSession
+    case newAIConversation
     case toggleFilters
     case toggleHistory
     case toggleResults
@@ -146,6 +157,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case focusAssistant
     case showPreviousTab
     case showNextTab
+    case switchToRecentTab
+    case switchToLeastRecentTab
+    case showPreviousWindowTab
+    case showNextWindowTab
     case toggleWorkspaceRail
     case showPreviousWorkspace
     case showNextWorkspace
@@ -154,28 +169,32 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var category: ShortcutCategory {
         switch self {
-        case .manageConnections, .newConnection, .openDatabase, .switchConnection:
+        case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
             return .connections
         case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
-             .aiExplainQuery, .aiOptimizeQuery:
+             .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
+             .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
-             .toggleInspector, .toggleAssistant, .toggleFilters, .toggleHistory, .toggleResults,
+             .showTablesList, .showFavoritesList,
+             .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
+             .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
-             .showPreviousTab, .showNextTab,
+             .showPreviousTab, .showNextTab, .switchToRecentTab, .switchToLeastRecentTab,
+             .showPreviousWindowTab, .showNextWindowTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
         }
@@ -191,15 +210,23 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .removeInvisibleCharacters, .foldAll, .unfoldAll,
              .toggleFold, .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
-             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn:
+             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
+             /// Named rather than left to the `default:` below. It reverses a row the grid is
+             /// showing, so it belongs in the grid's context the way Add Row and Delete do, and
+             /// inheriting `.global` would let the recorder call a grid combo free for it.
+             .restorePreviousValues:
             return .dataGrid
         default:
             return .global
         }
+    }
+
+    var switchesRecentTabs: Bool {
+        self == .switchToRecentTab || self == .switchToLeastRecentTab
     }
 
     var allowsBareKey: Bool {
@@ -225,6 +252,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .openDatabase: return String(localized: "Open Database")
         case .openFile: return String(localized: "Open File")
         case .switchConnection: return String(localized: "Switch Connection")
+        case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
@@ -269,13 +297,22 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .clearSelection: return String(localized: "Clear Selection")
         case .addRow: return String(localized: "Add Row")
         case .duplicateRow: return String(localized: "Duplicate Row")
+        case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
         case .previewFKReference: return String(localized: "Preview FK Reference")
         case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
+        case .showTablesList: return String(localized: "Show Tables")
+        case .showFavoritesList: return String(localized: "Show Favorites")
         case .toggleInspector: return String(localized: "Toggle Inspector")
         case .toggleAssistant: return String(localized: "Toggle Assistant")
+        case .toggleAgentMode: return String(localized: "Toggle Agent Mode")
+        case .newAgentSession: return String(localized: "New Session")
+        case .openAgentSession: return String(localized: "Open Session")
+        case .closeAgentSession: return String(localized: "Close Session")
+        case .deleteAgentSession: return String(localized: "Delete Session")
+        case .newAIConversation: return String(localized: "New Conversation")
         case .toggleFilters: return String(localized: "Toggle Filters")
         case .toggleHistory: return String(localized: "Toggle History")
         case .toggleResults: return String(localized: "Toggle Results")
@@ -291,9 +328,14 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .focusAssistant: return String(localized: "Focus Assistant")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
+        case .switchToRecentTab: return String(localized: "Switch to Recent Tab")
+        case .switchToLeastRecentTab: return String(localized: "Switch to Least Recent Tab")
+        case .showPreviousWindowTab: return String(localized: "Show Previous Window Tab")
+        case .showNextWindowTab: return String(localized: "Show Next Window Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
         case .showPreviousWorkspace: return String(localized: "Show Previous Connection")
         case .showNextWorkspace: return String(localized: "Show Next Connection")
+        case .aiReviewQuery: return String(localized: "Review with AI")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }
@@ -308,8 +350,8 @@ extension ShortcutAction {
     /// editor-context binding.
     static let editorBuiltIns: [(key: BoundKey, name: String)] = [
         (.character("/", command: true), String(localized: "Toggle Comment")),
-        (.character("[", command: true), String(localized: "Indent")),
-        (.character("]", command: true), String(localized: "Outdent")),
+        (.character("[", command: true), String(localized: "Outdent")),
+        (.character("]", command: true), String(localized: "Indent")),
         (.character("d", command: true, shift: true), String(localized: "Duplicate Line")),
         (.character("k", command: true, shift: true), String(localized: "Delete Line")),
         (.special(.space, control: true), String(localized: "Show Completions")),
@@ -534,6 +576,7 @@ struct KeyboardSettings: Codable, Equatable {
         .newConnection: .character("n", command: true),
         .openDatabase: .character("k", command: true),
         .switchConnection: .character("c", command: true, control: true),
+        .moveTabToConnection: .character("c", command: true, option: true, control: true),
 
         // Editor & Query
         .openFile: .character("o", command: true),
@@ -557,6 +600,7 @@ struct KeyboardSettings: Codable, Equatable {
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),
         .useSelectionForFind: .character("e", command: true),
+        .aiReviewQuery: .character("l", command: true, shift: true, option: true),
         .aiExplainQuery: .character("l", command: true),
         .aiOptimizeQuery: .character("l", command: true, option: true),
         .export: .character("e", command: true, shift: true),
@@ -602,6 +646,9 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
         .toggleAssistant: .character("a", command: true, option: true),
+        /// Not Shift-Command-A, which Apple's own table assigns to Deselect All and which
+        /// `clearSelection` is waiting for. This keeps the "a is the assistant" family together.
+        .toggleAgentMode: .character("a", command: true, shift: true, option: true),
         .toggleFilters: .character("f", command: true, shift: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),
@@ -617,6 +664,12 @@ struct KeyboardSettings: Codable, Equatable {
         .focusAssistant: .character("a", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
+        /// The one Control chord among the defaults. Control-Tab is not a system hotkey, it is the
+        /// chord AppKit itself gives tab switching in every app with window tabs, and it is what
+        /// DataGrip, VS Code and Zed switch recent tabs with. Show Previous and Next Window Tab
+        /// have no default, since this is the chord AppKit would otherwise give them.
+        .switchToRecentTab: .special(.tab, control: true),
+        .switchToLeastRecentTab: .special(.tab, shift: true, control: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),
         .showPreviousWorkspace: .special(.upArrow, command: true, control: true),
         .showNextWorkspace: .special(.downArrow, command: true, control: true)

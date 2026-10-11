@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DuckDB connection fields")
 struct DuckDBConnectionFieldsTests {
     private func duckdbFields() throws -> [ConnectionField] {
         let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()

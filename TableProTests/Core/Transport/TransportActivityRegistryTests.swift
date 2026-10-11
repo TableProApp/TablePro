@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TransportActivityRegistry")
 struct TransportActivityRegistryTests {
     @Test("A counter reports its totals through the registry")
     func readsBackTheTotals() {

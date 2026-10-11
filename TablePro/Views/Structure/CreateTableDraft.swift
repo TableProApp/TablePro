@@ -5,6 +5,16 @@
 
 import Combine
 import Foundation
+import TableProPluginKit
+
+internal struct CreateTableCompositionKey: Hashable {
+    let scope: DatabaseScope
+    let tableName: String
+    let options: CreateTableOptions
+    let columns: [EditableColumnDefinition]
+    let indexes: [EditableIndexDefinition]
+    let foreignKeys: [EditableForeignKeyDefinition]
+}
 
 /// A table definition in progress, held outside the view that edits it.
 ///
@@ -16,21 +26,96 @@ import Foundation
 internal final class CreateTableDraft: ObservableObject {
     internal let changeManager = StructureChangeManager()
 
-    @Published internal var tableName = ""
+    /// A new name answers whatever the driver said about the last one, so its error goes with it.
+    @Published internal var tableName = "" {
+        didSet {
+            guard tableName != oldValue else { return }
+            form?.clearSubmissionError()
+        }
+    }
     @Published internal var tableOptions = CreateTableOptions()
+    @Published internal var form: CreateTableFormState?
+    @Published internal private(set) var hasResolvedForm = false
 
-    /// Whether the draft holds anything worth losing. A tab that has only just opened does not: the
-    /// editor seeds one blank column so the grid has a row to show, which registers as a pending
-    /// change without the user having typed anything.
-    ///
-    /// Indexes and foreign keys count for the same reason columns do. While they did not, a tab
-    /// holding nothing but foreign keys closed on Cmd+W with no prompt and the draft was dropped.
+    internal func resolveForm(from spec: @autoclosure () -> PluginCreateTableFormSpec?) {
+        guard !hasResolvedForm else { return }
+        hasResolvedForm = true
+        form = spec().map(CreateTableFormState.init(spec:))
+    }
+
+    @Published internal private(set) var composed: CreateTableStatements?
+    @Published internal private(set) var compositionFailure: String?
+
+    private var composedKey: CreateTableCompositionKey?
+    private var compositionGeneration = 0
+    private var changeManagerForwarding: AnyCancellable?
+
+    internal init() {
+        changeManagerForwarding = changeManager.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+    }
+
+    /// A tab that has only just opened holds no work: the editor seeds one blank column so the grid
+    /// has a row to show, which registers as a pending change without the user having typed anything.
     internal var holdsWork: Bool {
         !tableName.isEmpty
+            || ObjectCommentDraft.normalized(tableOptions.comment) != nil
+            || form?.holdsWork == true
             || changeManager.workingColumns.contains { !$0.name.isEmpty }
             || changeManager.workingIndexes.contains { !$0.name.isEmpty || !$0.columns.isEmpty }
             || changeManager.workingForeignKeys.contains {
                 !$0.name.isEmpty || !$0.columns.isEmpty || !$0.referencedTable.isEmpty
             }
+    }
+
+    internal static func offersEngineOptions(for databaseType: DatabaseType) -> Bool {
+        databaseType == .mysql || databaseType == .mariadb
+    }
+
+    internal func plan(for databaseType: DatabaseType) -> CreateTablePlan {
+        CreateTableDraftBuilder.plan(
+            tableName: tableName,
+            options: tableOptions,
+            columns: changeManager.workingColumns,
+            indexes: changeManager.workingIndexes,
+            foreignKeys: changeManager.workingForeignKeys,
+            dialect: ForeignKeyDialect.forType(databaseType),
+            includesEngineOptions: Self.offersEngineOptions(for: databaseType),
+            suppliesItsOwnKey: PluginManager.shared.defaultPrimaryKeyColumn(for: databaseType) != nil
+        )
+    }
+
+    internal func compositionKey(scope: DatabaseScope) -> CreateTableCompositionKey {
+        CreateTableCompositionKey(
+            scope: scope,
+            tableName: tableName,
+            options: tableOptions,
+            columns: changeManager.workingColumns,
+            indexes: changeManager.workingIndexes,
+            foreignKeys: changeManager.workingForeignKeys
+        )
+    }
+
+    internal func recompose(databaseType: DatabaseType, scope: DatabaseScope) async {
+        let key = compositionKey(scope: scope)
+        guard key != composedKey else { return }
+
+        compositionGeneration += 1
+        let generation = compositionGeneration
+        do {
+            let statements = try await DatabaseManager.shared.createTableStatements(
+                plan: plan(for: databaseType),
+                scope: scope
+            )
+            guard generation == compositionGeneration else { return }
+            composed = statements
+            composedKey = key
+            compositionFailure = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == compositionGeneration else { return }
+            compositionFailure = error.localizedDescription
+        }
     }
 }

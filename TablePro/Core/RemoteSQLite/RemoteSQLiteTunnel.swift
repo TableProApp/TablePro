@@ -7,6 +7,8 @@ import CLibSSH2
 import Foundation
 import os
 
+import TableProSSHTransport
+
 /// A loopback listener whose accepted clients each get a fresh exec channel running the SQLite
 /// agent on the SSH server, so the SQLite plugin can reach a live database on that server as if it
 /// were a local port.
@@ -27,6 +29,8 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private let listenFD: Int32
     private let command: String
     private let token: String
+    private let relayDeadlines: ConnectionRelayDeadlineProvider
+    private let connectionTimeoutFailure = OSAllocatedUnfairLock<ConnectionTimeoutError?>(initialState: nil)
 
     private var session: OpaquePointer { chain.session }
     private var socketFD: Int32 { chain.socketFD }
@@ -34,7 +38,14 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private var forwardingTask: Task<Void, Never>?
     private var keepAliveTask: Task<Void, Never>?
     private let aliveLatch = TeardownLatch()
-    private let clientTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    /// The relays still running, so teardown frees the session only once none of them can touch
+    /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
+    /// one thing a `[Task]` pruned on `isCancelled` never noticed, so a tunnel that had served
+    /// clients carried every one of them until it closed. It is also all a task was ever worth
+    /// here, since the relay runs on `relayQueue` outside the task's cancellation scope and stops
+    /// on `aliveLatch` rather than on `Task.isCancelled`.
+    private let clientRelays = DispatchGroup()
 
     private let sessionQueue: DispatchQueue
     private let relayQueue: DispatchQueue
@@ -45,8 +56,6 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     private let byteCounter = TransportByteCounter()
 
     private static let relayBufferSize = 32_768
-    private static let channelOpenDeadlineSeconds: TimeInterval = 6
-    private static let channelOpenPollTimeoutMs: Int32 = 5_000
     private static let acceptPollTimeoutMs: Int32 = 200
     private static let admissionTimeoutSeconds = 5
 
@@ -56,7 +65,8 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         chain: LibSSH2TunnelFactory.AuthenticatedChain,
         listenFD: Int32,
         command: String,
-        token: String
+        token: String,
+        connectionDeadline: ConnectionDeadline
     ) {
         self.connectionId = connectionId
         self.localPort = localPort
@@ -64,6 +74,7 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         self.listenFD = listenFD
         self.command = command
         self.token = token
+        self.relayDeadlines = ConnectionRelayDeadlineProvider(initialDeadline: connectionDeadline)
         self.createdAt = Date()
         self.sessionQueue = DispatchQueue(label: "com.TablePro.rsqlite.session.\(connectionId.uuidString)", qos: .utility)
         self.relayQueue = DispatchQueue(
@@ -74,6 +85,13 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
     }
 
     var isRunning: Bool { aliveLatch.isLive }
+
+    func consumeLastConnectionFailure() -> ConnectionTimeoutError? {
+        connectionTimeoutFailure.withLock { failure in
+            defer { failure = nil }
+            return failure
+        }
+    }
 
     // MARK: - Forwarding
 
@@ -92,7 +110,10 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
                             if self.isRunning { continue }
                             break
                         }
-                        self.spawnClient(clientFD: clientFD)
+                        self.spawnClient(
+                            clientFD: clientFD,
+                            budget: self.relayDeadlines.next()
+                        )
                     }
                 }
             }
@@ -128,16 +149,14 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         performTeardown()
     }
 
+    /// Synchronous cleanup for app termination, which waits for nothing because the process is
+    /// exiting. No descriptor is closed and the session is not freed: the relays and the accept
+    /// loop may still be polling them, and the OS reclaims every one of them anyway.
     func closeSync() {
         guard aliveLatch.claim() else { return }
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        clientTasks.withLock { tasks in
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-        }
         shutdown(socketFD, SHUT_RDWR)
-        Darwin.close(listenFD)
     }
 
     private func markDead() {
@@ -146,27 +165,36 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         onDeath?(connectionId)
     }
 
+    /// Breaks every blocking wait first, then frees the session and the descriptors only once
+    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
+    /// once without releasing the descriptor number, which another thread would otherwise be
+    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
+    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
+    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
+    ///
+    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
+    /// is the only thing that starts one: once it has ended, the group can only empty.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
-        let currentClientTasks = clientTasks.withLock { tasks -> [Task<Void, Never>] in
-            let copy = tasks
-            for task in tasks { task.cancel() }
-            tasks.removeAll()
-            return copy
-        }
 
         shutdown(socketFD, SHUT_RDWR)
-        Darwin.close(listenFD)
 
         let chain = self.chain
+        let relayQueue = self.relayQueue
+        let clientRelays = self.clientRelays
+        let listenFD = self.listenFD
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
         let connectionId = self.connectionId
         Task.detached {
             await forwardingTask?.value
             await keepAliveTask?.value
-            for task in currentClientTasks { await task.value }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                clientRelays.notify(queue: relayQueue) { continuation.resume() }
+            }
+
+            Darwin.close(listenFD)
             LibSSH2TunnelFactory.cleanupChain(chain, reason: "Closing remote SQLite session")
             Self.logger.info("Remote SQLite session closed for \(connectionId)")
         }
@@ -187,28 +215,32 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         return clientFD >= 0 ? clientFD : nil
     }
 
-    private func spawnClient(clientFD: Int32) {
-        let task = Task.detached { [weak self] in
-            guard let self else { Darwin.close(clientFD); return }
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.relayQueue.async { [weak self] in
-                    defer { continuation.resume() }
-                    guard let self else { Darwin.close(clientFD); return }
-                    self.admitAndRelay(clientFD: clientFD)
-                }
+    private func spawnClient(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget
+    ) {
+        let clientRelays = self.clientRelays
+        clientRelays.enter()
+        relayQueue.async { [weak self] in
+            defer { clientRelays.leave() }
+            guard let self else {
+                Darwin.close(clientFD)
+                return
             }
+            self.admitAndRelay(clientFD: clientFD, budget: budget)
         }
-        let shouldCancel = clientTasks.withLock { tasks -> Bool in
-            tasks.removeAll { $0.isCancelled }
-            tasks.append(task)
-            return !aliveLatch.isLive
-        }
-        if shouldCancel { task.cancel() }
     }
 
-    private func admitAndRelay(clientFD: Int32) {
-        guard let line = Self.readAdmissionLine(clientFD),
+    private func admitAndRelay(
+        clientFD: Int32,
+        budget: ConnectionRelayDeadlineProvider.Budget
+    ) {
+        let connectionDeadline = budget.deadline
+        guard let line = Self.readAdmissionLine(clientFD, deadline: connectionDeadline),
               RemoteSQLiteAdmission.isAuthorized(line: line, token: token) else {
+            if budget.isInitial, connectionDeadline.isExpired {
+                recordConnectionTimeout(connectionDeadline)
+            }
             Self.logger.warning("Remote SQLite client rejected: bad or missing token")
             Darwin.close(clientFD)
             return
@@ -217,15 +249,44 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         let opener = RemoteSQLiteExecChannelOpener(session: session, command: command, sessionQueue: sessionQueue)
         let pump = SSHForwardChannelOpenPump(
             opener: opener,
-            isActive: { [weak self] in self?.isRunning ?? false },
-            deadline: Date().addingTimeInterval(Self.channelOpenDeadlineSeconds),
+            isActive: { [weak self] in
+                guard self?.isRunning == true else { return false }
+                return !connectionDeadline.isExpired
+            },
+            deadline: .distantFuture,
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                return pollReady(fd: self.socketFD, directions: directions, timeoutMs: Self.channelOpenPollTimeoutMs)
+                return pollReady(
+                    fd: self.socketFD,
+                    directions: directions,
+                    timeoutMs: Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                )
             }
         )
 
-        switch pump.run() {
+        let outcome = pump.run()
+        let initialDeadlineTimedOut: Bool
+        switch outcome {
+        case .timedOut:
+            initialDeadlineTimedOut = true
+        case .opened, .cancelled, .failed:
+            initialDeadlineTimedOut = connectionDeadline.isExpired
+        }
+        if initialDeadlineTimedOut {
+            if budget.isInitial {
+                recordConnectionTimeout(connectionDeadline)
+            }
+            if case .opened(let channel) = outcome {
+                sessionQueue.sync {
+                    libssh2_channel_close(channel)
+                    libssh2_channel_free(channel)
+                }
+                Darwin.close(clientFD)
+                return
+            }
+        }
+
+        switch outcome {
         case .opened(let channel):
             runRelay(clientFD: clientFD, channel: channel)
         case .failed(let code, let message):
@@ -239,12 +300,20 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         }
     }
 
+    private func recordConnectionTimeout(_ deadline: ConnectionDeadline) {
+        connectionTimeoutFailure.withLock {
+            $0 = deadline.timeoutError(for: chain.timeoutEndpoint)
+        }
+    }
+
     /// Reads the token line the client sends before any protocol frame. One byte at a time up to the
     /// newline, so the first protocol bytes that follow it stay in the socket for the relay, with a
     /// receive timeout and a length cap so a silent or hostile client cannot hold the slot open.
-    private static func readAdmissionLine(_ clientFD: Int32) -> Data? {
-        var timeout = timeval(tv_sec: admissionTimeoutSeconds, tv_usec: 0)
-        setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    private static func readAdmissionLine(
+        _ clientFD: Int32,
+        deadline: ConnectionDeadline
+    ) -> Data? {
+        guard !deadline.isExpired else { return nil }
         defer {
             var clear = timeval(tv_sec: 0, tv_usec: 0)
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &clear, socklen_t(MemoryLayout<timeval>.size))
@@ -253,6 +322,22 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
         var line = Data()
         var byte: UInt8 = 0
         while line.count <= RemoteSQLiteAdmission.maxLineLength {
+            guard !deadline.isExpired else { return nil }
+            let timeoutMilliseconds = min(
+                admissionTimeoutSeconds * 1_000,
+                max(1, deadline.remainingMilliseconds)
+            )
+            var timeout = timeval(
+                tv_sec: timeoutMilliseconds / 1_000,
+                tv_usec: Int32(timeoutMilliseconds % 1_000) * 1_000
+            )
+            setsockopt(
+                clientFD,
+                SOL_SOCKET,
+                SO_RCVTIMEO,
+                &timeout,
+                socklen_t(MemoryLayout<timeval>.size)
+            )
             let read = recv(clientFD, &byte, 1, 0)
             if read <= 0 { return nil }
             if byte == 0x0A { return line }

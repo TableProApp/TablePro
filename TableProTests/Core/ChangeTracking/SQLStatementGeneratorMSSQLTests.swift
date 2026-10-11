@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Statement Generator MSSQL")
 struct SQLStatementGeneratorMSSQLTests {
     // MARK: - Helpers
 

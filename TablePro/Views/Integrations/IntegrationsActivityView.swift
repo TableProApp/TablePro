@@ -30,19 +30,11 @@ enum IntegrationsActivitySection: String, Hashable, CaseIterable, Identifiable {
     }
 }
 
-struct IntegrationsActivityView: View {
-    @State private var selection: IntegrationsActivitySection? = .activityLog
+struct IntegrationsActivitySidebar: View {
+    @ObservedObject var selection: SidebarSelection<IntegrationsActivitySection>
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
-        }
-    }
-
-    private var sidebar: some View {
-        List(selection: $selection) {
+        List(selection: $selection.value) {
             Section(String(localized: "Activity")) {
                 Label(IntegrationsActivitySection.activityLog.title,
                       systemImage: IntegrationsActivitySection.activityLog.systemImage)
@@ -55,12 +47,14 @@ struct IntegrationsActivityView: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     }
+}
 
-    @ViewBuilder
-    private var detail: some View {
-        switch selection {
+struct IntegrationsActivityDetail: View {
+    @ObservedObject var selection: SidebarSelection<IntegrationsActivitySection>
+
+    var body: some View {
+        switch selection.value {
         case .activityLog:
             IntegrationsActivityLogPane()
         case .connectedClients:

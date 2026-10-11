@@ -81,11 +81,18 @@ extension OraclePluginDriver {
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let triggerType = row[safe: 3]?.asText ?? ""
-            let definition = OracleObjectQueries.triggerDefinition(
+            let owner = row[safe: 2]?.asText
+            let body = row[safe: 10]?.asText
+            let definition = OracleObjectQueries.triggerDefinition(OracleTriggerSource(
+                name: name,
+                owner: owner,
+                tableOwner: row[safe: 9]?.asText,
                 description: row[safe: 7]?.asText,
-                body: row[safe: 8]?.asText,
-                name: name
-            )
+                whenClause: row[safe: 6]?.asText,
+                actionType: row[safe: 8]?.asText,
+                status: row[safe: 5]?.asText,
+                body: body
+            ))
             var attributes: [PluginObjectAttribute] = []
             if let whenClause = row[safe: 6]?.asText, !whenClause.isEmpty {
                 attributes.append(PluginObjectAttribute(label: "When", value: whenClause))
@@ -93,11 +100,11 @@ extension OraclePluginDriver {
             return PluginTriggerInfo(
                 name: name,
                 table: row[safe: 1]?.asText,
-                schema: row[safe: 2]?.asText ?? schema,
+                schema: owner ?? schema,
                 timing: OracleObjectQueries.timing(fromTriggerType: triggerType),
                 event: row[safe: 4]?.asText ?? "",
                 orientation: OracleObjectQueries.orientation(fromTriggerType: triggerType),
-                statement: row[safe: 8]?.asText ?? definition,
+                statement: body ?? definition,
                 definition: definition,
                 enabled: (row[safe: 5]?.asText ?? "").uppercased() == "ENABLED",
                 attributes: attributes

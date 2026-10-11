@@ -26,7 +26,6 @@ private actor FakeRefresher: ChatGPTCodexTokenRefreshing {
     }
 }
 
-@Suite("ChatGPTCodexTokenStore")
 struct ChatGPTCodexTokenStoreTests {
     private func tokens(
         refresh: String = "r",

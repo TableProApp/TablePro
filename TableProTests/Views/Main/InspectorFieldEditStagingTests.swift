@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Row inspector edits reach the grid")
 @MainActor
 struct InspectorFieldEditStagingTests {
     @MainActor
@@ -57,8 +56,10 @@ struct InspectorFieldEditStagingTests {
                     columnIndex: columnIndex, value: value, rowIDs: rows, continuity: continuity
                 )
             }
-            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow in
-                coordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow, absentRowIDs in
+                coordinator.revertInspectorFieldEdit(
+                    columnIndex: columnIndex, valuesByRow: valuesByRow, absentRowIDs: absentRowIDs
+                )
             }
             return state
         }

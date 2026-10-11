@@ -18,14 +18,9 @@ struct ExplainRequest: Equatable {
     /// rather than two.
     let variantKey: QueryPlanVariantKey
 
-    /// A driver that declares no variants and builds its own statement may return anything,
-    /// including a multi-column document. Those results go through the ordinary query pipeline
-    /// so they keep their grid rather than being forced into a plan pane.
-    let isDriverBuilt: Bool
-
     /// Picks the variant to run: the one the user chose, otherwise the driver's first declared
-    /// one. Returns nil when the driver declares none, which is the caller's cue to fall back to
-    /// `buildExplainQuery`.
+    /// one. Returns nil when the driver declares none, because an engine that declares no plan
+    /// has nothing to explain.
     static func make(
         variant: ExplainVariant?,
         declaredVariants: [ExplainVariant],
@@ -37,22 +32,7 @@ struct ExplainRequest: Equatable {
             sql: "\(resolved.sqlPrefix) \(statement)",
             subjectSQL: statement,
             format: ExplainFormatResolver.resolve(declared: resolved.format, databaseType: databaseType),
-            variantKey: .declared(resolved.id),
-            isDriverBuilt: false
-        )
-    }
-
-    static func driverBuilt(
-        sql: String,
-        databaseType: DatabaseType,
-        subjectSQL: String? = nil
-    ) -> ExplainRequest {
-        ExplainRequest(
-            sql: sql,
-            subjectSQL: subjectSQL ?? sql,
-            format: ExplainFormatResolver.resolve(declared: .plainText, databaseType: databaseType),
-            variantKey: .driverBuilt,
-            isDriverBuilt: true
+            variantKey: .declared(resolved.id)
         )
     }
 }

@@ -16,7 +16,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginKit ABI resilience")
 struct PluginKitABIResilienceTests {
     private func makeMinimalDriver() -> any PluginDatabaseDriver {
         FakeMSSQLPluginDriver()
@@ -40,6 +39,7 @@ struct PluginKitABIResilienceTests {
         #expect(driver.unsupportedStructureColumnFields.isEmpty)
         #expect(driver.unsupportedIndexTypes.isEmpty)
         #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
+        #expect(driver.checkConstraintRefusal == nil)
         #expect(driver.createSchemaStatement(name: "app") == nil)
         #expect(driver.createSchemaStatements(PluginSchemaDefinition(name: "app")) == nil)
         #expect(driver.renameSchemaStatements(name: "app", to: "archive") == nil)

@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Health monitor opt-out parity")
 struct HealthMonitorOptOutParityTests {
     /// Reads the curated table, not the live registry. Other suites register synthetic engines
     /// into the same shared registry, several with the monitor off, and none of them has a plugin

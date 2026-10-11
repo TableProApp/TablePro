@@ -23,7 +23,6 @@ private final class BodyChromeLayoutPersister: ColumnLayoutPersisting {
 ///
 /// These measure through `rect(ofColumn:)` and through the rendered pixels, never through the chrome
 /// type's own arithmetic, so they cannot pass by agreeing with themselves.
-@Suite("Data grid body chrome")
 @MainActor
 struct DataGridBodyChromeTests {
     private struct Grid {

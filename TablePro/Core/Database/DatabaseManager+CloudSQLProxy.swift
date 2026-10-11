@@ -7,7 +7,8 @@ import Foundation
 
 extension DatabaseManager {
     func buildCloudSQLProxyEffectiveConnection(
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         guard let config = connection.resolvedCloudSQLProxyConfig else { return connection }
 
@@ -18,10 +19,11 @@ extension DatabaseManager {
         let tunnelPort = try await CloudSQLProxyManager.shared.createTunnel(
             connectionId: connection.id,
             config: config,
-            serviceAccountKeyJSON: serviceAccountKeyJSON
+            serviceAccountKeyJSON: serviceAccountKeyJSON,
+            deadline: deadline
         )
 
-        return tunneledConnection(from: connection, localPort: tunnelPort)
+        return tunneledConnection(from: connection, localPort: tunnelPort, securesTransport: true)
     }
 
     func handleCloudSQLProxyTunnelDied(connectionId: UUID) async {

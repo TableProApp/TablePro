@@ -63,6 +63,10 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
         storage.saveCloudflareTokenSecret(state.serviceTokenSecret, for: connectionId)
     }
 
+    internal var binaryNotFoundMessage: String {
+        String(localized: "cloudflared not found. Install it with “brew install cloudflared”, or choose the binary above.")
+    }
+
     func resolveBinary() {
         Task {
             let path = await Task.detached { CLIExecutableFinder.findExecutable("cloudflared") }.value
@@ -94,7 +98,7 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
             Self.logger.info("Started cloudflared access login for \(hostname, privacy: .public)")
         } catch {
             signInError = error.localizedDescription
-            Self.logger.error("cloudflared access login failed to start: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("cloudflared access login failed to start: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

@@ -220,6 +220,16 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         }
     }
 
+    /// A MySQL or MariaDB nullable column reads back with a NULL default. Carried across, SQL Server
+    /// turns it into a named default constraint on every such column, and a later DROP COLUMN on the
+    /// target then fails on each one. No default means the same thing on every engine.
+    func testANullDefaultIsNotCarriedAcross() {
+        let source = snapshot(columns: [column("nickname", "VARCHAR(50)", defaultValue: "NULL")])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mssql)
+        XCTAssertNil(result.snapshot.columns[0].defaultValue)
+        XCTAssertFalse(result.notes.contains { $0.subject == "nickname" })
+    }
+
     func testAPostgresCastIsStrippedFromALiteralDefault() {
         let source = snapshot(columns: [column("state", "character varying(10)", defaultValue: "'new'::character varying")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
@@ -253,6 +263,21 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertNil(result.snapshot.columns[0].generationExpression)
         XCTAssertNil(result.snapshot.columns[0].generationKind)
         XCTAssertTrue(result.notes.contains { $0.subject == "total" })
+    }
+
+    /// The review keeps a type change to one line, cut in the middle, because a spelling such as an
+    /// `ENUM` value list has no space to wrap at. A note written as a sentence still wraps.
+    func testATypeChangeIsMarkedApartFromASentence() throws {
+        let source = snapshot(columns: [
+            column("status", "enum('pending','paid','shipped','delivered','cancelled','refunded')"),
+            column("total", "DECIMAL(10,2)", generation: "price * quantity")
+        ])
+        let result = CrossEngineStructureTranslator.translate(source, from: .mariadb, to: .postgresql)
+        let status = try XCTUnwrap(result.notes.first { $0.subject == "status" })
+        XCTAssertTrue(status.isTypeChange)
+        XCTAssertTrue(status.summary.hasSuffix("→ VARCHAR(9)"))
+        let total = try XCTUnwrap(result.notes.first { $0.subject == "total" })
+        XCTAssertFalse(total.isTypeChange)
     }
 
     // MARK: - Keys and indexes

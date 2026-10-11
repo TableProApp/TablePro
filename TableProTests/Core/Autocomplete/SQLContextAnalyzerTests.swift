@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Context Analyzer")
 struct SQLContextAnalyzerTests {
     let analyzer = SQLContextAnalyzer()
 

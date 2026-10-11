@@ -22,8 +22,8 @@ internal enum OracleIndexStatements {
         let tableName = table.replacingOccurrences(of: "'", with: "''")
         return """
             SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND
-            FROM ALL_INDEXES i
-            JOIN ALL_IND_COLUMNS ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
+            FROM SYS.ALL_INDEXES i
+            JOIN SYS.ALL_IND_COLUMNS ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
             WHERE i.TABLE_NAME = '\(tableName)'
               AND i.OWNER = '\(owner)'
               AND i.INDEX_TYPE IN ('NORMAL', 'BITMAP')

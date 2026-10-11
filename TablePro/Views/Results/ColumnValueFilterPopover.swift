@@ -7,17 +7,11 @@ import SwiftUI
 
 struct ColumnValueFilterPopover: View {
     let columnName: String
-    let values: [ColumnDistinctValue]
     let loadedRowCount: Int
     let onApply: (ColumnValueFilter?) -> Void
     let onCancel: () -> Void
 
-    @State private var checkedValues: Set<String>
-    @State private var nullChecked: Bool
-    @State private var searchText: String = ""
-
-    private static let nullLabel = String(localized: "(NULL)")
-    private static let emptyLabel = String(localized: "(Empty)")
+    @State private var selection: ColumnValueFilterSelection
 
     init(
         columnName: String,
@@ -28,17 +22,10 @@ struct ColumnValueFilterPopover: View {
         onCancel: @escaping () -> Void
     ) {
         self.columnName = columnName
-        self.values = values
         self.loadedRowCount = loadedRowCount
         self.onApply = onApply
         self.onCancel = onCancel
-        if let initialFilter {
-            _checkedValues = State(initialValue: initialFilter.selectedValues)
-            _nullChecked = State(initialValue: initialFilter.includesNull)
-        } else {
-            _checkedValues = State(initialValue: Set(values.filter { !$0.isNull }.map(\.display)))
-            _nullChecked = State(initialValue: values.contains { $0.isNull })
-        }
+        _selection = State(initialValue: ColumnValueFilterSelection(values: values, initialFilter: initialFilter))
     }
 
     var body: some View {
@@ -60,7 +47,7 @@ struct ColumnValueFilterPopover: View {
                 .font(.headline)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Text(loadedRowsCaption)
+            Text("Values from ^[\(loadedRowCount) loaded row](inflect: true)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -70,23 +57,25 @@ struct ColumnValueFilterPopover: View {
         .padding(.bottom, 8)
     }
 
-    private var loadedRowsCaption: String {
-        String(format: String(localized: "Values from %d loaded rows"), loadedRowCount)
-    }
-
     private var controls: some View {
         VStack(spacing: 8) {
             NativeSearchField(
-                text: $searchText,
+                text: searchText,
                 placeholder: String(localized: "Search values"),
                 onSubmit: { apply() },
                 focusOnAppear: true,
                 accessibilityIdentifier: "value-filter-search"
             )
-            HStack(spacing: 6) {
-                TristateCheckbox(state: selectAllState) { toggleSelectAll() }
-                    .accessibilityLabel(String(localized: "Select All"))
-                Text("Select All")
+            HStack {
+                TristateCheckbox(
+                    state: TristateCheckbox.State(allEnabled: selection.allVisibleSelectedState),
+                    title: selection.isSearching
+                        ? String(localized: "Select All Results")
+                        : String(localized: "Select All")
+                ) {
+                    selection.toggleAllVisible()
+                }
+                .disabled(selection.visibleValues.isEmpty)
                 Spacer()
             }
         }
@@ -94,12 +83,22 @@ struct ColumnValueFilterPopover: View {
         .padding(.vertical, 8)
     }
 
+    @ViewBuilder
     private var valueList: some View {
+        if selection.isSearching, selection.visibleValues.isEmpty {
+            UnavailableStateView.search(text: selection.searchText)
+                .frame(height: 200)
+        } else {
+            matchingValueList
+        }
+    }
+
+    private var matchingValueList: some View {
         List {
-            ForEach(filteredValues) { value in
+            ForEach(selection.visibleValues) { value in
                 Toggle(isOn: binding(for: value)) {
                     HStack(spacing: 8) {
-                        Text(label(for: value))
+                        Text(value.label)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .foregroundStyle(value.isNull ? Color.secondary : Color.primary)
@@ -133,67 +132,23 @@ struct ColumnValueFilterPopover: View {
                 Text("Apply")
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(nothingSelected)
+            .disabled(!selection.canApply)
         }
         .padding(14)
     }
 
-    private var filteredValues: [ColumnDistinctValue] {
-        guard !searchText.isEmpty else { return values }
-        return values.filter { label(for: $0).localizedCaseInsensitiveContains(searchText) }
-    }
-
-    private var selectAllState: TristateCheckbox.State {
-        let selected = values.filter { $0.isNull ? nullChecked : checkedValues.contains($0.display) }.count
-        if selected == 0 { return .unchecked }
-        if selected == values.count { return .checked }
-        return .mixed
-    }
-
-    private var nothingSelected: Bool {
-        checkedValues.isEmpty && !nullChecked
-    }
-
-    private func label(for value: ColumnDistinctValue) -> String {
-        if value.isNull { return Self.nullLabel }
-        return value.display.isEmpty ? Self.emptyLabel : value.display
+    private var searchText: Binding<String> {
+        Binding(get: { selection.searchText }, set: { selection.setSearchText($0) })
     }
 
     private func binding(for value: ColumnDistinctValue) -> Binding<Bool> {
-        if value.isNull {
-            return Binding(get: { nullChecked }, set: { nullChecked = $0 })
-        }
-        return Binding(
-            get: { checkedValues.contains(value.display) },
-            set: { isOn in
-                if isOn {
-                    checkedValues.insert(value.display)
-                } else {
-                    checkedValues.remove(value.display)
-                }
-            }
-        )
+        Binding(get: { selection.isSelected(value) }, set: { selection.setSelected($0, for: value) })
     }
 
-    private func toggleSelectAll() {
-        setAll(selectAllState != .checked)
-    }
-
-    private func setAll(_ selected: Bool) {
-        if selected {
-            checkedValues = Set(values.filter { !$0.isNull }.map(\.display))
-            nullChecked = values.contains { $0.isNull }
-        } else {
-            checkedValues = []
-            nullChecked = false
-        }
-    }
-
+    /// Return in the search field arrives here directly, not through the Apply button, so it has to
+    /// obey the same rule that disables the button.
     private func apply() {
-        if selectAllState == .checked {
-            onApply(nil)
-        } else {
-            onApply(ColumnValueFilter(selectedValues: checkedValues, includesNull: nullChecked))
-        }
+        guard selection.canApply else { return }
+        onApply(selection.appliedFilter)
     }
 }

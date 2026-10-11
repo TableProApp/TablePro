@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseManager Observer Management")
 @MainActor
 struct DatabaseManagerObserverTests {
     @Test("DatabaseManager singleton is accessible")

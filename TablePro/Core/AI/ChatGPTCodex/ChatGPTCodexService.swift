@@ -104,7 +104,7 @@ final class ChatGPTCodexService: ObservableObject {
     }
 
     private func failSignIn(_ error: Error) {
-        Self.logger.error("ChatGPT sign-in failed: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("ChatGPT sign-in failed: \(error.publicLogShape, privacy: .public)")
         errorMessage = error.localizedDescription
         authState = .signedOut
     }

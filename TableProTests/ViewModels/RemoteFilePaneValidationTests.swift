@@ -14,7 +14,6 @@ import Testing
 /// of it that answered whenever SSH was enabled told every MySQL and PostgreSQL connection with a
 /// tunnel that it needed a remote database file path, and disabled Save and Test on all of them.
 @MainActor
-@Suite("Remote file pane validation")
 struct RemoteFilePaneValidationTests {
     private func coordinator(type: DatabaseType) -> ConnectionFormCoordinator {
         let coordinator = ConnectionFormCoordinator(connectionId: nil)

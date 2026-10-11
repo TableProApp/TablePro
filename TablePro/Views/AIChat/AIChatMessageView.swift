@@ -40,11 +40,10 @@ struct AIChatMessageView: View, Equatable {
         VStack(alignment: .leading, spacing: 4) {
             if message.role == .user {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Spacer(minLength: 0)
                         Text("You")
                             .fontWeight(.medium)
-                        Text("·")
                         Text(message.timestamp, style: .time)
                     }
                     .font(.caption2)
@@ -99,7 +98,7 @@ struct AIChatMessageView: View, Equatable {
                     }
                     Spacer()
                     if let usage = message.usage {
-                        Text("\(usage.inputTokens) in · \(usage.outputTokens) out")
+                        Text("\(usage.inputTokens) in, \(usage.outputTokens) out")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
@@ -159,10 +158,9 @@ struct AIChatMessageView: View, Equatable {
     }
 
     private var roleHeader: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Image(systemName: "sparkles")
                 .font(.caption2)
-            Text("·")
             Text(message.timestamp, style: .time)
         }
         .font(.caption2)
@@ -236,30 +234,14 @@ private struct AIChatBlockView: View, Equatable {
     }
 }
 
+/// The system's own progress indicator rather than three bouncing dots, which read as decoration
+/// rather than as the app waiting on a reply, and which no other surface in the app uses.
 struct ChatTypingIndicatorView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animating = false
-
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(Color(nsColor: .tertiaryLabelColor))
-                    .frame(width: 6, height: 6)
-                    .offset(y: animating ? -3 : 0)
-                    .animation(
-                        reduceMotion
-                            ? nil
-                            : .easeInOut(duration: 0.4)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.15),
-                        value: animating
-                    )
-            }
-        }
-        .frame(height: 16)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Responding"))
-        .onAppear { animating = !reduceMotion }
+        ProgressView()
+            .controlSize(.small)
+            .frame(height: 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(localized: "Responding"))
     }
 }

@@ -33,19 +33,23 @@ enum TableOperationEligibility {
     }
 
     /// A kind whose rows the engine will not let you replace or remove in place. A view holds no
-    /// rows of its own, a foreign or external table proxies rows on another server, and a system
-    /// table belongs to the catalog.
+    /// rows of its own, a foreign or external table proxies rows on another server, a system
+    /// table belongs to the catalog, and a MariaDB sequence stores one row its storage engine
+    /// owns, refusing UPDATE, DELETE and TRUNCATE with ERROR 1031.
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
         switch type {
-        case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
+        case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence:
             return true
         case .table, .partitionedTable, .none:
             return false
         }
     }
 
-    static func canTruncate(_ type: TableInfo.TableType?) -> Bool {
-        !isReadOnlyKind(type)
+    /// Asked of the whole object rather than its kind alone, because system versioning is a trait
+    /// a plain table carries: measured on MariaDB 11.4.13, `TRUNCATE TABLE` on one fails with
+    /// ERROR 4137 while every other table statement succeeds.
+    static func canTruncate(_ table: TableInfo) -> Bool {
+        !isReadOnlyKind(table.type) && !table.isSystemVersioned
     }
 
     /// All or nothing over a selection, rather than truncating the eligible part of it. A command
@@ -53,7 +57,7 @@ enum TableOperationEligibility {
     /// rows it skipped look truncated until someone checks.
     static func canTruncate(_ targets: some Collection<DatabaseTreeTableRef>) -> Bool {
         guard !targets.isEmpty else { return false }
-        return targets.allSatisfy { canTruncate($0.table.type) }
+        return targets.allSatisfy { canTruncate($0.table) }
     }
 
     static func canTruncate(_ targets: some Collection<DatabaseTreeTableRef>, context: Context) -> Bool {
@@ -84,6 +88,11 @@ enum TableOperationEligibility {
         case .foreignTable:     return .foreignTable
         case .systemTable:      return .systemTable
         case .externalTable:    return .externalTable
+        /// Built inline rather than from a `PluginObjectKind` static: adding one would be an
+        /// additive PluginKit ABI change for a symbol no plugin references, and the raw
+        /// initializer already exists for exactly this. It is absent from `allTableLike`, so a
+        /// driver that declares only the older operation list offers nothing on a sequence.
+        case .sequence:         return PluginObjectKind(rawValue: "SEQUENCE")
         }
     }
 

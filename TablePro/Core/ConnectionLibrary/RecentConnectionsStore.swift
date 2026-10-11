@@ -9,14 +9,14 @@ import os
 import TableProConnectionLibrary
 
 @MainActor
-internal final class RecentConnectionsStore {
+internal final class RecentConnectionsStore: ObservableObject {
     internal static let shared = RecentConnectionsStore()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentConnectionsStore")
 
     private let defaults: UserDefaults
     private let appEvents: AppEvents
-    internal private(set) var ledger: RecentConnectionsLedger
+    @Published internal private(set) var ledger: RecentConnectionsLedger
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
@@ -62,7 +62,7 @@ internal final class RecentConnectionsStore {
             let data = try JSONEncoder().encode(updated)
             defaults.set(data, forKey: PreferenceKeys.recentConnections.name)
         } catch {
-            Self.logger.error("Failed to save recent connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save recent connections: \(error.publicLogShape, privacy: .public)")
         }
         appEvents.connectionListStateChanged.send(())
     }
@@ -74,7 +74,7 @@ internal final class RecentConnectionsStore {
         do {
             return try JSONDecoder().decode(RecentConnectionsLedger.self, from: data)
         } catch {
-            logger.error("Discarding unreadable recent connections: \(error.localizedDescription, privacy: .public)")
+            logger.error("Discarding unreadable recent connections: \(error.publicLogShape, privacy: .public)")
             return RecentConnectionsLedger()
         }
     }

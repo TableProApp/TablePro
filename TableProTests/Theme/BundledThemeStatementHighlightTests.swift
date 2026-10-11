@@ -11,7 +11,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Bundled themes declare a statement highlight")
 struct BundledThemeStatementHighlightTests {
 
     private static let themeIds = [

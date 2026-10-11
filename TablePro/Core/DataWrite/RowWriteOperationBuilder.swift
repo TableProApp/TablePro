@@ -87,7 +87,9 @@ enum RowWriteOperationBuilder {
             refusal: updateRefusal(
                 change, preImage: preImage, primaryKeyColumns: primaryKeyColumns,
                 generatedColumns: generatedColumns, containsTableOperation: containsTableOperation
-            )
+            ),
+            preImageAbsentColumns: change.absentColumns,
+            postImageAbsentColumns: change.absentColumnsAfterUpdate
         )
     }
 
@@ -132,7 +134,8 @@ enum RowWriteOperationBuilder {
             preImage: change.originalRow,
             postImage: nil,
             writtenColumns: columns,
-            refusal: refusal
+            refusal: refusal,
+            preImageAbsentColumns: change.absentColumns
         )
     }
 
@@ -168,7 +171,8 @@ enum RowWriteOperationBuilder {
             preImage: nil,
             postImage: values,
             writtenColumns: columns,
-            refusal: refusal
+            refusal: refusal,
+            postImageAbsentColumns: change.absentColumns
         )
     }
 

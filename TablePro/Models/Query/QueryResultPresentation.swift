@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// What the results pane draws.
 ///
@@ -26,8 +27,16 @@ enum QueryResultContent: Equatable {
     case grid
     /// Columns came back and no rows did, which is a result rather than an absence.
     case noRows(executionTime: TimeInterval?)
-    /// A statement that reports work done rather than rows: INSERT, UPDATE, DDL.
-    case statementSucceeded(rowsAffected: Int, executionTime: TimeInterval?, statusMessage: String?)
+    /// A statement that reports work done rather than rows: INSERT, UPDATE, DDL, and whatever it printed on the
+    /// server, which for a PL/SQL block is usually the point of running it.
+    case statementSucceeded(
+        rowsAffected: Int,
+        executionTime: TimeInterval?,
+        statusMessage: String?,
+        serverOutput: PluginServerOutput
+    )
+    /// What a statement that returned rows printed on the server, on its own in Output mode.
+    case serverOutput(PluginServerOutput)
     /// The mode draws the loaded buffer and the buffer is empty, so the mode cannot draw.
     case unavailable(mode: ResultsViewMode)
 }
@@ -50,6 +59,7 @@ struct QueryResultInputs: Equatable {
     var activeResultRowsAffected = 0
     var activeResultExecutionTime: TimeInterval?
     var activeResultStatusMessage: String?
+    var activeResultServerOutput: PluginServerOutput = .none
     /// A failed result carries its own message, which outlives the tab's. Pin a failure, run
     /// something that works, and `executionErrorMessage` is cleared while this one is not.
     var activeResultErrorMessage: String?
@@ -109,7 +119,16 @@ struct QueryResultPresentation: Equatable {
 
         if inputs.isExplainResult { return .queryPlan }
 
-        if inputs.isExecuting, inputs.loadedColumnCount == 0 { return .executing }
+        /// A table's grid is its own placeholder, so it stays mounted while the first page loads. A
+        /// retarget empties the buffer before the fetch claims the tab, and dropping the grid there
+        /// blanked the pane for the whole fetch and took the grid's first responder with it.
+        if inputs.isExecuting, inputs.loadedColumnCount == 0, !Self.keepsGridWhileLoading(inputs) {
+            return .executing
+        }
+
+        if inputs.viewMode == .output, !inputs.isExecuting, !inputs.activeResultServerOutput.isEmpty {
+            return .serverOutput(inputs.activeResultServerOutput)
+        }
 
         /// Ahead of the idle rule below, because these two modes say why they are empty rather
         /// than going blank: a reader who switched to Chart before running anything is told to run
@@ -156,19 +175,27 @@ struct QueryResultPresentation: Equatable {
             return .statementSucceeded(
                 rowsAffected: inputs.activeResultRowsAffected,
                 executionTime: inputs.activeResultExecutionTime,
-                statusMessage: inputs.activeResultStatusMessage
+                statusMessage: inputs.activeResultStatusMessage,
+                serverOutput: inputs.activeResultServerOutput
             )
         }
 
         guard inputs.loadedColumnCount == 0 else { return resolveEmptyRows(inputs) }
         guard resolvedError(inputs) == nil else { return nil }
-        guard inputs.resultSetCount > 0 else { return .idle }
+        /// A failed table load leaves no result set, and dismissing its banner removes the error, so
+        /// this state is a table that has not loaded rather than a statement that ran.
+        guard inputs.resultSetCount > 0 else { return inputs.tabType == .table ? nil : .idle }
 
         return .statementSucceeded(
             rowsAffected: inputs.executionRowsAffected,
             executionTime: inputs.executionTime,
-            statusMessage: inputs.executionStatusMessage
+            statusMessage: inputs.executionStatusMessage,
+            serverOutput: .none
         )
+    }
+
+    private static func keepsGridWhileLoading(_ inputs: QueryResultInputs) -> Bool {
+        inputs.tabType == .table && inputs.viewMode == .data
     }
 
     /// Columns without rows. A filtered table that filtered everything away keeps the grid, because

@@ -41,6 +41,17 @@ public enum WKTGeometryReader {
         "MULTISURFACE", "POLYHEDRALSURFACE", "TIN", "TRIANGLE",
     ]
 
+    /// PostGIS fuses the M tag onto a curved type's name as it does onto `POINTM`, so a refused
+    /// type is looked up the way `Keyword.resolve` looks one up and reported by its base name.
+    static func unsupportedKeyword(_ word: String) -> String? {
+        if unsupportedKeywords.contains(word) { return word }
+        for suffix in Keyword.fusedDimensionTags where word.hasSuffix(suffix) {
+            let base = String(word.dropLast(suffix.count))
+            if unsupportedKeywords.contains(base) { return base }
+        }
+        return nil
+    }
+
     enum Keyword: String {
         case point = "POINT"
         case lineString = "LINESTRING"
@@ -55,13 +66,15 @@ public enum WKTGeometryReader {
 
         var isCollection: Bool { self == .geometryCollection || self == .geomCollection }
 
+        static let fusedDimensionTags = ["ZM", "Z", "M"]
+
         /// Resolves a keyword that may carry a dimensionality tag fused onto it.
         ///
         /// Tried longest-first, because stripping `M` from `MULTIPOINT` before trying the whole
         /// word turns it into `MULTIPOIN` and loses the type.
         static func resolve(_ word: String) -> Keyword? {
             if let exact = Keyword(rawValue: word) { return exact }
-            for suffix in ["ZM", "Z", "M"] where word.hasSuffix(suffix) {
+            for suffix in fusedDimensionTags where word.hasSuffix(suffix) {
                 let base = String(word.dropLast(suffix.count))
                 if let stripped = Keyword(rawValue: base) { return stripped }
             }
@@ -122,7 +135,10 @@ public enum WKTGeometryReader {
                 index = start
                 return nil
             }
-            return Int32(negative ? -value : value)
+            /// Zero means nobody named a system, which the EWKB reader reads as no SRID. One value
+            /// must not draw in one spelling and be refused in the other.
+            let srid = Int32(negative ? -value : value)
+            return srid == 0 ? nil : srid
         }
 
         mutating func readGeometry() -> SpatialGeometry? {
@@ -137,8 +153,8 @@ public enum WKTGeometryReader {
                 failure = .notGeometry
                 return nil
             }
-            if WKTGeometryReader.unsupportedKeywords.contains(word) {
-                failure = .unsupportedGeometryType(word)
+            if let unsupported = WKTGeometryReader.unsupportedKeyword(word) {
+                failure = .unsupportedGeometryType(unsupported)
                 return nil
             }
             guard let keyword = WKTGeometryReader.Keyword.resolve(word) else {

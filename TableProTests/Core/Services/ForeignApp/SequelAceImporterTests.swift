@@ -21,6 +21,7 @@ struct SequelAceImporterTests {
 
         var imp = SequelAceImporter()
         imp.favoritesFileURL = tempDir.appendingPathComponent("Favorites.plist")
+        imp.queryFavoritesFileURL = tempDir.appendingPathComponent("com.sequel-ace.sequel-ace.plist")
         importer = imp
     }
 
@@ -123,10 +124,10 @@ struct SequelAceImporterTests {
         #expect(imp.isAvailable() == false)
     }
 
-    // MARK: - connectionCount
+    // MARK: - inventory
 
-    @Test("connectionCount returns correct count")
-    func testConnectionCount_returnsCorrectCount() throws {
+    @Test("inventory counts connections in every group")
+    func testInventory_returnsCorrectCount() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "DB1", id: 1),
             makeConnection(name: "DB2", id: 2),
@@ -135,31 +136,31 @@ struct SequelAceImporterTests {
             ])
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
-        #expect(importer.connectionCount() == 3)
+        #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
     }
 
-    @Test("connectionCount returns 0 when file missing")
-    func testConnectionCount_fileMissing_returnsZero() {
-        #expect(importer.connectionCount() == 0)
+    @Test("inventory is empty when the files are missing")
+    func testInventory_fileMissing_returnsZero() {
+        #expect(importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
     }
 
-    // MARK: - importConnections
+    // MARK: - collect
 
-    @Test("importConnections parses all connections")
-    func testImportConnections_parsesAllConnections() throws {
+    @Test("collect parses all connections")
+    func testCollect_parsesAllConnections() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "DB1", id: 1),
             makeConnection(name: "DB2", id: 2)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections.count == 2)
-        #expect(result.sourceName == "Sequel Ace")
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections.count == 2)
+        #expect(result.source == .foreignApp(name: "Sequel Ace"))
     }
 
-    @Test("importConnections type is always MySQL")
-    func testImportConnections_typeAlwaysMySQL() throws {
+    @Test("collect type is always MySQL")
+    func testCollect_typeAlwaysMySQL() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "TCP", type: 0, id: 1),
             makeConnection(name: "Socket", type: 1, id: 2),
@@ -167,14 +168,14 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        for conn in result.envelope.connections {
+        let result = try importer.collect(.connectionsOnly)
+        for conn in result.connections {
             #expect(conn.type == "MySQL")
         }
     }
 
-    @Test("importConnections parses SSH for type 2")
-    func testImportConnections_parsesSSHForType2() throws {
+    @Test("collect parses SSH for type 2")
+    func testCollect_parsesSSHForType2() throws {
         let children: [[String: Any]] = [
             makeConnection(
                 name: "SSH DB",
@@ -189,8 +190,8 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssh = result.envelope.connections[0].sshConfig
+        let result = try importer.collect(.connectionsOnly)
+        let ssh = result.connections[0].sshConfig
 
         #expect(ssh != nil)
         #expect(ssh?.enabled == true)
@@ -201,19 +202,19 @@ struct SequelAceImporterTests {
         #expect(ssh?.privateKeyPath == "~/.ssh/id_ed25519")
     }
 
-    @Test("importConnections no SSH for type 0")
-    func testImportConnections_noSSHForType0() throws {
+    @Test("collect no SSH for type 0")
+    func testCollect_noSSHForType0() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "TCP DB", type: 0, id: 1)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections[0].sshConfig == nil)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections[0].sshConfig == nil)
     }
 
-    @Test("importConnections parses SSL config")
-    func testImportConnections_parsesSSLConfig() throws {
+    @Test("collect parses SSL config")
+    func testCollect_parsesSSLConfig() throws {
         let children: [[String: Any]] = [
             makeConnection(
                 name: "SSL DB",
@@ -226,8 +227,8 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssl = result.envelope.connections[0].sslConfig
+        let result = try importer.collect(.connectionsOnly)
+        let ssl = result.connections[0].sslConfig
 
         #expect(ssl != nil)
         #expect(ssl?.mode == "Required")
@@ -236,19 +237,19 @@ struct SequelAceImporterTests {
         #expect(ssl?.clientKeyPath == "/path/to/client-key.pem")
     }
 
-    @Test("importConnections no SSL when useSSL is 0")
-    func testImportConnections_noSSLWhenDisabled() throws {
+    @Test("collect no SSL when useSSL is 0")
+    func testCollect_noSSLWhenDisabled() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "No SSL", id: 1, useSSL: 0)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections[0].sslConfig == nil)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections[0].sslConfig == nil)
     }
 
-    @Test("importConnections recursive group parsing")
-    func testImportConnections_recursiveGroupParsing() throws {
+    @Test("collect recursive group parsing")
+    func testCollect_recursiveGroupParsing() throws {
         let children: [[String: Any]] = [
             makeGroup(name: "Production", children: [
                 makeConnection(name: "Prod Main", id: 1),
@@ -261,24 +262,19 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let connections = result.envelope.connections
+        let result = try importer.collect(.connectionsOnly)
+        let connections = result.connections
 
         #expect(connections.count == 4)
-        #expect(connections[0].groupName == "Production")
-        #expect(connections[1].groupName == "Production")
-        #expect(connections[2].groupName == nil)
-        #expect(connections[3].groupName == "Staging")
-
-        let groups = result.envelope.groups
-        #expect(groups != nil)
-        let groupNames = Set(groups?.map(\.name) ?? [])
-        #expect(groupNames.contains("Production"))
-        #expect(groupNames.contains("Staging"))
+        #expect(result.groupPath(at: 0) == ["Production"])
+        #expect(result.groupPath(at: 1) == ["Production"])
+        #expect(result.groupPath(at: 2).isEmpty)
+        #expect(result.groupPath(at: 3) == ["Staging"])
+        #expect(Set(result.bundle.groups.map { $0.name }) == ["Production", "Staging"])
     }
 
-    @Test("importConnections color index mapping")
-    func testImportConnections_colorIndexMapping() throws {
+    @Test("collect color index mapping")
+    func testCollect_colorIndexMapping() throws {
         let colorMappings: [(Int, String?)] = [
             (0, "Red"),
             (1, "Orange"),
@@ -302,78 +298,71 @@ struct SequelAceImporterTests {
         }
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
+        let result = try importer.collect(.connectionsOnly)
         for (index, mapping) in colorMappings.enumerated() {
             #expect(
-                result.envelope.connections[index].color == mapping.1,
+                result.connections[index].color == mapping.1,
                 "Color index \(mapping.0) should map to \(mapping.1 ?? "nil")"
             )
         }
     }
 
-    @Test("importConnections skips invalid entries gracefully")
-    func testImportConnections_skipsInvalidEntries() throws {
-        // A group node that contains a child without "host" or proper "id" won't count
-        // But the parser doesn't throw for individual entries without "name", it uses "Untitled"
-        // Actually looking at the code: it always succeeds with defaults.
-        // Invalid entries in SequelAce context would be ones that somehow fail parsing.
-        // Since parseConnection uses defaults for everything, entries are always valid.
-        // The only skip scenario is if an exception occurs in parseConnection.
-        // Let's test that entries with Children array are treated as groups, not connections
+    @Test("collect skips invalid entries gracefully")
+    func testCollect_skipsInvalidEntries() throws {
         let children: [[String: Any]] = [
             makeGroup(name: "Empty Group", children: []),
             makeConnection(name: "Valid", id: 1)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections.count == 1)
-        #expect(result.envelope.connections[0].name == "Valid")
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections.count == 1)
+        #expect(result.connections[0].name == "Valid")
     }
 
-    @Test("importConnections empty favorites throws noConnectionsFound")
-    func testImportConnections_emptyFavorites_throwsNoConnectionsFound() throws {
+    @Test("collect empty favorites throws noConnectionsFound")
+    func testCollect_emptyFavorites_throwsNoConnectionsFound() throws {
         try writeFavorites(makeFavoritesRoot(children: []))
 
         #expect(throws: ForeignAppImportError.self) {
-            try importer.importConnections(includePasswords: false)
+            try importer.collect(.connectionsOnly)
         }
     }
 
-    @Test("importConnections socket type 1 handled correctly")
-    func testImportConnections_socketType1_handledCorrectly() throws {
+    @Test("collect socket type 1 handled correctly")
+    func testCollect_socketType1_handledCorrectly() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "Socket DB", type: 1, id: 1)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let conn = result.envelope.connections[0]
+        let result = try importer.collect(.connectionsOnly)
+        let conn = result.connections[0]
         // Socket connections (type 1) should not have SSH config
         #expect(conn.sshConfig == nil)
         #expect(conn.type == "MySQL")
     }
 
-    @Test("importConnections without passwords has nil credentials")
-    func testImportConnections_withoutPasswords_credentialsNil() throws {
+    @Test("collect without passwords has nil credentials")
+    func testCollect_withoutPasswords_credentialsNil() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "DB", id: 1)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.credentials == nil)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.bundle.credentials.isEmpty)
     }
 
-    @Test("importConnections file not found throws error")
-    func testImportConnections_fileNotFound_throwsError() {
+    @Test("collect file not found throws error")
+    func testCollect_fileNotFound_throwsError() {
         #expect(throws: ForeignAppImportError.self) {
-            try importer.importConnections(includePasswords: false)
+            try importer.collect(.connectionsOnly)
         }
     }
 
-    @Test("importConnections SSH password auth when key not enabled")
-    func testImportConnections_sshPasswordAuth() throws {
+    @Test("collect SSH password auth when key not enabled")
+    func testCollect_sshPasswordAuth() throws {
         let children: [[String: Any]] = [
             makeConnection(
                 name: "SSH Password",
@@ -387,39 +376,39 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssh = result.envelope.connections[0].sshConfig
+        let result = try importer.collect(.connectionsOnly)
+        let ssh = result.connections[0].sshConfig
 
         #expect(ssh?.authMethod == "Password")
         #expect(ssh?.privateKeyPath == "")
     }
 
-    @Test("importConnections parses default port")
-    func testImportConnections_defaultPort() throws {
+    @Test("collect parses default port")
+    func testCollect_defaultPort() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "DB", port: "", id: 1)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections[0].port == 3306)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.connections[0].port == 3306)
     }
 
-    @Test("importConnections envelope metadata")
-    func testImportConnections_envelopeMetadata() throws {
+    @Test("collect stamps the bundle and keys the connection by its Sequel Ace id")
+    func testCollect_bundleMetadata() throws {
         let children: [[String: Any]] = [
-            makeConnection(name: "DB", id: 1)
+            makeConnection(name: "DB", id: 42)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.formatVersion == 1)
-        #expect(result.envelope.appVersion == "Sequel Ace Import")
-        #expect(result.envelope.tags == nil)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.bundle.appVersion == "Sequel Ace Import")
+        #expect(result.bundle.tags.isEmpty)
+        #expect(result.bundle.connections.map { $0.ref } == ["42"])
     }
 
-    @Test("importConnections nested groups preserve correct group name")
-    func testImportConnections_nestedGroupsPreserveGroupName() throws {
+    @Test("collect keeps the full path of nested groups")
+    func testCollect_nestedGroupsPreserveGroupName() throws {
         let children: [[String: Any]] = [
             makeGroup(name: "Outer", children: [
                 makeGroup(name: "Inner", children: [
@@ -429,13 +418,12 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        // The inner group name should be used for the nested connection
-        #expect(result.envelope.connections[0].groupName == "Inner")
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.groupPath(at: 0) == ["Outer", "Inner"])
     }
 
-    @Test("importConnections SSH port parsed as Int")
-    func testImportConnections_sshPortParsedAsInt() throws {
+    @Test("collect SSH port parsed as Int")
+    func testCollect_sshPortParsedAsInt() throws {
         let children: [[String: Any]] = [
             makeConnection(
                 name: "SSH Int Port",
@@ -448,14 +436,14 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssh = result.envelope.connections[0].sshConfig
+        let result = try importer.collect(.connectionsOnly)
+        let ssh = result.connections[0].sshConfig
 
         #expect(ssh?.port == 2222)
     }
 
-    @Test("importConnections SSH port parsed as String fallback")
-    func testImportConnections_sshPortParsedAsString() throws {
+    @Test("collect SSH port parsed as String fallback")
+    func testCollect_sshPortParsedAsString() throws {
         let children: [[String: Any]] = [
             makeConnection(
                 name: "SSH String Port",
@@ -468,9 +456,73 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssh = result.envelope.connections[0].sshConfig
+        let result = try importer.collect(.connectionsOnly)
+        let ssh = result.connections[0].sshConfig
 
         #expect(ssh?.port == 3333)
+    }
+
+    // MARK: - Query Favorites
+
+    private func writeQueryFavorites(_ favorites: [[String: Any]]) throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["queryFavorites": favorites, "SomeOtherPreference": true] as [String: Any],
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: importer.queryFavoritesFileURL)
+    }
+
+    @Test("collect reads query favorites as global queries, placeholders verbatim, tab trigger as keyword")
+    func testCollect_readsQueryFavorites() throws {
+        try writeFavorites(makeFavoritesRoot(children: [makeConnection(name: "DB", id: 1)]))
+        try writeQueryFavorites([
+            ["name": "Recent orders", "query": "SELECT * FROM orders WHERE id > ${1:x};", "tabtrigger": "ro"],
+            ["name": "Plain", "query": "SELECT 1;"],
+            ["name": "Blank", "query": "  \n  "]
+        ])
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.savedQueryNames == ["Recent orders", "Plain"])
+        let recent = try #require(result.savedQuery(named: "Recent orders"))
+        #expect(recent.sql == "SELECT * FROM orders WHERE id > ${1:x};")
+        #expect(recent.keyword == "ro")
+        #expect(recent.connectionRef == nil)
+        #expect(result.folderPath(of: recent) == ["Sequel Ace"])
+        #expect(result.isSuggested(recent))
+        #expect(result.savedQuery(named: "Plain")?.keyword == nil)
+    }
+
+    @Test("collect reads no query favorites unless saved queries are requested")
+    func testCollect_withoutSavedQueries_readsNoQueryFavorites() throws {
+        try writeFavorites(makeFavoritesRoot(children: [makeConnection(name: "DB", id: 1)]))
+        try writeQueryFavorites([["name": "Plain", "query": "SELECT 1;"]])
+
+        let result = try importer.collect(.connectionsOnly)
+
+        #expect(result.bundle.savedQueries.isEmpty)
+    }
+
+    @Test("A missing preferences file means no query favorites")
+    func testCollect_missingPreferences_importsConnectionsOnly() throws {
+        try writeFavorites(makeFavoritesRoot(children: [makeConnection(name: "DB", id: 1)]))
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.connections.count == 1)
+        #expect(result.bundle.savedQueries.isEmpty)
+    }
+
+    @Test("inventory counts query favorites that have text")
+    func testInventory_countsQueryFavorites() throws {
+        try writeFavorites(makeFavoritesRoot(children: [makeConnection(name: "DB", id: 1)]))
+        try writeQueryFavorites([
+            ["name": "One", "query": "SELECT 1;"],
+            ["name": "Two", "query": "SELECT 2;"],
+            ["name": "Blank", "query": ""]
+        ])
+
+        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 2))
     }
 }

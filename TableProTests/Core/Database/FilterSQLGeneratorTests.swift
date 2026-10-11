@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Filter SQL Generator")
 struct FilterSQLGeneratorTests {
 
     private static let mysqlDialect = SQLDialectDescriptor(

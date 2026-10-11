@@ -6,10 +6,18 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension ElasticsearchPluginDriver {
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, length: .display)
+    }
+
+    private func execute(
+        query: String,
+        length: ElasticsearchMappingFlattener.CellLength
+    ) async throws -> PluginQueryResult {
         let startTime = Date()
         guard let conn = connection else { throw ElasticsearchError.notConnected }
 
@@ -27,14 +35,14 @@ extension ElasticsearchPluginDriver {
         }
 
         if ElasticsearchQueryBuilder.isTaggedQuery(trimmed) {
-            return try await executeSearch(trimmed, conn: conn, startTime: startTime)
+            return try await executeSearch(trimmed, conn: conn, length: length, startTime: startTime)
         }
 
         if ElasticsearchStatementGenerator.isTaggedStatement(trimmed) {
             return try await executeWrite(trimmed, conn: conn, startTime: startTime)
         }
 
-        return try await executeConsole(trimmed, conn: conn, startTime: startTime)
+        return try await executeConsole(trimmed, conn: conn, length: length, startTime: startTime)
     }
 
     // MARK: - Export
@@ -105,7 +113,7 @@ extension ElasticsearchPluginDriver {
             }
             if let resolved = columns {
                 continuation.yield(.rows(ElasticsearchMappingFlattener.rows(
-                    forHits: hits, columns: resolved, nestedParents: nestedParents
+                    forHits: hits, columns: resolved, nestedParents: nestedParents, length: .whole
                 )))
             }
 
@@ -138,7 +146,7 @@ extension ElasticsearchPluginDriver {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
                 do {
-                    let result = try await self.execute(query: query)
+                    let result = try await self.execute(query: query, length: .whole)
                     continuation.yield(.header(PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames,
@@ -159,6 +167,7 @@ extension ElasticsearchPluginDriver {
     private func executeSearch(
         _ query: String,
         conn: ElasticsearchConnection,
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         let (base, appendedSorts) = ElasticsearchQueryBuilder.extractOrderBy(query)
@@ -174,9 +183,9 @@ extension ElasticsearchPluginDriver {
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: mappingColumns)
 
         Self.logger.debug("""
-        executeSearch index=\(parsed.index, privacy: .public) from=\(parsed.from) size=\(parsed.size) \
+        executeSearch index=\(parsed.index, privacy: .private(mask: .hash)) from=\(parsed.from) size=\(parsed.size) \
         logic=\(parsed.logicMode, privacy: .public) \
-        filters=\(parsed.filters.map { "\($0.column) \($0.op) \($0.value)" }.joined(separator: " | "), privacy: .public) \
+        filters=\(parsed.filters.map { "\($0.column) \($0.op) \($0.value)" }.joined(separator: " | "), privacy: .private) \
         sorts=\(parsed.sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public) \
         fieldInfoCount=\(fields.count) \
         fields=\(fields.map { "\($0.key):\($0.value.type)\($0.value.hasKeywordSubfield ? "+kw" : "")" }.sorted().joined(separator: ","), privacy: .public)
@@ -184,7 +193,7 @@ extension ElasticsearchPluginDriver {
 
         let hits = try await fetchHits(index: parsed.index, parsed: parsed, fields: fields, conn: conn)
 
-        return renderHits(hits, mappingColumns: mappingColumns, fields: fields, startTime: startTime)
+        return renderHits(hits, mappingColumns: mappingColumns, fields: fields, length: length, startTime: startTime)
     }
 
     private func fetchHits(
@@ -198,10 +207,10 @@ extension ElasticsearchPluginDriver {
                 for: parsed, fields: fields, size: parsed.size, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
             body["from"] = parsed.from
-            Self.logger.debug("POST /\(index, privacy: .public)/_search body=\(Self.jsonString(body), privacy: .public)")
+            Self.logger.debug("POST /\(index, privacy: .private(mask: .hash))/_search body=\(Self.jsonString(body), privacy: .private)")
             let response = try await conn.search(index: index, body: body)
             let hits = extractHits(response)
-            Self.logger.debug("_search returned \(hits.count) hit(s) for index=\(index, privacy: .public)")
+            Self.logger.debug("_search returned \(hits.count) hit(s) for index=\(index, privacy: .private(mask: .hash))")
             return hits
         }
         return try await deepFetchHits(index: index, parsed: parsed, fields: fields, conn: conn)
@@ -291,6 +300,7 @@ extension ElasticsearchPluginDriver {
     private func executeConsole(
         _ input: String,
         conn: ElasticsearchConnection,
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let request = ElasticsearchConsoleParser.parse(input) else {
@@ -312,10 +322,10 @@ extension ElasticsearchPluginDriver {
            json["aggregations"] == nil,
            json["suggest"] == nil {
             let hits = extractHits(response)
-            return renderHits(hits, mappingColumns: [], fields: [:], startTime: startTime)
+            return renderHits(hits, mappingColumns: [], fields: [:], length: length, startTime: startTime)
         }
         if let rows = response.json as? [[String: Any]] {
-            return renderObjects(rows, startTime: startTime)
+            return renderObjects(rows, length: length, startTime: startTime)
         }
         return renderRawJson(response, startTime: startTime)
     }
@@ -326,13 +336,15 @@ extension ElasticsearchPluginDriver {
         _ hits: [[String: Any]],
         mappingColumns: [ElasticsearchColumn],
         fields: [String: ElasticsearchFieldInfo],
+        length: ElasticsearchMappingFlattener.CellLength,
         startTime: Date
     ) -> PluginQueryResult {
         let columns = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
         let rows = ElasticsearchMappingFlattener.rows(
             forHits: hits,
             columns: columns,
-            nestedParents: ElasticsearchMappingFlattener.nestedParents(from: mappingColumns)
+            nestedParents: ElasticsearchMappingFlattener.nestedParents(from: mappingColumns),
+            length: length
         )
         let typeNames = columns.map { column -> String in
             switch column {
@@ -353,10 +365,14 @@ extension ElasticsearchPluginDriver {
         )
     }
 
-    private func renderObjects(_ objects: [[String: Any]], startTime: Date) -> PluginQueryResult {
+    private func renderObjects(
+        _ objects: [[String: Any]],
+        length: ElasticsearchMappingFlattener.CellLength,
+        startTime: Date
+    ) -> PluginQueryResult {
         let columns = ElasticsearchMappingFlattener.unionColumns(fromSources: objects)
         let rows = objects.map { object -> [PluginCellValue] in
-            let flat = ElasticsearchMappingFlattener.flattenSource(object)
+            let flat = ElasticsearchMappingFlattener.flattenSource(object, length: length)
             return columns.map { flat[$0] ?? .null }
         }
         return PluginQueryResult(

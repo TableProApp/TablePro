@@ -19,7 +19,16 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
     /// viewport rather than being a fixed distance on the globe.
     private static let lineHitSlopPoints: Double = 8
 
+    /// How much of the view a fit keeps clear around the shapes.
+    enum FitPolicy: Equatable, Sendable {
+        /// The result pane, which is large enough for one margin to suit every result.
+        case result
+        /// One value in a view that can be 100pt tall, where a fixed margin decides the scale.
+        case field
+    }
+
     var onSelect: (RowID?) -> Void
+    let fitPolicy: FitPolicy
 
     private var appliedProjection: ResultMapProjection?
     private var appliedToken: Int?
@@ -38,7 +47,8 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
     private var polylineRowIDs: [RowID] = []
     private var lastFitToken: Int?
 
-    init(onSelect: @escaping (RowID?) -> Void) {
+    init(fitPolicy: FitPolicy = .result, onSelect: @escaping (RowID?) -> Void) {
+        self.fitPolicy = fitPolicy
         self.onSelect = onSelect
     }
 
@@ -201,17 +211,38 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
             union = union.union(MKMapRect(origin: MKMapPoint(annotation.coordinate), size: MKMapSize()))
         }
         guard !union.isNull else { return }
+        let edgePadding = Self.edgePadding(
+            for: fitPolicy,
+            extent: union.size,
+            holdsPoints: !pointAnnotations.isEmpty
+        )
         /// A single point folds to a zero-size rect, which MapKit would show at maximum zoom.
         /// Padding it to a few hundred metres gives the same result a user expects from "fit".
         if union.size.width <= 0 || union.size.height <= 0 {
             let padding = MKMapPointsPerMeterAtLatitude(union.origin.coordinate.latitude) * 400
             union = union.insetBy(dx: -padding, dy: -padding)
         }
-        mapView.setVisibleMapRect(
-            union,
-            edgePadding: NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32),
-            animated: false
-        )
+        mapView.setVisibleMapRect(union, edgePadding: edgePadding, animated: false)
+    }
+
+    /// `extent` is the size of the shapes' bounding rect before a lone point is padded out.
+    nonisolated static func edgePadding(
+        for policy: FitPolicy,
+        extent: MKMapSize,
+        holdsPoints: Bool
+    ) -> NSEdgeInsets {
+        switch policy {
+        case .result:
+            return NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
+        case .field:
+            /// The 400 m around a lone point already is its margin. Edge padding on top of it makes
+            /// the scale swing twelvefold with the height of the field, measured.
+            guard extent.width > 0 || extent.height > 0 else {
+                return NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+            }
+            /// A marker stands 37pt above its coordinate, so one on the top edge needs that room.
+            return NSEdgeInsets(top: holdsPoints ? 44 : 16, left: 16, bottom: 16, right: 16)
+        }
     }
 
     // MARK: - MKMapViewDelegate
@@ -259,7 +290,7 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
             in: mapView
         )
         /// Clustering is what keeps a result of many thousands of points from mounting a view per
-        /// row, which is the shape that made SSMS's spatial tab exhaust its object quota.
+        /// row.
         view.clusteringIdentifier = "result-map-point"
         view.setAccessibilityLabel(point.pointDescription)
         return view

@@ -17,67 +17,119 @@ extension MainContentCommandActions {
     nonisolated private static let fileLogger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
     func saveFileToSourceURL() {
-        guard let tab = coordinator?.tabManager.selectedTab,
-              let url = tab.content.sourceFileURL else { return }
+        Task { await saveSelectedFileAwaiting() }
+    }
 
-        if isExternallyModified(tab: tab, url: url) {
-            requestConflictResolution(tab: tab, url: url)
-            return
+    @discardableResult
+    func saveSelectedFileAwaiting() async -> Bool {
+        guard let tab = coordinator?.tabManager.selectedTab,
+              let url = tab.content.sourceFileURL else { return true }
+
+        guard let change = FileTabBaseline.diskChange(in: tab.content) else {
+            return await writeOrSaveAs(tabId: tab.id, content: tab.content.query, to: url)
         }
 
-        writeTabContent(tabId: tab.id, content: tab.content.query, to: url)
+        coordinator?.tabManager.mutate(tabId: tab.id) { FileTabBaseline.showDiskChange(change, in: &$0.content) }
+        switch change {
+        case .missing:
+            Self.fileLogger.info("Save of a file no longer on disk went to Save As: \(url.lastPathComponent, privacy: .private(mask: .hash))")
+            return await saveFileAsAwaiting()
+        case .modified:
+            requestConflictResolution(tab: tab, url: url)
+            return false
+        }
     }
 
     func writeTabContent(tabId: UUID, content: String, to url: URL) {
-        Task {
-            guard await writeTabContentAwaiting(tabId: tabId, content: content, to: url) else {
-                saveFileAs()
-                return
-            }
-        }
+        Task { await writeOrSaveAs(tabId: tabId, content: content, to: url) }
     }
 
-    /// The write itself, awaited and answering whether it landed.
-    ///
-    /// A batch close has to know: `writeTabContent` starts a detached Task and returns, so a caller
-    /// that closed the tab on its say-so closed it before the write had happened or failed. Its
-    /// failure path is the selected tab's Save As panel, which is also wrong for a victim that is
-    /// not the tab on screen, so the batch takes this instead and keeps a failed victim open.
     @discardableResult
-    func writeTabContentAwaiting(tabId: UUID, content: String, to url: URL) async -> Bool {
+    private func writeOrSaveAs(tabId: UUID, content: String, to url: URL) async -> Bool {
         do {
-            try await SQLFileService.writeFile(content: content, to: url)
-            let mtime = (try? FileManager.default
-                .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            coordinator?.tabManager.mutate(tabId: tabId) { tab in
-                tab.content.savedFileContent = content
-                tab.content.loadMtime = mtime
-                tab.content.externalModificationDetected = false
-            }
+            try await writeSourceFile(tabId: tabId, content: content, to: url)
             return true
-        } catch {
-            Self.fileLogger.error("Failed to save file: \(error.localizedDescription)")
+        } catch let error as FileTextWriter.WriteError {
+            Self.fileLogger.info(
+                "Save refused text the file's encoding cannot represent: \(url.lastPathComponent, privacy: .private(mask: .hash))"
+            )
+            reportFileSaveFailures([Self.saveFailureMessage(for: error, fileName: url.lastPathComponent)])
             return false
+        } catch {
+            Self.fileLogger.error("Failed to save file: \(error.publicLogShape, privacy: .public)")
+            return await saveFileAsAwaiting()
         }
     }
 
-    /// One victim's file, for a batch close. A file whose copy on disk moved under the tab is left
+    /// Each victim's file, for a batch close. A file whose copy on disk moved under the tab is left
     /// alone: resolving that needs the conflict sheet, which is a single window-level slot with no
     /// queue, so the batch keeps the tab open and the user answers it there.
-    func saveFile(of tab: QueryTab, to url: URL) async -> Bool {
-        guard !isExternallyModified(tab: tab, url: url) else {
-            Self.fileLogger.info("Batch save skipped a file changed on disk: \(url.lastPathComponent, privacy: .public)")
-            return false
+    func saveFiles(_ targets: [(tab: QueryTab, url: URL)]) async -> Set<UUID> {
+        var saved: Set<UUID> = []
+        var failures: [String] = []
+        for target in targets {
+            if let change = FileTabBaseline.diskChange(in: target.tab.content) {
+                Self.fileLogger.info(
+                    "Batch save skipped a file changed on disk: \(target.url.lastPathComponent, privacy: .private(mask: .hash))"
+                )
+                coordinator?.tabManager.mutate(tabId: target.tab.id) {
+                    FileTabBaseline.showDiskChange(change, in: &$0.content)
+                }
+                continue
+            }
+            do {
+                try await writeSourceFile(tabId: target.tab.id, content: target.tab.content.query, to: target.url)
+                saved.insert(target.tab.id)
+            } catch {
+                Self.fileLogger.error("Batch save failed to write a file: \(error.publicLogShape, privacy: .public)")
+                failures.append(Self.saveFailureMessage(for: error, fileName: target.url.lastPathComponent))
+            }
         }
-        return await writeTabContentAwaiting(tabId: tab.id, content: tab.content.query, to: url)
+        reportFileSaveFailures(failures)
+        return saved
     }
 
-    func isExternallyModified(tab: QueryTab, url: URL) -> Bool {
-        guard let loadMtime = tab.content.loadMtime,
-              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else {
-            return false
+    func reportFileSaveFailures(_ messages: [String]) {
+        guard !messages.isEmpty else { return }
+        let title = messages.count == 1
+            ? String(localized: "Couldn't Save File")
+            : String(localized: "Couldn't Save Files")
+        coordinator?.presentError(title, messages.joined(separator: "\n\n"), closeAnchorWindow)
+    }
+
+    static func saveFailureMessage(for error: Error, fileName: String) -> String {
+        guard case FileTextWriter.WriteError.unrepresentable(let encoding) = error else {
+            return String(
+                format: String(localized: "“%1$@” could not be written. %2$@"),
+                fileName,
+                error.localizedDescription
+            )
         }
-        return currentMtime > loadMtime.addingTimeInterval(0.5)
+        return String(
+            format: String(
+                localized: """
+                “%1$@” is encoded as %2$@, which can't represent some of the text in its tab. \
+                The file was not changed. Use Save As to save the text as UTF-8.
+                """
+            ),
+            fileName,
+            encoding.displayName
+        )
+    }
+
+    private func writeSourceFile(tabId: UUID, content: String, to url: URL) async throws {
+        let encoding = await sourceFileEncoding(ofTab: tabId, at: url)
+        try await SQLFileService.writeFile(content: content, to: url, encoding: encoding)
+        coordinator?.tabManager.mutate(tabId: tabId) { tab in
+            FileTabBaseline.recordWrite(of: content, to: url, as: encoding, in: &tab.content)
+        }
+    }
+
+    private func sourceFileEncoding(ofTab tabId: UUID, at url: URL) async -> FileTextEncoding {
+        if let recorded = coordinator?.tabManager.tabs.first(where: { $0.id == tabId })?.content.sourceFileEncoding {
+            return recorded
+        }
+        return await SQLFileService.encodingOnDisk(of: url) ?? .utf8
     }
 
     private func requestConflictResolution(tab: QueryTab, url: URL) {
@@ -96,16 +148,12 @@ extension MainContentCommandActions {
         let queryAtRequestTime = coordinator?.tabManager.tabs[beforeIndex].content.query
         Task {
             guard let loaded = FileTextLoader.load(url) else { return }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             await MainActor.run {
                 guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
                 let liveQuery = coordinator?.tabManager.tabs[index].content.query
                 guard liveQuery == queryAtRequestTime else { return }
                 coordinator?.tabManager.mutate(at: index) { tab in
-                    tab.content.query = loaded.content
-                    tab.content.savedFileContent = loaded.content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
+                    FileTabBaseline.adopt(loaded, into: &tab.content)
                 }
             }
         }

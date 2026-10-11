@@ -28,7 +28,6 @@ private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
     }
 }
 
-@Suite("Restored hidden columns")
 @MainActor
 struct RestoredHiddenColumnsTests {
     private let connectionId = UUID()

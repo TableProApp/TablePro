@@ -2,6 +2,8 @@ import Foundation
 import TableProImport
 
 enum RDSDiscoveryReconciler {
+    static let sourceName = "AWS"
+
     struct ExistingEndpoint: Sendable, Equatable {
         let host: String
         let port: Int
@@ -35,68 +37,41 @@ enum RDSDiscoveryReconciler {
             guard !ambiguous.contains(key), let match = byEndpoint[key] else {
                 return connection
             }
-            let database = connection.database.isEmpty ? match.database : connection.database
-            return connection.identified(username: match.username, database: database)
-        }
-    }
-
-    static func envelope(for connections: [ExportableConnection]) -> ConnectionExportEnvelope {
-        ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "AWS Import",
-            connections: connections,
-            groups: nil,
-            tags: nil,
-            credentials: nil
-        )
-    }
-
-    static func markingMissingDrivers(
-        _ preview: ConnectionImportPreview,
-        missingDriverName: (String) -> String?
-    ) -> ConnectionImportPreview {
-        let items = preview.items.map { item -> ImportItem in
-            guard case .ready = item.status, let pluginName = missingDriverName(item.connection.type) else {
-                return item
+            var identified = connection
+            identified.username = match.username
+            if identified.database.isEmpty {
+                identified.database = match.database
             }
-            let warning = String(
-                format: String(localized: "The %@ plugin is not installed. TablePro offers to install it on connect."),
-                pluginName
-            )
-            return ImportItem(connection: item.connection, status: .warnings([warning]))
+            return identified
         }
-        return ConnectionImportPreview(envelope: preview.envelope, items: items)
+    }
+
+    static func collected(
+        for connections: [ExportableConnection],
+        deselectedHosts: Set<String>
+    ) throws -> CollectedImport {
+        let deselected = Set(deselectedHosts.map(normalizedHost))
+        var builder = ConnectionBundleBuilder(appVersion: "\(sourceName) Import")
+        var unsuggested: Set<BundleRef> = []
+        for (index, connection) in connections.enumerated() {
+            let ref = BundleRef("rds-\(index + 1)")
+            builder.addConnection(connection, ref: ref)
+            if deselected.contains(normalizedHost(connection.host)) {
+                unsuggested.insert(ref)
+            }
+        }
+        return CollectedImport(
+            bundle: try builder.build(),
+            source: .cloudDiscovery(name: sourceName),
+            unsuggestedConnections: unsuggested
+        )
     }
 
     private static func endpointKey(host: String, port: Int) -> String {
-        "\(host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())|\(port)"
+        "\(normalizedHost(host))|\(port)"
     }
-}
 
-private extension ExportableConnection {
-    func identified(username: String, database: String) -> ExportableConnection {
-        ExportableConnection(
-            name: name,
-            host: host,
-            port: port,
-            database: database,
-            username: username,
-            type: type,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: color,
-            tagName: tagName,
-            tagNames: tagNames,
-            groupName: groupName,
-            sshProfileId: sshProfileId,
-            safeModeLevel: safeModeLevel,
-            aiPolicy: aiPolicy,
-            additionalFields: additionalFields,
-            redisDatabase: redisDatabase,
-            startupCommands: startupCommands,
-            localOnly: localOnly,
-            tunnelCommand: tunnelCommand
-        )
+    private static func normalizedHost(_ host: String) -> String {
+        host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

@@ -147,10 +147,7 @@ struct CloudSQLProxyTransportSections: View {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
                 } else if viewModel.didResolveBinary {
-                    Label(
-                        String(localized: "cloud-sql-proxy not found. Install it with `brew install cloud-sql-proxy`, download it above, or choose the binary."),
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
+                    Label(viewModel.binaryNotFoundMessage, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
                 }

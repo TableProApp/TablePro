@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Structure collation spelling")
 struct StructureCollationSpellingTests {
     private func column(
         _ name: String,
@@ -68,7 +67,8 @@ struct StructureCollationSpellingTests {
             ddlSpelling: "text",
             ddlDefault: nil,
             ddlGenerationExpression: nil,
-            ddlCollation: #"pg_catalog."C""#
+            ddlCollation: #"pg_catalog."C""#,
+            classificationTypeName: nil
         )
         let snapshot = TableStructureSnapshot.from(
             table: PluginTableInfo(name: "orders", schema: "sales", comment: nil),

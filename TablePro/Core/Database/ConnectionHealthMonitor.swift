@@ -16,7 +16,7 @@ extension ConnectionHealthMonitor {
     enum HealthState: Sendable, Equatable {
         case healthy
         case checking
-        case reconnecting(attempt: Int) // 1-based attempt number
+        case reconnecting(attempt: Int, lastFailure: ConnectionFailureInfo?) // 1-based attempt number
         /// The reconnect handler gave up. A separate case rather than a flag beside `state`, so the
         /// health check's own `state == .healthy` guard and every future switch see it without a
         /// second variable to keep in step.
@@ -25,7 +25,7 @@ extension ConnectionHealthMonitor {
 
     enum ReconnectOutcome: Sendable, Equatable {
         case success
-        case retry
+        case retry(ConnectionFailureInfo?)
         case abort
     }
 }
@@ -127,7 +127,10 @@ actor ConnectionHealthMonitor {
 
             while !Task.isCancelled {
                 guard let interval = await intervalForPass() else { break }
-                try? await Task.sleep(for: interval)
+                /// A tolerance lets the system coalesce the pings of every open connection into one
+                /// wake instead of N. A quarter of the interval keeps a 30s ping meaningful; the
+                /// monitor's own late-fire warning reads a 5s floor and is unaffected.
+                try? await Task.sleep(for: interval, tolerance: interval / 4)
                 guard !Task.isCancelled else { break }
                 /// Asked again after the sleep as well, so turning scheduled checks off during a
                 /// long interval stops the next one rather than the one after it.
@@ -206,6 +209,7 @@ actor ConnectionHealthMonitor {
     /// clean teardown initiated by `stopMonitoring`).
     private func attemptReconnect() async {
         var attempt = 0
+        var lastFailure: ConnectionFailureInfo?
 
         while !Task.isCancelled {
             attempt += 1
@@ -213,7 +217,7 @@ actor ConnectionHealthMonitor {
             let delay = backoffDelay(for: attempt)
 
             Self.logger.warning("Reconnect attempt \(attempt) for connection \(self.connectionId), waiting \(delay)s")
-            await transitionTo(.reconnecting(attempt: attempt))
+            await transitionTo(.reconnecting(attempt: attempt, lastFailure: lastFailure))
 
             try? await Task.sleep(for: .seconds(delay))
 
@@ -231,7 +235,8 @@ actor ConnectionHealthMonitor {
                 Self.logger.info("Reconnect aborted for connection \(self.connectionId)")
                 await transitionTo(.aborted)
                 return
-            case .retry:
+            case .retry(let failure):
+                lastFailure = failure
                 Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
             }
         }

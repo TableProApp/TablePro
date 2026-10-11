@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editable index paste")
 @MainActor
 struct IndexDefinitionPasteTests {
     private static func copiedFromPostgreSQL() throws -> EditableIndexDefinition {

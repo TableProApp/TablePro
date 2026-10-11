@@ -114,6 +114,7 @@ struct PanelTextField<LeadingAccessories: View, TrailingAccessories: View>: View
                 }
                 .buttonStyle(.icon(font: .system(size: 11, weight: .semibold), size: CGSize(width: 20, height: 20)))
                 .opacity(text.isEmpty ? 0 : 1)
+                .accessibilityLabel("Clear")
                 .disabled(text.isEmpty)
             }
             if let trailing = trailingAccessories {

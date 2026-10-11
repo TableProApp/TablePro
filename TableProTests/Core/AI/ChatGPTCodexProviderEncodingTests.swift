@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatGPTCodexProvider request encoding")
 struct ChatGPTCodexProviderEncodingTests {
     @Test("Headers carry bearer token, account id, and Codex originator")
     func headersIncludeAccountAndOriginator() {

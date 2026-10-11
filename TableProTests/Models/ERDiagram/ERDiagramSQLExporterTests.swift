@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram SQL exporter")
 struct ERDiagramSQLExporterTests {
     private let quote: (String) -> String = { "\"\($0)\"" }
 

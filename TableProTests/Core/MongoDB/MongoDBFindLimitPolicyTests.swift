@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MongoDB Find Limit Policy")
 struct MongoDBFindLimitPolicyTests {
     @Suite("fetchLimit")
     struct FetchLimitTests {

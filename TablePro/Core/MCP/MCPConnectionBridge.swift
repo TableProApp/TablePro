@@ -14,48 +14,17 @@ public actor MCPConnectionBridge {
 
     public init() {}
 
-    func listConnections(principal: MCPPrincipal) async -> JsonValue {
-        await listConnections(access: principal.connectionAccess)
+    func listConnections(principal: MCPPrincipal, purpose: MCPConnectionListPurpose = .agent) async -> JsonValue {
+        await listConnections(access: principal.connectionAccess, purpose: purpose)
     }
 
     func listConnections() async -> JsonValue {
-        await listConnections(access: .all)
+        await listConnections(access: .all, purpose: .agent)
     }
 
-    private func listConnections(access: ConnectionAccess) async -> JsonValue {
-        let (connections, activeSessions, defaultPolicy) = await MainActor.run {
-            let defaultPolicy = AppSettingsManager.shared.ai.defaultConnectionPolicy
-            let conns = ConnectionStorage.shared.loadConnections()
-                .filter { $0.externalAccess != .blocked }
-                .filter { ($0.aiPolicy ?? defaultPolicy) != .never }
-                .filter { access.allows($0.id) }
-            return (conns, DatabaseManager.shared.activeSessions, defaultPolicy)
-        }
-
-        let items: [JsonValue] = connections
-            .sorted { lhs, rhs in
-                lhs.name == rhs.name
-                    ? lhs.id.uuidString < rhs.id.uuidString
-                    : lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-            .map { conn in
-                let session = activeSessions[conn.id]
-                let policy = conn.aiPolicy ?? defaultPolicy
-                return .object([
-                    "id": .string(conn.id.uuidString),
-                    "name": .string(conn.name),
-                    "type": .string(conn.type.rawValue),
-                    "host": .string(conn.host),
-                    "port": .int(conn.port),
-                    "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
-                    "is_connected": .bool(session?.reportedStatus.isConnected ?? false),
-                    "ai_policy": .string(policy.rawValue),
-                    "external_access": .string(conn.externalAccess.rawValue),
-                    "safe_mode": .string(conn.safeModeLevel.rawValue)
-                ])
-            }
-
-        return .object(["connections": .array(items)])
+    private func listConnections(access: ConnectionAccess, purpose: MCPConnectionListPurpose) async -> JsonValue {
+        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
+        return MCPConnectionListEncoder.encode(listings, access: access, purpose: purpose)
     }
 
     func connect(connectionId: UUID) async throws -> JsonValue {
@@ -159,6 +128,23 @@ public actor MCPConnectionBridge {
         )
     }
 
+    func executeScript(
+        scope: DatabaseScope,
+        query: String,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> (payload: JsonValue, rowsReturned: Int) {
+        let outcome = try await access.runScript(
+            scope: scope,
+            query: query,
+            maxRows: maxRows,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        return (Self.encode(script: outcome, scope: scope), outcome.rowsReturned)
+    }
+
     func runStatement(
         scope: DatabaseScope,
         query: String,
@@ -177,6 +163,33 @@ public actor MCPConnectionBridge {
     }
 
     static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
+        .object(fields(of: result, scope: scope, executionTimeMs: executionTimeMs))
+    }
+
+    /// A script's answer in the shape a statement's has, so a client that reads one result reads the first, plus
+    /// `result_sets` with every one of them once there is more than one to read.
+    static func encode(script: DatabaseAccessBridge.ScriptOutcome, scope: DatabaseScope) -> JsonValue {
+        var response = fields(of: script.primary, scope: scope, executionTimeMs: script.executionTimeMs)
+        if script.resultSets.count > 1 {
+            response["result_sets"] = .array(script.resultSets.map(encode(resultSet:)))
+        }
+        return .object(response)
+    }
+
+    static func encode(resultSet: QueryResult) -> JsonValue {
+        var entry: [String: JsonValue] = [
+            "columns": .array(resultSet.columns.map { .string($0) }),
+            "rows": .array(resultSet.rows.map { row in .array(row.map(cellValue)) }),
+            "row_count": .int(resultSet.rows.count),
+            "is_truncated": .bool(resultSet.isTruncated)
+        ]
+        if let statusMessage = resultSet.statusMessage {
+            entry["status_message"] = .string(statusMessage)
+        }
+        return .object(entry)
+    }
+
+    private static func fields(of result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> [String: JsonValue] {
         var response: [String: JsonValue] = [
             "columns": .array(result.columns.map { .string($0) }),
             "rows": .array(result.rows.map { row in .array(row.map(cellValue)) }),
@@ -192,7 +205,7 @@ public actor MCPConnectionBridge {
         if let statusMessage = result.statusMessage {
             response["status_message"] = .string(statusMessage)
         }
-        return .object(response)
+        return response
     }
 
     static func cellValue(_ cell: PluginCellValue) -> JsonValue {
@@ -218,8 +231,8 @@ public actor MCPConnectionBridge {
         try await access.resolveConnection(connectionId)
     }
 
-    static func stripTrailingSemicolons(_ query: String) -> String {
-        DatabaseAccessBridge.stripTrailingSemicolons(query)
+    static func statementText(_ query: String, databaseType: DatabaseType) -> String {
+        DatabaseAccessBridge.statementText(query, grammar: databaseType.lexicalGrammar)
     }
 }
 

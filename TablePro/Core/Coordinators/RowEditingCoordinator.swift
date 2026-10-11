@@ -42,9 +42,8 @@ final class RowEditingCoordinator: ObservableObject {
     // MARK: - Row Operations
 
     func addNewRow() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -69,9 +68,8 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               !indices.isEmpty else { return }
 
         let tabId = tab.id
@@ -113,9 +111,8 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func duplicateSelectedRow(index: Int) {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
@@ -196,14 +193,38 @@ final class RowEditingCoordinator: ObservableObject {
     ///
     /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
     /// row's own value back rather than for one value across all of them.
-    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
-        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex, continuity: .typing)
+    ///
+    /// `absentRowIDs` are the rows that had no field for the column, which it goes back to missing.
+    func revertInspectorFieldEdit(
+        columnIndex: Int,
+        valuesByRow: [RowID: PluginCellValue],
+        absentRowIDs: Set<RowID> = []
+    ) {
+        stageInspectorEdits(
+            valuesByRow: valuesByRow,
+            columnIndex: columnIndex,
+            continuity: .typing,
+            removingFieldFrom: absentRowIDs
+        )
+    }
+
+    /// Takes the field out of every row the inspector is showing, for an engine that tells a
+    /// missing field from NULL.
+    func stageInspectorFieldRemoval(columnIndex: Int, rowIDs: [RowID]) {
+        guard parent.changeManager.supportsFieldRemoval else { return }
+        stageInspectorEdits(
+            valuesByRow: Dictionary(rowIDs.map { ($0, PluginCellValue.null) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex,
+            continuity: .discrete,
+            removingFieldFrom: Set(rowIDs)
+        )
     }
 
     private func stageInspectorEdits(
         valuesByRow: [RowID: PluginCellValue],
         columnIndex: Int,
-        continuity: FieldEditContinuity
+        continuity: FieldEditContinuity,
+        removingFieldFrom removedRowIDs: Set<RowID> = []
     ) {
         if continuity == .discrete {
             endInspectorEditRun()
@@ -219,11 +240,18 @@ final class RowEditingCoordinator: ObservableObject {
         guard parent.changeManager.isColumnWritable(columnName) else { return }
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
+        var removedCells: Set<CellPosition> = []
         var editedRowIDs: Set<RowID> = []
         for (rowID, value) in valuesByRow {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
-            let values = Array(tableRows.rows[storageRow].values)
-            guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }
+            let row = tableRows.rows[storageRow]
+            let values = Array(row.values)
+            let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
+            let absence = FieldAbsence(
+                wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
+            )
+            guard values.indices.contains(columnIndex),
+                  values[columnIndex] != value || absence.wasAbsent != absence.isAbsent else { continue }
             if continuity == .typing {
                 parent.changeManager.recordTypedCellChange(
                     rowID: rowID,
@@ -231,7 +259,8 @@ final class RowEditingCoordinator: ObservableObject {
                     columnName: columnName,
                     oldValue: values[columnIndex],
                     newValue: value,
-                    originalRow: values
+                    originalRow: values,
+                    absence: absence
                 )
             } else {
                 parent.changeManager.recordCellChange(
@@ -240,15 +269,19 @@ final class RowEditingCoordinator: ObservableObject {
                     columnName: columnName,
                     oldValue: values[columnIndex],
                     newValue: value,
-                    originalRow: values
+                    originalRow: values,
+                    absence: absence
                 )
             }
             edits.append((row: storageRow, column: columnIndex, value: value))
+            if removesField {
+                removedCells.insert(CellPosition(row: storageRow, column: columnIndex))
+            }
             editedRowIDs.insert(rowID)
         }
         guard !edits.isEmpty else { return }
 
-        parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits) }
+        parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits, absentCells: removedCells) }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         repaintInspectorEdit(rowIDs: editedRowIDs, columnIndex: columnIndex, in: tableRows)
         parent.inspectorRowContentChanged.send()
@@ -337,11 +370,14 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func pasteRows() {
-        guard !parent.safeModeLevel.blocksAllWrites,
+        guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tabType == .table else { return }
 
         let tabId = tab.id
+        /// Pasted rows hand the columns the server owns back to it, which only the schema names, so pasting waits for
+        /// it the way Add Row does rather than staging an identity value the save would send.
+        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
         let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)

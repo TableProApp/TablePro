@@ -11,7 +11,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("Column default round trip")
 struct ColumnDefaultRoundTripTests {
     private func menuSQL(_ type: DatabaseType) -> [String] {
         ColumnDefaultVocabulary.options(for: type).compactMap(\.sql)
@@ -52,9 +51,11 @@ struct ColumnDefaultRoundTripTests {
     }
 
     /// A `TEXT` column is the one place MySQL's grammar adds something, and it adds it to every
-    /// value rather than to the ones the writer happens to recognise.
+    /// value rather than to the ones the writer happens to recognise. NULL is the exception: every
+    /// type takes it bare, and `DEFAULT (NULL)` is an expression default on MySQL 8 and a syntax
+    /// error on MySQL 5.7.
     @Test(
-        "A MySQL TEXT column parenthesises every menu value exactly once",
+        "A MySQL TEXT column parenthesises every menu value but NULL exactly once",
         arguments: [(type: DatabaseType.mysql, isMariaDB: false), (type: .mariadb, isMariaDB: true)]
     )
     func mysqlTextColumnParenthesisesOnce(type: DatabaseType, isMariaDB: Bool) {
@@ -62,9 +63,9 @@ struct ColumnDefaultRoundTripTests {
             let column = PluginColumnDefinition(
                 name: "c", dataType: "TEXT", isNullable: true, defaultValue: sql
             )
-            let expected = sql.hasPrefix("(") ? sql : "(\(sql))"
+            let expected = sql == "NULL" || sql.hasPrefix("(") ? sql : "(\(sql))"
             #expect(
-                mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB).contains("DEFAULT \(expected)"),
+                mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB).hasSuffix("DEFAULT \(expected)"),
                 "\(type.rawValue): \(sql)"
             )
         }
@@ -81,7 +82,6 @@ struct ColumnDefaultRoundTripTests {
     }
 }
 
-@Suite("SQL string literal")
 struct SQLStringLiteralTests {
     @Test(
         "A single-quoted literal reads back as the text it stands for",

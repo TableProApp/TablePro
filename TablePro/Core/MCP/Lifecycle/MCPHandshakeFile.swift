@@ -277,9 +277,9 @@ internal final class MCPHandshakeFile {
                 try fileManager.removeItem(at: url)
             }
             try fileManager.moveItem(at: staging, to: url)
-            Self.logger.info("Wrote the MCP handshake file at \(self.url.path, privacy: .public)")
+            Self.logger.info("Wrote the MCP handshake file at \(self.url.path, privacy: .private(mask: .hash))")
         } catch {
-            Self.logger.error("Failed to write the MCP handshake file: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to write the MCP handshake file: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -308,7 +308,7 @@ internal final class MCPHandshakeFile {
         } catch CocoaError.fileNoSuchFile {
             return
         } catch {
-            Self.logger.error("Failed to delete the handshake file: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to delete the handshake file: \(error.publicLogShape, privacy: .public)")
         }
     }
 

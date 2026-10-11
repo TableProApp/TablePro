@@ -181,7 +181,7 @@ struct QueryPlanResultView: View {
     private var toolbar: some View {
         HStack(spacing: 12) {
             if presentation.plan != nil {
-                Picker("", selection: $tabState.viewMode) {
+                Picker(String(localized: "View Mode"), selection: $tabState.viewMode) {
                     ForEach(availableModes) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -226,6 +226,7 @@ struct QueryPlanResultView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help(String(localized: "Copy EXPLAIN output to clipboard"))
+            .accessibilityLabel(String(localized: "Copy EXPLAIN output to clipboard"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

@@ -136,7 +136,7 @@ extension SurrealDBPluginDriver {
         }
 
         let declaredNames = declared.map(\.name)
-        let flattened = SurrealRowFlattener.flatten(value, knownColumns: declaredNames)
+        let flattened = SurrealRowFlattener.flatten(value, knownColumns: declaredNames, length: .display)
         var columns = declared
 
         for (index, name) in flattened.columns.enumerated() where !declaredNames.contains(name) {

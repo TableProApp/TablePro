@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH Match exec")
 struct SSHMatchExecutorTests {
     @Test("Exit 0 matches")
     func exitZeroMatches() {

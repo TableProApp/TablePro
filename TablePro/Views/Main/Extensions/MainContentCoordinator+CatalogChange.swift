@@ -11,11 +11,18 @@ import TableProPluginKit
 /// selection and its cached columns.
 extension MainContentCoordinator {
     /// Reported whether the statement succeeded or failed: DDL that commits as it runs, a procedure
-    /// or a dropped connection can leave the catalog changed behind an error.
-    nonisolated static func postStatementRan(_ sql: String, on connection: DatabaseConnection) {
+    /// or a dropped connection can leave the catalog changed behind an error. A table it dropped or
+    /// renamed is reported apart, and only by a statement that succeeded.
+    nonisolated static func postStatementRan(
+        _ sql: String,
+        on connection: DatabaseConnection,
+        succeeded: SucceededStatements? = nil
+    ) {
         CatalogChangeService.post(
             .statementsRan(connectionId: connection.id, statements: [sql], databaseType: connection.type)
         )
+        guard let succeeded else { return }
+        CatalogChangeService.post(.statementsSucceeded(succeeded))
     }
 
     func applyCatalogChange(_ change: CatalogChange) {

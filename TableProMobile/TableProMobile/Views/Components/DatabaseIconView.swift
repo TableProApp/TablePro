@@ -3,20 +3,22 @@ import TableProModels
 
 struct DatabaseIconView: View {
     let type: DatabaseType
+    var iconName: String?
     let size: CGFloat
     var tint: Color?
 
     var body: some View {
-        let name = type.iconName
-        if name.hasSuffix("-icon") {
-            Image(name)
+        let glyph = LibraryGlyph.connectionGlyph(type: type, iconName: iconName)
+        switch glyph.source {
+        case .asset:
+            Image(glyph.name)
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
                 .foregroundStyle(color)
-        } else {
-            Image(systemName: name)
+        case .symbol:
+            Image(systemName: glyph.name)
                 .font(.system(size: size))
                 .foregroundStyle(color)
         }

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("File drop destination")
 @MainActor
 struct FileDropDestinationTests {
     @Test("A SQL file is openable")

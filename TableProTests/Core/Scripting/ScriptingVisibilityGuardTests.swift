@@ -14,7 +14,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Scripting visibility guard")
 struct ScriptingVisibilityGuardTests {
     private static let snapshotSource: String = {
         var url = URL(fileURLWithPath: #filePath)

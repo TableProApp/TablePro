@@ -13,6 +13,7 @@ internal enum TabRouterError: Error, LocalizedError {
     case fileNoLongerExists(URL)
     case userCancelled
     case unsupportedIntent(String)
+    case filterTooLong(Int, limit: Int)
     case connectFailedInWindow(connectionId: UUID, underlying: Error)
 
     internal var windowConnectionId: UUID? {
@@ -38,6 +39,8 @@ internal enum TabRouterError: Error, LocalizedError {
             return String(localized: "Cancelled by user.")
         case .unsupportedIntent(let detail):
             return String(format: String(localized: "Unsupported intent: %@"), detail)
+        case .filterTooLong(let length, let limit):
+            return String(format: String(localized: "SQL is too long: %d characters (limit %d)"), length, limit)
         case .connectFailedInWindow(_, let underlying):
             return underlying.localizedDescription
         }
@@ -61,14 +64,17 @@ internal final class TabRouter {
         case .openConnection(let id):
             try await openConnection(id: id)
 
-        case .openTable(let id, let database, let schema, let table, let isView):
+        case .openTable(let id, let database, let schema, let table, let isView, let objectType):
             try await openTable(
                 connectionId: id, transientConnection: nil,
-                database: database, schema: schema, table: table, isView: isView
+                database: database, schema: schema, table: table, isView: isView, objectType: objectType
             )
 
         case .openQuery(let id, let sql):
             try await openQuery(connectionId: id, sql: sql)
+
+        case .openAgentSession(let id, let prompt):
+            try await openAgentSession(connectionId: id, prompt: prompt)
 
         case .openDatabaseURL(let url):
             try await openDatabaseURL(url)
@@ -94,7 +100,7 @@ internal final class TabRouter {
             .first(where: { $0.id == entry.connectionId }) else {
             throw TabRouterError.connectionNotFound(entry.connectionId)
         }
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
         try await DatabaseManager.shared.ensureConnected(connection)
         RecentlyClosedTabReopener.reopen(entry)
         WindowOpener.shared.closeWelcome()
@@ -158,20 +164,18 @@ internal final class TabRouter {
             existing.makeKeyAndOrderFront(nil)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
-            let host = existing.contentViewController as? MainSplitViewController
             /// Raising the window is not the same as showing the connection the user picked, and a
-            /// window hosts several. Without this, choosing a connected one from the connection list
-            /// re-fronted a window still showing a different connection and stopped there.
-            if let host, host.workspaces.contains(id) {
-                host.selectHostedConnection(id)
+            /// window hosts several. Whether to dial is the workspace phase's call: no driver is
+            /// installed for the whole of a connect, so asking the driver restarted one in flight.
+            if let host = existing.contentViewController as? MainSplitViewController,
+               host.workspaces.contains(id) {
+                host.reconnectWorkspaceIfIdle(id)
+                return
             }
-            guard DatabaseManager.shared.activeSessions[id]?.driver == nil else { return }
-            if let host, host.workspaces.contains(id) {
-                host.reconnectWorkspace(id)
-            } else {
-                try await runPreConnectScriptIfNeeded(connection)
-                try await DatabaseManager.shared.ensureConnected(connection)
-            }
+            let status = DatabaseManager.shared.activeSessions[id]?.reportedStatus
+            guard Self.needsConnect(reportedStatus: status) else { return }
+            try await confirmConnectConsent(connection)
+            try await DatabaseManager.shared.ensureConnected(connection)
             return
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
@@ -183,11 +187,51 @@ internal final class TabRouter {
         WindowOpener.shared.closeWelcome()
     }
 
+    /// An unreachable session reports an error, so it is redialed like one that is gone. A session
+    /// already connecting is left alone: dialing again would ask for consent a second time.
+    internal static func needsConnect(reportedStatus: ConnectionStatus?) -> Bool {
+        guard let reportedStatus else { return true }
+        switch reportedStatus {
+        case .connected, .connecting:
+            return false
+        case .disconnected, .error:
+            return true
+        }
+    }
+
+    /// Opens a connection and hands its window to the agent.
+    ///
+    /// The same reuse-or-open path every other connection intent takes, rather than a second route
+    /// into a window: a connection already open is switched into Agent mode where it stands, and one
+    /// that is not is opened the ordinary way and switched once its workspace exists.
+    private func openAgentSession(connectionId: UUID, prompt: String?) async throws {
+        try await openConnection(id: connectionId)
+        await MainActor.run {
+            let session = AgentSessionRegistry.shared.resolveSession(
+                for: connectionId,
+                startingIfNeeded: true
+            )
+            /// Held rather than sent. The connect may still be in flight, and what the user typed is
+            /// what they are waiting with; the conversation column sends it once the session can.
+            if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                session?.pendingPrompt = prompt
+            }
+            /// Through the setter alone. Assigning `contentMode` first made the setter's
+            /// unchanged-mode guard skip the pane rebuild, the toolbar refresh and the floor, so a
+            /// connection that was already open stayed visibly in Browse with nothing to repair it.
+            guard let host = WindowManager.shared.window(for: connectionId)?
+                .contentViewController as? MainSplitViewController else { return }
+            host.setContentMode(.agent, for: connectionId)
+        }
+    }
+
     // MARK: - Table
 
     private func openTable(
         connectionId: UUID, transientConnection: DatabaseConnection? = nil,
         database: String?, schema: String?, table: String, isView: Bool,
+        objectType: TableInfo.TableType? = nil,
+        initialFilterState: TabFilterState? = nil,
         passwordOverride: String? = nil, sshPasswordOverride: String? = nil
     ) async throws {
         let connection: DatabaseConnection
@@ -198,13 +242,16 @@ internal final class TabRouter {
         } else {
             throw TabRouterError.connectionNotFound(connectionId)
         }
-        if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
+        /// A filtered open gets a new tab with the filter in its payload, so the filter is in place
+        /// before the first load and a tab already showing the table keeps its own filters.
+        if initialFilterState == nil,
+           focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -212,7 +259,10 @@ internal final class TabRouter {
             tableName: table,
             databaseName: database,
             schemaName: schema,
-            isView: isView
+            isView: isView,
+            objectType: objectType,
+            forcesNewTab: initialFilterState != nil,
+            initialFilterState: initialFilterState
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
@@ -231,23 +281,17 @@ internal final class TabRouter {
     private func focusExistingTableTab(
         connectionId: UUID, database: String?, schema: String?, table: String
     ) -> Bool {
-        for coordinator in MainContentCoordinator.allActiveCoordinators()
-            where coordinator.connectionId == connectionId {
-            guard let match = coordinator.tabManager.tabs.first(where: { tab in
-                guard tab.tabType == .table,
-                      tab.tableContext.tableName == table else { return false }
-                let databaseMatches = database.map { db in
-                    tab.tableContext.databaseName == db
-                } ?? true
-                let schemaMatches = schema.map { sch in
-                    tab.tableContext.schemaName.map { $0 == sch } ?? false
-                } ?? true
-                return databaseMatches && schemaMatches
-            }) else { continue }
-            coordinator.selectTabAndFocusWindow(match.id)
-            return true
+        HostedTabRouting.live.revealFirstTab(of: connectionId) { tab in
+            guard tab.tabType == .table,
+                  tab.tableContext.tableName == table else { return false }
+            let databaseMatches = database.map { db in
+                tab.tableContext.databaseName == db
+            } ?? true
+            let schemaMatches = schema.map { sch in
+                tab.tableContext.schemaName.map { $0 == sch } ?? false
+            } ?? true
+            return databaseMatches && schemaMatches
         }
-        return false
     }
 
     // MARK: - Query
@@ -269,13 +313,13 @@ internal final class TabRouter {
         )
         guard confirmed else { throw TabRouterError.userCancelled }
 
-        if focusExistingQueryTab(connectionId: connectionId, sql: sql) {
+        if Self.revealExistingQueryTab(connectionId: connectionId, sql: sql, routing: .live) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -290,21 +334,14 @@ internal final class TabRouter {
         try await DatabaseManager.shared.ensureConnected(connection)
     }
 
-    private func focusExistingQueryTab(connectionId: UUID, sql: String) -> Bool {
-        for coordinator in MainContentCoordinator.allActiveCoordinators()
-            where coordinator.connectionId == connectionId {
-            let match = coordinator.tabManager.tabs.first { tab in
-                tab.tabType == .query && tab.content.query == sql
-            }
-            guard let match else { continue }
-            coordinator.tabManager.selectedTabId = match.id
-            if let windowId = coordinator.windowId,
-               let window = WindowLifecycleMonitor.shared.window(for: windowId) {
-                window.makeKeyAndOrderFront(nil)
-            }
-            return true
+    /// Through the reveal, which selects the tab's connection workspace too. Selecting the tab
+    /// alone left the window showing another connection while reporting the tab found.
+    internal static func revealExistingQueryTab(
+        connectionId: UUID, sql: String, routing: HostedTabRouting
+    ) -> Bool {
+        routing.revealFirstTab(of: connectionId) { tab in
+            tab.tabType == .query && tab.content.query == sql
         }
-        return false
     }
 
     private func previewForSQL(_ sql: String) -> String {
@@ -321,15 +358,16 @@ internal final class TabRouter {
         guard case .success(let parsed) = ConnectionURLParser.parse(url.absoluteString) else {
             throw TabRouterError.malformedDatabaseURL(url)
         }
+        let filter = parsed.filter
+        if let filter {
+            let length = (filter.displayText as NSString).length
+            guard length <= DeeplinkParser.sqlLengthLimit else {
+                throw TabRouterError.filterTooLong(length, limit: DeeplinkParser.sqlLengthLimit)
+            }
+        }
 
         let connections = ConnectionStorage.shared.loadConnections()
-        let matched = connections.first { conn in
-            conn.type == parsed.type
-                && conn.host == parsed.host
-                && (parsed.port == nil || conn.port == parsed.port)
-                && conn.database == parsed.database
-                && (parsed.username.isEmpty || conn.username == parsed.username)
-        }
+        let matched = connections.first { DatabaseURLConnectionMatch.matches(saved: $0, parsed: parsed) }
 
         let connection: DatabaseConnection
         let isTransient: Bool
@@ -341,7 +379,9 @@ internal final class TabRouter {
             isTransient = true
         }
 
-        guard await externalConnectionGate.authorize(connection, scopeName: parsed.connectionName) else {
+        guard await externalConnectionGate.authorize(
+            connection, scopeName: parsed.connectionName, filter: filter
+        ) else {
             throw TabRouterError.userCancelled
         }
 
@@ -357,17 +397,15 @@ internal final class TabRouter {
                     schema: parsed.schema,
                     table: table,
                     isView: parsed.isView,
+                    initialFilterState: filter?.filterState,
                     passwordOverride: passwordOverride,
                     sshPasswordOverride: sshPasswordOverride
                 )
             }
-            if parsed.filterColumn != nil || parsed.filterCondition != nil {
-                try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
-            }
             return
         }
 
-        try await runPreConnectScriptIfNeeded(connection)
+        try await confirmConnectConsent(connection)
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
@@ -450,38 +488,73 @@ internal final class TabRouter {
     // MARK: - SQL File
 
     private func openSQLFile(_ url: URL) async throws {
-        if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
-            existing.makeKeyAndOrderFront(nil)
+        if HostedTabRouting.live.revealTab(editing: url) {
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             return
         }
 
-        if let session = DatabaseManager.shared.lastActiveSession {
-            let content = await Task.detached(priority: .userInitiated) { () -> String? in
-                try? String(contentsOf: url, encoding: .utf8)
-            }.value
-            guard let content else {
-                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .public)")
-                return
-            }
-            let payload = EditorTabPayload(
-                connectionId: session.connection.id,
-                tabType: .query,
-                initialQuery: content,
-                sourceFileURL: url
-            )
-            WindowManager.shared.openTab(payload: payload)
-            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        } else {
+        let target = Self.sqlFileConnectionId(
+            shownConnectionId: WindowManager.shared.frontmostHost()?.workspaces.selectedConnectionId,
+            lastActiveConnectionId: DatabaseManager.shared.lastActiveSessionId,
+            activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
+        )
+        guard let target else {
             WelcomeRouter.shared.enqueueSQLFile(url)
+            return
         }
+        let payload = try await Self.sqlFileTabPayload(for: url, connectionId: target)
+        WindowManager.shared.openTab(payload: payload)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// The connection on screen, so the script lands where the user is looking. The last one to
+    /// connect is only a fallback for when no window shows a connected one: switching to a
+    /// connection that is already up never updates it.
+    internal static func sqlFileConnectionId(
+        shownConnectionId: UUID?,
+        lastActiveConnectionId: UUID?,
+        activeSessionIds: Set<UUID>
+    ) -> UUID? {
+        if let shownConnectionId, activeSessionIds.contains(shownConnectionId) {
+            return shownConnectionId
+        }
+        if let lastActiveConnectionId, activeSessionIds.contains(lastActiveConnectionId) {
+            return lastActiveConnectionId
+        }
+        return nil
+    }
+
+    internal static func sqlFileTabPayload(for url: URL, connectionId: UUID) async throws -> EditorTabPayload {
+        let read: FileTextLoader.LoadedText
+        do {
+            read = try await Task.detached(priority: .userInitiated) {
+                try FileTextLoader.read(url)
+            }.value
+        } catch {
+            logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
+            throw error
+        }
+        return EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .query,
+            initialQuery: read.content,
+            sourceFileURL: url,
+            sourceFileStamp: read.stamp,
+            sourceFileEncoding: read.textEncoding
+        )
     }
 
     // MARK: - Helpers
 
     internal func bringConnectionWindowToFront(_ connectionId: UUID) {
-        if let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId) {
-            window.makeKeyAndOrderFront(nil)
+        if let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId)
+            ?? WindowManager.shared.window(for: connectionId) {
+            /// A window hosts several connections, so raising it can still show another one.
+            if let host = window.contentViewController as? MainSplitViewController,
+               host.workspaces.contains(connectionId) {
+                host.selectHostedConnection(connectionId)
+            }
+            WindowManager.shared.bringToFront(window)
         } else {
             NSApp.windows.first { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }?.makeKeyAndOrderFront(nil)
         }
@@ -494,42 +567,9 @@ internal final class TabRouter {
         await coordinator.switchContainers(database: database, schema: schema)
     }
 
-    private func runPreConnectScriptIfNeeded(_ connection: DatabaseConnection) async throws {
-        guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+    private func confirmConnectConsent(_ connection: DatabaseConnection) async throws {
+        guard await ConnectConsent.confirmIfNeeded(for: connection) else {
             throw TabRouterError.userCancelled
         }
-    }
-
-    private func applyFilterFromParsedURL(parsed: ParsedConnectionURL, connectionId: UUID) async throws {
-        let description: String
-        if let condition = parsed.filterCondition, !condition.isEmpty {
-            description = (condition as NSString).length > 300
-                ? String(condition.prefix(300)) + "…" : condition
-        } else {
-            description = [parsed.filterColumn, parsed.filterOperation, parsed.filterValue]
-                .compactMap { $0 }.joined(separator: " ")
-        }
-        if !description.isEmpty {
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(localized: "Apply Filter from Link"),
-                message: String(
-                    format: String(localized: "An external link wants to apply a filter:\n\n%@"),
-                    description
-                ),
-                confirmButton: String(localized: "Apply Filter"),
-                cancelButton: String(localized: "Cancel"),
-                window: NSApp.keyWindow
-            )
-            guard confirmed else { throw TabRouterError.userCancelled }
-        }
-
-        guard let coordinator = MainContentCoordinator.allActiveCoordinators()
-            .first(where: { $0.connectionId == connectionId }) else { return }
-        coordinator.applyURLFilter(
-            condition: parsed.filterCondition,
-            column: parsed.filterColumn,
-            operation: parsed.filterOperation,
-            value: parsed.filterValue
-        )
     }
 }

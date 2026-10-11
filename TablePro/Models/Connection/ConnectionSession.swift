@@ -15,6 +15,7 @@ struct ConnectionSession: Identifiable {
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
     var status: ConnectionStatus = .disconnected
+    var effectiveQueryTimeoutSeconds: Int
     /// Answers whether `driver` can be believed. `status` cannot: it is `.connecting` throughout an
     /// ordinary database switch on the engines that reconnect to perform one, and `.disconnected` is
     /// this struct's own default value.
@@ -56,10 +57,18 @@ struct ConnectionSession: Identifiable {
     let connectedAt: Date
     var lastActiveAt: Date
 
-    init(connection: DatabaseConnection, driver: DatabaseDriver? = nil) {
+    init(
+        connection: DatabaseConnection,
+        driver: DatabaseDriver? = nil,
+        effectiveQueryTimeoutSeconds: Int? = nil
+    ) {
         self.id = connection.id
         self.connection = connection
         self.driver = driver
+        self.effectiveQueryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: effectiveQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
+            globalSeconds: 0
+        )
         self.safeModeLevel = connection.safeModeLevel
         self.connectedAt = Date()
         self.lastActiveAt = Date()

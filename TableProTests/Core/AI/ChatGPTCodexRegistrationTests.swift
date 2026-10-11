@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatGPTCodex provider registration")
 struct ChatGPTCodexRegistrationTests {
     @Test("ChatGPT Codex uses the OAuth auth style")
     func authStyleIsOAuth() {

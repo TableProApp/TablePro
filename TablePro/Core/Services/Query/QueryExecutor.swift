@@ -17,6 +17,14 @@ struct QueryFetchResult {
     /// What the elapsed time was spent on, when the driver could tell.
     var timing: PluginQueryTiming?
 
+    /// What the statement printed on the server, read on its own session.
+    var serverOutput: PluginServerOutput = .none
+
+    /// Per row, what the driver finds that row by again.
+    var rowLocators: [String?]?
+    /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var absentCells: [Int: Set<Int>] = [:]
+
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
     }
@@ -84,6 +92,23 @@ final class QueryExecutor {
     /// The driver is supplied by the caller, which resolved it from the tab's scope.
     /// Looking it up here would tie every query to whichever database the connection
     /// happens to be on.
+    /// Runs a statement and, when `failureOutput` is given, reads what it printed on the server; see
+    /// ``ServerOutputCapture``. A table tab's own reads pass nil, because nothing they run prints.
+    func executeQuery(
+        driver: DatabaseDriver,
+        sql: String,
+        parameters: [Any?]? = nil,
+        rowCap: Int?,
+        capturingOutputInto failureOutput: ServerOutputBox?
+    ) async throws -> QueryFetchResult {
+        guard let failureOutput else {
+            return try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+        }
+        return try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
+            try await executeQuery(driver: driver, sql: sql, parameters: parameters, rowCap: rowCap)
+        }
+    }
+
     func executeQuery(
         driver: DatabaseDriver,
         sql: String,
@@ -134,7 +159,9 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
@@ -147,7 +174,7 @@ final class QueryExecutor {
             return bounded
         }
         let start = CFAbsoluteTimeGetCurrent()
-        queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
+        queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil")")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
@@ -160,7 +187,9 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
@@ -171,7 +200,7 @@ final class QueryExecutor {
         rowCap: Int?
     ) async throws -> QueryFetchResult {
         let start = CFAbsoluteTimeGetCurrent()
-        queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
+        queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
@@ -184,15 +213,23 @@ final class QueryExecutor {
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
             resultColumnMeta: result.columnMeta,
-            timing: result.timing
+            timing: result.timing,
+            rowLocators: result.rowLocators,
+            absentCells: result.absentCells
         )
     }
 
     // MARK: - Schema fetch + parse
 
+    /// The schema read that runs beside a load's rows, when the load needs one.
+    static func schemaFetch(tableName: String?, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
+        guard let tableName else { return nil }
+        return Task { try await fetchTableSchema(scope: scope, tableName: tableName) }
+    }
+
     static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
-            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
+            "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
         )
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
@@ -203,7 +240,7 @@ final class QueryExecutor {
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
         queryExecutorLog.info(
-            "[fk] schema fetch done table=\(tableName, privacy: .public) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
+            "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
         return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, approximateRowCount: approximateRowCount)
     }
@@ -215,7 +252,7 @@ final class QueryExecutor {
             }
         } catch {
             queryExecutorLog.error(
-                "[fk] FK fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "[fk] FK fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             return nil
         }
@@ -247,7 +284,7 @@ final class QueryExecutor {
         for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
-            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.dataType), !values.isEmpty {
+            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.typeNameForClassification), !values.isEmpty {
                 enumValues[col.name] = values
             }
             if let comment = col.comment?.nilIfEmpty {
@@ -281,7 +318,7 @@ final class QueryExecutor {
     static func columns(in columns: [ColumnInfo], typedAnyOf typePrefixes: [String]) -> Set<String> {
         guard !typePrefixes.isEmpty else { return [] }
         return Set(columns.filter { column in
-            let dataType = column.dataType.uppercased()
+            let dataType = column.typeNameForClassification.uppercased()
             return typePrefixes.contains { dataType.hasPrefix($0) }
         }.map(\.name))
     }

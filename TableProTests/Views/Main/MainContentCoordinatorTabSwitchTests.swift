@@ -29,7 +29,6 @@ private final class RetargetColumnLayoutPersister: ColumnLayoutPersisting {
     }
 }
 
-@Suite("MainContentCoordinator handleTabChange")
 @MainActor
 struct MainContentCoordinatorTabSwitchTests {
     private func makeCoordinator(
@@ -733,6 +732,26 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(coordinator.selectedTabFilterState.isVisible == true)
     }
 
+    @Test("The filter panel's state binding reads and writes only the selected tab")
+    func filterPanelBindingTargetsSelectedTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let otherId = addTableTab(to: tabManager, tableName: "orders")
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: otherId)
+        seedRows(coordinator, for: tabId)
+        tabManager.selectedTabId = tabId
+        let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+        let row = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+
+        binding.wrappedValue.filters.append(row)
+        binding.wrappedValue.filterLogicMode = .or
+
+        #expect(binding.wrappedValue.filters == [row])
+        #expect(coordinator.selectedTabFilterState.filters == [row])
+        #expect(coordinator.selectedTabFilterState.filterLogicMode == .or)
+        #expect(tabManager.tabs.first { $0.id == otherId }?.filterState.filters.isEmpty == true)
+    }
+
     @Test("Apply All runs only enabled filters but keeps disabled ones in the panel")
     func applyAllExcludesDisabledFilters() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -770,8 +789,56 @@ struct MainContentCoordinatorTabSwitchTests {
         coordinator.applySoloFilter(second)
         #expect(coordinator.selectedTabFilterState.appliedFilters.map(\.id) == [second.id])
 
-        coordinator.removeFilter(second)
+        coordinator.filterCoordinator.selectedTabFilterStateBinding.wrappedValue.removeFilter(second)
         #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Removing one of two running rows re-runs the query with the other")
+    func removingRunningRowReappliesTheRest() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+        coordinator.applyAllFilters()
+        let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+
+        let outcome = binding.wrappedValue.removeFilter(first)
+        coordinator.filterCoordinator.reload(after: outcome)
+
+        #expect(outcome == .reapply([second]))
+        #expect(coordinator.selectedTabFilterState.filters == [second])
+        #expect(coordinator.selectedTabFilterState.appliedFilters == [second])
+        #expect(coordinator.selectedTabFilterState.executedFilters == [second])
+    }
+
+    @Test("Removing the last running row stops filtering")
+    func removingLastRunningRowClearsTheQuery() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let running = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let draft = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [running, draft]
+        coordinator.applyAllFilters()
+        let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+
+        let outcome = binding.wrappedValue.removeFilter(running)
+        coordinator.filterCoordinator.reload(after: outcome)
+
+        #expect(outcome == .clear)
+        #expect(coordinator.selectedTabFilterState.filters == [draft])
+        #expect(coordinator.selectedTabFilterState.commit == nil)
+        #expect(coordinator.selectedTabFilterState.executedFilters.isEmpty)
     }
 
     @Test("Soloing an invalid filter does nothing")
@@ -883,6 +950,15 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(persisted.contains { $0.columnName == "name" && !$0.isEnabled })
     }
 
+    private func savedUsersFilterState(_ coordinator: MainContentCoordinator) -> PersistedFilterState {
+        FilterSettingsStorage.shared.loadLastFilterState(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+    }
+
     private func savedUsersFilters(_ coordinator: MainContentCoordinator) -> [TableFilter] {
         FilterSettingsStorage.shared.loadLastFilters(
             for: "users",
@@ -949,8 +1025,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(saved.map(\.isEnabled) == [true, false])
     }
 
-    @Test("Switching away after Clear does not write the cleared filters back")
-    func tabSwitchAfterClearKeepsSavedFiltersCleared() {
+    @Test("Switching away from a tab whose rows were never applied saves them as a draft")
+    func tabSwitchSavesAnUnappliedDraft() {
         let (coordinator, tabManager) = makeCoordinator()
         let tableId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tableId)
@@ -963,16 +1039,14 @@ struct MainContentCoordinatorTabSwitchTests {
         let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
         let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
         tabManager.tabs[index].filterState.filters = [first, second]
-        coordinator.applyAllFilters()
-        coordinator.clearAppliedFilters()
-        coordinator.filterCoordinator.clearLastFilters(for: "users")
-        #expect(savedUsersFilters(coordinator).isEmpty)
+        tabManager.tabs[index].filterState.commit = nil
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
 
-        #expect(savedUsersFilters(coordinator).isEmpty)
-        #expect(tabManager.tabs[index].filterState.filters.map(\.id) == [first.id, second.id])
+        let saved = savedUsersFilterState(coordinator)
+        #expect(saved.filters.map(\.id) == [first.id, second.id])
+        #expect(!saved.isApplied)
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

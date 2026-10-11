@@ -8,7 +8,6 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("Column layout sync")
 @MainActor
 struct ColumnLayoutSyncTests {
     private func makePersister() throws -> (FileColumnLayoutPersister, SyncChangeTracker) {
@@ -36,6 +35,108 @@ struct ColumnLayoutSyncTests {
 
     private func key() -> ColumnLayoutTableKey {
         ColumnLayoutTableKey(connectionId: UUID(), databaseName: "shop", schemaName: "public", tableName: "orders")
+    }
+
+    /// The other device already told CloudKit. A tombstone from here would push its deletion back,
+    /// but the dirty marks still have to go or the next push hunts for entries that are gone.
+    @Test("A remote connection delete drops the layouts without tombstoning them")
+    func remotePurgeLeavesNoTombstone() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let key = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: key)
+
+        persister.purgeConnections([connectionId], leavesTombstones: false)
+
+        #expect(persister.load(for: key) == nil)
+        #expect(metadata.tombstones(for: .settings).isEmpty)
+        #expect(!metadata.dirtyIds(for: .settings).contains(FileColumnLayoutPersister.syncCategory(for: key.storageKey)))
+    }
+
+    @Test("A local connection delete tombstones the layouts it drops")
+    func localPurgeTombstones() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let key = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: key)
+
+        persister.purgeConnections([connectionId], leavesTombstones: true)
+
+        #expect(
+            metadata.tombstones(for: .settings)
+                .contains { $0.id == FileColumnLayoutPersister.syncCategory(for: key.storageKey) }
+        )
+    }
+
+    @Test("Dropping a table tombstones its layout so the deletion syncs")
+    func dropTableTombstonesTheLayout() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let dropped = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        let kept = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "customers"
+        )
+        persister.save(layout(["id": 80]), for: dropped)
+        persister.save(layout(["id": 80]), for: kept)
+
+        persister.dropTable(
+            TableScope(connectionId: connectionId, database: "shop", schema: "public", table: "orders")
+        )
+
+        #expect(persister.load(for: dropped) == nil)
+        #expect(persister.load(for: kept) != nil)
+        #expect(
+            metadata.tombstones(for: .settings)
+                .contains { $0.id == FileColumnLayoutPersister.syncCategory(for: dropped.storageKey) }
+        )
+    }
+
+    @Test("Dropping a schema tombstones every layout under it and nothing outside it")
+    func dropContainerTombstonesTheWholeSchema() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let inside = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        let outside = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "billing", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: inside)
+        persister.save(layout(["id": 80]), for: outside)
+
+        persister.dropContainer(connectionId: connectionId, database: "shop", schema: "public")
+
+        #expect(persister.load(for: inside) == nil)
+        #expect(persister.load(for: outside) != nil)
+        let tombstoned = metadata.tombstones(for: .settings).map(\.id)
+        #expect(tombstoned.contains(FileColumnLayoutPersister.syncCategory(for: inside.storageKey)))
+        #expect(!tombstoned.contains(FileColumnLayoutPersister.syncCategory(for: outside.storageKey)))
+    }
+
+    @Test("Dropping a container with nothing saved under it tombstones nothing")
+    func dropContainerWithNoMatchTombstonesNothing() throws {
+        let (persister, metadata, directory) = try makeTrackedPersister()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let kept = ColumnLayoutTableKey(
+            connectionId: connectionId, databaseName: "shop", schemaName: "public", tableName: "orders"
+        )
+        persister.save(layout(["id": 80]), for: kept)
+
+        persister.dropContainer(connectionId: connectionId, database: "nothing_here", schema: nil)
+
+        #expect(persister.load(for: kept) != nil)
+        #expect(metadata.tombstones(for: .settings).isEmpty)
     }
 
     @Test("Saving a layout marks its per-table category dirty")
@@ -88,7 +189,7 @@ struct ColumnLayoutSyncTests {
         persister.save(layout(["id": 90]), for: items)
         persister.save(layout(["id": 70]), for: kept)
 
-        persister.purgeConnections([connectionId])
+        persister.purgeConnections([connectionId], leavesTombstones: true)
 
         let file = directory.appendingPathComponent("\(connectionId.uuidString).json")
         #expect(!FileManager.default.fileExists(atPath: file.path))

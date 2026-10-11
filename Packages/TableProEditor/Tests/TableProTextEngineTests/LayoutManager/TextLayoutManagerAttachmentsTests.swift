@@ -31,6 +31,23 @@ struct TextLayoutManagerAttachmentsTests {
         #expect(layoutManager.attachments.getAttachmentsStartingIn(NSRange(start: 0, end: 3)).count == 1)
     }
 
+    // MARK: - Edits
+
+    @Test("An edit made in one transaction drops a placeholder inside it and moves the ones after it")
+    func coalescedEditDropsAttachmentsItTouches() throws {
+        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 3, end: 5))
+        layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 9, end: 11))
+
+        textStorage.beginEditing()
+        textStorage.replaceCharacters(in: NSRange(location: 6, length: 2), with: "xxxx")
+        textStorage.replaceCharacters(in: NSRange(location: 0, length: 2), with: "yyyy")
+        textStorage.endEditing()
+
+        let remaining = layoutManager.attachments.getAttachmentsOverlapping(textView.documentRange).map(\.range)
+        #expect(remaining == [NSRange(start: 13, end: 15)])
+        #expect((textStorage.string as NSString).substring(with: NSRange(start: 13, end: 15)) == "01")
+    }
+
     // MARK: - Determine Visible Line Tests
 
     @Test

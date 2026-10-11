@@ -56,6 +56,7 @@ extension MainContentCommandActions {
     /// the draft, and the grid's own undo had no caller at all.
     func undoChange() {
         coordinator?.endInspectorEditRun()
+        endTableCommentRun()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.undo()
             return
@@ -73,6 +74,7 @@ extension MainContentCommandActions {
 
     func redoChange() {
         coordinator?.endInspectorEditRun()
+        endTableCommentRun()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.redo()
             return
@@ -86,5 +88,10 @@ extension MainContentCommandActions {
             return
         }
         coordinator?.contentWindow?.undoManager?.redo()
+    }
+
+    private func endTableCommentRun() {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return }
+        coordinator.structureSessions[tabId]?.changeManager.endTableCommentRun()
     }
 }

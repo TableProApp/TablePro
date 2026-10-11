@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableRows - construction")
 struct TableRowsConstructionTests {
     @Test("Default initializer produces an empty table")
     func emptyByDefault() {
@@ -57,7 +56,6 @@ struct TableRowsConstructionTests {
     }
 }
 
-@Suite("TableRows - reads")
 struct TableRowsReadTests {
     @Test("value(at:column:) returns the cell at a valid coordinate")
     func valueAtValidCoordinate() {
@@ -81,7 +79,6 @@ struct TableRowsReadTests {
     }
 }
 
-@Suite("TableRows - id lookup")
 struct TableRowsIDLookupTests {
     @Test("index(of:) returns the storage index for an existing RowID")
     func indexOfExistingRowID() {
@@ -195,7 +192,6 @@ struct TableRowsIDLookupTests {
     }
 }
 
-@Suite("TableRows - edit")
 struct TableRowsEditTests {
     private static func makeTable() -> TableRows {
         TableRows.from(
@@ -273,7 +269,6 @@ struct TableRowsEditTests {
     }
 }
 
-@Suite("TableRows - insert")
 struct TableRowsInsertTests {
     @Test("appendInsertedRow on an empty table returns rowsInserted at index 0")
     func appendInsertedRowOnEmpty() {
@@ -422,7 +417,6 @@ struct TableRowsInsertTests {
     }
 }
 
-@Suite("TableRows - appendPage")
 struct TableRowsAppendPageTests {
     @Test("appendPage on empty table returns rowsInserted with the appended range")
     func appendPageOnEmpty() {
@@ -462,7 +456,6 @@ struct TableRowsAppendPageTests {
     }
 }
 
-@Suite("TableRows - remove")
 struct TableRowsRemoveTests {
     private static func makeTable() -> TableRows {
         TableRows.from(
@@ -522,7 +515,6 @@ struct TableRowsRemoveTests {
     }
 }
 
-@Suite("TableRows - replace")
 struct TableRowsReplaceTests {
     @Test("replace returns fullReplace and rebuilds rows with existing IDs")
     func replaceReturnsFullReplace() {
@@ -555,7 +547,6 @@ struct TableRowsReplaceTests {
     }
 }
 
-@Suite("TableRows - metadata")
 struct TableRowsMetadataTests {
     private static func makeTable() -> TableRows {
         TableRows.from(
@@ -621,7 +612,6 @@ struct TableRowsMetadataTests {
     }
 }
 
-@Suite("TableRows - metadata preservation regression")
 struct TableRowsMetadataPreservationTests {
     private static func makeTable() -> TableRows {
         TableRows.from(
@@ -672,7 +662,6 @@ struct TableRowsMetadataPreservationTests {
     }
 }
 
-@Suite("TableRows - foreignKeysFetched")
 struct TableRowsForeignKeysFetchedTests {
     @Test("Defaults to false on init and factory")
     func defaultsToFalse() {
@@ -715,7 +704,6 @@ struct TableRowsForeignKeysFetchedTests {
     }
 }
 
-@Suite("TableRows - server-assigned columns")
 struct TableRowsServerAssignedValueTests {
     private func table(
         columnDefaults: [String: String?] = [:],
@@ -757,7 +745,6 @@ struct TableRowsServerAssignedValueTests {
     }
 }
 
-@Suite("TableRows - non-writable columns")
 struct TableRowsGeneratedColumnsTests {
     /// `DataChangeManager.configureForTable` clears its own set on every execution, and only a
     /// schema fetch refills it. A rerun answered from cache runs no schema fetch, so the rows have
@@ -779,5 +766,37 @@ struct TableRowsGeneratedColumnsTests {
         #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .columnsReplaced)
         #expect(table.generatedColumns == ["id"])
         #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .none)
+    }
+}
+
+struct TableRowsColumnTypeNamesTests {
+    @Test("Each column is named with the type it was read as")
+    func namesEachColumnsType() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["ID", "NAME", "CREATED"],
+            columnTypes: [.decimal(rawType: "number"), .text(rawType: "nvarchar2"), .timestamp(rawType: "date")]
+        )
+        #expect(table.columnTypeNames == ["ID": "number", "NAME": "nvarchar2", "CREATED": "date"])
+    }
+
+    @Test("A column with no type, or past the end of the types, is left out")
+    func leavesOutAnUntypedColumn() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["a", "b", "c"],
+            columnTypes: [.text(rawType: nil), .integer(rawType: "INT")]
+        )
+        #expect(table.columnTypeNames == ["b": "INT"])
+    }
+
+    @Test("A repeated name keeps the first column's type")
+    func repeatedNameKeepsTheFirst() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["id", "id"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR")]
+        )
+        #expect(table.columnTypeNames == ["id": "INT"])
     }
 }

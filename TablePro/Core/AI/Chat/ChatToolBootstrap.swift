@@ -32,7 +32,7 @@ enum ChatToolBootstrap {
     static func register() {
         let registry = ChatToolRegistry.shared
         for tool in makeTools() {
-            registry.register(tool)
+            registry.registerBuiltIn(tool)
         }
     }
 }

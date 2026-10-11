@@ -75,8 +75,12 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let conn = SnowflakeConnectionRegistry.shared.acquire(config: config)
+        let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: 120_000
+        )
         do {
-            try await conn.connectIfNeeded()
+            try await conn.connectIfNeeded(timeoutMilliseconds: connectTimeoutMilliseconds)
         } catch {
             SnowflakeConnectionRegistry.shared.release(conn)
             throw error

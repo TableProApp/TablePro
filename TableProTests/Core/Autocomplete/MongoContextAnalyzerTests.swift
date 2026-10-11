@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoDB Context Analyzer")
 struct MongoContextAnalyzerTests {
     private func analyze(_ text: String) -> MongoContext {
         let ns = text as NSString

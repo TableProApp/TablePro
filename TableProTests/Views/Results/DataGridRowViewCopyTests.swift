@@ -46,7 +46,6 @@ private final class DataGridRowViewCopyDelegateSpy: DataGridViewDelegate {
     }
 }
 
-@Suite("DataGridRowView context menu copy")
 @MainActor
 struct DataGridRowViewCopyTests {
     private func makeCoordinator(

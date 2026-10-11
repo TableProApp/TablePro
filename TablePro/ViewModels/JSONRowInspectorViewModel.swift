@@ -5,7 +5,6 @@
 //  Expansion, filtering and foreign key fetching for the JSON inspector.
 //
 
-import AppKit
 import Combine
 import Foundation
 import os
@@ -27,9 +26,17 @@ final class JSONRowInspectorViewModel: ObservableObject {
     /// them closed however the reader left it last time, and turning it on is a deliberate act.
     @Published private(set) var alwaysExpandForeignKeys = false
 
-    @Published var filterText: String = ""
+    @Published var filterText: String = "" {
+        didSet {
+            guard filterText != oldValue, !closedUnderFilter.isEmpty else { return }
+            closedUnderFilter = []
+        }
+    }
 
     @Published private var expanded: Set<JSONNodePath> = []
+    /// What the reader shut under the current query. A filter opens everything it kept whatever
+    /// `expanded` says, so a click made there is recorded here and lasts as long as the query does.
+    @Published private var closedUnderFilter: Set<JSONNodePath> = []
     @Published private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
     @Published private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
     @Published private var lastSnapshot: JSONRowSnapshot?
@@ -104,6 +111,7 @@ final class JSONRowInspectorViewModel: ObservableObject {
             expanded.insert(rebuilt.path)
         } else {
             expanded = [rebuilt.path]
+            closedUnderFilter = []
             expandContainers(in: rebuilt)
         }
 
@@ -117,6 +125,7 @@ final class JSONRowInspectorViewModel: ObservableObject {
         lastSnapshot = nil
         root = nil
         expanded = []
+        closedUnderFilter = []
         chains = [:]
         states = JSONForeignKeyStates()
     }
@@ -147,7 +156,9 @@ final class JSONRowInspectorViewModel: ObservableObject {
                 root: root,
                 expanded: expanded,
                 states: states,
-                visiblePaths: visible
+                visiblePaths: visible,
+                closedUnderFilter: closedUnderFilter,
+                matcher: matcher
             )
         }
     }
@@ -164,16 +175,26 @@ final class JSONRowInspectorViewModel: ObservableObject {
 
     // MARK: - Expansion
 
+    /// A line that offers no control toggles nothing: under a filter that is what keeps a foreign
+    /// key matched by its value from costing a query whose row the filter would hide again.
     func toggle(row: JSONDisplayRow) {
-        guard let root else { return }
+        guard let root, row.isExpandable else { return }
         if row.foreignKey != nil, states.fetched[row.path] == nil {
             expandForeignKey(at: row.path, in: root)
             return
         }
-        if expanded.contains(row.path) {
-            expanded.remove(row.path)
+        guard isFiltering else {
+            if expanded.contains(row.path) {
+                expanded.remove(row.path)
+            } else {
+                expanded.insert(row.path)
+            }
+            return
+        }
+        if row.isExpanded {
+            closedUnderFilter.insert(row.path)
         } else {
-            expanded.insert(row.path)
+            closedUnderFilter.remove(row.path)
         }
     }
 
@@ -181,11 +202,19 @@ final class JSONRowInspectorViewModel: ObservableObject {
     /// walking every key in a wide row would fire one query per column on a single click.
     func expandAll() {
         guard let root else { return }
+        guard !isFiltering else {
+            closedUnderFilter = []
+            return
+        }
         expanded = JSONRowFlattener.expandablePaths(root: root, states: states)
     }
 
     func collapseAll() {
-        expanded = []
+        guard isFiltering, let root else {
+            expanded = []
+            return
+        }
+        closedUnderFilter = JSONRowFlattener.expandablePaths(root: root, states: states)
     }
 
     // MARK: - Preferences
@@ -201,9 +230,7 @@ final class JSONRowInspectorViewModel: ObservableObject {
     func copyVisible() {
         let text = JSONRowTextRenderer.render(rows: displayRows)
         guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        ClipboardService.shared.writeText(text)
     }
 
     // MARK: - Foreign Keys
@@ -294,6 +321,7 @@ final class JSONRowInspectorViewModel: ObservableObject {
         states.fetched[path] = expansion
         chains[path] = chain
         expanded.insert(path)
+        closedUnderFilter.remove(path)
         expandContainers(in: expansion)
     }
 

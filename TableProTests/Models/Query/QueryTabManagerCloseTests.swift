@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query tab manager tab list operations")
 @MainActor
 struct QueryTabManagerCloseTests {
     private func makeManager(tabCount: Int) -> QueryTabManager {

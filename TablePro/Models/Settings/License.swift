@@ -396,9 +396,11 @@ enum LicenseError: LocalizedError {
         case .invalidKey:
             return String(localized: "That doesn't look like a valid license key. Check for typos and try again.")
         case .activationLimitReached:
-            return String(localized: "This license has reached its activation limit. Deactivate another Mac first.")
+            return String(
+                localized: "This license has reached its activation limit. Remove a Mac from your account, then activate again."
+            )
         case .licenseExpired:
-            return String(localized: "This license has expired. Renew it to continue using Pro features.")
+            return String(localized: "This license has expired. Renew it to continue using paid features.")
         case .licenseSuspended:
             return String(localized: "This license has been suspended. Contact support for help.")
         case .networkError:
@@ -411,7 +413,7 @@ enum LicenseError: LocalizedError {
         case .signatureInvalid, .publicKeyNotFound, .publicKeyInvalid:
             return String(localized: "License verification failed. Try updating the app to the latest version.")
         case .machineMismatch:
-            return String(localized: "This license was activated on a different Mac. Activate it here to use Pro features.")
+            return String(localized: "This license was activated on a different Mac. Activate it here to use paid features.")
         case .notActivated:
             return String(localized: "This machine is not activated for this license.")
         case .decodingError:

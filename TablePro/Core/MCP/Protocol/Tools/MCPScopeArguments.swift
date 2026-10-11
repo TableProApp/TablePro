@@ -17,11 +17,17 @@ enum MCPScopeArguments {
         services: MCPToolServices
     ) async throws -> DatabaseScope {
         let database = try MCPArgumentDecoder.optionalString(arguments, key: "database")
-        let schema = try MCPArgumentDecoder.optionalString(arguments, key: "schema")
         return try await services.connectionBridge.resolveScope(
             connectionId: connectionId,
             database: database,
-            schema: schema
+            schema: try namedSchema(arguments)
         )
+    }
+
+    static func namedSchema(_ arguments: JsonValue) throws -> String? {
+        guard let schema = try MCPArgumentDecoder.optionalString(arguments, key: "schema"), !schema.isEmpty else {
+            return nil
+        }
+        return schema
     }
 }

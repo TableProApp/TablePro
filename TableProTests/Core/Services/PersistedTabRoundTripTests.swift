@@ -15,7 +15,6 @@ private struct LegacyPersistedTabWidths: Decodable {
     let columnWidths: [String: CGFloat]?
 }
 
-@Suite("PersistedTab round-trip")
 @MainActor
 struct PersistedTabRoundTripTests {
     private func tableTab(query: String = "SELECT 1") -> QueryTab {
@@ -533,8 +532,38 @@ struct PersistedTabRoundTripTests {
                 kind: .trigger, name: "audit", database: "shop", schema: "public", table: "orders"
             )
         )
-        let json = String(decoding: try JSONEncoder().encode(tab), as: UTF8.self)
+        let json = try #require(String(data: try JSONEncoder().encode(tab), encoding: .utf8))
         #expect(!json.contains("CREATE"))
         #expect(json.contains("orders"))
+    }
+
+    @Test("A history tab round-trips the saved query or file it shows")
+    func versionHistoryTabRoundTripsItsSubject() throws {
+        let favoriteId = UUID()
+        let subjects: [VersionHistorySubject] = [
+            .savedQuery(id: favoriteId),
+            .linkedFile(url: URL(fileURLWithPath: "/Users/me/queries/sub dir/orders.sql")),
+        ]
+        for subject in subjects {
+            let tab = PersistedTab(
+                id: UUID(),
+                title: "History: orders.sql",
+                query: "",
+                tabType: .versionHistory,
+                tableName: nil,
+                versionHistorySubject: subject
+            )
+            let decoded = try JSONDecoder().decode(PersistedTab.self, from: try JSONEncoder().encode(tab))
+            #expect(decoded.tabType == .versionHistory)
+            #expect(decoded.versionHistorySubject == subject)
+            #expect(decoded.title == "History: orders.sql")
+        }
+    }
+
+    @Test("A tab written before history tabs existed decodes with no subject")
+    func olderTabHasNoHistorySubject() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","title":"Query 1","query":"SELECT 1","tabType":{"query":{}}}"#
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
+        #expect(decoded.versionHistorySubject == nil)
     }
 }

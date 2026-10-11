@@ -75,32 +75,51 @@ extension CTTypesetter {
         subrange: NSRange,
         constrainingWidth: CGFloat
     ) -> Int {
-        var breakIndex = subrange.location + CTTypesetterSuggestClusterBreak(self, subrange.location, constrainingWidth)
-        let isBreakAtEndOfString = breakIndex >= subrange.max
-
-        let isNextCharacterCarriageReturn = checkIfLineBreakOnCRLF(breakIndex, for: string)
-        if isNextCharacterCarriageReturn {
-            breakIndex += 1
+        let breakIndex = subrange.location + CTTypesetterSuggestClusterBreak(self, subrange.location, constrainingWidth)
+        if breakIndex >= subrange.max {
+            return breakIndex
+        }
+        if checkIfLineBreakOnCRLF(breakIndex, for: string) {
+            return breakIndex + 1
         }
 
-        let canLastCharacterBreak = (breakIndex - 1 > 0 && ensureCharacterCanBreakLine(at: breakIndex - 1, for: string))
+        let hangingEnd = endOfHangingSpaces(from: breakIndex, before: subrange.max, in: string)
+        if hangingEnd > breakIndex {
+            return hangingEnd
+        }
 
-        if isBreakAtEndOfString || canLastCharacterBreak {
-            // Breaking either at the end of the string, or on a whitespace.
-            return breakIndex
-        } else if breakIndex - 1 > 0 {
-            // Try to walk backwards until we hit a whitespace or punctuation
-            var index = breakIndex - 1
+        // Unicode line breaking (UAX #14), the rule a wrapped NSTextView follows, so a quoted identifier
+        // such as `"public"."reviews"` or `"reviews_rating_check"` stays whole. Searching only up to the
+        // cluster break keeps the cost to the fragment rather than the rest of a long line.
+        let searchRange = NSRange(location: subrange.location, length: breakIndex + 1 - subrange.location)
+        let opportunity = string.lineBreak(before: breakIndex + 1, within: searchRange)
+        if opportunity != NSNotFound, opportunity > subrange.location {
+            return opportunity
+        }
 
-            while breakIndex - index < 100 && index > subrange.location {
-                if ensureCharacterCanBreakLine(at: index, for: string) {
-                    return index + 1
-                }
-                index -= 1
+        // A run with no break opportunity wider than the line, such as compact JSON or a chained call,
+        // breaks after the nearest punctuation rather than mid-word.
+        var index = breakIndex - 1
+        while breakIndex - index < 100 && index > subrange.location {
+            if ensureCharacterCanBreakLine(at: index, for: string) {
+                return index + 1
             }
+            index -= 1
         }
 
         return breakIndex
+    }
+
+    /// Spaces and tabs past the edge stay on the line they follow instead of opening the next one.
+    private func endOfHangingSpaces(from index: Int, before end: Int, in string: NSAttributedString) -> Int {
+        let text = string.string as NSString
+        var hangingEnd = index
+        while hangingEnd < end {
+            let character = text.character(at: hangingEnd)
+            guard character == 0x20 || character == 0x09 else { break }
+            hangingEnd += 1
+        }
+        return hangingEnd
     }
 
     /// Ensures the character at the given index can break a line.

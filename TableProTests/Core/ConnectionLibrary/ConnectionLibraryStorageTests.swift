@@ -11,7 +11,6 @@ import TableProSyncTransport
 import Testing
 
 @MainActor
-@Suite("Connection library storage")
 struct ConnectionLibraryStorageTests {
     private let defaults: UserDefaults
     private let fileURL: URL

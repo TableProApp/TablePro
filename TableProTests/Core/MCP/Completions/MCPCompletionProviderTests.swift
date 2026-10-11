@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCPCompletionProvider")
 struct MCPCompletionProviderTests {
     @Test("Completing a prompt connection argument offers the readable connection names")
     func completesConnectionNames() async {
@@ -349,9 +348,60 @@ struct MCPCompletionProviderTests {
         let calls = await source.databaseCalls
         #expect(calls.count == 2)
     }
+
+    /// A connection leaves the list when it is set to Never or Blocked, or dropped from the token's allowlist.
+    @Test("A connection that leaves the list stops completing on the next request")
+    func connectionLeavingTheListStopsCompletingAtOnce() async {
+        let source = RecordingCompletionSource(connections: CompletionFixtures.connections)
+        let provider = MCPCompletionProvider(source: source, clock: MCPProtocolStubClock(), cacheDuration: 15)
+
+        let before = await provider.complete(
+            reference: .prompt(name: "explain_schema"),
+            argumentName: MCPPromptArgument.connectionArgumentName,
+            argumentValue: "",
+            context: [:],
+            principal: CompletionFixtures.principal()
+        )
+        #expect(before.values == ["Analytics", "Billing"])
+
+        await source.setConnections(CompletionFixtures.connections.filter { $0.id != CompletionFixtures.billingId })
+        let after = await provider.complete(
+            reference: .prompt(name: "explain_schema"),
+            argumentName: MCPPromptArgument.connectionArgumentName,
+            argumentValue: "",
+            context: [:],
+            principal: CompletionFixtures.principal()
+        )
+        #expect(after.values == ["Analytics"])
+    }
+
+    @Test("Cached table names stop completing once their connection leaves the list")
+    func cachedNamesStopOnceTheConnectionLeaves() async {
+        let source = RecordingCompletionSource(connections: CompletionFixtures.connections)
+        await source.setTables(["orders"])
+        let provider = MCPCompletionProvider(source: source, clock: MCPProtocolStubClock(), cacheDuration: 15)
+
+        let before = await provider.complete(
+            reference: .prompt(name: "explain_table"),
+            argumentName: MCPPromptArgument.tableArgumentName,
+            argumentValue: "",
+            context: ["connection": "Analytics"],
+            principal: CompletionFixtures.principal()
+        )
+        #expect(before.values == ["orders"])
+
+        await source.setConnections(CompletionFixtures.connections.filter { $0.id != CompletionFixtures.analyticsId })
+        let after = await provider.complete(
+            reference: .prompt(name: "explain_table"),
+            argumentName: MCPPromptArgument.tableArgumentName,
+            argumentValue: "",
+            context: ["connection": "Analytics"],
+            principal: CompletionFixtures.principal()
+        )
+        #expect(after.values.isEmpty)
+    }
 }
 
-@Suite("MCPCompletionReference")
 struct MCPCompletionReferenceTests {
     @Test("A prompt reference decodes from its type and name")
     func decodesPromptReference() throws {
@@ -422,7 +472,6 @@ struct MCPCompletionReferenceTests {
     }
 }
 
-@Suite("MCPCompletionResult")
 struct MCPCompletionResultTests {
     @Test("A result serialises values, total, and hasMore")
     func jsonShape() {
@@ -455,7 +504,6 @@ struct MCPCompletionResultTests {
     }
 }
 
-@Suite("CompletionCompleteHandler")
 struct CompletionCompleteHandlerTests {
     @Test("Handler declares completion/complete and the resources read scope")
     func metadata() {
@@ -632,7 +680,7 @@ actor RecordingCompletionSource: MCPCompletionSchemaSource {
         let schema: String?
     }
 
-    private let storedConnections: [MCPConnectionDescriptor]
+    private var storedConnections: [MCPConnectionDescriptor]
     private var storedDatabases: [String] = []
     private var storedSchemas: [String] = []
     private var storedTables: [String] = []
@@ -642,6 +690,10 @@ actor RecordingCompletionSource: MCPCompletionSchemaSource {
     private(set) var tableCalls: [TableCall] = []
 
     init(connections: [MCPConnectionDescriptor]) {
+        storedConnections = connections
+    }
+
+    func setConnections(_ connections: [MCPConnectionDescriptor]) {
         storedConnections = connections
     }
 

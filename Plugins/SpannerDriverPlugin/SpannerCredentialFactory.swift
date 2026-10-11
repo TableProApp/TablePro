@@ -8,26 +8,27 @@ internal enum SpannerCredentialFactory {
 
     static func tokenProvider(
         settings: SpannerConnectionSettings,
-        config: DriverConnectionConfig
+        config: DriverConnectionConfig,
+        connectTimeoutPhase: PluginConnectTimeoutPhase? = nil
     ) throws -> (any GoogleAccessTokenProviding)? {
         let fields = config.additionalFields
-        let http = URLSessionGoogleHTTPClient()
+        let baseHTTP = URLSessionGoogleHTTPClient()
+        let http: any GoogleHTTPClient
+        if let connectTimeoutPhase {
+            http = GoogleDeadlineHTTPClient(base: baseHTTP) { connectTimeoutPhase.remainingSeconds(or: $0) }
+        } else {
+            http = baseHTTP
+        }
         switch settings.authMethod {
         case .emulator:
             return nil
         case .serviceAccount:
-            let key = try GoogleServiceAccountKey.parse(
-                fieldValue: try serviceAccountValue(fields: fields, password: config.password),
-                readFile: { FileManager.default.contents(atPath: $0) }
+            return try credentials(
+                from: .serviceAccountKey(try serviceAccountValue(fields: fields, password: config.password)),
+                http: http
             )
-            return GoogleTokenProviders.serviceAccount(key, scopes: scopes, http: http)
         case .applicationDefault:
-            let credentials = try GoogleApplicationDefaultCredentials.load(
-                path: nil,
-                readFile: { FileManager.default.contents(atPath: $0) },
-                environment: ProcessInfo.processInfo.environment
-            )
-            return GoogleTokenProviders.applicationDefault(credentials, scopes: scopes, http: http)
+            return try credentials(from: .applicationDefault, http: http)
         case .oauth:
             let client = GoogleOAuthClient(
                 clientId: try required("spOAuthClientId", in: fields),
@@ -40,6 +41,19 @@ internal enum SpannerCredentialFactory {
                 http: http
             )
         }
+    }
+
+    private static func credentials(
+        from source: GoogleCredentialSource,
+        http: any GoogleHTTPClient
+    ) throws -> any GoogleAccessTokenProviding {
+        try GoogleTokenProviders.credentials(
+            from: source,
+            scopes: scopes,
+            readFile: { FileManager.default.contents(atPath: $0) },
+            environment: ProcessInfo.processInfo.environment,
+            http: http
+        ).tokenProvider
     }
 
     private static func serviceAccountValue(fields: [String: String], password: String) throws -> String {

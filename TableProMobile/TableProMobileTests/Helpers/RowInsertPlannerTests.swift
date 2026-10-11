@@ -48,6 +48,27 @@ struct RowInsertPlannerTests {
         #expect(statements == [#"INSERT INTO "people" ("id", "name") VALUES ('5', 'Ada')"#])
     }
 
+    @Test("leaves out a SQL Server identity even when a value is supplied, but keeps a MySQL auto-increment value")
+    func serverOwnedColumnsAreNeverInserted() throws {
+        let identity = ColumnInfo(
+            name: "ID", typeName: "int", isNullable: false, ordinalPosition: 0,
+            isAutoIncrement: true, rejectsWrittenValues: true
+        )
+        let name = ColumnInfo(name: "name", typeName: "nvarchar", ordinalPosition: 1)
+        let row = PayloadRow(values: ["ID": .text("1890"), "name": .text("Ada")])
+        let mssql = try RowInsertPlanner.statements(
+            table: "people", schema: nil, type: .mssql, driver: ansiDriver(), columns: [identity, name], rows: [row]
+        )
+        #expect(mssql.count == 1)
+        #expect(!(mssql.first ?? "").contains("1890"))
+
+        let autoIncrement = ColumnInfo(name: "ID", typeName: "int", isNullable: false, ordinalPosition: 0, isAutoIncrement: true)
+        let mysql = try RowInsertPlanner.statements(
+            table: "people", schema: nil, type: .mysql, driver: ansiDriver(), columns: [autoIncrement, name], rows: [row]
+        )
+        #expect((mysql.first ?? "").contains("1890"))
+    }
+
     @Test("writes NULL for null values")
     func nullValue() throws {
         let row = PayloadRow(values: ["name": .text("Ada"), "note": .null])

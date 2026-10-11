@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCP Pairing Exchange Store")
 struct MCPPairingServiceTests {
     private func challenge(for verifier: String) -> String {
         PairingExchangeStore.sha256Base64Url(of: verifier)
@@ -34,6 +33,7 @@ struct MCPPairingServiceTests {
         PairingExchangeRecord(
             plaintextToken: plaintext,
             tokenId: tokenId,
+            grantedScopes: MCPScope.readOnlySet,
             challenge: challenge,
             expiresAt: Date.now.addingTimeInterval(expiresIn)
         )

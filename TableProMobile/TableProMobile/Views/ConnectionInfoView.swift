@@ -5,7 +5,6 @@ import TableProModels
 struct ConnectionInfoView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
-    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     private var connection: DatabaseConnection { coordinator.connection }
 
@@ -16,10 +15,11 @@ struct ConnectionInfoView: View {
                     Text(connection.name.isEmpty ? connection.host : connection.name)
                 } label: {
                     HStack(spacing: 8) {
-                        DatabaseIconView(type: connection.type, size: 18)
+                        DatabaseIconView(type: connection.type, iconName: connection.iconName, size: 18)
                             .frame(width: 28, height: 28)
                             .background(DatabaseIconView.color(for: connection.type).opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .accessibilityHidden(true)
                         Text("Name")
                     }
                 }
@@ -36,26 +36,17 @@ struct ConnectionInfoView: View {
                 }
             }
 
-            if connection.type != .sqlite {
+            switch ConnectionInfoContent.section(for: connection, fileURL: databaseFileURL) {
+            case .server:
                 serverSection
                 if connection.sshEnabled, let ssh = connection.sshConfiguration {
                     sshSection(ssh)
                 }
-            } else {
-                sqliteFileSection
+            case .file(let file):
+                fileSection(file)
             }
 
             statsSection
-        }
-        .sheet(isPresented: Binding(
-            get: { coordinator.showingEditSheet },
-            set: { coordinator.showingEditSheet = $0 }
-        )) {
-            ConnectionFormView(editing: connection) { updated in
-                appState.updateConnection(updated)
-                coordinatorStore.invalidate(updated.id)
-                coordinator.showingEditSheet = false
-            }
         }
     }
 
@@ -107,7 +98,7 @@ struct ConnectionInfoView: View {
     private func sshSection(_ ssh: SSHConfiguration) -> some View {
         Section("SSH Tunnel") {
             LabeledContent("SSH Host") {
-                Text(verbatim: "\(ssh.host):\(ssh.port)")
+                Text(verbatim: "\(ssh.host):\(ssh.resolvedPort)")
                     .textSelection(.enabled)
             }
             LabeledContent("SSH Username", value: ssh.username)
@@ -120,18 +111,24 @@ struct ConnectionInfoView: View {
         }
     }
 
+    private var databaseFileURL: URL? {
+        guard !connection.isSample else { return nil }
+        return appState.localDatabaseFiles.location(forStoredPath: connection.database).fileURL
+    }
+
     @ViewBuilder
-    private var sqliteFileSection: some View {
+    private func fileSection(_ file: ConnectionFileDetail) -> some View {
         Section("File") {
-            let url = URL(fileURLWithPath: connection.database)
-            LabeledContent("Name", value: url.lastPathComponent)
-            LabeledContent("Path") {
-                Text(connection.database)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+            LabeledContent("Name", value: file.name)
+            if let path = file.path {
+                LabeledContent("Path") {
+                    Text(path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
             }
         }
     }

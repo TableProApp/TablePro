@@ -59,11 +59,51 @@ internal enum ConnectionWindowPaneResolver {
         }
     }
 
+    /// Which of a workspace's two trees fills the detail column: the browse content or the agent's
+    /// conversation.
+    ///
+    /// Agent mode draws its conversation before a session exists on purpose: the prompt the user
+    /// typed is the thing they are waiting with, and hiding it until the connect lands means typing
+    /// into nothing and then watching the conversation flash in. It does not preempt a pane with
+    /// nothing to connect to, though. A failed, cancelled or disconnected attempt carries the error,
+    /// the Retry, the sign-in or edit action and Manage Connections, and those live on the browse
+    /// side's unavailable screen; a composer with none of them is a dead end whichever mode the
+    /// window is in.
+    internal static func detailMode(
+        for pane: ConnectionWindowPane,
+        contentMode: ConnectionWorkspaceContentMode
+    ) -> ConnectionWorkspaceContentMode {
+        switch contentMode {
+        case .browse:
+            return .browse
+        case .agent:
+            switch pane {
+            case .connecting, .content:
+                return .agent
+            case .unavailable, .empty:
+                return .browse
+            }
+        }
+    }
+
     /// The tab strip's band is a list of tabs, so it appears only when there is a list worth
     /// showing: content behind it, and more than one tab in it. A window with a single tab keeps
     /// the chrome it always had, which is what the system does too.
-    internal static func showsTabStrip(for pane: ConnectionWindowPane, tabCount: Int) -> Bool {
-        pane == .content && tabCount > 1
+    ///
+    /// Agent mode never shows it. The tabs belong to the browse content, which the conversation has
+    /// replaced in the detail column, so a band over the conversation offered tabs a click could
+    /// select without anything on screen changing.
+    internal static func showsTabStrip(
+        for pane: ConnectionWindowPane,
+        tabCount: Int,
+        contentMode: ConnectionWorkspaceContentMode
+    ) -> Bool {
+        switch contentMode {
+        case .browse:
+            return pane == .content && tabCount > 1
+        case .agent:
+            return false
+        }
     }
 
     /// Whether the connections strip stands, given the preference that normally governs it.

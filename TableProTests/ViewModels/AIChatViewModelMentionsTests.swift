@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AIChatViewModel @-mentions")
 @MainActor
 struct AIChatViewModelMentionsTests {
     @Test("attach adds item to attachedContext")

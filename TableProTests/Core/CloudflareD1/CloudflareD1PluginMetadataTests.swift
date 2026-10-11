@@ -8,7 +8,6 @@ import Testing
 @testable import TablePro
 import TableProPluginKit
 
-@Suite("Cloudflare D1 Plugin Metadata")
 struct CloudflareD1PluginMetadataTests {
 
     // MARK: - DatabaseType

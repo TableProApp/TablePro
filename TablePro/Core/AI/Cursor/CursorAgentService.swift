@@ -67,7 +67,7 @@ final class CursorAgentService: ObservableObject {
                         : result.output
                 }
             } catch {
-                Self.logger.error("Cursor CLI sign-in failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Cursor CLI sign-in failed: \(error.publicLogShape, privacy: .public)")
                 if !Task.isCancelled {
                     errorMessage = error.localizedDescription
                 }

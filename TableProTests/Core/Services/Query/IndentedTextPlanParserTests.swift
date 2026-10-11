@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Indented Text Plan Parser")
 struct IndentedTextPlanParserTests {
     private let parser = IndentedTextPlanParser()
 

@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Credential profile storage")
 @MainActor
 struct CredentialProfileStorageTests {
     private let storage: CredentialProfileStorage

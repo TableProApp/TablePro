@@ -57,7 +57,7 @@ struct TableStructureView: View {
     /// The real `TableInfo.TableType`, read from the session rather than passed in beside it, so the
     /// grid delegate the session owns and the footer this view publishes can never disagree about
     /// what they are looking at. It used to be an `isView` Bool derived from `allowsRowEditing`,
-    /// which is true for a materialized view, so a matview reached here as a table and was offered
+    /// which was true for a materialized view, so a matview reached here as a table and was offered
     /// `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits the server always refuses.
     /// (#2726)
     var objectKind: TableInfo.TableType { session.objectKind }
@@ -160,6 +160,7 @@ struct TableStructureView: View {
     @State var displayVersion: Int = 0
     @State var selectedRows: Set<Int> = []
     @State var actionHandler = StructureViewActionHandler()
+    @FocusState var isTableCommentFocused: Bool
 
     init(
         tableName: String,
@@ -184,6 +185,7 @@ struct TableStructureView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            tableCommentBar
             toolbar
             Divider()
             contentArea
@@ -202,12 +204,18 @@ struct TableStructureView: View {
         .onChange(of: indexes) { _ in onIndexesChanged() }
         .onChange(of: foreignKeys) { _ in onForeignKeysChanged() }
         .onChange(of: checkConstraints) { _ in onCheckConstraintsChanged() }
+        .onChange(of: session.tableComment) { _ in onTableCommentChanged() }
+        .onChange(of: isTableCommentFocused) { isFocused in
+            if !isFocused { structureChangeManager.endTableCommentRun() }
+        }
         .onChange(of: searchText) { _ in displayVersion += 1 }
         .onChange(of: displayVersion) { _ in updateGridDelegate() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
-            selectionState.indices = []
+            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
+            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
+            selectionState.indices = selectedRows
             coordinator?.inspectorRowSource = gridDelegate
 
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
@@ -243,6 +251,7 @@ struct TableStructureView: View {
             publishFooterCapability()
         }
         .onDisappear {
+            structureChangeManager.endTableCommentRun()
             /// Every clear is guarded by identity, because appearance is not lifetime: SwiftUI does
             /// not order `onDisappear` on the outgoing view before `onAppear` on the incoming one,
             /// and an unguarded clear that lands second nils the wiring the incoming structure tab
@@ -267,6 +276,13 @@ struct TableStructureView: View {
         .onChange(of: structureChangeManager.hasChanges) { newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
+            if !newValue, session.settleOwedRefetch() {
+                Task { await loadInitialData() }
+            }
+        }
+        .onChange(of: structureChangeManager.isHeldForSave) { _ in
+            publishFooterCapability()
+            updateGridDelegate()
         }
         .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
@@ -279,15 +295,6 @@ struct TableStructureView: View {
             // call reloadData(). Without this, Cmd+Shift+N adds the row to the change
             // manager but the grid never displays it.
             displayVersion += 1
-        }
-        .onReceive(AppCommands.shared.refreshData) { request in
-            guard request.connectionId == connection.id else { return }
-            guard request.reaches(tabScope: scope) else { return }
-            /// A close applying another tab's staged edits broadcasts a refresh for the same
-            /// database. Answering it here would ask this tab whether to discard the edits the user
-            /// has just asked to save, in a sheet queued behind the close.
-            guard coordinator?.isApplyingStagedStructureEdits != true else { return }
-            onRefreshData()
         }
     }
 
@@ -302,20 +309,7 @@ struct TableStructureView: View {
     }
 
     private var availableTabs: [StructureTab] {
-        var tabs = StructureTab.allCases
-        if !connection.type.supportsForeignKeys {
-            tabs = tabs.filter { $0 != .foreignKeys }
-        }
-        if connection.type != .clickhouse {
-            tabs = tabs.filter { $0 != .parts }
-        }
-        if !connection.type.supportsTriggers {
-            tabs = tabs.filter { $0 != .triggers }
-        }
-        if !connection.type.supportsCheckConstraints {
-            tabs = tabs.filter { $0 != .checkConstraints }
-        }
-        return tabs
+        session.availableTabs
     }
 
     private var toolbar: some View {
@@ -335,6 +329,19 @@ struct TableStructureView: View {
             Spacer()
         }
         .padding()
+        .overlay(alignment: .trailing) {
+            if structureChangeManager.isHeldForSave {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Saving Changes…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.trailing)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("structure-save-progress")
+            }
+        }
     }
 
     // MARK: - Tab Label with Count Badge
@@ -372,10 +379,15 @@ struct TableStructureView: View {
         case .columns:
             structureGrid
         case .indexes:
-            if shouldShowIndexesEmptyState {
-                EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
-            } else {
-                structureGrid
+            Group {
+                if shouldShowIndexesEmptyState {
+                    EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+                } else {
+                    structureGrid
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                indexesTabNotes
             }
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
@@ -396,6 +408,7 @@ struct TableStructureView: View {
                 connection: connection,
                 tableName: tableName,
                 isLoading: !tabData.hasData(.triggers),
+                canEdit: editGate.allowsTriggerEditing,
                 onOpenInEditor: openTriggerInEditor
             )
         case .ddl:
@@ -407,6 +420,26 @@ struct TableStructureView: View {
                 connection: connection,
                 reloadToken: partsReloadToken
             )
+        }
+    }
+
+    private var indexesTabNotes: some View {
+        VStack(spacing: 0) {
+            if let note = InvalidIndexNote(indexes: indexes) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-invalid-index-note"
+                )
+            }
+            if objectKind == .materializedView,
+               let note = MaterializedViewConcurrentRefreshNote(state: session.concurrentRefresh) {
+                StructureTabNoteView(
+                    systemImage: note.systemImage,
+                    text: note.text,
+                    identifier: "structure-concurrent-refresh-note"
+                )
+            }
         }
     }
 
@@ -475,7 +508,7 @@ struct TableStructureView: View {
 
     private var structureGrid: some View {
         let provider = makeCurrentProvider()
-        let canEdit = editGate.allowsAnyEdit
+        let canEdit = editGate.allowsAnyEdit && !structureChangeManager.isHeldForSave
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns
         /// Resolved once. It reads the engine's curated capabilities and the object's own kind, and
@@ -505,7 +538,7 @@ struct TableStructureView: View {
                 databaseName: databaseName,
                 schemaName: schemaName,
                 tabType: .table,
-                lockedColumns: lockedStructureColumns,
+                lockedColumns: lockedStructureColumns(for: provider),
                 editRefusalMessage: structureEditRefusal
             ),
             delegate: gridDelegate,

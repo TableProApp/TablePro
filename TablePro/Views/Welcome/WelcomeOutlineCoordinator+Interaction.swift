@@ -24,11 +24,7 @@ extension WelcomeOutlineCoordinator {
             as? WelcomeOutlineCellView else { return }
 
         renameSession = WelcomeRenameSession(row: row, pendingName: name)
-        if case .group = row {
-            cell.renameSymbolName = "folder"
-        } else {
-            cell.renameSymbolName = "cylinder"
-        }
+        cell.renameGlyph = viewModel.renameGlyph(for: row)
         cell.beginRename(text: name, delegate: self)
         guard let field = cell.editor else { return }
         outlineView.window?.makeFirstResponder(field)

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ExecutionAuditRecord")
 struct ExecutionAuditRecordTests {
     private func chain(_ count: Int) -> [ExecutionAuditRecord] {
         var records: [ExecutionAuditRecord] = []
@@ -120,7 +119,6 @@ struct ExecutionAuditRecordTests {
     }
 }
 
-@Suite("ExecutionAuditLog")
 struct ExecutionAuditLogTests {
     private func makeLog() -> ExecutionAuditLog {
         let url = FileManager.default.temporaryDirectory

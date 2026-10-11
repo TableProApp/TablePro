@@ -4,13 +4,12 @@
 //
 
 import Foundation
-import Testing
 import TableProSyncTransport
+import Testing
 
 @testable import TablePro
 
 @MainActor
-@Suite("FavoriteDatabasesStorage")
 struct FavoriteDatabasesStorageTests {
     private static let storageKey = "com.TablePro.favoriteDatabases"
 
@@ -231,7 +230,7 @@ struct FavoriteDatabasesStorageTests {
         storage.setFavoriteWithoutSync(entry)
         #expect(storage.favorites(for: connectionId).first?.environment == .testing)
 
-        storage.removeFavoriteWithoutSync(id: FavoriteDatabasesStorage.syncId(for: entry))
+        storage.removeFavoritesWithoutSync(ids: [FavoriteDatabasesStorage.syncId(for: entry)])
         #expect(storage.favorites(for: connectionId).isEmpty)
         #expect(metadata.dirtyIds(for: .favoriteDatabase).isEmpty)
         #expect(metadata.tombstones(for: .favoriteDatabase).isEmpty)

@@ -1,11 +1,9 @@
-import CoreSpotlight
 import Foundation
 import Observation
 import os
 import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
-import WidgetKit
 
 @MainActor @Observable
 final class AppState {
@@ -29,26 +27,51 @@ final class AppState {
         return .loading
     }
 
-    var pendingConnectionId: UUID?
-    var pendingTableName: String?
-    var pendingImportURL: URL?
+    private(set) var sampleResetRevision = 0
+    let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
-    let syncCoordinator = IOSSyncCoordinator()
-    let libraryPreferences = ConnectionLibraryPreferences()
+    let syncCoordinator: IOSSyncCoordinator
+
+    @ObservationIgnored private var automaticPresentationOwner: UUID?
+    @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
+    let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
-    let secureStore: KeychainSecureStore
+    let secureStore: any SecureStore
+    let localDatabaseFiles: LocalDatabaseFileLocator
+    let queryHistory: QueryHistoryStorage
 
-    private let storage = ConnectionPersistence()
-    private let groupStorage = GroupPersistence()
-    private let tagStorage = TagPersistence()
+    private let sampleInstaller: SampleDatabaseInstaller
+    private let libraryPublisher: ConnectionLibraryPublisher
+    private let storage: ConnectionPersistence
+    private let groupStorage: GroupPersistence
+    private let tagStorage: TagPersistence
 
-    init() {
-        let driverFactory = IOSDriverFactory()
-        let secureStore = KeychainSecureStore()
+    init(
+        libraryDirectory: URL = LibraryStorage.defaultDirectory,
+        defaults: UserDefaults = .standard,
+        secureStore: any SecureStore = KeychainSecureStore(),
+        syncCoordinator injectedSyncCoordinator: IOSSyncCoordinator? = nil,
+        sampleInstaller: SampleDatabaseInstaller = .live,
+        localDatabaseFiles: LocalDatabaseFileLocator = .live,
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        libraryPublisher: ConnectionLibraryPublisher? = nil
+    ) {
+        self.sampleInstaller = sampleInstaller
+        self.libraryPublisher = libraryPublisher ?? .live()
+        self.localDatabaseFiles = localDatabaseFiles
+        localDatabaseFiles.container.recordCurrentContainer()
+        onboarding = OnboardingPreferences(defaults: defaults)
+        libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
+        syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
+        storage = ConnectionPersistence(directory: libraryDirectory)
+        queryHistory = QueryHistoryStorage(directory: libraryDirectory)
+        groupStorage = GroupPersistence(directory: libraryDirectory)
+        tagStorage = TagPersistence(directory: libraryDirectory)
+        let driverFactory = IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
         self.secureStore = secureStore
-        let sshProvider = IOSSSHProvider(secureStore: secureStore)
+        let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
         let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
@@ -61,18 +84,15 @@ final class AppState {
 
         guard !TestRuntime.isActive else { return }
 
-        secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
-        Task {
-            updateWidgetData()
-            updateSpotlightIndex()
+        if loadStatus == .ready {
+            KeychainSecureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
+            Task {
+                publishLibrary()
+            }
         }
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.connections else { return }
-            self.persist(connections: merged)
-            self.updateWidgetData()
-            self.updateSpotlightIndex()
+            self?.applySyncedConnections(merged)
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
@@ -95,15 +115,49 @@ final class AppState {
 
     // MARK: - Load / Retry
 
+    var isLibraryWritable: Bool {
+        loadStatus == .ready
+    }
+
     func retryLoadIfFailed() {
         guard loadStatus == .failed else { return }
         Self.logger.info("Retrying persistence load after previous failure")
         loadPersistedData()
+        guard loadStatus == .ready else { return }
+        publishLibrary()
+    }
+
+    private func refuseWriteIfNotReady() -> Bool {
+        guard isLibraryWritable else {
+            Self.logger.error("Refusing a library write while the stored library is not loaded")
+            return true
+        }
+        return false
+    }
+
+    private func publishLibrary() {
+        guard loadStatus == .ready else { return }
+        libraryPublisher.publish(connections)
+    }
+
+    func applySyncedConnections(_ merged: [DatabaseConnection]) {
+        guard !refuseWriteIfNotReady() else { return }
+        guard merged != connections else { return }
+        let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
+        persist(connections: merged)
+        localState.purge(removedIds)
+        publishLibrary()
+    }
+
+    private func syncsConnection(_ id: UUID) -> Bool {
+        connections.first { $0.id == id }?.participatesInSync ?? true
     }
 
     private func loadPersistedData() {
         do {
-            connectionsState = .loaded(try storage.load())
+            let stored = try storage.load()
+            connectionsState = .loaded(stored.connections)
+            movePastedSSHKeysToKeychain(from: stored)
         } catch {
             connectionsState = .failed(error)
             Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
@@ -124,12 +178,33 @@ final class AppState {
         }
     }
 
+    private func movePastedSSHKeysToKeychain(from stored: StoredConnections) {
+        guard !stored.pastedSSHKeys.isEmpty else { return }
+        let unstored = ConnectionSecrets(secureStore: secureStore).storeMissingPrivateKeys(stored.pastedSSHKeys)
+        pastedSSHKeysAwaitingKeychain = unstored
+        let movedCount = stored.pastedSSHKeys.count - unstored.count
+        guard movedCount > 0 else {
+            Self.logger.error("No pasted SSH key reached the Keychain; the connections file keeps them until the next launch")
+            return
+        }
+        Self.logger.info("Moved \(movedCount) pasted SSH keys out of the connections file, \(unstored.count) left for the next launch")
+        do {
+            try storage.save(stored.connections, keepingPastedSSHKeys: unstored)
+        } catch {
+            Self.logger.error("Rewriting connections without SSH keys failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - Persistence Bridges
 
     private func persist(connections: [DatabaseConnection]) {
         connectionsState = .loaded(connections)
+        pastedSSHKeysAwaitingKeychain = PastedSSHKeyMigration.keysStillHeld(
+            pastedSSHKeysAwaitingKeychain,
+            by: connections
+        )
         do {
-            try storage.save(connections)
+            try storage.save(connections, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
         } catch {
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
         }
@@ -170,21 +245,29 @@ final class AppState {
 
     // MARK: - Connections
 
-    func addConnection(_ connection: DatabaseConnection) {
+    func isConnectionRemoved(_ id: UUID) -> Bool {
+        loadStatus == .ready && !connections.contains { $0.id == id }
+    }
+
+    func offersHandoff(for connection: DatabaseConnection) -> Bool {
+        !connection.isSample && !isConnectionRemoved(connection.id)
+    }
+
+    @discardableResult
+    func addConnection(_ connection: DatabaseConnection) -> Bool {
         apply(ConnectionLibraryEditing.adding(connection, to: connections, validGroupIds: validGroupIds))
     }
 
-    func updateConnection(_ connection: DatabaseConnection) {
-        guard let change = ConnectionLibraryEditing.updating(
-            connection,
+    @discardableResult
+    func mutateConnection(_ id: UUID, _ mutate: (inout DatabaseConnection) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let change = ConnectionLibraryEditing.mutatingConnection(
+            id,
             in: connections,
-            validGroupIds: validGroupIds
-        ) else { return }
-        apply(change)
-    }
-
-    var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "com.TablePro.hasCompletedOnboarding") {
-        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "com.TablePro.hasCompletedOnboarding") }
+            validGroupIds: validGroupIds,
+            mutate
+        ) else { return .missing }
+        return apply(change) ? .applied : .unchanged
     }
 
     func reorderConnections(_ orderedIds: [UUID]) {
@@ -207,7 +290,7 @@ final class AppState {
 
     func setFavorite(_ ids: Set<UUID>, isFavorite: Bool) {
         let previousOrder = libraryPreferences.favoritesOrder
-        apply(ConnectionLibraryEditing.settingFavorite(ids, to: isFavorite, in: connections))
+        guard apply(ConnectionLibraryEditing.settingFavorite(ids, to: isFavorite, in: connections)) else { return }
         guard isFavorite else {
             libraryPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(previousOrder, removing: ids))
             return
@@ -221,8 +304,8 @@ final class AppState {
         libraryPreferences.setFavoritesOrder(orderedIds)
     }
 
-    @discardableResult
-    func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
+    func duplicateConnection(_ connection: DatabaseConnection) {
+        guard !refuseWriteIfNotReady() else { return }
         let result = ConnectionLibraryEditing.duplicating(
             connection,
             named: String(format: String(localized: "%@ Copy"), connection.name),
@@ -231,70 +314,71 @@ final class AppState {
         )
         ConnectionSecrets(secureStore: secureStore).copy(from: connection.id, to: result.copy.id)
         apply(result.change)
-        return result.copy
-    }
-
-    func removeConnection(_ connection: DatabaseConnection) {
-        removeConnections([connection.id])
     }
 
     func removeConnections(_ ids: Set<UUID>) {
+        guard !refuseWriteIfNotReady() else { return }
         let removed = connections.filter { ids.contains($0.id) }
         guard !removed.isEmpty else { return }
-        let secrets = ConnectionSecrets(secureStore: secureStore)
-        for connection in removed {
-            secrets.delete(for: connection.id)
-            clearPerConnectionPreferences(for: connection.id)
-        }
         persist(connections: connections.filter { !ids.contains($0.id) })
-        updateWidgetData()
-        updateSpotlightIndex()
-        for connection in removed {
+        localState.purge(Set(removed.map(\.id)))
+        publishLibrary()
+        for connection in removed where connection.participatesInSync {
             syncCoordinator.markDeleted(connection.id)
         }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
-    private func apply(_ change: ConnectionLibraryChange) {
-        guard !change.changedConnectionIds.isEmpty else { return }
+    @discardableResult
+    private func apply(_ change: ConnectionLibraryChange) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard !change.changedConnectionIds.isEmpty else { return false }
         persist(connections: change.connections)
-        updateWidgetData()
-        updateSpotlightIndex()
-        for id in change.changedConnectionIds {
+        publishLibrary()
+        let syncedIds = Set(change.connections.filter(\.participatesInSync).map(\.id))
+        for id in change.changedConnectionIds where syncedIds.contains(id) {
             syncCoordinator.markDirty(id)
         }
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
-    private func clearPerConnectionPreferences(for id: UUID) {
-        let suffix = id.uuidString
-        let defaults = UserDefaults.standard
-        for prefix in ["lastTab.", "lastDB.", "lastSchema.", "lastQuery."] {
-            defaults.removeObject(forKey: prefix + suffix)
-        }
+    private var localState: ConnectionLocalState {
+        ConnectionLocalState(
+            secrets: ConnectionSecrets(secureStore: secureStore),
+            queryHistory: queryHistory,
+            defaults: .standard
+        )
     }
 
     // MARK: - Groups
 
     @discardableResult
-    func addGroup(_ group: ConnectionGroup) -> Bool {
-        guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return false }
+    func addGroup(_ group: ConnectionGroup) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return .invalidPlacement }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
         syncCoordinator.scheduleSyncAfterChange()
-        return true
+        return .applied
     }
 
     @discardableResult
-    func updateGroup(_ group: ConnectionGroup) -> Bool {
-        guard let updated = ConnectionLibraryEditing.updatingGroup(group, in: groups) else { return false }
-        persist(groups: updated)
-        syncCoordinator.markDirtyGroup(group.id)
+    func mutateGroup(_ id: UUID, _ mutate: (inout ConnectionGroup) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard groups.contains(where: { $0.id == id }) else { return .missing }
+        guard let result = ConnectionLibraryEditing.mutatingGroup(id, in: groups, mutate) else {
+            return .invalidPlacement
+        }
+        guard result.changed else { return .unchanged }
+        persist(groups: result.groups)
+        syncCoordinator.markDirtyGroup(id)
         syncCoordinator.scheduleSyncAfterChange()
-        return true
+        return .applied
     }
 
     func reorderGroups(_ orderedIds: [UUID]) {
+        guard !refuseWriteIfNotReady() else { return }
         let result = ConnectionLibraryEditing.reorderingGroups(orderedIds, in: groups)
         guard !result.changed.isEmpty else { return }
         persist(groups: result.groups)
@@ -305,13 +389,14 @@ final class AppState {
     }
 
     func deleteGroup(_ groupId: UUID) {
+        guard !refuseWriteIfNotReady() else { return }
         let change = ConnectionLibraryEditing.deletingGroup(groupId, groups: groups, connections: connections)
         guard !change.removedGroupIds.isEmpty else { return }
         persist(groups: change.groups)
         persist(connections: change.connections)
-        updateWidgetData()
+        publishLibrary()
 
-        for id in change.changedConnectionIds {
+        for id in change.changedConnectionIds where syncsConnection(id) {
             syncCoordinator.markDirty(id)
         }
         for id in change.removedGroupIds {
@@ -322,78 +407,123 @@ final class AppState {
 
     // MARK: - Tags
 
-    func addTag(_ tag: ConnectionTag) {
+    @discardableResult
+    func addTag(_ tag: ConnectionTag) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
         var updated = tags
         updated.append(tag)
         persist(tags: updated)
         syncCoordinator.markDirtyTag(tag.id)
         syncCoordinator.scheduleSyncAfterChange()
+        return .applied
     }
 
-    func updateTag(_ tag: ConnectionTag) {
-        var updated = tags
-        guard let index = updated.firstIndex(where: { $0.id == tag.id }) else { return }
-        updated[index] = tag
-        persist(tags: updated)
-        syncCoordinator.markDirtyTag(tag.id)
+    @discardableResult
+    func mutateTag(_ id: UUID, _ mutate: (inout ConnectionTag) -> Void) -> LibraryWriteOutcome {
+        guard !refuseWriteIfNotReady() else { return .refused }
+        guard let result = ConnectionLibraryEditing.mutatingTag(id, in: tags, mutate) else { return .missing }
+        guard result.changed else { return .unchanged }
+        persist(tags: result.tags)
+        syncCoordinator.markDirtyTag(id)
         syncCoordinator.scheduleSyncAfterChange()
+        return .applied
     }
 
-    func deleteTag(_ tagId: UUID) {
-        guard let tag = tags.first(where: { $0.id == tagId }), !tag.isPreset else { return }
-
-        var updatedTags = tags
-        updatedTags.removeAll { $0.id == tagId }
-        persist(tags: updatedTags)
-
-        var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
-            updatedConnections[index].tagIds.removeAll { $0 == tagId }
-            syncCoordinator.markDirty(updatedConnections[index].id)
+    @discardableResult
+    func deleteTag(_ tagId: UUID) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard let change = ConnectionLibraryEditing.deletingTag(tagId, tags: tags, connections: connections) else {
+            return false
         }
-        persist(connections: updatedConnections)
-        updateWidgetData()
+        persist(connections: change.connections)
+        persist(tags: change.tags)
+        publishLibrary()
 
-        syncCoordinator.markDeletedTag(tagId)
+        for id in change.changedConnectionIds where syncsConnection(id) {
+            syncCoordinator.markDirty(id)
+        }
+        syncCoordinator.markDeletedTag(change.removedTagId)
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
-    // MARK: - Spotlight
+    // MARK: - First Run
 
-    private func updateSpotlightIndex() {
-        let items = connections.map { conn in
-            let attributes = CSSearchableItemAttributeSet(contentType: .item)
-            attributes.title = conn.name.isEmpty ? conn.host : conn.name
-            attributes.contentDescription = [conn.type.mobileDisplayName, ConnectionDetailFormatter.detail(for: conn)]
-                .joined(separator: ", ")
-            return CSSearchableItem(
-                uniqueIdentifier: conn.id.uuidString,
-                domainIdentifier: "com.TablePro.connections",
-                attributeSet: attributes
-            )
+    var currentAppVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    func claimLaunchPresentation(for sceneId: UUID) -> LaunchPresentation {
+        guard !TestRuntime.isActive else { return .none }
+        guard automaticPresentationOwner == nil || automaticPresentationOwner == sceneId else { return .none }
+        let version = currentAppVersion
+        let presentation = FirstRunPlan(
+            hasSeenWelcome: onboarding.hasSeenWelcome,
+            syncChoice: onboarding.syncChoice,
+            usageDataChoice: onboarding.usageDataChoice,
+            lastSeenVersion: onboarding.lastSeenVersion,
+            currentVersion: version,
+            hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
+        ).presentation
+        onboarding.recordLaunch(version: version)
+        guard presentation != .none else { return .none }
+        automaticPresentationOwner = sceneId
+        return presentation
+    }
+
+    func releaseLaunchPresentation(for sceneId: UUID) {
+        guard automaticPresentationOwner == sceneId else { return }
+        automaticPresentationOwner = nil
+    }
+
+    func finishFirstRun(pages: [FirstRunPage]) {
+        if pages.contains(.welcome) {
+            onboarding.markWelcomeSeen()
         }
-        if items.isEmpty {
-            CSSearchableIndex.default().deleteAllSearchableItems()
-        } else {
-            CSSearchableIndex.default().indexSearchableItems(items)
+        if pages.contains(.iCloud), onboarding.syncChoice == nil {
+            setCloudSyncEnabled(false)
+        }
+        if pages.contains(.usageData), onboarding.usageDataChoice == nil {
+            setUsageDataEnabled(false)
         }
     }
 
-    // MARK: - Widget
+    func setCloudSyncEnabled(_ enabled: Bool) {
+        onboarding.setSyncChoice(enabled)
+        syncCoordinator.setEnabled(enabled)
+    }
 
-    private func updateWidgetData() {
-        let items = connections
-            .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
-            .map { conn in
-                WidgetConnectionItem(
-                    id: conn.id,
-                    name: conn.name.isEmpty ? conn.host : conn.name,
-                    type: conn.type.rawValue,
-                    sortOrder: conn.sortOrder
-                )
-            }
-        SharedConnectionStore.write(items)
-        WidgetCenter.shared.reloadAllTimelines()
+    func setUsageDataEnabled(_ enabled: Bool) {
+        onboarding.setUsageDataChoice(enabled)
+    }
+
+    // MARK: - Sample Database
+
+    func openSampleDatabase() throws -> UUID {
+        try sampleInstaller.installIfNeeded()
+        if let existing = connections.first(where: \.isSample) {
+            return existing.id
+        }
+        let sample = DatabaseConnection(
+            name: SampleDatabaseInstaller.connectionName,
+            type: .sqlite,
+            host: "",
+            port: 0,
+            database: SampleDatabaseInstaller.fileName,
+            color: .green,
+            isSample: true
+        )
+        guard addConnection(sample) else { throw SampleDatabaseError.libraryUnavailable }
+        return sample.id
+    }
+
+    func resetSampleDatabase() async throws {
+        let sampleIds = connections.filter(\.isSample).map(\.id)
+        for id in sampleIds {
+            await connectionManager.disconnect(id)
+        }
+        try sampleInstaller.reset()
+        sampleResetRevision += 1
     }
 
     // MARK: - Helpers
@@ -411,28 +541,41 @@ final class AppState {
 
 // MARK: - Persistence
 
+nonisolated enum LibraryStorage {
+    static var defaultDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("TableProMobile", isDirectory: true)
+    }
+}
+
+private struct StoredConnections {
+    let connections: [DatabaseConnection]
+    let pastedSSHKeys: [UUID: String]
+}
+
 private struct ConnectionPersistence {
+    let directory: URL
+
     private var fileURL: URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let appDir = dir.appendingPathComponent("TableProMobile", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
-        return appDir.appendingPathComponent("connections.json")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("connections.json")
     }
 
-    func save(_ connections: [DatabaseConnection]) throws {
+    func save(_ connections: [DatabaseConnection], keepingPastedSSHKeys pastedSSHKeys: [UUID: String]) throws {
         guard let fileURL else { return }
-        let data = try JSONEncoder().encode(connections)
+        let data = try PastedSSHKeyMigration.libraryFile(JSONEncoder().encode(connections), keeping: pastedSSHKeys)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    func load() throws -> [DatabaseConnection] {
-        guard let fileURL else { return [] }
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            return []
+    func load() throws -> StoredConnections {
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
+            return StoredConnections(connections: [], pastedSSHKeys: [:])
         }
         let data = try Data(contentsOf: fileURL)
-        return try JSONDecoder().decode([DatabaseConnection].self, from: data)
+        return StoredConnections(
+            connections: try JSONDecoder().decode([DatabaseConnection].self, from: data),
+            pastedSSHKeys: PastedSSHKeyMigration.pendingKeys(inLibraryFile: data)
+        )
     }
 }

@@ -18,7 +18,6 @@ private struct PlainError: Error, LocalizedError {
     var errorDescription: String? { "Something else went wrong" }
 }
 
-@Suite("DatabaseCancellationDiagnosis")
 struct DatabaseCancellationDiagnosisTests {
     @Test("A Swift cancellation is recognised")
     func recognisesSwiftCancellationError() {

@@ -21,8 +21,10 @@ struct AppServices {
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
     let favoriteDatabasesStorage: FavoriteDatabasesStorage
+    let tableFolderStorage: TableFolderStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
+    let aiAccessApprovals: AIAccessApprovals
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
@@ -53,14 +55,16 @@ struct AppServices {
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,
         favoriteDatabasesStorage: .shared,
+        tableFolderStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
+        aiAccessApprovals: .shared,
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,
         credentialProfileStorage: .shared,
         licenseManager: .shared,
-        syncMetadataStorage: .shared,
+        syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         queryHistoryManager: .shared,

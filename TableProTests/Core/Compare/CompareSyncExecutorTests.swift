@@ -53,11 +53,11 @@ private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
 }
 
 final class CompareSyncExecutorTests: XCTestCase {
-    private func endpoint() -> DatabaseEndpoint {
+    private func endpoint(databaseType: DatabaseType = .mysql) -> DatabaseEndpoint {
         DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
             connectionName: "staging",
-            databaseType: .mysql,
+            databaseType: databaseType,
             safeModeLevel: .silent,
             color: .blue
         )
@@ -78,16 +78,38 @@ final class CompareSyncExecutorTests: XCTestCase {
         statements: [SyncStatement],
         settings: CompareSyncExecutionSettings = CompareSyncExecutionSettings(),
         driver: RecordingDriver,
-        gate: any ExecutionGate = AlwaysAllowGate()
+        gate: any ExecutionGate = AlwaysAllowGate(),
+        databaseType: DatabaseType = .mysql
     ) async throws -> CompareSyncRunResult {
         try await CompareSyncExecutor(gate: gate).apply(
             statements: statements,
             mode: .structure,
             settings: settings,
-            target: endpoint(),
+            target: endpoint(databaseType: databaseType),
             driver: driver,
             progress: Progress()
         )
+    }
+
+    // MARK: - Statement text
+
+    /// A statement already is the text the driver takes, one call each: on Oracle a unit keeps its own `;` and a
+    /// CALL trigger has none, and on SQL Server a body the generic grammar would cut stays whole.
+    func testEveryStatementGoesOutExactlyAsBuilt() async throws {
+        let cases: [(DatabaseType, [String])] = [
+            (.oracle, [
+                "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
+                "CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a)",
+                "CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual",
+            ]),
+            (.mssql, ["CREATE PROCEDURE dbo.p AS SET NOCOUNT ON; SELECT 1;"]),
+            (.mysql, ["CREATE PROCEDURE p() BEGIN SELECT 1; END"]),
+        ]
+        for (databaseType, sql) in cases {
+            let driver = RecordingDriver()
+            _ = try await run(statements: sql.map { statement($0) }, driver: driver, databaseType: databaseType)
+            XCTAssertEqual(driver.executed, sql, "\(databaseType.rawValue)")
+        }
     }
 
     // MARK: - Held back statements

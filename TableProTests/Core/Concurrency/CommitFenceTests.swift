@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CommitFence")
 struct CommitFenceTests {
     @Test("a load that started before its key was superseded may not commit")
     func supersededTokenIsRefused() {

@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 /// The three answers `RenameNameDecision` gives are separate because two of them are not failures.
-@Suite("Object tree rename")
 struct DatabaseTreeRenameTests {
     @Test("A new name commits")
     func newNameCommits() {

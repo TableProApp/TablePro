@@ -12,7 +12,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Theme Definition")
 struct ThemeDefinitionTests {
     // MARK: - Default light theme
 

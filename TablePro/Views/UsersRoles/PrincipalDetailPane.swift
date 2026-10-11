@@ -38,7 +38,7 @@ struct PrincipalDetailPane: View {
 
             Spacer()
 
-            Picker("", selection: $viewModel.detailSegment) {
+            Picker(String(localized: "View"), selection: $viewModel.detailSegment) {
                 ForEach(UsersRolesViewModel.DetailSegment.allCases) { segment in
                     Text(segment.title).tag(segment)
                 }

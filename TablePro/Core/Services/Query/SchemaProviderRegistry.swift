@@ -39,20 +39,24 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
     private let metadataDriverProvider: any ScopedMetadataProviding
+    private let browseCatalogState: @MainActor (UUID) -> SchemaState
     private weak var liveScopeProvider: (any LiveScopeProviding)?
 
     #if DEBUG
     /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.
     internal init(
         metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared,
-        liveScopeProvider: (any LiveScopeProviding)? = nil
+        liveScopeProvider: (any LiveScopeProviding)? = nil,
+        browseCatalogState: @escaping @MainActor (UUID) -> SchemaState = { SchemaService.shared.state(for: $0) }
     ) {
         self.metadataDriverProvider = metadataDriverProvider
         self.liveScopeProvider = liveScopeProvider
+        self.browseCatalogState = browseCatalogState
     }
     #else
     private init(metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared) {
         self.metadataDriverProvider = metadataDriverProvider
+        self.browseCatalogState = { SchemaService.shared.state(for: $0) }
     }
     #endif
 
@@ -62,6 +66,10 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
 
     func provider(for scope: DatabaseScope) -> SQLSchemaProvider? {
         providers[scope]
+    }
+
+    func isPopulated(_ scope: DatabaseScope) -> Bool {
+        providers[scope] != nil && loadedScopes.contains(scope)
     }
 
     func getOrCreate(for scope: DatabaseScope) -> SQLSchemaProvider {
@@ -109,17 +117,35 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         return provider
     }
 
-    /// Creates the provider for `scope` if it does not exist yet and fills it once.
-    ///
-    /// "Filled" is tracked here rather than read back off the provider, because a database with
-    /// no tables is loaded and empty, and asking the provider whether it holds any would refetch
-    /// its catalog on every tab activation forever.
+    /// The query editor's entry point: fills a tab scope's table list once, then asks for its columns.
+    /// "Filled" is tracked here because a database with no tables is loaded and empty.
     @discardableResult
     func prepare(for scope: DatabaseScope, connection: DatabaseConnection? = nil) async -> SQLSchemaProvider {
         let provider = getOrCreate(for: scope)
-        guard !loadedScopes.contains(scope) else { return provider }
-        await populate(scope: scope, provider: provider, connection: connection)
+        if !loadedScopes.contains(scope), !isFilledByBrowseOwner(scope) {
+            await populate(scope: scope, provider: provider, connection: connection)
+        }
+        await provider.requestColumnPreload()
         return provider
+    }
+
+    /// The browse scope holds the union of every expanded schema, which only `SchemaRefreshService`
+    /// assembles. A tab restored at launch mounts before the catalog starts loading, so an idle
+    /// catalog is still the owner's; only a failed one gets no sync, and the editor fills it.
+    private func isFilledByBrowseOwner(_ scope: DatabaseScope) -> Bool {
+        guard metadataDriverProvider.browseScope(for: scope.connectionId) == scope else { return false }
+        switch browseCatalogState(scope.connectionId) {
+        case .idle, .loading, .loaded:
+            return true
+        case .failed:
+            return false
+        }
+    }
+
+    /// A preload that served the previous table list is read again only while something renders
+    /// the scope, so a closed tab's columns are not refetched on every catalog change.
+    private func rendersScope(_ scope: DatabaseScope) -> Bool {
+        liveScopeProvider?.liveScopes(for: scope.connectionId).contains(scope) ?? true
     }
 
     /// A catalog change repopulates every provider it reaches except the browse scope, which
@@ -190,12 +216,15 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                     )
                     await provider.setNamespaces(schemas: schemas, databases: databases)
                 }
-                self?.markPopulated(scope: scope, provider: provider, generation: generation)
+                if self?.markPopulated(scope: scope, provider: provider, generation: generation) == true,
+                   self?.rendersScope(scope) == true {
+                    await provider.renewColumnPreload()
+                }
             } catch is CancellationError {
                 return
             } catch {
                 Self.logger.warning(
-                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
                 )
                 /// Fenced like the commit is, and for the same reason. `notePopulatedExternally`
                 /// bumps the generation when `SchemaRefreshService` fills this scope with the
@@ -217,9 +246,10 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// disconnected mid-flight still completes and writes into a provider nobody holds any more.
     /// Recording the scope as loaded on the strength of that write would leave its replacement
     /// permanently unfilled, so the identity of the provider written to is the fence.
-    private func markPopulated(scope: DatabaseScope, provider: SQLSchemaProvider, generation: Int) {
-        guard providers[scope] === provider, populationGenerations[scope, default: 0] == generation else { return }
+    private func markPopulated(scope: DatabaseScope, provider: SQLSchemaProvider, generation: Int) -> Bool {
+        guard providers[scope] === provider, populationGenerations[scope, default: 0] == generation else { return false }
         loadedScopes.insert(scope)
+        return true
     }
 
     /// Clears the loaded flag so the next `prepare` retries, but only while this population is
@@ -233,11 +263,14 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// has expanded, which the registry cannot assemble. Without this, a tab sitting on the
     /// browse scope would see an unfilled provider and refill it with its own single-schema
     /// list, narrowing what the sidebar had already gathered.
-    func notePopulatedExternally(scope: DatabaseScope) {
-        guard providers[scope] != nil else { return }
+    @discardableResult
+    func notePopulatedExternally(scope: DatabaseScope) -> Task<Void, Never>? {
+        guard let provider = providers[scope] else { return nil }
         loadedScopes.insert(scope)
         populationGenerations[scope, default: 0] &+= 1
         populationTasks.removeValue(forKey: scope)?.cancel()
+        guard rendersScope(scope) else { return nil }
+        return Task { await provider.renewColumnPreload() }
     }
 
     /// A population commits only while it is still the one filling this scope. `Task.cancel` is

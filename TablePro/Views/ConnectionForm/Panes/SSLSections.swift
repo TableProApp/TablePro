@@ -14,13 +14,22 @@ import UniformTypeIdentifiers
 /// connections leave alone.
 struct SSLSections: View {
     let databaseType: DatabaseType
+    var usesLocalSocket = false
     @Binding var sslMode: SSLMode
     @Binding var sslCaCertPath: String
     @Binding var sslClientCertPath: String
     @Binding var sslClientKeyPath: String
     @Binding var sslClientKeyPassphrase: String
 
-    private var supportsPerConnectionCertPaths: Bool { databaseType != .mssql }
+    private var supportsPerConnectionCertPaths: Bool { databaseType.supportsPerConnectionCertificatePaths }
+
+    private var caCertificateIsOptional: Bool {
+        !databaseType.requiresCACertificate(for: sslMode)
+    }
+
+    private var caCertificatePrompt: String {
+        caCertificateIsOptional ? String(localized: "Optional") : "/path/to/ca-cert.pem"
+    }
 
     private var noOpportunisticTLSWarning: String {
         if databaseType == .oracle {
@@ -37,6 +46,7 @@ struct SSLSections: View {
                         Text(mode.displayLabel).tag(mode)
                     }
                 }
+                .accessibilityIdentifier("connection-form-ssl-mode")
                 if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
                     Label(noOpportunisticTLSWarning, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(databaseType == .oracle ? .red : .orange)
@@ -50,6 +60,9 @@ struct SSLSections: View {
                     if sslMode != .disabled {
                         Text(sslMode.description)
                     }
+                    if usesLocalSocket && sslMode == .preferred {
+                        Text(String(localized: "Preferred leaves a socket connection unencrypted. Required encrypts it."))
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -59,9 +72,8 @@ struct SSLSections: View {
                 if !supportsPerConnectionCertPaths {
                     Section {
                         Text(String(localized: """
-                            SQL Server connections use the system trust store. Per-connection CA and client certificate \
-                            paths are not supported by FreeTDS dblib; configure them in `freetds.conf` if you need a \
-                            custom trust anchor.
+                            Verify CA and Verify Identity check the server certificate against the system trust \
+                            store. This driver takes no custom CA or client certificate.
                             """))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -69,16 +81,23 @@ struct SSLSections: View {
                         Text(String(localized: "Certificate Trust"))
                     }
                 } else if sslMode == .verifyCa || sslMode == .verifyIdentity {
-                    Section(String(localized: "CA Certificate")) {
+                    Section {
                         LabeledContent(String(localized: "Certificate")) {
                             HStack {
-                                TextField(
-                                    "", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
+                                TextField("", text: $sslCaCertPath, prompt: Text(caCertificatePrompt))
                                 Button(String(localized: "Browse")) {
                                     browseForCertificate(binding: $sslCaCertPath)
                                 }
                                 .controlSize(.small)
                             }
+                        }
+                    } header: {
+                        Text(String(localized: "CA Certificate"))
+                    } footer: {
+                        if caCertificateIsOptional {
+                            Text(String(localized: "Leave empty to use the system trust store."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }

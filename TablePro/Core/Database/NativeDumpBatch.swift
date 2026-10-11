@@ -12,6 +12,21 @@ struct NativeDumpBatchItem: Sendable, Equatable {
     let database: String
     let scope: NativeDumpScope
     let destination: URL
+
+    /// Why this database must not be dumped at all, from whoever built the scope.
+    ///
+    /// A scope the app could not finish reading describes less than the user ticked, and running
+    /// the tool with it writes an archive that looks like a backup: a PostgreSQL partitioned parent
+    /// whose partition read failed dumps as `CREATE TABLE` and no rows. The item is recorded as
+    /// failed instead, so it reaches the same outcome list a refused connection does.
+    let blockedReason: String?
+
+    init(database: String, scope: NativeDumpScope, destination: URL, blockedReason: String? = nil) {
+        self.database = database
+        self.scope = scope
+        self.destination = destination
+        self.blockedReason = blockedReason
+    }
 }
 
 /// How one item ended.
@@ -157,6 +172,12 @@ final class NativeDumpBatch: ObservableObject {
         formatId: String?,
         producesDirectory: Bool
     ) async {
+        if let blockedReason = item.blockedReason {
+            Self.logger.error("batch item blocked db=\(item.database, privacy: .public)")
+            record(item, .failed(message: blockedReason))
+            return
+        }
+
         do {
             try NativeDumpDestination.prepare(item.destination, producesDirectory: producesDirectory)
         } catch {

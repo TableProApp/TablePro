@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ConnectionFormRequest")
 struct ConnectionFormRequestTests {
     @Test("Each create request is distinct so every new connection gets its own window")
     func eachCreateRequestIsDistinct() {

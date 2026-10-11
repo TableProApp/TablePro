@@ -76,7 +76,7 @@ struct BrowsePluginsView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
                     NativeSearchField(text: $searchText, placeholder: String(localized: "Search…"))
-                    Picker("", selection: $selectedCategory) {
+                    Picker("Category", selection: $selectedCategory) {
                         Text("All").tag(RegistryCategory?.none)
                         ForEach(RegistryCategory.allCases) { category in
                             Text(category.displayName).tag(RegistryCategory?.some(category))
@@ -199,10 +199,12 @@ struct BrowsePluginsView: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .foregroundStyle(.orange)
                     .font(.caption)
+                   .accessibilityLabel(String(localized: "Restart to activate"))
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.caption)
+                   .accessibilityLabel(String(localized: "Installed"))
             case .failed:
                 Button("Retry") { retryOperation(for: plugin) }
                     .controlSize(.mini)

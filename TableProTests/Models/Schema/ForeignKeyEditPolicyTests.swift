@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Foreign Key Edit Policy")
 struct ForeignKeyEditPolicyTests {
     private func resolve(
         _ support: ForeignKeyEditSupport,

@@ -6,7 +6,6 @@
 import Foundation
 import TableProPluginKit
 
-/// The statements a Create Table draft runs, in order, and anything the driver could not spell.
 struct CreateTableStatements {
     let statements: [String]
     let issues: [SchemaDraftIssue]
@@ -19,17 +18,14 @@ struct CreateTableStatements {
     }
 }
 
-/// Asks the driver for the statements a plan needs, one per object.
-///
-/// The `CREATE TABLE` and each `CREATE INDEX` are separate statements because a driver is only
-/// obliged to run one statement per `execute(query:)`, and SQLite's prepares with a nil tail and
-/// steps once, so anything after the first semicolon is compiled by nobody. The existing-table path
-/// (`SchemaStatementGenerator`) already works this way; this is the same shape for the create path.
+/// One statement per element, because a driver is only obliged to run one statement per
+/// `execute(query:)`: SQLite prepares with a nil tail, so anything after the first semicolon never runs.
 @MainActor
 enum CreateTableStatementComposer {
     static func compose(
         plan: CreateTablePlan,
-        driver: any PluginDatabaseDriver
+        driver: any PluginDatabaseDriver,
+        schema: String?
     ) -> CreateTableStatements {
         guard let definition = plan.definition else {
             return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
@@ -48,7 +44,7 @@ enum CreateTableStatementComposer {
             return CreateTableStatements(statements: [], issues: issues, tableName: definition.tableName)
         }
 
-        guard let createTable = driver.generateCreateTableSQL(definition: definition) else {
+        guard let createTable = driver.generateCreateTableStatements(definition: definition), !createTable.isEmpty else {
             issues.append(SchemaDraftIssue(
                 tab: .columns, row: nil,
                 message: String(localized: "This database cannot create a table from the visual editor.")
@@ -56,7 +52,7 @@ enum CreateTableStatementComposer {
             return CreateTableStatements(statements: [], issues: issues, tableName: definition.tableName)
         }
 
-        var statements = [createTable]
+        var statements = createTable
         for (row, index) in plan.indexes.enumerated() where !refusedIndexRows.contains(row) {
             guard let sql = driver.generateAddIndexSQL(table: definition.tableName, index: index) else {
                 issues.append(SchemaDraftIssue(
@@ -66,6 +62,22 @@ enum CreateTableStatementComposer {
                 continue
             }
             statements.append(sql)
+        }
+
+        if let comment = plan.tableComment {
+            if let sql = driver.objectCommentStatement(
+                name: definition.tableName,
+                objectType: TableInfo.TableType.table.rawValue,
+                schema: schema,
+                comment: comment
+            ) {
+                statements.append(sql)
+            } else {
+                issues.append(SchemaDraftIssue(
+                    tab: .columns, row: nil,
+                    message: String(localized: "This database cannot store a table comment.")
+                ))
+            }
         }
 
         return CreateTableStatements(statements: statements, issues: issues, tableName: definition.tableName)

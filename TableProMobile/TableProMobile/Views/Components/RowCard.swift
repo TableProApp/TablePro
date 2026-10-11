@@ -5,8 +5,7 @@ struct RowCard: View {
     let columns: [ColumnInfo]
     let columnDetails: [ColumnInfo]
     let row: [String?]
-
-    private static let maxPreview = 4
+    var previewFieldCount: Int = DuoLayoutResolver.compactPreviewFieldCount
 
     private var pkNames: Set<String> {
         Set(columnDetails.filter(\.isPrimaryKey).map(\.name))
@@ -26,7 +25,7 @@ struct RowCard: View {
         let title = titlePair?.name
         return zip(columns, row)
             .filter { !pks.contains($0.0.name) && $0.0.name != title }
-            .prefix(Self.maxPreview - 1)
+            .prefix(max(previewFieldCount - 1, 0))
             .map { ($0.0.name, $0.1 ?? "NULL") }
     }
 
@@ -56,8 +55,8 @@ struct RowCard: View {
                 }
             }
 
-            if columns.count > Self.maxPreview {
-                Text("+\(columns.count - Self.maxPreview) more columns")
+            if columns.count > previewFieldCount {
+                Text("+\(columns.count - previewFieldCount) more columns")
                     .font(.caption2)
                     .foregroundStyle(.quaternary)
             }

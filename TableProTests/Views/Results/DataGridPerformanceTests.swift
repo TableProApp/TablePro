@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Sort Key Caching")
 struct SortKeyCachingTests {
     @Test("Pre-extracted sort keys match inline comparison")
     func preExtractedKeysMatchInline() {

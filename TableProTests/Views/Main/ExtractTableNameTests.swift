@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ExtractTableName")
 @MainActor
 struct ExtractTableNameTests {
     private func makeCoordinator(type: DatabaseType = .mysql) -> MainContentCoordinator {

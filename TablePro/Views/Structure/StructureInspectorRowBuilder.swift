@@ -16,6 +16,7 @@ internal enum StructureInspectorRowBuilder {
         tab: StructureTab,
         provider: StructureRowProvider,
         canEditSchema: Bool,
+        lockedFieldIndices: Set<Int> = [],
         rowOptions: (Int) -> [GridMenuOption]? = { _ in nil }
     ) -> InspectorRow? {
         switch tab {
@@ -41,7 +42,8 @@ internal enum StructureInspectorRowBuilder {
                     options: rowOptions(index) ?? dropdownOptions[index],
                     typePickerColumns: typePickerColumns
                 ),
-                isModified: modified.contains(index)
+                isModified: modified.contains(index),
+                isEditable: !lockedFieldIndices.contains(index)
             )
         }
 

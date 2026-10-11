@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SupportLinks")
 struct SupportLinksTests {
     private static let everyReferrer: [SupportReferrer] =
         [.supportWindow, .aboutPanel, .licenseSettings, .activationSheet]
@@ -84,5 +83,11 @@ struct SupportLinksTests {
             #expect(!SupportLinks.pricing(referrer).absoluteString.contains("$"))
             #expect(!SupportLinks.sponsors(referrer).absoluteString.contains("$"))
         }
+    }
+
+    @Test("The Macs link opens the account page that removes a Mac from a license")
+    func accountMachinesOpensTheMacsPage() {
+        #expect(SupportLinks.accountMachines.absoluteString == "https://tablepro.app/account/machines")
+        #expect(SupportLinks.account.absoluteString == "https://tablepro.app/account")
     }
 }

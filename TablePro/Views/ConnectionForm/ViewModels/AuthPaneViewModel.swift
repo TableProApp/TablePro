@@ -158,6 +158,7 @@ final class AuthPaneViewModel: ObservableObject {
                 issues.append(String(format: String(localized: "%@ is required"), field.label))
             }
         }
+        issues += authFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
 
         return issues
     }

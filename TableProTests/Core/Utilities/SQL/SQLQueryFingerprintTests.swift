@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLQueryFingerprint")
 struct SQLQueryFingerprintTests {
     private func normalize(_ sql: String, _ type: DatabaseType = .postgresql) -> String {
         SQLQueryFingerprint.normalize(sql, databaseType: type)

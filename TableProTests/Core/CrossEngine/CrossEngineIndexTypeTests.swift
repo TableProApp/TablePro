@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cross-engine index types")
 struct CrossEngineIndexTypeTests {
     private typealias IndexType = EditableIndexDefinition.IndexType
 

@@ -19,18 +19,20 @@ enum ForeignKeyLookupQuery {
     static let rowLimit = 50
 
     /// Nil when the term names nothing this table can be searched on, which is not the same as a
-    /// term that matches no row: there is no query to send, so the caller reports an empty list
-    /// rather than an engine error.
+    /// term that matches no row. There is no query to send, and the caller has to say which of the
+    /// two happened: reporting it as an empty result made a picker on a numeric key with a numeric
+    /// label answer "No matching rows" to every word while still answering a number, so the search
+    /// read as intermittently broken rather than as having nothing to match against.
     static func rows(
         quotedTable: String,
         key: ForeignKeyLookupColumn,
-        label: ForeignKeyLookupColumn?,
+        labels: [ForeignKeyLookupColumn],
         searchTerm: String,
         dialect: SQLDialectDescriptor,
         stringLiteralPrefix: String,
         quoteIdentifier: @escaping (String) -> String
     ) -> String? {
-        let selected = selectedColumns(key: key, label: label)
+        let selected = selectedColumns(key: key, labels: labels)
         let selectList = selected.map { quoteIdentifier($0.name) }.joined(separator: ", ")
         let generator = FilterSQLGenerator(
             dialect: dialect,
@@ -49,7 +51,7 @@ enum ForeignKeyLookupQuery {
 
         let term = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
         if !term.isEmpty {
-            let filters = searchFilters(key: key, label: label, term: term)
+            let filters = searchFilters(key: key, labels: labels, term: term)
             guard !filters.isEmpty else { return nil }
             let search = generator.generateConditions(from: filters, logicMode: .or)
             guard !search.isEmpty else { return nil }
@@ -63,12 +65,15 @@ enum ForeignKeyLookupQuery {
         return sql + " " + orderAndLimitClause(quotedKey: quoteIdentifier(key.name), dialect: dialect)
     }
 
+    /// The key leads, then every label once. A name is selected at most once: naming the key again
+    /// would put two columns of the same value in front of the reader, and a duplicate label would
+    /// read as a repeated one.
     static func selectedColumns(
         key: ForeignKeyLookupColumn,
-        label: ForeignKeyLookupColumn?
+        labels: [ForeignKeyLookupColumn]
     ) -> [ForeignKeyLookupColumn] {
-        guard let label, label.name != key.name else { return [key] }
-        return [key, label]
+        var seen: Set<String> = [key.name]
+        return [key] + labels.filter { seen.insert($0.name).inserted }
     }
 
     /// The key column carries the order, so the filler `offsetFetchOrderBy` a dialect supplies for
@@ -83,15 +88,18 @@ enum ForeignKeyLookupQuery {
         }
     }
 
+    /// One predicate per label the engine can pattern-match, plus the key's own. A chosen column
+    /// that takes no `LIKE` is shown but carries no predicate, which costs that column a search
+    /// rather than costing the whole query an error; the columns beside it still search.
     private static func searchFilters(
         key: ForeignKeyLookupColumn,
-        label: ForeignKeyLookupColumn?,
+        labels: [ForeignKeyLookupColumn],
         term: String
     ) -> [TableFilter] {
-        var filters: [TableFilter] = []
-        if let label, label.name != key.name, label.supportsPatternMatch {
-            filters.append(TableFilter(columnName: label.name, filterOperator: .contains, value: term))
-        }
+        var filters = selectedColumns(key: key, labels: labels)
+            .dropFirst()
+            .filter(\.supportsPatternMatch)
+            .map { TableFilter(columnName: $0.name, filterOperator: .contains, value: term) }
         if let keyFilter = keyFilter(key: key, term: term) {
             filters.append(keyFilter)
         }

@@ -38,6 +38,11 @@ struct ThirdPartyComponent: Codable, Identifiable, Hashable {
         }
     }
 
+    enum Platform: String, Codable, Hashable {
+        case macos
+        case ios
+    }
+
     let id: String
     let name: String
     let version: String
@@ -51,8 +56,13 @@ struct ThirdPartyComponent: Codable, Identifiable, Hashable {
     let source: String
     let patched: Bool
     let notes: String?
+    let platforms: [Platform]
 
     var versionSource: VersionSource { VersionSource(rawValue: source) }
+
+    func ships(on platform: Platform) -> Bool {
+        platforms.contains(platform)
+    }
 
     /// A component whose licence has not been confirmed from a primary source. It is listed
     /// as unresolved rather than being given a guessed licence, because a wrong SPDX line is
@@ -60,6 +70,26 @@ struct ThirdPartyComponent: Codable, Identifiable, Hashable {
     var isUnverified: Bool { spdx == ThirdPartyComponent.unverifiedSPDX }
 
     static let unverifiedSPDX = "UNVERIFIED"
+
+    static let defaultPlatforms: [Platform] = [.macos]
+}
+
+extension ThirdPartyComponent {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        version = try container.decode(String.self, forKey: .version)
+        spdx = try container.decode(String.self, forKey: .spdx)
+        copyrights = try container.decode([String].self, forKey: .copyrights)
+        homepageURL = try container.decode(String.self, forKey: .homepageURL)
+        licenseTextURL = try container.decode(String.self, forKey: .licenseTextURL)
+        textFile = try container.decodeIfPresent(String.self, forKey: .textFile)
+        source = try container.decode(String.self, forKey: .source)
+        patched = try container.decode(Bool.self, forKey: .patched)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        platforms = try container.decodeIfPresent([Platform].self, forKey: .platforms) ?? Self.defaultPlatforms
+    }
 }
 
 private extension String {

@@ -176,7 +176,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
             try query.write(to: overflowDirectory.appendingPathComponent(fileName), atomically: true, encoding: .utf8)
             return true
         } catch {
-            Self.logger.fault("Failed to write overflow query \(fileName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.fault("Failed to write overflow query \(fileName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return false
         }
     }
@@ -201,7 +201,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: overflowDirectory, withIntermediateDirectories: true)
         } catch {
-            Self.logger.error("Failed to create directory \(self.overflowDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to create directory \(self.overflowDirectory.path, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -210,7 +210,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
             let data = try JSONEncoder().encode(entries)
             try data.write(to: Self.stateFileURL(in: directory), options: .atomic)
         } catch {
-            Self.logger.fault("Failed to persist recently closed tabs: \(error.localizedDescription, privacy: .public)")
+            Self.logger.fault("Failed to persist recently closed tabs: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -221,7 +221,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
         do {
             return try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.value)
         } catch {
-            logger.error("Failed to load recently closed tabs: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to load recently closed tabs: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }

@@ -78,6 +78,31 @@ struct StructureEditGate {
         canEditSchema && StructureEditEligibility.allowsAnyEdit(on: objectKind, matrix: matrix)
     }
 
+    var allowsTriggerEditing: Bool {
+        databaseType.supportsTriggerEditing && TriggerEditEligibility.kindAcceptsTriggers(objectKind)
+    }
+
+    func locksField(at index: Int, on tab: StructureTab, orderedFields: [StructureColumnField]) -> Bool {
+        switch tab {
+        case .columns:
+            guard orderedFields.indices.contains(index) else { return false }
+            return !editableColumnFields.contains(orderedFields[index])
+        case .indexes, .foreignKeys, .checkConstraints:
+            guard let adding = StructureFooterPolicy.operation(forAdding: tab) else { return false }
+            return !allows(adding)
+        case .ddl, .parts, .triggers:
+            return false
+        }
+    }
+
+    func lockedFieldIndices(
+        on tab: StructureTab,
+        orderedFields: [StructureColumnField],
+        fieldCount: Int
+    ) -> Set<Int> {
+        Set((0..<fieldCount).filter { locksField(at: $0, on: tab, orderedFields: orderedFields) })
+    }
+
     /// Whether the engine has a statement for this operation at all, which is a different question
     /// from whether the object's kind accepts it. An engine with no `ADD CONSTRAINT … FOREIGN KEY`
     /// refuses it on a plain table too.

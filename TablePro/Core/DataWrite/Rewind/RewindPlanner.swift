@@ -37,7 +37,7 @@ struct RewindPlanner {
         readQueries(for: record.reversibleOperations.filter(keyIsComparable))
     }
 
-    func plan(currentRows: [[PluginCellValue]]) throws -> RewindPlan {
+    func plan(currentRows: [RewindCurrentRow]) throws -> RewindPlan {
         let current = indexByKey(currentRows)
 
         var rows: [RewindRowPlan] = []
@@ -62,63 +62,85 @@ struct RewindPlanner {
                 continue
             }
             let key = primaryKey(of: operation)
-            let currentImage = key.flatMap { current[$0] }
-            let outcome = classify(operation, currentImage: currentImage)
+            let currentRow = key.flatMap { current[$0] }
+            let outcome = classify(operation, current: currentRow)
             rows.append(
-                RewindRowPlan(id: UUID(), operation: operation, outcome: outcome, currentImage: currentImage)
+                RewindRowPlan(id: UUID(), operation: operation, outcome: outcome, currentImage: currentRow?.values)
             )
             if outcome.restores {
                 restorable.append(operation)
             }
         }
 
-        return RewindPlan(record: record, rows: rows, statements: try statements(for: restorable))
+        let inverse = try statements(for: restorable)
+        return RewindPlan(
+            record: record,
+            rows: rows,
+            statements: inverse.statements,
+            prologue: inverse.prologue,
+            epilogue: inverse.epilogue
+        )
     }
 
     // MARK: - Classification
 
-    private func classify(_ operation: RowWriteOperation, currentImage: [PluginCellValue]?) -> RewindRowOutcome {
+    private func classify(_ operation: RowWriteOperation, current: RewindCurrentRow?) -> RewindRowOutcome {
         switch operation.kind {
         case .update:
-            guard let currentImage else { return .rowMissing }
+            guard let current else { return .rowMissing }
             guard let postImage = operation.postImage, let preImage = operation.preImage else {
                 return .notReversible(.serverComputedValue)
             }
-            if matches(currentImage, preImage, on: operation) { return .alreadyRestored }
-            guard matches(currentImage, postImage, on: operation) else { return .changedSinceSave }
+            if matches(current, preImage, absent: operation.preImageAbsentColumns, on: operation) {
+                return .alreadyRestored
+            }
+            guard matches(current, postImage, absent: operation.postImageAbsentColumns, on: operation) else {
+                return .changedSinceSave
+            }
             return .willRestore
         case .delete:
-            if currentImage != nil { return .rowAlreadyPresent }
+            if current != nil { return .rowAlreadyPresent }
             return .willRestore
         case .insert:
-            guard let currentImage else { return .alreadyRestored }
+            guard let current else { return .alreadyRestored }
             guard let postImage = operation.postImage else { return .notReversible(.serverAssignedKey) }
-            guard matches(currentImage, postImage, on: operation) else { return .changedSinceSave }
+            guard matches(current, postImage, absent: operation.postImageAbsentColumns, on: operation) else {
+                return .changedSinceSave
+            }
             return .willRestore
         }
     }
 
+    /// Whether the row holds what the image says on every column the save wrote: the same value,
+    /// and the field there or missing as it was. Set NULL on a missing field and Remove Field on a
+    /// NULL one leave the value alone, so comparing values alone reads either as already restored.
+    ///
+    /// A record saved before absence was captured has none to compare, so it is compared on values
+    /// alone, as it was then.
     private func matches(
-        _ current: [PluginCellValue],
+        _ current: RewindCurrentRow,
         _ expected: [PluginCellValue],
+        absent expectedAbsent: Set<Int>?,
         on operation: RowWriteOperation
     ) -> Bool {
         operation.writtenColumns.allSatisfy { column in
             guard let index = operation.columns.firstIndex(of: column),
-                  index < current.count, index < expected.count
+                  index < current.values.count, index < expected.count,
+                  current.values[index] == expected[index]
             else { return false }
-            return current[index] == expected[index]
+            guard let expectedAbsent else { return true }
+            return current.absentColumns.contains(index) == expectedAbsent.contains(index)
         }
     }
 
     // MARK: - Reading
 
-    private func indexByKey(_ rows: [[PluginCellValue]]) -> [RewindRowKey: [PluginCellValue]] {
+    private func indexByKey(_ rows: [RewindCurrentRow]) -> [RewindRowKey: RewindCurrentRow] {
         let columns = record.operations.first?.columns ?? []
         let keyColumns = record.operations.first?.primaryKeyColumns ?? []
-        var byKey: [RewindRowKey: [PluginCellValue]] = [:]
+        var byKey: [RewindRowKey: RewindCurrentRow] = [:]
         for row in rows {
-            guard let key = primaryKey(of: row, columns: columns, keyColumns: keyColumns) else { continue }
+            guard let key = primaryKey(of: row.values, columns: columns, keyColumns: keyColumns) else { continue }
             byKey[key] = row
         }
         return byKey
@@ -142,18 +164,17 @@ struct RewindPlanner {
                 guard let value = keyValue(of: operation, column: keyColumn) else { return nil }
                 return TableFilter(columnName: keyColumn, filterOperator: .equal, value: value)
             }
-            guard !filters.isEmpty else { return [] }
-            return [
-                queryBuilder.buildFilteredQuery(
-                    tableName: record.target.table,
-                    schemaName: record.target.schema,
-                    filters: filters,
-                    logicMode: .or,
-                    columns: columns,
-                    selectColumns: columns,
-                    limit: filters.count
-                ),
-            ]
+            guard !filters.isEmpty,
+                  let query = queryBuilder.buildFilteredQuery(
+                      tableName: record.target.table,
+                      schemaName: record.target.schema,
+                      filters: filters,
+                      logicMode: .or,
+                      columns: columns,
+                      selectColumns: columns,
+                      limit: filters.count
+                  ) else { return [] }
+            return [query]
         }
 
         return operations.compactMap { operation in
@@ -182,40 +203,53 @@ struct RewindPlanner {
     /// second row's change back before the first row's is the only order that does not collide.
     /// The forward generator groups by verb, which loses that order, so the inverse is generated
     /// one operation at a time.
-    private func statements(for operations: [RowWriteOperation]) throws -> [ParameterizedStatement] {
+    private func statements(for operations: [RowWriteOperation]) throws -> RestoreStatements {
         var statements: [ParameterizedStatement] = []
+        var prologue: [String] = []
+        var epilogue: [String] = []
         for operation in operations.reversed() {
-            statements.append(contentsOf: try inverseStatements(for: operation))
+            let inverse = try inverseStatements(for: operation)
+            statements.append(contentsOf: inverse.statements)
+            prologue.append(contentsOf: inverse.prologue.filter { !prologue.contains($0) })
+            epilogue.append(contentsOf: inverse.epilogue.filter { !epilogue.contains($0) })
         }
-        return statements
+        return RestoreStatements(statements: statements, prologue: prologue, epilogue: epilogue)
     }
 
-    private func inverseStatements(for operation: RowWriteOperation) throws -> [ParameterizedStatement] {
+    private func inverseStatements(for operation: RowWriteOperation) throws -> RestoreStatements {
         switch operation.kind {
         case .update:
-            guard let preImage = operation.preImage, let postImage = operation.postImage else { return [] }
+            guard let preImage = operation.preImage, let postImage = operation.postImage else {
+                return RestoreStatements(statements: [])
+            }
+            let absentBefore = operation.absentColumnsBeforeWrite
+            let absentAfter = operation.absentColumnsAfterWrite
             let cellChanges = operation.writtenColumns.compactMap { column -> CellChange? in
                 guard let index = operation.columns.firstIndex(of: column),
                       index < preImage.count, index < postImage.count
                 else { return nil }
                 return CellChange(
                     columnIndex: index, columnName: column,
-                    oldValue: postImage[index], newValue: preImage[index]
+                    oldValue: postImage[index], newValue: preImage[index],
+                    oldIsAbsent: absentAfter.contains(index), newIsAbsent: absentBefore.contains(index)
                 )
             }
-            guard !cellChanges.isEmpty else { return [] }
-            return try factory.statements(
-                for: [RowChange(rowID: .existing(0), type: .update, cellChanges: cellChanges, originalRow: postImage)]
-            )
+            guard !cellChanges.isEmpty else { return RestoreStatements(statements: []) }
+            return RestoreStatements(statements: try factory.statements(
+                for: [RowChange(
+                    rowID: .existing(0), type: .update, cellChanges: cellChanges,
+                    originalRow: postImage, absentColumns: absentAfter
+                )]
+            ))
         case .delete:
-            guard let preImage = operation.preImage else { return [] }
-            return try factory.restoreStatements(rows: [preImage])
+            guard let preImage = operation.preImage else { return RestoreStatements(statements: []) }
+            return try factory.restoreStatements(rows: [preImage], absentCells: [0: operation.absentColumnsBeforeWrite])
         case .insert:
-            guard let postImage = operation.postImage else { return [] }
-            return try factory.statements(
+            guard let postImage = operation.postImage else { return RestoreStatements(statements: []) }
+            return RestoreStatements(statements: try factory.statements(
                 for: [RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: postImage)],
                 deletedRowIDs: [.existing(0)]
-            )
+            ))
         }
     }
 
@@ -262,4 +296,44 @@ struct RewindPlanner {
 
 struct RewindRowKey: Hashable, Sendable {
     let values: [PluginCellValue]
+}
+
+/// A row a rewind read back, lined up with the columns its record was written against.
+struct RewindCurrentRow: Sendable, Equatable {
+    let values: [PluginCellValue]
+    /// The recorded columns the row has no field for, which only an engine that tells a missing
+    /// field from NULL reports.
+    var absentColumns: Set<Int> = []
+
+    /// A read's rows in the recorded column order.
+    ///
+    /// A SQL read projects the recorded columns, so its rows already line up. A document store
+    /// returns the fields its documents have, in its own order, and a field none of them has is
+    /// not a column at all, so with `matchingByName` each row is matched to the record by field
+    /// name, and a recorded field the read did not return is one the row does not have.
+    static func rows(
+        of result: QueryResult,
+        alignedTo columns: [String],
+        matchingByName: Bool
+    ) -> [RewindCurrentRow] {
+        guard matchingByName, result.columns != columns else {
+            return result.rows.enumerated().map { index, values in
+                RewindCurrentRow(values: values, absentColumns: result.absentCells[index] ?? [])
+            }
+        }
+        let sourceIndices = columns.map { result.columns.firstIndex(of: $0) }
+        return result.rows.enumerated().map { index, values in
+            let absentInResult = result.absentCells[index] ?? []
+            var absent: Set<Int> = []
+            let aligned = sourceIndices.enumerated().map { column, source -> PluginCellValue in
+                guard let source, source < values.count else {
+                    absent.insert(column)
+                    return .null
+                }
+                if absentInResult.contains(source) { absent.insert(column) }
+                return values[source]
+            }
+            return RewindCurrentRow(values: aligned, absentColumns: absent)
+        }
+    }
 }

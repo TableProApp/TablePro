@@ -13,7 +13,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("SQLEditorCoordinator Cleanup")
 struct SQLEditorCoordinatorCleanupTests {
     // MARK: - destroy() Safety
 

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Highlight rule set")
 struct HighlightRuleSetTests {
     private let columns = ["id", "status", "total"]
     private let types: [ColumnType] = [.integer(rawType: "INT"), .text(rawType: "VARCHAR"), .decimal(rawType: "DECIMAL")]
@@ -82,7 +81,6 @@ struct HighlightRuleSetTests {
     }
 }
 
-@Suite("Highlight rule descriptions and quick rules")
 @MainActor
 struct HighlightRuleDescriptionTests {
     @Test("A comparison reads as column, symbol and quoted value")
@@ -105,6 +103,19 @@ struct HighlightRuleDescriptionTests {
 
         #expect(title == "notes = “\(String(repeating: "x", count: 32))…”")
         #expect(HighlightRuleDescription.condition(of: rule).contains(value))
+    }
+
+    @Test("A menu title keeps a multi-line value on one line")
+    func menuTitlesDropLineBreaks() {
+        let short = HighlightRule(columnName: "notes", value: "first\nsecond")
+        let long = HighlightRule(columnName: "notes", value: "line one\r\nline two\u{2028}" + String(repeating: "x", count: 40))
+        let limit = HighlightRuleDescription.menuValueLimit
+
+        #expect(HighlightRuleDescription.condition(of: short, valueLimit: limit) == "notes = “first second”")
+        let longTitle = HighlightRuleDescription.condition(of: long, valueLimit: limit)
+        #expect(!longTitle.contains { $0.isNewline })
+        #expect(longTitle.hasSuffix("…”"))
+        #expect(HighlightRuleDescription.condition(of: short).contains("first\nsecond"))
     }
 
     @Test("The quick rule follows the clicked cell's raw value")

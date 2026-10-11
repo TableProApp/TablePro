@@ -39,7 +39,7 @@ struct DatabaseMetadata: Identifiable, Equatable {
             sizeBytes: nil,
             lastAccessed: nil,
             isSystemDatabase: isSystem,
-            icon: isSystem ? "gearshape.fill" : "cylinder.fill"
+            icon: isSystem ? "gearshape" : "cylinder"
         )
     }
 }

@@ -27,7 +27,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(200), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(reads.count, 200)
@@ -43,7 +43,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         _ = try await CompareMetadataService.read(
             tables: tables(50), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchColumns"), 0)
@@ -57,7 +57,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(3), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         let snapshot = try XCTUnwrap(reads.first?.snapshot)
@@ -73,7 +73,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(6), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(reads.count, 6)
@@ -91,7 +91,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         _ = try await CompareMetadataService.read(
             tables: tables(2), schema: "public", profile: .structure,
-            narrowed: true, databaseType: .postgresql, using: driver
+            narrowed: true, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchAllColumns"), 0)
@@ -105,7 +105,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         _ = try await CompareMetadataService.read(
             tables: tables(10), schema: "public", profile: .data,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchAllColumns"), 1)
@@ -119,7 +119,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         _ = try await CompareMetadataService.read(
             tables: tables(4), schema: "public", profile: .data,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchColumns"), 4)
@@ -138,11 +138,55 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(3), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchColumns"), 3)
         XCTAssertEqual(reads.compactMap(\.snapshot).count, 3)
+    }
+
+    /// An index read that failed is not an answer of "no indexes". Reading it as one made the sync
+    /// script offer `DROP INDEX` for every index the table really has, which is what a MySQL proxy
+    /// whose per-table statement is refused produces.
+    func testAThrownPerTableIndexReadFailsItsTable() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "t1"
+
+        let reads = try await CompareMetadataService.read(
+            tables: tables(3), schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
+        )
+
+        XCTAssertEqual(reads.filter { $0.failure != nil }.map(\.table.name), ["t1"])
+        XCTAssertEqual(reads.compactMap(\.snapshot).count, 2)
+    }
+
+    func testAThrownPerTableForeignKeyReadFailsItsTable() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingForeignKeyTable = "t2"
+
+        let reads = try await CompareMetadataService.read(
+            tables: tables(3), schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
+        )
+
+        XCTAssertEqual(reads.filter { $0.failure != nil }.map(\.table.name), ["t2"])
+    }
+
+    /// A view has neither indexes nor foreign keys, and engines disagree on whether asking answers
+    /// empty or refuses, so a refusal there says nothing about the object.
+    func testAViewWhoseIndexReadRefusesIsStillCompared() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "v0"
+
+        let reads = try await CompareMetadataService.read(
+            tables: [PluginTableInfo(name: "v0", type: "VIEW", schema: "public", comment: nil)],
+            schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
+        )
+
+        XCTAssertNil(reads.first?.failure)
+        XCTAssertEqual(reads.first?.indexes.count, 0)
     }
 
     func testAnUnreadableTableIsReportedWithoutLosingTheOthers() async throws {
@@ -151,7 +195,7 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(3), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(reads.count, 3)
@@ -166,11 +210,114 @@ final class CompareMetadataReadPlanTests: XCTestCase {
 
         let reads = try await CompareMetadataService.read(
             tables: tables(2), schema: "public", profile: .structure,
-            narrowed: false, databaseType: .postgresql, using: driver
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
         )
 
         XCTAssertEqual(driver.count(of: "fetchColumns"), 0, "the folded name matched, so nothing was re-read")
         XCTAssertEqual(reads.compactMap(\.snapshot).count, 2)
+    }
+
+    // MARK: - Materialized view indexes
+
+    private let materializedView = PluginTableInfo(
+        name: "mv", type: "MATERIALIZED VIEW", schema: "public", comment: nil
+    )
+    private let view = PluginTableInfo(name: "v0", type: "VIEW", schema: "public", comment: nil)
+    private let uniqueIndex = PluginIndexInfo(name: "mv_id_idx", columns: ["id"], isUnique: true)
+
+    private func indexNames(_ read: TableStructureRead?) -> [String]? {
+        guard case .read(let indexes)? = read?.objectIndexes else { return nil }
+        return indexes.map(\.name)
+    }
+
+    func testACarriedMaterializedViewReadsItsIndexes() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.objectIndexes = ["mv": [uniqueIndex]]
+
+        let reads = try await CompareMetadataService.read(
+            tables: [materializedView], schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [.materializedView], using: driver
+        )
+
+        XCTAssertEqual(indexNames(reads.first), ["mv_id_idx"])
+        XCTAssertEqual(driver.count(of: "fetchIndexes"), 1)
+    }
+
+    /// A failed read is not an answer of "no indexes": a script written from one would drop the
+    /// view and create it again without the unique index its concurrent refresh needs.
+    func testACarriedMaterializedViewWhoseIndexReadFailsKeepsTheFailure() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "mv"
+
+        let reads = try await CompareMetadataService.read(
+            tables: [materializedView], schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [.materializedView], using: driver
+        )
+
+        let read = try XCTUnwrap(reads.first)
+        guard case .failed(let reason)? = read.objectIndexes else {
+            return XCTFail("a refused index read must be reported, got \(String(describing: read.objectIndexes))")
+        }
+        XCTAssertFalse(reason.isEmpty)
+        XCTAssertNil(read.failure, "the failure belongs to the indexes, so the definition is still read")
+    }
+
+    func testAViewIsNotAskedForIndexesWhereItsKindTakesNone() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "v0"
+
+        let reads = try await CompareMetadataService.read(
+            tables: [view, materializedView], schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [.materializedView], using: driver
+        )
+
+        XCTAssertEqual(driver.count(of: "fetchIndexes"), 1, "only the materialized view is asked")
+        XCTAssertNil(reads.first { $0.table.name == "v0" }?.objectIndexes)
+        XCTAssertNil(reads.first { $0.table.name == "v0" }?.failure)
+    }
+
+    /// Redshift and Snowflake answer with sort, distribution or clustering keys, which no
+    /// `CREATE INDEX` can write back, so an engine whose matrix takes no index on the kind is not
+    /// asked at all.
+    func testAnEngineWhoseMaterializedViewsTakeNoIndexIsNeverAsked() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.objectIndexes = ["mv": [uniqueIndex]]
+
+        let reads = try await CompareMetadataService.read(
+            tables: [materializedView], schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [], using: driver
+        )
+
+        XCTAssertEqual(driver.count(of: "fetchIndexes"), 0)
+        XCTAssertNil(reads.first?.objectIndexes)
+        XCTAssertEqual(reads.first?.indexes.count, 0)
+    }
+
+    func testTheWholeSchemaIndexReadReachesACarriedMaterializedView() async throws {
+        let driver = CountingMetadataDriver(bulk: true)
+        driver.objectIndexes = ["mv": [uniqueIndex]]
+
+        let reads = try await CompareMetadataService.read(
+            tables: [materializedView], schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [.materializedView], using: driver
+        )
+
+        XCTAssertEqual(indexNames(reads.first), ["mv_id_idx"])
+        XCTAssertEqual(driver.count(of: "fetchIndexes"), 0)
+        XCTAssertEqual(driver.count(of: "fetchAllIndexes"), 1)
+    }
+
+    func testADataComparisonReadsNoMaterializedViewIndexes() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.objectIndexes = ["mv": [uniqueIndex]]
+
+        let reads = try await CompareMetadataService.read(
+            tables: [materializedView], schema: "public", profile: .data,
+            narrowed: false, databaseType: .postgresql, indexedKinds: [.materializedView], using: driver
+        )
+
+        XCTAssertEqual(driver.count(of: "fetchIndexes"), 0)
+        XCTAssertNil(reads.first?.objectIndexes)
     }
 }
 
@@ -181,7 +328,10 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
 
     var failsBulkColumns = false
     var failingTable: String?
+    var failingIndexTable: String?
+    var failingForeignKeyTable: String?
     var uppercasesBulkKeys = false
+    var objectIndexes: [String: [PluginIndexInfo]] = [:]
 
     init(bulk: Bool) {
         self.bulk = bulk
@@ -229,6 +379,7 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         record("fetchAllIndexes")
         return Dictionary(uniqueKeysWithValues: knownTables.map { (key($0), indexes(for: $0)) })
+            .merging(objectIndexes) { table, _ in table }
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
@@ -255,11 +406,13 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         record("fetchIndexes")
-        return indexes(for: table)
+        if table == failingIndexTable { throw CocoaError(.fileReadNoPermission) }
+        return objectIndexes[table] ?? indexes(for: table)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         record("fetchForeignKeys")
+        if table == failingForeignKeyTable { throw CocoaError(.fileReadNoPermission) }
         return []
     }
 

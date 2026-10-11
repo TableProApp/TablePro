@@ -10,6 +10,9 @@ import XCTest
 @testable import TablePro
 
 private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
+    var createTableStatements: [String]?
+    var modifyColumnSQL: String?
+
     func connect() async throws {}
 
     func disconnect() {}
@@ -44,6 +47,10 @@ private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
         "CREATE TABLE \(definition.tableName)"
     }
 
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+        createTableStatements ?? generateCreateTableSQL(definition: definition).map { [$0] }
+    }
+
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         "DROP \(objectType) \(name)"
     }
@@ -61,7 +68,7 @@ private final class StubSyncDriver: PluginDatabaseDriver, @unchecked Sendable {
         oldColumn: PluginColumnDefinition,
         newColumn: PluginColumnDefinition
     ) -> String? {
-        "ALTER TABLE \(table) MODIFY \(newColumn.name)"
+        modifyColumnSQL ?? "ALTER TABLE \(table) MODIFY \(newColumn.name)"
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
@@ -88,7 +95,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
     override func setUp() {
         super.setUp()
         driver = StubSyncDriver()
-        builder = SchemaSyncScriptBuilder(targetDriver: driver)
+        builder = SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .mysql)
     }
 
     override func tearDown() {
@@ -117,6 +124,34 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
             referencedTable: parent,
             referencedColumn: "id"
         )
+    }
+
+    // MARK: - Target engine
+
+    /// The classifier reads the target's fractional-seconds default, and only the builder knows
+    /// which engine it is writing for. Built with a fixed family, a MySQL `datetime(3)` dropped to
+    /// `datetime` lost its milliseconds with nothing said about it.
+    func testHazardsReadTheTargetEngineFamily() throws {
+        let change = SchemaChange.modifyColumn(
+            old: EditableColumnDefinition(
+                id: UUID(), name: "seen_at", dataType: "datetime(3)", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            ),
+            new: EditableColumnDefinition(
+                id: UUID(), name: "seen_at", dataType: "datetime", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            )
+        )
+        let operations: [SchemaSyncOperation] = [.alterTable(name: "visits", schema: nil, changes: [change])]
+
+        let mysql = try builder.build(operations: operations, foreignKeysByTable: [:])
+        let postgres = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .postgresql)
+            .build(operations: operations, foreignKeysByTable: [:])
+
+        XCTAssertTrue(mysql.first?.hazards.contains { $0.kind == .lossyTypeChange } == true)
+        XCTAssertFalse(postgres.first?.hazards.contains { $0.kind == .lossyTypeChange } == true)
     }
 
     // MARK: - Cross-table ordering
@@ -268,20 +303,59 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
         XCTAssertTrue(statements[0].hazards.isEmpty)
     }
 
-    func testEveryStatementIsTerminated() throws {
+    /// A statement is what the driver is sent, and the separator after it is the script's to write.
+    func testEveryStatementIsSentWithoutASeparator() throws {
         let statements = try builder.build(
             operations: [.createTable(snapshot("users")), .dropTable(name: "old", schema: nil)],
             foreignKeysByTable: [:]
         )
 
-        for statement in statements {
-            XCTAssertTrue(statement.sql.hasSuffix(";"), "\(statement.sql) is not terminated")
+        XCTAssertEqual(statements.map(\.sql), ["DROP TABLE old", "CREATE TABLE users"])
+        XCTAssertEqual(
+            SQLScriptText(databaseType: .mysql).script(statements.map(\.sql)),
+            "DROP TABLE old;\nCREATE TABLE users;"
+        )
+    }
+
+    /// Sent as one text, Oracle refuses a table and its index with ORA-03405 and creates neither.
+    func testATableAndItsIndexGoOutAsTheStatementsTheDriverWrote() throws {
+        driver.createTableStatements = ["CREATE TABLE \"T\" (\n  \"A\" NUMBER\n)", "CREATE INDEX \"I\" ON \"T\" (\"A\")"]
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle)
+            .build(operations: [.createTable(snapshot("T"))], foreignKeysByTable: [:])
+
+        XCTAssertEqual(statements.map(\.sql), driver.createTableStatements)
+        XCTAssertEqual(Set(statements.map(\.objectName)), ["T"])
+        XCTAssertEqual(Set(statements.map(\.summary)).count, 1)
+    }
+
+    /// Oracle's rename plus retype is two statements in one string, which the target refuses whole.
+    func testAnAlterTheDriverWritesAsTwoStatementsGoesOutAsTwo() throws {
+        driver.modifyColumnSQL = "ALTER TABLE \"T\" RENAME COLUMN \"A\" TO \"B\";\nALTER TABLE \"T\" MODIFY (\"B\" NUMBER)"
+        let column = { (name: String) in
+            EditableColumnDefinition(
+                id: UUID(), name: name, dataType: "NUMBER", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            )
         }
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle).build(
+            operations: [.alterTable(name: "T", schema: nil, changes: [.modifyColumn(old: column("A"), new: column("B"))])],
+            foreignKeysByTable: [:]
+        )
+
+        XCTAssertEqual(statements.map(\.sql), [
+            "ALTER TABLE \"T\" RENAME COLUMN \"A\" TO \"B\"",
+            "ALTER TABLE \"T\" MODIFY (\"B\" NUMBER)",
+        ])
     }
 }
 
 final class SyncSafetyClassifierTests: XCTestCase {
     private let classifier = SyncSafetyClassifier()
+
+    private func hazards(for change: SchemaChange, family: SQLTypeFamily = .mysql) -> [SyncHazard] {
+        classifier.hazards(for: change, typeFamily: family)
+    }
 
     private func column(_ name: String, _ dataType: String, nullable: Bool = true) -> EditableColumnDefinition {
         EditableColumnDefinition(
@@ -292,14 +366,14 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testDropColumnIsRefusedByDefault() {
-        let hazards = classifier.hazards(for: .deleteColumn(column("email", "varchar(255)")))
+        let hazards = hazards(for: .deleteColumn(column("email", "varchar(255)")))
 
         XCTAssertEqual(hazards.first?.severity, .refusedByDefault)
         XCTAssertEqual(hazards.first?.kind, .dataLoss)
     }
 
     func testNarrowingTypeChangeIsRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("name", "varchar(255)"),
             new: column("name", "varchar(50)")
         ))
@@ -308,7 +382,7 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testWideningTypeChangeIsNotRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("name", "varchar(50)"),
             new: column("name", "varchar(255)")
         ))
@@ -317,7 +391,7 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testMakingColumnNotNullIsRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("email", "varchar(50)", nullable: true),
             new: column("email", "varchar(50)", nullable: false)
         ))
@@ -326,11 +400,11 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testAddColumnCarriesNoHazard() {
-        XCTAssertTrue(classifier.hazards(for: .addColumn(column("nickname", "varchar(20)"))).isEmpty)
+        XCTAssertTrue(hazards(for: .addColumn(column("nickname", "varchar(20)"))).isEmpty)
     }
 
     func testPrimaryKeyChangeIsRefused() {
-        let hazards = classifier.hazards(for: .modifyPrimaryKey(old: ["id"], new: ["id", "tenant"]))
+        let hazards = hazards(for: .modifyPrimaryKey(old: ["id"], new: ["id", "tenant"]))
 
         XCTAssertEqual(hazards.first?.severity, .refusedByDefault)
     }

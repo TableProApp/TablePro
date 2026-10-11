@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Anthropic model capabilities")
 struct AnthropicModelCapabilitiesTests {
     init() {
         AIProviderRegistration.registerAll()

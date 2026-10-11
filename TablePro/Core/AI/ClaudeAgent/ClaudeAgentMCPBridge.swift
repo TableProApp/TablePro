@@ -38,7 +38,8 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             permissions: permissions,
             connectionAccess: connectionAccess,
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime),
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: []
         ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
@@ -93,7 +94,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             )
             return url.path
         } catch {
-            logger.error("Failed to write MCP config: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to write MCP config: \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }

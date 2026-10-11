@@ -39,7 +39,6 @@ private final class ScriptedKeychain: KeychainStoring, @unchecked Sendable {
     }
 }
 
-@Suite("Stored secret state")
 @MainActor
 struct StoredSecretStateTests {
     private func makeStorage(_ result: KeychainStringResult) -> ConnectionStorage {

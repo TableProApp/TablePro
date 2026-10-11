@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("String SHA256")
 struct StringSHA256Tests {
     @Test("Known hash for 'hello'")
     func testKnownHash() {

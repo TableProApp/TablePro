@@ -19,7 +19,9 @@ TABLEPRO_LIB_COMMON_SOURCED=1
 
 TABLEPRO_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$TABLEPRO_LIB_DIR/../.." && pwd)"
-LIBS_DIR="$REPO_ROOT/Libs"
+# Overridable so a rebuild can stage into a scratch directory and be verified before it
+# replaces the archives every worktree links against.
+LIBS_DIR="${LIBS_DIR:-$REPO_ROOT/Libs}"
 
 # OpenSSL is built from source on both platforms so it carries the right deployment target; a
 # Homebrew build targets whatever macOS that machine runs, which is what produced the

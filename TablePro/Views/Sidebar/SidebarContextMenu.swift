@@ -37,6 +37,7 @@ enum SidebarContextMenuLogic {
         case .foreignTable:     return String(localized: "Drop Foreign Table")
         case .systemTable:      return String(localized: "Drop")
         case .externalTable:    return String(localized: "Drop External Table")
+        case .sequence:         return String(localized: "Drop Sequence")
         case .table, .partitionedTable, .none: return String(localized: "Delete")
         }
     }

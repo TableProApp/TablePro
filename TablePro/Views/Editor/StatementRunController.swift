@@ -6,6 +6,7 @@
 import AppKit
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 /// Which way a statement navigation command moves the caret.
@@ -21,7 +22,7 @@ enum StatementNavigationDirection {
 /// actually runs, so a control cannot offer to run something different from what it is drawn beside.
 ///
 /// The two are refreshed differently because they cost differently. The band resolves one statement through
-/// ``SQLStatementScanner/locatedStatementAtCursor(in:cursorPosition:dialect:)``, which stops at the caret, so it is
+/// ``SQLStatementScanner/locatedStatementAtCursor(in:cursorPosition:grammar:)``, which stops at the caret, so it is
 /// the same call the execution path makes and it can run on every keystroke. The controls need every statement in the
 /// document, which is a full pass: measured at 31ms on a document at the size limit, well past a frame, so that one is
 /// debounced. Nothing is lost by the delay, since the controls only show while the pointer is over the gutter.
@@ -43,7 +44,7 @@ final class StatementRunController {
     static let synchronousRefreshLimit = 64_000
 
     var sizeLimit = StatementRunController.defaultSizeLimit
-    var dialect: SqlDialect = .generic
+    var grammar: SQLLexicalGrammar = .ansi
 
     /// How the document divides into statements. JavaScript engines do not end a statement at every
     /// semicolon, so the gutter controls and the caret band have to ask the same splitter execution does.
@@ -131,7 +132,7 @@ final class StatementRunController {
         }
 
         controller.runnableStatements = QueryStatementScanner
-            .navigableStatements(in: text, model: statementModel, dialect: dialect)
+            .navigableStatements(in: text, model: statementModel, grammar: grammar)
             .map { StatementRun(range: $0.contentRange) }
     }
 
@@ -158,10 +159,10 @@ final class StatementRunController {
         let text = textView.string
         guard (text as NSString).length <= sizeLimit else { return nil }
         guard forward else {
-            return QueryStatementScanner.statementStart(before: offset, in: text, model: statementModel, dialect: dialect)
+            return QueryStatementScanner.statementStart(before: offset, in: text, model: statementModel, grammar: grammar)
         }
         return QueryStatementScanner.statementSelectionEnd(
-            after: offset, in: text, model: statementModel, dialect: dialect
+            after: offset, in: text, model: statementModel, grammar: grammar
         )
     }
 
@@ -178,7 +179,7 @@ final class StatementRunController {
             in: text,
             cursorPosition: selection.range.location,
             model: statementModel,
-            dialect: dialect
+            grammar: grammar
         )
         guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
         return (
@@ -190,9 +191,9 @@ final class StatementRunController {
     private func statementStart(_ direction: StatementNavigationDirection, from offset: Int, in text: String) -> Int? {
         switch direction {
         case .previous:
-            return QueryStatementScanner.statementStart(before: offset, in: text, model: statementModel, dialect: dialect)
+            return QueryStatementScanner.statementStart(before: offset, in: text, model: statementModel, grammar: grammar)
         case .next:
-            return QueryStatementScanner.statementStart(after: offset, in: text, model: statementModel, dialect: dialect)
+            return QueryStatementScanner.statementStart(after: offset, in: text, model: statementModel, grammar: grammar)
         }
     }
 
@@ -232,7 +233,7 @@ final class StatementRunController {
             in: text,
             cursorPosition: statement.range.location,
             model: statementModel,
-            dialect: dialect
+            grammar: grammar
         )
         guard resolved.hasContent, resolved.contentRange == statement.range else {
             refreshControls(in: controller)
@@ -265,7 +266,7 @@ final class StatementRunController {
             in: text,
             cursorPosition: selection.range.location,
             model: statementModel,
-            dialect: dialect
+            grammar: grammar
         )
         guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
         return statement.contentRange

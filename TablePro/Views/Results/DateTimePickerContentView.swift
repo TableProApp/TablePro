@@ -220,11 +220,11 @@ private struct TimeFieldView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            field(for: .hour, range: 0...23)
+            field(for: .hour, named: String(localized: "Hour"), range: 0...23)
             separator
-            field(for: .minute, range: 0...59)
+            field(for: .minute, named: String(localized: "Minute"), range: 0...59)
             separator
-            field(for: .second, range: 0...59)
+            field(for: .second, named: String(localized: "Second", comment: "The seconds field of a time"), range: 0...59)
         }
     }
 
@@ -232,7 +232,10 @@ private struct TimeFieldView: View {
         Text(":").foregroundStyle(.secondary)
     }
 
-    private func field(for unit: Calendar.Component, range: ClosedRange<Int>) -> some View {
+    /// The field takes its name through `accessibilityLabel` because a `TextField` outside a `Form`
+    /// does not expose its title to VoiceOver, and at this width the title would only show as a
+    /// clipped placeholder.
+    private func field(for unit: Calendar.Component, named name: String, range: ClosedRange<Int>) -> some View {
         let binding = Binding(
             get: { calendar.component(unit, from: date) },
             set: { set(unit, to: min(range.upperBound, max(range.lowerBound, $0))) }
@@ -242,7 +245,8 @@ private struct TimeFieldView: View {
                 .frame(width: 26)
                 .multilineTextAlignment(.center)
                 .textFieldStyle(.roundedBorder)
-            Stepper("", value: binding, in: range)
+                .accessibilityLabel(name)
+            Stepper(name, value: binding, in: range)
                 .labelsHidden()
         }
     }

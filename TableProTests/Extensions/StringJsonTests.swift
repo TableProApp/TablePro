@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("String+JSON")
 struct StringJsonTests {
     @Test("Valid JSON object is pretty-printed preserving key order")
     func validJsonObject() throws {

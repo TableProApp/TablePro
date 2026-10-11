@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
-"""Credit every CHANGELOG entry of one version to the pull request and the person that added it.
+"""Credit every CHANGELOG entry of one version to the pull request that added it.
 
-GitHub's generated release notes end each line with `by @author in #123`. The CHANGELOG is what
-the release body is built from, so it carries the same credit, in the parens every entry already
-ends with: `(#123 by @author)`, or `(#1748, #2741 by @author)` when the entry names an issue.
+An outside contributor's entry ends `(#123 by @author)`, a maintainer's ends `(#123)`. An issue
+reference stays first: `(#1748, #2741 by @author)`. A maintainer is a pull request author whose role
+on the repository is admin or maintain.
 
-An entry cannot carry this when it is written: the pull request has no number until it is opened,
-and a contributor should not have to push a second commit to add one. So the release stamps it.
-The credit comes from the history, not from anyone's memory:
-
-1. `git blame` names the commit that wrote each entry line.
-2. A squash merge ends its subject with the pull request number, `(#123)`.
-3. `gh pr view` names that pull request's author, which is the person credited, never whoever
-   merged it.
-
-Blame reports the last commit to touch a line, so a maintainer who rewords a contributor's entry
-takes the credit for it. Reword in the contributor's own pull request, or restore the credit by
-hand. An entry whose commit carries no pull request number (a direct push) is left alone and
-listed, and so is a working-tree line that is not committed yet.
+The credit comes from the history: `git blame` names the commit that wrote each entry line, a squash
+merge ends its subject with `(#123)`, and `gh pr view` names that pull request's author. Blame
+reports the last commit to touch a line, so reword a contributor's entry in their own pull request.
+An entry whose commit has no pull request number, or that is not committed yet, is left alone and
+listed. When an author's role cannot be read, the entry keeps the handle and the login is listed.
 
 Usage:
     python3 scripts/ci/changelog_credits.py [--section Unreleased] [--dry-run]
 
-Run it from the repository root. It rewrites CHANGELOG.md in place and is idempotent: an entry
-that already ends in a credit is never touched again.
+Run it from the repository root. It rewrites CHANGELOG.md in place and is idempotent.
 """
 
 import argparse
@@ -38,6 +29,7 @@ REFERENCES = re.compile(r"\s*\((#\d+(?:,\s*#\d+)*)\)\s*$")
 CREDITED = re.compile(r"\(#\d+(?:,\s*#\d+)* by @[A-Za-z0-9][A-Za-z0-9-]*\)\s*$")
 PULL_REQUEST_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
 UNCOMMITTED = "0" * 40
+MAINTAINER_ROLES = {"admin", "maintain"}
 
 
 def is_entry(line):
@@ -53,8 +45,8 @@ def normalized_login(login):
     return login.split("/", 1)[1] if login.startswith("app/") else login
 
 
-def credit_entry(line, pull_request, author):
-    """`line` with `(#pull_request by @author)` folded into the reference parens it ends with."""
+def credit_entry(line, pull_request, author=None):
+    """`line` with the pull request folded into its reference parens, and `by @author` unless None."""
     if is_credited(line):
         return line
     body = line.rstrip()
@@ -65,7 +57,8 @@ def credit_entry(line, pull_request, author):
         body = body[:existing.start()]
     if f"#{pull_request}" not in references:
         references.append(f"#{pull_request}")
-    return f"{body} ({', '.join(references)} by @{normalized_login(author)})"
+    credit = "" if author is None else f" by @{normalized_login(author)}"
+    return f"{body} ({', '.join(references)}{credit})"
 
 
 def section_bounds(lines, section):
@@ -133,6 +126,33 @@ def author_of(pull_request, cache):
     return cache[pull_request]
 
 
+class Maintainers:
+    """Whether a login holds the admin or maintain role on the repository, asked once per login."""
+
+    def __init__(self, run=subprocess.run):
+        self._run = run
+        self._roles = {}
+        self.unknown = set()
+
+    def includes(self, login):
+        if login.startswith("app/"):
+            return False
+        if login not in self._roles:
+            self._roles[login] = self._role_of(login)
+        return self._roles[login] in MAINTAINER_ROLES
+
+    def _role_of(self, login):
+        result = self._run(
+            ["gh", "api", f"repos/{{owner}}/{{repo}}/collaborators/{login}/permission", "--jq", ".role_name"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            self.unknown.add(login)
+            return None
+        return result.stdout.strip()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--section", default="Unreleased", help="the version heading to credit")
@@ -154,6 +174,7 @@ def main(argv=None):
         sys.exit("ERROR: git blame did not return one record per line")
 
     authors = {}
+    maintainers = Maintainers()
     credited = 0
     skipped = []
     for offset, record in enumerate(blamed):
@@ -166,7 +187,9 @@ def main(argv=None):
             reason = "not committed yet" if record.sha == UNCOMMITTED else f"{record.sha[:9]} has no pull request number"
             skipped.append(f"line {index + 1}: {reason}: {line[:90]}")
             continue
-        lines[index] = credit_entry(line, pull_request, author_of(pull_request, authors))
+        author = author_of(pull_request, authors)
+        handle = None if maintainers.includes(author) else author
+        lines[index] = credit_entry(line, pull_request, handle)
         credited += 1
 
     if args.dry_run:
@@ -174,9 +197,14 @@ def main(argv=None):
     else:
         path.write_text("\n".join(lines), encoding="utf-8")
 
-    contributors = sorted({normalized_login(login) for login in authors.values()})
+    logins = set(authors.values())
+    inside = sorted(normalized_login(login) for login in logins if maintainers.includes(login))
+    outside = sorted(normalized_login(login) for login in logins if not maintainers.includes(login))
     print(f"Credited {credited} entries in [{args.section}] across {len(authors)} pull requests.")
-    print(f"Contributors: {', '.join('@' + login for login in contributors) or 'none'}")
+    print(f"Maintainers, credited by pull request only: {', '.join('@' + login for login in inside) or 'none'}")
+    print(f"Contributors: {', '.join('@' + login for login in outside) or 'none'}")
+    for login in sorted(maintainers.unknown):
+        print(f"Role unknown, credited by handle: @{login}")
     for line in skipped:
         print(f"Left uncredited, {line}")
     return 0

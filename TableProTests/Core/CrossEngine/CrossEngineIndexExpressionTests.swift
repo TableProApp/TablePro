@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Cross-engine index expressions and spellings")
 struct CrossEngineIndexExpressionTests {
     private static func column(_ name: String, _ type: String = "integer") -> EditableColumnDefinition {
         EditableColumnDefinition(

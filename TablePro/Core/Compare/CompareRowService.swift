@@ -17,6 +17,25 @@
 import Foundation
 import TableProPluginKit
 
+internal enum ConcurrentReadRefusal: Equatable, Sendable {
+    case sameScope
+    case sharedConnection(DatabaseType)
+
+    internal var comparisonMessage: String {
+        switch self {
+        case .sameScope:
+            return String(localized: "The source and the target are the same database.")
+        case .sharedConnection(let databaseType):
+            return String(
+                format: String(
+                    localized: "%@ cannot compare two of its own databases at once, because it reads both through one connection. Use a second connection for the target."
+                ),
+                databaseType.rawValue
+            )
+        }
+    }
+}
+
 @MainActor
 internal struct CompareRowService {
     private let manager: DatabaseManager
@@ -28,24 +47,17 @@ internal struct CompareRowService {
     internal func concurrentReadRefusal(
         source: DatabaseEndpoint,
         target: DatabaseEndpoint
-    ) -> String? {
+    ) -> ConcurrentReadRefusal? {
         guard source.connectionId == target.connectionId else { return nil }
         /// Two scopes that are the same scope reach one pooled entry, and that entry runs its work
         /// serially: the inner scope waits on a tail that only the outer scope can finish, so the
         /// comparison hangs with no error and the entry is wedged for everything else. The window's
         /// own button already refuses this pair, but a hang with nothing to report is worth
         /// refusing where the scopes are opened rather than only where they are chosen.
-        guard source.scope != target.scope else {
-            return String(localized: "The source and the target are the same database.")
-        }
+        guard source.scope != target.scope else { return .sameScope }
         let routes = [manager.metadataRoute(for: source.scope), manager.metadataRoute(for: target.scope)]
         guard routes.contains(where: { $0 != .pooled }) else { return nil }
-        return String(
-            format: String(
-                localized: "%@ cannot compare two of its own databases at once, because it reads both through one connection. Use a second connection for the target."
-            ),
-            source.databaseType.rawValue
-        )
+        return .sharedConnection(source.databaseType)
     }
 
     internal func compare(
@@ -123,7 +135,7 @@ internal struct CompareRowService {
         _ body: @escaping @Sendable (DataDiffEngine, RowSides) async throws -> T
     ) async throws -> T {
         if let refusal = concurrentReadRefusal(source: source, target: target) {
-            throw CompareSyncError.unsupportedOperation(refusal)
+            throw CompareSyncError.unsupportedOperation(refusal.comparisonMessage)
         }
         if let invalidFilter = plan.scope.filterValidationError {
             throw CompareSyncError.invalidFilter(invalidFilter)

@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Column Type")
 struct ColumnTypeTests {
     // MARK: - isEnumType / isSetType Properties
 

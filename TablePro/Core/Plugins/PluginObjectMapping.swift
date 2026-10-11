@@ -29,7 +29,8 @@ extension ColumnInfo {
             ddlSpelling: column.ddlSpelling,
             ddlDefault: column.ddlDefault,
             ddlGenerationExpression: column.ddlGenerationExpression,
-            ddlCollation: column.ddlCollation
+            ddlCollation: column.ddlCollation,
+            classificationTypeName: column.classificationTypeName
         )
     }
 }
@@ -47,7 +48,8 @@ extension IndexInfo {
             expressions: index.expressions,
             includedColumns: index.includedColumns,
             ddlMethodAndKeys: index.ddlMethodAndKeys,
-            ddlWhereClause: index.ddlWhereClause
+            ddlWhereClause: index.ddlWhereClause,
+            isValid: index.isValid ?? true
         )
     }
 }

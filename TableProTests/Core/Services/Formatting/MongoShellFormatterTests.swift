@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MongoShellFormatter")
 struct MongoShellFormatterTests {
     private func formatted(_ text: String) throws -> String {
         try MongoShellFormatter().format(text, cursorOffset: nil).text

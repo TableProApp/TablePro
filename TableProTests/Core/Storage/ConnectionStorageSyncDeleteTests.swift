@@ -10,7 +10,6 @@ import TableProSyncTransport
 
 @testable import TablePro
 
-@Suite("ConnectionStorage sync delete ordering")
 @MainActor
 struct ConnectionStorageSyncDeleteTests {
     private let storage: ConnectionStorage

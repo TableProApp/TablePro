@@ -10,7 +10,6 @@ import Testing
 import UniformTypeIdentifiers
 
 @MainActor
-@Suite("ClipboardService pasteboard")
 struct ClipboardServiceTests {
     private static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
     private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")

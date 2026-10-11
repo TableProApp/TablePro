@@ -47,6 +47,20 @@ enum RedisReply {
         return items
     }
 
+    /// An error element is marked the way `redis-cli` marks one, because `EXEC` answers with the
+    /// failures of the block inline among its values: an unmarked `WRONGTYPE Operation against a
+    /// key holding the wrong kind of value` in a result row reads as a stored string.
+    var displayText: String {
+        switch self {
+        case .string(let text), .status(let text): return text
+        case .error(let message): return "(error) \(message)"
+        case .integer(let value): return String(value)
+        case .data(let bytes): return String(data: bytes, encoding: .utf8) ?? bytes.base64EncodedString()
+        case .array(let items): return "[\(items.map(\.displayText).joined(separator: ", "))]"
+        case .null: return "(nil)"
+        }
+    }
+
     var isError: Bool {
         if case .error = self { return true }
         return false
@@ -55,6 +69,29 @@ enum RedisReply {
     var errorMessage: String? {
         guard case .error(let message) = self else { return nil }
         return message
+    }
+
+    /// A `+QUEUED` simple string, which is what Redis answers for every command it holds in an open
+    /// `MULTI` block instead of that command's own reply.
+    ///
+    /// The reply *shape* is the signal, not the text: measured over raw RESP on Redis 8.10.1, a
+    /// queued command answers `+QUEUED\r\n` while a `GET` of a key holding the word arrives as the
+    /// bulk string `$6\r\nQUEUED`. A command can also answer `+QUEUED` outside any block (`EVAL
+    /// "return redis.status_reply('QUEUED')" 0`, measured, byte for byte the same), which nothing
+    /// in the driver sends.
+    var isQueued: Bool {
+        guard case .status(let value) = self else { return false }
+        return value == "QUEUED"
+    }
+
+    /// A queued reply is the block's acknowledgement, never the command's answer, so every caller
+    /// that reads a value out of one reads the acknowledgement instead: `GET` returned "QUEUED" as
+    /// the stored value, `DEL` counted zero deletions, `LPUSH` reported length zero and `DBSIZE`
+    /// reported an empty keyspace.
+    @discardableResult
+    func throwIfQueued(_ command: @autoclosure () -> String) throws -> RedisReply {
+        guard isQueued else { return self }
+        throw RedisQueuedCommand(command: command())
     }
 
     /// hiredis hands a server error back as an ordinary reply with `ctx->err == 0`, so nothing
@@ -97,6 +134,24 @@ extension RedisPluginError: PluginDriverError {
     var pluginErrorMessage: String { message }
     var pluginErrorCode: Int? { code }
     var pluginErrorDetail: String? { detail }
+}
+
+/// A command the server queued instead of running, because a `MULTI` block is open on the session.
+struct RedisQueuedCommand: Error, Equatable {
+    let command: String
+}
+
+extension RedisQueuedCommand: PluginDriverError {
+    var pluginErrorMessage: String {
+        String(
+            format: String(localized: "Redis queued %@ instead of running it."),
+            command.isEmpty ? String(localized: "the command") : command
+        )
+    }
+
+    var pluginErrorDetail: String? {
+        String(localized: "A MULTI block is open on this connection. Run EXEC to apply it, or DISCARD to drop it.")
+    }
 }
 
 /// A connection-level failure that records which side of the exchange it happened on.

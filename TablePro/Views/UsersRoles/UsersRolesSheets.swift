@@ -206,7 +206,7 @@ struct DropPrincipalSheet: View {
             )
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("", selection: $reassigns) {
+                Picker(String(localized: "Owned objects"), selection: $reassigns) {
                     Text("Reassign owned objects").tag(true)
                     Text("Drop owned objects").tag(false)
                 }

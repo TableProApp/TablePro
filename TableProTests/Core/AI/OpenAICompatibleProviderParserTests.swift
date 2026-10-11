@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("OpenAICompatibleProvider stream parser")
 struct OpenAICompatibleProviderParserTests {
     @Test("delta.content yields textDelta")
     func textDelta() {

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Schema menu model")
 struct SchemaMenuModelTests {
     @Test("System schemas are separated from the ones a user works in")
     func splitsSystemSchemas() {
@@ -41,6 +40,30 @@ struct SchemaMenuModelTests {
 
         #expect(sections.isEmpty == false)
         #expect(sections.user.isEmpty)
+    }
+
+    @Test("The schema filter narrows the user schemas, and system schemas and the active one stay")
+    func schemaFilterNarrowsUserSchemas() {
+        let sections = SchemaMenuModel.sections(
+            all: ["public", "sales", "hr", "pg_catalog"],
+            system: ["pg_catalog"],
+            selected: ["hr"],
+            active: "public"
+        )
+
+        #expect(sections.user == ["public", "hr"])
+        #expect(sections.system == ["pg_catalog"])
+    }
+
+    @Test("A filter naming no user schema narrows nothing")
+    func filterOfSystemSchemasOnlyNarrowsNothing() {
+        let sections = SchemaMenuModel.sections(
+            all: ["public", "sales", "pg_catalog"],
+            system: ["pg_catalog"],
+            selected: ["pg_catalog", "dropped"]
+        )
+
+        #expect(sections.user == ["public", "sales"])
     }
 
     @Test("Matching is exact, so a schema merely containing a system name stays a user schema")

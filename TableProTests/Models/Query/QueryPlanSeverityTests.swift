@@ -10,7 +10,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Severity")
 struct QueryPlanSeverityTests {
     @Test("Each band maps to its severity")
     func classifiesBands() {

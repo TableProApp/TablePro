@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Fuzzy Dedupe")
 struct SQLCompletionProviderFuzzyDedupeTests {
     private func makeProvider() -> SQLCompletionProvider {
         SQLCompletionProvider(schemaProvider: SQLSchemaProvider())

@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SSH jump chain")
 struct SSHJumpChainTests {
     private static let env = ResolverEnvironment(
         runShell: { _ in true },

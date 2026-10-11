@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TabPersistenceCoordinator")
 @MainActor
 struct TabPersistenceCoordinatorTests {
     // MARK: - Helpers

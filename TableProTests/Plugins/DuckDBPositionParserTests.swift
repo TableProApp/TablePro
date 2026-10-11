@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB position parser")
 struct DuckDBPositionParserTests {
     @Test("A connection that has never run USE reports no catalog and the schema setting")
     func freshConnectionHasNoCatalog() {

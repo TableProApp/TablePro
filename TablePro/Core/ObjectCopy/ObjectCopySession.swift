@@ -95,18 +95,18 @@ internal final class ObjectCopySession: ObservableObject {
         mode: ObjectCopyMode,
         source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
-        preselected: [ObjectCopySelection]
+        preselection: ObjectCopyPreselection
     ) {
         self.mode = mode
         self.source = source
         self.sourceConnection = sourceConnection
-        self.pendingPreselection = preselected
+        self.preselection = preselection
         if mode == .duplicateDatabase {
             self.newDatabaseName = Self.suggestedCopyName(for: source.databaseLabel)
         }
     }
 
-    private let pendingPreselection: [ObjectCopySelection]
+    private let preselection: ObjectCopyPreselection
 
     // MARK: - Naming
 
@@ -327,16 +327,17 @@ internal final class ObjectCopySession: ObservableObject {
     /// when it matched nothing it selected the entire database. Followed by Replace, that acted on
     /// objects the user had not chosen.
     private func applyPreselection() {
-        guard !pendingPreselection.isEmpty else {
+        switch preselection {
+        case .wholeScope:
             selectedObjectIds = Set(availableObjects.map(\.id))
-            return
+        case .objects(let objects):
+            let wanted = Set(objects.map { Self.preselectionKey($0) })
+            selectedObjectIds = Set(
+                availableObjects
+                    .filter { wanted.contains(Self.preselectionKey($0)) }
+                    .map(\.id)
+            )
         }
-        let wanted = Set(pendingPreselection.map { Self.preselectionKey($0) })
-        selectedObjectIds = Set(
-            availableObjects
-                .filter { wanted.contains(Self.preselectionKey($0)) }
-                .map(\.id)
-        )
     }
 
     /// The sidebar knows the kind and the name; it does not know a routine's argument list. So the

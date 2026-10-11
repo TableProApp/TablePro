@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct MySQLFlavorMismatchError: Error, Equatable {
@@ -41,13 +42,21 @@ extension MySQLPluginDriver {
         }
     }
 
-    func resolveFlavor(on connection: MariaDBPluginConnection, variant: String?) async throws -> MySQLServerFlavor {
+    func resolveFlavor(
+        on connection: MariaDBPluginConnection,
+        variant: String?,
+        deadline: MySQLConnectDeadline
+    ) async throws -> MySQLServerFlavor {
         let banner = connection.serverVersion()
         let bannerFlavor = MySQLServerFlavor.fromBanner(banner)
 
         if variant == MySQLServerFlavor.databendVariant {
             if MySQLFlavorResolution.needsDatabendProbe(banner: banner, variant: variant) {
-                guard await probeSucceeds(MySQLFlavorResolution.databendProbe, on: connection) else {
+                guard try await probeSucceeds(
+                    MySQLFlavorResolution.databendProbe,
+                    on: connection,
+                    deadline: deadline
+                ) else {
                     throw MySQLFlavorMismatchError(kind: .notDatabend)
                 }
             }
@@ -59,7 +68,10 @@ extension MySQLPluginDriver {
         }
 
         if variant == MySQLServerFlavor.oceanbaseVariant {
-            let identity = try await connection.executeQuery(MySQLFlavorResolution.oceanbaseProbe).rows.first
+            let identity = try await connection.executeConnectQuery(
+                MySQLFlavorResolution.oceanbaseProbe,
+                deadline: deadline
+            ).rows.first
             guard let flavor = MySQLFlavorResolution.oceanbaseFlavor(
                 versionComment: identity?[safe: 0]?.asText,
                 serverVersion: identity?[safe: 1]?.asText
@@ -72,40 +84,69 @@ extension MySQLPluginDriver {
         guard MySQLFlavorResolution.needsTiDBVersionProbe(banner: banner, variant: variant) else {
             return bannerFlavor
         }
-        guard let info = await firstValue(of: MySQLFlavorResolution.tidbVersionProbe, on: connection),
+        guard let info = try await firstValue(
+            of: MySQLFlavorResolution.tidbVersionProbe,
+            on: connection,
+            deadline: deadline
+        ),
               let version = MySQLServerFlavor.tidbVersion(fromReleaseInfo: info) else {
             return bannerFlavor
         }
         return .tidb(version: version)
     }
 
-    func killTarget(for flavor: MySQLServerFlavor, on connection: MariaDBPluginConnection) async -> MySQLKillTarget {
-        guard flavor.isTiDB || flavor.isDatabend else { return .threadId }
-        let identifier = await firstValue(of: MySQLFlavorResolution.connectionIdentifierProbe, on: connection)
-        return flavor.killTarget(connectionIdentifier: identifier)
+    func killTarget(
+        for flavor: MySQLServerFlavor,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> MySQLKillTarget {
+        let banner = connection.serverVersion()
+        guard flavor.isTiDB || flavor.isDatabend else {
+            return flavor.killTarget(connectionIdentifier: nil, banner: banner)
+        }
+        let identifier = try await firstValue(
+            of: MySQLFlavorResolution.connectionIdentifierProbe,
+            on: connection,
+            deadline: deadline
+        )
+        return flavor.killTarget(connectionIdentifier: identifier, banner: banner)
     }
 
-    func tidbCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+    /// The read for a server that enforces check constraints without cataloguing them: TiDB from
+    /// 7.2, and MariaDB 10.2.1 to 10.2.21 and 10.3.0 to 10.3.9.
+    func createTableCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
         let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [] }
-        return TiDBCheckConstraints.parse(createTable: createTable)
+        return MySQLCheckConstraints.parse(createTable: createTable)
     }
 
-    private func probeSucceeds(_ statement: String, on connection: MariaDBPluginConnection) async -> Bool {
+    private func probeSucceeds(
+        _ statement: String,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> Bool {
         do {
-            _ = try await connection.executeQuery(statement)
+            _ = try await connection.executeConnectQuery(statement, deadline: deadline)
             return true
+        } catch let error as MariaDBPluginError where error.isConnectionTimeout {
+            throw error
         } catch {
             return false
         }
     }
 
-    private func firstValue(of statement: String, on connection: MariaDBPluginConnection) async -> String? {
+    private func firstValue(
+        of statement: String,
+        on connection: MariaDBPluginConnection,
+        deadline: MySQLConnectDeadline
+    ) async throws -> String? {
         do {
-            let result = try await connection.executeQuery(statement)
+            let result = try await connection.executeConnectQuery(statement, deadline: deadline)
             return result.rows.first?.first?.asText
+        } catch let error as MariaDBPluginError where error.isConnectionTimeout {
+            throw error
         } catch {
-            Self.logger.debug("Flavor probe failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.debug("Flavor probe failed: \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }

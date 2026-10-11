@@ -14,6 +14,7 @@ enum TableTransferError: LocalizedError {
     case sameConnectionAndContainer
     case targetMissing(table: String)
     case noMatchingColumns(table: String)
+    case contestedDestination(table: String, columns: [String])
     case transferFailed(String)
 
     var errorDescription: String? {
@@ -30,6 +31,11 @@ enum TableTransferError: LocalizedError {
             return String(
                 format: String(localized: "No column of %@ matches a column on the destination table."),
                 table)
+        case .contestedDestination(let table, let columns):
+            return String(
+                format: String(localized: "%1$@: more than one source column is mapped to %2$@."),
+                table,
+                columns.joined(separator: ", "))
         case .transferFailed(let message):
             return String(format: String(localized: "Transfer failed: %@"), message)
         }
@@ -137,6 +143,7 @@ final class TableTransferService: ObservableObject {
     ) async throws {
         let rowObjects = request.objects.filter { $0.kind.carriesRows }
         guard !rowObjects.isEmpty else { throw TableTransferError.noTablesSelected }
+        try Self.refuseContestedMappings(request.columnMapping, for: rowObjects)
 
         /// The flag is cleared on the way out, never on the way in. A Stop pressed while the sheet
         /// was still reading both sides' columns arrives before this line, and clearing it here
@@ -161,11 +168,28 @@ final class TableTransferService: ObservableObject {
                 databaseType: request.destinationType,
                 targetTable: object.name,
                 columnMapping: mapping,
+                sourceFields: Set(request.sourceColumns[object.name] ?? []),
                 isCancelled: { [flag = cancellationFlag] in flag.isCancelled }
             )
             try await transferOne(object: object, from: source, into: sink, request: request)
         }
         state.warnings.append(contentsOf: source.cappedTableWarnings)
+    }
+
+    /// Checked for every table before the first is written: the INSERT would name the contested
+    /// column twice, and the server refuses it only after "Delete existing rows first" has already
+    /// emptied the table, permanently when the table is not wrapped in a transaction.
+    nonisolated static func refuseContestedMappings(
+        _ mappings: [String: [String: String]],
+        for objects: [ExportObjectItem]
+    ) throws {
+        for object in objects {
+            guard let mapping = mappings[object.name] else { continue }
+            let contested = TableColumnMatcher.contestedDestinations(in: mapping)
+            guard contested.isEmpty else {
+                throw TableTransferError.contestedDestination(table: object.name, columns: contested)
+            }
+        }
     }
 
     /// The sink writes by column name and skips any field the mapping does not name, so an empty

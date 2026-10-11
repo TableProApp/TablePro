@@ -10,7 +10,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Diagram scroll view")
 @MainActor
 struct DiagramScrollViewTests {
     private struct Fixture {

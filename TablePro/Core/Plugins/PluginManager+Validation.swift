@@ -60,7 +60,7 @@ extension PluginManager {
         for url in urls {
             guard let failure = await Self.signatureFailure(at: url) else { continue }
             Self.logger.error(
-                "Plugin '\(url.lastPathComponent, privacy: .public)' failed code-sign check: \(failure.localizedDescription, privacy: .public)"
+                "Plugin '\(url.lastPathComponent, privacy: .private(mask: .hash))' failed code-sign check: \(failure.publicLogShape, privacy: .public)"
             )
             withdrawPlugin(at: url, reason: failure)
         }

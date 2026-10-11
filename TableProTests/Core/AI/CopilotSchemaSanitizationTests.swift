@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Copilot schema sanitization")
 struct CopilotSchemaSanitizationTests {
     @Test("Converts type:[X,null] to type:X and drops the field from required")
     func rewritesOptionalScalar() {

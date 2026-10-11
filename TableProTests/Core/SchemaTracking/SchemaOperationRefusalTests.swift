@@ -35,6 +35,9 @@ private final class RefusingDDLDriver: PluginDatabaseDriver, @unchecked Sendable
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { refuse(operation) }
 
+    var checkRefusal: String?
+    var checkConstraintRefusal: String? { checkRefusal }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         "CREATE TABLE \(definition.tableName) (...)"
     }
@@ -43,6 +46,9 @@ private final class RefusingDDLDriver: PluginDatabaseDriver, @unchecked Sendable
     }
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         "CREATE INDEX \(index.name) ON \(table)"
+    }
+    func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
+        "ALTER TABLE \(table) REPLACE INDEX \(oldIndexName) ON (\(newIndex.columns.joined(separator: ", ")))"
     }
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
         "ALTER TABLE \(table) ADD CONSTRAINT \(constraint.name) CHECK (\(constraint.expression))"
@@ -58,7 +64,7 @@ private enum RefusalReason {
     static let rename = "Renaming a check constraint needs PostgreSQL 9.2 or later."
 }
 
-@MainActor @Suite("Schema operation refusal")
+@MainActor
 struct SchemaOperationRefusalTests {
     private static let generatedReason = RefusalReason.generated
     private static let brinReason = RefusalReason.brin
@@ -141,6 +147,160 @@ struct SchemaOperationRefusalTests {
         #expect(refusal(of: .addIndex(index("ix_btree", type: .btree)), driver: driver) == nil)
     }
 
+    @Test("An index edited in place and a dropped index reach the driver as their own operations")
+    func modifyAndDropIndexReachTheDriver() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyIndex(let old, let new): return "modify \(old.name) to \(new.name)"
+            case .dropIndex(let index) where index.name == "ix_old": return "drop \(index.name)"
+            default: return nil
+            }
+        }
+        let modify = SchemaChange.modifyIndex(old: index("ix", type: .btree), new: index("ix", type: .hash))
+
+        #expect(refusal(of: modify, driver: driver) == "modify ix to ix")
+        #expect(refusal(of: .deleteIndex(index("ix_old", type: .btree)), driver: driver) == "drop ix_old")
+    }
+
+    /// A replacement is a drop and an add, so an index the driver will not drop is refused for that,
+    /// ahead of the advice about replacing it. DynamoDB answered a local index's replacement with
+    /// "delete it and save", and the delete was then refused for a different reason.
+    @Test("Replacing an index asks first whether the old one can be dropped")
+    func replacementAsksTheDropFirst() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .dropIndex(let index): return "drop \(index.name)"
+            case .modifyIndex: return "replace"
+            default: return nil
+            }
+        }
+        let modify = SchemaChange.modifyIndex(old: index("ix", type: .btree), new: index("ix", type: .hash))
+
+        #expect(refusal(of: modify, driver: driver) == "drop ix")
+    }
+
+    @Test("An index deleted and added back under its name asks the driver about one replacement")
+    func sameNameDropAndAddAskForAReplacement() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            guard case .modifyIndex(let old, _) = operation else { return nil }
+            return "replace \(old.name)"
+        }
+        var replacement = index("ix", type: .btree)
+        replacement.columns = ["total"]
+
+        #expect(refusalOfBatch([.deleteIndex(index("ix", type: .btree)), .addIndex(replacement)], driver: driver) == "replace ix")
+    }
+
+    @Test("What the driver is asked about and the statements it writes describe the same replacement")
+    func refusalAndStatementsAgreeOnTheReplacement() throws {
+        let driver = RefusingDDLDriver()
+        var asked: [String] = []
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyIndex(let old, let new): asked.append("modify \(old.name) \(old.columns) to \(new.columns)")
+            case .addIndex(let index): asked.append("add \(index.name)")
+            case .dropIndex(let index): asked.append("drop \(index.name)")
+            default: break
+            }
+            return nil
+        }
+        var replacement = index("ix", type: .btree)
+        replacement.columns = ["total"]
+
+        let statements = try SchemaStatementGenerator(tableName: "orders", pluginDriver: driver)
+            .generate(changes: [.addIndex(replacement), .deleteIndex(index("ix", type: .btree))])
+
+        #expect(asked == ["drop ix", "modify ix [\"qty\"] to [\"total\"]", "add ix"])
+        #expect(statements.map(\.sql) == ["ALTER TABLE orders REPLACE INDEX ix ON (total);"])
+    }
+
+    @Test("Indexes deleted and added under different names are not asked about as a replacement")
+    func differentNamesAreNotAReplacement() {
+        let driver = RefusingDDLDriver()
+        var askedAboutReplacement = false
+        driver.refuse = { operation in
+            if case .modifyIndex = operation { askedAboutReplacement = true }
+            return nil
+        }
+
+        _ = refusalOfBatch([.deleteIndex(index("ix_a", type: .btree)), .addIndex(index("ix_b", type: .btree))], driver: driver)
+        #expect(!askedAboutReplacement)
+    }
+
+    /// Measured on MariaDB 13.0.2: with a column change in the same save the replacement splits,
+    /// `DROP INDEX PRIMARY` commits, `ADD UNIQUE INDEX PRIMARY` fails with ERROR 1280, and the table
+    /// is left with no key. The one-statement form fails the same way and keeps the key.
+    @Test("A copy of MySQL's PRIMARY row put in place of the original is refused before anything runs")
+    func mysqlPrimaryReplacementIsRefused() throws {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            guard case .addIndex(let index) = operation else { return nil }
+            return mysqlReservedIndexNameRefusal(for: index)
+        }
+        var primary = index("PRIMARY", type: .btree)
+        primary.isPrimary = true
+        var copy = primary.withNewIdentity()
+        copy.isPrimary = false
+        let reason = try #require(mysqlReservedIndexNameRefusal(for: copy.toPlugin()))
+
+        #expect(refusalOfBatch([.addIndex(copy), .deleteIndex(primary)], driver: driver) == reason)
+        #expect(refusalOfBatch(
+            [.addIndex(copy), .deleteIndex(primary), .addColumn(column("qty", generated: false))], driver: driver
+        ) == reason)
+    }
+
+    @Test("A changed and a removed column reach the driver as their own operations")
+    func modifyAndDropColumnReachTheDriver() {
+        let driver = RefusingDDLDriver()
+        driver.refuse = { operation in
+            switch operation {
+            case .modifyColumn(let old, let new): return "rename \(old.name) to \(new.name)"
+            case .dropColumn(let column): return "drop \(column.name)"
+            default: return nil
+            }
+        }
+        let rename = SchemaChange.modifyColumn(old: column("qty", generated: false), new: column("quantity", generated: false))
+
+        #expect(refusal(of: rename, driver: driver) == "rename qty to quantity")
+        #expect(refusal(of: .deleteColumn(column("total", generated: false)), driver: driver) == "drop total")
+    }
+
+    @Test("A save's operations reach the driver in the order its statements run")
+    func operationsFollowStatementOrder() {
+        let generator = SchemaStatementGenerator(tableName: "orders", pluginDriver: RefusingDDLDriver())
+        let operations = generator.orderedOperations(for: [
+            .addIndex(index("ix_new", type: .btree)),
+            .modifyColumn(old: column("a", generated: false), new: column("b", generated: false)),
+            .addColumn(column("c", generated: false)),
+            .deleteColumn(column("d", generated: false)),
+            .deleteIndex(index("ix_old", type: .btree))
+        ])
+        let names: [String] = operations.map { operation in
+            switch operation {
+            case .dropIndex(let index): return "dropIndex \(index.name)"
+            case .dropColumn(let column): return "dropColumn \(column.name)"
+            case .modifyColumn(let old, let new): return "modifyColumn \(old.name) \(new.name)"
+            case .addColumn(let column): return "addColumn \(column.name)"
+            case .addIndex(let index): return "addIndex \(index.name)"
+            default: return "other"
+            }
+        }
+        #expect(names == ["dropIndex ix_old", "dropColumn d", "modifyColumn a b", "addColumn c", "addIndex ix_new"])
+    }
+
+    @Test("Only a renamed check constraint is an operation, and key changes are none")
+    func constraintAndKeyChangesAreNotOperations() {
+        let renamed = SchemaChange.modifyCheckConstraint(old: constraint("ck_a", "qty > 0"), new: constraint("ck_b", "qty > 0"))
+        let rewritten = SchemaChange.modifyCheckConstraint(old: constraint("ck_a", "qty > 0"), new: constraint("ck_a", "qty > 1"))
+        #expect(SchemaOperationRefusal.operations(for: renamed).count == 1)
+        #expect(SchemaOperationRefusal.operations(for: rewritten).isEmpty)
+        #expect(SchemaOperationRefusal.operations(for: .addCheckConstraint(constraint("ck", "qty > 0"))).isEmpty)
+        #expect(SchemaOperationRefusal.operations(for: .modifyPrimaryKey(old: ["a"], new: ["b"])).isEmpty)
+    }
+
     @Test("A refusal is reported ahead of a change in the same save that the driver cannot generate")
     func refusalWinsOverUngeneratableChange() {
         let unsupportedDrop = SchemaChange.deleteIndex(index("ix_old", type: .btree))
@@ -184,7 +344,7 @@ struct SchemaOperationRefusalTests {
             indexes: [],
             issues: []
         )
-        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver())
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements.isEmpty)
         #expect(composed.issues.map(\.message) == [Self.generatedReason])
         #expect(composed.issues.first?.tab == .columns)
@@ -201,7 +361,7 @@ struct SchemaOperationRefusalTests {
             indexes: [index("ix_btree", type: .btree).toPlugin(), index("ix_brin", type: .brin).toPlugin()],
             issues: []
         )
-        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver())
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: legacyDriver(), schema: nil)
         #expect(composed.statements == ["CREATE TABLE orders (...)", "CREATE INDEX ix_btree ON orders"])
         #expect(composed.issues.count == 1)
         #expect(composed.issues.first?.tab == .indexes)
@@ -212,7 +372,7 @@ struct SchemaOperationRefusalTests {
     @Test("Schema sync refuses to create a table the target cannot hold, naming table and reason")
     func schemaSyncRefusesCreateTable() {
         let snapshot = TableStructureSnapshot(name: "orders", columns: [column("total", generated: true)])
-        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver())
+        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql)
         do {
             _ = try builder.build(operations: [.createTable(snapshot)], foreignKeysByTable: [:])
             Issue.record("expected a refusal")
@@ -224,7 +384,7 @@ struct SchemaOperationRefusalTests {
 
     @Test("Schema sync refuses to add a column the target cannot hold")
     func schemaSyncRefusesAlterTable() {
-        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver())
+        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql)
         do {
             _ = try builder.build(
                 operations: [.alterTable(name: "orders", schema: nil, changes: [.addColumn(column("total", generated: true))])],
@@ -234,5 +394,32 @@ struct SchemaOperationRefusalTests {
         } catch {
             #expect(error.localizedDescription == Self.generatedReason)
         }
+    }
+
+    /// The server in front of the user, not the engine: MySQL before 8.0.16 answers `Query OK` to
+    /// an `ADD CONSTRAINT ... CHECK` and throws the clause away.
+    @Test("A server with no check constraints refuses every check change at save time")
+    func serverWithoutChecksRefusesCheckChanges() {
+        let driver = legacyDriver()
+        driver.checkRefusal = "Check constraints need MySQL 8.0.16 or later."
+        let added = constraint("c", "x > 0")
+        #expect(refusal(of: .addCheckConstraint(added), driver: driver) == driver.checkRefusal)
+        #expect(refusal(of: .deleteCheckConstraint(added), driver: driver) == driver.checkRefusal)
+        let renamed = constraint("d", "x > 0")
+        #expect(refusal(of: .modifyCheckConstraint(old: added, new: renamed), driver: driver) == driver.checkRefusal)
+        let rewritten = constraint("c", "x > 1")
+        #expect(refusal(of: .modifyCheckConstraint(old: added, new: rewritten), driver: driver) == driver.checkRefusal)
+        #expect(refusal(of: .addColumn(column("qty", generated: false)), driver: driver) == nil)
+    }
+
+    @Test("A server that keeps check constraints refuses none of them")
+    func serverWithChecksRefusesNothing() {
+        let driver = legacyDriver()
+        let added = constraint("c", "x > 0")
+        #expect(refusal(of: .addCheckConstraint(added), driver: driver) == nil)
+        #expect(refusal(of: .deleteCheckConstraint(added), driver: driver) == nil)
+        #expect(refusal(
+            of: .modifyCheckConstraint(old: added, new: constraint("c", "x > 1")), driver: driver
+        ) == nil)
     }
 }

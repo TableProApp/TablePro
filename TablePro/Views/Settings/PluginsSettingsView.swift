@@ -11,7 +11,7 @@ struct PluginsSettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $selectedTab) {
+            Picker("Plugins", selection: $selectedTab) {
                 Text("Installed").tag(PluginsSubTab.installed)
                 Text("Browse").tag(PluginsSubTab.browse)
             }

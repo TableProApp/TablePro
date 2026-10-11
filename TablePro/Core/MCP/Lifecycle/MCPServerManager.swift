@@ -268,7 +268,8 @@ internal final class MCPServerManager: ObservableObject {
                 permissions: MCPTokenStore.bridgeTokenPermissions,
                 connectionAccess: .all,
                 expiresAt: expiresAt,
-                isBridgeCredential: true
+                isBridgeCredential: true,
+                extraScopes: []
             )
             return BridgeCredential(
                 tokenId: generated.token.id,
@@ -276,7 +277,7 @@ internal final class MCPServerManager: ObservableObject {
                 expiresAt: expiresAt
             )
         } catch {
-            Self.logger.error("Bridge credential minting failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Bridge credential minting failed: \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }

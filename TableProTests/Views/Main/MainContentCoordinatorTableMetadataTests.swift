@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator table metadata cache")
 @MainActor
 struct MainContentCoordinatorTableMetadataTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
@@ -119,6 +118,31 @@ struct MainContentCoordinatorTableMetadataTests {
         #expect(coordinator.tableMetadata?.rowCount == 42)
     }
 
+    @Test("Table Info reads nothing while the inspector is off screen")
+    func offScreenInspectorReadsNothing() async {
+        let session = LiveSession()
+        defer { session.tearDown() }
+        let orders = addTableTab(to: session.tabManager, tableName: "orders")
+
+        await session.coordinator.loadTableMetadata(tableName: "orders", for: orders)
+
+        #expect(session.driver.fetchTableMetadataCalls.isEmpty)
+        #expect(session.coordinator.tableMetadata == nil)
+    }
+
+    @Test("Table Info reads the selected table once the inspector is on screen")
+    func onScreenInspectorReadsTheSelectedTable() async {
+        let session = LiveSession()
+        defer { session.tearDown() }
+        let orders = addTableTab(to: session.tabManager, tableName: "orders")
+        session.paneState.inspector.setOnScreen(true)
+
+        await session.coordinator.loadTableMetadata(tableName: "orders", for: orders)
+
+        #expect(session.driver.fetchTableMetadataCalls == ["orders"])
+        #expect(session.coordinator.tableMetadata?.tableName == "orders")
+    }
+
     @Test("Closed tabs take their cached numbers with them")
     func closingATabPrunesTheEntry() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -138,5 +162,36 @@ struct MainContentCoordinatorTableMetadataTests {
         coordinator.cleanupTabCaches(openTabIds: [customers.id])
         #expect(coordinator.tableMetadataCache[orders.id] == nil)
         #expect(coordinator.tableMetadataCache[customers.id] != nil)
+    }
+}
+
+/// PGlite cannot open a pooled connection, so the metadata read lands on the injected driver. The
+/// coordinator holds its pane state weakly, so the session keeps it.
+@MainActor
+private struct LiveSession {
+    let connection: DatabaseConnection
+    let driver: MockDatabaseDriver
+    let tabManager = QueryTabManager()
+    let coordinator: MainContentCoordinator
+    let paneState = TrailingPaneState()
+
+    init() {
+        connection = TestFixtures.makeConnection(type: .pglite)
+        driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        coordinator.trailingPaneState = paneState
+    }
+
+    func tearDown() {
+        coordinator.teardown()
+        DatabaseManager.shared.removeSession(for: connection.id)
     }
 }

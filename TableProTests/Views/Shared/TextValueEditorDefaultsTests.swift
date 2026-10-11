@@ -8,7 +8,6 @@ import AppKit
 import Testing
 
 @MainActor
-@Suite("TextValueEditor defaults")
 struct TextValueEditorDefaultsTests {
     @Test("every automatic substitution is off, so a typed value reaches the database unchanged")
     func substitutionsAreDisabled() {

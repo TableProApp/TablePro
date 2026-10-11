@@ -78,7 +78,7 @@ struct SpatialColumn: Identifiable, Equatable, Sendable {
         switch type {
         case .spatial:
             let sample = sampleGeometry(at: index, in: tableRows)
-            return sample.readable > 0 || sample.unreadable == 0
+            return sample.readable > 0 || sample.undrawableTypes > 0 || sample.unreadable == 0
         case .json:
             return sampleGeometry(at: index, in: tableRows).readable > 0
         default:
@@ -86,46 +86,52 @@ struct SpatialColumn: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// A value that reads as an empty geometry counts as neither: `POINT EMPTY` is a legitimate
-    /// value that says nothing about whether the column can be drawn.
+    /// A value that reads as an empty geometry counts as none of the three: `POINT EMPTY` is a
+    /// legitimate value that says nothing about whether the column can be drawn.
+    ///
+    /// A type the map cannot draw is the reader recognizing geometry, so it is counted apart from
+    /// text no reader knows: a column of curves keeps the segment and the pane names the type.
     private static func sampleGeometry(
         at index: Int,
         in tableRows: TableRows
-    ) -> (readable: Int, unreadable: Int) {
+    ) -> (readable: Int, undrawableTypes: Int, unreadable: Int) {
         var readable = 0
+        var undrawableTypes = 0
         var unreadable = 0
         var sampled = 0
         for row in tableRows.rows {
-            guard index < row.values.count, let text = row[index].spatialText else { continue }
+            guard index < row.values.count, let reading = row[index].spatialReading else { continue }
             sampled += 1
-            switch SpatialValueReader.read(text) {
+            switch reading {
             case .success(let value):
                 if value.geometry.isEmpty { break }
                 readable += 1
-                return (readable, unreadable)
+                return (readable, undrawableTypes, unreadable)
+            case .failure(.unsupportedGeometryType):
+                undrawableTypes += 1
             case .failure:
                 unreadable += 1
             }
             guard sampled < sampleSize else { break }
         }
-        return (readable, unreadable)
+        return (readable, undrawableTypes, unreadable)
     }
 }
 
 extension PluginCellValue {
-    /// The text a geometry reader is given for this cell.
+    /// What the geometry readers make of this cell. Nil for NULL and for an empty value, which say
+    /// nothing about the column.
     ///
-    /// A driver hands geometry over as text on every engine the reader supports, so `.bytes` is
-    /// read through `sortKey`, which is the hex spelling the grid shows: that is what a PostGIS
-    /// column whose `ST_AsEWKT` rewrite failed arrives as.
-    var spatialText: String? {
+    /// Bytes are WKB or not geometry, and never go through the text readers: the hex spelling of a
+    /// blob under five bytes is a valid geohash and would draw as a point.
+    var spatialReading: Result<SpatialValue, SpatialReadFailure>? {
         switch self {
         case .null:
             return nil
         case .text(let text):
-            return text.isEmpty ? nil : text
+            return text.isEmpty ? nil : SpatialValueReader.read(text)
         case .bytes(let data):
-            return data.isEmpty ? nil : sortKey
+            return data.isEmpty ? nil : WKBGeometryReader.read(bytes: [UInt8](data))
         }
     }
 }

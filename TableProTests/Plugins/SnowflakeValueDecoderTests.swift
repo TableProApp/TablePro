@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake Value Decoder")
 struct SnowflakeValueDecoderTests {
     private func column(_ type: String, scale: Int? = nil) -> SnowflakeColumnMeta {
         SnowflakeColumnMeta(

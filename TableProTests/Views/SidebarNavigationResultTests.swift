@@ -17,7 +17,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SidebarNavigationResult")
 struct SidebarNavigationResultTests {
     // MARK: - .skip (programmatic sync, no navigation)
 

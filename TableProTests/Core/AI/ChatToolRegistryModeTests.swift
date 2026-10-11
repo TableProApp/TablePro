@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ChatToolRegistry mode gating")
 @MainActor
 struct ChatToolRegistryModeTests {
     private struct StubTool: ChatTool {

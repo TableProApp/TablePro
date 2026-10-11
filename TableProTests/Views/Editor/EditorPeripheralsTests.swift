@@ -11,7 +11,6 @@ import Testing
 /// A gutter can be shown without line numbers so it can host the fold rail alone, and that is what left a 30pt
 /// column holding a 14pt control, blank whenever the document had nothing to fold. Every editor in the app builds
 /// its peripherals here so the two can never be set apart again.
-@Suite("Editor peripherals")
 struct EditorPeripheralsTests {
 
     @Test("A gutter is shown exactly when line numbers are", arguments: [true, false])

@@ -79,7 +79,22 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         commit(entries, for: connectionId)
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>) {
+    func dropTable(_ scope: TableScope) {
+        setRules([], for: scope)
+    }
+
+    func dropContainer(connectionId: UUID, database: String, schema: String?) {
+        let prefix = TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
+        var entries = loadEntries(for: connectionId)
+        let dropping = entries.keys.filter { $0.hasPrefix(prefix) }
+        guard !dropping.isEmpty else { return }
+        for key in dropping {
+            entries.removeValue(forKey: key)
+        }
+        commit(entries, for: connectionId)
+    }
+
+    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
         guard !connectionIds.isEmpty else { return }
         for connectionId in connectionIds {
             cache[connectionId] = [:]
@@ -119,7 +134,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
             return entries
         } catch {
             Self.logger.error(
-                "Unreadable highlight rules for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Unreadable highlight rules for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
             preserveUnreadableFile(for: connectionId)
             cache[connectionId] = [:]
@@ -133,7 +148,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
             try data.write(to: fileURL(for: connectionId), options: .atomic)
         } catch {
             Self.logger.error(
-                "Failed to write highlight rules for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Failed to write highlight rules for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -145,7 +160,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         do {
             try fileManager.moveItem(at: fileURL(for: connectionId), to: preserved)
         } catch {
-            Self.logger.error("Failed to set aside unreadable highlight rules: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to set aside unreadable highlight rules: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -154,7 +169,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
-            Self.logger.error("Failed to remove highlight rules file: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to remove highlight rules file: \(error.publicLogShape, privacy: .public)")
         }
     }
 

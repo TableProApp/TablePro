@@ -47,11 +47,11 @@ actor SpatialResultProjector {
             else {
                 continue
             }
-            guard let text = tableRows.rows[index][column.index].spatialText else {
+            guard let reading = tableRows.rows[index][column.index].spatialReading else {
                 diagnostics.emptyRows += 1
                 continue
             }
-            switch SpatialValueReader.read(text) {
+            switch reading {
             case .success(let value):
                 guard !value.geometry.isEmpty else {
                     diagnostics.emptyRows += 1
@@ -100,25 +100,24 @@ actor SpatialResultProjector {
                 capped += 1
                 continue
             }
-            var produced: [ResultMapShape] = []
-            Self.appendShapes(
+            let built = SpatialShapeBuilder.shapes(
                 from: entry.value.geometry,
                 rowID: entry.rowID,
                 projectability: projectability,
-                depth: 1,
-                budget: &budget,
-                into: &produced
+                budget: &budget
             )
             /// A row the budget cut short is counted as capped as well as drawn: part of it is on
             /// the map and the rest is not, and saying nothing would be the silent truncation this
             /// whole diagnostic exists to avoid.
             if budget.isExhausted { capped += 1 }
-            guard !produced.isEmpty else {
+            guard !built.shapes.isEmpty else {
                 if !budget.isExhausted { diagnostics.unreadableRows += 1 }
                 continue
             }
-            shapes.append(contentsOf: produced)
+            shapes.append(contentsOf: built.shapes)
             drawnRowIDs.insert(entry.rowID)
+            /// Only for a row that is on the map: one that drew nothing is already counted whole.
+            diagnostics.droppedParts += built.droppedParts
         }
 
         diagnostics.shapesAndRows(shapes.count, drawnRowIDs.count)
@@ -169,107 +168,6 @@ actor SpatialResultProjector {
             return true
         }
     }
-
-    private static func appendShapes(
-        from geometry: SpatialGeometry,
-        rowID: RowID,
-        projectability: SpatialProjectability,
-        depth: Int,
-        budget: inout ShapeBudget,
-        into shapes: inout [ResultMapShape]
-    ) {
-        /// The same bound the readers apply, for the same reason: a collection nested past it is
-        /// stack depth rather than geometry.
-        guard depth <= SpatialLimits.maximumNestingDepth else { return }
-        switch geometry {
-        case .empty:
-            return
-        case .point(let point):
-            guard let coordinate = SpatialProjection.project(point, using: projectability) else { return }
-            guard budget.take(vertices: 1) else { return }
-            shapes.append(ResultMapShape(rowID: rowID, kind: .point, rings: [[coordinate]]))
-        case .multiPoint(let points):
-            for point in points {
-                guard let coordinate = SpatialProjection.project(point, using: projectability) else { continue }
-                guard budget.take(vertices: 1) else { return }
-                shapes.append(ResultMapShape(rowID: rowID, kind: .point, rings: [[coordinate]]))
-            }
-        case .lineString(let points):
-            guard let run = project(points, using: projectability), run.count >= 2 else { return }
-            guard budget.take(vertices: run.count) else { return }
-            shapes.append(ResultMapShape(rowID: rowID, kind: .polyline, rings: [run]))
-        case .multiLineString(let lines):
-            for line in lines {
-                guard let run = project(line, using: projectability), run.count >= 2 else { continue }
-                guard budget.take(vertices: run.count) else { return }
-                shapes.append(ResultMapShape(rowID: rowID, kind: .polyline, rings: [run]))
-            }
-        case .polygon(let rings):
-            guard let projected = project(rings: rings, using: projectability) else { return }
-            guard budget.take(vertices: Self.vertexCount(of: projected)) else { return }
-            shapes.append(ResultMapShape(rowID: rowID, kind: .polygon, rings: projected))
-        case .multiPolygon(let polygons):
-            for polygon in polygons {
-                guard let projected = project(rings: polygon, using: projectability) else { continue }
-                guard budget.take(vertices: Self.vertexCount(of: projected)) else { return }
-                shapes.append(ResultMapShape(rowID: rowID, kind: .polygon, rings: projected))
-            }
-        case .collection(let children):
-            for child in children {
-                guard !budget.isExhausted else { return }
-                appendShapes(
-                    from: child,
-                    rowID: rowID,
-                    projectability: projectability,
-                    depth: depth + 1,
-                    budget: &budget,
-                    into: &shapes
-                )
-            }
-        }
-    }
-
-    private static func vertexCount(of rings: [[GeographicCoordinate]]) -> Int {
-        rings.reduce(0) { $0 + $1.count }
-    }
-
-    /// A run is dropped whole when any coordinate in it cannot be projected. Keeping the rest would
-    /// draw a shape whose outline the database never described.
-    private static func project(
-        _ points: [SpatialPoint],
-        using projectability: SpatialProjectability
-    ) -> [GeographicCoordinate]? {
-        var out: [GeographicCoordinate] = []
-        out.reserveCapacity(points.count)
-        for point in points {
-            guard let coordinate = SpatialProjection.project(point, using: projectability) else { return nil }
-            out.append(coordinate)
-        }
-        return out
-    }
-
-    private static func project(
-        rings: [[SpatialPoint]],
-        using projectability: SpatialProjectability
-    ) -> [[GeographicCoordinate]]? {
-        guard let exterior = rings.first, let projectedExterior = project(exterior, using: projectability),
-              projectedExterior.count >= 3
-        else {
-            return nil
-        }
-        var out = [projectedExterior]
-        /// A hole that cannot be projected is dropped while the polygon is kept: the exterior is
-        /// still the shape the row describes, and losing a hole is a smaller lie than losing the
-        /// row.
-        for ring in rings.dropFirst() {
-            guard let projected = project(ring, using: projectability), projected.count >= 3 else { continue }
-            out.append(projected)
-        }
-        return out
-    }
-
-    /// A binary cell is handed over as uppercase hex, which is what the WKB reader expects and what
-    /// PostgreSQL's own text format for an unrewritten geometry already looks like.
 }
 
 private extension ResultMapDiagnostics {

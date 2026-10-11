@@ -60,7 +60,7 @@ internal struct ConnectingStateView: View {
 
     private var card: some View {
         VStack(spacing: 18) {
-            ConnectionTypeIcon(type: connection.type, pulses: true)
+            ConnectionTypeIcon(type: connection.type, iconName: connection.iconName, pulses: true)
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
                 .frame(height: 44)
@@ -87,6 +87,7 @@ internal struct ConnectingStateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityStatus)
+        .accessibilityIdentifier("connection-connecting")
     }
 
     /// A bar rather than a spinner, and the description above it rather than beside it.

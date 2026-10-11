@@ -14,7 +14,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("PluginMetadataRegistry system databases")
 struct PluginMetadataRegistrySystemDatabaseTests {
     private func systemDatabaseNames(forTypeId typeId: String) -> [String]? {
         PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?.schema.systemDatabaseNames

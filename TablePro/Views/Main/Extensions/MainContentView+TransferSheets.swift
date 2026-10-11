@@ -50,34 +50,19 @@ extension MainContentView {
                 }
             }
         case .importDialog(let formatId):
-            let importDismiss = Binding<Bool>(
-                get: { coordinator.activeSheet != nil },
-                set: { if !$0 {
-                    coordinator.activeSheet = nil
-                    coordinator.importFileURL = nil
-                }
-                }
-            )
             ImportDialog(
-                isPresented: importDismiss,
+                isPresented: dismissBinding,
                 connection: connection,
-                initialFileURL: coordinator.importFileURL,
+                initialFileURL: coordinator.importFile?.url,
                 initialFormatId: formatId
             )
         case .rowImport(let formatId):
-            let rowDismiss = Binding<Bool>(
-                get: { coordinator.activeSheet != nil },
-                set: { if !$0 {
-                    coordinator.activeSheet = nil
-                    coordinator.importFileURL = nil
-                }
-                }
-            )
-            if let url = coordinator.importFileURL {
+            if let handoff = coordinator.importFile {
                 RowImportSheet(
-                    isPresented: rowDismiss,
+                    isPresented: dismissBinding,
                     connection: connection,
-                    fileURL: url,
+                    fileURL: handoff.url,
+                    sourceName: handoff.sourceName,
                     formatId: formatId
                 )
             }

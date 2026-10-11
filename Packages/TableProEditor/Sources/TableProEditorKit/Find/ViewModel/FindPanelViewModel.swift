@@ -44,6 +44,15 @@ class FindPanelViewModel: ObservableObject {
     @Published var matchCase: Bool = false
     @Published var wrapAround: Bool = true
 
+    /// Set while Replace or All edits the document, which searches once when the edit is done.
+    var isReplacingMatches = false
+
+    /// Replace is withheld from a document that is read-only, as the native find bar withholds it. With no target
+    /// there is nothing to edit either way, and Replace and All already do nothing.
+    var canReplace: Bool {
+        target?.isFindReplaceEditable ?? true
+    }
+
     /// The height of the find panel.
     var panelHeight: CGFloat {
         mode == .replace ? 54 : 28
@@ -73,6 +82,14 @@ class FindPanelViewModel: ObservableObject {
                 name: TextView.textDidChangeNotification,
                 object: textViewController.textView
             )
+            for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+                NotificationCenter.default.addObserver(
+                    self,
+                    selector: #selector(undoDidRestoreSelection(_:)),
+                    name: name,
+                    object: nil
+                )
+            }
         }
     }
 
@@ -81,9 +98,26 @@ class FindPanelViewModel: ObservableObject {
     /// Find target's text content changed, we need to re-search the contents and emphasize results.
     @objc private func textDidChange() {
         // Only update if we have find text
-        if !findText.isEmpty {
+        if !findText.isEmpty, !isReplacingMatches, !isReplayingUndo {
             find()
         }
+    }
+
+    /// Undo and redo change the text before they restore the selection, so the search waits for the restored caret:
+    /// searching mid-undo made the match next to the old caret current while the restored one was selected, and the
+    /// next Replace edited text the reader was not looking at.
+    @objc private func undoDidRestoreSelection(_ notification: Notification) {
+        guard let undoManager = notification.object as? UndoManager,
+              undoManager === target?.textView.undoManager,
+              !findText.isEmpty else {
+            return
+        }
+        find()
+    }
+
+    private var isReplayingUndo: Bool {
+        guard let undoManager = target?.textView.undoManager else { return false }
+        return undoManager.isUndoing || undoManager.isRedoing
     }
 
     /// The contents of the find search field changed, trigger related events.

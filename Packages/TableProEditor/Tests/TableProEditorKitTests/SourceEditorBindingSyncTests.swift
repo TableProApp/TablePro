@@ -103,7 +103,7 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         coordinator.textSync.applyRepresentableText(bound, controller: controller)
         XCTAssertEqual(controller.textView.string, largeText)
 
-        try await Task.sleep(for: .milliseconds(300))
+        await coordinator.textSync.writebackTask?.value
         XCTAssertEqual(bound, largeText)
         XCTAssertEqual(coordinator.textSync.lastSyncedText, largeText)
     }

@@ -155,6 +155,61 @@ final class WKTGeometryReaderTests: XCTestCase {
         }
     }
 
+    /// PostGIS writes XYM with the tag fused onto the type name, for the types that cannot be drawn
+    /// as much as for `POINTM`, so the name has to survive the tag.
+    func testUnsupportedTypesAreNamedThroughAFusedDimensionTag() {
+        for keyword in [
+            "CIRCULARSTRING", "COMPOUNDCURVE", "CURVEPOLYGON",
+            "MULTICURVE", "MULTISURFACE", "POLYHEDRALSURFACE", "TIN", "TRIANGLE",
+        ] {
+            for tag in ["M", "Z", "ZM"] {
+                XCTAssertEqual(
+                    failure("\(keyword)\(tag)(0 0 1,1 1 1,2 0 1)"),
+                    .unsupportedGeometryType(keyword),
+                    "expected \(keyword)\(tag) to be refused as \(keyword)"
+                )
+            }
+        }
+    }
+
+    func testFusedTagOnAnUnsupportedTypeInPostGISSpellings() {
+        XCTAssertEqual(
+            failure("SRID=4326;CURVEPOLYGONM(CIRCULARSTRINGM(0 0 1,4 0 1,4 4 1,0 4 1,0 0 1))"),
+            .unsupportedGeometryType("CURVEPOLYGON")
+        )
+        XCTAssertEqual(failure("compoundcurvem((0 0 1,1 1 1))"), .unsupportedGeometryType("COMPOUNDCURVE"))
+        XCTAssertEqual(
+            failure("GEOMETRYCOLLECTION(POINT(1 2),TRIANGLEM((0 0 1,1 0 1,1 1 1,0 0 1)))"),
+            .unsupportedGeometryType("TRIANGLE")
+        )
+    }
+
+    /// Only a refused type's own name is stripped: a word that merely ends in a tag letter is text.
+    func testFusedTagLookupLeavesOrdinaryWordsAlone() {
+        XCTAssertEqual(failure("PROGRAM(1 2)"), .notGeometry)
+        XCTAssertEqual(failure("QUIZ"), .notGeometry)
+        XCTAssertEqual(value("MULTIPOINTM(1 2 3,4 5 6)")?.geometry,
+                       .multiPoint([SpatialPoint(x: 1, y: 2), SpatialPoint(x: 4, y: 5)]))
+    }
+
+    /// Zero is how a value says nobody named a system. EWKB reads it as no SRID, and the same value
+    /// spelled as EWKT has to agree or it draws in one spelling and is refused in the other.
+    func testZeroSRIDPrefixReadsAsNoSRID() {
+        let expected = SpatialValue(srid: nil, geometry: .point(SpatialPoint(x: 1, y: 2)))
+        XCTAssertEqual(value("SRID=0;POINT(1 2)"), expected)
+        XCTAssertEqual(value("srid = 0 ; POINT(1 2)"), expected)
+        let ewkbWithZeroSRID = "0101000020" + "00000000" + "000000000000F03F" + "0000000000000040"
+        XCTAssertEqual(WKBGeometryReader.read(hex: ewkbWithZeroSRID), .success(expected))
+    }
+
+    func testZeroSRIDPrefixIsDrawnLikeABareValue() {
+        guard let parsed = value("SRID=0;POINT(1 2)") else { return }
+        XCTAssertEqual(
+            SpatialProjection.projectability(srid: parsed.srid, geometry: parsed.geometry),
+            .assumedGeographic
+        )
+    }
+
     func testOrdinaryTextIsNotAGeometry() {
         XCTAssertEqual(failure("hello world"), .notGeometry)
         XCTAssertEqual(failure(""), .notGeometry)

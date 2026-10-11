@@ -5,12 +5,8 @@
 
 import SwiftUI
 
-/// Builds the editor a field's kind asks for.
-///
-/// The switch is exhaustive on purpose: it is the one place that has to know every kind, and
-/// anything else that switches over `FieldEditorKind` has to agree with it. It used to have two
-/// `default`-armed siblings deciding the font and the height, which disagreed with it and shipped
-/// two fonts in one pane.
+/// Every switch here is exhaustive on purpose. Two `default`-armed siblings once decided the font
+/// and the height, disagreed with the editor switch and shipped two fonts in one pane.
 internal struct FieldEditorContent: View {
     internal let context: FieldEditorContext
     internal let kind: FieldEditorKind
@@ -19,6 +15,7 @@ internal struct FieldEditorContent: View {
     internal var onSetDefault: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
     internal var isExpanded = false
+    internal var onTabStopChange: ((Bool) -> Void)?
 
     var body: some View {
         if context.valueState.isPending, !isPicker {
@@ -33,17 +30,17 @@ internal struct FieldEditorContent: View {
     private var isPicker: Bool {
         switch kind {
         case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker: return true
-        case .json, .phpSerialized, .image, .blobHex, .schemaText, .multiLine, .singleLine: return false
+        case .json, .phpSerialized, .image, .geometry, .blobHex, .schemaText, .multiLine, .singleLine: return false
         }
     }
 
-    /// Which fields the expand control belongs on. A blob or an image editor draws at a fixed size
-    /// and ignores `isExpanded`, so offering the control there flipped an icon and resized nothing;
-    /// a field showing a pending NULL or DEFAULT pill has no editor on screen to grow either.
+    /// Only an editor that reads `isExpanded` gets the control: on a fixed-size one it flipped an
+    /// icon and resized nothing. A pending NULL or DEFAULT pill has no editor on screen to grow.
     internal static func canExpand(kind: FieldEditorKind, state: FieldValueState) -> Bool {
         guard !state.isPending else { return false }
         switch kind {
         case .json, .phpSerialized, .multiLine: return true
+        case .geometry(let descriptor): return canExpand(kind: descriptor.textEditorKind, state: state)
         case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker,
              .valuePicker, .schemaText, .singleLine:
             return false
@@ -58,6 +55,7 @@ internal struct FieldEditorContent: View {
         case .image: return 200
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
+        case .geometry(let descriptor): return pillHeight(for: descriptor.textEditorKind)
         case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
              .schemaText, .singleLine:
             return nil
@@ -73,6 +71,14 @@ internal struct FieldEditorContent: View {
             PhpSerializedFieldView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
         case .image(let format):
             ImageFieldView(context: context, format: format)
+        case .geometry(let descriptor):
+            GeometryFieldView(
+                context: context,
+                descriptor: descriptor,
+                onPopOut: onPopOut,
+                isExpanded: isExpanded,
+                onTabStopChange: onTabStopChange
+            )
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:
@@ -99,6 +105,18 @@ internal struct FieldEditorContent: View {
             MultiLineEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
         case .singleLine:
             SingleLineEditorView(context: context)
+        }
+    }
+}
+
+internal extension GeometryFieldDescriptor {
+    /// The kind the field would be without its Map segment. Expanding, the pending pill and the
+    /// text window all follow it, so a geometry field behaves like the editor under Text.
+    var textEditorKind: FieldEditorKind {
+        switch textEditor {
+        case .multiLine: return .multiLine
+        case .json: return .json
+        case .hex: return .blobHex
         }
     }
 }

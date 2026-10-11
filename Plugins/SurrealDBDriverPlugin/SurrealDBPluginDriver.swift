@@ -10,6 +10,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let settings: SurrealDBConnectionConfig
     let client: SurrealRPCClient
     private let lock = NSLock()
+    private let connectTimeoutMilliseconds: Int
     private var namespace: String
     private var database: String?
     private var kindCache: [String: [String: SurrealFieldKind]] = [:]
@@ -18,6 +19,10 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let settings = SurrealDBConnectionConfig(config: config)
         self.settings = settings
         self.client = SurrealRPCClient(config: settings)
+        self.connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
+            in: config.additionalFields,
+            default: 60_000
+        )
         self.namespace = settings.namespace
         self.database = settings.database.isEmpty ? nil : settings.database
     }
@@ -46,7 +51,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         try settings.validate()
-        client.start()
+        client.start(connectTimeoutMilliseconds: connectTimeoutMilliseconds)
+        defer { client.finishConnecting() }
         do {
             try await client.probeVersion()
             try await client.authenticate()
@@ -157,6 +163,10 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, length: .display)
+    }
+
+    private func execute(query: String, length: SurrealTextLength) async throws -> PluginQueryResult {
         let scope = currentScope()
         let started = Date()
         let results = try await client.query(query, namespace: scope.namespace, database: scope.database)
@@ -164,7 +174,26 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw failure
         }
         results.forEach { learnKinds(from: $0.value) }
-        return Self.result(from: results, elapsed: Date().timeIntervalSince(started))
+        return Self.result(from: results, elapsed: Date().timeIntervalSince(started), length: length)
+    }
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, length: .whole)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )))
+                    if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -185,10 +214,14 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw failure
         }
         results.forEach { learnKinds(from: $0.value) }
-        return Self.result(from: results, elapsed: Date().timeIntervalSince(started))
+        return Self.result(from: results, elapsed: Date().timeIntervalSince(started), length: .display)
     }
 
-    static func result(from results: [SurrealStatementResult], elapsed: TimeInterval) -> PluginQueryResult {
+    static func result(
+        from results: [SurrealStatementResult],
+        elapsed: TimeInterval,
+        length: SurrealTextLength
+    ) -> PluginQueryResult {
         guard let last = results.last else {
             return PluginQueryResult(
                 columns: [],
@@ -199,7 +232,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let flattened = SurrealRowFlattener.flatten(last.value)
+        let flattened = SurrealRowFlattener.flatten(last.value, length: length)
         let affected = rowsAffected(last.value)
         return PluginQueryResult(
             columns: flattened.columns,
@@ -237,23 +270,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func buildFilteredQuery(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        buildFilteredQuery(
-            table: table, schema: schema, filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
-        )
-    }
-
-    func buildFilteredQuery(
-        table: String,
-        schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
@@ -264,7 +281,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         SurrealQueryBuilder.filtered(
             table: table,
             scope: scope(forSchema: schema),
-            filters: filters,
+            filters: queryFilters,
             logicMode: logicMode,
             sortColumns: Self.sorts(sortColumns, columns: columns),
             limit: limit,
@@ -275,16 +292,25 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await count(table: table, schema: nil, filters: filters, logicMode: logicMode)
+        try await count(table: table, schema: nil, filters: queryFilters, logicMode: logicMode)
+    }
+
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String
+    ) async throws -> Int? {
+        try await count(table: table, schema: schema, filters: queryFilters, logicMode: logicMode)
     }
 
     func count(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
         let scope = scope(forSchema: schema)
@@ -311,7 +337,7 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Mutations
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
         schema: String?,
         columns: [String],
@@ -320,8 +346,8 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        SurrealStatementGenerator.statements(
+    ) throws -> [PluginRowWrite]? {
+        try SurrealStatementGenerator.rowWrites(
             table: table,
             scope: scope(forSchema: schema),
             columns: columns,

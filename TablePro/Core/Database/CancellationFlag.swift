@@ -13,8 +13,8 @@ import os
 /// gives the loop something it can check between chunks, which is the same shape the drivers use for
 /// a connect that cannot be interrupted mid-call.
 ///
-/// This bounds cancellation at one chunk, not at one call: a read already inside libssh2 still has
-/// to return before the flag is looked at.
+/// The SFTP session interrupts its transport to wake a read already inside libssh2; this flag makes
+/// that wakeup report cancellation and stops the loop before it starts another chunk.
 final class CancellationFlag: @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(initialState: false)
 

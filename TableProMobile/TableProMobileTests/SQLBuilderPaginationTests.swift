@@ -4,10 +4,10 @@ import Testing
 
 @testable import TableProMobile
 
-/// `LIMIT` is not portable. SQL Server and Oracle both take OFFSET/FETCH, and both take it only as
-/// part of an ORDER BY, which is why `paginationClause` supplies a filler when the caller has no
-/// order of its own. The foreign-key preview wrote `LIMIT 1` by hand instead of calling this, so
-/// every preview on those two engines failed and was rendered as a row that does not exist.
+/// `LIMIT` is not portable. SQL Server and Oracle both take OFFSET/FETCH. SQL Server takes it only as
+/// part of an ORDER BY, which is why `paginationClause` supplies a filler there; Oracle takes it bare.
+/// The foreign-key preview wrote `LIMIT 1` by hand instead of calling this, so every preview on those
+/// two engines failed and was rendered as a row that does not exist.
 @Suite("SQLBuilder pagination")
 struct SQLBuilderPaginationTests {
     @Test("SQL Server gets OFFSET/FETCH behind a filler ORDER BY")
@@ -17,11 +17,18 @@ struct SQLBuilderPaginationTests {
         #expect(!clause.contains("LIMIT"))
     }
 
-    @Test("Oracle gets OFFSET/FETCH behind its own filler ORDER BY")
+    /// An `ORDER BY 1` filler failed with ORA-22848 on a table whose first column is a LOB.
+    @Test("Oracle gets OFFSET/FETCH with no filler ORDER BY")
     func oracleUsesOffsetFetch() {
         let clause = SQLBuilder.paginationClause(orderBy: "", limit: 1, offset: 0, for: .oracle)
-        #expect(clause == "ORDER BY 1 OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
+        #expect(clause == "OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
         #expect(!clause.contains("LIMIT"))
+    }
+
+    @Test("A caller's own order leads Oracle's OFFSET/FETCH")
+    func oracleKeepsCallerOrder() {
+        let clause = SQLBuilder.paginationClause(orderBy: "ORDER BY \"ID\"", limit: 10, offset: 20, for: .oracle)
+        #expect(clause == "ORDER BY \"ID\" OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY")
     }
 
     @Test("A caller's own order replaces the filler rather than stacking with it")

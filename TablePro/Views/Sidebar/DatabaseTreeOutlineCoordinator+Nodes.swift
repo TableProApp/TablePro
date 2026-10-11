@@ -9,7 +9,7 @@ import TableProPluginKit
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
 /// differ only in what this builds at the root; everything below the root is shared.
 extension DatabaseTreeOutlineCoordinator {
-    private func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
+    internal func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
         if let existing = nodeCache[id] {
             existing.kind = kind
             return existing
@@ -34,6 +34,10 @@ extension DatabaseTreeOutlineCoordinator {
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
             }
+        case .foldersSection:
+            return flatFolderNodes()
+        case .tableFolder(let ref):
+            return folderMemberNodes(of: ref)
         case .database(let metadata):
             return supportsSchemaLevel
                 ? schemaNodes(database: metadata.name)
@@ -153,8 +157,14 @@ extension DatabaseTreeOutlineCoordinator {
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
+        nodes += flatFoldersSectionNodes()
         nodes += visibleObjectKinds().map {
             node(id: DatabaseTreeNode.objectKindSectionId($0), kind: .objectKindSection($0))
+        }
+        if let database = browsingDatabase {
+            nodes += flatOtherSchemaMatches(database: database).map {
+                node(id: DatabaseTreeNode.schemaId(database: database, schema: $0), kind: .schema(database: database, schema: $0))
+            }
         }
         if sidebarState?.redisKeyTreeViewModel != nil {
             nodes.append(node(id: DatabaseTreeNode.redisKeysSectionId, kind: .redisKeysSection))
@@ -175,7 +185,7 @@ extension DatabaseTreeOutlineCoordinator {
         }
         return SidebarObjectKind.visible(
             itemCounts: itemCounts,
-            declaredKinds: declaredObjectKinds,
+            declaredKinds: declaredObjectKinds.union(flatPlan().filedKinds),
             includingEmptyTables: true
         )
     }
@@ -191,7 +201,7 @@ extension DatabaseTreeOutlineCoordinator {
         guard let viewModel else { return 0 }
         switch kind.category {
         case .table:
-            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId)).count
+            return flatPlan().looseCount(of: kind)
         case .routine:
             return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId)).count
         case .trigger:
@@ -206,7 +216,9 @@ extension DatabaseTreeOutlineCoordinator {
     /// came back. A search that matches nothing in a section is not a reason, so it stays bare.
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         let rows = flatObjectRows(for: kind)
-        guard rows.isEmpty, searchText.isEmpty, viewModel != nil else { return rows }
+        guard rows.isEmpty, searchText.isEmpty, viewModel != nil, !flatPlan().hasFiledObjects(of: kind) else {
+            return rows
+        }
         return [
             statusNode(
                 parentId: DatabaseTreeNode.objectKindSectionId(kind),
@@ -229,7 +241,7 @@ extension DatabaseTreeOutlineCoordinator {
         let database = browsingDatabase
         switch kind.category {
         case .table:
-            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId))
+            return flatPlan().looseObjects(of: kind)
                 .map { table in
                     let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
                     return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
@@ -261,25 +273,32 @@ extension DatabaseTreeOutlineCoordinator {
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
             activeSchema: activeSchema,
-            showsSystem: showSystemContainers
+            showsSystem: showSystemContainers,
+            selected: sidebarState?.schemaFilter(for: browsingDatabase) ?? [],
+            pinned: schemasWithPendingOperations(database: browsingDatabase)
         )
         nodes += browsable
-            .filter { searchText.isEmpty || hierarchicalSchemaMatches($0) }
+            .filter { searchText.isEmpty || hierarchicalSchemaVerdict($0).isVisible }
             .map {
                 node(id: DatabaseTreeNode.hierarchicalSchemaSectionId($0), kind: .hierarchicalSchemaSection(schema: $0))
             }
         return nodes
     }
 
-    internal func hierarchicalSchemaMatches(_ schema: String) -> Bool {
-        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-            schema,
+    internal func hierarchicalSchemaVerdict(_ schema: String) -> DatabaseTreeFilter.SchemaSearchVerdict {
+        DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
+            schema: schema,
+            database: browsingDatabase,
             searchText: searchText,
-            isLoaded: schemaService.isSchemaSettled(for: connectionId, schema: schema),
-            tables: schemaService.tables(for: connectionId, schema: schema),
-            routines: schemaService.routines(for: connectionId, schema: schema),
-            triggers: schemaService.triggers(for: connectionId, schema: schema),
-            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema)
+            loadedContent: DatabaseTreeFilter.hierarchicalLoadedContent(
+                in: schemaService,
+                connectionId: connectionId,
+                schema: schema,
+                searchText: searchText,
+                database: browsingDatabase
+            ),
+            listingMatches: schemaService.loadedScope(for: connectionId).flatMap { listingMatches(database: $0.database) },
+            listingCoversSchema: !systemSchemas.contains(schema)
         )
     }
 
@@ -330,7 +349,8 @@ extension DatabaseTreeOutlineCoordinator {
             routines: schemaService.routines(for: connectionId, schema: schema),
             triggers: schemaService.triggers(for: connectionId, schema: schema),
             userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
-            searchText: searchText
+            searchText: searchText,
+            database: browsingDatabase
         )
     }
 
@@ -340,32 +360,70 @@ extension DatabaseTreeOutlineCoordinator {
             guard case .namespace(_, _, let children, _) = parent else { return [] }
             return children.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
         }
-        if keyTree.isLoading {
-            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .loading)]
+        return RedisKeyTreeRows.rows(for: keyTree.state, searchText: searchText).map { row in
+            switch row {
+            case .status(let status):
+                return statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: status)
+            case .node(let keyNode):
+                return node(id: DatabaseTreeNode.redisNodeId(keyNode), kind: .redisNode(keyNode))
+            }
         }
-        let roots = keyTree.displayNodes(searchText: searchText)
-        guard !roots.isEmpty else {
-            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .empty)]
-        }
-        var nodes = roots.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
-        if keyTree.isTruncated {
-            nodes.append(
-                statusNode(
-                    parentId: DatabaseTreeNode.redisKeysSectionId,
-                    status: .truncated(RedisKeyTreeTruncation.message(limit: RedisKeyTreeViewModel.maxKeys))
-                )
-            )
-        }
-        return nodes
     }
 
     private func recentTableRefs() -> [DatabaseTreeTableRef] {
         guard let sidebarState, showRecentTables else { return [] }
         let database = browsingDatabase
+        let search = SidebarSearch(searchText)
         return sidebarState.recentEntries(inDatabase: database).compactMap { entry -> DatabaseTreeTableRef? in
-            if !searchText.isEmpty, !DatabaseTreeFilter.matches(searchText, entry.name) { return nil }
+            if !search.isEmpty {
+                guard search.matchesObject(named: entry.name, database: database, schema: entry.schema) else {
+                    return nil
+                }
+            }
             return DatabaseTreeTableRef(database: database, schema: entry.schema, table: entry.tableInfo)
         }
+    }
+
+    /// The flat list shows the browsed schema's objects only, so a search also names the other
+    /// schemas it found objects in. Each is the tree's own schema row, which expands, loads and
+    /// offers its menus exactly as it does in the tree.
+    private func flatOtherSchemaMatches(database: String) -> [String] {
+        guard !searchText.isEmpty, listsTablesPerSchema else { return [] }
+        return DatabaseTreeFilter.otherSchemaMatches(
+            database: database,
+            browsedSchema: activeSchema,
+            searchText: searchText,
+            hiddenSchemas: showSystemContainers ? [] : systemSchemas,
+            allSchemaTables: service.allSchemaTablesLoadState(connectionId: connectionId, database: database),
+            keptSchemas: keptSchemas(database: database),
+            covered: DatabaseTreeFilter.coveredSchemas(
+                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            ),
+            loadedContent: { schema, _ in self.loadedObjectBuckets(database: database, schema: schema) }
+        )
+    }
+
+    /// What the schema filter keeps of a database, nil for no filter, with every schema holding a
+    /// staged drop or truncate kept as well.
+    internal func keptSchemas(database: String) -> Set<String>? {
+        guard let kept = SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database) else {
+            return nil
+        }
+        return kept.union(schemasWithPendingOperations(database: database))
+    }
+
+    /// A staged drop or truncate runs on Save whether or not its schema is on screen, so the filter
+    /// never hides the row it was staged from.
+    internal func schemasWithPendingOperations(database: String?) -> Set<String> {
+        let browsed = browsingDatabase
+        return Set(pendingTableOperations.compactMap { ref -> String? in
+            guard (ref.database ?? browsed) == database else { return nil }
+            return ref.qualifyingSchema
+        })
+    }
+
+    internal var listsTablesPerSchema: Bool {
+        DatabaseTreeMetadataService.listsTablesPerSchema(PluginManager.shared.databaseGroupingStrategy(for: databaseType))
     }
 
     private func schemaNodes(database: String) -> [DatabaseTreeNode] {
@@ -382,7 +440,10 @@ extension DatabaseTreeOutlineCoordinator {
                 activeSchema: database == browsingDatabase ? activeSchema : nil,
                 showsSystem: showSystemContainers,
                 searchText: searchText,
-                contentMatches: { schemaContentMatchesSearch(database: database, schema: $0) }
+                database: database,
+                selected: sidebarState?.schemaFilter(for: database) ?? [],
+                pinned: schemasWithPendingOperations(database: database),
+                contentMatches: { schemaSearchVerdict(database: database, schema: $0).isVisible }
             )
             if visible.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
             return visible.map {
@@ -394,35 +455,101 @@ extension DatabaseTreeOutlineCoordinator {
     private func objectNodes(database: String, schema: String?) -> [DatabaseTreeNode] {
         let parentId = schema.map { DatabaseTreeNode.schemaId(database: database, schema: $0) }
             ?? DatabaseTreeNode.databaseId(database)
-        switch service.tablesLoadState(connectionId: connectionId, database: database, schema: schema) {
-        case .idle, .loading:
+        switch contentSource(database: database, schema: schema) {
+        case .pending:
             return [statusNode(parentId: parentId, status: .loading)]
         case .failed(let message):
             return [statusNode(parentId: parentId, status: .error(message))]
         case .loaded:
             return loadedObjectNodes(database: database, schema: schema, parentId: parentId)
+        case .listing:
+            return groupedObjectNodes(
+                buckets: objectBuckets(database: database, schema: schema),
+                sidePhases: DatabaseTreeSidePhases(routines: .loaded, triggers: nil, types: nil),
+                database: database,
+                schema: schema,
+                parentId: parentId,
+                listsDeclaredKinds: false
+            )
         }
+    }
+
+    private func contentSource(database: String, schema: String?) -> DatabaseTreeFilter.SchemaContentSource {
+        DatabaseTreeFilter.schemaContentSource(
+            searching: !searchText.isEmpty,
+            tables: service.tablesLoadState(connectionId: connectionId, database: database, schema: schema).erased,
+            isTablesCurrent: service.isTablesCurrent(connectionId: connectionId, database: database, schema: schema),
+            listingRows: listingRows(database: database, schema: schema)
+        )
+    }
+
+    /// A schema's rows in the database's all-schema listing, while a search is on and the listing can
+    /// answer for it. Nil otherwise, so the schema shows what its own reads hold.
+    private func listingRows(database: String, schema: String?) -> [TableInfo]? {
+        guard !searchText.isEmpty, let schema, listsTablesPerSchema, rootShape != .hierarchicalSchema,
+              !systemSchemas.contains(schema),
+              let matches = listingMatches(database: database), matches.answers(for: schema)
+        else { return nil }
+        return matches.rowsBySchema[schema] ?? []
     }
 
     /// The schema-grouped shape reads its objects from the connection's own schema service and the
     /// tree reads them per database, so the one shared bucket cache asks the source that shape owns.
-    private func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
+    internal func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
         let key = DatabaseTreeContainerKey(database: database, schema: schema, searchText: searchText)
         if let cached = objectBucketsCache[key] { return cached }
         let buckets: DatabaseTreeObjectBuckets
         if rootShape == .hierarchicalSchema, let schema {
             buckets = hierarchicalObjectBuckets(schema: schema)
         } else {
+            let tables: [TableInfo]
+            // A schema drawn from the listing keeps whatever side lists it has read.
+            if case .listing(let rows) = contentSource(database: database, schema: schema) {
+                tables = rows
+            } else {
+                tables = service.tables(connectionId: connectionId, database: database, schema: schema)
+            }
+            // A schema the search opened is never read, so a side list a change overtook would stay
+            // on screen with objects that no longer exist; it shows what is current only.
+            let showsOvertaken = searchText.isEmpty || schema.map { isOpenedByUser(database: database, schema: $0) } ?? true
+            func shown<Item>(_ items: [Item], isCurrent: Bool) -> [Item] {
+                showsOvertaken || isCurrent ? items : []
+            }
             buckets = DatabaseTreeFilter.objectBuckets(
-                tables: service.tables(connectionId: connectionId, database: database, schema: schema),
-                routines: service.routines(connectionId: connectionId, database: database, schema: schema),
-                triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
-                userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
-                searchText: searchText
+                tables: tables,
+                routines: shown(
+                    service.routines(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isRoutinesCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
+                triggers: shown(
+                    service.triggers(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isTriggersCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
+                userTypes: shown(
+                    service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+                    isCurrent: service.isTypesCurrent(connectionId: connectionId, database: database, schema: schema)
+                ),
+                searchText: searchText,
+                database: database
             )
         }
         objectBucketsCache[key] = buckets
         return buckets
+    }
+
+    internal func matchCount(in group: DatabaseTreeObjectGroup) -> Int {
+        let buckets = objectBuckets(database: group.database, schema: group.schema)
+        guard group.kind.category == .table else { return buckets.itemCounts[group.kind] ?? 0 }
+        return containerPlan(database: group.database, schema: group.schema, buckets: buckets).looseCount(of: group.kind)
+    }
+
+    /// Nil until the tree has loaded this schema's tables, so a search can tell a schema that holds
+    /// no match from one nobody has listed yet.
+    private func loadedObjectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets? {
+        guard case .loaded = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema) else {
+            return nil
+        }
+        return objectBuckets(database: database, schema: schema)
     }
 
     /// A fetch the engine never runs stays idle for good, and idle is not loaded: counting it
@@ -458,24 +585,29 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
+    /// `listsDeclaredKinds` is false for a schema drawn from the listing, which holds tables and
+    /// views only: a declared kind it has no rows for is unread, not empty.
     private func groupedObjectNodes(
         buckets: DatabaseTreeObjectBuckets,
         sidePhases: DatabaseTreeSidePhases,
         database: String,
         schema: String?,
-        parentId: String
+        parentId: String,
+        listsDeclaredKinds: Bool = true
     ) -> [DatabaseTreeNode] {
-        guard !buckets.isEmpty else {
+        let plan = containerPlan(database: database, schema: schema, buckets: buckets)
+        let folders = containerFolderNodes(plan, database: database, schema: schema)
+        guard !buckets.isEmpty || !folders.isEmpty else {
             return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
         }
 
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: database,
             schema: schema,
-            itemCounts: buckets.itemCounts,
-            declaredKinds: declaredObjectKinds
+            itemCounts: looseItemCounts(buckets.itemCounts, plan: plan),
+            declaredKinds: listsDeclaredKinds ? declaredObjectKinds.union(plan.filedKinds) : plan.filedKinds
         )
-        var nodes = groups.map { group in
+        var nodes = folders + groups.map { group in
             node(
                 id: DatabaseTreeNode.containerObjectKindSectionId(group),
                 kind: .containerObjectKindSection(group)
@@ -496,8 +628,10 @@ extension DatabaseTreeOutlineCoordinator {
         let placeholder = DatabaseTreeNode.Status.emptySection(sidePhases(for: group).phase(for: group.kind.category))
         switch group.kind.category {
         case .table:
-            let tables = buckets.tables[group.kind] ?? []
+            let plan = containerPlan(database: group.database, schema: group.schema, buckets: buckets)
+            let tables = plan.looseObjects(of: group.kind)
             guard !tables.isEmpty else {
+                guard !plan.hasFiledObjects(of: group.kind) else { return [] }
                 return [statusNode(parentId: emptyId, status: placeholder)]
             }
             return tables.map { table in
@@ -550,24 +684,66 @@ extension DatabaseTreeOutlineCoordinator {
 
     // MARK: - Search
 
+    /// A database is kept when its name answers a plain search, when a schema of it is kept, or when
+    /// objects it holds outside any schema match. Only schemas the tree would show are asked, so a
+    /// hidden system schema cannot keep a database on screen that shows nothing matching.
     internal func databaseMatchesSearch(_ metadata: DatabaseMetadata) -> Bool {
-        if DatabaseTreeFilter.matches(searchText, metadata.name) { return true }
+        let search = SidebarSearch(searchText)
+        if search.qualified == nil, DatabaseTreeFilter.matches(searchText, metadata.name) { return true }
         if case .loaded(let schemas) = service.schemaListState(connectionId: connectionId, database: metadata.name) {
-            if schemas.contains(where: { DatabaseTreeFilter.matches(searchText, $0) }) { return true }
-            for schema in schemas where schemaContentMatchesSearch(database: metadata.name, schema: schema) {
+            let browsable = DatabaseTreeVisibility.visibleSchemas(
+                schemas,
+                systemSchemas: systemSchemas,
+                activeSchema: metadata.name == browsingDatabase ? activeSchema : nil,
+                showsSystem: showSystemContainers,
+                selected: sidebarState?.schemaFilter(for: metadata.name) ?? [],
+                pinned: schemasWithPendingOperations(database: metadata.name)
+            )
+            if browsable.contains(where: { schemaSearchVerdict(database: metadata.name, schema: $0).isVisible }) {
                 return true
             }
         }
-        return schemaContentMatchesSearch(database: metadata.name, schema: nil)
+        return databaseContentMatchesSearch(database: metadata.name)
     }
 
-    internal func schemaContentMatchesSearch(database: String, schema: String?) -> Bool {
-        if let schema, DatabaseTreeFilter.matches(searchText, schema) { return true }
-        let tables = service.tables(connectionId: connectionId, database: database, schema: schema)
-        if tables.contains(where: { DatabaseTreeFilter.matches(searchText, $0.name) }) { return true }
-        let routines = service.routines(connectionId: connectionId, database: database, schema: schema)
-        if routines.contains(where: { DatabaseTreeFilter.matches(searchText, $0.name) }) { return true }
-        let types = service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema)
-        return types.contains { DatabaseTreeFilter.matches(searchText, $0.name) }
+    internal func schemaSearchVerdict(database: String, schema: String) -> DatabaseTreeFilter.SchemaSearchVerdict {
+        DatabaseTreeFilter.schemaSearchVerdict(
+            schema: schema,
+            database: database,
+            searchText: searchText,
+            loadedContent: loadedObjectBuckets(database: database, schema: schema),
+            listingMatches: listingMatches(database: database),
+            listingCoversSchema: listsTablesPerSchema && !systemSchemas.contains(schema)
+        )
+    }
+
+    /// Worked out once per database per redraw, since every schema of the database is judged
+    /// against the same listing.
+    private func listingMatches(database: String) -> DatabaseTreeFilter.SchemaListingMatches? {
+        let key = DatabaseTreeContainerKey(database: database, schema: nil, searchText: searchText)
+        if let cached = listingMatchesCache[key] { return cached }
+        guard let listing = service.allSchemaTablesLoadState(connectionId: connectionId, database: database).value else {
+            return nil
+        }
+        let matches = DatabaseTreeFilter.SchemaListingMatches(
+            listing: listing,
+            database: database,
+            searchText: searchText,
+            covered: DatabaseTreeFilter.coveredSchemas(
+                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            )
+        )
+        listingMatchesCache[key] = matches
+        return matches
+    }
+
+    /// The objects a database holds outside any schema, which is every object on an engine with no
+    /// schema level. `shop.` asks for all of them, and a schema engine has none to give.
+    private func databaseContentMatchesSearch(database: String) -> Bool {
+        let search = SidebarSearch(searchText)
+        if search.qualified != nil, search.nameQuery.isEmpty {
+            return !supportsSchemaLevel && search.admits(database: database, schema: nil)
+        }
+        return !objectBuckets(database: database, schema: nil).isEmpty
     }
 }

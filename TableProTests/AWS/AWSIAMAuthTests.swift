@@ -15,7 +15,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("AWS SigV4 primitives")
 struct AWSSigV4Tests {
     @Test("SHA-256 matches NIST vectors")
     func sha256Vectors() {
@@ -38,7 +37,6 @@ struct AWSSigV4Tests {
     }
 }
 
-@Suite("RDS auth token")
 struct RDSAuthTokenGeneratorTests {
     private let credentials = AWSCredentials(
         accessKeyId: "AKIDEXAMPLE",
@@ -90,7 +88,6 @@ struct RDSAuthTokenGeneratorTests {
     }
 }
 
-@Suite("RDS endpoint region")
 struct RDSEndpointTests {
     @Test("Derives region from cluster hostname")
     func clusterHostname() {
@@ -114,7 +111,6 @@ struct RDSEndpointTests {
     }
 }
 
-@Suite("RDS signing endpoint")
 struct RDSSigningEndpointResolverTests {
     private func resolve(
         host: String = "mydb.abc123.us-east-1.rds.amazonaws.com",
@@ -255,7 +251,6 @@ struct RDSSigningEndpointResolverTests {
     }
 }
 
-@Suite("AWS credential resolver")
 struct AWSCredentialResolverTests {
     @Test("Resolves static access-key credentials")
     func staticCredentials() async throws {
@@ -285,7 +280,6 @@ struct AWSCredentialResolverTests {
     }
 }
 
-@Suite("AWS config INI parsing")
 struct AWSSSOParsingTests {
     private let config = """
     [default]
@@ -335,7 +329,6 @@ struct AWSSSOParsingTests {
     }
 }
 
-@Suite("AWS IAM connection fields in the plugin metadata registry")
 @MainActor
 struct RegistryAWSIAMFieldsTests {
     private func fieldIds(forTypeId typeId: String) -> [String] {
@@ -387,7 +380,6 @@ struct RegistryAWSIAMFieldsTests {
     }
 }
 
-@Suite("AWS credential_process")
 struct AWSCredentialProcessTests {
     @Test("Tokenizes a plain command into arguments")
     func tokenizePlain() {

@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableStructureSnapshot columns")
 struct TableStructureSnapshotColumnTests {
     @Test("A column read keeps the server's spellings all the way to the CREATE TABLE definition")
     func snapshotCarriesDDLSpellingToCreateTableDefinition() {

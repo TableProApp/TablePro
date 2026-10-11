@@ -8,6 +8,8 @@ public final class URLSessionSpannerTransport: SpannerTransport, @unchecked Send
 
     public init(requestTimeout: @escaping @Sendable () -> TimeInterval) {
         let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 3_600
+        configuration.timeoutIntervalForResource = 3_600
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
         configuration.httpShouldSetCookies = false

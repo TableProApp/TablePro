@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor window chrome")
 @MainActor
 struct EditorWindowChromeTests {
     /// The real window the app opens, not a stand-in, so removing the chrome call from

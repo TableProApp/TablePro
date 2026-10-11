@@ -118,7 +118,7 @@ internal struct CompareApplySheetView: View {
     }
 
     private var runnableScript: String {
-        runnableStatements.map { $0.sql }.joined(separator: "\n")
+        session.runnableScriptText
     }
 
     // MARK: - Summary

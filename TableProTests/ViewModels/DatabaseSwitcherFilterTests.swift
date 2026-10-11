@@ -122,4 +122,58 @@ struct DatabaseSwitcherFilterTests {
         )
         #expect(vm.filteredDatabases.map(\.name) == ["APP", "SALES", "SYS"])
     }
+
+    private func makeSchemaViewModel(
+        schemaNames: [String],
+        systemNames: [String] = [],
+        currentSchema: String? = nil,
+        activeDatabase: String?,
+        keptSchemas: [String: Set<String>]
+    ) -> DatabaseSwitcherViewModel {
+        let vm = DatabaseSwitcherViewModel(
+            connectionId: UUID(),
+            currentDatabase: currentSchema,
+            databaseType: .mysql,
+            switchTarget: .schema,
+            activeDatabase: activeDatabase,
+            sidebarState: SharedSidebarState(),
+            keptSchemas: { _, database in keptSchemas[database] }
+        )
+        vm.databases = schemaNames.map { name in
+            DatabaseMetadata.minimal(name: name, isSystem: systemNames.contains(name))
+        }
+        return vm
+    }
+
+    @Test("Schema mode lists the schemas the sidebar's schema filter keeps, with system schemas and the current one")
+    func schemaModeFollowsTheSchemaFilter() {
+        let vm = makeSchemaViewModel(
+            schemaNames: ["APP", "HR", "SALES", "SYS"],
+            systemNames: ["SYS"],
+            currentSchema: "APP",
+            activeDatabase: "ORCL",
+            keptSchemas: ["ORCL": ["SALES"]]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["APP", "SALES", "SYS"])
+    }
+
+    @Test("Schema mode reads the filter of the database its schemas belong to")
+    func schemaModeReadsTheActiveDatabaseFilter() {
+        let vm = makeSchemaViewModel(
+            schemaNames: ["APP", "HR", "SALES"],
+            activeDatabase: "ORCL",
+            keptSchemas: ["OTHER": ["SALES"]]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["APP", "HR", "SALES"])
+    }
+
+    @Test("Schema mode with no database to read a filter for lists every schema")
+    func schemaModeWithoutDatabaseIsUnfiltered() {
+        let vm = makeSchemaViewModel(
+            schemaNames: ["APP", "HR", "SALES"],
+            activeDatabase: nil,
+            keptSchemas: ["": ["SALES"]]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["APP", "HR", "SALES"])
+    }
 }

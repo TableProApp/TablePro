@@ -31,8 +31,10 @@ extension MainContentCoordinator {
         return true
     }
 
-    internal func releaseAllExactCounts() {
-        exactCountOwners.removeAll()
+    /// Drops the tab's claim whoever holds it, for a Stop, which ends that tab's count without
+    /// knowing which one it was.
+    internal func releaseExactCount(for tabId: UUID) {
+        exactCountOwners.removeValue(forKey: tabId)
     }
 
     /// Drops a finished task's handle, and only its own, reporting whether it was still the owner.

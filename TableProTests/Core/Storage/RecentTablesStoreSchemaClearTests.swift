@@ -10,7 +10,6 @@ import Testing
 /// Dropping a schema used to leave its Recent entries behind, so every one of them opened a tab
 /// whose query failed with "relation does not exist", and they survived a reconnect and a restart
 /// because they persist per connection in UserDefaults.
-@Suite("RecentTablesStore schema clear")
 @MainActor
 struct RecentTablesStoreSchemaClearTests {
     private func entry(database: String?, schema: String?, name: String) -> RecentTableEntry {
@@ -19,6 +18,7 @@ struct RecentTablesStoreSchemaClearTests {
             schema: schema,
             name: name,
             isView: false,
+            objectType: nil,
             openedAt: Date(timeIntervalSince1970: 1)
         )
     }
@@ -31,6 +31,7 @@ struct RecentTablesStoreSchemaClearTests {
                 schema: entry.schema,
                 name: entry.name,
                 isView: entry.isView,
+                objectType: nil,
                 at: entry.openedAt
             )
         }

@@ -86,7 +86,9 @@ struct FindBarView: View {
     /// mode for every row. Offering it on top of filters the user already applied would either
     /// discard them or loosen them, so the button only appears when there are none.
     private var showsEscalation: Bool {
-        guard findState.matches.isEmpty, findState.canEscalateToAllRows else { return false }
+        guard findState.matches.isEmpty, findState.canEscalateToAllRows, coordinator.supportsMatchAnyFilters else {
+            return false
+        }
         return coordinator.selectedTabFilterState.filters.isEmpty
     }
 }

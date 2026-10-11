@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("CockroachDB Plan Parser")
 struct CockroachDBPlanParserTests {
     private let parser = CockroachDBPlanParser()
 

@@ -4,14 +4,7 @@ import TableProTeradataCore
 
 extension TeradataPluginDriver {
     func sqlLiteral(_ value: PluginCellValue) -> String {
-        switch value {
-        case .null:
-            return "NULL"
-        case .text(let string):
-            return "'" + string.replacingOccurrences(of: "'", with: "''") + "'"
-        case .bytes(let data):
-            return "'" + data.map { String(format: "%02X", $0) }.joined() + "'XB"
-        }
+        TeradataRowEditSQL.literal(value)
     }
 
     func generateStatements(
@@ -39,9 +32,7 @@ extension TeradataPluginDriver {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let values = insertedRowData[change.rowIndex], values.count == columns.count else { continue }
-                let columnList = columns.map(quote).joined(separator: ", ")
-                let valueList = values.map(sqlLiteral).joined(separator: ", ")
-                statements.append(("INSERT INTO \(target) (\(columnList)) VALUES (\(valueList))", []))
+                statements.append((TeradataRowEditSQL.insert(target: target, columns: columns, values: values), []))
             case .update:
                 let assignments = change.cellChanges.map { "\(quote($0.columnName)) = \(sqlLiteral($0.newValue))" }
                 guard !assignments.isEmpty else { continue }

@@ -19,8 +19,8 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
     }
 
     let behavior: Behavior
-    private(set) var startCallCount = 0
-    private(set) var stopCallCount = 0
+    private var startCalls = 0
+    private var stopCalls = 0
     private(set) var startedBinaryPath: String?
     private(set) var startedArguments: [String] = []
     private(set) var startedEnvironment: [String: String] = [:]
@@ -43,9 +43,17 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
 
     var processIdentifier: Int32? { 4_243 }
 
+    var startCallCount: Int {
+        lock.withLock { startCalls }
+    }
+
+    var stopCallCount: Int {
+        lock.withLock { stopCalls }
+    }
+
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
         lock.lock()
-        startCallCount += 1
+        startCalls += 1
         startedBinaryPath = binaryPath
         startedArguments = arguments
         startedEnvironment = environment
@@ -67,7 +75,7 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
     func stop() {
         lock.lock()
         requested = true
-        stopCallCount += 1
+        stopCalls += 1
         lock.unlock()
         if let fd = listenerFd {
             close(fd)
@@ -137,6 +145,18 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
 struct TunnelCommandManagerTests {
     private func customConfig(command: String = "/bin/echo --listen {port}") -> TunnelCommandConfiguration {
         TunnelCommandConfiguration(method: .custom, command: command)
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return condition()
     }
 
     @Test("createTunnel returns the port the command was told to listen on")
@@ -247,13 +267,62 @@ struct TunnelCommandManagerTests {
                 connectionId: UUID(), config: self.customConfig(), remoteHost: "h", remotePort: 1
             )
         }
-        while fake.startCallCount == 0 {
-            try await Task.sleep(nanoseconds: 10_000_000)
+        defer {
+            task.cancel()
+            fake.stop()
         }
+
+        try #require(await waitUntil { fake.startCallCount > 0 })
         task.cancel()
-        _ = try? await task.value
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await task.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected cancellation to stop tunnel command creation")
+            return
+        }
+        #expect(error is CancellationError)
 
         #expect(fake.stopCallCount >= 1)
+    }
+
+    @Test("connect deadline stops the command before registration")
+    func deadlineStopsTheCommand() async throws {
+        let fake = FakeTunnelCommandRunner(behavior: .neverReady)
+        let manager = TunnelCommandManager(runnerFactory: { fake })
+        let id = UUID()
+        let creation = Task {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            return try await manager.createTunnel(
+                connectionId: id,
+                config: self.customConfig(),
+                remoteHost: "db.internal",
+                remotePort: 5_432,
+                deadline: deadline
+            )
+        }
+        defer {
+            creation.cancel()
+            fake.stop()
+        }
+
+        try #require(await waitUntil { fake.startCallCount > 0 })
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected tunnel command readiness to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .tunnel("db.internal:5432"),
+            configuredSeconds: 30
+        ))
+        #expect(fake.stopCallCount >= 1)
+        #expect(!(await manager.hasTunnel(connectionId: id)))
     }
 
     @Test("terminateAllProcessesSync stops the running command")

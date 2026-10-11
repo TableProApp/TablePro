@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL index key parts")
 struct PostgreSQLIndexKeyPartTests {
     private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
     private static let beforeCoveringIndexes = PostgreSQLCapabilities(serverVersion: 100_021)
@@ -24,12 +23,43 @@ struct PostgreSQLIndexKeyPartTests {
         type: String = "btree",
         predicate: String? = nil,
         expressions: String = "{}",
-        included: String = "{}"
+        included: String = "{}",
+        valid: String = "t"
     ) -> [PluginCellValue] {
         [
             .text(table), .text(name), .text(columns), .text(unique ? "true" : "false"), .text("false"),
-            .text(type), predicate.map(PluginCellValue.text) ?? .null, .text(expressions), .text(included)
+            .text(type), predicate.map(PluginCellValue.text) ?? .null, .text(expressions), .text(included),
+            .text(valid)
         ]
+    }
+
+    @Test("Validity is read with the rule a dump applies, so an index on a partitioned table counts as valid")
+    func validityUsesTheDumpRule() {
+        for table in ["users", nil] {
+            let sql = PostgreSQLIndexQueries.indexList(schema: "public", table: table, capabilities: Self.modern)
+            #expect(sql.contains("((ix.indisvalid OR t.relkind = 'p') AND ix.indisready) AS is_valid"))
+            #expect(sql.contains("JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid"))
+        }
+    }
+
+    @Test("An invalid index decodes as invalid and a valid one as valid")
+    func validityIsDecoded() throws {
+        let invalid = try #require(PostgreSQLIndexRow.index(
+            from: Self.row(name: "users_email_key", columns: "{email}", unique: true, valid: "f"), ddl: [:]
+        ))
+        let valid = try #require(PostgreSQLIndexRow.index(
+            from: Self.row(name: "users_email", columns: "{email}"), ddl: [:]
+        ))
+        #expect(invalid.index.isValid == false)
+        #expect(valid.index.isValid == true)
+    }
+
+    @Test("A row with no validity column reports none")
+    func missingValidityIsNotReported() throws {
+        let decoded = try #require(PostgreSQLIndexRow.index(
+            from: Array(Self.row(name: "users_email", columns: "{email}").prefix(9)), ddl: [:]
+        ))
+        #expect(decoded.index.isValid == nil)
     }
 
     @Test("Key parts stop at indnkeyatts from PostgreSQL 11, so INCLUDE columns are read separately")
@@ -117,7 +147,6 @@ struct PostgreSQLIndexKeyPartTests {
     }
 }
 
-@Suite("PostgreSQL index DDL spelling read")
 struct PostgreSQLIndexDDLQueryTests {
     @Test("The prefix is built on the server with quote_ident, the way pg_get_indexdef quotes")
     func prefixUsesQuoteIdent() {
@@ -177,7 +206,6 @@ struct PostgreSQLIndexDDLQueryTests {
     }
 }
 
-@Suite("PostgreSQL index clauses")
 struct PostgreSQLIndexClausesTests {
     private static let table = #""dst"."users""#
 

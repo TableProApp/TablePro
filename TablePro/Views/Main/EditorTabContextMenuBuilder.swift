@@ -49,6 +49,15 @@ internal enum EditorTabContextMenuBuilder {
             isEnabled: commands.canTearOff(tabId)
         ) { commands.tearOff(tabId) }
 
+        /// Hidden rather than dimmed on a tab that can never move, as the HIG asks of context menus.
+        if commands.offersMoveToConnection(tabId) {
+            append(
+                menu,
+                title: String(localized: "Move Tab to Connection…"),
+                isEnabled: commands.canMoveToConnection(tabId)
+            ) { commands.moveToConnection(tabId) }
+        }
+
         return menu
     }
 

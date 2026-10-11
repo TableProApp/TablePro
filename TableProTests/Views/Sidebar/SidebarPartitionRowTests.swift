@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("What a partition row and its parent say")
 struct SidebarPartitionRowTests {
     @Test("A table the engine says nothing about shows no count, and an empty parent shows zero")
     func countLabelSeparatesUnknownFromEmpty() {
@@ -80,7 +79,6 @@ struct SidebarPartitionRowTests {
     }
 }
 
-@Suite("A refresh notices a partition count that moved on its own")
 struct PartitionCountRefreshTests {
     private func table(_ name: String, partitionCount: Int?) -> TableInfo {
         TableInfo(
@@ -111,6 +109,16 @@ struct PartitionCountRefreshTests {
         let after: MetadataLoadState<[TableInfo]> = .loaded([table("events", partitionCount: 3)])
 
         #expect(!DatabaseTreeMetadataService.partitionCountsChanged(from: before, to: after))
+    }
+
+    @Test("Two tables whose names differ only in where a period sits keep their own counts")
+    func dottedNamesKeepTheirOwnCounts() {
+        let tables = [
+            TableInfo(name: "c", type: .table, rowCount: nil, schema: "a.b", partitionCount: 1),
+            TableInfo(name: "b.c", type: .table, rowCount: nil, schema: "a", partitionCount: 2)
+        ]
+
+        #expect(!DatabaseTreeMetadataService.partitionCountsChanged(from: .loaded(tables), to: .loaded(tables)))
     }
 
     @Test("A first load is a change, and a failed refresh is not")

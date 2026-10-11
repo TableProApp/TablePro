@@ -4,7 +4,9 @@ import TableProModels
 import TableProQuery
 
 struct DataBrowserView: View {
+    @Environment(AppState.self) private var appState
     @Environment(ConnectionCoordinator.self) private var coordinator
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let table: TableInfo
 
     private var connection: DatabaseConnection { coordinator.connection }
@@ -32,13 +34,21 @@ struct DataBrowserView: View {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
     }
 
-    private var isView: Bool { table.type == .view || table.type == .materializedView }
-    private var isRedis: Bool { connection.type == .redis }
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    private var allowsRowEditing: Bool { table.type.allowsRowEditing }
+    private var browseMode: TableBrowseMode { TableBrowseMode(driver: session?.driver) }
+    private var browsesSQLRows: Bool { browseMode == .sql }
 
-    /// Both entry points ask this. Redis takes no `INSERT`, and the form cannot be filled in before
-    /// the column list has arrived.
+    /// Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
+    /// in before the column list has arrived.
     private var canInsertRow: Bool {
-        !isView && !isRedis && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+        allowsRowEditing && browsesSQLRows
+            && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+    }
+
+    private var canDeleteRows: Bool {
+        allowsRowEditing && browsesSQLRows && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
@@ -73,7 +83,7 @@ struct DataBrowserView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
         return searchableContent
-            .userActivity("com.TablePro.viewTable") { activity in
+            .userActivity(SceneIntent.viewTableActivity, isActive: appState.offersHandoff(for: connection)) { activity in
                 activity.title = table.name
                 activity.isEligibleForHandoff = true
                 activity.userInfo = [
@@ -82,8 +92,11 @@ struct DataBrowserView: View {
                 ]
             }
             .toolbar { topToolbar }
-            .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters && !viewModel.isPageLoading ? .hidden : .visible, for: .bottomBar)
-            .toolbar { paginationToolbar }
+            .bottomSafeAreaBar {
+                if showsPaginationBar {
+                    paginationBar
+                }
+            }
             .task {
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
@@ -188,7 +201,7 @@ struct DataBrowserView: View {
 
     @ViewBuilder
     private var searchableContent: some View {
-        if isRedis {
+        if !browsesSQLRows {
             content
                 .navigationTitle(table.name)
                 .navigationBarTitleDisplayMode(.inline)
@@ -271,7 +284,7 @@ struct DataBrowserView: View {
                 columnDetails: viewModel.columnDetails,
                 databaseType: connection.type,
                 schema: viewModel.schema,
-                safeModeLevel: connection.safeModeLevel,
+                safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
                 foreignKeys: viewModel.foreignKeys,
                 onSaved: { Task { await viewModel.load() } },
                 loadFullValue: { ref in
@@ -280,26 +293,35 @@ struct DataBrowserView: View {
                 }
             )
         } label: {
-            RowCard(columns: columns, columnDetails: viewModel.columnDetails, row: row)
+            RowCard(
+                columns: columns,
+                columnDetails: viewModel.columnDetails,
+                row: row,
+                previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
+            )
         }
         .hoverEffect()
         .contextMenu { rowContextMenu(row: row) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !isView && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
+            if canDeleteRows {
                 Button {
-                    deleteTarget = viewModel.primaryKeyValues(for: row)
-                    showDeleteConfirmation = true
+                    confirmDelete(row)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
                 .tint(.red)
             }
         }
-        .accessibilityAction(named: Text("Delete row")) {
-            guard !isView, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
-            deleteTarget = viewModel.primaryKeyValues(for: row)
-            showDeleteConfirmation = true
+        .accessibilityActions {
+            if canDeleteRows {
+                Button("Delete row") { confirmDelete(row) }
+            }
         }
+    }
+
+    private func confirmDelete(_ row: [String?]) {
+        deleteTarget = viewModel.primaryKeyValues(for: row)
+        showDeleteConfirmation = true
     }
 
     @ViewBuilder
@@ -352,6 +374,46 @@ struct DataBrowserView: View {
 
     @ToolbarContentBuilder
     private var topToolbar: some ToolbarContent {
+        if browsesSQLRows {
+            sortAndFilterItems
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if browsesSQLRows {
+                    Button { showStructure = true } label: {
+                        Label("Table Structure", systemImage: "info.circle")
+                    }
+                    Divider()
+                }
+                Section("Export") {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            let text = ClipboardExporter.exportRows(
+                                columns: columns, rows: rows,
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        } label: {
+                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                        }
+                    }
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+        }
+        if canInsertRow {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showInsertSheet = true } label: {
+                    Label("Insert Row", systemImage: "plus")
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sortAndFilterItems: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Picker("Sort By", selection: sortColumnBinding) {
@@ -370,103 +432,73 @@ struct DataBrowserView: View {
                     .pickerStyle(.inline)
                 }
             } label: {
-                Image(systemName: viewModel.sortState.isSorting
+                Label("Sort", systemImage: viewModel.sortState.isSorting
                     ? "arrow.up.arrow.down.circle.fill"
                     : "arrow.up.arrow.down.circle")
-                    .accessibilityLabel(Text("Sort"))
             }
             .disabled(columns.isEmpty)
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showFilterSheet = true } label: {
-                Image(systemName: viewModel.hasActiveFilters
+                Label("Filter", systemImage: viewModel.hasActiveFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
-                    .accessibilityLabel(Text("Filter"))
             }
             .badge(viewModel.activeFilterCount)
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button { showStructure = true } label: {
-                    Label("Table Structure", systemImage: "info.circle")
-                }
-                Divider()
-                Section("Export") {
-                    ForEach(ExportFormat.allCases) { format in
-                        Button {
-                            let text = ClipboardExporter.exportRows(
-                                columns: columns, rows: rows,
-                                format: format, tableName: table.name,
-                                databaseType: connection.type, driver: session?.driver
-                            )
-                            ClipboardExporter.copyToClipboard(text)
-                        } label: {
-                            Label(format.rawValue, systemImage: "doc.on.clipboard")
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-        }
-        if canInsertRow {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showInsertSheet = true } label: {
-                    Image(systemName: "plus")
-                        .accessibilityLabel(Text("Insert Row"))
-                }
-            }
+    }
+
+    private var duoWidthClass: DuoWidthClass {
+        horizontalSizeClass == .regular ? .regular : .compact
+    }
+
+    private var showsPaginationBar: Bool {
+        viewModel.showsPaginationBar && !searchFocused
+    }
+
+    private var paginationBar: some View {
+        PagingBar(
+            previousTitle: "Previous Page",
+            nextTitle: "Next Page",
+            canGoPrevious: viewModel.canGoToPreviousPage,
+            canGoNext: viewModel.canGoToNextPage,
+            onPrevious: { Task { await viewModel.goToPreviousPage() } },
+            onNext: { Task { await viewModel.goToNextPage() } }
+        ) {
+            pageMenu
         }
     }
 
-    @ToolbarContentBuilder
-    private var paginationToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button { Task { await viewModel.goToPreviousPage() } } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(viewModel.pagination.currentPage == 0 || viewModel.isLoading)
-
-            Spacer()
-
-            Menu {
-                Section("Rows per Page") {
-                    ForEach([50, 100, 200, 500], id: \.self) { size in
-                        Button {
-                            Task { await viewModel.changePageSize(size) }
-                        } label: {
-                            HStack {
-                                Text("\(size) rows")
-                                if viewModel.pagination.pageSize == size {
-                                    Image(systemName: "checkmark")
-                                }
+    private var pageMenu: some View {
+        Menu {
+            Section("Rows per Page") {
+                ForEach([50, 100, 200, 500], id: \.self) { size in
+                    Button {
+                        Task { await viewModel.changePageSize(size) }
+                    } label: {
+                        HStack {
+                            Text("\(size) rows")
+                            if viewModel.pagination.pageSize == size {
+                                Image(systemName: "checkmark")
                             }
                         }
                     }
                 }
-                Section {
-                    Button {
-                        goToPageInput = ""
-                        showGoToPage = true
-                    } label: {
-                        Label("Go to Page...", systemImage: "arrow.right.to.line")
-                    }
+            }
+            Section {
+                Button {
+                    goToPageInput = ""
+                    showGoToPage = true
+                } label: {
+                    Label("Go to Page...", systemImage: "arrow.right.to.line")
                 }
-            } label: {
-                Text(viewModel.paginationLabel)
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
             }
-
-            Spacer()
-
-            Button { Task { await viewModel.goToNextPage() } } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(!viewModel.pagination.hasNextPage || viewModel.isLoading)
+        } label: {
+            Text(viewModel.paginationLabel)
+                .font(.footnote)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize()
         }
     }
 
@@ -477,7 +509,7 @@ struct DataBrowserView: View {
             session: session,
             databaseType: connection.type,
             schema: viewModel.schema,
-            safeModeLevel: connection.safeModeLevel,
+            safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             onInserted: { Task { await viewModel.load() } }
         )
     }

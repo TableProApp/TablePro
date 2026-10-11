@@ -200,9 +200,10 @@ struct ColumnTypeClassifier {
             map[key] = { .json(rawType: $0) }
         }
 
+        /// Oracle's `LONG RAW` holds bytes, and no pattern arm below reads the name as binary.
         for key in [
             "BLOB", "BYTEA", "BINARY", "VARBINARY", "RAW", "IMAGE",
-            "TINYBLOB", "MEDIUMBLOB", "LONGBLOB"
+            "TINYBLOB", "MEDIUMBLOB", "LONGBLOB", "LONG RAW"
         ] {
             map[key] = { .blob(rawType: $0) }
         }
@@ -227,10 +228,11 @@ struct ColumnTypeClassifier {
             map[key] = { .spatial(rawType: $0) }
         }
 
-        // Text (explicit entries for common types not caught by fallback)
+        /// An Oracle `BFILE` cell is the `BFILENAME('DIR', 'file')` call that points at the file, never its bytes,
+        /// so it edits as text; the hex editor would write bytes the driver refuses for a BFILE.
         for key in [
             "TEXT", "VARCHAR", "CHAR", "NVARCHAR", "NCHAR", "NTEXT",
-            "VARCHAR2", "CLOB", "NCLOB",
+            "VARCHAR2", "NVARCHAR2", "CLOB", "NCLOB", "ROWID", "UROWID", "REF", "BFILE",
             "STRING", "FIXEDSTRING",
             "UUID", "UNIQUEIDENTIFIER", "SQL_VARIANT",
             "TINYTEXT", "MEDIUMTEXT", "LONGTEXT"

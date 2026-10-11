@@ -84,6 +84,7 @@ internal struct PhpViewerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Open in Window"))
+                .accessibilityLabel(String(localized: "Open in Window"))
             }
         }
         .padding(.horizontal, 10)

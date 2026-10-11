@@ -9,12 +9,31 @@ struct ImportFormatOption: Identifiable, Equatable {
     let id: String
     let name: String
 
+    /// The plugin's own `acceptedFileExtensions`, carried so a file panel and
+    /// `ImportFileFormatResolver` can be built from the option alone rather than reaching back into
+    /// `PluginManager` for the plugin type.
+    let acceptedFileExtensions: [String]
+
+    init(id: String, name: String, acceptedFileExtensions: [String] = []) {
+        self.id = id
+        self.name = name
+        self.acceptedFileExtensions = acceptedFileExtensions
+    }
+
     var submenuLabel: String {
         String(format: String(localized: "From %@\u{2026}"), name)
     }
 
     var standaloneLabel: String {
         String(format: String(localized: "Import %@\u{2026}"), name)
+    }
+
+    /// The format's name alone, for a menu whose parent already names the command: Import Data From
+    /// > CSV…, the shape Keynote and Numbers give Export To. Under that parent `submenuLabel` would
+    /// read "Import Data From > From CSV…". Not localized, because the format's name is the whole of
+    /// it and a format name is a technical term.
+    var formatLabel: String {
+        "\(name)\u{2026}"
     }
 }
 

@@ -63,7 +63,7 @@ enum HistoryPanelPreferencesStorage {
         do {
             return try JSONDecoder().decode(HistoryPanelPreferences.self, from: data)
         } catch {
-            logger.error("Failed to decode history panel preferences: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to decode history panel preferences: \(error.publicLogShape, privacy: .public)")
             return .default
         }
     }
@@ -73,7 +73,7 @@ enum HistoryPanelPreferencesStorage {
             let data = try JSONEncoder().encode(preferences)
             AppStorageEnvironment.shared.defaults.set(data, forKey: key(for: connectionId))
         } catch {
-            logger.error("Failed to encode history panel preferences: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to encode history panel preferences: \(error.publicLogShape, privacy: .public)")
         }
     }
 

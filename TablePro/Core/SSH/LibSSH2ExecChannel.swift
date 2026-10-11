@@ -48,42 +48,67 @@ enum LibSSH2ExecChannel {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    static func run(
+    static func runSerialized(
         _ command: String,
         session: OpaquePointer,
-        queue: DispatchQueue
+        budget: SFTPConnectionBudget,
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) throws -> RemoteCommandResult {
-        try queue.sync {
-            guard let channel = libssh2_channel_open_ex(
-                session, "session", 7, 2 * 1_024 * 1_024, 32_768, nil, 0
-            ) else {
-                throw SFTPError.remoteCommandFailed(
-                    command: command, status: -1, output: "the server refused a session channel"
-                )
+        try budget.check(isCancelled: isCancelled)
+        try budget.prepare(session: session, isCancelled: isCancelled)
+        guard let channel = libssh2_channel_open_ex(
+            session, "session", 7, 2 * 1_024 * 1_024, 32_768, nil, 0
+        ) else {
+            if libssh2_session_last_errno(session) == LIBSSH2_ERROR_TIMEOUT {
+                throw budget.timeoutError
             }
-            defer { libssh2_channel_free(channel) }
-
-            guard libssh2_channel_process_startup(
-                channel, "exec", 4, command, UInt32(command.utf8.count)
-            ) == 0 else {
-                throw SFTPError.remoteCommandFailed(
-                    command: command, status: -1, output: "the server refused to run commands"
-                )
-            }
-
-            let out = drain(channel: channel, streamId: 0)
-            let err = drain(channel: channel, streamId: sshExtendedDataStderr)
-            libssh2_channel_close(channel)
-            let status = libssh2_channel_get_exit_status(channel)
-            let signal = exitSignal(channel: channel, session: session)
-
-            Self.logger.debug(
-                "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .public)"
-            )
-            return RemoteCommandResult(
-                exitStatus: status, standardOutput: out, standardError: err, exitSignal: signal
+            throw SFTPError.remoteCommandFailed(
+                command: command, status: -1, output: "the server refused a session channel"
             )
         }
+        defer {
+            budget.prepareForCleanup(session: session)
+            libssh2_channel_free(channel)
+        }
+
+        try budget.prepare(session: session, isCancelled: isCancelled)
+        let startResult = libssh2_channel_process_startup(
+            channel, "exec", 4, command, UInt32(command.utf8.count)
+        )
+        if startResult == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
+        guard startResult == 0 else {
+            throw SFTPError.remoteCommandFailed(
+                command: command, status: -1, output: "the server refused to run commands"
+            )
+        }
+
+        let out = try drain(
+            channel: channel,
+            streamId: 0,
+            session: session,
+            budget: budget,
+            isCancelled: isCancelled
+        )
+        let err = try drain(
+            channel: channel,
+            streamId: sshExtendedDataStderr,
+            session: session,
+            budget: budget,
+            isCancelled: isCancelled
+        )
+        try budget.prepare(session: session, isCancelled: isCancelled)
+        let closeResult = libssh2_channel_close(channel)
+        if closeResult == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
+        try budget.check(isCancelled: isCancelled)
+        let status = libssh2_channel_get_exit_status(channel)
+        let signal = exitSignal(channel: channel, session: session)
+
+        Self.logger.debug(
+            "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .public)"
+        )
+        return RemoteCommandResult(
+            exitStatus: status, standardOutput: out, standardError: err, exitSignal: signal
+        )
     }
 
     /// The signal name libssh2 recorded for the channel's process, or nil when it exited normally.
@@ -98,13 +123,22 @@ enum LibSSH2ExecChannel {
         return name.isEmpty ? nil : name
     }
 
-    private static func drain(channel: OpaquePointer, streamId: Int32) -> String {
+    private static func drain(
+        channel: OpaquePointer,
+        streamId: Int32,
+        session: OpaquePointer,
+        budget: SFTPConnectionBudget,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> String {
         var collected = Data()
         var buffer = [CChar](repeating: 0, count: readChunk)
         while true {
+            try budget.prepare(session: session, isCancelled: isCancelled)
             let read = libssh2_channel_read_ex(channel, streamId, &buffer, buffer.count)
+            if read == LIBSSH2_ERROR_TIMEOUT { throw budget.timeoutError }
             if read <= 0 { break }
             collected.append(contentsOf: buffer.prefix(read).map { UInt8(bitPattern: $0) })
+            try budget.check(isCancelled: isCancelled)
         }
         return String(data: collected, encoding: .utf8) ?? ""
     }

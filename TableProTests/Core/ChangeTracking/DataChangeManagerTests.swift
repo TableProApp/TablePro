@@ -11,7 +11,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Data Change Manager")
 struct DataChangeManagerTests {
     private func makeManagerWithUndo() -> DataChangeManager {
         let manager = DataChangeManager()
@@ -596,7 +595,6 @@ struct DataChangeManagerTests {
 /// the grid's own writability check. A server-owned column could be staged there, silently filtered
 /// out during statement generation, and then cleared by a save that reported success.
 @MainActor
-@Suite("Data Change Manager - non-writable columns")
 struct DataChangeManagerNonWritableTests {
     private func makeManager(generatedColumns: Set<String>) -> DataChangeManager {
         let manager = DataChangeManager()
@@ -658,7 +656,6 @@ struct DataChangeManagerNonWritableTests {
 /// `immutableColumns` is the driver's own list, such as MongoDB's `_id`. The grid consults it and
 /// the model boundary did not, so the row inspector could still stage a change the backend rejects.
 @MainActor
-@Suite("Data Change Manager - immutable columns")
 struct DataChangeManagerImmutableColumnTests {
     @Test("A writable column with no generated set is accepted")
     func writableColumnAccepted() {

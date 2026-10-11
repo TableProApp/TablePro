@@ -4,18 +4,77 @@ import Foundation
 import TableProSyncTransport
 import Testing
 
-@Suite("SyncRecordMapper connection wire schema")
 struct SyncRecordMapperConnectionTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
+
+    private static let writtenToRecord: Set<String> = [
+        "id",
+        "name",
+        "host",
+        "port",
+        "database",
+        "username",
+        "type",
+        "sshConfig",
+        "sslConfig",
+        "color",
+        "iconName",
+        "tagIds",
+        "groupId",
+        "sshProfileId",
+        "preferredSafeModeLevel",
+        "aiPolicy",
+        "aiRules",
+        "aiAlwaysAllowedTools",
+        "additionalFields",
+        "redisDatabase",
+        "startupCommands",
+        "sortOrder",
+        "isFavorite"
+    ]
+
+    private static let rebuiltFromRecord: Set<String> = ["sshTunnelMode"]
+
+    private static let optionalWireKeys: Set<String> = [
+        "iconName",
+        "tagIds",
+        "tagId",
+        "groupId",
+        "sshProfileId",
+        "aiPolicy",
+        "aiRules",
+        "aiAlwaysAllowedTools",
+        "redisDatabase",
+        "startupCommands"
+    ]
+
+    private static let keptFromThisMac: Set<String> = [
+        "localOnly",
+        "isSample",
+        "passwordSource",
+        "credentialMode",
+        "externalAccess",
+        "cloudflareTunnelMode",
+        "cloudSQLProxyMode",
+        "socksProxyMode",
+        "tunnelCommandMode"
+    ]
+
+    private static func storedValues(of connection: DatabaseConnection) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: Mirror(reflecting: connection).children.compactMap { child in
+            child.label.map { ($0, String(describing: child.value)) }
+        })
+    }
 
     private func makeFullyPopulatedConnection() -> DatabaseConnection {
         var connection = DatabaseConnection(name: "Production")
         connection.host = "db.example.com"
-        connection.port = 5432
+        connection.port = 5_432
         connection.database = "app"
         connection.username = "admin"
         connection.type = .postgresql
         connection.color = .blue
+        connection.iconName = "server.rack"
         connection.tagIds = [UUID(), UUID()]
         connection.groupId = UUID()
         connection.sshProfileId = UUID()
@@ -28,7 +87,94 @@ struct SyncRecordMapperConnectionTests {
         connection.sortOrder = 7
         connection.isFavorite = true
         connection.additionalFields = ["schema": "public"]
+        connection.connectTimeoutSeconds = 12
+        connection.queryTimeoutSeconds = 0
         return connection
+    }
+
+    private func makeConnectionWithDeviceLocalState() -> DatabaseConnection {
+        var connection = DatabaseConnection(
+            name: "Warehouse",
+            host: "db.example.com",
+            port: 5_432,
+            database: "app",
+            username: "admin",
+            type: .postgresql
+        )
+        connection.localOnly = true
+        connection.isSample = true
+        connection.passwordSource = .env(variable: "WAREHOUSE_PASSWORD")
+        connection.credentialMode = .profile(id: UUID())
+        connection.externalAccess = .blocked
+        connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.access.example.com"))
+        connection.cloudSQLProxyMode = .inline(
+            CloudSQLProxyConfiguration(instanceConnectionName: "project:region:instance")
+        )
+        connection.socksProxyMode = .inline(
+            SOCKSProxyConfiguration(host: "proxy.internal", port: 1_080, username: "relay")
+        )
+        connection.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
+        )
+        return connection
+    }
+
+    @Test("A connection back from the wire is its local copy again once it adopts that copy's device-local state")
+    func deviceLocalStateCompletesTheRoundTrip() throws {
+        let local = makeConnectionWithDeviceLocalState()
+        let decoded = try SyncRecordMapper.toConnection(SyncRecordMapper.toCKRecord(local, in: zoneID))
+
+        #expect(decoded.adoptingDeviceLocalState(from: local) == local)
+    }
+
+    @Test("Adopting device-local state keeps every synced value another device sent")
+    func adoptingDeviceLocalStateKeepsSyncedValues() throws {
+        let local = makeConnectionWithDeviceLocalState()
+        var remote = local
+        remote.name = "Renamed"
+        remote.host = "replica.example.com"
+        remote.safeModeLevel = .readOnly
+        let decoded = try SyncRecordMapper.toConnection(SyncRecordMapper.toCKRecord(remote, in: zoneID))
+
+        #expect(decoded.adoptingDeviceLocalState(from: local) == remote)
+    }
+
+    @Test("Every stored connection property is written to the record, rebuilt from it, or kept from this Mac")
+    func everyStoredPropertyIsClassified() {
+        let stored = Set(Self.storedValues(of: DatabaseConnection(name: "")).keys)
+        let classified = Self.writtenToRecord.union(Self.rebuiltFromRecord).union(Self.keptFromThisMac)
+        let unclassified = stored.subtracting(classified)
+
+        #expect(
+            unclassified.isEmpty,
+            """
+            DatabaseConnection gained \(unclassified.sorted().joined(separator: ", ")).
+            Write each one to the connection record and add it to writtenToRecord,
+            or add it to keptFromThisMac and to adoptingDeviceLocalState(from:).
+            An unclassified property is reset to its default by every pull that carries the connection.
+            """
+        )
+        #expect(classified.subtracting(stored).isEmpty)
+    }
+
+    @Test("No connection property is both synced and kept from this Mac")
+    func classificationsDoNotOverlap() {
+        #expect(Self.writtenToRecord.isDisjoint(with: Self.rebuiltFromRecord))
+        #expect(Self.writtenToRecord.isDisjoint(with: Self.keptFromThisMac))
+        #expect(Self.rebuiltFromRecord.isDisjoint(with: Self.keptFromThisMac))
+    }
+
+    @Test("The round-trip fixture sets every device-local property away from its default")
+    func roundTripFixtureCoversEveryDeviceLocalProperty() {
+        let defaults = Self.storedValues(of: DatabaseConnection(name: ""))
+        let fixture = Self.storedValues(of: makeConnectionWithDeviceLocalState())
+
+        let leftAtDefault = Self.keptFromThisMac.filter { fixture[$0] == defaults[$0] }
+
+        #expect(
+            leftAtDefault.isEmpty,
+            "Set \(leftAtDefault.sorted().joined(separator: ", ")) in makeConnectionWithDeviceLocalState()."
+        )
     }
 
     @Test("An unverified field is never written to a record")
@@ -63,7 +209,7 @@ struct SyncRecordMapperConnectionTests {
 
         #expect(record["name"] as? String == "Production")
         #expect(record["host"] as? String == "db.example.com")
-        #expect(record["port"] as? Int64 == 5432)
+        #expect(record["port"] as? Int64 == 5_432)
         #expect(record["startupCommands"] as? String == "SET search_path TO public")
     }
 
@@ -82,12 +228,158 @@ struct SyncRecordMapperConnectionTests {
         #expect(decoded.username == connection.username)
         #expect(decoded.type == connection.type)
         #expect(decoded.color == connection.color)
+        #expect(decoded.iconName == "server.rack")
         #expect(decoded.groupId == connection.groupId)
         #expect(decoded.sshProfileId == connection.sshProfileId)
         #expect(decoded.safeModeLevel == connection.safeModeLevel)
         #expect(decoded.redisDatabase == connection.redisDatabase)
         #expect(decoded.startupCommands == connection.startupCommands)
         #expect(decoded.sortOrder == connection.sortOrder)
+        #expect(decoded.connectTimeoutSeconds == 12)
+        #expect(decoded.queryTimeoutSeconds == 0)
+    }
+
+    @Test("Timeouts use their deployed wire fields without duplicating query timeout in JSON")
+    func timeoutWireFieldsStayCanonical() throws {
+        let record = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(record[ConnectionSyncField.queryTimeoutSeconds.key] as? Int64 == 0)
+        #expect(additionalFields[DatabaseConnection.connectTimeoutSecondsKey] == "12")
+        #expect(additionalFields[DatabaseConnection.queryTimeoutSecondsKey] == nil)
+        #expect(additionalFields["schema"] == "public")
+    }
+
+    @Test("Clearing timeouts and other additional fields clears the based record")
+    func clearingTimeoutsClearsBasedRecord() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.additionalFields = [:]
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.queryTimeoutSeconds.key] == nil)
+        #expect(updated[ConnectionSyncField.additionalFieldsJson.key] == nil)
+    }
+
+    @Test("Emptying every optional field on a based record clears it on the record the push sends")
+    func emptiedOptionalsClearTheBasedRecord() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.iconName = nil
+        connection.tagIds = []
+        connection.groupId = nil
+        connection.sshProfileId = nil
+        connection.aiPolicy = nil
+        connection.aiRules = ""
+        connection.aiAlwaysAllowedTools = []
+        connection.redisDatabase = nil
+        connection.startupCommands = nil
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated === base)
+        for key in Self.optionalWireKeys {
+            #expect(updated[key] == nil, "\(key) kept the server's old value")
+        }
+    }
+
+    @Test("A connection pushed with no server copy names every empty optional field")
+    func freshRecordNamesEmptyOptionals() {
+        let record = SyncRecordMapper.toCKRecord(DatabaseConnection(name: "New"), in: zoneID)
+
+        #expect(Set(record.changedKeys()).isSuperset(of: Self.optionalWireKeys))
+        #expect(Set(record.allKeys()).isDisjoint(with: Self.optionalWireKeys))
+    }
+
+    /// The base already says nothing about these keys, so naming them would only restate an empty
+    /// value over whatever another device set since this Mac last pulled.
+    @Test("A based record leaves alone the empty fields the server copy does not hold")
+    func basedRecordLeavesAbsentKeysAlone() {
+        let connection = DatabaseConnection(name: "Plain")
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        let pristine = CKRecord(recordType: base.recordType, recordID: base.recordID)
+        for key in base.allKeys() {
+            pristine[key] = base[key]
+        }
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: pristine)
+
+        #expect(Set(updated.changedKeys()).isDisjoint(with: Self.optionalWireKeys))
+    }
+
+    @Test("An AI policy a newer release added survives this Mac saving another change")
+    func unrecognizedAIPolicySurvivesPush() throws {
+        let base = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        base[ConnectionSyncField.aiPolicy.key] = "someFuturePolicy" as CKRecordValue
+        var connection = try SyncRecordMapper.toConnection(base)
+        #expect(connection.aiPolicy == nil)
+        connection.name = "Renamed"
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.aiPolicy.key] as? String == "someFuturePolicy")
+    }
+
+    @Test("Choosing no AI policy still clears a policy this Mac knows")
+    func clearingAKnownAIPolicyClearsIt() {
+        var connection = makeFullyPopulatedConnection()
+        let base = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        connection.aiPolicy = nil
+
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.aiPolicy.key] == nil)
+    }
+
+    /// A newer Mac or iPhone can pick a symbol this macOS cannot draw. Dropping it on read would
+    /// write nil on this Mac's next save and erase the icon on every device.
+    @Test("An icon this Mac cannot draw survives the pull and the next push")
+    func undrawableIconSurvivesTheRoundTrip() throws {
+        let base = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        base[ConnectionSyncField.iconName.key] = "made.up.symbol" as CKRecordValue
+
+        var connection = try SyncRecordMapper.toConnection(base)
+        #expect(connection.iconName == "made.up.symbol")
+        connection.name = "Renamed"
+        let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
+
+        #expect(updated[ConnectionSyncField.iconName.key] as? String == "made.up.symbol")
+    }
+
+    @Test("A malformed icon name from the wire reads as the engine icon")
+    func malformedIconReadsAsNone() throws {
+        let record = SyncRecordMapper.toCKRecord(makeFullyPopulatedConnection(), in: zoneID)
+        record[ConnectionSyncField.iconName.key] = "Not A Symbol!" as CKRecordValue
+
+        #expect(try SyncRecordMapper.toConnection(record).iconName == nil)
+    }
+
+    @Test(
+        "Invalid synced timeouts become defaults and explicit query wins over legacy JSON",
+        arguments: [-1, DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1]
+    )
+    func invalidSyncedTimeoutsAreDiscarded(_ invalidQueryTimeout: Int) throws {
+        let connection = makeFullyPopulatedConnection()
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = connection.name
+        fields[.type] = connection.type.rawValue
+        fields[.queryTimeoutSeconds] = Int64(invalidQueryTimeout)
+        fields[.additionalFieldsJson] = try JSONEncoder().encode([
+            DatabaseConnection.connectTimeoutSecondsKey: "601",
+            DatabaseConnection.queryTimeoutSecondsKey: "30",
+            "schema": "public"
+        ])
+
+        let decoded = try SyncRecordMapper.toConnection(record)
+
+        #expect(decoded.connectTimeoutSeconds == nil)
+        #expect(decoded.queryTimeoutSeconds == nil)
+        #expect(decoded.additionalFields == ["schema": "public"])
     }
 
     @Test("A connection the engine holds at Read-Only syncs the user's own level")
@@ -98,30 +390,6 @@ struct SyncRecordMapperConnectionTests {
 
         #expect(record["safeModeLevel"] as? String == SafeModeLevel.alert.rawValue)
         #expect(record["isReadOnly"] as? Int64 == 0)
-    }
-
-    @Test(
-        "iOS safe mode wire values map to the nearest macOS level",
-        arguments: [
-            ("off", SafeModeLevel.silent),
-            ("confirmWrites", SafeModeLevel.alert),
-            ("readOnly", SafeModeLevel.readOnly)
-        ]
-    )
-    func decodesIOSWireValues(raw: String, expected: SafeModeLevel) {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: raw, isReadOnly: false) == expected)
-    }
-
-    @Test("An unrecognised safe mode value requires confirmation instead of failing open")
-    func unknownSafeModeFailsClosed() {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: "someFutureLevel", isReadOnly: false) == .alert)
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: "someFutureLevel", isReadOnly: true) == .readOnly)
-    }
-
-    @Test("A record without a safe mode level honours the read-only flag")
-    func missingSafeModeHonoursReadOnly() {
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: nil, isReadOnly: true) == .readOnly)
-        #expect(SyncRecordMapper.safeModeLevel(fromWire: nil, isReadOnly: false) == .silent)
     }
 
     @Test("An iOS read-only connection stays read-only on macOS")
@@ -136,5 +404,27 @@ struct SyncRecordMapperConnectionTests {
         let decoded = try SyncRecordMapper.toConnection(record)
 
         #expect(decoded.safeModeLevel == .readOnly)
+    }
+
+    @Test("An iOS safe mode level syncs to the nearest macOS level")
+    func iOSLevelSyncsToNearestMacLevel() throws {
+        #expect(try syncedLevel(fromIOSWireValue: "off") == .silent)
+        #expect(try syncedLevel(fromIOSWireValue: "confirmWrites") == .alert)
+        #expect(try syncedLevel(fromIOSWireValue: "readOnly") == .readOnly)
+    }
+
+    @Test("An unrecognized safe mode level syncs as Alert instead of Silent")
+    func unrecognizedLevelSyncsAsAlert() throws {
+        #expect(try syncedLevel(fromIOSWireValue: "someFutureLevel") == .alert)
+    }
+
+    private func syncedLevel(fromIOSWireValue wireValue: String) throws -> SafeModeLevel {
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: UUID().uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        record["connectionId"] = UUID().uuidString as CKRecordValue
+        record["name"] = "From iPhone" as CKRecordValue
+        record["type"] = "PostgreSQL" as CKRecordValue
+        record["safeModeLevel"] = wireValue as CKRecordValue
+        return try SyncRecordMapper.toConnection(record).preferredSafeModeLevel
     }
 }

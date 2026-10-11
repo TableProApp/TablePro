@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("DisconnectTool")
 struct DisconnectToolTests {
     private let tool = DisconnectTool()
 

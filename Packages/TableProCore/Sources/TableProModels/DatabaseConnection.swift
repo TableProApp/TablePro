@@ -2,6 +2,11 @@ import Foundation
 @_exported import TableProCoreTypes
 
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
+    public static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    public static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    public static let connectTimeoutSecondsRange = 1 ... 600
+    public static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
+
     public var id: UUID
     public var name: String
     public var type: DatabaseType
@@ -14,10 +19,28 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     /// This was `colorTag: String?` holding free-form hex, which synced on its own CloudKit field
     /// and meant a colour set on one platform was invisible on the other.
     public var color: ConnectionColor
+    /// An SF Symbol the user picked to draw instead of the engine icon. Nil draws the engine icon.
+    public var iconName: String?
     public var isReadOnly: Bool
     public var safeModeLevel: SafeModeLevel
     public var queryTimeoutSeconds: Int?
     public var additionalFields: [String: String]
+
+    public var connectTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.connectTimeoutSecondsKey].flatMap(Int.init),
+                  Self.connectTimeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.connectTimeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)
+            }
+        }
+    }
 
     public var sshEnabled: Bool
     public var sshConfiguration: SSHConfiguration?
@@ -29,6 +52,11 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public var tagIds: [UUID]
     public var sortOrder: Int
     public var isFavorite: Bool
+    public var isSample: Bool
+
+    public var participatesInSync: Bool {
+        !isSample
+    }
 
     public var tagId: UUID? {
         get { tagIds.first }
@@ -44,6 +72,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         username: String = "",
         database: String = "",
         color: ConnectionColor = .none,
+        iconName: String? = nil,
         isReadOnly: Bool = false,
         safeModeLevel: SafeModeLevel = .off,
         queryTimeoutSeconds: Int? = nil,
@@ -55,7 +84,8 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         groupId: UUID? = nil,
         tagIds: [UUID] = [],
         sortOrder: Int = 0,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        isSample: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -65,9 +95,12 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.username = username
         self.database = database
         self.color = color
+        self.iconName = iconName
         self.isReadOnly = isReadOnly
         self.safeModeLevel = safeModeLevel
-        self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.queryTimeoutSeconds = queryTimeoutSeconds.flatMap {
+            Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil
+        }
         self.additionalFields = additionalFields
         self.sshEnabled = sshEnabled
         self.sshConfiguration = sshConfiguration
@@ -77,13 +110,14 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         self.tagIds = tagIds
         self.sortOrder = sortOrder
         self.isFavorite = isFavorite
+        self.isSample = isSample
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, type, host, port, username, database, color, colorTag
+        case id, name, type, host, port, username, database, color, colorTag, iconName
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
         case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
-        case groupId, tagId, tagIds, sortOrder, isFavorite
+        case groupId, tagId, tagIds, sortOrder, isFavorite, isSample
     }
 }
 
@@ -104,6 +138,7 @@ extension DatabaseConnection: Codable {
         } else {
             color = .none
         }
+        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
         isReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
         if let level = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) {
             safeModeLevel = level
@@ -111,6 +146,7 @@ extension DatabaseConnection: Codable {
             safeModeLevel = isReadOnly ? .readOnly : .off
         }
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds)
+            .flatMap { Self.queryTimeoutSecondsRange.contains($0) ? $0 : nil }
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         sshEnabled = try container.decodeIfPresent(Bool.self, forKey: .sshEnabled) ?? false
         sshConfiguration = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfiguration)
@@ -125,6 +161,7 @@ extension DatabaseConnection: Codable {
         }
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -137,6 +174,7 @@ extension DatabaseConnection: Codable {
         try container.encode(username, forKey: .username)
         try container.encode(database, forKey: .database)
         try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(iconName, forKey: .iconName)
         try container.encode(isReadOnly, forKey: .isReadOnly)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(queryTimeoutSeconds, forKey: .queryTimeoutSeconds)
@@ -151,5 +189,8 @@ extension DatabaseConnection: Codable {
         }
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encode(isFavorite, forKey: .isFavorite)
+        if isSample {
+            try container.encode(isSample, forKey: .isSample)
+        }
     }
 }

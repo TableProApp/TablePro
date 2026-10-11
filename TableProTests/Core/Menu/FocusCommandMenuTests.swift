@@ -12,13 +12,12 @@ private func focusSubmenu() throws -> NSMenu {
     let view = try #require(
         MainMenuBuilder.build(keyboard: KeyboardSettings())
             .items
-            .first { $0.title == String(localized: "View") }?
+            .first { $0.title == ViewMenuBuilder.title }?
             .submenu
     )
     return try #require(view.items.first { $0.title == String(localized: "Focus") }?.submenu)
 }
 
-@Suite("Focus commands")
 @MainActor
 struct FocusCommandMenuTests {
     /// The HIG asks that every function be reachable from the menu bar, and a focus command that

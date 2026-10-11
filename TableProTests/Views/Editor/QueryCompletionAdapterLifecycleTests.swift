@@ -17,7 +17,6 @@ import TableProPluginKit
 import TableProTextEngine
 import Testing
 
-@Suite("Query Completion Adapter Lifecycle")
 struct QueryCompletionAdapterLifecycleTests {
     @Test("engine returns keyword completions with no schema provider")
     func keywordsAvailableWithoutSchema() async {
@@ -209,70 +208,6 @@ struct QueryCompletionAdapterLifecycleTests {
         #expect(widened.contains("TRUE"))
     }
 
-    // MARK: - The seeded session
-
-    /// The popup seeds itself with statement keywords and shows them while the analyzed request is
-    /// in flight, and keeps them when that request comes back suppressed. Ranking used to be
-    /// skipped for a session with no analyzed context, so the seeded list came back in declaration
-    /// order: DESCRIBE sits ahead of DESC in the keyword table.
-    @MainActor
-    @Test("a seeded session ranks its exact match first")
-    func seededSessionRanksItsExactMatchFirst() async {
-        let keywordCase = PinnedKeywordCase(.upper)
-        defer { keywordCase.restore() }
-        let suppressed = "SELECT * FROM users WHERE "
-        let controller = EditorControllerFixture.make(string: suppressed)
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
-
-        let request = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: suppressed),
-            isManualTrigger: false
-        )
-        #expect(request == nil, "An empty prefix in a WHERE clause is suppressed, leaving the seeded session")
-
-        let typed = suppressed + "desc"
-        controller.textView.setText(typed)
-        let labels = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: typed)
-        )?.map(\.label) ?? []
-
-        #expect(labels.first == "DESC")
-        #expect(labels.contains("DESCRIBE"))
-    }
-
-    /// Saved favorites have no natural bound, so the seeded window caps what it keeps. Ranking is
-    /// linear in the candidate count and runs on every keystroke, and the seeded session is
-    /// replaced by an analyzed one as soon as the request lands.
-    @MainActor
-    @Test("a seeded session bounds what it keeps")
-    func seededSessionBoundsWhatItKeeps() async {
-        let suppressed = "SELECT * FROM users WHERE "
-        let controller = EditorControllerFixture.make(string: suppressed)
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
-        adapter.updateFavoriteKeywords(Dictionary(uniqueKeysWithValues: (0..<5_000).map { index in
-            let keyword = String(format: "s%04d", index)
-            return (keyword, (name: keyword, query: "SELECT 1"))
-        }))
-
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: suppressed),
-            isManualTrigger: false
-        )
-
-        let typed = suppressed + "s"
-        controller.textView.setText(typed)
-        let labels = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: typed)
-        )?.map(\.label) ?? []
-
-        #expect(!labels.isEmpty)
-        #expect(labels.count <= 200)
-    }
-
     // MARK: - The session pool
 
     /// An open popup re-ranks against what the session kept rather than asking again, so the
@@ -304,6 +239,56 @@ struct QueryCompletionAdapterLifecycleTests {
         )
 
         #expect(service.rankingInputCounts == [400, 400])
+    }
+
+    // MARK: - The session's token
+
+    @MainActor
+    @Test("a session re-ranks its own token and declines the next one")
+    func sessionDeclinesACursorOnAnotherToken() async {
+        let service = TokenBoundCompletionService(labels: ["select", "set", "update", "users"])
+        let adapter = QueryCompletionAdapter(serviceForTesting: service)
+        let controller = EditorControllerFixture.make(string: "se")
+
+        _ = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "se"),
+            isManualTrigger: false
+        )
+
+        controller.textView.setText("sel")
+        let sameToken = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "sel")
+        )?.map(\.label)
+
+        controller.textView.setText("se u")
+        let nextToken = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "se u")
+        )?.map(\.label)
+
+        #expect(sameToken == ["select"])
+        #expect(nextToken == nil)
+    }
+
+    @MainActor
+    @Test("a response names the prefix it was ranked for, not the text the editor holds when it lands")
+    func responseNamesThePrefixItWasRankedFor() async {
+        let controller = EditorControllerFixture.make(string: "sl")
+        let service = TokenBoundCompletionService(labels: ["sleep", "select", "set"])
+        service.whileAnswering = { controller.textView.setText("se") }
+        let adapter = QueryCompletionAdapter(serviceForTesting: service)
+
+        let response = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: cursor(atEndOf: "sl"),
+            isManualTrigger: false
+        )
+
+        #expect(controller.textView.string == "se")
+        #expect(response?.prefix == CodeSuggestionPrefix(range: NSRange(location: 0, length: 2), text: "sl"))
+        #expect(response?.windowPosition.range == NSRange(location: 2, length: 0))
     }
 
     // MARK: - Helpers
@@ -357,6 +342,46 @@ private struct PinnedKeywordCase {
     }
 }
 
+@MainActor
+private final class TokenBoundCompletionService: QueryCompletionService {
+    private let items: [SQLCompletionItem]
+    var whileAnswering: (@MainActor () -> Void)?
+
+    init(labels: [String]) {
+        items = labels.map { SQLCompletionItem.keyword($0) }
+    }
+
+    var triggerCharacters: Set<String> { [] }
+
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
+        _ = isManualTrigger
+        let start = tokenStart(in: text, endingAt: offset)
+        whileAnswering?()
+        return QueryCompletionSession(
+            items: items,
+            candidates: items,
+            replacementRange: NSRange(location: start, length: offset - start)
+        )
+    }
+
+    func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        let lowerPrefix = prefix.lowercased()
+        return items.filter { $0.filterText.hasPrefix(lowerPrefix) }
+    }
+
+    func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
+        SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
+    }
+
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        _ = keywords
+    }
+}
+
 /// Records what each incremental update was asked to rank, so a test can pin the pool's bound
 /// without reaching into the adapter's private session.
 @MainActor
@@ -371,8 +396,6 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     }
 
     var triggerCharacters: Set<String> { [] }
-
-    func seedItems() -> [SQLCompletionItem] { [] }
 
     func completions(
         in text: NSString,

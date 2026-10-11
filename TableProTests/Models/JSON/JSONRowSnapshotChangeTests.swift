@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowSnapshot change detection")
 struct JSONRowSnapshotChangeTests {
     private let reference = JSONForeignKeyRef(
         column: "ArtistId",

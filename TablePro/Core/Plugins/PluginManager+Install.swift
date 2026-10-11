@@ -241,8 +241,7 @@ extension PluginManager {
         try PluginInstaller.validateStagedABI(
             bundleURL: bundleURL,
             currentKit: Self.currentPluginKitVersion,
-            minimumKit: Self.minimumCompatiblePluginKitVersion,
-            currentInspector: Self.currentInspectorKitVersion
+            minimumKit: Self.minimumCompatiblePluginKitVersion
         )
         PluginInstaller.stripQuarantine(at: bundleURL)
 

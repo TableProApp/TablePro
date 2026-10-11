@@ -33,6 +33,7 @@ struct DashboardToolbarView: View {
             }
             .buttonStyle(.borderless)
             .help(viewModel.isPaused ? String(localized: "Resume") : String(localized: "Pause"))
+            .accessibilityLabel(viewModel.isPaused ? String(localized: "Resume") : String(localized: "Pause"))
             .disabled(viewModel.refreshInterval == .off)
 
             Button {
@@ -42,6 +43,7 @@ struct DashboardToolbarView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh Now"))
+            .accessibilityLabel(String(localized: "Refresh Now"))
             .disabled(viewModel.isRefreshing)
 
             Spacer()

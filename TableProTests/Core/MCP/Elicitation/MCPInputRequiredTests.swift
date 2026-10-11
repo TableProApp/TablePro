@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("MCPInputRequired result shape")
 struct MCPInputRequiredTests {
     private let serverInfo = MCPImplementation(name: "TablePro", version: "1.0")
 
@@ -95,7 +94,6 @@ struct MCPInputRequiredTests {
     }
 }
 
-@Suite("MCPInputResponses parsing")
 struct MCPInputResponsesTests {
     @Test("An empty requestState is treated as absent")
     func emptyRequestStateIsAbsent() {

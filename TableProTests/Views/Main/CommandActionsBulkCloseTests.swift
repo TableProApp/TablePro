@@ -13,7 +13,7 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@MainActor @Suite("CommandActions Bulk Close")
+@MainActor
 struct CommandActionsBulkCloseTests {
     private struct Window {
         let actions: MainContentCommandActions

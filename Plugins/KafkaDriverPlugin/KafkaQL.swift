@@ -11,10 +11,17 @@ enum KafkaStartMode: Sendable, Equatable {
     case offset(Int64)
     /// The first message at or after a wall-clock time, resolved by ListOffsets.
     case timestamp(Int64)
-    /// Per-partition offsets resolved by an earlier call. This is what makes paging stable:
-    /// page two reads the anchor page one resolved instead of re-deriving "newest" against a
-    /// tail that has moved on.
+    /// Per-partition offsets resolved by an earlier call, read forward. This is what makes
+    /// paging stable: page two reads the anchor page one resolved instead of re-deriving
+    /// "newest" against a tail that has moved on.
     case resolved([Int32: Int64])
+    /// Per-partition exclusive end offsets resolved by an earlier call, read backward.
+    ///
+    /// A tail scan needs its fixed end rather than its fixed start, because each later page
+    /// steps further back from the same end. Recording the start instead pinned the window to
+    /// the newest page's worth of messages, and page two then skipped past all of it and
+    /// showed nothing.
+    case tail([Int32: Int64])
 }
 
 struct KafkaConsumeQuery: Sendable {
@@ -150,7 +157,7 @@ enum KafkaQL {
 
     private static func parseStart(_ tokens: inout Tokenizer) throws -> KafkaStartMode {
         guard let mode = tokens.next()?.uppercased() else {
-            throw KafkaError.syntax(String(localized: "FROM needs NEWEST, OLDEST, OFFSET, TIME or ANCHOR."))
+            throw KafkaError.syntax(String(localized: "FROM needs NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL."))
         }
         switch mode {
         case "NEWEST", "LATEST", "END":
@@ -163,16 +170,21 @@ enum KafkaQL {
             return .timestamp(try timestampValue(&tokens))
         case "ANCHOR":
             return .resolved(try anchorMap(&tokens))
+        case "TAIL":
+            return .tail(try anchorMap(&tokens))
         default:
             throw KafkaError.syntax(String(
-                format: String(localized: "%@ is not a start position. Use NEWEST, OLDEST, OFFSET, TIME or ANCHOR."),
+                format: String(localized: """
+                %@ is not a start position. Use NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL.
+                """),
                 mode
             ))
         }
     }
 
-    /// `ANCHOR(0:120,1:80)` pins one offset per partition. It is machine-written by the browse
-    /// path rather than typed, and it is what makes page two continue page one exactly.
+    /// `ANCHOR(0:120,1:80)` and `TAIL(0:400,1:250)` pin one offset per partition. Both are
+    /// machine-written by the browse path rather than typed, and they are what make page two
+    /// continue page one exactly.
     private static func anchorMap(_ tokens: inout Tokenizer) throws -> [Int32: Int64] {
         guard let raw = tokens.next() else {
             throw KafkaError.syntax(String(localized: "ANCHOR needs a partition:offset list."))
@@ -199,7 +211,19 @@ enum KafkaQL {
             throw KafkaError.syntax(String(localized: "PARTITION needs at least one partition number."))
         }
         let body = raw.hasPrefix("(") ? String(raw.dropFirst().dropLast()) : raw
-        let values = body.split(separator: ",").compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+        var values: [Int32] = []
+        for entry in body.split(separator: ",") {
+            let text = entry.trimmingCharacters(in: .whitespaces)
+            // Dropping what does not parse turned a typo into a silently narrower read: a page
+            // half the size it asked for, reported as a success.
+            guard let value = Int32(text) else {
+                throw KafkaError.syntax(String(
+                    format: String(localized: "%@ is not a partition number."),
+                    text
+                ))
+            }
+            values.append(value)
+        }
         guard !values.isEmpty else {
             throw KafkaError.syntax(String(localized: "PARTITION needs at least one partition number."))
         }
@@ -247,10 +271,18 @@ enum KafkaQL {
             throw KafkaError.syntax(String(localized: "SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER."))
         }
         switch what {
-        case "TOPICS": return .showTopics
-        case "BROKERS": return .showBrokers
-        case "GROUPS", "CONSUMERS": return .showGroups
-        case "CLUSTER": return .showCluster
+        case "TOPICS":
+            try requireEnd(&tokens, statement: "SHOW TOPICS")
+            return .showTopics
+        case "BROKERS":
+            try requireEnd(&tokens, statement: "SHOW BROKERS")
+            return .showBrokers
+        case "GROUPS", "CONSUMERS":
+            try requireEnd(&tokens, statement: "SHOW GROUPS")
+            return .showGroups
+        case "CLUSTER":
+            try requireEnd(&tokens, statement: "SHOW CLUSTER")
+            return .showCluster
         default:
             throw KafkaError.syntax(String(
                 format: String(localized: "SHOW %@ is not supported. Try TOPICS, BROKERS, GROUPS or CLUSTER."),
@@ -267,8 +299,12 @@ enum KafkaQL {
             throw KafkaError.syntax(String(localized: "DESCRIBE needs a name."))
         }
         switch what {
-        case "GROUP": return .describeGroup(unquote(name))
-        case "TOPIC": return .describeTopic(unquote(name))
+        case "GROUP":
+            try requireEnd(&tokens, statement: "DESCRIBE GROUP")
+            return .describeGroup(unquote(name))
+        case "TOPIC":
+            try requireEnd(&tokens, statement: "DESCRIBE TOPIC")
+            return .describeTopic(unquote(name))
         default:
             throw KafkaError.syntax(String(
                 format: String(localized: "DESCRIBE %@ is not supported. Try GROUP or TOPIC."),
@@ -278,6 +314,20 @@ enum KafkaQL {
     }
 
     // MARK: - Helpers
+
+    /// Refuses anything after the statement has been read.
+    ///
+    /// `DROP TOPIC` has always done this; SHOW and DESCRIBE did not, so
+    /// `DESCRIBE TOPIC "orders" "payments"` described the first and discarded the second
+    /// without a word, and a modifier nobody implemented read as though it had been applied.
+    private static func requireEnd(_ tokens: inout Tokenizer, statement: String) throws {
+        guard let extra = tokens.next() else { return }
+        throw KafkaError.syntax(String(
+            format: String(localized: "%@ takes nothing after it, and %@ was given."),
+            statement,
+            extra
+        ))
+    }
 
     private static func requireValue(_ tokens: inout Tokenizer, keyword: String) throws -> String {
         guard let value = tokens.next() else {
@@ -305,9 +355,9 @@ enum KafkaQL {
         if let milliseconds = Int64(raw) { return milliseconds }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1000) }
+        if let date = formatter.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1_000) }
         formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1000) }
+        if let date = formatter.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1_000) }
         throw KafkaError.syntax(String(
             format: String(localized: "%@ is not a time. Use milliseconds since the epoch or an ISO 8601 instant."),
             raw
@@ -340,8 +390,17 @@ enum KafkaQL {
         return unescaped
     }
 
+    /// Wraps a value so the tokenizer gives back exactly what went in.
+    ///
+    /// The backslash has to be escaped first and it is not optional: the tokenizer treats a
+    /// backslash inside quotes as an escape and `unquote` strips it, so a value carrying one
+    /// came back with it missing, and a value ending in one swallowed the closing delimiter and
+    /// let the rest of the value parse as further clauses.
     static func quote(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\\\""))\""
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     /// Splits on whitespace while keeping quoted strings and parenthesised lists whole.

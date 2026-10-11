@@ -10,11 +10,17 @@ import Testing
 
 /// Adding a folder that is already linked used to be refused outright, which pointed the user at a
 /// list the folder was invisible in whenever it had been disabled.
-@Suite("Linked SQL folder outcome")
 @MainActor
 struct FavoritesLinkedFolderTests {
     private func makeViewModel() -> FavoritesSidebarViewModel {
         FavoritesSidebarViewModel(connectionId: UUID())
+    }
+
+    /// The cache a view model registers lives until its connection is removed, so a test that
+    /// leaves one behind arms another subscriber for every favorites event the rest of the run
+    /// posts.
+    private func release(_ viewModel: FavoritesSidebarViewModel) {
+        ConnectionDataCache.removeConnection(viewModel.connectionId)
     }
 
     private func clearStoredFolders() {
@@ -28,8 +34,10 @@ struct FavoritesLinkedFolderTests {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let url = URL(fileURLWithPath: "/tmp/tablepro-linked-\(UUID().uuidString)")
+        let viewModel = makeViewModel()
+        defer { release(viewModel) }
 
-        #expect(makeViewModel().addLinkedFolder(at: url) == .added)
+        #expect(viewModel.addLinkedFolder(at: url) == .added)
     }
 
     @Test("Choosing a disabled folder again re-enables it instead of refusing")
@@ -37,6 +45,7 @@ struct FavoritesLinkedFolderTests {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let viewModel = makeViewModel()
+        defer { release(viewModel) }
         let url = URL(fileURLWithPath: "/tmp/tablepro-linked-\(UUID().uuidString)")
         #expect(viewModel.addLinkedFolder(at: url) == .added)
 
@@ -52,6 +61,7 @@ struct FavoritesLinkedFolderTests {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let viewModel = makeViewModel()
+        defer { release(viewModel) }
         let name = "tablepro-linked-\(UUID().uuidString)"
         let url = URL(fileURLWithPath: "/tmp/\(name)")
         #expect(viewModel.addLinkedFolder(at: url) == .added)
@@ -64,6 +74,7 @@ struct FavoritesLinkedFolderTests {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let viewModel = makeViewModel()
+        defer { release(viewModel) }
         let url = URL(fileURLWithPath: "/tmp/tablepro-linked-\(UUID().uuidString)")
         viewModel.addLinkedFolder(at: url)
         let stored = try #require(LinkedSQLFolderStorage.shared.loadFolders().last)
@@ -80,6 +91,7 @@ struct FavoritesLinkedFolderTests {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let viewModel = makeViewModel()
+        defer { release(viewModel) }
         let url = URL(fileURLWithPath: "/tmp/tablepro-linked-\(UUID().uuidString)")
         viewModel.addLinkedFolder(at: url)
         let stored = try #require(LinkedSQLFolderStorage.shared.loadFolders().last)

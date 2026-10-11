@@ -131,6 +131,7 @@ struct DataGridView: NSViewRepresentable {
     var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
     var viewportPlacementProvider: (@MainActor () -> GridViewportPlacement?)?
     var contentRevision: Int = 0
+    var selectionSummary: SelectionSummaryState?
 
     // MARK: - NSViewRepresentable
 
@@ -254,6 +255,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
+        coordinator.selectionSummaryTracker.attach(selectionSummary)
 
         // The owner can change the filter while the grid is unmounted, so adopt and re-resolve
         // before the snapshot is built. A snapshot taken from the stale order would report no
@@ -409,38 +411,40 @@ struct DataGridView: NSViewRepresentable {
         coordinator.updateCache()
         coordinator.visualIndex.rebuild(from: coordinator.changeManager)
 
-        if !latestRows.columns.isEmpty {
-            coordinator.isRebuildingColumns = true
-            let sameTableLiveWidths = TableViewCoordinator.liveWidthsForSameTable(
-                previous: previousColumnKey,
-                current: coordinator.columnLayoutKey,
-                liveWidths: liveColumnWidths
-            )
-            let storedLayout = coordinator.layoutDiscardingUnownedWidths(
-                coordinator.savedColumnLayout(binding: columnLayout),
-                tableRows: latestRows
-            )
-            coordinator.synchronizeUserSizedColumns(
-                with: storedLayout,
-                columns: latestRows.columns,
-                tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
-            )
-            let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
-            let savedLayout = coordinator.resolvedColumnLayout(
-                saved: storedLayout,
-                liveWidths: reconciliationWidths
-            )
-            reconcileColumnPool(
-                tableView: tableView,
-                coordinator: coordinator,
-                tableRows: latestRows,
-                columnComments: columnComments,
-                savedLayout: savedLayout
-            )
-            coordinator.isRebuildingColumns = false
-            coordinator.invalidateColumnIndexCache()
-            coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
-        }
+        /// Reconciled for a result with no columns as well, which hides every slot, exactly as
+        /// `makeNSView` does for whatever it mounts over. An error result is one: a failed run
+        /// leaves it active over an empty buffer, and skipping the pool there kept the previous
+        /// result's headings over a grid with no rows.
+        coordinator.isRebuildingColumns = true
+        let sameTableLiveWidths = TableViewCoordinator.liveWidthsForSameTable(
+            previous: previousColumnKey,
+            current: coordinator.columnLayoutKey,
+            liveWidths: liveColumnWidths
+        )
+        let storedLayout = coordinator.layoutDiscardingUnownedWidths(
+            coordinator.savedColumnLayout(binding: columnLayout),
+            tableRows: latestRows
+        )
+        coordinator.synchronizeUserSizedColumns(
+            with: storedLayout,
+            columns: latestRows.columns,
+            tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
+        )
+        let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
+        let savedLayout = coordinator.resolvedColumnLayout(
+            saved: storedLayout,
+            liveWidths: reconciliationWidths
+        )
+        reconcileColumnPool(
+            tableView: tableView,
+            coordinator: coordinator,
+            tableRows: latestRows,
+            columnComments: columnComments,
+            savedLayout: savedLayout
+        )
+        coordinator.isRebuildingColumns = false
+        coordinator.invalidateColumnIndexCache()
+        coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
 
         coordinator.updateValueFilterHeaderIndicators()
 
@@ -543,7 +547,8 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
             firstClickSortDirection: coordinator.firstClickSortDirection,
-            supportsValueFilter: configuration.supportsColumnCommands,
+            supportsColumnSort: configuration.supportsColumnSort,
+            supportsValueFilter: configuration.supportsValueFilter,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,
@@ -672,6 +677,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.dismissPoppedOutCellEditor()
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
+        coordinator.selectionSummaryTracker.cancel()
+        coordinator.selectionSummaryTracker.attach(nil)
         coordinator.flushPendingColumnLayoutPersistence()
         /// The mount's own registrations, taken off with it. `NotificationCenter` retains a block
         /// observer's closure and a coordinator is built fresh per mount, so anything left here is
@@ -697,7 +704,9 @@ struct DataGridView: NSViewRepresentable {
         /// `GridSelectionController.update(_:)`, so this is the one hook that sees a drag widen.
         coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
             coordinator?.publishRowSelection()
+            coordinator?.selectionSummaryTracker.selectionDidChange()
         }
+        coordinator.selectionSummaryTracker.attach(selectionSummary)
         coordinator.onSelectionTeardown = onSelectionTeardown
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in

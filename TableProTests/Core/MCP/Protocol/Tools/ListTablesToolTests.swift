@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ListTablesTool")
 struct ListTablesToolTests {
     private let tool = ListTablesTool()
 
@@ -111,7 +110,6 @@ struct ListTablesToolTests {
     }
 }
 
-@Suite("ListTablesTool row counts")
 struct ListTablesRowCountTests {
     private func table(
         name: String,

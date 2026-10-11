@@ -10,7 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL GRANT pattern escaping")
 struct MySQLGrantEscapingTests {
     @Test("Wildcard characters are escaped in the database position")
     func escapesWildcards() {
@@ -45,7 +44,6 @@ struct MySQLGrantEscapingTests {
     }
 }
 
-@Suite("MySQL SHOW GRANTS parsing")
 struct MySQLGrantParserTests {
     @Test("Server scope")
     func parsesServerScope() {
@@ -118,7 +116,6 @@ struct MySQLGrantParserTests {
     }
 }
 
-@Suite("Grant SQL builder")
 struct PluginGrantSQLBuilderTests {
     private func mysqlQuote(_ value: String) -> String {
         "`" + value.replacingOccurrences(of: "`", with: "``") + "`"
@@ -215,7 +212,6 @@ struct PluginGrantSQLBuilderTests {
     }
 }
 
-@Suite("Grant grouping")
 struct PluginGrantGroupingTests {
     private let table = PluginPrivilegeScope.table(database: "app", schema: "public", table: "orders")
 
@@ -261,7 +257,6 @@ struct PluginGrantGroupingTests {
     }
 }
 
-@Suite("Privilege name sanitizer")
 struct PluginPrivilegeNameTests {
     @Test("Rejects anything that is not a privilege keyword")
     func rejectsInjection() {

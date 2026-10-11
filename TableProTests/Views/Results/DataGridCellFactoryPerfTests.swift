@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Column Width Optimization")
 @MainActor
 struct ColumnWidthOptimizationTests {
     private func tableRows(
@@ -252,7 +251,6 @@ struct ColumnWidthOptimizationTests {
     }
 }
 
-@Suite("Fit To Content Width")
 @MainActor
 struct FitToContentWidthTests {
     private func makeTableRows(values: [String], column: String = "data") -> TableRows {
@@ -356,7 +354,6 @@ struct FitToContentWidthTests {
     }
 }
 
-@Suite("Change Reapplication Version Tracking")
 struct ChangeReapplyVersionTests {
     @Test("Version tracking skips redundant work")
     func versionTrackingSkipsRedundantWork() {

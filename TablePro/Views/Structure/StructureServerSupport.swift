@@ -10,11 +10,21 @@ struct StructureServerSupport: Equatable, Sendable {
     let unsupportedColumnFields: Set<StructureColumnField>
     let unsupportedIndexTypes: Set<String>
 
+    /// Why this server has no check constraints, even though the engine does. The engine's
+    /// capability flags describe its newest release, and MySQL before 8.0.16 and MariaDB before
+    /// 10.2.1 accept a `CHECK` clause and discard it.
+    let checkConstraintRefusal: String?
+
     static let unrestricted = StructureServerSupport(unsupportedColumnFields: [], unsupportedIndexTypes: [])
 
-    init(unsupportedColumnFields: Set<StructureColumnField>, unsupportedIndexTypes: Set<String>) {
+    init(
+        unsupportedColumnFields: Set<StructureColumnField>,
+        unsupportedIndexTypes: Set<String>,
+        checkConstraintRefusal: String? = nil
+    ) {
         self.unsupportedColumnFields = unsupportedColumnFields
         self.unsupportedIndexTypes = Set(unsupportedIndexTypes.map { $0.uppercased() })
+        self.checkConstraintRefusal = checkConstraintRefusal
     }
 
     init(driver: (any DatabaseDriver)?) {
@@ -24,7 +34,8 @@ struct StructureServerSupport: Equatable, Sendable {
         }
         self.init(
             unsupportedColumnFields: driver.unsupportedStructureColumnFields,
-            unsupportedIndexTypes: driver.unsupportedIndexTypes
+            unsupportedIndexTypes: driver.unsupportedIndexTypes,
+            checkConstraintRefusal: driver.checkConstraintRefusal
         )
     }
 
@@ -35,6 +46,16 @@ struct StructureServerSupport: Equatable, Sendable {
 
     func offers(_ field: StructureColumnField) -> Bool {
         !unsupportedColumnFields.contains(field)
+    }
+
+    /// Exhaustive on purpose: a new tab has to state whether this server can refuse it.
+    func offers(_ tab: StructureTab) -> Bool {
+        switch tab {
+        case .checkConstraints:
+            return checkConstraintRefusal == nil
+        case .columns, .indexes, .foreignKeys, .triggers, .ddl, .parts:
+            return true
+        }
     }
 
     func offeredIndexTypes(

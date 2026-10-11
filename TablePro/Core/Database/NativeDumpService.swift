@@ -184,6 +184,7 @@ final class NativeDumpService: ObservableObject {
     private var byteSizeTask: Task<Void, Never>?
     private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
     private var toolName = "dump"
+    private var cancelRequested = false
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -272,6 +273,7 @@ final class NativeDumpService: ObservableObject {
             ? nil
             : await Self.resolvedCatalog(connectionId: connection.id, database: database)
 
+        let serverVersion = session?.driver?.serverVersion
         let request = NativeDumpDescriptor.Request(
             connection: effective,
             database: database,
@@ -279,21 +281,22 @@ final class NativeDumpService: ObservableObject {
             password: password,
             scope: scope,
             currentCatalog: catalog,
-            localFilePath: localFilePath
+            localFilePath: localFilePath,
+            serverVersion: serverVersion
         )
 
         switch descriptor.mechanism {
         case .commandLineTool(let tool):
-            let (binaryName, resolvedPath) = try await Self.resolveExecutable(
+            let resolved = try await Self.resolveExecutable(
                 tool: tool,
                 kind: kind,
-                serverVersion: session?.driver?.serverVersion
+                serverVersion: serverVersion
             )
-            toolName = binaryName
+            toolName = resolved.name
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
-                executable: URL(fileURLWithPath: resolvedPath),
+                resolved: resolved,
                 request: request
             )
             try run(job: .process(command), database: database, fileURL: fileURL, totalBytesEstimate: totalBytesEstimate)
@@ -320,7 +323,7 @@ final class NativeDumpService: ObservableObject {
             )
         }
 
-        Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .public)")
+        Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
     }
 
     /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
@@ -333,6 +336,10 @@ final class NativeDumpService: ObservableObject {
     ) throws {
         if case .running = state { throw NativeDumpError.alreadyRunning }
         if case .cancelling = state { throw NativeDumpError.alreadyRunning }
+        guard !cancelRequested else {
+            setState(.cancelled)
+            return
+        }
 
         let runner = runnerFactory(job)
         try runner.start()
@@ -350,7 +357,14 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
+    /// A cancel that arrives before the tool is running is latched rather than dropped.
+    ///
+    /// `start` finds the binary and asks it what it is before there is anything to cancel, and both
+    /// steps spawn a process, so the window is real: a Cancel taken during it used to be discarded
+    /// and the tool launched afterwards, which on a restore means writing to the target database
+    /// the user just said to leave alone.
     func cancel() {
+        cancelRequested = true
         guard case .running = state else { return }
         setState(.cancelling)
         runner?.cancel()
@@ -358,11 +372,13 @@ final class NativeDumpService: ObservableObject {
 
     // MARK: - Resolution
 
+    /// Both halves run off the main actor together: the lookup spawns `which`, and identifying what
+    /// it found spawns the tool itself.
     private static func resolveExecutable(
         tool: NativeDumpDescriptor.CommandLineTool,
         kind: NativeDumpKind,
         serverVersion: String?
-    ) async throws -> (name: String, path: String) {
+    ) async throws -> NativeDumpResolvedTool {
         let candidates = tool.binaries(for: kind)
         let selector = tool.toolForServer
         let resolved = await Task.detached {
@@ -370,7 +386,7 @@ final class NativeDumpService: ObservableObject {
         }.value
         switch resolved {
         case .found(let name, let path):
-            return (name, path)
+            return await Task.detached { tool.identify(name: name, path: path) }.value
         case .incompatible(let message):
             throw NativeDumpError.incompatibleTool(message: message)
         case .missing:
@@ -472,10 +488,10 @@ final class NativeDumpService: ObservableObject {
     nonisolated static func buildCommand(
         kind: NativeDumpKind,
         tool: NativeDumpDescriptor.CommandLineTool,
-        executable: URL,
+        resolved: NativeDumpResolvedTool,
         request: NativeDumpDescriptor.Request
     ) throws -> NativeDumpCommand {
-        var arguments = tool.arguments(for: kind, request: request)
+        var arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
         var environment = minimalEnvironment()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
@@ -483,17 +499,16 @@ final class NativeDumpService: ObservableObject {
         }
 
         var credentialsFileURL: URL?
-        if tool.needsCredentialsFile,
-           let password = request.password, !password.isEmpty,
-           !request.connection.username.isEmpty {
-            let file = try writeMongoCredentialsFile(password: password)
+        let configurationEntries = tool.configurationFileEntries(request)
+        if !configurationEntries.isEmpty {
+            let file = try writeMongoConfigurationFile(configurationEntries)
             credentialsFileURL = file
             arguments.append("--config=\(file.path)")
         }
 
         let delivery = tool.delivery(for: kind)
         return NativeDumpCommand(
-            executable: executable,
+            executable: resolved.executableURL,
             arguments: arguments,
             environment: environment,
             stderrByteCap: 64_000,
@@ -508,10 +523,12 @@ final class NativeDumpService: ObservableObject {
     /// `mongodump` and `mongorestore` read a password from neither the environment nor standard
     /// input, and one in `argv` is readable by every process on the machine. Their `--config` file
     /// is the remaining channel, so it is written owner-only and removed when the process exits.
-    nonisolated static func writeMongoCredentialsFile(password: String) throws -> URL {
+    nonisolated static func writeMongoConfigurationFile(
+        _ entries: [NativeDumpDescriptor.ConfigurationEntry]
+    ) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-mongo-\(UUID().uuidString).yaml")
-        let contents = "password: \(mongoYAMLQuoted(password))\n"
+        let contents = entries.map { "\($0.key): \(mongoYAMLQuoted($0.value))\n" }.joined()
         guard let data = contents.data(using: .utf8) else {
             throw NativeDumpError.sourceUnreadable
         }
@@ -581,13 +598,13 @@ final class NativeDumpService: ObservableObject {
         if result.wasCancelled {
             if kind == .backup { Self.removeDestination(fileURL) }
             setState(.cancelled)
-            Self.logger.notice("\(self.toolName, privacy: .public) cancelled db=\(database, privacy: .public)")
+            Self.logger.notice("\(self.toolName, privacy: .public) cancelled db=\(database, privacy: .private(mask: .hash))")
             return
         }
 
         if result.exitCode == 0 {
             setState(.finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes))
-            Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
+            Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .private(mask: .hash))")
             return
         }
 
@@ -602,7 +619,7 @@ final class NativeDumpService: ObservableObject {
             Self.logger.notice(
                 """
                 \(self.toolName, privacy: .public) finished skipping settings=\(settings, privacy: .public) \
-                db=\(database, privacy: .public)
+                db=\(database, privacy: .private(mask: .hash))
                 """
             )
             return
@@ -613,7 +630,7 @@ final class NativeDumpService: ObservableObject {
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
         setState(.failed(message: summary, targetMayBeModified: kind == .restore))
-        Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
+        Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }
 
     /// A DuckDB Parquet backup is a folder, so its size is the sum of what is inside it and its

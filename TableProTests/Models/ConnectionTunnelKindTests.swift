@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Connection tunnel kind")
 struct ConnectionTunnelKindTests {
     private func connection(
         ssh: Bool = false,

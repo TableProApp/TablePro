@@ -12,7 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseScope")
 struct DatabaseScopeTests {
     @Test("A blank database is server scoped, not unbound")
     func blankDatabaseIsServerScoped() {

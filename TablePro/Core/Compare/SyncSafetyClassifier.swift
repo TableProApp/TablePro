@@ -10,7 +10,9 @@
 import Foundation
 
 internal struct SyncSafetyClassifier {
-    internal func hazards(for change: SchemaChange) -> [SyncHazard] {
+    /// The engine the script is written for, because a type's parameters only mean something on one:
+    /// `TypeWidthComparison` says which readings differ.
+    internal func hazards(for change: SchemaChange, typeFamily: SQLTypeFamily) -> [SyncHazard] {
         switch change {
         case .deleteColumn(let column):
             return [SyncHazard(
@@ -22,7 +24,7 @@ internal struct SyncSafetyClassifier {
                 )
             )]
         case .modifyColumn(let old, let new):
-            return modifyColumnHazards(old: old, new: new)
+            return modifyColumnHazards(old: old, new: new, typeFamily: typeFamily)
         case .modifyPrimaryKey:
             return [SyncHazard(
                 kind: .primaryKeyChange,
@@ -69,7 +71,8 @@ internal struct SyncSafetyClassifier {
                     constraint.name
                 )
             )]
-        case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex:
+        case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex,
+             .modifyTableComment:
             return []
         }
     }
@@ -88,19 +91,18 @@ internal struct SyncSafetyClassifier {
     /// A view or a routine holds no rows, so dropping one is recoverable from the source and only
     /// warns. A materialized view does hold rows, so it is refused like a table. Either way a drop
     /// can break something that depends on it, which is what the second hazard says.
-    internal func hazards(forDropping identity: CompareObjectIdentity, isReplacement: Bool) -> [SyncHazard] {
+    internal func hazards(
+        forDropping identity: CompareObjectIdentity,
+        isReplacement: Bool,
+        recreatesIndexes: Bool = false
+    ) -> [SyncHazard] {
         var hazards: [SyncHazard] = []
 
         if identity.kind == .materializedView {
             hazards.append(SyncHazard(
                 kind: .dataLoss,
                 severity: .refusedByDefault,
-                explanation: String(
-                    format: String(
-                        localized: "Dropping materialized view %@ discards its stored rows, which have to be rebuilt."
-                    ),
-                    identity.displayName
-                )
+                explanation: materializedViewDropExplanation(identity, recreatesIndexes: recreatesIndexes)
             ))
         }
 
@@ -129,14 +131,55 @@ internal struct SyncSafetyClassifier {
         return hazards
     }
 
+    internal func concurrentRefreshHazard(
+        on identity: CompareObjectIdentity,
+        from current: [EditableIndexDefinition],
+        to resulting: [EditableIndexDefinition]
+    ) -> SyncHazard? {
+        guard identity.kind == .materializedView,
+              ConcurrentRefreshIndexRule.allowsConcurrentRefresh(current),
+              !ConcurrentRefreshIndexRule.allowsConcurrentRefresh(resulting)
+        else { return nil }
+        return SyncHazard(
+            kind: .concurrentRefresh,
+            severity: .warning,
+            explanation: String(
+                format: String(
+                    localized: "%@ is left with no unique index a concurrent refresh can use, so REFRESH MATERIALIZED VIEW CONCURRENTLY fails on it."
+                ),
+                identity.displayName
+            )
+        )
+    }
+
+    private func materializedViewDropExplanation(_ identity: CompareObjectIdentity, recreatesIndexes: Bool) -> String {
+        guard recreatesIndexes else {
+            return String(
+                format: String(
+                    localized: "Dropping materialized view %@ discards its stored rows along with its indexes, comments and privileges."
+                ),
+                identity.displayName
+            )
+        }
+        return String(
+            format: String(
+                localized: """
+                Dropping materialized view %@ discards its stored rows, comments and privileges. \
+                The rows are computed again and the source's indexes are created on it.
+                """
+            ),
+            identity.displayName
+        )
+    }
+
     private func modifyColumnHazards(
         old: EditableColumnDefinition,
-        new: EditableColumnDefinition
+        new: EditableColumnDefinition,
+        typeFamily: SQLTypeFamily
     ) -> [SyncHazard] {
         var hazards: [SyncHazard] = []
 
-        if let narrowing = TypeWidthComparison.classify(from: old.dataType, to: new.dataType),
-           narrowing == .narrowing {
+        if TypeWidthComparison.classify(from: old.dataType, to: new.dataType, family: typeFamily) == .narrowing {
             hazards.append(SyncHazard(
                 kind: .lossyTypeChange,
                 severity: .refusedByDefault,
@@ -175,34 +218,5 @@ internal struct SyncSafetyClassifier {
 
     private func normalized(_ value: String?) -> String {
         (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-}
-
-internal enum TypeWidthComparison {
-    internal enum Outcome {
-        case widening
-        case narrowing
-        case equivalent
-    }
-
-    internal static func classify(from oldType: String, to newType: String) -> Outcome? {
-        let old = parse(oldType)
-        let new = parse(newType)
-        guard old.base == new.base else { return .narrowing }
-        guard let oldWidth = old.width, let newWidth = new.width else { return .equivalent }
-        if newWidth > oldWidth { return .widening }
-        if newWidth < oldWidth { return .narrowing }
-        return .equivalent
-    }
-
-    private static func parse(_ type: String) -> (base: String, width: Int?) {
-        let lowered = type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard let open = lowered.firstIndex(of: "("), let close = lowered.firstIndex(of: ")"), open < close else {
-            return (lowered, nil)
-        }
-        let base = String(lowered[lowered.startIndex..<open])
-        let inner = lowered[lowered.index(after: open)..<close]
-        let firstComponent = inner.split(separator: ",").first.map(String.init) ?? ""
-        return (base, Int(firstComponent.trimmingCharacters(in: .whitespaces)))
     }
 }

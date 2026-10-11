@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("TableLoadTraceSummary")
 struct TableLoadTraceSummaryTests {
     private let base = ContinuousClock.now
 

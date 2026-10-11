@@ -85,6 +85,24 @@ extension WelcomeViewModel {
         }
     }
 
+    /// Opens a connection with its window already in Agent mode.
+    ///
+    /// Through the same chokepoint every other connection intent takes, so a connection already open
+    /// is switched where it stands rather than opened a second time. Nothing about the session is
+    /// held here: the welcome list is an outline built from storage, and a session is neither.
+    func startAgentSession(connectionId: UUID, prompt: String? = nil) {
+        Task {
+            do {
+                try await TabRouter.shared.route(
+                    .openAgentSession(connectionId: connectionId, prompt: prompt)
+                )
+            } catch {
+                guard let connection = connectionsById[connectionId] else { return }
+                handleConnectError(error, connection: connection)
+            }
+        }
+    }
+
     func deleteIntent(for rows: [LibraryRowID]) -> WelcomeDeleteIntent? {
         let resolved = resolve(rows)
         guard !resolved.hasSectionHeader,
@@ -395,6 +413,8 @@ extension WelcomeViewModel {
         switch command {
         case .connect(let rows):
             connect(rows: rows)
+        case .startAgentSession(let id):
+            startAgentSession(connectionId: id)
         case .disconnect(let id):
             let name = connectionsById[id]?.name ?? ""
             Task {
@@ -419,11 +439,11 @@ extension WelcomeViewModel {
             ClipboardService.shared.writeSecretText(connectionString(for: connection))
         case .copyTableProLink(let id):
             guard let connection = connectionsById[id],
-                  let link = ConnectionExportService.buildImportDeeplink(for: connection) else { return }
+                  let link = ConnectionShareLink.deeplink(for: connection) else { return }
             ClipboardService.shared.writeText(link)
         case .copyJSON(let id):
             guard let connection = connectionsById[id] else { return }
-            ClipboardService.shared.writeText(ConnectionExportService.buildCompactJSON(for: connection))
+            ClipboardService.shared.writeText(ConnectionShareLink.compactJSON(for: connection))
         case .exportToFile(let ids):
             exportConnections(ids.compactMap { connectionsById[$0] })
         case .publishToTeamCatalog(let ids):
@@ -447,6 +467,8 @@ extension WelcomeViewModel {
             NSWorkspace.shared.activateFileViewerSelecting([linked.sourceFileURL])
         case .newSubgroup(let parentId):
             requestNewGroup(parentId: parentId, movingConnectionIds: [])
+        case .editGroup(let id):
+            requestEditGroup(id)
         case .setGroupColor(let id, let color):
             setGroupColor(id, color)
         case .moveGroup(let id, let parentId):

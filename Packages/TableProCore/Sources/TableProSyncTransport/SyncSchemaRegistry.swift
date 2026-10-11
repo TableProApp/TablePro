@@ -5,7 +5,7 @@ public extension SyncRecordType {
     static let verifiedInProduction: Set<SyncRecordType> = [
         .connection, .group, .tag, .settings,
         .favorite, .favoriteFolder, .tableFavorite, .sshProfile, .credentialProfile,
-        .favoriteDatabase
+        .favoriteDatabase, .tableFolder, .tableFolderItem
     ]
 
     var productionSchemaState: ProductionSchemaState {
@@ -26,6 +26,8 @@ public extension SyncRecordType {
         case .favoriteDatabase: return FavoriteDatabaseSyncField.declaredKeys
         case .sshProfile: return SSHProfileSyncField.declaredKeys
         case .credentialProfile: return CredentialProfileSyncField.declaredKeys
+        case .tableFolder: return TableFolderSyncField.declaredKeys
+        case .tableFolderItem: return TableFolderItemSyncField.declaredKeys
         }
     }
 
@@ -41,6 +43,8 @@ public extension SyncRecordType {
         case .favoriteDatabase: return FavoriteDatabaseSyncField.writableKeys
         case .sshProfile: return SSHProfileSyncField.writableKeys
         case .credentialProfile: return CredentialProfileSyncField.writableKeys
+        case .tableFolder: return TableFolderSyncField.writableKeys
+        case .tableFolderItem: return TableFolderItemSyncField.writableKeys
         }
     }
 }

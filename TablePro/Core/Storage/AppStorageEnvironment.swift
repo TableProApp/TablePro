@@ -30,6 +30,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     internal let defaults: UserDefaults
     internal let keychain: any KeychainStoring
     internal let isIsolated: Bool
+    internal let isUnitTestHost: Bool
 
     /// Named so a test can remove the domain once the app it belongs to is gone. The app cannot do
     /// it itself: `XCUIApplication.terminate()` kills the process, so `applicationWillTerminate`
@@ -44,18 +45,21 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
 
     internal static let uiTestingVariable = "TABLEPRO_UI_TESTING"
     internal static let sandboxVariable = PluginHostStorage.sandboxVariable
+    internal static let unitTestHostVariable = "XCTestConfigurationFilePath"
 
     private init(
         applicationSupportRoot: URL,
         defaults: UserDefaults,
         keychain: any KeychainStoring,
         isIsolated: Bool,
+        isUnitTestHost: Bool,
         defaultsSuiteName: String? = nil
     ) {
         self.applicationSupportRoot = applicationSupportRoot
         self.defaults = defaults
         self.keychain = keychain
         self.isIsolated = isIsolated
+        self.isUnitTestHost = isUnitTestHost
         self.defaultsSuiteName = defaultsSuiteName
     }
 
@@ -84,12 +88,18 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         return environment[uiTestingVariable] == "1" ? .refuseToLaunch : .production
     }
 
+    internal static func isUnitTestHost(_ environment: [String: String]) -> Bool {
+        environment[unitTestHostVariable] != nil
+    }
+
     private static func resolve() -> AppStorageEnvironment {
-        switch decision(for: ProcessInfo.processInfo.environment) {
+        let environment = ProcessInfo.processInfo.environment
+        let isUnitTestHost = isUnitTestHost(environment)
+        switch decision(for: environment) {
         case .production:
-            return production()
+            return production(isUnitTestHost: isUnitTestHost)
         case let .isolated(path):
-            return isolated(at: URL(fileURLWithPath: path))
+            return isolated(at: URL(fileURLWithPath: path), isUnitTestHost: isUnitTestHost)
         case .refuseToLaunch:
             logger.fault(
                 """
@@ -102,19 +112,20 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         }
     }
 
-    private static func production() -> AppStorageEnvironment {
+    private static func production(isUnitTestHost: Bool) -> AppStorageEnvironment {
         AppStorageEnvironment(
             applicationSupportRoot: productionRoot(),
             defaults: .standard,
             keychain: KeychainHelper.shared,
-            isIsolated: false
+            isIsolated: false,
+            isUnitTestHost: isUnitTestHost
         )
     }
 
     /// A failure to prepare the sandbox is fatal rather than a fallback to production. Falling back
     /// is what turns a broken test setup into a polluted store, which is the whole failure this
     /// type exists to prevent.
-    private static func isolated(at root: URL) -> AppStorageEnvironment {
+    private static func isolated(at root: URL, isUnitTestHost: Bool) -> AppStorageEnvironment {
         let supportDirectory = root.appendingPathComponent("TablePro", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
@@ -122,7 +133,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             logger.fault(
                 """
                 Refusing to launch: could not create the storage sandbox at \
-                \(supportDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)
+                \(supportDirectory.path, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)
                 """
             )
             exit(EXIT_FAILURE)
@@ -134,12 +145,13 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             exit(EXIT_FAILURE)
         }
 
-        logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .public)")
+        logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .private(mask: .hash))")
         return AppStorageEnvironment(
             applicationSupportRoot: root,
             defaults: defaults,
             keychain: SandboxKeychainStore(fileURL: supportDirectory.appendingPathComponent("keychain.json")),
             isIsolated: true,
+            isUnitTestHost: isUnitTestHost,
             defaultsSuiteName: suiteName
         )
     }

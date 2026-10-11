@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Markdown inline repair for streaming tails")
 struct MarkdownInlineRepairTests {
     private func repaired(_ source: String) -> String {
         MarkdownInlineRepair.repairingDanglingSyntax(source)

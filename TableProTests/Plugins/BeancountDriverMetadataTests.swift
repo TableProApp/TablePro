@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Beancount driver metadata")
 struct BeancountDriverMetadataTests {
     @Test("registry exposes Beancount as a downloadable file-based driver")
     func registryMetadata() throws {

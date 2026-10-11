@@ -13,6 +13,7 @@ import CryptoKit
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 internal enum CompareSyncMode: String, Codable, Hashable, Sendable, CaseIterable {
     case structure
@@ -158,7 +159,7 @@ internal actor CompareSyncExecutor {
         let request = OperationRequest(
             connectionId: target.connectionId,
             databaseType: target.databaseType,
-            sql: Self.digest(of: runnable),
+            sql: Self.digest(of: runnable, databaseType: target.databaseType),
             kind: Self.kind(for: mode, statements: runnable, databaseType: target.databaseType),
             caller: .userInterface,
             capabilities: [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .confirmationPreCleared],
@@ -238,7 +239,7 @@ internal actor CompareSyncExecutor {
                     id: statement.id, statement: statement, error: nil, wasSkipped: false, didExecute: true
                 ))
             } catch {
-                Self.logger.error("Sync statement failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Sync statement failed: \(error.publicLogShape, privacy: .public)")
                 outcomes.append(SyncStatementOutcome(
                     id: statement.id, statement: statement,
                     error: error.localizedDescription, wasSkipped: false, didExecute: didExecute
@@ -270,7 +271,7 @@ internal actor CompareSyncExecutor {
                 do {
                     try await driver.commitTransaction()
                 } catch {
-                    Self.logger.error("Sync commit failed: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Sync commit failed: \(error.publicLogShape, privacy: .public)")
                     commitFailure = error.localizedDescription
                 }
             }
@@ -298,7 +299,7 @@ internal actor CompareSyncExecutor {
             do {
                 _ = try await driver.execute(query: scope.closingSQL)
             } catch {
-                Self.logger.error("Closing a sync session scope failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Closing a sync session scope failed: \(error.publicLogShape, privacy: .public)")
             }
         }
     }
@@ -327,16 +328,19 @@ internal actor CompareSyncExecutor {
 
     /// The confirmation shows the start of the script, and the trailer names the whole of it: the
     /// statement count and a hash of every statement, so two scripts that share their first ten
-    /// thousand characters are never recorded as the same run.
-    static func digest(of statements: [SyncStatement]) -> String {
+    /// thousand characters are never recorded as the same run. Each statement is written the way the
+    /// saved script writes it, so the gate reads statements ended where they end.
+    static func digest(of statements: [SyncStatement], databaseType: DatabaseType) -> String {
+        let scriptText = SQLScriptText(databaseType: databaseType)
         var digest = ""
         var length = 0
         for statement in statements {
             guard length < Self.digestCharacterLimit else { break }
-            digest += statement.sql + "\n"
-            length += (statement.sql as NSString).length + 1
+            let text = scriptText.script([statement.sql])
+            digest += text + "\n"
+            length += (text as NSString).length + 1
         }
-        let script = statements.map(\.sql).joined(separator: "\n")
+        let script = scriptText.script(statements.map(\.sql))
         let hash = SHA256.hash(data: Data(script.utf8)).map { String(format: "%02x", $0) }.joined()
         digest += "-- \(statements.count) statements, SHA-256 \(hash)\n"
         return digest

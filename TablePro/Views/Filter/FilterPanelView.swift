@@ -7,13 +7,9 @@ import SwiftUI
 import TableProPluginKit
 
 struct FilterPanelView: View {
-    @ObservedObject var coordinator: MainContentCoordinator
-    let columns: [String]
-    let primaryKeyColumn: String?
-    let databaseType: DatabaseType
-    let enumValuesByColumn: [String: [String]]
-    let onApply: ([TableFilter]) -> Void
-    let onUnset: () -> Void
+    @Binding var state: TabFilterState
+    let configuration: FilterPanelConfiguration
+    let actions: any FilterPanelActions
 
     @State private var showSQLSheet = false
     @State private var showSettingsPopover = false
@@ -21,19 +17,9 @@ struct FilterPanelView: View {
     @State private var showSavePresetAlert = false
     @State private var newPresetName = ""
     @State private var focusedFilterId: UUID?
-    @State private var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
-    @State private var fieldPaths: [PluginFieldPath] = []
 
     private let maxFilterListHeight: CGFloat = 200
     @State private var filterRowsHeight: CGFloat = 0
-
-    private var filterState: TabFilterState {
-        coordinator.selectedTabFilterState
-    }
-
-    private var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle {
-        PluginManager.shared.caseSensitivityStyle(for: databaseType)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,7 +27,7 @@ struct FilterPanelView: View {
 
             Divider()
 
-            if !filterState.filters.isEmpty {
+            if !state.filters.isEmpty {
                 filterList
             }
         }
@@ -51,45 +37,26 @@ struct FilterPanelView: View {
             closePanelAndFocusGrid()
         }
         .onAppear {
-            if filterState.filters.isEmpty && !columns.isEmpty {
-                coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
+            guard state.filters.isEmpty, !configuration.columns.isEmpty else {
+                focusedFilterId = state.filters.last?.id
+                return
             }
-            focusedFilterId = filterState.filters.last?.id
-            refreshRawSQLCompletionProvider()
+            focusedFilterId = addDefaultFilter(columns: configuration.columns)
         }
-        .onChange(of: columns) { newColumns in
-            if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
-                coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
-                focusedFilterId = filterState.filters.last?.id
-            }
-            refreshRawSQLCompletionProvider()
-        }
-        .onChange(of: coordinator.currentTableName) { _ in
-            refreshRawSQLCompletionProvider()
-        }
-        .task(id: coordinator.currentTableName) {
-            await loadFieldPaths()
+        .onChange(of: configuration.columns) { newColumns in
+            guard state.filters.isEmpty, !newColumns.isEmpty, state.isVisible else { return }
+            focusedFilterId = addDefaultFilter(columns: newColumns)
         }
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
-        }
-        .onPreferenceChange(FilterRowsHeightKey.self) { filterRowsHeight = $0 }
-    }
-
-    private func toggleAllFiltersEnabled() {
-        let newState = filterState.allEnabledState != true
-        for filter in filterState.filters {
-            var updated = filter
-            updated.isEnabled = newState
-            coordinator.updateFilter(updated)
         }
     }
 
     private var filterHeader: some View {
         HStack(spacing: 8) {
-            if !filterState.filters.isEmpty {
+            if !state.filters.isEmpty {
                 TristateCheckbox(
-                    state: TristateCheckbox.State(allEnabled: filterState.allEnabledState),
+                    state: TristateCheckbox.State(allEnabled: state.allEnabledState),
                     action: toggleAllFiltersEnabled
                 )
                 .help(String(localized: "Enable or disable all filters"))
@@ -99,8 +66,8 @@ struct FilterPanelView: View {
             Text("Filters")
                 .font(.callout.weight(.medium))
 
-            if filterState.filters.count > 1 {
-                Picker("", selection: coordinator.filterLogicModeBinding()) {
+            if state.filters.count > 1, configuration.offersMatchAny {
+                Picker("", selection: $state.filterLogicMode) {
                     Text("Match all").tag(FilterLogicMode.and)
                     Text("Match any").tag(FilterLogicMode.or)
                 }
@@ -116,13 +83,12 @@ struct FilterPanelView: View {
             filterOptionsMenu
 
             Button("Clear") {
-                coordinator.clearAppliedFilters()
-                onUnset()
-                coordinator.focusActiveGrid()
+                actions.clearAppliedFiltersAndReload()
+                actions.focusGrid()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(!filterState.hasAppliedFilters)
+            .disabled(!state.hasAppliedFilters)
             .help(String(localized: "Clear applied filters without removing filter rows"))
 
             Button("Apply") {
@@ -131,7 +97,7 @@ struct FilterPanelView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(enabledValidFilterCount == 0 && !filterState.hasAppliedFilters)
+            .disabled(enabledValidFilterCount == 0 && !state.hasAppliedFilters)
             .help(String(localized: "Apply active filters (Cmd+Return)"))
         }
         .padding(.horizontal, 12)
@@ -143,8 +109,7 @@ struct FilterPanelView: View {
                 .autocorrectionDisabled(true)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                guard !newPresetName.isEmpty else { return }
-                coordinator.saveFilterPreset(name: newPresetName)
+                savePreset(named: newPresetName)
             }
         } message: {
             Text("Enter a name for this filter preset")
@@ -153,60 +118,31 @@ struct FilterPanelView: View {
 
     private var filterOptionsMenu: some View {
         Menu {
-            Button {
-                generatedSQL = coordinator.generateFilterPreviewSQL(databaseType: databaseType)
-                showSQLSheet = true
-            } label: {
-                Label(String(localized: "Preview Query"), systemImage: "text.magnifyingglass")
-            }
-            .disabled(filterState.filters.isEmpty)
-
-            Divider()
-
-            let presets = coordinator.loadAllFilterPresets()
-            if !presets.isEmpty {
-                ForEach(presets) { preset in
-                    Button(action: { coordinator.loadFilterPreset(preset) }) {
-                        HStack {
-                            Text(preset.name)
-                            if !presetColumnsMatch(preset) {
-                                Spacer()
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.yellow)
-                                    .help(String(localized: "Some columns in this preset don't exist in the current table"))
-                            }
-                        }
-                    }
+            if let sqlPreview = configuration.sqlPreview {
+                Button {
+                    generatedSQL = sqlPreview.filterPreviewSQL()
+                    showSQLSheet = true
+                } label: {
+                    Label(String(localized: "Preview Query"), systemImage: "text.magnifyingglass")
                 }
+                .disabled(state.filters.isEmpty)
+
                 Divider()
             }
 
-            Button("Save as Preset…") {
-                newPresetName = ""
-                showSavePresetAlert = true
-            }
-            .disabled(filterState.filters.isEmpty)
+            if let presetStore = configuration.presetStore {
+                presetItems(presetStore)
 
-            if !presets.isEmpty {
-                Menu("Delete Preset") {
-                    ForEach(presets) { preset in
-                        Button(preset.name, role: .destructive) {
-                            coordinator.deleteFilterPreset(preset)
-                        }
-                    }
-                }
+                Divider()
             }
-
-            Divider()
 
             Button(role: .destructive) {
-                coordinator.clearFilterState()
-                onUnset()
-                coordinator.focusActiveGrid()
+                actions.removeAllFiltersAndReload()
+                actions.focusGrid()
             } label: {
                 Label(String(localized: "Remove All Filters"), systemImage: "xmark.circle")
             }
-            .disabled(filterState.filters.isEmpty)
+            .disabled(state.filters.isEmpty)
 
             Divider()
 
@@ -228,44 +164,73 @@ struct FilterPanelView: View {
         }
     }
 
+    @ViewBuilder
+    private func presetItems(_ presetStore: any FilterPresetStoring) -> some View {
+        let presets = presetStore.loadAllPresets()
+        if !presets.isEmpty {
+            ForEach(presets) { preset in
+                Button(action: { state.loadPreset(preset) }) {
+                    HStack {
+                        Text(preset.name)
+                        if !presetColumnsMatch(preset) {
+                            Spacer()
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.yellow)
+                                .help(String(localized: "Some columns in this preset don't exist in the current table"))
+                                .accessibilityLabel(String(localized: "Some columns in this preset don't exist in the current table"))
+                        }
+                    }
+                }
+            }
+            Divider()
+        }
+
+        Button("Save as Preset…") {
+            newPresetName = ""
+            showSavePresetAlert = true
+        }
+        .disabled(state.filters.isEmpty)
+
+        if !presets.isEmpty {
+            Menu("Delete Preset") {
+                ForEach(presets) { preset in
+                    Button(preset.name, role: .destructive) {
+                        presetStore.deletePreset(preset)
+                    }
+                }
+            }
+        }
+    }
+
     private var filterRows: some View {
         VStack(spacing: 0) {
-            ForEach(filterState.filters) { filter in
+            ForEach(state.filters) { filter in
                 FilterRowView(
-                    filter: coordinator.filterBinding(for: filter),
-                    columns: columns,
-                    completions: completionItems(),
-                    caseSensitivityStyle: caseSensitivityStyle,
-                    enumValuesByColumn: enumValuesByColumn,
-                    rawSQLCompletionProvider: rawSQLCompletionProvider,
+                    filter: filterBinding(for: filter),
+                    columns: configuration.columns,
+                    completions: completionItems,
+                    caseMatching: configuration.caseMatching,
+                    enumValuesByColumn: configuration.enumValuesByColumn,
+                    rawSQLCompletionProvider: configuration.rawSQLCompletionProvider,
                     columnMenu: columnMenu,
-                    fieldPaths: fieldPaths,
-                    rawFilterLabel: rawFilterLabel,
+                    fieldPaths: configuration.fieldPaths,
+                    offersRawFilter: configuration.offersRawFilter,
+                    rawFilterLabel: configuration.rawFilterLabel,
                     onAdd: {
-                        coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
-                        focusedFilterId = filterState.filters.last?.id
+                        focusedFilterId = addDefaultFilter(columns: configuration.columns)
                     },
-                    onDuplicate: {
-                        coordinator.duplicateFilter(filter)
-                        focusedFilterId = filterState.filters.last?.id
-                    },
-                    onRemove: {
-                        coordinator.removeFilterAndReload(filter)
-                        if filterState.filters.isEmpty {
-                            coordinator.closeFilterPanel()
-                            coordinator.focusActiveGrid()
-                        }
-                    },
+                    onDuplicate: { duplicateFilter(filter) },
+                    onRemove: { removeFilter(filter) },
                     onApply: { applySoloFilter(filter) },
                     onSubmit: { applyAllValidFilters() },
                     onCancel: { closePanelAndFocusGrid() },
-                    isReorderEnabled: filterState.filters.count > 1,
-                    canMoveUp: coordinator.canMoveFilter(filter.id, direction: .up),
-                    canMoveDown: coordinator.canMoveFilter(filter.id, direction: .down),
-                    onMoveUp: { coordinator.moveFilter(filter.id, direction: .up) },
-                    onMoveDown: { coordinator.moveFilter(filter.id, direction: .down) },
+                    isReorderEnabled: state.filters.count > 1,
+                    canMoveUp: state.canMoveFilter(filter.id, direction: .up),
+                    canMoveDown: state.canMoveFilter(filter.id, direction: .down),
+                    onMoveUp: { state.moveFilter(filter.id, direction: .up) },
+                    onMoveDown: { state.moveFilter(filter.id, direction: .down) },
                     onDropFilter: { draggedID in
-                        coordinator.moveFilter(draggedID, onto: filter.id)
+                        state.moveFilter(draggedID, onto: filter.id)
                     },
                     focusedFilterId: $focusedFilterId
                 )
@@ -275,11 +240,7 @@ struct FilterPanelView: View {
     }
 
     private var measuredFilterRows: some View {
-        filterRows.background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: FilterRowsHeightKey.self, value: proxy.size.height)
-            }
-        )
+        filterRows.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { filterRowsHeight = $0 }
     }
 
     @ViewBuilder
@@ -295,92 +256,81 @@ struct FilterPanelView: View {
     }
 
     private var enabledValidFilterCount: Int {
-        filterState.filters.count { $0.isEnabled && $0.isValid }
+        state.filters.count { $0.isEnabled && $0.isValid }
     }
 
-    private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
-        let presetColumns = preset.filters.map(\.columnName).filter { $0 != TableFilter.rawSQLColumn }
-        let knownPaths = Set(fieldPaths.map(\.path))
-        return presetColumns.allSatisfy { columns.contains($0) || knownPaths.contains($0) }
-    }
-
-    private func applyAllValidFilters() {
-        coordinator.applyAllFilters()
-        onApply(coordinator.selectedTabFilterState.appliedFilters)
-        coordinator.focusActiveGrid()
-    }
-
-    private func applySoloFilter(_ filter: TableFilter) {
-        coordinator.applySoloFilter(filter)
-        onApply(coordinator.selectedTabFilterState.appliedFilters)
-        coordinator.focusActiveGrid()
-    }
-
-    private func closePanelAndFocusGrid() {
-        coordinator.closeFilterPanel()
-        coordinator.focusActiveGrid()
-    }
-
-    private var isSQLDialect: Bool {
-        PluginManager.shared.sqlDialect(for: databaseType) != nil
-    }
-
-    private func completionItems() -> [String] {
-        let sqlKeywords = [
-            "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN",
-            "IS NULL", "IS NOT NULL", "EXISTS",
-            "CASE", "WHEN", "THEN", "ELSE", "END",
-        ]
-        return isSQLDialect ? columns + sqlKeywords : columns
+    private var completionItems: [String] {
+        configuration.columns + configuration.valueCompletionKeywords
     }
 
     private var columnMenu: FilterColumnMenu {
-        FilterColumnMenu.build(columns: columns, fieldPaths: fieldPaths)
+        FilterColumnMenu.build(columns: configuration.columns, fieldPaths: configuration.fieldPaths)
     }
 
-    /// A relational driver reports no field paths, so this settles to an empty list without a
-    /// round trip. `SQLSchemaProvider` caches per collection and folds concurrent callers into
-    /// one sample, so reopening the panel does not resample.
-    private func loadFieldPaths() async {
-        guard let tableName = coordinator.currentTableName, !tableName.isEmpty else {
-            fieldPaths = []
-            return
-        }
-        guard let scope = coordinator.selectedTabScope else {
-            fieldPaths = []
-            return
-        }
-        let provider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
-        let paths = await provider.fieldPaths(for: tableName)
-        guard !Task.isCancelled else { return }
-        fieldPaths = paths
-    }
-
-    /// "Raw SQL" is the wrong name on a store that takes a filter document rather than SQL.
-    private var rawFilterLabel: String {
-        isSQLDialect ? String(localized: "Raw SQL") : String(localized: "Raw Filter")
-    }
-
-    private func refreshRawSQLCompletionProvider() {
-        guard isSQLDialect,
-              let tableName = coordinator.currentTableName,
-              let scope = coordinator.selectedTabScope
-        else {
-            rawSQLCompletionProvider = nil
-            return
-        }
-        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
-        rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
-            schemaProvider: schemaProvider,
-            databaseType: databaseType,
-            tableName: tableName
+    private func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
+        let stateBinding = $state
+        return Binding(
+            get: { stateBinding.wrappedValue.filters.first { $0.id == filter.id } ?? filter },
+            set: { stateBinding.wrappedValue.updateFilter($0) }
         )
     }
-}
 
-private struct FilterRowsHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+    private func addDefaultFilter(columns: [String]) -> UUID {
+        state.addFilter(
+            settings: FilterSettingsStorage.shared.loadSettings(),
+            columns: columns,
+            primaryKeyColumn: configuration.primaryKeyColumn,
+            offersRawFilter: configuration.offersRawFilter
+        )
+    }
+
+    private func duplicateFilter(_ filter: TableFilter) {
+        var next = state
+        next.duplicateFilter(filter)
+        state = next
+        focusedFilterId = next.filters.last?.id
+    }
+
+    private func toggleAllFiltersEnabled() {
+        let isEnabled = state.allEnabledState != true
+        state.setAllFiltersEnabled(isEnabled)
+    }
+
+    private func removeFilter(_ filter: TableFilter) {
+        var next = state
+        let outcome = next.removeFilter(filter)
+        state = next
+        actions.reload(after: outcome)
+        guard next.filters.isEmpty else { return }
+        actions.closeFilterPanel()
+        actions.focusGrid()
+    }
+
+    private func savePreset(named name: String) {
+        guard !name.isEmpty, let presetStore = configuration.presetStore else { return }
+        presetStore.savePreset(FilterPreset(name: name, filters: state.filters))
+    }
+
+    private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
+        let knownPaths = Set(configuration.fieldPaths.map(\.path))
+        return preset.filters.map(\.columnName).allSatisfy { column in
+            if configuration.offersRawFilter && column == TableFilter.rawSQLColumn { return true }
+            return configuration.columns.contains(column) || knownPaths.contains(column)
+        }
+    }
+
+    private func applyAllValidFilters() {
+        actions.applyAllFilters()
+        actions.focusGrid()
+    }
+
+    private func applySoloFilter(_ filter: TableFilter) {
+        actions.applySoloFilter(filter)
+        actions.focusGrid()
+    }
+
+    private func closePanelAndFocusGrid() {
+        actions.closeFilterPanel()
+        actions.focusGrid()
     }
 }

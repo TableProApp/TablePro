@@ -25,7 +25,7 @@ struct ImportProgressView: View {
             VStack(spacing: 8) {
                 HStack {
                     if service.state.statusMessage.isEmpty {
-                        Text("Executed \(service.state.processedStatements) ^[statement](inflect: true)")
+                        Text("Executed ^[\(service.state.processedStatements) statement](inflect: true)")
                             .font(.body)
                     } else {
                         Text(service.state.statusMessage)

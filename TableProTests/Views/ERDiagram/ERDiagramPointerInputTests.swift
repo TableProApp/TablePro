@@ -11,7 +11,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("ER diagram pointer input")
 @MainActor
 struct ERDiagramPointerInputTests {
     @MainActor

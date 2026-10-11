@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("DuckDB Quack connect builder")
 struct DuckDBQuackConnectTests {
     @Test("Secret statement escapes single quotes in the token")
     func secretEscapesQuotes() {

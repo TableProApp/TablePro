@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Editor tab opener")
 @MainActor
 struct EditorTabOpenerTests {
     private func makeConnection() -> DatabaseConnection {

@@ -27,11 +27,12 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
     /// The server's own spellings of the method and key list and of `whereClause` for a
     /// `CREATE INDEX`, carried from the catalog read.
     ///
-    /// The method and key spelling applies only while `type`, `columns`, `expressions` and
-    /// `includedColumns` still hold what they were read with, and the predicate spelling only while
-    /// `whereClause` does. So a rename keeps both, an edit to the condition keeps the keys, and an
-    /// edit to the columns or the type writes the index from its fields. The pairs are stored rather
-    /// than cleared on edit, so changing a field and changing it back restores the spelling.
+    /// The method and key spelling applies only while `type`, `columns`, `columnPrefixes`,
+    /// `expressions` and `includedColumns` still hold what they were read with, and the predicate
+    /// spelling only while `whereClause` does. So a rename keeps both, an edit to the condition keeps
+    /// the keys, and an edit to the columns or the type writes the index from its fields. The pairs
+    /// are stored rather than cleared on edit, so changing a field and changing it back restores the
+    /// spelling.
     ///
     /// Not encoded. An index pasted from the clipboard can come from another connection, where
     /// `public.gin_trgm_ops` names a schema this one may not have.
@@ -44,12 +45,19 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
     private struct KeyShape: Hashable {
         let type: IndexType
         let columns: [String]
+        let columnPrefixes: [String: Int]
         let expressions: [String]
         let includedColumns: [String]
     }
 
     private var keyShape: KeyShape {
-        KeyShape(type: type, columns: columns, expressions: expressions, includedColumns: includedColumns)
+        KeyShape(
+            type: type,
+            columns: columns,
+            columnPrefixes: columnPrefixes,
+            expressions: expressions,
+            includedColumns: includedColumns
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -128,7 +136,13 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         self.whereClause = whereClause
         self.expressions = expressions
         self.includedColumns = includedColumns
-        let shape = KeyShape(type: type, columns: columns, expressions: expressions, includedColumns: includedColumns)
+        let shape = KeyShape(
+            type: type,
+            columns: columns,
+            columnPrefixes: columnPrefixes,
+            expressions: expressions,
+            includedColumns: includedColumns
+        )
         self.catalogKeys = ddlMethodAndKeys.map { CatalogSpelling(value: shape, spelling: $0) }
         if let whereClause, let ddlWhereClause {
             self.catalogPredicate = CatalogSpelling(value: whereClause, spelling: ddlWhereClause)
@@ -242,21 +256,6 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         var copy = self
         copy.id = UUID()
         return copy
-    }
-
-    /// This index added to a table that keeps `remaining`, the indexes it will still have when the
-    /// add runs.
-    ///
-    /// A SQL Server table keeps its rows in the order of one clustered index, and its primary key is
-    /// that index unless it says otherwise. So a `CLUSTERED` copy beside one, which is what Duplicate
-    /// and a paste into the same table stage, is written `NONCLUSTERED`: the type the server reports
-    /// for every other index. Kept, the save wrote `CREATE CLUSTERED INDEX` and the server refused it
-    /// with "Cannot create more than one clustered index on table".
-    func addedBeside(_ remaining: [EditableIndexDefinition]) -> EditableIndexDefinition {
-        guard type == .clustered, remaining.contains(where: \.type.ordersTableRows) else { return self }
-        var added = self
-        added.type = .nonclustered
-        return added
     }
 
     /// A copy under a fresh identity for a paste into a table on `target`, copied from a table on

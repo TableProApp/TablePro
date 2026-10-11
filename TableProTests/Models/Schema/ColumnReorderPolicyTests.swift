@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Column Reorder Policy")
 struct ColumnReorderPolicyTests {
     private func resolve(
         support: ColumnReorderSupport = .alter,
@@ -99,7 +98,6 @@ struct ColumnReorderPolicyTests {
 
 /// The commands go through the same `desiredOrder` a drop does, so they are checked against it
 /// rather than against the index they happen to produce.
-@Suite("Column Move")
 @MainActor
 struct ColumnMoveTests {
     private let columns = ["a", "b", "c", "d"]

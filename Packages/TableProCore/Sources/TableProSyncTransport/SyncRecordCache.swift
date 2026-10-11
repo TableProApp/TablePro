@@ -77,7 +77,12 @@ public final class SyncRecordCache {
     public func removeAll() {
         migration.withLock { $0 = true }
         legacyDefaults?.removeObject(forKey: legacyStorageKey)
-        try? FileManager.default.removeItem(at: directory)
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            Self.logger.error("Failed to clear the sync record cache: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Migration

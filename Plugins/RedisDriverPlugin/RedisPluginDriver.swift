@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 
@@ -35,6 +36,16 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let maxKeyBrowseScan = 10_000
 
+    /// The commands the app queued into the block it opened, in the order it queued them, so
+    /// ``commitTransaction`` can name the ones `EXEC` reports as failed. A user is free to type
+    /// their own `MULTI` on the same session, so the list is a best effort that
+    /// ``RedisTransactionOutcome`` falls back from rather than a promise, and it is bounded because
+    /// nothing but a user's own typing decides how long a block gets.
+    private static let maxRecordedQueuedCommands = 10_000
+
+    private let queuedCommandsLock = NSLock()
+    private var queuedCommands: [String] = []
+
     var serverVersion: String? {
         redisConnection?.serverVersion()
     }
@@ -48,7 +59,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func quoteIdentifier(_ name: String) -> String { name }
 
     func defaultExportQuery(table: String) -> String? {
-        "SCAN 0 MATCH \"*\" COUNT 10000"
+        RedisQueryBuilder().buildExportQuery(database: RedisDatabaseIndex.parse(table))
     }
 
     init(config: DriverConnectionConfig) {
@@ -64,9 +75,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let mode = RedisConnectionMode.resolve(additionalFields: config.additionalFields)
         let channel = try makeChannel(for: mode)
-        try await channel.connect(reportingStage: report)
         do {
+            try await channel.connect(reportingStage: report)
             try await verifyServerMode(mode, on: channel)
+            try await channel.finishConnecting()
+            try Task.checkCancellation()
         } catch {
             channel.disconnect()
             throw error
@@ -75,11 +88,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func makeChannel(for mode: RedisConnectionMode) throws -> any RedisCommandChannel {
+        let connectTimeout = RedisConnectTimeout(additionalFields: config.additionalFields)
         let username = config.username.isEmpty ? nil : config.username
         let password = config.password.isEmpty ? nil : config.password
-        let database = mode.supportsDatabaseSelection
-            ? RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
-            : 0
+        let database = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
 
         switch mode {
         case .standalone:
@@ -89,7 +101,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 username: username,
                 password: password,
                 database: database,
-                sslConfig: config.ssl
+                sslConfig: config.ssl,
+                connectTimeoutMilliseconds: connectTimeout.milliseconds
             )
         case .sentinel:
             let sentinels = RedisHostListParser.parse(
@@ -104,24 +117,36 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sslConfig: config.ssl
             )
             return RedisSentinelChannel(
-                resolver: RedisSentinelResolver(sentinels: sentinels, group: group, transport: transport),
+                resolver: RedisSentinelResolver(
+                    sentinels: sentinels,
+                    group: group,
+                    transport: transport,
+                    connectTimeoutMilliseconds: connectTimeout.milliseconds
+                ),
                 group: group,
                 username: username,
                 password: password,
                 database: database,
-                sslConfig: config.ssl
+                sslConfig: config.ssl,
+                connectTimeout: connectTimeout
             )
         case .cluster:
             let seeds = RedisHostListParser.parse(
                 config.additionalFields[RedisClusterFieldKey.hosts] ?? "",
                 defaultPort: RedisClusterFieldKey.defaultPort
             )
-            return RedisClusterChannel(
-                seeds: seeds,
-                username: username,
-                password: password,
-                sslConfig: config.ssl
-            )
+            let sslConfig = config.ssl
+            return RedisClusterChannel(seeds: seeds, connectTimeout: connectTimeout) { address, remainingMilliseconds in
+                RedisPluginConnection(
+                    host: address.host,
+                    port: address.port,
+                    username: username,
+                    password: password,
+                    database: 0,
+                    sslConfig: sslConfig,
+                    connectTimeoutMilliseconds: remainingMilliseconds
+                )
+            }
         }
     }
 
@@ -129,7 +154,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// cleanly and then fails on every real command. INFO says which kind of server answered, so
     /// the mismatch is reported once, at connect, naming the field to change.
     private func verifyServerMode(_ expected: RedisConnectionMode, on channel: any RedisCommandChannel) async throws {
-        guard let info = try? await channel.executeCommand(["INFO", "server"]).stringValue,
+        let reply = try await channel.executeCommand(["INFO", "server"], scope: .outsideBlock)
+        guard let info = reply.stringValue,
               let actual = RedisServerInfo.mode(from: info) else { return }
         let isTunneled = config.additionalFields["preTunnelHost"]?.isEmpty == false
         guard let message = RedisTopologyDiagnostics.mismatch(
@@ -153,25 +179,15 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// socket, and reconnecting cannot talk a restricted user into `+ping` or hurry a busy script
     /// along.
     ///
-    /// A lost socket does not reach here either, but not for the reason this used to give: rather
-    /// than throwing, `executeCommand` reconnects and replays through
-    /// `executeCommandSyncRetrying`. That is survivable for Redis in a way it is not for the SQL
-    /// engines, whose pings are deliberately non-reconnecting, because `reconnectSync` re-selects
-    /// the database and Redis carries almost no other session state. What it does not restore is
-    /// the connection's startup commands, so a probe can still report success on a session that
-    /// lost them.
+    /// A lost socket does not reach here either: `executeCommand` reconnects and replays through
+    /// `executeCommandSyncRetrying`. The one session state a replay cannot carry is a user's open
+    /// block or watched keys, and the probe never sends into those, so the reconnect reports the
+    /// loss to the user's next command instead.
     func ping() async throws {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let reply = try await conn.executeCommand(RedisConnectProbe.command)
-        if RedisConnectProbe.outcome(errorMessage: reply.errorMessage) == .unauthenticated {
-            throw RedisPluginError(
-                code: 3,
-                message: RedisConnectProbe.unauthenticatedMessage,
-                detail: RedisConnectProbe.unauthenticatedHint
-            )
-        }
+        try await conn.probeHealth()
         try await conn.verifyStillPrimary()
     }
 
@@ -188,6 +204,30 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let operation = try RedisCommandParser.parse(trimmed)
         return try await executeOperation(operation, connection: conn, startTime: startTime)
+    }
+
+    /// `+QUEUED` is the honest answer for a command the user sent into an open block, so it is the
+    /// result rather than an error: the block is theirs to end, and `EXEC` will report every reply.
+    static let queuedStatus = "QUEUED"
+
+    func recordQueued(_ command: String) {
+        queuedCommandsLock.lock()
+        if queuedCommands.count < Self.maxRecordedQueuedCommands { queuedCommands.append(command) }
+        queuedCommandsLock.unlock()
+    }
+
+    private func takeQueuedCommands() -> [String] {
+        queuedCommandsLock.lock()
+        defer { queuedCommandsLock.unlock() }
+        let recorded = queuedCommands
+        queuedCommands = []
+        return recorded
+    }
+
+    private func clearQueuedCommands() {
+        queuedCommandsLock.lock()
+        queuedCommands = []
+        queuedCommandsLock.unlock()
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -208,39 +248,26 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        guard conn.supportsDatabaseSelection else {
-            let count = try await conn.run(["DBSIZE"]).intValue ?? 0
-            return [PluginTableInfo(name: Self.clusterDatabaseName, type: "TABLE", rowCount: count)]
-        }
-
-        let databases = try await databaseCount(on: conn)
-        let result = try await conn.run(["INFO", "keyspace"])
-        let info = result.stringValue ?? ""
-
-        return (0 ..< databases).map { index in
-            let dbName = "db\(index)"
-            let count = RedisServerInfo.keyCount(forDatabase: dbName, in: info) ?? 0
-            return PluginTableInfo(name: dbName, type: "TABLE", rowCount: count)
+        let listing = try await conn.databaseListing(includingKeyCounts: true)
+        return (0 ..< listing.databaseCount).map { index in
+            PluginTableInfo(name: "db\(index)", type: "TABLE", rowCount: listing.keyCount(forDatabase: index))
         }
     }
 
     static let clusterDatabaseName = "db0"
 
-    /// A cluster node answers CONFIG GET databases with 1, and refuses SELECT with any other
-    /// index, so the tree shows the one keyspace that exists rather than fifteen that do not.
-    private func databaseCount(on conn: any RedisCommandChannel) async throws -> Int {
-        guard conn.supportsDatabaseSelection else { return 1 }
-        let reply = try await conn.run(["CONFIG", "GET", "databases"])
-        guard let array = reply.arrayValue, array.count >= 2, let count = array[1].intValue, count > 0 else {
-            return 16
+    static func databaseIndex(of name: String) throws -> Int {
+        guard let index = RedisDatabaseIndex.parse(name), index >= 0 else {
+            let template = String(localized: "%@ is not a Redis database index.")
+            throw RedisPluginError(code: 0, message: String(format: template, name))
         }
-        return count
+        return index
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         [
             PluginColumnInfo(name: "Key", dataType: "String", isNullable: false, isPrimaryKey: true),
-            PluginColumnInfo(name: "Type", dataType: "String", isNullable: false),
+            PluginColumnInfo(name: "Type", dataType: "String", isNullable: true),
             PluginColumnInfo(name: "TTL", dataType: "Int64", isNullable: true),
             PluginColumnInfo(name: "Length", dataType: "Int64", isNullable: true, isGenerated: true),
             PluginColumnInfo(name: "Value", dataType: "String", isNullable: true),
@@ -269,8 +296,35 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let result = try await conn.run(["DBSIZE"])
-        return result.intValue
+        guard let index = RedisDatabaseIndex.parse(table) else { return nil }
+        return try await conn.keyCount(inDatabase: index)
+    }
+
+    /// What `Count Exactly` runs on a database tab. Without it the kit's default answered nil, which
+    /// the app reads as "no count", so the button stayed and the estimate was never replaced.
+    ///
+    /// An unfiltered tab is counted by the same reading the estimate came from: `DBSIZE` and
+    /// `INFO keyspace` both report the exact number of keys a database holds. A filtered tab is
+    /// counted by scanning with its browse's own `MATCH` glob and `TYPE` scope to the end, without
+    /// the cap the browse stops at, because nothing short of the whole scan is exact.
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String
+    ) async throws -> Int? {
+        guard let conn = redisConnection else {
+            throw RedisPluginError.notConnected
+        }
+        guard let index = RedisDatabaseIndex.parse(table) else { return nil }
+
+        let scope = RedisQueryBuilder().browseScope(filters: filters)
+        guard scope.pattern != nil || scope.typeScope != nil else {
+            return try await conn.keyCount(inDatabase: index)
+        }
+        return try await conn.withDatabase(index) {
+            try await conn.countKeys(pattern: scope.pattern, type: scope.typeScope)
+        }
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -278,33 +332,29 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.run(["DBSIZE"])
-        let keyCount = result.intValue ?? 0
+        let index = try Self.databaseIndex(of: table)
+        let keyCount = try await conn.keyCount(inDatabase: index)
 
         var lines: [String] = [
             "// Redis database: \(table)",
-            "// Keys: \(keyCount)",
+            "// Keys: \(keyCount.map(String.init) ?? "unknown")",
             "// Use SCAN 0 MATCH * COUNT 200 to browse keys",
         ]
 
-        let keys = try await scanAllKeys(connection: conn, pattern: nil, maxKeys: 100)
-        if !keys.isEmpty {
-            let typeCommands = keys.map { ["TYPE", $0] }
-            let replies = try await conn.executePipeline(typeCommands)
+        let (keys, typeNames) = try await conn.withDatabase(index) {
+            let keys = try await scanAllKeys(connection: conn, pattern: nil, maxKeys: 100)
+            return (keys, try await conn.keyTypeNames(keys))
+        }
+        var typeCounts: [String: Int] = [:]
+        for typeName in typeNames.compactMap({ $0 }) {
+            typeCounts[typeName, default: 0] += 1
+        }
 
-            var typeCounts: [String: Int] = [:]
-            for reply in replies {
-                if let typeName = reply.stringValue {
-                    typeCounts[typeName, default: 0] += 1
-                }
-            }
-
-            if !typeCounts.isEmpty {
-                lines.append("//")
-                lines.append("// Type distribution (sampled \(keys.count) keys):")
-                for (type, count) in typeCounts.sorted(by: { $0.key < $1.key }) {
-                    lines.append("//   \(type): \(count)")
-                }
+        if !typeCounts.isEmpty {
+            lines.append("//")
+            lines.append("// Type distribution (sampled \(keys.count) keys):")
+            for (type, count) in typeCounts.sorted(by: { $0.key < $1.key }) {
+                lines.append("//   \(type): \(count)")
             }
         }
 
@@ -320,12 +370,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.run(["DBSIZE"])
-        let keyCount = result.intValue ?? 0
-
+        let keyCount = try await conn.keyCount(inDatabase: Self.databaseIndex(of: table))
         return PluginTableMetadata(
             tableName: table,
-            rowCount: Int64(keyCount),
+            rowCount: keyCount.map(Int64.init),
             engine: "Redis"
         )
     }
@@ -334,7 +382,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        return try await (0 ..< databaseCount(on: conn)).map { "db\($0)" }
+        let listing = try await conn.databaseListing(includingKeyCounts: false)
+        return (0 ..< listing.databaseCount).map { "db\($0)" }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -343,19 +392,11 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let dbName = database.hasPrefix("db") ? database : "db\(database)"
-
-        guard conn.supportsDatabaseSelection else {
-            let count = try await conn.run(["DBSIZE"]).intValue ?? 0
-            return PluginDatabaseMetadata(name: Self.clusterDatabaseName, tableCount: count)
-        }
-
-        let infoResult = try await conn.run(["INFO", "keyspace"])
-        guard let infoStr = infoResult.stringValue else {
-            return PluginDatabaseMetadata(name: dbName, tableCount: 0)
-        }
+        let keyCounts = try await conn.keyCountsByDatabase()
+        let index = RedisDatabaseIndex.parse(database)
         return PluginDatabaseMetadata(
             name: dbName,
-            tableCount: RedisServerInfo.keyCount(forDatabase: dbName, in: infoStr) ?? 0
+            tableCount: keyCounts.map { counts in index.flatMap { counts[$0] } ?? 0 }
         )
     }
 
@@ -370,18 +411,34 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var supportsTransactions: Bool { redisConnection?.supportsTransactions ?? true }
 
+    /// `MULTI` does not open a transaction so much as start queueing: every command after it
+    /// answers `+QUEUED` in place of its own reply and nothing runs until `EXEC`. So the app's
+    /// statements are recorded as they are queued, and `EXEC`'s own reply is what says whether each
+    /// of them ran.
+    ///
+    /// The block is still worth opening for a write the app generated, because a command the server
+    /// refuses at queue time aborts the whole block instead of leaving half of it applied. Measured
+    /// on Redis 8.10.1: an ACL user without `+expire` running `MULTI; SET b 1; EXPIRE b 10; EXEC`
+    /// leaves `EXISTS b` at 0, where the same two commands sent unwrapped leave the `SET` applied.
     func beginTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        try await conn.run(["MULTI"])
+        clearQueuedCommands()
+        try await conn.run(["MULTI"], scope: .cleanSession)
     }
 
     func commitTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        try await conn.run(["EXEC"])
+        let queued = takeQueuedCommands()
+        let reply = try await conn.run(["EXEC"])
+        let failed = RedisTransactionOutcome.failures(inExecReply: reply, queuedCommands: queued)
+        guard failed.isEmpty else { throw RedisTransactionError(failed: failed) }
     }
 
+    /// `DISCARD` drops a block nothing has applied yet, which is the whole of what Redis can take
+    /// back. A block `EXEC` already ran is gone, and the failure `commitTransaction` raises says so.
     func rollbackTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
+        clearQueuedCommands()
         try await conn.run(["DISCARD"])
     }
 
@@ -389,11 +446,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func switchDatabase(to database: String) async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        guard let dbIndex = RedisDatabaseIndex.parse(database) else {
-            let template = String(localized: "%@ is not a Redis database index.")
-            throw RedisPluginError(code: 0, message: String(format: template, database))
-        }
-        try await conn.selectDatabase(dbIndex)
+        try await conn.moveToDatabase(Self.databaseIndex(of: database))
     }
 
     // MARK: - Table Operations
@@ -409,7 +462,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard conn.supportsDatabaseSelection else {
             return table == Self.clusterDatabaseName ? ["FLUSHDB"] : nil
         }
-        guard let index = RedisDatabaseIndex.parse(table), index == conn.currentDatabase() else { return nil }
+        guard let index = RedisDatabaseIndex.parse(table), index == conn.homeDatabase() else { return nil }
         return ["FLUSHDB"]
     }
 
@@ -418,50 +471,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         nil
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        guard let operation = try? RedisCommandParser.parse(sql) else {
-            return nil
-        }
-
-        let key: String? = {
-            switch operation {
-            case .get(let k), .type(let k), .ttl(let k), .pttl(let k),
-                 .expire(let k, _), .persist(let k),
-                 .hget(let k, _), .hgetall(let k), .hdel(let k, _),
-                 .lrange(let k, _, _), .llen(let k),
-                 .smembers(let k), .scard(let k),
-                 .zrange(let k, _, _, _), .zcard(let k),
-                 .xrange(let k, _, _, _), .xlen(let k):
-                return k
-            case .set(let k, _, _):
-                return k
-            case .hset(let k, _):
-                return k
-            case .lpush(let k, _), .rpush(let k, _):
-                return k
-            case .sadd(let k, _), .srem(let k, _):
-                return k
-            case .zadd(let k, _, _), .zrem(let k, _):
-                return k
-            case .del(let keys) where keys.count == 1:
-                return keys[0]
-            default:
-                return nil
-            }
-        }()
-
-        guard let key else { return nil }
-        let quoted = key.contains(" ") || key.contains("\"") ? "\"\(key.replacingOccurrences(of: "\"", with: "\\\""))\"" : key
-        return "DEBUG OBJECT \(quoted)"
-    }
-
     // MARK: - View Templates
-
-    func createViewTemplate() -> String? {
-        "-- Redis does not support views"
-    }
 
     func editViewFallbackTemplate(viewName: String) -> String? {
         "-- Redis does not support views"
@@ -500,12 +510,20 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let operation = try RedisCommandParser.parse(trimmed)
 
         switch operation {
-        case .scan(_, let pattern, _):
-            try await streamScanRows(connection: conn, pattern: pattern, continuation: continuation)
-        case .keyBrowse(let pattern, let typeScope, _, _):
+        case .scan(_, let pattern, _, let type):
             try await streamScanRows(
-                connection: conn, pattern: pattern, typeFilter: typeScope, continuation: continuation
+                connection: conn, pattern: pattern, typeFilter: type, scope: .session, continuation: continuation
             )
+        case .keyBrowse(let pattern, let typeScope, _, _, let database):
+            try await conn.withDatabase(database) {
+                try await streamScanRows(
+                    connection: conn,
+                    pattern: pattern,
+                    typeFilter: typeScope,
+                    scope: .outsideBlock,
+                    continuation: continuation
+                )
+            }
         default:
             let startTime = Date()
             let result = try await executeOperation(operation, connection: conn, startTime: startTime)
@@ -525,6 +543,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         connection conn: any RedisCommandChannel,
         pattern: String?,
         typeFilter: String? = nil,
+        scope: RedisCommandScope,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         continuation.yield(.header(PluginStreamHeader(
@@ -540,7 +559,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try Task.checkCancellation()
 
             let page = try await conn.scanKeyspace(
-                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000
+                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000, scope: scope
             )
             cursor = page.cursor
 
@@ -571,7 +590,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String? {
         let builder = RedisQueryBuilder()
         return builder.buildBaseQuery(
-            namespace: "", sortColumns: sortColumns,
+            namespace: "", database: RedisDatabaseIndex.parse(table), sortColumns: sortColumns,
             columns: columns, limit: limit, offset: offset
         )
     }
@@ -587,24 +606,36 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String? {
         let builder = RedisQueryBuilder()
         return builder.buildFilteredQuery(
-            namespace: "", filters: filters,
+            namespace: "", database: RedisDatabaseIndex.parse(table), filters: filters,
             logicMode: logicMode, limit: limit, offset: offset
         )
     }
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = RedisStatementGenerator(namespaceName: table, columns: columns)
-        return generator.generateStatements(
+    ) throws -> [PluginRowWrite]? {
+        let generator = RedisStatementGenerator(
+            namespaceName: table,
+            columns: columns,
+            deleteBatching: redisConnection?.partitionsKeyspace == true ? .perHashSlot : .singleCommand
+        )
+        let writes = try generator.generateRowWrites(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+        guard let conn = redisConnection, conn.supportsDatabaseSelection else { return writes }
+        return RedisDatabaseTarget.addressing(
+            writes,
+            toDatabase: RedisDatabaseIndex.parse(table),
+            from: conn.homeDatabase(),
+            insideTransaction: conn.supportsTransactions
         )
     }
 }

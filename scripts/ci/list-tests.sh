@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Prints the -only-testing arguments for one shard of a test target, one per line.
+# Prints xcodebuild test arguments for a target, one per line, from xcodebuild's own enumeration.
 #
-# The list comes from xcodebuild itself rather than from a file somebody maintains, so a test added
-# tomorrow lands in a shard with nothing to update. A hand-written shard list is the failure mode
-# worth avoiding here: a suite that falls out of every shard still reports green.
+# Usage: list-tests.sh --xctestrun PATH --target NAME [--quarantine FILE] [--shard I/N] [--skip]
 #
-# Usage: list-tests.sh --xctestrun PATH --target NAME [--quarantine FILE] [--shard I/N]
-#
-#   --quarantine  one suite name per line, '#' starts a comment. Matched against the suite and
-#                 against the full Target/Suite/case() identifier.
-#   --shard I/N   round-robin over the sorted identifiers: shard I of N, zero-based. Round-robin
-#                 rather than contiguous blocks because it spreads a slow suite's cases across
-#                 shards instead of landing them all in one.
+#   --quarantine  a quarantine list; fails on an entry that matches no enumerated case.
+#   --shard I/N   -only-testing for shard I of N (zero-based, round-robin) of the unquarantined cases.
+#   --skip        -skip-testing for the quarantined cases instead.
 
 usage() {
-    sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '4,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit "${1:-1}"
 }
 
@@ -24,6 +18,7 @@ XCTESTRUN=""
 TARGET=""
 QUARANTINE=""
 SHARD=""
+MODE="only"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -31,6 +26,7 @@ while [ $# -gt 0 ]; do
         --target) TARGET="${2:?--target needs a name}"; shift 2 ;;
         --quarantine) QUARANTINE="${2:?--quarantine needs a path}"; shift 2 ;;
         --shard) SHARD="${2:?--shard needs I/N}"; shift 2 ;;
+        --skip) MODE="skip"; shift ;;
         -h | --help) usage 0 ;;
         *) echo "list-tests.sh: unknown argument '$1'" >&2; usage ;;
     esac
@@ -39,9 +35,9 @@ done
 [ -n "$XCTESTRUN" ] || { echo "list-tests.sh: --xctestrun is required" >&2; usage; }
 [ -n "$TARGET" ] || { echo "list-tests.sh: --target is required" >&2; usage; }
 [ -f "$XCTESTRUN" ] || { echo "list-tests.sh: no such xctestrun: $XCTESTRUN" >&2; exit 1; }
+[ -z "$QUARANTINE" ] || [ -f "$QUARANTINE" ] || { echo "list-tests.sh: no such file: $QUARANTINE" >&2; exit 1; }
 
-# A directory, not mktemp: xcodebuild refuses to write its enumeration to a path that already
-# exists, and mktemp creates the file it names.
+# A directory, because xcodebuild refuses to write its enumeration to a path that already exists.
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
@@ -58,5 +54,5 @@ xcodebuild test-without-building \
     exit 1
 }
 
-TARGET="$TARGET" QUARANTINE="$QUARANTINE" SHARD="$SHARD" \
+TARGET="$TARGET" QUARANTINE="$QUARANTINE" SHARD="$SHARD" MODE="$MODE" \
     python3 "$(dirname "${BASH_SOURCE[0]}")/list_tests.py" "$workdir/tests.json"

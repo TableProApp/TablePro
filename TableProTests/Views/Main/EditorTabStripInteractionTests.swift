@@ -10,7 +10,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Editor tab strip interaction")
 struct EditorTabStripInteractionTests {
     private static let trackWidth: CGFloat = 604
 
@@ -42,6 +41,9 @@ struct EditorTabStripInteractionTests {
             moveBy: { _, _ in },
             tearOff: { _ in },
             canTearOff: { _ in false },
+            moveToConnection: { _ in },
+            offersMoveToConnection: { _ in false },
+            canMoveToConnection: { _ in false },
             tooltip: { _ in "" }
         )
         interaction.dropClosedTabs(keeping: ids)

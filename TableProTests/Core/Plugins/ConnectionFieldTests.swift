@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("ConnectionField")
 struct ConnectionFieldTests {
     @Test("Default values: placeholder, isRequired, defaultValue, fieldType")
     func defaultValues() {

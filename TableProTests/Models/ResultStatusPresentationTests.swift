@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("ResultStatusPresentation")
 @MainActor
 struct ResultStatusPresentationTests {
     private func presentation(_ tier: StatusBarTier) -> ResultStatusPresentation {

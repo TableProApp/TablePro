@@ -7,7 +7,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("Transaction access mode policy")
 struct TransactionAccessModePolicyTests {
     @Test("Read operations never declare write intent")
     func readOperationsInheritServerDefault() {

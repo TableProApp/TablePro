@@ -14,7 +14,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Connection identity colour")
 @MainActor
 struct ConnectionIdentityColorTests {
     private static let appearances: [NSAppearance.Name] = [
@@ -188,7 +187,6 @@ struct ConnectionIdentityColorTests {
 /// modifier has nothing to act on. It sat in the app unused for four months after the toolbar
 /// migration removed its last call site, which made "raise the tint opacity" look like a one-line
 /// fix for #2398 when it would have changed nothing on screen.
-@Suite("Toolbar background modifier stays out of the app target")
 struct ToolbarBackgroundGuardTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

@@ -33,6 +33,31 @@ struct MySQLSharedDecodingTests {
         #expect(MySQLColumnDecoding(typeRaw: 253, charsetnr: 45, characterSetName: "utf8mb4") == .text(.utf8mb4))
     }
 
+    /// Measured on 4.1.22: `SHOW` string columns arrive as charset 63 with the bytes already in UTF-8.
+    @Test("A binary-labelled SHOW string reads as text when asked, and stays bytes otherwise")
+    func legacyShowStringsAreText() {
+        let decoding = MySQLColumnDecoding(
+            typeRaw: 253, charsetnr: 63, characterSetName: "binary", binaryStringsAreText: true
+        )
+        #expect(decoding == .utf8TextOrBytes)
+        #expect(MySQLColumnDecoding(typeRaw: 253, charsetnr: 63, characterSetName: "binary") == .bytes)
+    }
+
+    /// Measured on 4.1.22 with `language=/usr/local/mysql/share/mysql/korean/`: the 1064 text arrives in
+    /// EUC-KR after `SET NAMES utf8`, and decoding it as Latin 1 was the mojibake.
+    @Test("Error text from a Korean 4.1 server reads as Korean")
+    func legacyErrorTextUsesTheLanguageCharset() {
+        let bytes: [UInt8] = [
+            39, 83, 81, 76, 32, 177, 184, 185, 174, 191, 161, 32, 191, 192, 183, 249, 176, 161, 32, 192, 214, 189,
+            192, 180, 207, 180, 217, 46, 39, 32, 191, 161, 183, 175, 32, 176, 176, 192, 190, 180, 207, 180, 217, 46,
+            32, 40, 39, 84, 65, 66, 76, 69, 83, 32, 70, 82, 79, 77, 32, 96, 106, 117, 95, 109, 105, 106, 117, 105,
+            116, 95, 110, 101, 119, 96, 39, 32, 184, 237, 183, 201, 190, 238, 32, 182, 243, 192, 206, 32, 49, 41
+        ]
+        let language = MySQLErrorText.encoding(forLanguageDirectory: "/usr/local/mysql/share/mysql/korean/")
+        let text = bytes.withUnsafeBytes { MySQLErrorText.decode($0, language: language, encoding: .utf8) }
+        #expect(text == "'SQL 구문에 오류가 있습니다.' 에러 같읍니다. ('TABLES FROM `ju_mijuit_new`' 명령어 라인 1)")
+    }
+
     @Test("A BLOB column reports a binary type name, so the grid does not search it as text")
     func blobTypeName() {
         let blob = mariaDBTypeName(typeRaw: 252, flags: mysqlBinaryFlag, charsetnr: 63, length: 100)

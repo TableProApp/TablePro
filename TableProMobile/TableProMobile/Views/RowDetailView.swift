@@ -21,7 +21,7 @@ struct RowDetailView: View {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
-        safeModeLevel: SafeModeLevel = .off,
+        safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil
@@ -71,6 +71,13 @@ struct RowDetailView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .bottomSafeAreaBar {
+            if viewModel.showsRowNavigator {
+                rowNavigator
+            }
+        }
+        .navigationBarBackButtonHidden(viewModel.isEditing)
+        .holdsScene(withUnsavedChanges: viewModel.hasUnsavedEdits)
         .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { rowDetailToolbar }
@@ -119,7 +126,7 @@ struct RowDetailView: View {
             Menu {
                 shareMenuContent
             } label: {
-                Image(systemName: "square.and.arrow.up")
+                Label("Share", systemImage: "square.and.arrow.up")
             }
         }
 
@@ -131,42 +138,37 @@ struct RowDetailView: View {
                     }
                     .disabled(viewModel.isSaving)
                 } else {
-                    Button("Edit") { viewModel.startEditing() }
+                    Button { viewModel.startEditing() } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
                 }
             }
         }
 
         if viewModel.isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                CancelButton { viewModel.cancelEditing() }
-                    .disabled(viewModel.isSaving)
+                DiscardChangesCancelButton(hasChanges: viewModel.hasUnsavedEdits) {
+                    viewModel.cancelEditing()
+                }
+                .disabled(viewModel.isSaving)
             }
         }
+    }
 
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                viewModel.currentIndex -= 1
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(viewModel.currentIndex <= 0 || viewModel.isEditing)
-
-            Spacer()
-
+    private var rowNavigator: some View {
+        PagingBar(
+            previousTitle: "Previous Row",
+            nextTitle: "Next Row",
+            canGoPrevious: viewModel.canGoToPreviousRow,
+            canGoNext: viewModel.canGoToNextRow,
+            onPrevious: viewModel.goToPreviousRow,
+            onNext: viewModel.goToNextRow
+        ) {
             Text("\(viewModel.currentIndex + 1) of \(viewModel.rows.count)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .fixedSize()
-
-            Spacer()
-
-            Button {
-                viewModel.currentIndex += 1
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(viewModel.currentIndex >= viewModel.rows.count - 1 || viewModel.isEditing)
         }
     }
 
@@ -212,8 +214,9 @@ struct RowDetailView: View {
                 let column = viewModel.columns[index]
                 let value = values[index]
                 let isPK = viewModel.isPrimaryKey(at: index)
+                let takesEdits = viewModel.isEditing && viewModel.takesEdits(at: index)
                 Section {
-                    if viewModel.isEditing && !isPK {
+                    if takesEdits {
                         editableField(index: index, value: value)
                     } else {
                         fieldContent(value: value)
@@ -232,8 +235,8 @@ struct RowDetailView: View {
                                 }
                             }
                         if index < cells.count, cells[index].isLoadable,
-                           !viewModel.hasOverride(forRow: viewModel.currentIndex, cellIndex: index) {
-                            lazyLoadButton(cell: cells[index], cellIndex: index)
+                           !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
+                            lazyLoadButton(cell: cells[index], rowIndex: rowIndex, cellIndex: index)
                         }
                         if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }), let value {
                             Button {
@@ -259,7 +262,7 @@ struct RowDetailView: View {
                         }
                         Text(column.name)
 
-                        if viewModel.isEditing && isPK {
+                        if viewModel.isEditing && !takesEdits {
                             Text("read-only")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -277,10 +280,10 @@ struct RowDetailView: View {
     }
 
     @ViewBuilder
-    private func lazyLoadButton(cell: Cell, cellIndex: Int) -> some View {
+    private func lazyLoadButton(cell: Cell, rowIndex: Int, cellIndex: Int) -> some View {
         if let ref = cell.fullValueRef, viewModel.supportsLazyLoading {
             Button {
-                Task { await viewModel.loadFullValue(ref: ref, cellIndex: cellIndex) }
+                Task { await viewModel.loadFullValue(ref: ref, forRow: rowIndex, cellIndex: cellIndex) }
             } label: {
                 HStack(spacing: 4) {
                     if viewModel.loadingCell == cellIndex {

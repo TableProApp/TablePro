@@ -24,10 +24,66 @@ extension MainSplitViewController {
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connection,
+            hiddenBy: toolbarOwner?.visibility,
             subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
         ) { [selectedConnectionId] dismiss in
-            ConnectionSwitcherPopover(dismiss: dismiss, currentConnectionId: selectedConnectionId)
+            ConnectionSwitcherPopover(
+                dismiss: dismiss,
+                currentConnectionId: selectedConnectionId,
+                purpose: .switchConnection
+            )
+        }
+    }
+
+    @objc func moveTabToConnection(_ sender: Any?) {
+        guard let tabId = workspaces.selected?.sessionState?.coordinator.tabManager.selectedTab?.id else { return }
+        presentMoveTabPicker(tabId: tabId)
+    }
+
+    var canMoveSelectedTabToConnection: Bool {
+        guard let coordinator = workspaces.selected?.sessionState?.coordinator,
+              let tabId = coordinator.tabManager.selectedTab?.id else { return false }
+        return coordinator.canMoveTabToConnection(tabId)
+    }
+
+    /// The source is read now, not at pick time: the pick can arrive after the window has
+    /// switched to another connection.
+    func presentMoveTabPicker(tabId: UUID) {
+        guard let source = workspace(holding: tabId),
+              let coordinator = source.sessionState?.coordinator,
+              let tab = coordinator.tabManager.tabs.first(where: { $0.id == tabId }),
+              coordinator.canMoveTabToConnection(tabId)
+        else { return }
+        let sourceConnectionId = source.connectionId
+        let title = tab.title
+        view.window?.makeFirstResponder(nil)
+        switcherPresenter.present(
+            from: view.window,
+            anchoredTo: MainWindowToolbar.connection,
+            hiddenBy: toolbarOwner?.visibility,
+            subject: .moveTab(tabId),
+            contentSize: ConnectionSwitcherPopover.contentSize
+        ) { dismiss in
+            ConnectionSwitcherPopover(
+                dismiss: dismiss,
+                currentConnectionId: sourceConnectionId,
+                purpose: .moveTab(title: title, onPick: { [weak self] targetConnectionId in
+                    guard let self else { return }
+                    WindowManager.shared.moveQueryTab(
+                        tabId: tabId,
+                        from: sourceConnectionId,
+                        in: self,
+                        to: targetConnectionId
+                    )
+                })
+            )
+        }
+    }
+
+    private func workspace(holding tabId: UUID) -> ConnectionWorkspace? {
+        workspaces.workspaces.first { workspace in
+            workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } == true
         }
     }
 
@@ -63,10 +119,18 @@ extension MainSplitViewController {
         )
     }
 
+    /// Reached through the workspace's coordinator rather than `commandActions`, which exists only
+    /// once the browse content has appeared. A window opened straight into Agent mode never shows
+    /// that content, so its Safe Mode list had no checkmark and no entry in it did anything.
     @objc func setSafeModeLevel(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let level = SafeModeLevel(rawValue: raw) else { return }
-        commandActions?.coordinator?.setSafeModeLevel(level)
+        workspaces.selected?.sessionState?.coordinator.setSafeModeLevel(level)
+    }
+
+    /// What the Safe Mode list offers for the connection on screen, or nil with no session behind it.
+    var safeModeStatus: SafeModeStatus? {
+        workspaces.selected?.sessionState?.coordinator.safeModeStatus
     }
 
     @objc func switchSessionContext(_ sender: Any?) {

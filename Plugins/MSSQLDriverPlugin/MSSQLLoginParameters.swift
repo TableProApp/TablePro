@@ -6,7 +6,6 @@ nonisolated enum MSSQLLoginField: Equatable {
     case application
     case nationalLanguage
     case charset
-    case encryption
     case database
 }
 
@@ -23,7 +22,6 @@ nonisolated enum MSSQLLoginParameters {
         user: String,
         password: String,
         applicationName: String,
-        encryptionFlag: String,
         database: String
     ) -> [MSSQLLoginParameter] {
         var parameters = [
@@ -31,8 +29,7 @@ nonisolated enum MSSQLLoginParameters {
             MSSQLLoginParameter(field: .password, value: password),
             MSSQLLoginParameter(field: .application, value: applicationName),
             MSSQLLoginParameter(field: .nationalLanguage, value: nationalLanguage),
-            MSSQLLoginParameter(field: .charset, value: charset),
-            MSSQLLoginParameter(field: .encryption, value: encryptionFlag)
+            MSSQLLoginParameter(field: .charset, value: charset)
         ]
         if !database.isEmpty {
             parameters.append(MSSQLLoginParameter(field: .database, value: database))

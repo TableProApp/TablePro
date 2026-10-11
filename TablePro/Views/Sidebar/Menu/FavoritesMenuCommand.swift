@@ -15,9 +15,9 @@ internal enum FavoritesMenuCommand: Equatable {
     case setDatabaseEnvironment(FavoriteDatabaseEntry, FavoriteDatabaseEnvironment)
     case removeDatabaseFavorite(FavoriteDatabaseEntry)
 
-    case openTable(TableInfo)
-    case showERDiagram
-    case removeTableFavorite(TableInfo)
+    case openTable(FavoriteTableRow)
+    case showERDiagram(schema: String?)
+    case removeTableFavorite(FavoriteTablesStorage.FavoriteEntry)
 
     case insertFavorite(SQLFavorite)
     case runFavoriteInNewTab(SQLFavorite)
@@ -25,12 +25,15 @@ internal enum FavoritesMenuCommand: Equatable {
     case editFavorite(SQLFavorite)
     case moveFavorite(id: UUID, toFolder: UUID?)
     case deleteFavorite(SQLFavorite)
+    case showFavoriteHistory(SQLFavorite)
 
     case openLinkedFavorite(LinkedSQLFavorite)
     case editLinkedMetadata(LinkedSQLFavorite)
     case copyLinkedFavoriteQuery(LinkedSQLFavorite)
     case revealLinkedFavorite(LinkedSQLFavorite)
     case trashLinkedFavorite(LinkedSQLFavorite)
+    case showLinkedFileHistory(LinkedSQLFavorite)
+    case discardLinkedFileChanges(LinkedSQLFavorite)
 
     case revealLinkedFolder(LinkedSQLFolder)
     case setLinkedFolderEnabled(LinkedSQLFolder, Bool)
@@ -39,6 +42,7 @@ internal enum FavoritesMenuCommand: Equatable {
     case removeLinkedFolder(LinkedSQLFolder)
 
     case renameFolder(SQLFavoriteFolder)
+    case setFolderGlobal(SQLFavoriteFolder, Bool)
     case newFavorite(folderId: UUID?)
     case newFolder(parentId: UUID?)
     case deleteFolder(SQLFavoriteFolder)

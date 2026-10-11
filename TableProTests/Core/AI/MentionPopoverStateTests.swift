@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MentionPopoverState")
 @MainActor
 struct MentionPopoverStateTests {
     private func candidate(_ name: String) -> MentionCandidate {

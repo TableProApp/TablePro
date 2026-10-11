@@ -9,10 +9,10 @@ import Combine
 import Foundation
 import os
 import TableProConnectionLibrary
+import TableProImport
 import TableProPluginKit
 import TableProSyncTransport
 
-/// Service for persisting database connections
 @MainActor
 final class ConnectionStorage {
     static let shared = ConnectionStorage()
@@ -24,8 +24,9 @@ final class ConnectionStorage {
     private let syncTracker: SyncChangeTracker
     private let appSettingsProvider: () -> AppSettingsStorage
 
-    /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
+
+    private(set) var lastLoadFailed = false
 
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
@@ -70,7 +71,6 @@ final class ConnectionStorage {
         return dir.appendingPathComponent("connections.json")
     }
 
-    /// One-time migration from UserDefaults to atomic file storage.
     private func migrateFromUserDefaultsIfNeeded() {
         guard !defaults.bool(forKey: migratedToFileKey),
               let data = defaults.data(forKey: connectionsKey) else { return }
@@ -86,71 +86,134 @@ final class ConnectionStorage {
 
     // MARK: - Connection CRUD
 
-    /// Load all saved connections
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
-        guard let storedConnections = file.load() else { return [] }
+        guard let storedConnections = file.load() else {
+            lastLoadFailed = true
+            return []
+        }
+        lastLoadFailed = false
 
         let connections = storedConnections.map { stored in
             stored.toConnection()
         }
 
         let migrated = Self.numberingUnrankedGroups(connections)
-        if migrated != connections {
-            if storeIsTrusted {
-                saveConnections(migrated)
-            }
-            cachedConnections = migrated
-            return migrated
+        if migrated != connections, storeIsTrusted {
+            persist(migrated)
         }
-
-        cachedConnections = connections
-        return connections
+        cachedConnections = migrated
+        return migrated
     }
 
     func loadConnection(id: UUID) -> DatabaseConnection? {
         loadConnections().first { $0.id == id }
     }
 
-    /// Save all connections. Returns `true` if persisted, `false` if encoding or
-    /// the atomic write failed. Callers that mutate dependent state (sync tracker,
-    /// keychain entries) MUST check the return value and abort on `false`.
-    /// Continuing on a failed save can nuke a user's password while leaving the
-    /// connection record on disk, then have the next sync delete the record from
-    /// iCloud too.
+    /// Loads first, so the answer does not depend on whether anything has read the file yet.
+    var isLibraryUnreadable: Bool {
+        _ = loadConnections()
+        return lastLoadFailed
+    }
+
+    /// Callers that mutate dependent state (sync tracker, keychain entries) must abort on `false`:
+    /// continuing can delete a password while the record stays on disk. Refuses while the file on
+    /// disk could not be read, because every write replaces the whole list.
     @discardableResult
     func saveConnections(_ connections: [DatabaseConnection]) -> Bool {
+        _ = loadConnections()
+        guard !lastLoadFailed else {
+            Self.logger.error("Refused to save over connections.json: it could not be read")
+            return false
+        }
+        return persist(connections)
+    }
+
+    @discardableResult
+    private func persist(_ connections: [DatabaseConnection]) -> Bool {
         guard file.save(connections.map { StoredConnection(from: $0) }) else { return false }
         cachedConnections = nil
         return true
     }
 
-    /// Invalidate the in-memory cache so the next load reads fresh from UserDefaults.
     func invalidateCache() {
         cachedConnections = nil
     }
 
-    /// Add a new connection at the end of its group
-    func addConnection(_ connection: DatabaseConnection, password: String? = nil) {
+    @discardableResult
+    func addConnection(_ connection: DatabaseConnection, password: String? = nil) -> Bool {
         var connections = loadConnections()
         var placed = connection
         placed.sortOrder = Self.nextSortOrder(in: connections, groupId: connection.groupId)
         connections.append(placed)
         guard saveConnections(connections) else {
             Self.logger.error("Aborted addConnection: persistence failed for \(connection.id, privacy: .public)")
-            return
+            return false
         }
-        if !connection.localOnly && !connection.isSample {
+        if connection.participatesInSync {
             syncTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
         if let password = password, !password.isEmpty {
             savePassword(password, for: connection.id)
         }
+        return true
     }
 
-    /// Update an existing connection
+    /// A replace keeps the stored row's device-local state, except a credential profile the import
+    /// created and a tunnel command the user agreed to import. A replace whose row is gone is not written.
+    func applyImport(adding: [DatabaseConnection], replacing: [DatabaseConnection]) -> ConnectionImportWrite? {
+        var connections = loadConnections()
+        guard !lastLoadFailed else {
+            Self.logger.error("Refused import: connections.json could not be read")
+            return nil
+        }
+
+        var replaced: [DatabaseConnection] = []
+        for incoming in replacing {
+            guard let index = connections.firstIndex(where: { $0.id == incoming.id }) else { continue }
+            let stored = connections[index]
+            var updated = incoming.adoptingDeviceLocalState(from: stored)
+            if incoming.credentialMode.profileId != nil {
+                updated.credentialMode = incoming.credentialMode
+            }
+            if incoming.isTunnelCommandEnabled {
+                updated.tunnelCommandMode = incoming.tunnelCommandMode
+            }
+            updated.sortOrder = stored.groupId == updated.groupId
+                ? stored.sortOrder
+                : Self.nextSortOrder(in: connections, groupId: updated.groupId)
+            connections[index] = updated
+            replaced.removeAll { $0.id == updated.id }
+            replaced.append(updated)
+        }
+
+        var knownIds = Set(connections.map(\.id))
+        var added: [DatabaseConnection] = []
+        for incoming in adding {
+            guard knownIds.insert(incoming.id).inserted else { continue }
+            var placed = incoming
+            placed.sortOrder = Self.nextSortOrder(in: connections, groupId: incoming.groupId)
+            connections.append(placed)
+            added.append(placed)
+        }
+
+        guard !added.isEmpty || !replaced.isEmpty else {
+            return ConnectionImportWrite(added: [], replaced: [])
+        }
+        guard saveConnections(connections) else {
+            Self.logger.error("Aborted import: persistence failed for \(added.count + replaced.count, privacy: .public) connection(s)")
+            return nil
+        }
+        let dirtyIds = (replaced + added)
+            .filter(\.participatesInSync)
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
+        appEventsProvider().connectionUpdated.send(nil)
+        return ConnectionImportWrite(added: added.map(\.id), replaced: replaced.map(\.id))
+    }
+
     func updateConnection(_ connection: DatabaseConnection, password: String? = nil) {
         var connections = loadConnections()
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
@@ -159,7 +222,7 @@ final class ConnectionStorage {
                 Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
                 return
             }
-            if !connection.localOnly && !connection.isSample {
+            if connection.participatesInSync {
                 syncTracker.markDirty(.connection, id: connection.id.uuidString)
             }
 
@@ -173,7 +236,6 @@ final class ConnectionStorage {
         }
     }
 
-    /// Update multiple connections in a single file write, marking each dirty for sync.
     @discardableResult
     func updateConnections(_ updates: [DatabaseConnection]) -> Bool {
         guard !updates.isEmpty else { return true }
@@ -190,7 +252,7 @@ final class ConnectionStorage {
             return false
         }
         let dirtyIds = updatesById.values
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
         return true
@@ -233,7 +295,7 @@ final class ConnectionStorage {
             return false
         }
         let dirtyIds = changed
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
         appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
@@ -315,14 +377,13 @@ final class ConnectionStorage {
         }
 
         let updatedConnection = connections[index]
-        if !updatedConnection.localOnly && !updatedConnection.isSample {
+        if updatedConnection.participatesInSync {
             syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
         }
 
         return true
     }
 
-    /// Delete a connection
     @discardableResult
     func deleteConnection(_ connection: DatabaseConnection) -> Bool {
         var connections = loadConnections()
@@ -331,7 +392,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnection: persistence failed for \(connection.id, privacy: .public)")
             return false
         }
-        if !connection.localOnly && !connection.isSample {
+        if connection.participatesInSync {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
         deletePassword(for: connection.id)
@@ -349,19 +410,13 @@ final class ConnectionStorage {
 
         ConnectionLocalState.purge(
             connectionIds: [connection.id],
-            origin: .local,
-            appSettings: appSettingsProvider()
+            origin: connection.participatesInSync ? .local : .localOnly,
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
         )
-        Task {
-            await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
-            await QueryHistoryManager.shared.clear(
-                matching: QueryHistoryFilter(scope: .connection(connection.id))
-            )
-        }
         return true
     }
 
-    /// Batch-delete multiple connections and clean up their Keychain entries
     @discardableResult
     func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) -> Bool {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
@@ -371,7 +426,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
             return false
         }
-        for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
+        for conn in connectionsToDelete where conn.participatesInSync {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
         }
         for conn in connectionsToDelete {
@@ -387,25 +442,25 @@ final class ConnectionStorage {
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
         }
+        let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
         ConnectionLocalState.purge(
-            connectionIds: idsToDelete,
+            connectionIds: syncedIds,
             origin: .local,
-            appSettings: appSettingsProvider()
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
         )
-        Task {
-            for conn in connectionsToDelete {
-                await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
-                await QueryHistoryManager.shared.clear(
-                    matching: QueryHistoryFilter(scope: .connection(conn.id))
-                )
-            }
-        }
+        ConnectionLocalState.purge(
+            connectionIds: idsToDelete.subtracting(syncedIds),
+            origin: .localOnly,
+            appSettings: appSettingsProvider(),
+            syncTracker: syncTracker
+        )
         return true
     }
 
-    /// Duplicate a connection with a new UUID and "(Copy)" suffix, placed right after its source.
-    /// Copies all passwords from source connection to the duplicate. Returns nil when the copy
-    /// could not be saved.
+    /// The copy is the user's own new connection, so it starts unfavorited and is never a sample.
+    /// Every other property carries, External Access too: a Read Only copy of a Blocked connection
+    /// would be open to MCP clients with the source's passwords.
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection? {
         let newId = UUID()
 
@@ -420,6 +475,7 @@ final class ConnectionStorage {
             sshConfig: connection.sshConfig,
             sslConfig: connection.sslConfig,
             color: connection.color,
+            iconName: connection.iconName,
             tagIds: connection.tagIds,
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
@@ -433,6 +489,7 @@ final class ConnectionStorage {
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,
             aiAlwaysAllowedTools: connection.aiAlwaysAllowedTools,
+            externalAccess: connection.externalAccess,
             redisDatabase: connection.redisDatabase,
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,
@@ -464,7 +521,7 @@ final class ConnectionStorage {
             return nil
         }
         let dirtyIds = ([placedDuplicate] + renumbered)
-            .filter { !$0.localOnly && !$0.isSample }
+            .filter(\.participatesInSync)
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
 
@@ -507,6 +564,7 @@ final class ConnectionStorage {
                 savePluginSecureField(value, fieldId: fieldId, for: newId)
             }
         }
+        LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate

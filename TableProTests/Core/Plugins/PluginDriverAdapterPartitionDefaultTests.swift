@@ -77,7 +77,6 @@ private final class LegacyPartitionDriver: PluginDatabaseDriver, @unchecked Send
     }
 }
 
-@Suite("Partition support stays optional for plugins")
 struct PluginDriverAdapterPartitionDefaultTests {
     @Test("A driver that implements neither partition method resolves through the protocol default")
     func unimplementedFetchPartitionsReturnsEmpty() async throws {
@@ -124,9 +123,10 @@ struct PluginDriverAdapterPartitionDefaultTests {
         let partitions = try await adapter.fetchPartitionDetails(table: "orders", schema: "public")
 
         let remote = try #require(partitions.last)
+        let remoteTable = try #require(remote.asTableInfo)
         #expect(remote.relationType == .foreignTable)
-        #expect(remote.asTableInfo?.type == .foreignTable)
-        #expect(!TableOperationEligibility.canTruncate(remote.asTableInfo?.type))
+        #expect(remoteTable.type == .foreignTable)
+        #expect(!TableOperationEligibility.canTruncate(remoteTable))
     }
 
     @Test("A plain partition is truncatable, so the guard is not refusing everything")
@@ -135,7 +135,8 @@ struct PluginDriverAdapterPartitionDefaultTests {
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: LegacyPartitionDriver())
         let partitions = try await adapter.fetchPartitionDetails(table: "orders", schema: "public")
 
-        #expect(TableOperationEligibility.canTruncate(partitions[0].asTableInfo?.type))
+        let plain = try #require(partitions[0].asTableInfo)
+        #expect(TableOperationEligibility.canTruncate(plain))
     }
 
     @Test("Two partitions whose components differ only in where a period falls are two rows")

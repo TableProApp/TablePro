@@ -60,7 +60,6 @@ private final class StubStructureDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("PluginDriverAdapter structure mapping")
 struct PluginDriverAdapterStructureMappingTests {
     private func makeAdapter() -> PluginDriverAdapter {
         PluginDriverAdapter(

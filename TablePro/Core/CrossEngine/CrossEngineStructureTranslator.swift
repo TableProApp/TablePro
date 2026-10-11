@@ -81,7 +81,7 @@ internal enum CrossEngineStructureTranslator {
 
         var drafts = snapshot.columns.map { column in
             let canonical = SQLTypeParser.parse(
-                column.dataType, catalogSpelling: column.ddlSpelling, family: sourceFamily
+                column.typeNameForClassification, catalogSpelling: column.ddlSpelling, family: sourceFamily
             )
             return CrossEngineColumnDraft(
                 name: column.name,
@@ -177,7 +177,7 @@ internal enum CrossEngineStructureTranslator {
         var kinds: [String: CanonicalTypeKind] = [:]
         for column in snapshot.columns {
             kinds[column.name] = SQLTypeParser.parse(
-                column.dataType, catalogSpelling: column.ddlSpelling, family: family
+                column.typeNameForClassification, catalogSpelling: column.ddlSpelling, family: family
             ).kind
         }
         return kinds
@@ -221,7 +221,8 @@ internal enum CrossEngineStructureTranslator {
                 subject: column.name,
                 summary: "\(column.name): \(draft.source.sourceSpelling) → \(rendered.spelling)",
                 reason: reason,
-                fidelity: rendered.fidelity
+                fidelity: rendered.fidelity,
+                isTypeChange: true
             ))
         }
 

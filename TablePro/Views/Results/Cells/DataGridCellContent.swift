@@ -10,6 +10,8 @@ enum DataGridCellPlaceholder: Equatable {
     case null
     case empty
     case defaultMarker
+    /// The row has no field for the column, which a document store tells apart from NULL.
+    case absent
 }
 
 struct DataGridCellContent {
@@ -17,7 +19,8 @@ struct DataGridCellContent {
     let rawValue: String?
     let placeholder: DataGridCellPlaceholder?
 
-    static func placeholder(for rawValue: PluginCellValue) -> DataGridCellPlaceholder? {
+    static func placeholder(for rawValue: PluginCellValue, isAbsent: Bool = false) -> DataGridCellPlaceholder? {
+        guard !isAbsent else { return .absent }
         switch rawValue {
         case .null:
             return .null
@@ -44,7 +47,13 @@ struct DataGridCellContent {
             return isLargeDataset ? "" : String(localized: "Empty")
         case .defaultMarker:
             return isLargeDataset ? "" : String(localized: "DEFAULT")
+        case .absent:
+            return isLargeDataset ? "" : absentFieldText
         }
+    }
+
+    static var absentFieldText: String {
+        String(localized: "No Field")
     }
 }
 

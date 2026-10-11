@@ -23,7 +23,8 @@ set -euo pipefail
 #   scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a
 
 DUCKDB_VERSION="v1.5.2"
-DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-$DEPLOY_TARGET}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Overridable so a verification run can write somewhere else. Libs/*.a is shared with
@@ -202,5 +203,5 @@ echo
 echo "DuckDB static library built successfully."
 ls -lh "$LIBS_DIR"/libduckdb*.a
 echo
-echo "Verify with: scripts/check-duckdb-offline-metadata.sh"
+echo "Verify with: scripts/probes/check-duckdb-offline-metadata.sh"
 echo "Publish with: scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a"

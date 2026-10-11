@@ -8,7 +8,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("PluginEntry Computed Properties")
 struct PluginEntryTests {
 
     private func makeEntry(
@@ -32,8 +31,7 @@ struct PluginEntryTests {
             pluginIconName: pluginIconName,
             defaultPort: defaultPort,
             exportFormatId: nil,
-            importFormatId: nil,
-            inspectorId: nil
+            importFormatId: nil
         )
     }
 
@@ -68,7 +66,6 @@ struct PluginEntryTests {
     }
 }
 
-@Suite("PluginSource Enum")
 struct PluginSourceTests {
 
     @Test("PluginSource has builtIn and userInstalled cases")
@@ -80,7 +77,6 @@ struct PluginSourceTests {
     }
 }
 
-@Suite("PluginEntry Identity")
 struct PluginEntryIdentityTests {
 
     @Test("id property serves as the Identifiable conformance")
@@ -100,8 +96,7 @@ struct PluginEntryIdentityTests {
             pluginIconName: "puzzlepiece",
             defaultPort: nil,
             exportFormatId: nil,
-            importFormatId: nil,
-            inspectorId: nil
+            importFormatId: nil
         )
         #expect(entry.id == "com.example.test-plugin")
     }

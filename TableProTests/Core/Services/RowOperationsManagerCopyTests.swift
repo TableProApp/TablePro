@@ -42,7 +42,6 @@ private final class MockClipboardProvider: ClipboardProvider {
 }
 
 @MainActor
-@Suite("RowOperationsManager Copy")
 struct RowOperationsManagerCopyTests {
     private static let defaultColumns = ["id", "name", "email"]
 
@@ -75,6 +74,7 @@ struct RowOperationsManagerCopyTests {
     ) -> String? {
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows, columns: columns ?? Self.defaultColumns)
         manager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -140,6 +140,7 @@ struct RowOperationsManagerCopyTests {
         let rows = TestFixtures.makeRows(count: 3)
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows)
 
         manager.copySelectedRowsToClipboard(
@@ -286,6 +287,7 @@ struct RowOperationsManagerCopyTests {
         let rows: [[String?]] = [["1", "Smith, John", nil]]
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows)
 
         manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
@@ -300,6 +302,7 @@ struct RowOperationsManagerCopyTests {
         let rows: [[String?]] = [["1", "Alice", "alice@test.com"]]
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows)
 
         manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows, visibleColumnIndices: [2, 0])
@@ -319,6 +322,7 @@ struct RowOperationsManagerCopyTests {
         ]
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows)
         let displayIDs: [RowID] = [.existing(0), .existing(2), .existing(3)]
 
@@ -341,6 +345,7 @@ struct RowOperationsManagerCopyTests {
         ]
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
         let tableRows = makeTableRows(rows: rows)
         let displayIDs: [RowID] = [.existing(2), .existing(0)]
 

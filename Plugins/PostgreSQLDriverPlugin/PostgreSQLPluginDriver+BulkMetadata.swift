@@ -64,7 +64,7 @@ extension PostgreSQLPluginDriver {
                 dataSize: (row[safe: 2]?.asText).flatMap { Int64($0) },
                 indexSize: (row[safe: 3]?.asText).flatMap { Int64($0) },
                 totalSize: (row[safe: 1]?.asText).flatMap { Int64($0) },
-                rowCount: (row[safe: 4]?.asText).flatMap { Int64($0) },
+                rowCount: PostgreSQLSchemaQueries.rowEstimate(reltuples: row[safe: 4]?.asText),
                 comment: comment?.isEmpty == true ? nil : comment,
                 engine: "PostgreSQL"
             )

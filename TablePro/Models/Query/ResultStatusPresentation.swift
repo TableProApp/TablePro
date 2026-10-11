@@ -16,7 +16,7 @@ import CoreGraphics
 /// tier whose ideal width fits, and `narrow` is measured to fit the narrowest pane the window
 /// allows, so no tier can over-size the column again.
 enum StatusBarTier: CaseIterable {
-    /// Every control at full width, titles beside icons.
+    /// Every control at full width, titles beside icons. Highlight Rules alone stays a glyph.
     case regular
     /// Titles drop to their icons and the page edges go. Every control is still on the bar.
     case compact
@@ -37,7 +37,7 @@ enum StatusBarTier: CaseIterable {
 /// which controls a result offers, this one answers how they are drawn. Both are pure so the whole
 /// matrix is decidable without mounting a view.
 struct ResultStatusPresentation: Equatable {
-    /// Whether a control carries its title beside its icon.
+    /// Whether Columns and Filters carry their title beside their icon.
     let showsControlTitles: Bool
     /// A segmented control while the modes fit, and a pull-down naming the current one once they do
     /// not. `View > Result View` offers the same choice either way.

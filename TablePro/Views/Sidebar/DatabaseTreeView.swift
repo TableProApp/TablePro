@@ -12,7 +12,7 @@ struct DatabaseTreeRoutineRef: Identifiable, Equatable {
     let routine: RoutineInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(routine.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", routine.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -26,7 +26,7 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     let trigger: TriggerInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(trigger.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", trigger.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -40,7 +40,7 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
     let type: UserDefinedTypeInfo
 
     var id: String {
-        "\(database ?? "")|\(schema ?? "")|\(type.id)"
+        IdentityPath.joined([database ?? "", schema ?? "", type.id], separator: "|")
     }
 
     var objectRef: DatabaseObjectRef {
@@ -148,8 +148,6 @@ struct DatabaseTreeView: View {
         }
     }
 
-    /// A filtered list looks exactly like a short one, so it has to say it is filtered. The button
-    /// that used to carry that state, at the bottom of the sidebar, is gone.
     @ViewBuilder
     private var filterBanner: some View {
         if isFiltering {
@@ -158,27 +156,18 @@ struct DatabaseTreeView: View {
                 selected: sidebarState.databaseFilterSelected,
                 showsSystem: showsSystemContainers
             )
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                    .foregroundStyle(.tint)
-                Text(String(
-                    format: String(localized: "Showing %lld of %lld"),
-                    summary.shown,
-                    summary.total
-                ))
-                .lineLimit(1)
-                Spacer(minLength: 4)
-                Button(String(localized: "Show All")) {
-                    sidebarState.databaseFilterSelected = []
-                }
-                .buttonStyle(.link)
-            }
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
+            SidebarFilterBanner(
+                label: String(format: String(localized: "Showing %1$lld of %2$lld"), summary.shown, summary.total),
+                showAll: { sidebarState.databaseFilterSelected = [] }
+            )
             Divider()
         }
+        SidebarSchemaFilterBanner(
+            connectionId: connectionId,
+            database: coordinator?.browseDatabaseName ?? activeDatabase,
+            databaseType: databaseType,
+            sidebarState: sidebarState
+        )
     }
 
     private var outline: some View {

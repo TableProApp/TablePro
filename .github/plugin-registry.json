@@ -9,12 +9,13 @@
     "and scripts/ci/check-plugin-manifest.py fails if the two disagree. Seven icons here were",
     "already wrong when that check was first run.",
     "",
-    "The 8 plugins absent from this file are the ones bundled inside the app and never published",
+    "The 7 plugins absent from this file are the ones bundled inside the app and never published",
+    "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import.",
     "",
-    "'bundled' marks a plugin that also ships inside the app. Those six can still be published",
-    "individually when users on an already-shipped app need a fix sooner, but a bulk ABI re-release",
-    "skips them, because their binaries ride with the next app release.",
-    "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import, CSV inspector."
+    "'bundled' marks a plugin that also ships inside the app. Those ten can still be published",
+    "individually, but the app never applies a registry update to a bundled plugin, so a published",
+    "build reaches only users who install its zip from a file. A bulk ABI re-release skips them,",
+    "because their binaries ride with the next app release."
   ],
   "plugins": {
     "beancount": {
@@ -136,7 +137,7 @@
       "bundleId": "com.TablePro.DynamoDBDriverPlugin",
       "bundled": false,
       "displayName": "DynamoDB Driver",
-      "summary": "Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication",
+      "summary": "Amazon DynamoDB: index-aware browsing, typed editing, PartiQL, the DynamoDB API and table management",
       "databaseTypeIds": [
         "DynamoDB"
       ],
@@ -171,6 +172,20 @@
       "icon": "etcd-icon",
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
+    },
+    "hana": {
+      "target": "HanaDriver",
+      "bundleName": "HanaDriver",
+      "bundleId": "com.TablePro.HanaDriver",
+      "bundled": false,
+      "displayName": "SAP HANA Driver",
+      "summary": "SAP HANA SQL driver via SAP/go-hdb",
+      "databaseTypeIds": [
+        "SAP HANA"
+      ],
+      "icon": "cylinder",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/sap-hana"
     },
     "html": {
       "target": "HTMLExport",

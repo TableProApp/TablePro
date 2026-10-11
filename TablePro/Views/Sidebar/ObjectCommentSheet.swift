@@ -139,7 +139,7 @@ struct ObjectCommentSheet: View {
             phase = .editing
             isEditorFocused = true
         } catch {
-            Self.logger.error("Failed to read comment: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to read comment: \(error.publicLogShape, privacy: .public)")
             phase = .loadFailed(error.localizedDescription)
         }
     }

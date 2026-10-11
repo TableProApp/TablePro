@@ -6,21 +6,21 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
-@Suite("Database access bridge statement text")
 struct DatabaseAccessBridgeStatementTests {
     @Test(
         "Invisible characters and trailing semicolons come off an external statement",
         arguments: ["\u{FEFF}\u{0008}SELECT 1;\u{00A0};\u{200B}", "\u{3000}SELECT 1\u{2028}", " SELECT 1 ; "]
     )
     func trimsInvisibleCharacters(sql: String) {
-        #expect(DatabaseAccessBridge.stripTrailingSemicolons(sql) == "SELECT 1")
+        #expect(DatabaseAccessBridge.statementText(sql, grammar: TestGrammar.standard) == "SELECT 1")
     }
 
     @Test("A statement of nothing but invisible characters is empty")
     func invisibleOnlyStatementIsEmpty() {
-        #expect(DatabaseAccessBridge.stripTrailingSemicolons("\u{FEFF}\u{0008};\u{200B}").isEmpty)
+        #expect(DatabaseAccessBridge.statementText("\u{FEFF}\u{0008};\u{200B}", grammar: TestGrammar.standard).isEmpty)
     }
 
     @Test(
@@ -42,7 +42,7 @@ struct DatabaseAccessBridgeStatementTests {
 
     @Test("The text an external client sends is the text that was classified")
     func sentTextMatchesClassifiedText() {
-        let sent = DatabaseAccessBridge.stripTrailingSemicolons("\u{0008}SELECT 1;")
+        let sent = DatabaseAccessBridge.statementText("\u{0008}SELECT 1;", grammar: TestGrammar.postgres)
         #expect(sent == "SELECT 1")
         #expect(QueryClassifier.classifyTier(sent, databaseType: .postgresql) == .safe)
     }

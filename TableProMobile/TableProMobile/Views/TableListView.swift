@@ -57,28 +57,31 @@ struct TableListView: View {
         return filtered
     }
 
+    /// Grouped by the kind's own answer rather than by two `==` filters, so a kind this list does
+    /// not name cannot fall through both and disappear, which is what a MariaDB sequence did.
     private var tableSections: [(String, [TableInfo])] {
-        let tableItems = filteredTables.filter { $0.type == .table || $0.type == .systemTable }
-        let viewItems = filteredTables.filter { $0.type == .view || $0.type == .materializedView }
+        let grouped = Dictionary(grouping: filteredTables, by: \.type.listSection)
+        return TableInfo.TableKind.ListSection.allCases.compactMap { section in
+            guard let items = grouped[section], !items.isEmpty else { return nil }
+            return (Self.sectionTitle(section), items)
+        }
+    }
 
-        var sections: [(String, [TableInfo])] = []
-        if !tableItems.isEmpty {
-            sections.append(("Tables", tableItems))
+    private static func sectionTitle(_ section: TableInfo.TableKind.ListSection) -> String {
+        switch section {
+        case .tables: return String(localized: "Tables")
+        case .views: return String(localized: "Views")
         }
-        if !viewItems.isEmpty {
-            sections.append(("Views", viewItems))
-        }
-        return sections
     }
 
     var body: some View {
-        List {
+        @Bindable var coordinator = coordinator
+        return List(selection: $coordinator.selectedTable) {
             ForEach(tableSections, id: \.0) { sectionTitle, items in
                 Section {
                     ForEach(items) { table in
-                        NavigationLink(value: table) {
-                            TableRow(table: table)
-                        }
+                        TableRow(table: table)
+                        .tag(table)
                         .contextMenu {
                             Button {
                                 ClipboardExporter.copyToClipboard(table.name)
@@ -86,20 +89,24 @@ struct TableListView: View {
                                 Label("Copy Name", systemImage: "doc.on.doc")
                             }
 
-                            let isView = table.type == .view || table.type == .materializedView
-                            if !isView && !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL {
+                            let writesAllowed = !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL
+                            if writesAllowed && (table.type.allowsTruncate || table.type.allowsDrop) {
                                 Divider()
 
-                                Button(role: .destructive) {
-                                    tableToTruncate = table
-                                } label: {
-                                    Label("Truncate Table", systemImage: "trash.slash")
+                                if table.type.allowsTruncate {
+                                    Button(role: .destructive) {
+                                        tableToTruncate = table
+                                    } label: {
+                                        Label("Truncate Table", systemImage: "trash.slash")
+                                    }
                                 }
 
-                                Button(role: .destructive) {
-                                    tableToDrop = table
-                                } label: {
-                                    Label("Drop Table", systemImage: "trash")
+                                if table.type.allowsDrop {
+                                    Button(role: .destructive) {
+                                        tableToDrop = table
+                                    } label: {
+                                        Label("Drop Table", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -151,11 +158,12 @@ struct TableListView: View {
             Button(String(localized: "Truncate"), role: .destructive) {
                 if let table = tableToTruncate {
                     Task {
+                        guard let driver = session?.driver else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
+                            try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"])
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -177,11 +185,12 @@ struct TableListView: View {
             Button(String(localized: "Drop"), role: .destructive) {
                 if let table = tableToDrop {
                     Task {
+                        guard let driver = session?.driver else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
+                            try await driver.executeWrite(["DROP TABLE \(quoted)"])
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -206,11 +215,9 @@ struct TableListView: View {
 private struct TableRow: View {
     let table: TableInfo
 
-    private var isView: Bool { table.type == .view || table.type == .materializedView }
-
     var body: some View {
         RowItemLabel(title: table.name) {
-            Image(systemName: isView ? "eye" : "tablecells")
+            Image(systemName: TableKindPresentation.systemImage(for: table.type))
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
         } trailing: {
@@ -224,7 +231,7 @@ private struct TableRow: View {
     }
 
     private var accessibilityLabel: Text {
-        let kind = isView ? String(localized: "View") : String(localized: "Table")
+        let kind = TableKindPresentation.accessibilityKind(for: table.type)
         if let rowCount = table.rowCount {
             return Text("\(kind), \(table.name), \(rowCount) rows")
         }

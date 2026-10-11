@@ -21,9 +21,18 @@ internal enum ScriptingKeys {
         internal static let truncated = "scriptTruncated"
         internal static let executionTime = "scriptExecutionTime"
         internal static let statusMessage = "scriptStatusMessage"
+        internal static let results = "scriptResults"
 
         internal static let all = [
-            columns, rows, rowCount, rowsAffected, truncated, executionTime, statusMessage
+            columns, rows, rowCount, rowsAffected, truncated, executionTime, statusMessage, results
+        ]
+    }
+
+    /// One entry of a query result's `results`. It shares its keys with `query result`, because the dictionary
+    /// declares these properties under one name and one code in both record types.
+    internal enum ResultSet {
+        internal static let all = [
+            QueryResult.columns, QueryResult.rows, QueryResult.rowCount, QueryResult.truncated, QueryResult.statusMessage
         ]
     }
 

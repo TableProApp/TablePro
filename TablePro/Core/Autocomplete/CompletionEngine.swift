@@ -22,7 +22,7 @@ struct CompletionContext {
 final class CompletionEngine {
     // MARK: - Properties
 
-    let provider: SQLCompletionProvider
+    private let provider: SQLCompletionProvider
 
     /// Size threshold (in UTF-16 code units) above which we extract a local
     /// window around the cursor instead of passing the full document to the
@@ -52,18 +52,6 @@ final class CompletionEngine {
     /// Update favorite keywords for autocomplete expansion
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         provider.updateFavoriteKeywords(keywords)
-    }
-
-    /// Statement-start keyword items available synchronously, without schema access.
-    /// Used to seed a filterable completion context before the async fetch completes.
-    func keywordCompletions() -> [SQLCompletionItem] {
-        provider.statementStartCompletionItems()
-    }
-
-    /// All favorite keyword items, used to seed the pre-debounce completion
-    /// session so favorites are filterable before the async fetch completes.
-    func allFavoriteItems() -> [SQLCompletionItem] {
-        provider.allFavoriteItems()
     }
 
     /// Filters, ranks and cases an open session's candidates for `prefix`.

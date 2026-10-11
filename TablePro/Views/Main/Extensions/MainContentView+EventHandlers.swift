@@ -89,14 +89,16 @@ extension MainContentView {
 
         guard columnsChanged || tableChanged else { return }
 
+        let rows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         changeManager.configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: newColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
-            generatedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
-            rowMatchPolicy: coordinator.tabSessionRegistry.tableRows(for: tab.id).rowMatchPolicy
+            generatedColumns: rows.generatedColumns,
+            rowMatchPolicy: rows.rowMatchPolicy,
+            columnTypeNames: rows.columnTypeNames
         )
     }
 
@@ -127,7 +129,7 @@ extension MainContentView {
 
         MainContentView.lifecycleLogger.debug(
             """
-            [tableload] sidebarSelection table=\(table.name, privacy: .public) \
+            [tableload] sidebarSelection table=\(table.name, privacy: .private(mask: .hash)) \
             decision=\(String(describing: result), privacy: .public) \
             currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
             isExecuting=\(coordinator.tabExecution.isAnyExecuting)
@@ -210,13 +212,15 @@ extension MainContentView {
             selectedRowIndices: selectedIndices,
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
+            absentCells: selectedRows.map(\.absentColumns),
             columns: tableRows.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
             primaryKeyColumns: pkColumns,
             foreignKeyColumns: fkColumns,
-            serverOwnedColumns: tableRows.generatedColumns,
-            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes)
+            serverOwnedColumns: tableRows.generatedColumns.union(changeManager.unwritableColumns(among: tableRows.columns)),
+            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes),
+            binaryColumns: MultiRowEditState.binaryColumns(in: allRows)
         )
 
         guard isSidebarEditable else {
@@ -234,8 +238,13 @@ extension MainContentView {
                 continuity: continuity
             )
         }
-        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow in
-            capturedCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow, absentRowIDs in
+            capturedCoordinator.revertInspectorFieldEdit(
+                columnIndex: columnIndex, valuesByRow: valuesByRow, absentRowIDs: absentRowIDs
+            )
+        }
+        trailingPaneState.inspector.editState.onFieldRemoved = { columnIndex, rowIDs in
+            capturedCoordinator.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
         }
         trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs in
             /// A value window commits on every keystroke exactly as the field it detached from
@@ -295,6 +304,7 @@ extension MainContentView {
     private func clearSidebarEditHandlers() {
         trailingPaneState.inspector.editState.onFieldChanged = nil
         trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onFieldRemoved = nil
         trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 
@@ -318,6 +328,7 @@ extension MainContentView {
 
         let capturedCoordinator = coordinator
         trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onFieldRemoved = nil
         trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
         trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(

@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("D1 API Response Parsing")
 struct D1ResponseParsingTests {
 
     // MARK: - Local copies of Codable types for testing

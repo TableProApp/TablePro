@@ -9,80 +9,76 @@ import Foundation
 import TableProTextEngine
 
 extension FindPanelViewModel {
-    /// Replace one or all ``findMatches`` with the contents of ``replaceText``.
-    /// - Parameter all: If true, replaces all matches instead of just the selected one.
+    /// Replaces the current match and selects the next one, the native find bar's Replace
+    /// (`NSTextFinder.Action.replaceAndFind`).
+    ///
+    /// Matches are searched for again after the edit rather than shifted by hand: a pattern can stop or start matching
+    /// around the replacement, and a stored range past the end of the text is a crash in the text storage.
     func replace() {
-        guard let target = target,
-              let currentFindMatchIndex,
-              !findMatches.isEmpty else {
+        guard let target, canReplace,
+              let index = currentFindMatchIndex, findMatches.indices.contains(index) else {
             return
         }
 
-        replaceMatch(index: currentFindMatchIndex, textView: target.textView, matches: &findMatches)
+        let text = target.textView.string
+        guard let match = searchResults().first(where: { $0.range == findMatches[index] }) else {
+            find()
+            return
+        }
 
-        self.findMatches = findMatches.enumerated().filter({ $0.offset != currentFindMatchIndex }).map(\.element)
+        let replacement = replacementString(for: match, in: text)
+        guard applyReplacements([TextReplacement(range: match.range, string: replacement)], to: target) else {
+            return
+        }
 
-        // Update currentFindMatchIndex based on wrapAround setting
-        if findMatches.isEmpty {
-            self.currentFindMatchIndex = nil
+        let resumeLocation = match.range.location + (replacement as NSString).length
+        findMatches = searchResults().map(\.range)
+        if let next = findMatches.firstIndex(where: { $0.location >= resumeLocation }) {
+            currentFindMatchIndex = next
+        } else if findMatches.isEmpty {
+            currentFindMatchIndex = nil
         } else if wrapAround {
-            self.currentFindMatchIndex = currentFindMatchIndex % findMatches.count
+            currentFindMatchIndex = 0
+            showWrapNotification(forwards: true, error: false, targetView: target.findPanelTargetView)
         } else {
-            // If we're at the end and not wrapping, stay at the end
-            self.currentFindMatchIndex = min(currentFindMatchIndex, findMatches.count - 1)
+            currentFindMatchIndex = nil
+            showWrapNotification(forwards: true, error: true, targetView: target.findPanelTargetView)
         }
 
-        // Update the emphases
         addMatchEmphases(flashCurrent: true)
     }
 
+    /// Replaces every match in one undoable edit, the native find bar's All (`NSTextFinder.Action.replaceAll`). Each
+    /// match is replaced once, so text a replacement inserts is never searched again.
     func replaceAll() {
-        guard let target = target,
-              !findMatches.isEmpty else {
-            return
+        guard let target, canReplace else { return }
+
+        let text = target.textView.string
+        let replacements = searchResults().map {
+            TextReplacement(range: $0.range, string: replacementString(for: $0, in: text))
         }
+        guard applyReplacements(replacements, to: target) else { return }
 
-        target.textView.undoManager?.beginUndoGrouping()
-        target.textView.textStorage.beginEditing()
-
-        var sortedMatches = findMatches.sorted(by: { $0.location < $1.location })
-        for (idx, _) in sortedMatches.enumerated().reversed() {
-            replaceMatch(index: idx, textView: target.textView, matches: &sortedMatches)
+        findMatches = searchResults().map(\.range)
+        currentFindMatchIndex = nil
+        if isFocused {
+            addMatchEmphases(flashCurrent: false)
         }
-
-        target.textView.textStorage.endEditing()
-        target.textView.undoManager?.endUndoGrouping()
-
-        if let lastMatch = sortedMatches.last {
-            target.setCursorPositions(
-                [CursorPosition(range: NSRange(location: lastMatch.location, length: 0))],
-                scrollToVisible: true
-            )
-        }
-
-        self.findMatches = []
-        self.currentFindMatchIndex = nil
-
-        // Update the emphases
-        addMatchEmphases(flashCurrent: true)
     }
 
-    /// Replace a single match in the text view, updating all other find matches with any length changes.
-    /// - Parameters:
-    ///   - index: The index of the match to replace in the `matches` array.
-    ///   - textView: The text view to replace characters in.
-    ///   - matches: The array of matches to use and update.
-    private func replaceMatch(index: Int, textView: TextView, matches: inout [NSRange]) {
-        let range = matches[index]
-        // Set cursor positions to the match range
-        textView.replaceCharacters(in: range, with: replaceText)
+    /// The edit's own text change would search again once per edit, so the search waits for the edit to finish. The
+    /// highlights come off first: each one is re-measured on every edit, which made a large Replace All take seconds.
+    private func applyReplacements(_ replacements: [TextReplacement], to target: FindPanelTarget) -> Bool {
+        clearMatchEmphases()
+        isReplacingMatches = true
+        defer { isReplacingMatches = false }
+        return target.replaceFindMatches(replacements)
+    }
 
-        // Adjust the length of the replacement
-        let lengthDiff = replaceText.utf16.count - range.length
-
-        // Update all match ranges after the current match
-        for idx in matches.dropFirst(index + 1).indices {
-            matches[idx].location -= lengthDiff
-        }
+    /// A regular expression's replacement is a template, so `$1` inserts the first capture group, as the data-file
+    /// Replace reads it. Every other method inserts the replacement as typed.
+    private func replacementString(for match: NSTextCheckingResult, in text: String) -> String {
+        guard findMethod == .regularExpression, let regex = match.regularExpression else { return replaceText }
+        return regex.replacementString(for: match, in: text, offset: 0, template: replaceText)
     }
 }

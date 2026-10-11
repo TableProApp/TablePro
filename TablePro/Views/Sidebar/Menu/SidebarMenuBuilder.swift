@@ -96,7 +96,7 @@ internal enum SidebarMenuBuilder {
         }
         item.indentationLevel = entry.indentationLevel
         if let symbol = entry.symbol {
-            item.image = ConnectionLibrarySymbols.image(systemName: symbol.systemName, color: symbol.color)
+            item.setInformativeImage(ConnectionLibrarySymbols.image(systemName: symbol.systemName, color: symbol.color))
         }
         return item
     }

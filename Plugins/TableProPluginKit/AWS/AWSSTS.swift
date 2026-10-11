@@ -25,7 +25,8 @@ public enum AWSSTS {
         }
 
         let query = AWSQueryRequest(service: "sts", region: region, parameters: parameters)
-        let request = try query.signedURLRequest(credentials: baseCredentials, now: now)
+        var request = try query.signedURLRequest(credentials: baseCredentials, now: now)
+        try AWSHTTP.applyConnectDeadline(to: &request, session: session)
 
         let data: Data
         let response: URLResponse

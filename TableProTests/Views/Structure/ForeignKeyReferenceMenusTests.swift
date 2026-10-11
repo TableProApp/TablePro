@@ -49,7 +49,6 @@ private final class ScriptedColumnProvider: ScopedMetadataProviding {
     }
 }
 
-@Suite("Foreign key reference menus")
 @MainActor
 struct ForeignKeyReferenceMenusTests {
     private static let connectionId = UUID(uuidString: "00000000-0000-0000-0000-0000000000CD") ?? UUID()

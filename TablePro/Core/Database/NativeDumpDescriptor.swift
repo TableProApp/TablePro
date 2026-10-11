@@ -73,6 +73,10 @@ struct NativeDumpDescriptor: Sendable {
         /// result sheet then reports as a successful backup.
         let localFilePath: String?
 
+        /// What the live session's driver reports the server to be, so a tool can be given the
+        /// flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
+        let serverVersion: String?
+
         init(
             connection: DatabaseConnection,
             database: String,
@@ -80,7 +84,8 @@ struct NativeDumpDescriptor: Sendable {
             password: String?,
             scope: NativeDumpScope = .wholeDatabase,
             currentCatalog: String? = nil,
-            localFilePath: String? = nil
+            localFilePath: String? = nil,
+            serverVersion: String? = nil
         ) {
             self.connection = connection
             self.database = database
@@ -89,11 +94,17 @@ struct NativeDumpDescriptor: Sendable {
             self.scope = scope
             self.currentCatalog = currentCatalog
             self.localFilePath = localFilePath
+            self.serverVersion = serverVersion
         }
 
         var host: String {
             connection.host.isEmpty ? "127.0.0.1" : connection.host
         }
+    }
+
+    internal struct ConfigurationEntry: Sendable, Equatable {
+        let key: String
+        let value: String
     }
 
     /// A tool on the user's Mac that the app spawns.
@@ -117,10 +128,7 @@ struct NativeDumpDescriptor: Sendable {
         /// such a tool say so rather than leaving the user to find out.
         let exposesPasswordInArguments: Bool
 
-        /// True when the tool reads a password from neither the environment nor standard input, so
-        /// the only channel left is a file written at mode `0600`. Declared rather than inferred
-        /// from the binary's name, which is what `buildCommand` used to do.
-        let needsCredentialsFile: Bool
+        let configurationFileEntries: @Sendable (Request) -> [ConfigurationEntry]
 
         internal let restoreExitPolicy: NativeDumpExitPolicy
 
@@ -130,8 +138,14 @@ struct NativeDumpDescriptor: Sendable {
         /// some servers. Nil leaves the plain PATH lookup in place.
         let toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)?
 
-        let backupArguments: @Sendable (Request) -> [String]
-        let restoreArguments: @Sendable (Request) -> [String]
+        /// Says what the resolved binary actually is, for an engine whose tools forked their
+        /// options. It runs a process, so it runs once per resolution rather than once per
+        /// argument list. Nil leaves the tool unidentified, which is what every engine but MySQL
+        /// and MariaDB wants.
+        let identifyExecutable: (@Sendable (_ name: String, _ path: String) -> NativeDumpResolvedTool)?
+
+        let backupArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
+        let restoreArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
         let environment: @Sendable (Request) -> [String: String]
 
         init(
@@ -141,13 +155,14 @@ struct NativeDumpDescriptor: Sendable {
             backupDelivery: OutputDelivery,
             restoreDelivery: OutputDelivery,
             exposesPasswordInArguments: Bool = false,
-            needsCredentialsFile: Bool = false,
             restoreExitPolicy: NativeDumpExitPolicy = .zeroExitOnly,
             requiresUntranslatedMessages: Bool = false,
             toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)? = nil,
-            backupArguments: @escaping @Sendable (Request) -> [String],
-            restoreArguments: @escaping @Sendable (Request) -> [String],
-            environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] }
+            identifyExecutable: (@Sendable (_ name: String, _ path: String) -> NativeDumpResolvedTool)? = nil,
+            backupArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
+            restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
+            environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
+            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries
@@ -155,21 +170,32 @@ struct NativeDumpDescriptor: Sendable {
             self.backupDelivery = backupDelivery
             self.restoreDelivery = restoreDelivery
             self.exposesPasswordInArguments = exposesPasswordInArguments
-            self.needsCredentialsFile = needsCredentialsFile
             self.restoreExitPolicy = restoreExitPolicy
             self.requiresUntranslatedMessages = requiresUntranslatedMessages
             self.toolForServer = toolForServer
+            self.identifyExecutable = identifyExecutable
             self.backupArguments = backupArguments
             self.restoreArguments = restoreArguments
             self.environment = environment
+            self.configurationFileEntries = configurationFileEntries
         }
 
         func binaries(for kind: NativeDumpKind) -> [String] {
             kind == .backup ? backupBinaries : restoreBinaries
         }
 
-        func arguments(for kind: NativeDumpKind, request: Request) -> [String] {
-            kind == .backup ? backupArguments(request) : restoreArguments(request)
+        func arguments(
+            for kind: NativeDumpKind,
+            request: Request,
+            resolved: NativeDumpResolvedTool
+        ) throws -> [String] {
+            try kind == .backup ? backupArguments(request, resolved) : restoreArguments(request, resolved)
+        }
+
+        /// What the app knows about the binary it resolved. An engine that declares no
+        /// `identifyExecutable` gets the plain answer, which is what its arguments already assume.
+        func identify(name: String, path: String) -> NativeDumpResolvedTool {
+            identifyExecutable?(name, path) ?? NativeDumpResolvedTool(name: name, path: path)
         }
 
         func delivery(for kind: NativeDumpKind) -> OutputDelivery {
@@ -206,9 +232,17 @@ struct NativeDumpDescriptor: Sendable {
         case engineStatements(EngineStatements)
     }
 
+    internal enum RestoreSemantics: Sendable, Equatable {
+        case replacesObjects
+        case addsToExistingObjects
+        case stopsAtExistingObjects
+        case requiresEmptyDatabase
+    }
+
     let mechanism: Mechanism
     let archiveFormat: ArchiveFormat
     let objectScope: NativeDumpObjectScope
+    let restoreSemantics: RestoreSemantics
 
     /// True when the tool opens the database file itself and so cannot reach a connection that has
     /// no local file. libSQL claims the SQLite descriptor and reaches either a file or a Turso URL,
@@ -219,11 +253,13 @@ struct NativeDumpDescriptor: Sendable {
         mechanism: Mechanism,
         archiveFormat: ArchiveFormat,
         objectScope: NativeDumpObjectScope,
+        restoreSemantics: RestoreSemantics,
         requiresLocalFile: Bool = false
     ) {
         self.mechanism = mechanism
         self.archiveFormat = archiveFormat
         self.objectScope = objectScope
+        self.restoreSemantics = restoreSemantics
         self.requiresLocalFile = requiresLocalFile
     }
 

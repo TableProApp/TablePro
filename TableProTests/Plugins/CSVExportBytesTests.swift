@@ -10,7 +10,6 @@ import Testing
 /// What reaches the file, asserted as bytes. Every write the exporter makes goes through one
 /// encoder, and a call site that missed it would still produce a readable file in the default
 /// UTF-8 case, so only the bytes of a non-UTF-8 export can catch one.
-@Suite("CSV export bytes")
 struct CSVExportBytesTests {
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId = "SQLite"

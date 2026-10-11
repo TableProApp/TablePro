@@ -30,13 +30,7 @@ struct PartitionInfo: Identifiable, Hashable, Sendable {
     /// raw, schema `a.b` with name `c` and schema `a` with name `b.c` produce one id for two
     /// partitions, and this id keys the outline's rows.
     var id: String {
-        [parentPartitionName, schema, name].map(Self.escaped).joined(separator: "|")
-    }
-
-    private static func escaped(_ value: String?) -> String {
-        (value ?? "")
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "|", with: "\\|")
+        IdentityPath.joined([parentPartitionName ?? "", schema ?? "", name], separator: "|")
     }
 
     init(

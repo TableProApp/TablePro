@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("DatabaseType OceanBase")
 struct DatabaseTypeOceanBaseTests {
     @Test("rawValue is OceanBase")
     func rawValue() {

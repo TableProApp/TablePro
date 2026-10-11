@@ -76,18 +76,11 @@ extension PluginManager {
             registeredAny = true
         }
 
-        if let inspectorPlugin = instance as? any DocumentInspectorPlugin {
-            if !declared.contains(.documentInspector) {
-                Self.logger.warning("Plugin '\(pluginId)' conforms to DocumentInspectorPlugin but does not declare .documentInspector capability - registering anyway")
-            }
-            let inspectorId = type(of: inspectorPlugin).inspectorId
-            inspectorPlugins[inspectorId] = inspectorPlugin
-            Self.logger.debug("Registered inspector plugin '\(pluginId)' for id '\(inspectorId)'")
-            registeredAny = true
-        }
-
         if registeredAny {
             pluginInstances[pluginId] = instance
+        }
+        if instance is any DriverPlugin {
+            queryBuildingDriverCache.removeAll()
         }
     }
 
@@ -96,7 +89,6 @@ extension PluginManager {
         let isDriver = pluginType is any DriverPlugin.Type
         let isExporter = pluginType is any ExportFormatPlugin.Type
         let isImporter = pluginType is any ImportFormatPlugin.Type
-        let isInspector = pluginType is any DocumentInspectorPlugin.Type
 
         if declared.contains(.databaseDriver) && !isDriver {
             Self.logger.warning("Plugin '\(pluginId)' declares .databaseDriver but does not conform to DriverPlugin")
@@ -106,9 +98,6 @@ extension PluginManager {
         }
         if declared.contains(.importFormat) && !isImporter {
             Self.logger.warning("Plugin '\(pluginId)' declares .importFormat but does not conform to ImportFormatPlugin")
-        }
-        if declared.contains(.documentInspector) && !isInspector {
-            Self.logger.warning("Plugin '\(pluginId)' declares .documentInspector but does not conform to DocumentInspectorPlugin")
         }
     }
 
@@ -313,7 +302,11 @@ extension PluginManager {
 
     func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
         importPlugins(for: databaseType).map {
-            ImportFormatOption(id: type(of: $0).formatId, name: type(of: $0).formatDisplayName)
+            ImportFormatOption(
+                id: type(of: $0).formatId,
+                name: type(of: $0).formatDisplayName,
+                acceptedFileExtensions: type(of: $0).acceptedFileExtensions
+            )
         }
     }
 
@@ -440,6 +433,11 @@ extension PluginManager {
             .connection.defaultUnixSocketPath
     }
 
+    func defaultLocalSocketPath(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .connection.defaultLocalSocketPath
+    }
+
     func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
         containerEntityName(for: databaseType) + "s"
     }
@@ -474,7 +472,25 @@ extension PluginManager {
     }
 
     func paginationCapability(for databaseType: DatabaseType) -> PaginationCapability {
-        PaginationCapability.of(databaseType)
+        PaginationCapability.of(databaseType).resolved(pluginBuildsBrowse: queryBuildingDriver(for: databaseType) != nil)
+    }
+
+    func exactRowCountIsFullScan(for databaseType: DatabaseType) -> Bool {
+        databaseType.exactRowCountIsFullScan
+    }
+
+    /// An engine that cannot skip rows has no pages for a total to bound, and one whose count is a full scan
+    /// would read every table it opens end to end, so neither is counted until the user asks.
+    func countsRowsAutomatically(for databaseType: DatabaseType) -> Bool {
+        paginationCapability(for: databaseType).allowsSeeking && !exactRowCountIsFullScan(for: databaseType)
+    }
+
+    func supportsColumnSort(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsColumnSort ?? true
+    }
+
+    func supportsMatchAnyFilters(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsMatchAnyFilters ?? true
     }
 
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
@@ -535,6 +551,13 @@ extension PluginManager {
             .capabilities.localFilePathField
     }
 
+    /// The extensions a new database file of this type can be named with, or empty when its driver
+    /// opens only a file that already exists.
+    func newDatabaseFileExtensions(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.newDatabaseFileExtensions ?? []
+    }
+
     /// Whether this type can point at a database file on an SSH server instead of a local one.
     func supportsRemoteDatabaseFile(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
@@ -592,6 +615,16 @@ extension PluginManager {
     func supportsDropSchema(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsDropSchema ?? false
+    }
+
+    func supportsDocumentEditing(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsDocumentEditing ?? false
+    }
+
+    func supportsFieldRemoval(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsFieldRemoval ?? false
     }
 
     func supportsRenameTable(for databaseType: DatabaseType) -> Bool {

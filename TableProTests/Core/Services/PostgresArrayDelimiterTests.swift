@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Postgres Array Delimiter")
 struct PostgresArrayDelimiterTests {
     private let classifier = ColumnTypeClassifier()
 

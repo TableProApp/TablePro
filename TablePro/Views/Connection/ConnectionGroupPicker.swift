@@ -39,119 +39,18 @@ struct ConnectionGroupPicker: View {
         }
         .task { allGroups = groupStorage.loadGroups() }
         .sheet(isPresented: $showingCreateSheet) {
-            CreateGroupSheet { groupName, groupColor, parentId in
-                let group = ConnectionGroup(name: groupName, color: groupColor, parentId: parentId)
+            GroupEditorSheet(mode: .create(parentId: nil), groups: allGroups) { draft in
+                let group = ConnectionGroup(
+                    name: draft.name,
+                    color: draft.color,
+                    iconName: draft.iconName,
+                    parentId: draft.parentId
+                )
                 try groupStorage.addGroup(group)
                 selectedGroupId = group.id
                 allGroups = groupStorage.loadGroups()
             }
         }
-    }
-}
-
-// MARK: - Create Group Sheet
-
-struct CreateGroupSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var groupName: String = ""
-    @State private var groupColor: ConnectionColor = .none
-    @State private var selectedParentId: UUID?
-    @State private var allGroups: [ConnectionGroup] = []
-    @State private var errorMessage: String?
-
-    private let initialParentId: UUID?
-    /// Throwing, because the store refuses a duplicate sibling name, a cycle and a group nested
-    /// past the cap. A sheet that dismissed on the attempt left the caller holding the id of a
-    /// group that was never saved.
-    let onSave: (String, ConnectionColor, UUID?) throws -> Void
-
-    init(parentId: UUID? = nil, onSave: @escaping (String, ConnectionColor, UUID?) throws -> Void) {
-        self.initialParentId = parentId
-        self.onSave = onSave
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Create New Group")
-                .font(.headline)
-
-            TextField("Group name", text: $groupName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Color")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                ColorPaletteView(selectedColor: $groupColor, includesNone: true, size: .compact)
-            }
-
-            if !allGroups.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Parent Group")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ParentGroupPicker(selectedParentId: $selectedParentId, allGroups: allGroups)
-                }
-            }
-
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button("Create") {
-                    do {
-                        try onSave(groupName, groupColor, selectedParentId)
-                        dismiss()
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(groupName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 300)
-        .onChange(of: groupName) { _ in errorMessage = nil }
-        .onChange(of: selectedParentId) { _ in errorMessage = nil }
-        .onAppear {
-            allGroups = GroupStorage.shared.loadGroups()
-            selectedParentId = initialParentId
-        }
-        .onExitCommand {
-            dismiss()
-        }
-    }
-}
-
-// MARK: - Parent Group Picker
-
-private struct ParentGroupPicker: View {
-    @Binding var selectedParentId: UUID?
-    let allGroups: [ConnectionGroup]
-
-    var body: some View {
-        GroupPopUpButton(
-            entries: GroupMenuEntries.forParent(
-                groups: allGroups,
-                noneTitle: String(localized: "None (Top Level)")
-            ),
-            selection: $selectedParentId,
-            accessibilityLabel: String(localized: "Parent Group")
-        )
-        .fixedSize()
     }
 }
 

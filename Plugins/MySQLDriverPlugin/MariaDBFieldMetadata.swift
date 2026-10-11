@@ -51,7 +51,7 @@ nonisolated internal func mariaDBTypeName(
     case 15: return "VARCHAR"
     case 16: return "BIT"
     case 245: return "JSON"
-    case 246: return "NEWDECIMAL"
+    case 246: return "DECIMAL"
     case 247: return "ENUM"
     case 248: return "SET"
     case 249:

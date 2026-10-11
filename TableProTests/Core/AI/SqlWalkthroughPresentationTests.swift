@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SqlWalkthroughPresentation")
 struct SqlWalkthroughPresentationTests {
     private func sql(lines count: Int, prefix: String) -> String {
         (1...count).map { "\(prefix)\($0)" }.joined(separator: "\n")

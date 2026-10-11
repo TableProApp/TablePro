@@ -21,6 +21,15 @@ internal struct WorkspacePaneRenderKey: Equatable {
     internal let pane: ConnectionWindowPane
     internal let connection: DatabaseConnection?
     internal let sessionRevision: Int
+    /// A mode toggle changes nothing else in this key: the phase holds, the connection holds, and
+    /// the session is the same one. Without it `syncPanes(of:)` compares equal and silently skips
+    /// the rebuild, so the agent panes are never built on the way in and the trailing surfaces keep
+    /// the header of the mode the window has left.
+    internal let contentMode: ConnectionWorkspaceContentMode
+    /// Which agent session the agent panes were built for. Switching session changes nothing else in
+    /// this key, so without it the rail, the conversation and the result stay bound to the previous
+    /// one.
+    internal let agentSessionId: UUID?
 }
 
 /// One connection's three panes, kept alive for as long as the window hosts that connection.
@@ -53,6 +62,22 @@ internal final class WorkspacePanes {
     /// only way it gets the `sizingOptions` firewall below, which is applied here and nowhere else.
     internal let assistant: NSHostingController<AnyView>
 
+    /// The agent session's result pane. It is a pane of its own for the same reason the assistant
+    /// is: it holds scroll position and a selected segment that must survive a workspace switch,
+    /// and it gets the `sizingOptions` firewall below by being here.
+    internal let agentResult: NSHostingController<AnyView>
+
+    /// Agent mode's session rail and conversation, beside the object browser and the browse content
+    /// rather than in place of them.
+    ///
+    /// Entering or leaving the mode is a reparent of the sidebar and detail hosts, the same view
+    /// swap a workspace switch is. The two modes used to be two arms of one `@ViewBuilder`
+    /// conditional in each of those panes, and switching arms is an identity change, so every toggle
+    /// threw away the browse tree and the state above that no model holds. These hold `Color.clear`
+    /// until the connection first enters Agent mode, and keep what they drew once it leaves.
+    internal let agentRail: NSHostingController<AnyView>
+    internal let agentConversation: NSHostingController<AnyView>
+
     internal let sidebar: NSHostingController<AnyView>
     /// The editor tab strip. It is a pane like the other three, built and kept alive per
     /// connection, even though the window shows it in the titlebar accessory rather than in a
@@ -72,6 +97,9 @@ internal final class WorkspacePanes {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
         assistant = NSHostingController(rootView: AnyView(Color.clear))
+        agentResult = NSHostingController(rootView: AnyView(Color.clear))
+        agentRail = NSHostingController(rootView: AnyView(Color.clear))
+        agentConversation = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
         tabStrip = EditorTabStripPaneController()
         for pane in panes {
@@ -79,8 +107,12 @@ internal final class WorkspacePanes {
         }
     }
 
+    /// Every hosting controller above, and the only list the firewall and the teardown walk. A
+    /// stored pane missing from it would publish its content's minimum width to the split view and
+    /// outlive its connection, which is why `WorkspacePanesFirewallTests` reads the stored ones back
+    /// rather than trusting this line.
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, assistant, sidebar]
+        [detail, inspector, assistant, agentResult, agentRail, agentConversation, sidebar]
     }
 
     /// The controller a trailing surface is drawn by. One split item hosts whichever of these the
@@ -89,6 +121,23 @@ internal final class WorkspacePanes {
         switch surface {
         case .inspector: inspector
         case .assistant: assistant
+        case .agentResult: agentResult
+        }
+    }
+
+    /// The controller the sidebar column draws for a mode: the object browser, or the session rail.
+    internal func sidebarPane(for mode: ConnectionWorkspaceContentMode) -> NSHostingController<AnyView> {
+        switch mode {
+        case .browse: sidebar
+        case .agent: agentRail
+        }
+    }
+
+    /// The controller the detail column draws for a mode: the browse content, or the conversation.
+    internal func detailPane(for mode: ConnectionWorkspaceContentMode) -> NSHostingController<AnyView> {
+        switch mode {
+        case .browse: detail
+        case .agent: agentConversation
         }
     }
 

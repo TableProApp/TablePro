@@ -26,9 +26,17 @@ public final class WeaviateClient: @unchecked Sendable {
     }
 
     public func connect() async throws {
-        let ready = try await send(method: "GET", path: "/v1/.well-known/ready")
+        try await connect(requestTimeout: timeout)
+    }
+
+    public func connect(requestTimeout: @Sendable () -> TimeInterval) async throws {
+        let ready = try await send(
+            method: "GET",
+            path: "/v1/.well-known/ready",
+            timeoutInterval: requestTimeout()
+        )
         try throwIfFailed(ready)
-        let meta = try await send(method: "GET", path: "/v1/meta")
+        let meta = try await send(method: "GET", path: "/v1/meta", timeoutInterval: requestTimeout())
         try throwIfFailed(meta)
         if let json = WeaviateJSON.dictionary(meta.json), let version = json["version"] as? String {
             lock.withLock { _version = version }
@@ -57,11 +65,37 @@ public final class WeaviateClient: @unchecked Sendable {
         offset: Int,
         includeVector: Bool = true
     ) async throws -> [WeaviateObject] {
-        var query = [
-            "class": collection,
-            "limit": String(max(limit, 0)),
-            "offset": String(max(offset, 0))
-        ]
+        try await listObjects(
+            collection: collection,
+            limit: limit,
+            position: ["offset": String(max(offset, 0))],
+            includeVector: includeVector
+        )
+    }
+
+    public func objects(
+        collection: String,
+        limit: Int,
+        after: String?,
+        includeVector: Bool = true
+    ) async throws -> [WeaviateObject] {
+        try await listObjects(
+            collection: collection,
+            limit: limit,
+            position: after.map { ["after": $0] } ?? [:],
+            includeVector: includeVector
+        )
+    }
+
+    private func listObjects(
+        collection: String,
+        limit: Int,
+        position: [String: String],
+        includeVector: Bool
+    ) async throws -> [WeaviateObject] {
+        var query = position
+        query["class"] = collection
+        query["limit"] = String(max(limit, 0))
         if includeVector {
             query["include"] = "vector"
         }
@@ -109,6 +143,22 @@ public final class WeaviateClient: @unchecked Sendable {
         query: [String: String] = [:],
         body: Data? = nil
     ) async throws -> WeaviateHTTPResponse {
+        try await send(
+            method: method,
+            path: path,
+            query: query,
+            body: body,
+            timeoutInterval: timeout()
+        )
+    }
+
+    private func send(
+        method: String,
+        path: String,
+        query: [String: String] = [:],
+        body: Data? = nil,
+        timeoutInterval: TimeInterval
+    ) async throws -> WeaviateHTTPResponse {
         let base = try settings.baseURL()
         guard let url = WeaviatePathEncoding.resolve(path, query: query, against: base) else {
             throw WeaviateError.configuration(String(format: String(localized: "Invalid path: %@"), path))
@@ -127,7 +177,7 @@ public final class WeaviateClient: @unchecked Sendable {
             url: url,
             headers: headers,
             body: body,
-            timeoutInterval: timeout()
+            timeoutInterval: timeoutInterval
         )
         return try await transport.send(request)
     }

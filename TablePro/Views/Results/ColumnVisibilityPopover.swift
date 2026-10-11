@@ -17,13 +17,6 @@ struct ColumnVisibilityPopover: View {
 
     @State private var searchText = ""
 
-    private var filteredColumns: [GridColumnEntry] {
-        if searchText.isEmpty {
-            return columns
-        }
-        return columns.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-    }
-
     private var columnNames: [String] {
         columns.map(\.name)
     }
@@ -33,11 +26,6 @@ struct ColumnVisibilityPopover: View {
             header
 
             Divider()
-
-            if columns.count > 5 {
-                searchField
-                Divider()
-            }
 
             columnList
 
@@ -100,52 +88,17 @@ struct ColumnVisibilityPopover: View {
         .padding(.vertical, 8)
     }
 
-    private var searchField: some View {
-        NativeSearchField(
-            text: $searchText,
-            placeholder: String(localized: "Search columns…"),
-            controlSize: .small,
-            accessibilityIdentifier: "column-visibility-search"
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
-
     private var columnList: some View {
-        List {
-            ForEach(filteredColumns) { column in
-                columnRow(column)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 12))
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(minHeight: 120, maxHeight: 320)
-    }
-
-    private func columnRow(_ column: GridColumnEntry) -> some View {
-        Toggle(isOn: Binding(
-            get: { !hiddenColumns.contains(column.name) },
-            set: { _ in onToggleColumn(column.name) }
-        )) {
-            HStack(spacing: 8) {
-                Text(column.name)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Spacer(minLength: 0)
-
-                if let typeName = column.typeName {
-                    Text(typeName)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .layoutPriority(-1)
-                }
-            }
-        }
-        .toggleStyle(.checkbox)
+        ColumnCheckList(
+            items: columns.map { ColumnCheckListItem(name: $0.name, typeName: $0.typeName) },
+            searchText: $searchText,
+            searchPlaceholder: String(localized: "Search columns…"),
+            searchAccessibilityIdentifier: "column-visibility-search",
+            rowAccessibilityIdentifierPrefix: "column-visibility-column-",
+            listMinHeight: 120,
+            listMaxHeight: 320,
+            isChecked: { !hiddenColumns.contains($0) },
+            onToggle: onToggleColumn
+        )
     }
 }

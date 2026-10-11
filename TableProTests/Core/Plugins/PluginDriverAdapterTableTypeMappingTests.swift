@@ -53,7 +53,6 @@ private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendab
     }
 }
 
-@Suite("PluginDriverAdapter table type mapping")
 struct PluginDriverAdapterTableTypeMappingTests {
     private func makeAdapter(driver: StubTableTypeDriver) -> PluginDriverAdapter {
         let connection = DatabaseConnection(name: "Test", type: .postgresql)
@@ -152,6 +151,29 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.count == 3)
         #expect(tables.allSatisfy { $0.type == .externalTable })
         #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
+    }
+
+    /// The MariaDB listing spells system versioning into the type string, because `PluginTableInfo`
+    /// cannot gain a field without an ABI break. The adapter is where it separates again.
+    @Test("Maps the MariaDB kinds to a sequence and to a system-versioned table")
+    func mapsMariaDBKinds() async throws {
+        let driver = StubTableTypeDriver()
+        driver.stubbedTables = [
+            PluginTableInfo(name: "order_ids", type: "SEQUENCE"),
+            PluginTableInfo(name: "versioned", type: "SYSTEM VERSIONED TABLE"),
+            PluginTableInfo(
+                name: "versioned_parted",
+                type: "SYSTEM VERSIONED PARTITIONED TABLE",
+                comment: nil,
+                partitionCount: 2
+            )
+        ]
+        let adapter = makeAdapter(driver: driver)
+        let tables = try await adapter.fetchTables()
+
+        #expect(tables.map(\.type) == [.sequence, .table, .partitionedTable])
+        #expect(tables.map(\.isSystemVersioned) == [false, true, true])
+        #expect(tables[2].partitionCount == 2)
     }
 
     @Test("Maps unknown type to .table with warning")

@@ -70,6 +70,11 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         menu.delegate = context.coordinator
         outlineView.menu = menu
 
+        /// Tables and views drag into folders inside this window only; nothing leaves the app.
+        outlineView.registerForDraggedTypes([.tableProSidebarObject])
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        outlineView.setDraggingSourceOperationMask([], forLocal: false)
+
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)
         return scrollView

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("get_server_dashboard payload")
 struct MCPServerDashboardPayloadTests {
     @Test("Panels that all read come back without an errors object")
     func noFailures() throws {
@@ -57,6 +56,88 @@ struct MCPServerDashboardPayloadTests {
                 panels: [:],
                 failures: ["sessions": "boom", "metrics": "bang"]
             )
+        }
+    }
+}
+
+struct MCPSessionControlStatementTests {
+    private func provider(_ databaseType: DatabaseType) throws -> any ServerDashboardQueryProvider {
+        try #require(ServerDashboardQueryProviderFactory.provider(for: databaseType))
+    }
+
+    private func refusal(
+        _ databaseType: DatabaseType,
+        processId: String,
+        cancelOnly: Bool
+    ) throws -> MCPToolExecutionError? {
+        do {
+            _ = try MCPConnectionBridge.sessionControlStatement(
+                provider: try provider(databaseType),
+                processId: processId,
+                cancelOnly: cancelOnly
+            )
+            return nil
+        } catch let error as DatabaseAccessError {
+            return MCPToolExecutionError.from(error)
+        }
+    }
+
+    @Test("A process id the engine cannot parse is an argument error that names it")
+    func malformedProcessIdIsAnArgumentError() throws {
+        let error = try #require(try refusal(.postgresql, processId: "abc", cancelOnly: true))
+        #expect(error.code == .invalidArgument)
+        #expect(error.message.contains("abc"))
+
+        let clickHouse = try #require(try refusal(.clickhouse, processId: "abc", cancelOnly: false))
+        #expect(clickHouse.code == .invalidArgument)
+        #expect(clickHouse.message.contains("abc"))
+    }
+
+    @Test("Cancel on an engine that only kills names the mode that works")
+    func cancelOnKillOnlyEngineNamesKill() throws {
+        let mssql = try #require(try refusal(.mssql, processId: "52", cancelOnly: true))
+        #expect(mssql.code == .invalidArgument)
+        #expect(mssql.message.contains("kill"))
+
+        let clickHouse = try #require(try refusal(
+            .clickhouse,
+            processId: "8f14e45f-ceea-467a-9575-8f0a1c3b2d4e",
+            cancelOnly: true
+        ))
+        #expect(clickHouse.code == .invalidArgument)
+        #expect(clickHouse.message.contains("kill"))
+    }
+
+    @Test("An engine with no session control keeps saying so")
+    func engineWithoutSessionControl() throws {
+        let error = try #require(try refusal(.duckdb, processId: "1", cancelOnly: true))
+        #expect(error.code == .queryFailed)
+        #expect(error.message == "This engine cannot stop a session from TablePro.")
+    }
+
+    @Test("A valid process id in a supported mode gives the engine's statement")
+    func supportedModeBuildsTheStatement() throws {
+        #expect(
+            try MCPConnectionBridge.sessionControlStatement(
+                provider: try provider(.postgresql), processId: "52", cancelOnly: true
+            ) == "SELECT pg_cancel_backend(52)"
+        )
+        #expect(
+            try MCPConnectionBridge.sessionControlStatement(
+                provider: try provider(.mssql), processId: "52", cancelOnly: false
+            ) == "KILL 52"
+        )
+    }
+
+    @Test("No engine builds a statement for a process id it says it does not accept")
+    func statementsAgreeWithTheProcessIdCheck() {
+        let samples = ["52", "-1", "abc", "52; SELECT 1", "", "8f14e45f-ceea-467a-9575-8f0a1c3b2d4e"]
+        for databaseType in DatabaseType.allKnownTypes {
+            guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else { continue }
+            for processId in samples where !provider.acceptsProcessId(processId) {
+                #expect(provider.killSessionSQL(processId: processId) == nil, "\(databaseType.rawValue) kill '\(processId)'")
+                #expect(provider.cancelQuerySQL(processId: processId) == nil, "\(databaseType.rawValue) cancel '\(processId)'")
+            }
         }
     }
 }

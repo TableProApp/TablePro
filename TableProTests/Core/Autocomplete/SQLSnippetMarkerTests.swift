@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SQLSnippetMarker")
 struct SQLSnippetMarkerTests {
     @Test("Query without a marker expands to nil")
     func noMarkerReturnsNil() {

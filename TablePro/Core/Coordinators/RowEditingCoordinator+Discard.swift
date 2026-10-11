@@ -20,7 +20,7 @@ extension RowEditingCoordinator {
 
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
         let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await parent.executionGate.authorize(
             OperationRequest(
                 connectionId: parent.connectionId,
                 databaseType: parent.connection.type,
@@ -64,8 +64,7 @@ extension RowEditingCoordinator {
         if let (_, index) = parent.tabManager.selectedTabAndIndex {
             parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
         }
-
-        Task { [parent] in await parent.refreshTables() }
+        parent.resumeDeferredTableRefresh()
     }
 
     /// Puts the loaded rows back the way the server last reported them.
@@ -81,15 +80,19 @@ extension RowEditingCoordinator {
             let tabId = tab.id
             let insertedIDs = parent.changeManager.insertedRowIDs
             var restoredCells: [(rowID: RowID, columnIndex: Int)] = []
+            var absentCells: Set<CellPosition> = []
             let edits = parent.changeManager.getOriginalValues().compactMap { original in
                 tableRows.index(of: original.rowID).map { storageRow -> (row: Int, column: Int, value: PluginCellValue) in
                     restoredCells.append((rowID: original.rowID, columnIndex: original.columnIndex))
+                    if original.isAbsent {
+                        absentCells.insert(CellPosition(row: storageRow, column: original.columnIndex))
+                    }
                     return (row: storageRow, column: original.columnIndex, value: original.value)
                 }
             }
             if !edits.isEmpty {
                 let editDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                    rows.editMany(edits)
+                    rows.editMany(edits, absentCells: absentCells)
                 }
                 /// `editMany` names the rows it changed by their position in storage, and the grid
                 /// reads a delta's rows as display positions.

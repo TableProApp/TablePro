@@ -17,6 +17,7 @@ internal enum SyncHazardKind: String, Codable, Hashable, Sendable {
     case primaryKeyChange
     case engineOrStorageChange
     case notSupportedByTarget
+    case concurrentRefresh
 }
 
 internal enum SyncHazardSeverity: Int, Codable, Hashable, Sendable, Comparable {
@@ -60,6 +61,8 @@ internal extension SyncHazardKind {
             return String(localized: "Storage engine change")
         case .notSupportedByTarget:
             return String(localized: "Not supported by the target")
+        case .concurrentRefresh:
+            return String(localized: "Concurrent refresh")
         }
     }
 }

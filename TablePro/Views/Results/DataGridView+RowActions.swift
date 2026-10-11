@@ -16,6 +16,7 @@ extension TableViewCoordinator {
     func undoDeleteRow(at index: Int) {
         guard let rowID = rowID(forDisplayRow: index) else { return }
         changeManager.undoRowDeletion(rowID: rowID)
+        selectionSummaryTracker.dataDidChange()
         visualIndex.updateRow(rowID, from: changeManager)
         repaintRows(IndexSet(integer: index))
         refreshRowVisualState(at: index)
@@ -23,31 +24,6 @@ extension TableViewCoordinator {
 
     func addNewRow() {
         delegate?.dataGridAddRow()
-    }
-
-    func copyRows(at indices: Set<Int>) {
-        let sortedIndices = indices.sorted()
-        let tableRows = tableRowsProvider()
-        let projection = visibleColumnProjection
-        let columnTypes = projection.columnTypes(tableRows.columnTypes)
-        let columns = projection.columns(tableRows.columns)
-        var tsvRows: [String] = []
-        var htmlRows: [[String]] = []
-        var structuredRows: [[PluginCellValue]] = []
-
-        for index in sortedIndices {
-            guard let values = displayRow(at: index)?.values else { continue }
-            let projected = projection.values(Array(values))
-            let formatted = formatRowValues(values: projected, columnTypes: columnTypes)
-            tsvRows.append(formatted.joined(separator: "\t"))
-            htmlRows.append(formatted)
-            structuredRows.append(projected)
-        }
-
-        let tsv = tsvRows.joined(separator: "\n")
-        let html = HtmlTableEncoder.encode(rows: htmlRows)
-        let payload = GridRowsClipboardPayload(columns: columns, rows: structuredRows)
-        ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
@@ -58,20 +34,19 @@ extension TableViewCoordinator {
         let columns = projection.columns(tableRows.columns)
         var tsvRows: [String] = [columns.joined(separator: "\t")]
         var htmlRows: [[String]] = []
-        var structuredRows: [[PluginCellValue]] = []
+        var copiedRows: [Row] = []
 
         for index in sortedIndices {
-            guard let values = displayRow(at: index)?.values else { continue }
-            let projected = projection.values(Array(values))
-            let formatted = formatRowValues(values: projected, columnTypes: columnTypes)
+            guard let row = displayRow(at: index) else { continue }
+            let formatted = formatRowValues(values: projection.values(Array(row.values)), columnTypes: columnTypes)
             tsvRows.append(formatted.joined(separator: "\t"))
             htmlRows.append(formatted)
-            structuredRows.append(projected)
+            copiedRows.append(row)
         }
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        let payload = GridRowsClipboardPayload(columns: columns, rows: structuredRows)
+        let payload = GridRowsClipboardPayload(columns: columns, copying: copiedRows, projection: projection)
         ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
@@ -121,45 +96,86 @@ extension TableViewCoordinator {
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
+                schemaName: schemaName,
                 columns: projection.columns(tableRows.columns),
-                primaryKeyColumn: primaryKeyColumn,
+                primaryKeyColumns: primaryKeyColumns,
                 databaseType: databaseType,
+                unwritableColumns: unwritableColumns(in: tableRows),
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-            guard !typedRows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
+            let rows = indices.sorted().compactMap(displayRow(at:)).map { row in
+                SQLRowToStatementConverter.SourceRow(
+                    values: projection.values(Array(row.values)),
+                    defaultedColumns: projection.positions(of: stagedDefaults(of: row))
+                )
+            }
+            writeCopiedStatements(converter.generateInserts(rows: rows))
         } catch {
-            rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
+            rowActionsLogger.error("copyRowsAsInsert failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
+    /// Every column takes part: SET is limited to the selected or visible ones, but the row is found by all of its
+    /// key, or with no key by every column it has, hidden ones included, as it is stored rather than as edited.
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
         let tableRows = tableRowsProvider()
-        let settableColumns = selectionController.isEmpty
-            ? nil
-            : selectedColumnProjection().columns(tableRows.columns)
-        let pkIndex = primaryKeyColumn.flatMap { tableRows.columns.firstIndex(of: $0) }
-        let projection = visibleColumnProjection.including(pkIndex)
+        let settable = selectionController.isEmpty ? visibleColumnProjection : selectedColumnProjection()
         let driver = resolveDriver()
         do {
             let converter = try SQLRowToStatementConverter(
                 tableName: tableName,
-                columns: projection.columns(tableRows.columns),
-                primaryKeyColumn: primaryKeyColumn,
+                schemaName: schemaName,
+                columns: tableRows.columns,
+                primaryKeyColumns: primaryKeyColumns,
                 databaseType: databaseType,
-                settableColumns: settableColumns,
+                unwritableColumns: unwritableColumns(in: tableRows),
+                rowMatchPolicy: tableRows.rowMatchPolicy,
+                settableColumns: settable.columns(tableRows.columns),
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral
             )
-            let typedRows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-            guard !typedRows.isEmpty else { return }
-            ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
+            let rows = indices.sorted().compactMap { displayRow(at: $0).map(copiedSourceRow) }
+            writeCopiedStatements(converter.generateUpdates(rows: rows))
         } catch {
-            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
+            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    private func unwritableColumns(in tableRows: TableRows) -> Set<String> {
+        Set(tableRows.columns.filter { tableRows.generatedColumns.contains($0) || !isColumnWritable($0) })
+    }
+
+    private func copiedSourceRow(_ row: Row) -> SQLRowToStatementConverter.SourceRow {
+        var stored = Array(row.values)
+        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        for cellChange in pendingUpdate?.cellChanges ?? [] where stored.indices.contains(cellChange.columnIndex) {
+            stored[cellChange.columnIndex] = cellChange.oldValue
+        }
+        return SQLRowToStatementConverter.SourceRow(
+            values: Array(row.values),
+            storedValues: stored,
+            isPendingInsert: changeManager.insertedRowIDs.contains(row.id),
+            defaultedColumns: stagedDefaults(of: row)
+        )
+    }
+
+    /// The cells the grid itself set to the server's default: every marker in a row not saved yet, and in a saved row
+    /// the cells a pending edit set to Default. Anything else that reads `__DEFAULT__` is what the table holds.
+    private func stagedDefaults(of row: Row) -> Set<Int> {
+        let marker = PluginCellValue.text("__DEFAULT__")
+        if changeManager.insertedRowIDs.contains(row.id) {
+            return Set(row.values.indices.filter { row.values[$0] == marker })
+        }
+        let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
+        return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
+    }
+
+    /// A copy that produced no statement leaves the clipboard as it was, rather than replacing it with nothing.
+    private func writeCopiedStatements(_ statements: String) {
+        guard !statements.isEmpty else { return }
+        ClipboardService.shared.writeText(statements)
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
@@ -372,15 +388,21 @@ extension TableViewCoordinator {
         /// Select All that keeps its rectangle now arrives here instead of on the row path, and
         /// without this a Fetch All over millions of rows builds the whole string on the main
         /// thread. (#2667)
+        let maxRows = RowOperationsManager.maxClipboardRows
+        let selectedRowCount = min(rect.rows.upperBound, rowCount - 1) - rect.rows.lowerBound + 1
         let lastRow = min(
             rect.rows.upperBound,
             max(0, rowCount - 1),
-            rect.rows.lowerBound + RowOperationsManager.maxClipboardRows - 1
+            rect.rows.lowerBound + maxRows - 1
         )
         let rowRange = rect.rows.lowerBound...lastRow
         let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
             .filter { $0 >= 0 && $0 < presentedColumnCount }
         guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
+        let isTruncated = selectedRowCount > maxRows
+        if isTruncated {
+            rowActionsLogger.warning("Clipboard copy truncated: \(selectedRowCount) rows selected, capping at \(maxRows)")
+        }
 
         var lines: [String] = []
         lines.reserveCapacity(rowRange.count)
@@ -405,6 +427,10 @@ extension TableViewCoordinator {
             lines.append(fields.joined(separator: "\t"))
         }
 
-        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+        var text = lines.joined(separator: "\n")
+        if isTruncated {
+            text.append("\n(truncated, showing first \(maxRows) of \(selectedRowCount) rows)")
+        }
+        ClipboardService.shared.writeText(text)
     }
 }

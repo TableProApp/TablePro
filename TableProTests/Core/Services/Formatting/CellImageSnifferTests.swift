@@ -87,7 +87,6 @@ private enum ImageFixtures {
     }
 }
 
-@Suite("CellImageSniffer raster formats")
 struct CellImageSnifferRasterTests {
     @Test(
         "an encoder's own output is recognised",
@@ -150,7 +149,6 @@ struct CellImageSnifferRasterTests {
     }
 }
 
-@Suite("CellImageSniffer SVG documents")
 struct CellImageSnifferSvgTests {
     @Test(
         "a document whose root element is svg is recognised behind any prologue",

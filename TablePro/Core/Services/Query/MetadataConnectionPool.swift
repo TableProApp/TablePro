@@ -67,11 +67,14 @@ final class MetadataConnectionPool {
         case closed
     }
 
-    /// One open in progress, shared by every caller that asks for its key while it runs.
+    /// One open in progress, shared by every caller that asks for its key while it runs. It stays
+    /// listed until the last of those callers has taken its entry, because an entry nobody has
+    /// taken yet looks idle and would otherwise be the first one closed.
     @MainActor
     private final class PendingOpen {
         let task: Task<Void, Error>
         var withdrawal: Withdrawal?
+        var waiterCount = 0
 
         init(task: Task<Void, Error>) {
             self.task = task
@@ -89,9 +92,7 @@ final class MetadataConnectionPool {
     private var transportReplacements: [UUID: Int] = [:]
     private var transportWaiters: [UUID: [TransportWaiter]] = [:]
     private let openDriver: DriverOpener
-    private let maxPerConnection = 6
-    private static let operationTimeoutSeconds: Double = 15
-    private static let preparationTimeoutSeconds: Double = 60
+    static let maxPerConnection = 6
     private var sweeper: Task<Void, Never>?
 
     /// How long a pooled connection may sit unused before it is handed back.
@@ -113,7 +114,7 @@ final class MetadataConnectionPool {
 
     private init(openDriver: DriverOpener? = nil) {
         self.openDriver = openDriver ?? { scope in
-            try await MetadataConnectionPool.openSessionDriver(for: scope)
+            try await MetadataConnectionPool.openServerDriver(for: scope, purpose: .metadata)
         }
     }
 
@@ -125,7 +126,7 @@ final class MetadataConnectionPool {
         let entry = try await acquireEntry(scope: scope, workload: workload)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
-        defer { releaseEntry(entry) }
+        defer { releaseEntry(entry, connectionId: scope.connectionId) }
         return try await entry.runSerially(body)
     }
 
@@ -188,6 +189,10 @@ final class MetadataConnectionPool {
         entries.keys.filter { $0.scope.connectionId == connectionId }.count
     }
 
+    internal func heldConnectionCount(for connectionId: UUID) -> Int {
+        heldCount(for: connectionId)
+    }
+
     internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
         entries[Key(scope: scope, workload: workload)]?.inFlightCount += 1
     }
@@ -214,17 +219,22 @@ final class MetadataConnectionPool {
     internal func transportWaiterCount(for connectionId: UUID) -> Int {
         transportWaiters[connectionId]?.count ?? 0
     }
+    #endif
 
+    /// Whether the connection's transport is being rebuilt, which ends every connection dialed
+    /// through it, so nothing new should be opened or promoted onto it until that is over.
     internal func isReplacingTransport(for connectionId: UUID) -> Bool {
         transportReplacements[connectionId] != nil
     }
-    #endif
 
-    private func releaseEntry(_ entry: Entry) {
+    private func releaseEntry(_ entry: Entry, connectionId: UUID) {
         entry.inFlightCount -= 1
-        if entry.inFlightCount == 0, entry.closeWhenIdle {
+        guard entry.inFlightCount == 0 else { return }
+        if entry.closeWhenIdle {
             entry.driver.disconnect()
+            return
         }
+        trimIdleEntries(for: connectionId)
     }
 
     private func closeOrDeferEntry(forKey key: Key) {
@@ -287,9 +297,22 @@ final class MetadataConnectionPool {
             if let failure {
                 throw failure
             }
-            guard let entry = entries[key] else { throw DatabaseError.notConnected }
-            return entry
+            if let entry = entries[key] {
+                return entry
+            }
+            if open.withdrawal == .closed {
+                throw DatabaseError.notConnected
+            }
+            forgetSpentOpen(open, forKey: key)
         }
+    }
+
+    /// An open whose entry went before this caller could take it has nothing left to hand out.
+    /// Joining it again returns at once, without a suspension, so a caller that did would spin on
+    /// the main actor and starve the other callers still waiting to resume from it.
+    private func forgetSpentOpen(_ open: PendingOpen, forKey key: Key) {
+        guard pending[key] === open else { return }
+        pending.removeValue(forKey: key)
     }
 
     /// A cached entry is only worth reusing while it is both connected and recent. The
@@ -325,11 +348,13 @@ final class MetadataConnectionPool {
         return open
     }
 
-    /// Waits for an open to finish, takes it off the pending list if nothing replaced it there, and
-    /// returns how it failed.
+    /// Waits for an open to finish, takes it off the pending list once the last caller waiting on it
+    /// has, and returns how it failed.
     private func completion(of open: PendingOpen, forKey key: Key) async -> Error? {
+        open.waiterCount += 1
         defer {
-            if pending[key] === open {
+            open.waiterCount -= 1
+            if open.waiterCount == 0, pending[key] === open {
                 pending.removeValue(forKey: key)
             }
         }
@@ -383,7 +408,11 @@ final class MetadataConnectionPool {
         waiter.continuation.resume(throwing: CancellationError())
     }
 
-    private static func openSessionDriver(for scope: DatabaseScope) async throws -> DatabaseDriver {
+    /// Opens a second connection to the session's server, on `scope`'s database, through the
+    /// transport the session already holds. Every tunnel manager closes its tunnel before building a
+    /// new one, so dialing the session's effective endpoint is what keeps the other connections up.
+    /// A database lane opens its user connection here too, as `.session`.
+    internal static func openServerDriver(for scope: DatabaseScope, purpose: DriverPurpose) async throws -> DatabaseDriver {
         guard let session = DatabaseManager.shared.session(for: scope.connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -397,20 +426,34 @@ final class MetadataConnectionPool {
                 .switchesDatabaseWithoutReconnecting(for: connection.type)
         )
         connection.database = plan.connectDatabase
+        let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(
+            for: connection,
+            purpose: purpose
+        )
+        let deadline = ConnectionDeadline(configuredSeconds: session.connection.connectTimeoutSeconds)
+        let timeoutEndpoint = ConnectionTimeoutEndpoint.database(session.connection.timeoutEndpointName)
+        let operationTimeoutSeconds = session.effectiveQueryTimeoutSeconds > 0
+            ? Double(session.effectiveQueryTimeoutSeconds)
+            : nil
 
         let driver = try await DatabaseDriverFactory.createDriver(
             for: connection,
             passwordOverride: session.cachedPassword,
-            awaitPlugins: true
+            awaitPlugins: true,
+            purpose: purpose,
+            deadline: deadline,
+            timeoutEndpoint: timeoutEndpoint,
+            effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
+            preparedConfiguration: preparedConfiguration
         )
         do {
-            try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
+            try await driver.connect()
             try await Self.prepareSession(
                 driver,
-                queryTimeoutSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds,
+                queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name,
-                timeoutSeconds: preparationTimeoutSeconds
+                timeoutSeconds: operationTimeoutSeconds
             )
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
@@ -423,16 +466,6 @@ final class MetadataConnectionPool {
             throw error
         }
         return driver
-    }
-
-    static func connect(_ driver: DatabaseDriver, database: String, timeoutSeconds: Double) async throws {
-        try await bounded(
-            driver: driver,
-            timeoutSeconds: timeoutSeconds,
-            timeoutMessage: String(format: String(localized: "Connecting to '%@' timed out."), database)
-        ) {
-            try await driver.connect()
-        }
     }
 
     struct ConnectionPlan: Sendable, Equatable {
@@ -470,7 +503,7 @@ final class MetadataConnectionPool {
         return ConnectionPlan(connectDatabase: configuredDatabase, switchDatabase: targetDatabase)
     }
 
-    static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double) async throws {
+    static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double?) async throws {
         guard let adapter = driver as? PluginDriverAdapter else {
             throw DatabaseError.unsupportedOperation
         }
@@ -483,7 +516,7 @@ final class MetadataConnectionPool {
         }
     }
 
-    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double) async throws {
+    static func switchSchema(_ driver: DatabaseDriver, to schema: String, timeoutSeconds: Double?) async throws {
         guard let switchable = driver as? SchemaSwitchable else { return }
         try await bounded(
             driver: driver,
@@ -503,7 +536,7 @@ final class MetadataConnectionPool {
         queryTimeoutSeconds: Int,
         startupCommands: String?,
         connectionName: String,
-        timeoutSeconds: Double
+        timeoutSeconds: Double?
     ) async throws {
         try await bounded(
             driver: driver,
@@ -521,10 +554,14 @@ final class MetadataConnectionPool {
     /// ignores task cancellation still completes and the timeout can propagate.
     private static func bounded(
         driver: DatabaseDriver,
-        timeoutSeconds: Double,
+        timeoutSeconds: Double?,
         timeoutMessage: String,
         _ operation: @escaping @Sendable () async throws -> Void
     ) async throws {
+        guard let timeoutSeconds, timeoutSeconds > 0 else {
+            try await operation()
+            return
+        }
         do {
             try await withTimeout(
                 seconds: timeoutSeconds,
@@ -571,15 +608,42 @@ final class MetadataConnectionPool {
         stopSweeperIfEmpty()
     }
 
+    /// Makes room for one more before an open. The caller never waits for room, so a burst of opens
+    /// can still run past the limit while its work is in flight; `trimIdleEntries` hands the extra
+    /// back as that work ends.
     private func evictIdleIfNeeded(for connectionId: UUID) {
-        let live = entries.filter { $0.key.scope.connectionId == connectionId }
-        let pendingCount = pending.keys.filter { $0.scope.connectionId == connectionId }.count
-        guard live.count + pendingCount >= maxPerConnection else { return }
-        let oldestIdle = live
-            .filter { $0.value.inFlightCount == 0 }
-            .min { $0.value.lastUsed < $1.value.lastUsed }
-        guard let oldestIdle else { return }
-        oldestIdle.value.driver.disconnect()
-        entries.removeValue(forKey: oldestIdle.key)
+        guard heldCount(for: connectionId) >= Self.maxPerConnection else { return }
+        evictLeastRecentlyUsedIdleEntry(for: connectionId)
+    }
+
+    /// Keeps a connection at the limit once its work ends. Closing only one idle entry per open, as
+    /// the pool used to, left a burst's high-water mark standing until the idle sweep: a tree Refresh
+    /// across many databases held every connection it opened for ten minutes (#3103).
+    private func trimIdleEntries(for connectionId: UUID) {
+        while heldCount(for: connectionId) > Self.maxPerConnection {
+            guard evictLeastRecentlyUsedIdleEntry(for: connectionId) else { break }
+        }
+        stopSweeperIfEmpty()
+    }
+
+    /// Every key the connection holds a connection for or is opening one for. Counted by key, so an
+    /// open that has finished but is still listed until its callers take the entry counts once.
+    private func heldCount(for connectionId: UUID) -> Int {
+        var keys = Set(entries.keys.filter { $0.scope.connectionId == connectionId })
+        keys.formUnion(pending.keys.filter { $0.scope.connectionId == connectionId })
+        return keys.count
+    }
+
+    /// An entry whose open is still listed has callers that have not taken it yet, so it is not idle
+    /// however it looks.
+    @discardableResult
+    private func evictLeastRecentlyUsedIdleEntry(for connectionId: UUID) -> Bool {
+        let idle = entries.filter { key, entry in
+            key.scope.connectionId == connectionId && entry.inFlightCount == 0 && pending[key] == nil
+        }
+        guard let oldest = idle.min(by: { $0.value.lastUsed < $1.value.lastUsed }) else { return false }
+        entries.removeValue(forKey: oldest.key)
+        oldest.value.driver.disconnect()
+        return true
     }
 }

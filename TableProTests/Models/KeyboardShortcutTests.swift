@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ShortcutAction defaults")
 struct ShortcutActionDefaultsTests {
     @Test("Execute Query default is Cmd+Return")
     func executeQueryDefault() {
@@ -55,13 +54,44 @@ struct ShortcutActionDefaultsTests {
     }
 }
 
-@Suite("Default shortcut hygiene")
+struct EditorBuiltInNameTests {
+    @Test("Command-[ is Outdent and Command-] is Indent")
+    func bracketsAreNamedAsTheEditorMapsThem() {
+        #expect(
+            ShortcutAction.reservedConflict(for: .character("[", command: true), context: .editor)
+                == String(localized: "Outdent")
+        )
+        #expect(
+            ShortcutAction.reservedConflict(for: .character("]", command: true), context: .editor)
+                == String(localized: "Indent")
+        )
+    }
+}
+
 struct DefaultShortcutHygieneTests {
-    @Test("No default uses Control without Command")
+    /// Control-Tab is not a system hotkey the way Control-1 is (that one switches Spaces, which is
+    /// why this rule exists). It is the chord AppKit itself gives tab switching in every app with
+    /// window tabs, so the recent-tab commands are the one exception, and only on Tab.
+    private static let controlTabDefaults: Set<ShortcutAction> = [.switchToRecentTab, .switchToLeastRecentTab]
+
+    @Test("No default uses Control without Command, apart from Control-Tab tab switching")
     func noBareControlDefaults() {
         for (action, key) in KeyboardSettings.defaultShortcuts where key.control && !key.command {
+            if Self.controlTabDefaults.contains(action), key.keyCode == KeyCode.tab.rawValue, !key.option {
+                continue
+            }
             Issue.record("\(action.rawValue) uses Control without Command: \(key.displayString)")
         }
+    }
+
+    @Test("Recent tabs are Control-Tab and Control-Shift-Tab, and window tabs have no default")
+    func recentTabDefaults() {
+        #expect(KeyboardSettings.defaultShortcuts[.switchToRecentTab] == .special(.tab, control: true))
+        #expect(KeyboardSettings.defaultShortcuts[.switchToLeastRecentTab] == .special(.tab, shift: true, control: true))
+        #expect(KeyboardSettings.defaultShortcuts[.showPreviousWindowTab] == nil)
+        #expect(KeyboardSettings.defaultShortcuts[.showNextWindowTab] == nil)
+        #expect(ShortcutAction.switchToRecentTab.category == .navigation)
+        #expect(ShortcutAction.switchToRecentTab.context == .global)
     }
 
     @Test("No two defaults collide within overlapping contexts")
@@ -78,7 +108,6 @@ struct DefaultShortcutHygieneTests {
     }
 }
 
-@Suite("Reserved shortcuts")
 struct ReservedShortcutTests {
     @Test("Cmd+[ conflicts with the editor indent command in editor context")
     func bracketConflictsInEditor() {
@@ -132,7 +161,6 @@ struct ReservedShortcutTests {
     }
 }
 
-@Suite("Standard text-editing bindings")
 struct StandardTextEditingBindingTests {
     @Test("Delete shadows the system delete-to-line-start binding")
     func deleteShadowsCommandDelete() {
@@ -175,7 +203,6 @@ struct StandardTextEditingBindingTests {
     }
 }
 
-@Suite("Bare-key validation")
 struct BareKeyValidationTests {
     @Test("Grid actions allow bare keys")
     func gridActionsAllowBareKeys() {
@@ -252,7 +279,6 @@ struct BareKeyValidationTests {
     }
 }
 
-@Suite("Shortcut conflict detection")
 struct ShortcutConflictTests {
     @Test("Assigning Cmd+R to Execute Query conflicts with Refresh")
     func cmdRConflictsWithRefresh() {
@@ -280,7 +306,6 @@ struct ShortcutConflictTests {
     }
 }
 
-@Suite("Keyboard settings sanitization")
 struct KeyboardSettingsSanitizeTests {
     @Test("Bare-Space override on a menu action is dropped on load")
     func dropsBareSpaceMenuOverride() {
@@ -320,7 +345,6 @@ struct KeyboardSettingsSanitizeTests {
     }
 }
 
-@Suite("Workspace navigation defaults")
 struct WorkspaceNavigationShortcutTests {
     @Test("Moving through the rail is bound to Control-Command and the arrow that matches the direction")
     func workspaceCyclingIsBoundToVerticalArrows() {
@@ -375,7 +399,6 @@ struct WorkspaceNavigationShortcutTests {
     }
 }
 
-@Suite("Legacy migration")
 struct KeyboardSettingsMigrationTests {
     private func decode(_ json: String) throws -> KeyboardSettings {
         try JSONDecoder().decode(KeyboardSettings.self, from: Data(json.utf8))
@@ -417,7 +440,6 @@ struct KeyboardSettingsMigrationTests {
     }
 }
 
-@Suite("Shortcut hint")
 struct ShortcutHintTests {
     @Test("Switch Connection default hint shows Control+Command+C")
     func switchConnectionDefaultHint() {

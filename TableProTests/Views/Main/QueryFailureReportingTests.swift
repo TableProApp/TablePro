@@ -102,31 +102,27 @@ struct QueryFailureReportingTests {
         #expect(coordinator.tabExecution.isExecuting(tabId))
     }
 
-    /// The window's task handle is one per window while claims are one per tab, so owning your own
-    /// tab is not owning the query the window is running. Retiring the handle says nothing about
-    /// whether the window is still busy: the executions do.
+    /// A superseded execution still reaches its own completion path, so retiring has to check the
+    /// owner: taking the handle a successor installed leaves a live query with nothing to stop it.
     @Test("Retiring the task handle only works for the execution that installed it")
     func onlyTheInstallerRetiresTheTaskHandle() {
         let (coordinator, tabManager) = Self.makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
-        let otherTabId = Self.addQueryTab(to: tabManager, title: "Query 2")
-        let running = coordinator.tabExecution.claim(otherTabId)
         let stranger = coordinator.tabExecution.claim(tabId)
+        let running = coordinator.tabExecution.claim(tabId)
 
         let task = Task<Void, Never> {}
-        coordinator.installQueryTask(task, for: running)
+        coordinator.installQueryTask(task, owner: .claim(running), lease: DriverLeaseOwner())
 
-        coordinator.retireQueryTask(for: stranger)
-        #expect(coordinator.currentQueryTask != nil)
+        coordinator.retireQueryTask(.claim(stranger))
+        #expect(coordinator.queryTasks.hasTask(for: tabId))
 
-        coordinator.retireQueryTask(for: running)
-        #expect(coordinator.currentQueryTask == nil)
+        coordinator.retireQueryTask(.claim(running))
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
         #expect(coordinator.tabExecution.isAnyExecuting)
 
         let runningSettled = coordinator.tabExecution.settle(running)
-        let strangerSettled = coordinator.tabExecution.settle(stranger)
         #expect(runningSettled)
-        #expect(strangerSettled)
         #expect(coordinator.tabExecution.isAnyExecuting == false)
         task.cancel()
     }
@@ -143,11 +139,11 @@ struct QueryFailureReportingTests {
         let successor = coordinator.tabExecution.claim(otherTabId)
 
         let task = Task<Void, Never> {}
-        coordinator.installQueryTask(task, for: successor)
+        coordinator.installQueryTask(task, owner: .claim(successor), lease: DriverLeaseOwner())
 
         coordinator.resetExecutionState(claim: cancelled, executionTime: 0.5)
 
-        #expect(coordinator.currentQueryTask != nil)
+        #expect(coordinator.queryTasks.hasTask(for: otherTabId))
         #expect(coordinator.tabExecution.isAnyExecuting)
         #expect(coordinator.tabExecution.isExecuting(tabId) == false)
         #expect(coordinator.tabExecution.isCurrent(successor))
@@ -186,7 +182,7 @@ struct QueryFailureReportingTests {
         coordinator.supersedeExecution(for: tabId)
 
         #expect(coordinator.tabExecution.isAnyExecuting == false)
-        #expect(coordinator.currentQueryTask == nil)
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
     }
 
     /// The change manager is one per window and holds whichever tab is selected. Clearing it from a

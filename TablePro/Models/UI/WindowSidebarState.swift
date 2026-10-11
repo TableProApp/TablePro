@@ -59,6 +59,9 @@ internal final class WindowSidebarState: ObservableObject {
     @Published var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
     @Published var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
+    /// Folders are open until the user closes one, so this records the closed ones: a table the
+    /// open tab shows is only highlighted when its row is on screen.
+    @Published var collapsedTableFolders: Set<UUID> = [] { didSet { persistExpansion() } }
     @Published private(set) var treeObjectGroupExpansion: [DatabaseTreeObjectGroup: Bool] = [:] {
         didSet { persistExpansion() }
     }
@@ -124,6 +127,7 @@ internal final class WindowSidebarState: ObservableObject {
         var tables: [DatabaseTableKey]?
         var objectGroups: [PersistedObjectGroup]?
         var seeded: Bool?
+        var collapsedFolders: [UUID]?
     }
 
     private var storageKey: String? {
@@ -139,6 +143,7 @@ internal final class WindowSidebarState: ObservableObject {
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
         expandedTreeTables = Set(decoded.tables ?? [])
         treeObjectGroupExpansion = Self.objectGroupExpansion(from: decoded.objectGroups ?? [])
+        collapsedTableFolders = Set(decoded.collapsedFolders ?? [])
         didSeedExpansion = decoded.seeded ?? true
     }
 
@@ -147,7 +152,7 @@ internal final class WindowSidebarState: ObservableObject {
 
         if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
            expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty,
-           treeObjectGroupExpansion.isEmpty,
+           treeObjectGroupExpansion.isEmpty, collapsedTableFolders.isEmpty,
            !didSeedExpansion {
             defaults.removeObject(forKey: storageKey)
             return
@@ -159,7 +164,8 @@ internal final class WindowSidebarState: ObservableObject {
             databaseSchemas: Array(expandedTreeDatabaseSchemas),
             tables: Array(expandedTreeTables),
             objectGroups: Self.persistedObjectGroups(from: treeObjectGroupExpansion),
-            seeded: didSeedExpansion
+            seeded: didSeedExpansion,
+            collapsedFolders: Array(collapsedTableFolders)
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)

@@ -15,7 +15,8 @@ extension DatabaseManager {
     /// the token the listener admits it with. The driver still just opens what it is told to open.
     internal func buildRemoteSQLiteEffectiveConnection(
         for connection: DatabaseConnection,
-        sshPasswordOverride: String? = nil
+        sshPasswordOverride: String? = nil,
+        deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         let sshConfig = connection.resolvedSSHConfig
         guard let field = pluginManager.localFilePathField(for: connection.type) else {
@@ -27,7 +28,8 @@ extension DatabaseManager {
         let endpoint = try await RemoteSQLiteTransportManager.shared.createTunnel(
             connectionId: connection.id,
             config: sshConfig,
-            credentials: credentials
+            credentials: credentials,
+            deadline: deadline
         )
 
         return connection.openingRemoteSQLiteSession(

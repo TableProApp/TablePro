@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS SSO device login")
 struct AWSSSOLoginTests {
     @Test("Parses a device authorization response, defaulting the poll interval")
     func parsesDeviceAuthorization() throws {

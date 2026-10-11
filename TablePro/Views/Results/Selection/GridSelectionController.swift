@@ -40,27 +40,11 @@ final class GridSelectionController {
 
     private func postAccessibilityAnnouncement(for newSelection: GridSelection) {
         guard let tableView else { return }
-        let announcement: String
-        if newSelection.isEmpty {
-            announcement = String(localized: "Cell selection cleared")
-        } else if let rect = newSelection.boundingRectangle {
-            let cellCount = newSelection.rectangles.reduce(0) { $0 + ($1.rows.count * $1.columns.count) }
-            announcement = String(
-                format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
-                cellCount,
-                rect.rows.lowerBound + 1,
-                rect.rows.upperBound + 1,
-                rect.columns.lowerBound + 1,
-                rect.columns.upperBound + 1
-            )
-        } else {
-            return
-        }
         NSAccessibility.post(
             element: tableView,
             notification: .announcementRequested,
             userInfo: [
-                .announcement: announcement,
+                .announcement: Self.accessibilityAnnouncement(for: newSelection),
                 .priority: NSAccessibilityPriorityLevel.medium.rawValue
             ]
         )
@@ -74,16 +58,22 @@ final class GridSelectionController {
         update(.empty)
     }
 
-    func beginDrag(at coord: GridCoord, modifiers: NSEvent.ModifierFlags) -> MouseDisposition {
+    /// `focus` is the cell a plain click left focused. That click clears the cell selection, so
+    /// without it Shift+click and Cmd+click would lose the first cell.
+    func beginDrag(at coord: GridCoord, modifiers: NSEvent.ModifierFlags, focus: GridCoord? = nil) -> MouseDisposition {
         let cleanModifiers = modifiers.intersection([.command, .shift, .option, .control])
         if cleanModifiers.contains(.command) && !cleanModifiers.contains(.shift) {
             dragOrigin = coord
             dragMode = .additive
-            dragBaseSelection = selection
+            if selection.isEmpty, let focus {
+                dragBaseSelection = .single(GridRect(cell: focus), anchor: focus, active: focus)
+            } else {
+                dragBaseSelection = selection
+            }
             return .replaceFocus(coord)
         }
         if cleanModifiers.contains(.shift) && !cleanModifiers.contains(.command) {
-            let anchor = selection.anchor ?? coord
+            let anchor = selection.anchor ?? focus ?? coord
             dragOrigin = anchor
             dragMode = .replace
             dragBaseSelection = .empty
@@ -132,32 +122,13 @@ final class GridSelectionController {
     }
 
     private func applyCmdClickToggle(at coord: GridCoord) {
-        let cellRect = GridRect(cell: coord)
-        var rectangles = dragBaseSelection.rectangles
-
-        if let index = rectangles.firstIndex(where: { $0 == cellRect }) {
-            rectangles.remove(at: index)
-            if rectangles.isEmpty {
-                update(.empty)
-                return
-            }
-            let last = rectangles[rectangles.count - 1]
-            let active = GridCoord(row: last.rows.lowerBound, displayColumn: last.columns.lowerBound)
-            update(
-                GridSelection(
-                    rectangles: rectangles,
-                    activeCell: active,
-                    anchor: dragBaseSelection.anchor,
-                    columns: dragBaseSelection.columns
-                )
-            )
+        guard !dragBaseSelection.contains(coord) else {
+            update(dragBaseSelection.removing(cell: coord))
             return
         }
-
-        rectangles.append(cellRect)
         update(
             GridSelection(
-                rectangles: rectangles,
+                rectangles: dragBaseSelection.rectangles + [GridRect(cell: coord)],
                 activeCell: coord,
                 anchor: coord,
                 columns: dragBaseSelection.columns
@@ -322,6 +293,30 @@ final class GridSelectionController {
         for row in rowsToReload {
             (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.needsDisplay = true
         }
+    }
+}
+
+internal extension GridSelectionController {
+    static func accessibilityAnnouncement(for selection: GridSelection) -> String {
+        guard let rect = selection.boundingRectangle else {
+            return String(localized: "Cell selection cleared")
+        }
+        return String(
+            format: String(localized: "%d cells selected, rows %d to %d, columns %d to %d"),
+            selection.uniqueCellCount,
+            rect.rows.lowerBound + 1,
+            rect.rows.upperBound + 1,
+            rect.columns.lowerBound + 1,
+            rect.columns.upperBound + 1
+        )
+    }
+
+    func applyInsertedRows(_ indices: IndexSet, newRowCount: Int) {
+        update(selection.insertingRows(indices, newRowCount: newRowCount))
+    }
+
+    func applyRemovedRows(_ indices: IndexSet, newRowCount: Int) {
+        update(selection.removingRows(indices, newRowCount: newRowCount))
     }
 }
 

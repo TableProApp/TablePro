@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MongoDBConnection.stripPort(fromSrvHost:)")
 struct MongoDBSrvHostTests {
     @Test("strips trailing :port from SRV host")
     func stripsTrailingPort() {

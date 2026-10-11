@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("ChatToolTarget")
 @MainActor
 struct ChatToolTargetTests {
     private static let sessionConnection = UUID()

@@ -50,6 +50,17 @@ extension OraclePlugin {
                 ],
                 supportURL: issuesURL
             )
+        case .connectionClosed:
+            return PluginDiagnostic(
+                title: String(localized: "Connection Closed"),
+                message: message,
+                suggestedActions: [
+                    String(localized: "Run it again. TablePro opens a new connection to the server automatically."),
+                    String(localized: "If this keeps happening, check for a VPN, firewall or connection manager between you and the server that drops sessions."),
+                    String(localized: "Ask your DBA whether a resource profile or an idle-session limit is ending the session.")
+                ],
+                supportURL: issuesURL
+            )
         case .protocolError:
             return PluginDiagnostic(
                 title: String(localized: "Connection Reset"),
@@ -99,7 +110,7 @@ extension OraclePlugin {
                 message: message,
                 suggestedActions: [
                     String(localized: "Run the query again. TablePro reconnects to the server automatically."),
-                    String(localized: "If the query legitimately needs more time, raise the query timeout in Settings > General."),
+                    String(localized: "If the query legitimately needs more time, raise this connection's query timeout in Options."),
                     String(localized: "If a metadata query timed out, the schema may hold a very large number of objects; try again once the server is less busy.")
                 ],
                 supportURL: issuesURL
@@ -114,7 +125,8 @@ extension OraclePlugin {
                 ],
                 supportURL: issuesURL
             )
-        case .notConnected, .connectionFailed, .queryFailed, .cancelled, .tlsHandshakeFailed:
+        case .notConnected, .connectionFailed, .queryFailed, .cancelled, .connectTimedOut, .tlsHandshakeFailed,
+             .transactionLost, .certificateAuthorityRequired:
             return nil
         }
     }

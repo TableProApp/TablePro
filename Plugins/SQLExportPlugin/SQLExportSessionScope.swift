@@ -21,9 +21,12 @@ internal struct SQLExportSessionScope: Equatable {
     /// plain statements, one `ON` per table and one `OFF` after the stream, a rotation between them
     /// left part N+1 answering every row with "Cannot insert explicit value for identity column"
     /// while the export reported success (#2533).
-    internal static func identityInsert(tableRef: String) -> SQLExportSessionScope {
+    ///
+    /// `statementEnd` is what ends every statement of the dump, a `GO` line included where the dump
+    /// carries one, so the pair are statements like any other.
+    internal static func identityInsert(tableRef: String, statementEnd: String) -> SQLExportSessionScope {
         SQLExportSessionScope(
-            opener: "SET IDENTITY_INSERT \(tableRef) ON;\n",
-            closer: "SET IDENTITY_INSERT \(tableRef) OFF;\n")
+            opener: "SET IDENTITY_INSERT \(tableRef) ON;\(statementEnd)",
+            closer: "SET IDENTITY_INSERT \(tableRef) OFF;\(statementEnd)")
     }
 }

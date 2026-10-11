@@ -166,6 +166,13 @@ extension TextViewController {
         setUpAppearanceChangedObserver()
     }
 
+    /// Asked before any link of any editor's chain, whichever of its views holds focus, for a key
+    /// session the app holds open across a whole window, such as a Control-Tab still held down. A
+    /// session with a monitor of its own would race this one, because AppKit runs same-mask local
+    /// monitors in no defined order, and the editor's find field or Vim could take its Escape.
+    /// Returning true claims the key.
+    public static var precedingKeyDownClaim: (@MainActor (NSEvent) -> Bool)?
+
     func setUpKeyBindings(eventMonitor: inout Any?) {
         eventMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.keyDown]
@@ -190,9 +197,11 @@ extension TextViewController {
     }
 
     /// The chain, with the two focus questions answered by the caller so a test can drive the order
-    /// without a key window. Links, in order: the app's coordinators, the completion list, the find
-    /// panel, and the editor's own commands.
+    /// without a key window. Links, in order: the app-wide preceding claim, the app's coordinators,
+    /// the completion list, the find panel, and the editor's own commands.
     func claimKeyDown(_ event: NSEvent, textViewHasFocus: Bool, findPanelHasFocus: Bool) -> NSEvent? {
+        if let precedingClaim = Self.precedingKeyDownClaim, precedingClaim(event) { return nil }
+
         if textViewHasFocus {
             for coordinator in textCoordinators.values()
             where coordinator.textViewShouldClaimKeyDown(controller: self, event: event) == nil {
@@ -285,10 +294,16 @@ extension TextViewController {
     /// If the Shift key is pressed, it handles unindenting. If no modifier key is pressed, it checks if multiple lines
     /// are highlighted and handles indenting accordingly.
     ///
+    /// A Tab chord that holds Control or Command is never an edit. Control-Tab moves focus or switches
+    /// tabs and Command-Tab switches apps, so both pass on to the menu bar and the key-view loop
+    /// instead of indenting a multi-line selection.
+    ///
     /// - Returns: The original event if it should be passed on, or `nil` to indicate handling within the method.
     func handleTab(event: NSEvent, modifierFlags: UInt) -> NSEvent? {
         let shiftKey = NSEvent.ModifierFlags.shift.rawValue
+        let chordKeys = NSEvent.ModifierFlags([.control, .command]).rawValue
 
+        guard modifierFlags & chordKeys == 0 else { return event }
         if modifierFlags == shiftKey {
             handleIndent(inwards: true)
         } else {

@@ -28,6 +28,26 @@ extension TextViewController: FindPanelTarget {
     var emphasisManager: EmphasisManager? {
         textView?.emphasisManager
     }
+
+    var isFindReplaceEditable: Bool {
+        textView?.isEditable ?? false
+    }
+
+    /// One undo group per call, so a Replace never merges into the typing before it or into the next Replace. Each
+    /// match is its own range in one edit, so the selection, a collapsed fold and the undo history all move with the
+    /// text between matches. The edit skips the typing filters, which would wrap a pair or delete an indent.
+    func replaceFindMatches(_ replacements: [TextReplacement]) -> Bool {
+        guard let textView, textView.isEditable, !replacements.isEmpty else { return false }
+        let length = (textView.string as NSString).length
+        guard replacements.allSatisfy({ NSMaxRange($0.range) <= length }) else { return false }
+
+        textView.undoManager?.beginUndoGrouping()
+        isApplyingUnfilteredEdits = true
+        textView.replaceCharacters(replacements)
+        isApplyingUnfilteredEdits = false
+        textView.undoManager?.endUndoGrouping()
+        return true
+    }
 }
 
 public extension TextViewController {

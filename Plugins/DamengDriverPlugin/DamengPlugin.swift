@@ -121,6 +121,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     let config: DriverConnectionConfig
     let connection = DamengConnection()
+    let connectTimeout: DamengConnectTimeout
     private let cancellationGate = PluginQueryCancellationGate()
     private var detectedServerVersion: String?
 
@@ -162,6 +163,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        connectTimeout = DamengConnectTimeout(additionalFields: config.additionalFields)
     }
 
     func connect() async throws {
@@ -169,7 +171,8 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host,
             port: config.port,
             username: config.username,
-            password: config.password
+            password: config.password,
+            timeoutMilliseconds: connectTimeout.milliseconds
         )
         textEscaping = await detectTextEscaping()
         do {
@@ -183,15 +186,18 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             disconnect()
             throw error
         }
-        detectedServerVersion = (try? await scalarText("SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1"))
+        detectedServerVersion = (try? await scalarText("SELECT BANNER FROM SYS.V$VERSION WHERE ROWNUM = 1"))
             .map { String($0.prefix(60)) }
         hasConnectedBefore = true
     }
 
     /// Keeps the mode the previous connection established when the probe fails, because
     /// `.unknown` refuses every value containing a backslash for the rest of the session.
+    ///
+    /// No `FROM DUAL`: DM8 has no `SYS.DUAL`, and a bare `DUAL` resolves to a table a schema the session switched into
+    /// could plant. DM8 evaluates a `SELECT` with no `FROM`, so the probe reads the built-in `LENGTH` on its own.
     func detectTextEscaping() async -> DamengTextEscaping {
-        guard let length = try? await scalarText("SELECT LENGTH('\\\\') FROM DUAL") else {
+        guard let length = try? await scalarText("SELECT LENGTH('\\\\')") else {
             return textEscaping
         }
         switch length.trimmingCharacters(in: .whitespaces).prefix(1) {
@@ -351,6 +357,22 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }
+
+    /// The server's `BACKSLASH_ESCAPE` mode as the connect probe measured it. It is a static `dm.ini` parameter, so
+    /// it holds for the whole session; an unknown mode leaves the app reading both.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        switch textEscaping {
+        case .backslashEscape:
+            return PluginSessionLexicalState(
+                determined: .backslashEscapesInSingleQuotes,
+                enabled: .backslashEscapesInSingleQuotes
+            )
+        case .backslashLiteral:
+            return PluginSessionLexicalState(determined: .backslashEscapesInSingleQuotes, enabled: [])
+        case .unknown:
+            return nil
+        }
+    }
 
     func escapeStringLiteral(_ value: String) -> String {
         let stripped = String(String.UnicodeScalarView(value.unicodeScalars.filter { $0 != "\0" }))

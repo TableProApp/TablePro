@@ -56,6 +56,9 @@ struct PendingChanges: Equatable {
 
     /// Whether the recorded edit is a no-op (oldValue == newValue with no prior modification).
     /// Returns the result so the caller can decide whether to register undo.
+    ///
+    /// A field going missing, or coming back, is a change even when the value reads `.null` on
+    /// both sides.
     @discardableResult
     mutating func recordCellChange(
         rowID: RowID,
@@ -63,11 +66,12 @@ struct PendingChanges: Equatable {
         columnName: String,
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
-        originalRow: [PluginCellValue]? = nil
+        originalRow: [PluginCellValue]? = nil,
+        absence: FieldAbsence = FieldAbsence()
     ) -> Bool {
-        if oldValue == newValue {
+        if oldValue == newValue && absence.wasAbsent == absence.isAbsent {
             return rollbackCellIfMatchesOriginal(
-                rowID: rowID, columnIndex: columnIndex, restoredValue: newValue
+                rowID: rowID, columnIndex: columnIndex, restoredValue: newValue, restoredIsAbsent: absence.isAbsent
             )
         }
 
@@ -75,12 +79,14 @@ struct PendingChanges: Equatable {
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
-            newValue: newValue
+            newValue: newValue,
+            oldIsAbsent: absence.wasAbsent,
+            newIsAbsent: absence.isAbsent
         )
 
         if let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
-                               columnName: columnName, newValue: newValue)
+                               columnName: columnName, newValue: newValue, isAbsent: absence.isAbsent)
             return true
         }
 
@@ -90,7 +96,8 @@ struct PendingChanges: Equatable {
         } else {
             let row = RowChange(
                 rowID: rowID, type: .update,
-                cellChanges: [cellChange], originalRow: originalRow
+                cellChanges: [cellChange], originalRow: originalRow,
+                absentColumns: absence.originalRow
             )
             changes.append(row)
             changeIndex[updateKey] = changes.count - 1
@@ -99,21 +106,24 @@ struct PendingChanges: Equatable {
         return true
     }
 
-    mutating func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
+    mutating func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
         guard !deletedRowIDs.contains(rowID) else { return }
         removeChange(rowID: rowID, type: .update)
         modifiedCells.removeValue(forKey: rowID)
-        appendChange(RowChange(rowID: rowID, type: .delete, originalRow: originalRow))
+        appendChange(RowChange(rowID: rowID, type: .delete, originalRow: originalRow, absentColumns: absentColumns))
         deletedRowIDs.insert(rowID)
     }
 
-    mutating func recordRowInsertion(rowID: RowID, values: [PluginCellValue]) {
+    mutating func recordRowInsertion(rowID: RowID, values: [PluginCellValue], absentColumns: Set<Int> = []) {
         guard !insertedRowIDs.contains(rowID) else {
             insertedRowData[rowID] = values
+            if let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] {
+                changes[insertIdx].absentColumns = absentColumns
+            }
             return
         }
         insertedRowData[rowID] = values
-        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: []))
+        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: [], absentColumns: absentColumns))
         insertedRowIDs.insert(rowID)
     }
 
@@ -154,8 +164,8 @@ struct PendingChanges: Equatable {
     // MARK: - Replay (driven by NSUndoManager invocation)
 
     /// Re-apply a deletion during undo replay (skips undo registration).
-    mutating func reapplyRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
-        recordRowDeletion(rowID: rowID, originalRow: originalRow)
+    mutating func reapplyRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
+        recordRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns)
     }
 
     /// Re-apply a cell edit during undo replay (skips undo registration).
@@ -167,18 +177,21 @@ struct PendingChanges: Equatable {
         columnName: String,
         originalDBValue: PluginCellValue,
         newValue: PluginCellValue,
-        originalRow: [PluginCellValue]?
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence = FieldAbsence()
     ) {
         let cellChange = CellChange(
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: originalDBValue,
-            newValue: newValue
+            newValue: newValue,
+            oldIsAbsent: absence.wasAbsent,
+            newIsAbsent: absence.isAbsent
         )
 
         if let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
-                               columnName: columnName, newValue: newValue)
+                               columnName: columnName, newValue: newValue, isAbsent: absence.isAbsent)
             return
         }
 
@@ -188,7 +201,8 @@ struct PendingChanges: Equatable {
         } else {
             let row = RowChange(
                 rowID: rowID, type: .update,
-                cellChanges: [cellChange], originalRow: originalRow
+                cellChanges: [cellChange], originalRow: originalRow,
+                absentColumns: absence.originalRow
             )
             changes.append(row)
             changeIndex[updateKey] = changes.count - 1
@@ -201,10 +215,13 @@ struct PendingChanges: Equatable {
         rowID: RowID,
         columnIndex: Int,
         columnName: String,
-        newValue: PluginCellValue
+        newValue: PluginCellValue,
+        isAbsent: Bool = false
     ) {
         guard let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] else { return }
-        updateInsertedCell(at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue)
+        updateInsertedCell(
+            at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue, isAbsent: isAbsent
+        )
     }
 
     /// Restore a cell's value during undo replay when an existing change matches.
@@ -212,14 +229,15 @@ struct PendingChanges: Equatable {
         rowID: RowID,
         columnIndex: Int,
         columnName: String,
-        previousValue: PluginCellValue
+        previousValue: PluginCellValue,
+        previousIsAbsent: Bool = false
     ) {
         guard let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)],
               let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex })
         else { return }
 
-        let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
-        if previousValue == originalOldValue {
+        let original = changes[updateIdx].cellChanges[cellIdx]
+        if previousValue == original.oldValue && previousIsAbsent == original.oldIsAbsent {
             changes[updateIdx].cellChanges.remove(at: cellIdx)
             removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
             if changes[updateIdx].cellChanges.isEmpty {
@@ -229,22 +247,30 @@ struct PendingChanges: Equatable {
             changes[updateIdx].cellChanges[cellIdx] = CellChange(
                 columnIndex: columnIndex,
                 columnName: columnName,
-                oldValue: originalOldValue,
-                newValue: previousValue
+                oldValue: original.oldValue,
+                newValue: previousValue,
+                oldIsAbsent: original.oldIsAbsent,
+                newIsAbsent: previousIsAbsent
             )
         }
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
-    mutating func reinsertRow(rowID: RowID, columns: [String], savedValues: [PluginCellValue]?) {
+    mutating func reinsertRow(
+        rowID: RowID,
+        columns: [String],
+        savedValues: [PluginCellValue]?,
+        absentColumns: Set<Int> = []
+    ) {
         insertedRowIDs.insert(rowID)
         let cellChanges = columns.enumerated().map { index, columnName in
             CellChange(
                 columnIndex: index, columnName: columnName,
-                oldValue: nil, newValue: savedValues?[safe: index] ?? nil
+                oldValue: nil, newValue: savedValues?[safe: index] ?? nil,
+                newIsAbsent: absentColumns.contains(index)
             )
         }
-        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges))
+        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges, absentColumns: absentColumns))
         if let savedValues {
             insertedRowData[rowID] = savedValues
         }
@@ -252,17 +278,22 @@ struct PendingChanges: Equatable {
 
     /// Insert a batch of rows (for undo replay of a batch deletion's undo).
     mutating func reinsertBatch(
-        rowIDs: [RowID], rowValues: [[PluginCellValue]], columns: [String]
+        rowIDs: [RowID],
+        rowValues: [[PluginCellValue]],
+        rowAbsentColumns: [Set<Int>] = [],
+        columns: [String]
     ) {
-        for (rowID, values) in zip(rowIDs, rowValues) {
+        for (offset, (rowID, values)) in zip(rowIDs, rowValues).enumerated() {
+            let absentColumns = rowAbsentColumns[safe: offset] ?? []
             let cellChanges = values.enumerated().map { colIndex, value in
                 CellChange(
                     columnIndex: colIndex,
                     columnName: columns[safe: colIndex] ?? "",
-                    oldValue: nil, newValue: value
+                    oldValue: nil, newValue: value,
+                    newIsAbsent: absentColumns.contains(colIndex)
                 )
             }
-            appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges))
+            appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges, absentColumns: absentColumns))
             insertedRowIDs.insert(rowID)
             insertedRowData[rowID] = values
         }
@@ -273,9 +304,9 @@ struct PendingChanges: Equatable {
         insertedRowData[rowID]
     }
 
-    /// Restore inserted-row values when undo restores a row.
-    mutating func restoreInsertedValues(forRow rowID: RowID, values: [PluginCellValue]) {
-        insertedRowData[rowID] = values
+    /// The columns an inserted row has no field for, saved beside its values for the same replay.
+    func insertedAbsentColumns(forRow rowID: RowID) -> Set<Int> {
+        change(forRow: rowID, type: .insert)?.absentColumns ?? []
     }
 
     // MARK: - Reset / persistence
@@ -358,17 +389,22 @@ struct PendingChanges: Equatable {
     }
 
     private mutating func updateInsertedCell(
-        at insertIdx: Int, columnIndex: Int, columnName: String, newValue: PluginCellValue
+        at insertIdx: Int, columnIndex: Int, columnName: String, newValue: PluginCellValue, isAbsent: Bool
     ) {
         let rowID = changes[insertIdx].rowID
         if var stored = insertedRowData[rowID], columnIndex < stored.count {
             stored[columnIndex] = newValue
             insertedRowData[rowID] = stored
         }
+        if isAbsent {
+            changes[insertIdx].absentColumns.insert(columnIndex)
+        } else {
+            changes[insertIdx].absentColumns.remove(columnIndex)
+        }
 
         let replacement = CellChange(
             columnIndex: columnIndex, columnName: columnName,
-            oldValue: nil, newValue: newValue
+            oldValue: nil, newValue: newValue, newIsAbsent: isAbsent
         )
         if let cellIdx = changes[insertIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex }) {
             changes[insertIdx].cellChanges[cellIdx] = replacement
@@ -387,15 +423,18 @@ struct PendingChanges: Equatable {
             return
         }
 
-        let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
-        changes[updateIdx].cellChanges[cellIdx] = CellChange(
+        let original = changes[updateIdx].cellChanges[cellIdx]
+        let merged = CellChange(
             columnIndex: cellChange.columnIndex,
             columnName: cellChange.columnName,
-            oldValue: originalOldValue,
-            newValue: cellChange.newValue
+            oldValue: original.oldValue,
+            newValue: cellChange.newValue,
+            oldIsAbsent: original.oldIsAbsent,
+            newIsAbsent: cellChange.newIsAbsent
         )
+        changes[updateIdx].cellChanges[cellIdx] = merged
 
-        guard originalOldValue == cellChange.newValue else { return }
+        guard merged.restoresOriginal else { return }
         changes[updateIdx].cellChanges.remove(at: cellIdx)
         removeModifiedCell(rowID: rowID, columnIndex: cellChange.columnIndex)
         if changes[updateIdx].cellChanges.isEmpty {
@@ -405,12 +444,13 @@ struct PendingChanges: Equatable {
 
     @discardableResult
     private mutating func rollbackCellIfMatchesOriginal(
-        rowID: RowID, columnIndex: Int, restoredValue: PluginCellValue
+        rowID: RowID, columnIndex: Int, restoredValue: PluginCellValue, restoredIsAbsent: Bool
     ) -> Bool {
         let updateKey = RowChangeKey(rowID: rowID, type: .update)
         guard let updateIdx = changeIndex[updateKey],
               let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex }),
-              changes[updateIdx].cellChanges[cellIdx].oldValue == restoredValue else {
+              changes[updateIdx].cellChanges[cellIdx].oldValue == restoredValue,
+              changes[updateIdx].cellChanges[cellIdx].oldIsAbsent == restoredIsAbsent else {
             return false
         }
         changes[updateIdx].cellChanges.remove(at: cellIdx)

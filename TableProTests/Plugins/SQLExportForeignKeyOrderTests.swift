@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL export foreign key ordering")
 struct SQLExportForeignKeyOrderTests {
     private final class StubExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String

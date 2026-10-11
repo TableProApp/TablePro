@@ -163,7 +163,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
             Self.restrictPermissions(of: fileURL)
         } catch {
             Self.logger.error(
-                "Table load history could not be rewritten: \(error.localizedDescription, privacy: .public)"
+                "Table load history could not be rewritten: \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -190,7 +190,7 @@ internal actor TableLoadHistoryStore: TableLoadSummarySink {
             return true
         } catch {
             Self.logger.error(
-                "Table load history could not be appended to: \(error.localizedDescription, privacy: .public)"
+                "Table load history could not be appended to: \(error.publicLogShape, privacy: .public)"
             )
             return false
         }

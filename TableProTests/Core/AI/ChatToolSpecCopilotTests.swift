@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("ChatToolSpec.asCopilotToolInformation")
 struct ChatToolSpecCopilotTests {
     @Test("a schema with no required array keeps none")
     func addsRequiredWhenMissing() throws {

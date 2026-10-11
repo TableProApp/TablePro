@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Workspace rail ordering")
 struct WorkspaceRailOrderingTests {
     private static let alpha = UUID(uuidString: "00000000-0000-0000-0000-0000000000A1")
     private static let beta = UUID(uuidString: "00000000-0000-0000-0000-0000000000B2")

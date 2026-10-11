@@ -13,7 +13,6 @@ import TableProSyncTransport
 @testable import TablePro
 import Testing
 
-@Suite("License state presentation")
 struct LicenseSyncPresentationTests {
     private static let everyStatus: [LicenseStatus] = [
         .unlicensed, .active, .expired, .suspended, .deactivated, .validationFailed
@@ -37,7 +36,6 @@ struct LicenseSyncPresentationTests {
         let reasons = Self.everyStatus.map { SyncCoordinator.licenseDisableReason(for: $0) }
 
         #expect(reasons.count == Self.everyStatus.count)
-        #expect(!reasons.contains(.noAccount))
         #expect(!reasons.contains(.userDisabled))
     }
 

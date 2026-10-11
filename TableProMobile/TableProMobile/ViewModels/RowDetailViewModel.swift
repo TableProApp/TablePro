@@ -15,7 +15,7 @@ final class RowDetailViewModel {
     let session: ConnectionSession?
     let databaseType: DatabaseType
     let schema: String?
-    let safeModeLevel: SafeModeLevel
+    @ObservationIgnored private let readSafeModeLevel: () -> SafeModeLevel
 
     private(set) var rows: [Row]
     var currentIndex: Int
@@ -28,7 +28,7 @@ final class RowDetailViewModel {
     var operationError: AppError?
     private(set) var showSaveSuccess = false
 
-    @ObservationIgnored private var pendingSaveSQL: String?
+    @ObservationIgnored private var writeGate = ConfirmedWriteGate()
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -43,7 +43,7 @@ final class RowDetailViewModel {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
-        safeModeLevel: SafeModeLevel = .off,
+        safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil
@@ -56,7 +56,7 @@ final class RowDetailViewModel {
         self.columnDetails = columnDetails
         self.databaseType = databaseType
         self.schema = schema
-        self.safeModeLevel = safeModeLevel
+        self.readSafeModeLevel = safeModeLevel
         self.foreignKeys = foreignKeys
         self.onSaved = onSaved
         self.loadFullValueProvider = loadFullValue
@@ -68,23 +68,21 @@ final class RowDetailViewModel {
 
     // MARK: - Computed
 
-    var isView: Bool {
-        guard let table else { return false }
-        return table.type == .view || table.type == .materializedView
+    var safeModeLevel: SafeModeLevel { readSafeModeLevel() }
+
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    var allowsRowEditing: Bool {
+        table?.type.allowsRowEditing ?? false
     }
 
     var canEdit: Bool {
-        table != nil && session != nil && !columnDetails.isEmpty && !isView
+        table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
             && columnDetails.contains(where: { $0.isPrimaryKey })
     }
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
-
-    var currentRowCells: [Cell] {
-        guard currentIndex >= 0, currentIndex < rows.count else { return [] }
-        return rows[currentIndex].cells
-    }
 
     var currentRow: [String?] {
         row(at: currentIndex)
@@ -119,6 +117,47 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
+    /// A key identifies the row and stays as it is, and a column the server owns cannot be given a value, however
+    /// the cell is drawn.
+    func takesEdits(at index: Int) -> Bool {
+        guard !isPrimaryKey(at: index), !isServerOwned(at: index) else { return false }
+        return isEditableAsText(at: index)
+    }
+
+    func isServerOwned(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return false }
+        return columnDetail(for: columns[index].name)?.isServerOwned ?? false
+    }
+
+    func isEditableAsText(at index: Int) -> Bool {
+        let rowCells = cells(at: currentIndex)
+        guard index >= 0, index < rowCells.count else { return false }
+        switch rowCells[index] {
+        case .null, .text:
+            return true
+        case .truncatedText:
+            return hasOverride(forRow: currentIndex, cellIndex: index)
+        case .binary:
+            return false
+        }
+    }
+
+    // MARK: - Row Navigation
+
+    var showsRowNavigator: Bool { !isEditing }
+    var canGoToPreviousRow: Bool { !isEditing && currentIndex > 0 }
+    var canGoToNextRow: Bool { !isEditing && currentIndex < rows.count - 1 }
+
+    func goToPreviousRow() {
+        guard canGoToPreviousRow else { return }
+        currentIndex -= 1
+    }
+
+    func goToNextRow() {
+        guard canGoToNextRow else { return }
+        currentIndex += 1
+    }
+
     // MARK: - Edit Lifecycle
 
     func startEditing() {
@@ -134,17 +173,36 @@ final class RowDetailViewModel {
     }
 
     func setEditedValue(_ value: String, at index: Int) {
-        guard index < editedValues.count else { return }
+        guard index < editedValues.count, isEditableAsText(at: index) else { return }
         editedValues[index] = value
     }
 
     func toggleNull(at index: Int) {
-        guard index < editedValues.count else { return }
+        guard index < editedValues.count, isEditableAsText(at: index) else { return }
         if editedValues[index] == nil {
             editedValues[index] = ""
         } else {
             editedValues[index] = nil
         }
+    }
+
+    var hasUnsavedEdits: Bool {
+        isEditing && !editedColumnIndices.isEmpty
+    }
+
+    private var editedColumnIndices: [Int] {
+        let original = currentRow
+        return columns.indices.filter { index in
+            guard index < editedValues.count, takesEdits(at: index) else {
+                return false
+            }
+            let oldValue = index < original.count ? original[index] : nil
+            return oldValue != editedValues[index]
+        }
+    }
+
+    private var editedChanges: [(column: String, value: String?)] {
+        editedColumnIndices.map { (column: columns[$0].name, value: editedValues[$0]) }
     }
 
     // MARK: - Save
@@ -153,7 +211,7 @@ final class RowDetailViewModel {
         guard let session, let table else { return false }
 
         pendingWriteConfirmation = false
-        pendingSaveSQL = nil
+        writeGate.cancel()
 
         let pkValues: [(column: String, value: String)] = columnDetails.compactMap { col in
             guard col.isPrimaryKey else { return nil }
@@ -173,16 +231,7 @@ final class RowDetailViewModel {
             return false
         }
 
-        var changes: [(column: String, value: String?)] = []
-        for (index, column) in columns.enumerated() {
-            if isPrimaryKey(at: index) { continue }
-            guard index < editedValues.count else { continue }
-            let oldValue = index < currentRow.count ? currentRow[index] : nil
-            let newValue = editedValues[index]
-            if oldValue != newValue {
-                changes.append((column: column.name, value: newValue))
-            }
-        }
+        let changes = editedChanges
 
         guard !changes.isEmpty else {
             isEditing = false
@@ -199,37 +248,35 @@ final class RowDetailViewModel {
             primaryKeys: pkValues
         )
 
-        switch safeModeLevel.writePermission {
+        switch writeGate.submit(sql, under: safeModeLevel) {
         case .blocked:
             return false
-        case .requiresConfirmation:
-            pendingSaveSQL = sql
+        case .awaitConfirmation:
             pendingWriteConfirmation = true
             return false
-        case .proceed:
-            return await execute(sql: sql, session: session)
+        case .run(let statement):
+            return await execute(sql: statement, session: session)
         }
     }
 
     func executePendingSave() async -> Bool {
         pendingWriteConfirmation = false
-        guard let session, let sql = pendingSaveSQL else { return false }
-        pendingSaveSQL = nil
-        return await execute(sql: sql, session: session)
+        let confirmed = writeGate.confirm(under: safeModeLevel)
+        guard let session, let confirmed else { return false }
+        return await execute(sql: confirmed, session: session)
     }
 
     private func execute(sql: String, session: ConnectionSession) async -> Bool {
         isSaving = true
         defer { isSaving = false }
+        let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
+            (index, editedValues[index].map { Cell.text($0) } ?? .null)
+        })
 
         do {
-            _ = try await session.driver.execute(query: sql)
+            try await session.driver.executeWrite([sql])
             guard currentIndex >= 0, currentIndex < rows.count else { return false }
-            let newCells = editedValues.map { value -> Cell in
-                value.map { Cell.text($0) } ?? .null
-            }
-            rows[currentIndex] = Row(cells: newCells)
-            fullValueOverrides[currentIndex] = nil
+            commitSavedCells(savedCells, toRow: currentIndex)
             isEditing = false
             showSaveSuccess = true
             onSaved?()
@@ -240,6 +287,15 @@ final class RowDetailViewModel {
             operationError = ErrorClassifier.classify(error, context: context)
             return false
         }
+    }
+
+    private func commitSavedCells(_ savedCells: [Int: Cell], toRow rowIndex: Int) {
+        let cells = rows[rowIndex].cells.enumerated().map { index, cell in
+            savedCells[index] ?? cell
+        }
+        rows[rowIndex] = Row(cells: cells)
+        let overrides = (fullValueOverrides[rowIndex] ?? [:]).filter { savedCells[$0.key] == nil }
+        fullValueOverrides[rowIndex] = overrides.isEmpty ? nil : overrides
     }
 
     private func scheduleSuccessDismiss() {
@@ -253,15 +309,17 @@ final class RowDetailViewModel {
 
     // MARK: - Lazy Load
 
-    func loadFullValue(ref: CellRef, cellIndex: Int) async {
+    func loadFullValue(ref: CellRef, forRow rowIndex: Int, cellIndex: Int) async {
         guard let loadFullValueProvider else { return }
         loadingCell = cellIndex
         defer { loadingCell = nil }
         do {
             let fullValue = try await loadFullValueProvider(ref)
-            var rowOverrides = fullValueOverrides[currentIndex] ?? [:]
+            var rowOverrides = fullValueOverrides[rowIndex] ?? [:]
             rowOverrides[cellIndex] = fullValue
-            fullValueOverrides[currentIndex] = rowOverrides
+            fullValueOverrides[rowIndex] = rowOverrides
+            guard isEditing, rowIndex == currentIndex, cellIndex < editedValues.count else { return }
+            editedValues[cellIndex] = fullValue
         } catch {
             operationError = AppError(
                 category: .network,

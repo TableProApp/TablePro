@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("CellValueContentDetector")
 struct CellValueContentDetectorTests {
     @Test("empty string is plain")
     func emptyIsPlain() {
@@ -89,7 +88,6 @@ struct CellValueContentDetectorTests {
     }
 }
 
-@Suite("CellValueContentDetector image content")
 struct CellValueContentDetectorImageTests {
     private func encodedPng() -> Data {
         guard let representation = NSBitmapImageRep(

@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-LIBS_DIR="$PROJECT_DIR/Libs"
+LIBS_DIR="${LIBS_DIR:-$PROJECT_DIR/Libs}"
 IOS_LIBS_DIR="$LIBS_DIR/ios"
 FREETDS_VERSION="1.4.22"
 FREETDS_SHA256="6acb9086350425f5178e544bbe2d54a001097e8e20277a2b766ad0799a2e7d87"
@@ -34,7 +34,8 @@ trap cleanup_freetds EXIT
 CACHE_DIR="${TMPDIR:-/tmp}/tablepro-freetds-cache"
 mkdir -p "$CACHE_DIR"
 SOURCE_DIR="$BUILD_DIR/freetds-${FREETDS_VERSION}"
-MACOS_DEPLOYMENT_TARGET="14.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+MACOS_DEPLOYMENT_TARGET="$DEPLOY_TARGET"
 IOS_DEPLOYMENT_TARGET="17.0"
 
 MACOS_OPENSSL_PREFIX="$(brew --prefix openssl@3)"

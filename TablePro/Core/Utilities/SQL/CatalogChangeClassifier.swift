@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 struct CatalogStatementEffect: Sendable, Equatable {
     let kinds: CatalogObjectKinds
@@ -45,11 +46,27 @@ enum CatalogChangeClassifier {
             let tier = QueryClassifier.classifyTier(trimmed, databaseType: databaseType)
             return tier == .safe ? .none : opaque
         }
-        return sqlEffect(trimmed)
+        if let request = dynamoDBRequestEffect(trimmed, databaseType: databaseType) {
+            return request
+        }
+        let grammar = databaseType.lexicalGrammar
+        if QueryClassifier.runsProceduralBlock(trimmed, grammar: grammar) {
+            return opaque
+        }
+        return sqlEffect(trimmed, grammar: grammar)
     }
 
-    private static func sqlEffect(_ trimmed: String) -> CatalogStatementEffect {
-        let tokens = leadingTokens(of: trimmed)
+    /// A DynamoDB request names its action, so only the three that create, change or drop a table touch the
+    /// catalog. PartiQL cannot, and an action the driver does not know is sent as PartiQL, so both take the SQL path.
+    private static func dynamoDBRequestEffect(_ trimmed: String, databaseType: DatabaseType) -> CatalogStatementEffect? {
+        guard databaseType == .dynamodb,
+              let action = DynamoDBRequestStatement(trimmed)?.action
+        else { return nil }
+        return action.changesCatalog ? CatalogStatementEffect(kinds: .tables, endsTransaction: false) : .none
+    }
+
+    private static func sqlEffect(_ trimmed: String, grammar: SQLLexicalGrammar) -> CatalogStatementEffect {
+        let tokens = leadingTokens(of: trimmed, grammar: grammar)
         let leading = leadingKeywordEffect(tokens: tokens, trimmed: trimmed)
         guard leading.kinds.isEmpty else { return leading }
         return leading.union(embeddedDefinitionEffect(tokens: tokens))
@@ -115,9 +132,9 @@ enum CatalogChangeClassifier {
 
     /// Identifier tokens of the statement's opening, with MySQL executable comments revealed and
     /// their version numbers dropped, so `/*!50001 CREATE ... VIEW */` reads as `CREATE VIEW`.
-    private static func leadingTokens(of trimmed: String) -> [String] {
+    private static func leadingTokens(of trimmed: String, grammar: SQLLexicalGrammar) -> [String] {
         let prefix = String(trimmed.prefix(classifiedPrefixLength))
-        let body = QueryClassifier.strippingStringLiterals(prefix, revealingConditionalComments: true).uppercased()
+        let body = SQLCodeProjection.code(of: prefix, grammar: grammar, revealingExecutableComments: true).uppercased()
         var tokens: [String] = []
         var current = ""
         for character in body {

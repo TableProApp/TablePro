@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Redis SSL handling")
 struct RedisSSLConfigTests {
     @Test("disabled is not enabled and does not verify")
     func disabled() {

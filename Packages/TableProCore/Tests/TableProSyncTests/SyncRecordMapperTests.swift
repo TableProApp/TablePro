@@ -79,4 +79,32 @@ struct SyncRecordMapperTests {
         let decoded = try #require(SyncRecordMapper.toConnection(makeRawRecord(safeModeLevelRaw: raw)))
         #expect(decoded.safeModeLevel == expected)
     }
+
+    @Test("An unrecognized wire value syncs as confirmWrites instead of off")
+    func unknownWireValueFailsClosed() throws {
+        let record = makeRawRecord(safeModeLevelRaw: "someFutureLevel")
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+        #expect(decoded.safeModeLevel == .confirmWrites)
+    }
+
+    @Test("An unrecognized wire value keeps the legacy read-only restriction")
+    func unknownWireValuePreservesReadOnly() throws {
+        let record = makeRawRecord(safeModeLevelRaw: "someFutureLevel", isReadOnly: true)
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+        #expect(decoded.safeModeLevel == .readOnly)
+    }
+
+    @Test("A rename preserves an unrecognized wire value and requires confirmation")
+    func renamePreservesUnknownWireValue() throws {
+        let record = makeRawRecord(safeModeLevelRaw: "someFutureLevel")
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        connection.name = "Renamed"
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        #expect(record["safeModeLevel"] as? String == "someFutureLevel")
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+        #expect(decoded.name == "Renamed")
+        #expect(decoded.safeModeLevel == .confirmWrites)
+    }
 }

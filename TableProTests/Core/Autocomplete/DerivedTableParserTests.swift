@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Derived Table Parser")
 struct DerivedTableParserTests {
     let parser = DerivedTableParser()
 

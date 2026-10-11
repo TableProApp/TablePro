@@ -139,7 +139,7 @@ enum StructureTableRebuildHandler {
             /// it rides at the end of the same transaction rather than forcing a second one. A drop
             /// lands after the rebuild has replayed the indexes it inherited, which is what makes it
             /// take effect rather than being undone by the replay.
-            let trailing = try SchemaStatementGenerator(tableName: tableName, pluginDriver: pluginDriver)
+            let trailing = try SchemaStatementGenerator(tableName: tableName, schema: schema, pluginDriver: pluginDriver)
                 .generate(changes: partitionTrailing)
                 .map(\.sql)
 
@@ -180,7 +180,7 @@ enum StructureTableRebuildHandler {
                     partition.rebuilt.append(change)
                 }
             case .addIndex, .modifyIndex, .deleteIndex,
-                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
+                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment:
                 partition.trailing.append(change)
             case .modifyPrimaryKey:
                 partition.unsupported.append(change)

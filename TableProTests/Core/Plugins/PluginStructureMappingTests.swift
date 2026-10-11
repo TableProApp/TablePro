@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin structure mapping")
 struct PluginStructureMappingTests {
     private static let columns = PluginStructureFixtures.columns
 
@@ -64,7 +63,8 @@ struct PluginStructureMappingTests {
                 comment: $0.comment, isGenerated: $0.isGenerated, allowedValues: $0.allowedValues,
                 generationExpression: $0.generationExpression, generationKind: $0.generationKind,
                 ddlSpelling: $0.ddlSpelling, ddlDefault: $0.ddlDefault,
-                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation
+                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation,
+                classificationTypeName: $0.classificationTypeName
             )
         }
         let problems = StructureMappingCoverage.carryProblems(from: Self.columns, to: mapped, appOnly: ["id"])
@@ -80,7 +80,8 @@ struct PluginStructureMappingTests {
                 comment: $0.comment, identityKind: $0.identityKind, isGenerated: $0.isNullable,
                 allowedValues: $0.allowedValues, generationExpression: $0.generationExpression,
                 generationKind: $0.generationKind, ddlSpelling: $0.ddlSpelling, ddlDefault: $0.ddlDefault,
-                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation
+                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation,
+                classificationTypeName: $0.classificationTypeName
             )
         }
         let problems = StructureMappingCoverage.carryProblems(from: Self.columns, to: mapped, appOnly: ["id"])
@@ -97,7 +98,8 @@ struct PluginStructureMappingTests {
                 comment: $0.comment, identityKind: $0.identityKind, isGenerated: $0.isGenerated,
                 allowedValues: $0.allowedValues, generationExpression: $0.generationExpression,
                 generationKind: $0.generationKind, ddlSpelling: $0.ddlSpelling, ddlDefault: $0.ddlDefault,
-                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation
+                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation,
+                classificationTypeName: $0.classificationTypeName
             )
         }
         let problems = StructureMappingCoverage.carryProblems(from: Self.columns, to: mapped, appOnly: ["id"])
@@ -129,7 +131,8 @@ struct PluginStructureMappingTests {
                 comment: $0.comment, identityKind: $0.identityKind, isGenerated: $0.isNullable,
                 allowedValues: $0.allowedValues, generationExpression: $0.generationExpression,
                 generationKind: $0.generationKind, ddlSpelling: $0.ddlSpelling, ddlDefault: $0.ddlDefault,
-                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation
+                ddlGenerationExpression: $0.ddlGenerationExpression, ddlCollation: $0.ddlCollation,
+                classificationTypeName: $0.classificationTypeName
             )
         }
         let problems = StructureMappingCoverage.fixtureProblems(shared)

@@ -15,6 +15,7 @@ internal enum FieldPickerSentinel {
     internal static let null = "\u{FFFE}NULL"
     internal static let defaultValue = "\u{FFFE}DEFAULT"
     internal static let multiple = "\u{FFFE}MULTIPLE"
+    internal static let absent = "\u{FFFE}ABSENT"
 
     /// The tag that stands for a state, or nil where the state is an ordinary value the column
     /// already offers.
@@ -23,12 +24,31 @@ internal enum FieldPickerSentinel {
         case .null, .pendingNull: return null
         case .pendingDefault: return defaultValue
         case .multipleValues: return multiple
+        case .absent, .pendingRemoval: return absent
         case .value: return nil
         }
     }
 
     internal static func isSentinel(_ tag: String) -> Bool {
-        tag == null || tag == defaultValue || tag == multiple
+        tag == null || tag == defaultValue || tag == multiple || tag == absent
+    }
+
+    /// What choosing a tag does, for every picker. A row that only says where the field stands,
+    /// the rows disagreeing or the field missing, changes nothing when it is chosen again, so its
+    /// tag never reaches the field as a value.
+    internal static func choose(
+        _ tag: String,
+        onSetNull: (() -> Void)?,
+        onSetDefault: (() -> Void)?,
+        onValue: (String) -> Void
+    ) {
+        switch tag {
+        case null: onSetNull?()
+        case defaultValue: onSetDefault?()
+        default:
+            guard !isSentinel(tag) else { return }
+            onValue(tag)
+        }
     }
 }
 

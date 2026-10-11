@@ -82,6 +82,9 @@ extension EtcdParseError: PluginDriverError {
 struct EtcdCommandParser {
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdCommandParser")
 
+    static let defaultWatchTimeout: TimeInterval = 30
+    static let maximumWatchTimeout: TimeInterval = 3_000
+
     // MARK: - Public API
 
     static func parse(_ input: String) throws -> EtcdOperation {
@@ -198,10 +201,15 @@ struct EtcdCommandParser {
 
         let prefix = flags.has("prefix")
 
-        var timeout: TimeInterval = 30
+        var timeout = Self.defaultWatchTimeout
         if let timeoutStr = flags.value(for: "timeout") {
-            guard let parsed = TimeInterval(timeoutStr) else {
+            guard let parsed = TimeInterval(timeoutStr), parsed.isFinite else {
                 throw EtcdParseError.invalidArgument("--timeout must be a number")
+            }
+            guard parsed >= 0, parsed <= Self.maximumWatchTimeout else {
+                throw EtcdParseError.invalidArgument(
+                    "--timeout must be between 0 and \(Int(Self.maximumWatchTimeout)) seconds"
+                )
             }
             timeout = parsed
         }
@@ -418,19 +426,19 @@ struct EtcdCommandParser {
 
     // MARK: - Tokenizer
 
-    private static func tokenize(_ input: String) -> [String] {
+    static func tokenize(_ input: String) -> [String] {
         var tokens: [String] = []
-        var current = ""
+        var current = String.UnicodeScalarView()
         var inQuote = false
-        var quoteChar: Character = "\""
+        var quoteScalar: Unicode.Scalar = "\""
         var escapeNext = false
         var tokenStarted = false
 
-        for char in input {
+        for scalar in input.unicodeScalars {
             if escapeNext {
                 tokenStarted = true
                 if inQuote {
-                    switch char {
+                    switch scalar {
                     case "n": current.append("\n")
                     case "r": current.append("\r")
                     case "t": current.append("\t")
@@ -439,56 +447,54 @@ struct EtcdCommandParser {
                     case "'": current.append("'")
                     default:
                         current.append("\\")
-                        current.append(char)
+                        current.append(scalar)
                     }
                 } else {
-                    // Outside quotes, preserve literal backslash
                     current.append("\\")
-                    current.append(char)
+                    current.append(scalar)
                 }
                 escapeNext = false
                 continue
             }
 
-            if char == "\\" {
+            if scalar == "\\" {
                 if inQuote {
                     escapeNext = true
                 } else {
-                    // Outside quotes, backslash is literal
-                    current.append(char)
+                    current.append(scalar)
                     tokenStarted = true
                 }
                 continue
             }
 
             if inQuote {
-                if char == quoteChar {
+                if scalar == quoteScalar {
                     inQuote = false
-                    tokenStarted = true // preserve empty quoted token
+                    tokenStarted = true
                 } else {
-                    current.append(char)
+                    current.append(scalar)
                     tokenStarted = true
                 }
                 continue
             }
 
-            if char == "\"" || char == "'" {
+            if scalar == "\"" || scalar == "'" {
                 inQuote = true
-                quoteChar = char
+                quoteScalar = scalar
                 tokenStarted = true
                 continue
             }
 
-            if char.isWhitespace {
+            if scalar.properties.isWhitespace {
                 if tokenStarted {
-                    tokens.append(current)
-                    current = ""
+                    tokens.append(String(current))
+                    current = String.UnicodeScalarView()
                     tokenStarted = false
                 }
                 continue
             }
 
-            current.append(char)
+            current.append(scalar)
             tokenStarted = true
         }
 
@@ -498,7 +504,7 @@ struct EtcdCommandParser {
         }
 
         if tokenStarted {
-            tokens.append(current)
+            tokens.append(String(current))
         }
 
         return tokens
@@ -508,6 +514,13 @@ struct EtcdCommandParser {
 // MARK: - Flag Parsing
 
 private struct ParsedFlags {
+    private static let flagsTakingValue: Set<String> = [
+        "cacert", "cert", "command-timeout", "consistency", "dial-timeout", "discovery-srv",
+        "discovery-srv-name", "endpoints", "keepalive-time", "keepalive-timeout", "key", "lease",
+        "limit", "max-create-rev", "max-mod-rev", "min-create-rev", "min-mod-rev", "order",
+        "password", "rev", "sort-by", "timeout", "user", "write-out"
+    ]
+
     private var booleanFlags: Set<String> = []
     private var valueFlags: [String: String] = [:]
 
@@ -523,7 +536,8 @@ private struct ParsedFlags {
                     let key = String(flagContent[flagContent.startIndex..<equalsIndex])
                     let value = String(flagContent[flagContent.index(after: equalsIndex)...])
                     valueFlags[key] = value
-                } else if index + 1 < tokens.count, !tokens[index + 1].hasPrefix("--") {
+                } else if Self.flagsTakingValue.contains(flagContent), index + 1 < tokens.count,
+                          !tokens[index + 1].hasPrefix("--") {
                     valueFlags[flagContent] = tokens[index + 1]
                     index += 1
                 } else {

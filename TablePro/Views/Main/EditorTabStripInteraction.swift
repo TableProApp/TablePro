@@ -200,6 +200,11 @@ internal struct EditorTabCommands {
     internal let moveBy: (UUID, Int) -> Void
     internal let tearOff: (UUID) -> Void
     internal let canTearOff: (UUID) -> Bool
+    internal let moveToConnection: (UUID) -> Void
+    /// Whether the tab's kind can ever move, which decides whether the item is shown at all.
+    internal let offersMoveToConnection: (UUID) -> Bool
+    /// Whether it can move right now, which decides whether the shown item is dimmed.
+    internal let canMoveToConnection: (UUID) -> Bool
     /// The pointer's owner sets the view's tooltip from this, because the tab's own `.help` never
     /// sees a mouse now.
     internal let tooltip: (UUID) -> String

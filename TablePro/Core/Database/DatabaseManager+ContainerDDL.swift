@@ -197,7 +197,7 @@ extension DatabaseManager {
                     rolledBack = true
                 } catch {
                     DatabaseManager.logger.error(
-                        "Rollback failed after container DDL error: \(error.localizedDescription, privacy: .public)"
+                        "Rollback failed after container DDL error: \(error.publicLogShape, privacy: .public)"
                     )
                 }
             }

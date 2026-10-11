@@ -11,7 +11,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Query tab reordering")
 struct QueryTabReorderTests {
     private func makeManager(_ count: Int) -> QueryTabManager {
         let manager = QueryTabManager()

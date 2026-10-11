@@ -13,61 +13,43 @@ import TableProPluginKit
 // MARK: - Schema Changes
 
 extension DatabaseManager {
-    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction of their own,
-    /// on the schema change route rather than the session driver a query tab may have left
-    /// mid-transaction. The connection, database and schema all come from the editing tab's
-    /// own scope, never from ambient session state that another window or tab can move.
+    /// Execute schema statements (ALTER TABLE, CREATE INDEX, etc.) on the schema change route rather
+    /// than the session driver a query tab may have left mid-transaction, in a transaction of their
+    /// own only where the engine rolls DDL back. The connection, database and schema all come from
+    /// the editing tab's own scope, never from ambient session state that another window or tab can
+    /// move.
     ///
-    /// Authorization sits between two scoped blocks rather than inside one: it awaits a
-    /// confirmation sheet and Touch ID, and holding the connection's driver gate across a
-    /// human prompt would freeze every other tab on that connection.
+    /// Authorization sits outside the scoped block: it awaits a confirmation sheet and Touch ID,
+    /// and holding the connection's driver gate across a human prompt would freeze every other
+    /// tab on that connection.
+    ///
+    /// The gate's sheet is the only confirmation a save gets. A refusal throws
+    /// `ExecutionGateError.denied` and a Cancel throws `.cancelledByUser`, so the caller can keep
+    /// the edits staged and stay quiet about a choice the user just made.
+    ///
+    /// The driver is asked `schemaChangeRefusalBeforeWriting` on the same connection, after the
+    /// user has confirmed and before the first statement, which is the only point a check that
+    /// reads the data belongs: SQL Preview composes the same script and must not pay for it. It is
+    /// asked `schemaChangeShortfallAfterWriting` after the last one, because a statement that
+    /// succeeds over many rows can still miss one another client wrote while it ran.
+    ///
+    /// A save that fails once its first statement has started reports the table changed, as a
+    /// successful one does. MongoDB keeps every document an `updateMany` changed before it stopped,
+    /// and MySQL, MariaDB and Oracle commit each DDL statement as it runs, so the rows on screen
+    /// can describe a table that has moved on.
     func executeSchemaChanges(
-        tableName: String,
-        changes: [SchemaChange],
+        _ script: SchemaChangeScript,
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let route = schemaChangeRoute(for: scope)
+        let statements = script.statements
 
-        let statements = try await withScopedDriver(
-            scope: scope, route: route, cancellation: .untracked
-        ) { driver in
-            let pkConstraintName = await Self.fetchPrimaryKeyConstraintName(
-                tableName: tableName,
-                databaseType: databaseType,
-                changes: changes,
-                driver: driver
-            )
-            guard let resolvedPluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-                throw DatabaseError.unsupportedOperation
-            }
-            let generator = SchemaStatementGenerator(
-                tableName: tableName,
-                primaryKeyConstraintName: pkConstraintName,
-                pluginDriver: resolvedPluginDriver
-            )
-            return try generator.generate(changes: changes)
-        }
-
-        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
-        let schemaKind: OperationKind =
-            QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
-            ? .destructiveQuery : .schemaMutation
-        let authorization = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: scope.connectionId,
-                databaseType: databaseType,
-                sql: combinedSQL,
-                kind: schemaKind,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Apply Schema Changes")
-            )
-        )
-        guard case .authorized = authorization else {
-            throw DatabaseError.queryFailed(
-                authorization.deniedReason ?? String(localized: "Schema change was not authorized")
-            )
+        let request = Self.schemaChangeAuthorizationRequest(statements, databaseType: databaseType, scope: scope)
+        let schemaKind = request.kind
+        if let denial = await gate.authorize(request).denialError {
+            throw denial
         }
 
         let executionTimes: [TimeInterval]
@@ -77,12 +59,13 @@ extension DatabaseManager {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                let useTransaction = driver.supportsTransactions
+                try await Self.refuseBeforeWriting(script, scope: scope, on: driver)
+                let useTransaction = Self.wrapsDDLInTransaction(driver)
                 if useTransaction {
                     try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
                 }
+                var measured: [TimeInterval] = []
                 do {
-                    var measured: [TimeInterval] = []
                     for stmt in statements {
                         let startedAt = Date()
                         _ = try await driver.execute(query: stmt.sql)
@@ -91,7 +74,6 @@ extension DatabaseManager {
                     if useTransaction {
                         try await driver.commitTransaction()
                     }
-                    return measured
                 } catch {
                     if useTransaction {
                         do {
@@ -100,9 +82,17 @@ extension DatabaseManager {
                             Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
                         }
                     }
-                    throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
+                    throw SchemaChangeFailedAfterWriting(message: "Schema change failed: \(error.localizedDescription)")
                 }
+                try await Self.confirmFinished(script, scope: scope, on: driver)
+                return measured
             }
+        } catch let refusal as SchemaOperationRefusedError {
+            throw refusal
+        } catch let failure as SchemaChangeFailedAfterWriting {
+            Self.reportCatalogChangeAfterFailure(in: scope)
+            reportSavedChange(of: script, in: scope)
+            throw DatabaseError.queryFailed(failure.message)
         } catch {
             Self.reportCatalogChangeAfterFailure(in: scope)
             throw error
@@ -125,10 +115,108 @@ extension DatabaseManager {
             )
         }
 
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
+        reportSavedChange(of: script, in: scope)
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
         )
+    }
+
+    /// The rule ContainerDDL and Compare sync already follow. Where DDL commits on its own, a wrap
+    /// undoes nothing, and on Teradata it turns every statement after the first DDL into error 3932.
+    nonisolated static func wrapsDDLInTransaction(_ driver: DatabaseDriver) -> Bool {
+        driver.supportsTransactions && driver.supportsTransactionalDDL
+    }
+
+    /// A save that only set the comment changed no column, so it is announced as a comment change.
+    private func reportSavedChange(of script: SchemaChangeScript, in scope: DatabaseScope) {
+        guard script.setsCommentOnly else {
+            reportTableDefinitionChange(table: script.tableName, in: scope)
+            return
+        }
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: scope.connectionId, scope: scope, name: script.tableName, kind: .comment)
+        )
+    }
+
+    /// What the gate is asked before a save runs, built apart from the run so a test can put it to
+    /// the real gate at every Safe Mode level.
+    nonisolated static func schemaChangeAuthorizationRequest(
+        _ statements: [SchemaStatement],
+        databaseType: DatabaseType,
+        scope: DatabaseScope
+    ) -> OperationRequest {
+        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+        return OperationRequest(
+            connectionId: scope.connectionId,
+            databaseType: databaseType,
+            sql: combinedSQL,
+            kind: schemaOperationKind(for: statements, combinedSQL: combinedSQL, databaseType: databaseType),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Apply Schema Changes")
+        )
+    }
+
+    /// Tells everything that remembers the table's definition that it changed: the session's driver,
+    /// which may keep what it learned about the columns, and every window, whose tabs on the table
+    /// reload or are marked to reload their rows and structure. Addressed by the table, so a tab on
+    /// another table in the same database is left alone.
+    func reportTableDefinitionChange(table: String, in scope: DatabaseScope) {
+        activeSessions[scope.connectionId]?.driver?.tableDefinitionDidChange(table: table, schema: scope.schema)
+        AppCommands.shared.objectChanged.send(
+            DatabaseObjectChange(connectionId: scope.connectionId, scope: scope, name: table, kind: .structure)
+        )
+    }
+
+    /// Destructive when the text reads that way or when any statement was generated as one. The
+    /// text alone cannot see that `ALTER COLUMN .. TYPE`, `MODIFY COLUMN .. NOT NULL` or an added
+    /// `CHECK` can lose or refuse existing rows, or that a removed MongoDB field, an `updateMany`
+    /// with `$unset`, drops data. A destructive kind is confirmed at every Safe Mode level, Silent
+    /// included.
+    nonisolated static func schemaOperationKind(
+        for statements: [SchemaStatement],
+        combinedSQL: String,
+        databaseType: DatabaseType
+    ) -> OperationKind {
+        let destructiveText = QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
+        return destructiveText || statements.contains(where: \.isDestructive) ? .destructiveQuery : .schemaMutation
+    }
+
+    nonisolated private static func refuseBeforeWriting(
+        _ script: SchemaChangeScript,
+        scope: DatabaseScope,
+        on driver: DatabaseDriver
+    ) async throws {
+        let refusal = try await driver.schemaChangeRefusalBeforeWriting(
+            table: script.tableName,
+            schema: scope.schema,
+            operations: script.operations,
+            review: script.review
+        )
+        if let refusal {
+            throw SchemaOperationRefusedError(reason: refusal)
+        }
+    }
+
+    nonisolated private static func confirmFinished(
+        _ script: SchemaChangeScript,
+        scope: DatabaseScope,
+        on driver: DatabaseDriver
+    ) async throws {
+        let shortfall: String?
+        do {
+            shortfall = try await driver.schemaChangeShortfallAfterWriting(
+                table: script.tableName,
+                schema: scope.schema,
+                operations: script.operations,
+                review: script.review
+            )
+        } catch {
+            throw SchemaChangeFailedAfterWriting(message: error.localizedDescription)
+        }
+        if let shortfall {
+            throw SchemaChangeFailedAfterWriting(message: shortfall)
+        }
     }
 
     /// Run a Create Table draft's statements, on the same isolated route and in the same shape as
@@ -141,13 +229,14 @@ extension DatabaseManager {
     func executeCreateTable(
         statements: [String],
         databaseType: DatabaseType,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         guard !statements.isEmpty else { return }
         let route = schemaChangeRoute(for: scope)
         let script = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
 
-        let authorization = await ExecutionGateProvider.shared.authorize(
+        let authorization = await gate.authorize(
             OperationRequest(
                 connectionId: scope.connectionId,
                 databaseType: databaseType,
@@ -171,12 +260,12 @@ extension DatabaseManager {
                 route: route,
                 cancellation: .protectedWrite
             ) { driver in
-                let useTransaction = driver.supportsTransactions && statements.count > 1
+                let useTransaction = Self.wrapsDDLInTransaction(driver) && statements.count > 1
                 if useTransaction {
                     try await driver.beginTransaction(mode: .readWrite)
                 }
+                var measured: [TimeInterval] = []
                 do {
-                    var measured: [TimeInterval] = []
                     for statement in statements {
                         let startedAt = Date()
                         _ = try await driver.execute(query: statement)
@@ -193,6 +282,8 @@ extension DatabaseManager {
                         } catch {
                             Self.logger.error("Rollback failed after create table error: \(error.localizedDescription)")
                         }
+                    } else if !measured.isEmpty {
+                        throw CreateTableIncompleteError(message: error.localizedDescription)
                     }
                     throw error
                 }
@@ -229,59 +320,24 @@ extension DatabaseManager {
             .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
         )
     }
+}
 
-    /// Query the actual primary key constraint name for PostgreSQL.
-    /// Returns nil if the database is not PostgreSQL, no PK modification is pending,
-    /// or the query fails (caller falls back to `{table}_pkey` convention).
-    private static func fetchPrimaryKeyConstraintName(
-        tableName: String,
-        databaseType: DatabaseType,
-        changes: [SchemaChange],
-        driver: DatabaseDriver
-    ) async -> String? {
-        // Only needed for PostgreSQL PK modifications
-        guard databaseType == .postgresql || databaseType == .redshift
-            || databaseType == .cockroachdb || databaseType == .duckdb else { return nil }
-        guard
-            changes.contains(where: {
-                if case .modifyPrimaryKey = $0 { return true }
-                return false
-            })
-        else {
-            return nil
-        }
+/// Create Table ran its CREATE outside a transaction and a later statement, such as an index or the
+/// comment, failed: the table exists, so running the draft again would only fail on its name.
+struct CreateTableIncompleteError: LocalizedError {
+    let message: String
 
-        let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
-        let schema: String
-        if let schemaDriver = driver as? SchemaSwitchable,
-           let escaped = schemaDriver.escapedSchema {
-            schema = escaped
-        } else {
-            schema = "public"
-        }
-        let query = """
-            SELECT con.conname
-            FROM pg_constraint con
-            JOIN pg_class rel ON rel.oid = con.conrelid
-            JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-            WHERE rel.relname = '\(escapedTable)'
-              AND nsp.nspname = '\(schema)'
-              AND con.contype = 'p'
-            LIMIT 1
-            """
+    var errorDescription: String? { message }
+}
 
-        do {
-            let result = try await driver.execute(query: query)
-            if let row = result.rows.first, let name = row[0].asText, !name.isEmpty {
-                return name
-            }
-        } catch {
-            // Query failed - fall back to convention in SchemaStatementGenerator
-            Self.logger.warning(
-                "Failed to query PK constraint name for '\(tableName)': \(error.localizedDescription)"
-            )
-        }
+/// A schema save that stopped once its statements had started to run, so the table may have
+/// changed even though the save did not finish.
+private struct SchemaChangeFailedAfterWriting: Error {
+    let message: String
+}
 
-        return nil
+private extension SchemaChangeScript {
+    var setsCommentOnly: Bool {
+        !statements.isEmpty && statements.allSatisfy(\.setsComment)
     }
 }

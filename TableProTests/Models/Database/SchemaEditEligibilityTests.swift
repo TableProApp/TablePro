@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Schema Edit Eligibility")
 struct SchemaEditEligibilityTests {
     private func context(
         supportsCreateSchema: Bool = true,

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("OpenAIResponsesProvider request encoding")
 struct OpenAIResponsesProviderEncodingTests {
     @Test("encodeToolSpec emits flat shape with strict at top level")
     func toolSpecShape() throws {

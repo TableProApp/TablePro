@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Editor tab detach policy")
 struct EditorTabDetachPolicyTests {
     @Test("A tab among others, with nothing pending, on a live connection, can be detached")
     func ordinaryTabDetaches() {

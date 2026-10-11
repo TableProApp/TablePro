@@ -14,9 +14,9 @@ import Foundation
 internal enum PaginationCapability: Equatable, Sendable {
     /// The engine skips rows with OFFSET and returns as many as it is asked for.
     case offset
-    /// The engine cannot skip rows and returns at most `maximumRows` from one statement, so the
-    /// only rows it can show are the leading ones.
-    case leadingRowsOnly(maximumRows: Int)
+    /// The engine cannot skip rows, so a statement the app writes can only read the leading ones. A non-nil
+    /// `maximumRows` is also the most one statement returns; nil means the engine caps nothing.
+    case leadingRowsOnly(maximumRows: Int?)
 
     var allowsSeeking: Bool {
         if case .offset = self { return true }
@@ -26,6 +26,14 @@ internal enum PaginationCapability: Equatable, Sendable {
     var maximumRows: Int? {
         if case .leadingRowsOnly(let maximumRows) = self { return maximumRows }
         return nil
+    }
+
+    /// CQL has no `OFFSET`, but a driver that builds and runs its own browse walks its paging state to any row. So
+    /// an engine that cannot skip rows and caps nothing pages through such a plugin, and reads only its leading
+    /// rows through an older one that leaves the query to the app. A ceiling still holds whoever builds the query.
+    func resolved(pluginBuildsBrowse: Bool) -> PaginationCapability {
+        guard pluginBuildsBrowse, self == .leadingRowsOnly(maximumRows: nil) else { return self }
+        return .offset
     }
 
     func clampedRowCount(_ requested: Int) -> Int {

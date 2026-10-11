@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("History row tints on a selection fill")
 @MainActor
 struct HistoryRowTintTests {
     private func entry(wasSuccessful: Bool) -> QueryHistoryEntry {
@@ -91,8 +90,8 @@ struct HistoryRowTintTests {
     /// A connection colour is a stored value, so it stayed itself on the fill. Green is the clearest
     /// of the palette to count against an accent-blue background.
     @available(macOS 14.0, *)
-    @Test("The connection dot leaves the accent fill when the row is emphasized")
-    func connectionDotAdaptsToProminence() {
+    @Test("The connection glyph leaves the accent fill when the row is emphasized")
+    func connectionGlyphAdaptsToProminence() {
         let label = HistoryConnectionLabel(name: "Chinook", color: .green)
 
         let standard = offTintPixels(

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Bounded query reads stop at the row cap")
 struct BoundedQueryTests {
 
     @Test("Stops the producer once the cap is exceeded instead of draining the whole result")
@@ -105,7 +104,6 @@ struct BoundedQueryTests {
     }
 }
 
-@Suite("PluginBoundedStream collector")
 struct PluginBoundedStreamTests {
 
     @Test("Treats a zero or negative cap as one row")

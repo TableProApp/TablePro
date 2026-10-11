@@ -82,6 +82,6 @@ struct TableProMcpBridge {
             )
         )
         guard let data = try? JsonRpcCodec.encodeLine(envelope) else { return }
-        FileHandle.standardOutput.write(data)
+        try? DescriptorWrite.allBytes(data, to: FileHandle.standardOutput.fileDescriptor)
     }
 }

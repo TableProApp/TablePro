@@ -12,14 +12,16 @@ extension AIChatViewModel {
 
         inputText = message.plainText
         attachedContext = message.blocks.compactMap { block in
-            if case .attachment(let item) = block.kind { return item }
-            return nil
+            guard case .attachment(let item) = block.kind else { return nil }
+            if case .queryContext = item { return nil }
+            return item
         }
         messages.removeSubrange(idx...)
         persistCurrentConversation()
     }
 
     func resolveTurnForWire(_ turn: ChatTurn) async -> ChatTurnWire {
+        await materializeQueryContexts(in: turn)
         let snapshot = turn.wireSnapshot
         let attachments = snapshot.blocks.compactMap { block -> ContextItem? in
             if case .attachment(let item) = block.kind { return item }
@@ -62,7 +64,7 @@ extension AIChatViewModel {
         case .currentQuery(let text):
             let snapshot = text.isEmpty ? (currentQuery ?? "") : text
             guard !snapshot.isEmpty else { return nil }
-            return "## Current Query\n```\n\(snapshot)\n```"
+            return "## Current Query\n" + MarkdownFence.wrap(snapshot)
         case .queryResult(let summary):
             let snapshot = summary.isEmpty ? (queryResults ?? "") : summary
             guard !snapshot.isEmpty else { return nil }
@@ -71,6 +73,8 @@ extension AIChatViewModel {
             return resolveSavedQueryAttachment(id: id, fallbackName: name)
         case .file:
             return nil
+        case .queryContext(let attachment):
+            return attachment.rendered
         }
     }
 
@@ -80,7 +84,7 @@ extension AIChatViewModel {
         let header = displayName.isEmpty
             ? String(localized: "Saved Query")
             : "\(String(localized: "Saved Query")): \(displayName)"
-        return "## \(header)\n```sql\n\(favorite.query)\n```"
+        return "## \(header)\n" + MarkdownFence.wrap(favorite.query, language: "sql")
     }
 
     private func resolveSchemaAttachment() -> String? {

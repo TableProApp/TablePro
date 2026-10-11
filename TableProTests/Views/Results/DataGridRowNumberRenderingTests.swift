@@ -114,10 +114,29 @@ struct DataGridRowNumberRenderingTests {
             tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
         }
 
+        var rowNumberWidth: CGFloat {
+            tableView.rect(ofColumn: rowNumberColumn).width
+        }
+
         /// Through `scroll(_:)`, which moves the header with the rows.
         func scroll(toX x: CGFloat) {
             tableView.scroll(NSPoint(x: x, y: scrollView.contentView.bounds.origin.y))
             scrollView.layoutSubtreeIfNeeded()
+        }
+
+        /// A sideways bounce past the leading edge. `scroll(_:)` clamps to the document, and moving
+        /// the rows' clip view leaves the header's where it was, so both are put at the negative
+        /// origin directly, the way the bounce leaves them.
+        @discardableResult
+        func bounce(toX x: CGFloat) throws -> NSClipView {
+            let clip = scrollView.contentView
+            clip.scroll(to: NSPoint(x: x, y: clip.bounds.origin.y))
+            scrollView.reflectScrolledClipView(clip)
+            let headerClip = try #require(header.superview as? NSClipView)
+            headerClip.scroll(to: NSPoint(x: x, y: headerClip.bounds.origin.y))
+            try #require(clip.bounds.minX == x, "the rows' clip view was clamped back")
+            try #require(headerClip.bounds.minX == x, "the header's clip view was clamped back")
+            return headerClip
         }
 
         /// Far enough down that the strip's own drawing reaches past the top of the viewport, which
@@ -528,6 +547,159 @@ struct DataGridRowNumberRenderingTests {
         let even = try #require(rows.first(where: { $0.isMultiple(of: 2) }).flatMap { bodies[$0] })
         let odd = try #require(rows.first(where: { !$0.isMultiple(of: 2) }).flatMap { bodies[$0] })
         #expect(!matches(even, odd), "both stripes drew \(even)")
+    }
+
+    // MARK: - Bounced past the leading edge
+
+    /// A bounce slides the real row-number column out from under the pinned strip and heading, so
+    /// any "#" or number the column still paints shows as a second row-number column beside them.
+    @Test("Bounced past the leading edge, the header shows the '#' only at the pinned heading")
+    func bouncedHeaderShowsTheTitleOnce() throws {
+        let grid = makeGrid()
+        let headerClip = try grid.bounce(toX: -2 * grid.rowNumberWidth)
+        let pinned = try #require(grid.header.pinnedRowNumberHeadingRect)
+        let heading = grid.header.headerRect(ofColumn: grid.rowNumberColumn)
+        #expect(pinned.minX == headerClip.bounds.minX)
+        try #require(pinned.maxX <= heading.minX, "the pinned heading still covers the heading it pins")
+
+        let raster = try #require(Raster(of: grid.header, in: grid.header.visibleRect))
+        let pinnedBackground = try #require(raster.color(at: NSPoint(x: pinned.minX + 2, y: pinned.minY + 3)))
+        let background = try #require(raster.color(at: NSPoint(x: heading.minX + 2, y: heading.minY + 3)))
+
+        #expect(
+            raster.inkPixels(in: Self.titleArea(of: pinned), unlike: pinnedBackground) > 0,
+            "the pinned heading lost its title"
+        )
+        #expect(
+            raster.inkPixels(in: Self.interior(of: heading), unlike: background) == 0,
+            "the heading the bounce uncovered shows a second '#'"
+        )
+    }
+
+    @Test("Bounced past the leading edge, the uncovered row-number column shows no number")
+    func bouncedRowNumberColumnShowsNoNumber() throws {
+        let grid = makeGrid()
+        try grid.bounce(toX: -2 * grid.rowNumberWidth)
+        let row = 2
+        let rowView = try #require(grid.tableView.rowView(atRow: row, makeIfNecessary: false))
+        let cell = try #require(
+            grid.tableView.view(atColumn: grid.rowNumberColumn, row: row, makeIfNecessary: false) as? NSTableCellView
+        )
+        try #require(cell.isDescendant(of: rowView), "the row-number cell is not mounted in its row")
+        try #require(cell.textField?.stringValue == "\(row + 1)")
+
+        let column = rowView.convert(
+            grid.tableView.rect(ofColumn: grid.rowNumberColumn).intersection(grid.tableView.rect(ofRow: row)),
+            from: grid.tableView
+        )
+        let raster = try #require(Raster(of: rowView, in: rowView.bounds))
+        let stripe = try #require(raster.color(at: NSPoint(x: column.minX + 2, y: column.midY)))
+        /// Short of the trailing edge, where the first data column's separator stands.
+        let numberArea = NSRect(x: column.minX + 1, y: column.minY + 2, width: column.width - 4, height: column.height - 4)
+
+        #expect(raster.inkPixels(in: numberArea, unlike: stripe) == 0)
+    }
+
+    /// The number stops painting but stays the row's only accessible number. `isHidden` would have
+    /// taken the static text out of the cell along with the ink.
+    @Test("The row-number cell still exposes its number to accessibility")
+    func rowNumberCellKeepsItsAccessibleNumber() throws {
+        let grid = makeGrid()
+        let row = 2
+        let cell = try #require(
+            grid.tableView.view(atColumn: grid.rowNumberColumn, row: row, makeIfNecessary: false) as? NSTableCellView
+        )
+        let texts = (cell.accessibilityChildren() ?? [])
+            .compactMap { $0 as? NSAccessibilityProtocol }
+            .filter { $0.accessibilityRole() == .staticText }
+
+        #expect(texts.map { $0.accessibilityValue() as? String } == ["\(row + 1)"])
+    }
+
+    /// A row dragged from the body builds its image from the views the row mounts, and the row-number
+    /// cell is the only one. Taken at the field's zero alpha, that image was empty.
+    @Test("A row drag image still shows the row number")
+    func rowDragImageShowsTheNumber() throws {
+        let grid = makeGrid()
+        let cell = try #require(
+            grid.tableView.view(atColumn: grid.rowNumberColumn, row: 2, makeIfNecessary: false) as? NSTableCellView
+        )
+        let field = try #require(cell.textField)
+        let ink = cell.draggingImageComponents
+            .compactMap { ($0.contents as? NSImage)?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+            .map(Self.opaquePixelCount(in:))
+            .reduce(0, +)
+
+        #expect(ink > 0)
+        #expect(field.alphaValue == 0)
+    }
+
+    private static func opaquePixelCount(in image: CGImage) -> Int {
+        let width = image.width
+        let height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return 0 }
+        return stride(from: 3, to: pixels.count, by: 4).filter { pixels[$0] > 0 }.count
+    }
+
+    /// At rest the pinned heading lies over the real one and is still the pass that paints the "#".
+    /// It has to record that it did: a bounce scrolls the header's clip view, which repaints only
+    /// the band it exposes, so the "#" painted at rest is cleared only through the recorded rect.
+    @Test("At rest the header shows the '#', painted by the pinned heading")
+    func headerShowsTheTitleAtRest() throws {
+        let grid = makeGrid()
+        let heading = grid.header.headerRect(ofColumn: grid.rowNumberColumn)
+        #expect(grid.header.pinnedRowNumberHeadingRect == heading)
+
+        let raster = try #require(Raster(of: grid.header, in: grid.header.visibleRect))
+        let background = try #require(raster.color(at: NSPoint(x: heading.minX + 2, y: heading.minY + 3)))
+
+        #expect(raster.inkPixels(in: Self.titleArea(of: heading), unlike: background) > 0, "no '#' at rest")
+        #expect(grid.header.drawnPinnedHeadingRect == heading)
+    }
+
+    /// AppKit lays its translucent grey over the header's bounds only, so the band a bounce exposes
+    /// past them read as the bare fill: a darker strip beside the headings in dark mode.
+    @Test("Bounced past the leading edge, the band past the header's bounds matches a blank heading")
+    func bouncedOverhangMatchesABlankHeading() throws {
+        let grid = makeGrid(appearance: .darkAqua)
+        try grid.bounce(toX: -2 * grid.rowNumberWidth)
+        let pinned = try #require(grid.header.pinnedRowNumberHeadingRect)
+        let heading = grid.header.headerRect(ofColumn: grid.rowNumberColumn)
+        let overhang = NSRect(
+            x: pinned.maxX + 1,
+            y: heading.minY + 4,
+            width: heading.minX - pinned.maxX - 2,
+            height: heading.height - 8
+        )
+        try #require(overhang.width > 0, "the bounce exposed no band past the header's bounds")
+
+        let raster = try #require(Raster(of: grid.header, in: grid.header.visibleRect))
+        let blank = try #require(raster.color(at: NSPoint(x: heading.minX + 2, y: heading.minY + 3)))
+
+        #expect(raster.inkPixels(in: overhang, unlike: blank) == 0)
+    }
+
+    private static func titleArea(of heading: NSRect) -> NSRect {
+        NSRect(x: heading.maxX - 16, y: heading.midY - 5, width: 13, height: 10)
+    }
+
+    /// Clear of the trailing divider and the bottom separator, which a blank heading still draws.
+    private static func interior(of heading: NSRect) -> NSRect {
+        NSRect(x: heading.minX + 1, y: heading.minY + 4, width: heading.width - 4, height: heading.height - 8)
     }
 
     // MARK: - Staying inside the grid

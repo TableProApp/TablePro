@@ -4,6 +4,7 @@ import TableProModels
 
 struct ConnectionListRow: View {
     @Environment(\.editMode) private var editMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let model: ConnectionListRowModel
     let isRenaming: Bool
@@ -44,22 +45,31 @@ struct ConnectionListRow: View {
         }
     }
 
+    private var lineLimit: Int? {
+        dynamicTypeSize.isAccessibilitySize ? nil : 1
+    }
+
+    private var contentLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
+
     private var content: some View {
-        HStack(spacing: 12) {
-            ConnectionTile(type: model.type, color: model.color)
+        contentLayout {
+            ConnectionTile(type: model.type, iconName: model.iconName, color: model.color)
 
             VStack(alignment: .leading, spacing: 3) {
                 title
                 Text(model.detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(lineLimit)
                 if model.groupLabel != nil || !model.tags.isEmpty {
-                    ConnectionRowLabels(model: model)
+                    ConnectionRowLabels(model: model, lineLimit: lineLimit)
                 }
             }
-
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if model.showsFavoriteMark {
                 Image(systemName: "star.fill")
@@ -94,19 +104,23 @@ struct ConnectionListRow: View {
         } else {
             Text(model.title)
                 .font(.body)
-                .lineLimit(1)
+                .lineLimit(lineLimit)
         }
     }
 }
 
 struct ConnectionTile: View {
     let type: DatabaseType
+    let iconName: String?
     let color: ConnectionColor
+
+    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 32
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 18
 
     var body: some View {
         let hasColor = color != .none
-        DatabaseIconView(type: type, size: 18, tint: hasColor ? .white : nil)
-            .frame(width: 32, height: 32)
+        DatabaseIconView(type: type, iconName: iconName, size: iconSize, tint: hasColor ? .white : nil)
+            .frame(width: side, height: side)
             .background(
                 hasColor
                     ? ConnectionColorPicker.swiftUIColor(for: color)
@@ -119,11 +133,12 @@ struct ConnectionTile: View {
 
 private struct ConnectionRowLabels: View {
     let model: ConnectionListRowModel
+    let lineLimit: Int?
 
     var body: some View {
         HStack(spacing: 10) {
             if let group = model.groupLabel {
-                ConnectionRowLabel(name: group.name, systemImage: "folder.fill", color: group.color)
+                ConnectionRowLabel(name: group.name, systemImage: LibraryGlyph.groupSymbol(group.iconName), color: group.color)
             }
             ForEach(model.tags, id: \.self) { tag in
                 ConnectionRowLabel(name: tag.name, systemImage: "tag.fill", color: tag.color)
@@ -134,7 +149,7 @@ private struct ConnectionRowLabels: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .lineLimit(1)
+        .lineLimit(lineLimit)
     }
 }
 
@@ -159,7 +174,7 @@ struct ConnectionGroupRowLabel: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "folder.fill")
+            Image(systemName: LibraryGlyph.groupSymbol(group.iconName))
                 .foregroundStyle(group.color == .none ? Color.secondary : ConnectionColorPicker.swiftUIColor(for: group.color))
                 .accessibilityHidden(true)
             Text(verbatim: group.name)

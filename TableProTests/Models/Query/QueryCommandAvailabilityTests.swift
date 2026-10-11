@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("QueryCommandAvailability")
 struct QueryCommandAvailabilityTests {
     @Test("A connected tab with text can run, explain, format and favorite")
     func liveTab() {
@@ -73,6 +72,71 @@ struct QueryCommandAvailabilityTests {
         #expect(commands.explainHint.contains("does not explain"))
     }
 
+    @Test("A language with no formatter does not offer Format, and says why")
+    func noFormatter() {
+        let commands = Self.make(supportsFormatting: false)
+
+        #expect(commands.canFormat == false)
+        #expect(commands.formatHint.contains("no formatter"))
+        #expect(commands.canRun)
+    }
+
+    /// Redis has no planner. It used to answer Explain with `DEBUG OBJECT`, which describes a stored
+    /// value rather than a statement and which Redis 7 refuses by default.
+    @Test("Redis declares no plan, so its bar does not offer Explain")
+    func redisOffersNoExplain() {
+        #expect(DatabaseType.redis.explainVariants.isEmpty)
+        #expect(Self.make(explainVariants: DatabaseType.redis.explainVariants).canExplain == false)
+    }
+
+    @Test("Explain needs a session, a statement, an idle tab and a declared variant")
+    func canExplainTruthTable() {
+        for isConnected in [true, false] {
+            for hasQueryText in [true, false] {
+                for isExecuting in [true, false] {
+                    for supportsExplain in [true, false] {
+                        let expected = isConnected && hasQueryText && !isExecuting && supportsExplain
+                        #expect(
+                            QueryCommandAvailability.canExplain(
+                                isConnected: isConnected,
+                                hasQueryText: hasQueryText,
+                                isExecuting: isExecuting,
+                                supportsExplain: supportsExplain
+                            ) == expected
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// The bar and the Query menu read the same rule, so the bar's own answer has to be that rule.
+    @Test("The bar's Explain is the shared rule, with a declared variant standing for support")
+    func barExplainIsTheSharedRule() {
+        let variant = ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")
+        for isConnected in [true, false] {
+            for hasQueryText in [true, false] {
+                for isExecuting in [true, false] {
+                    for variants in [[variant], []] {
+                        let commands = Self.make(
+                            isConnected: isConnected,
+                            hasQueryText: hasQueryText,
+                            isExecuting: isExecuting,
+                            explainVariants: variants
+                        )
+                        let shared = QueryCommandAvailability.canExplain(
+                            isConnected: isConnected,
+                            hasQueryText: hasQueryText,
+                            isExecuting: isExecuting,
+                            supportsExplain: !variants.isEmpty
+                        )
+                        #expect(commands.canExplain == shared)
+                    }
+                }
+            }
+        }
+    }
+
     /// A dimmed control that does not say why is the one thing a reader cannot act on.
     @Test("A blocked command says why in its hint")
     func hintsExplainWhyBlocked() {
@@ -106,19 +170,52 @@ struct QueryCommandAvailabilityTests {
         #expect(Self.make(hasQueryText: false, hasResults: true).canClearResults)
     }
 
+    /// A batch whose `COMMIT` is on the wire is running and cannot be stopped by anything. The HIG
+    /// asks not to offer a cancel that cannot act, so Stop dims and says why.
+    @Test("A batch that is committing offers no Stop, and the hint says why")
+    func committingBatchOffersNoStop() {
+        let commands = Self.make(isExecuting: true, isStoppable: false)
+
+        #expect(commands.canStop == false)
+        #expect(commands.canRun == false)
+        #expect(commands.stopHint.contains("The batch is committing and cannot be stopped."))
+    }
+
+    @Test("An ordinary running query offers Stop with no reason attached")
+    func runningQueryOffersStop() {
+        let commands = Self.make(isExecuting: true)
+
+        #expect(commands.canStop)
+        #expect(commands.stopHint.contains("committing") == false)
+    }
+
+    /// Nothing is running, so there is nothing to explain and nothing to dim: the hint must not
+    /// carry the committing reason around an idle bar.
+    @Test("An idle bar carries no stop reason")
+    func idleBarCarriesNoStopReason() {
+        let commands = Self.make(isExecuting: false, isStoppable: false)
+
+        #expect(commands.canStop == false)
+        #expect(commands.stopHint.contains("committing") == false)
+    }
+
     private static func make(
         isConnected: Bool = true,
         hasQueryText: Bool = true,
         isExecuting: Bool = false,
+        isStoppable: Bool = true,
         hasResults: Bool = true,
-        explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")]
+        explainVariants: [ExplainVariant] = [ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")],
+        supportsFormatting: Bool = true
     ) -> QueryCommandAvailability {
         QueryCommandAvailability(
             isConnected: isConnected,
             hasQueryText: hasQueryText,
             isExecuting: isExecuting,
+            isStoppable: isStoppable,
             hasResults: hasResults,
             explainVariants: explainVariants,
+            supportsFormatting: supportsFormatting,
             shortcutHint: { label, _ in label }
         )
     }

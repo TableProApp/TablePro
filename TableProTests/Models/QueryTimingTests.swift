@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginQueryTiming")
 struct QueryTimingTests {
     @Test("A driver that measured nothing reports the elapsed time as the database time")
     func elapsedIsTheFloor() {
@@ -68,7 +67,6 @@ struct QueryTimingTests {
     }
 }
 
-@Suite("QueryTimingBreakdown")
 struct QueryTimingBreakdownTests {
     @Test("Only the parts the driver measured become rows")
     func rowsFollowWhatWasMeasured() {

@@ -65,12 +65,12 @@ final class ServerDashboardViewModel: ObservableObject {
         provider != nil
     }
 
-    var canKillSessions: Bool {
-        provider?.killSessionSQL(processId: "0") != nil
+    func canKill(_ session: DashboardSession) -> Bool {
+        provider?.canKill(session) ?? false
     }
 
-    var canCancelQueries: Bool {
-        provider?.cancelQuerySQL(processId: "0") != nil
+    func canCancel(_ session: DashboardSession) -> Bool {
+        provider?.canCancel(session) ?? false
     }
 
     // MARK: - Initialization
@@ -117,8 +117,8 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Data Fetching
 
-    /// The provider is built once per server version, because it also answers `supportedPanels`,
-    /// `canKillSessions` and `canCancelQueries` for the toolbar between refreshes.
+    /// The provider is built once per server version, because it also answers `supportedPanels`
+    /// and whether each listed session can be terminated or cancelled between refreshes.
     private func adoptProvider(forServerVersion serverVersion: String?) {
         guard serverVersion != providerServerVersion || !hasAdoptedServerVersion else { return }
         providerServerVersion = serverVersion

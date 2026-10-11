@@ -13,10 +13,21 @@ import Foundation
 /// user answers. `runModal()` is intentional: the caller may already be on the main thread via
 /// `DispatchQueue.main.sync`, where `beginSheetModal` plus a semaphore would deadlock.
 internal final class PromptKeyboardInteractiveProvider: KeyboardInteractivePromptProvider, @unchecked Sendable {
+    private let attempt: SSHConnectionAttempt?
+    private let timeoutEndpoint: ConnectionTimeoutEndpoint?
+
+    internal init(
+        attempt: SSHConnectionAttempt? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil
+    ) {
+        self.attempt = attempt
+        self.timeoutEndpoint = timeoutEndpoint
+    }
+
     func provideResponses(for challenge: KeyboardInteractiveChallenge, attempt: Int) throws -> [String] {
         let responses = Thread.isMainThread
-            ? showAlert(for: challenge, attempt: attempt)
-            : DispatchQueue.main.sync { showAlert(for: challenge, attempt: attempt) }
+            ? try showAlert(for: challenge, promptAttempt: attempt)
+            : try DispatchQueue.main.sync { try showAlert(for: challenge, promptAttempt: attempt) }
 
         guard let responses else {
             throw SSHTunnelError.authenticationFailed(reason: .cancelled)
@@ -24,12 +35,15 @@ internal final class PromptKeyboardInteractiveProvider: KeyboardInteractivePromp
         return responses
     }
 
-    private func showAlert(for challenge: KeyboardInteractiveChallenge, attempt: Int) -> [String]? {
+    private func showAlert(
+        for challenge: KeyboardInteractiveChallenge,
+        promptAttempt: Int
+    ) throws -> [String]? {
         let alert = NSAlert()
-        alert.messageText = attempt == 0
+        alert.messageText = promptAttempt == 0
             ? String(localized: "SSH Verification Required")
             : String(localized: "SSH Verification Rejected")
-        alert.informativeText = informativeText(for: challenge, attempt: attempt)
+        alert.informativeText = informativeText(for: challenge, attempt: promptAttempt)
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "Connect"))
         alert.addButton(withTitle: String(localized: "Cancel"))
@@ -62,7 +76,28 @@ internal final class PromptKeyboardInteractiveProvider: KeyboardInteractivePromp
         alert.layout()
         alert.window.initialFirstResponder = fields.first
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let promptId: UUID?
+        if let timeoutEndpoint {
+            promptId = try attempt?.registerPrompt(for: timeoutEndpoint) {
+                if NSApp.modalWindow === alert.window {
+                    NSApp.abortModal()
+                }
+                alert.window.orderOut(nil)
+            }
+        } else {
+            promptId = nil
+        }
+        defer {
+            if let promptId {
+                attempt?.unregisterPrompt(promptId)
+            }
+        }
+
+        let response = alert.runModal()
+        if let timeoutEndpoint {
+            try attempt?.check(for: timeoutEndpoint)
+        }
+        guard response == .alertFirstButtonReturn else { return nil }
         return fields.map { $0.stringValue }
     }
 

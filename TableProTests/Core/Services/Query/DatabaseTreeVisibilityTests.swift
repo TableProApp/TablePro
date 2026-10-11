@@ -1,7 +1,6 @@
 @testable import TablePro
 import Testing
 
-@Suite("DatabaseTreeVisibility")
 struct DatabaseTreeVisibilityTests {
     private let databases: [DatabaseMetadata] = [
         .minimal(name: "analytics"),
@@ -144,5 +143,88 @@ struct DatabaseTreeVisibilityTests {
             showsSystem: false
         )
         #expect(visible == ["public"])
+    }
+
+    // MARK: - Schema filter
+
+    private let schemas = ["public", "sales", "hr", "audit", "pg_catalog"]
+    private let systemSchemas: Set<String> = ["pg_catalog"]
+
+    private func visibleSchemas(
+        selected: Set<String>,
+        active: String? = nil,
+        showsSystem: Bool = false,
+        pinned: Set<String> = []
+    ) -> [String] {
+        DatabaseTreeVisibility.visibleSchemas(
+            schemas,
+            systemSchemas: systemSchemas,
+            activeSchema: active,
+            showsSystem: showsSystem,
+            selected: selected,
+            pinned: pinned
+        )
+    }
+
+    @Test("A schema filter keeps the schemas it names and the active one")
+    func schemaFilterKeepsSelectionAndActive() {
+        #expect(visibleSchemas(selected: ["sales", "hr"], active: "public") == ["public", "sales", "hr"])
+    }
+
+    @Test("A schema holding a staged operation stays listed whatever the filter says")
+    func schemaFilterKeepsPinnedSchemas() {
+        #expect(visibleSchemas(selected: ["sales"], pinned: ["audit"]) == ["sales", "audit"])
+    }
+
+    @Test("A schema filter of hidden system schemas only is no filter")
+    func schemaFilterOfHiddenSystemSchemasShowsEverything() {
+        #expect(visibleSchemas(selected: ["pg_catalog"]) == ["public", "sales", "hr", "audit"])
+        #expect(DatabaseTreeVisibility.keptSchemas(
+            selected: ["pg_catalog"], schemas: schemas, systemSchemas: systemSchemas, showsSystem: false, activeSchema: "public"
+        ) == nil)
+    }
+
+    @Test("A schema filter of dropped schemas only is no filter")
+    func schemaFilterOfDroppedSchemasShowsEverything() {
+        #expect(visibleSchemas(selected: ["archive_2019"]) == ["public", "sales", "hr", "audit"])
+        #expect(DatabaseTreeVisibility.isFilteringSchemas(
+            selected: ["archive_2019"], schemas: schemas, systemSchemas: systemSchemas, showsSystem: false
+        ) == false)
+    }
+
+    @Test("While the schema list is unknown a selection counts as given, less hidden system names")
+    func schemaFilterWithUnknownList() {
+        #expect(DatabaseTreeVisibility.keptSchemas(
+            selected: ["archive_2019", "pg_catalog"], schemas: nil, systemSchemas: systemSchemas,
+            showsSystem: false, activeSchema: nil
+        ) == ["archive_2019"])
+    }
+
+    @Test("The kept set is nil for no filter and adds the active schema otherwise")
+    func keptSchemas() {
+        #expect(DatabaseTreeVisibility.keptSchemas(
+            selected: [], schemas: schemas, systemSchemas: systemSchemas, showsSystem: false, activeSchema: "public"
+        ) == nil)
+        #expect(DatabaseTreeVisibility.keptSchemas(
+            selected: ["sales"], schemas: schemas, systemSchemas: systemSchemas, showsSystem: false, activeSchema: "public"
+        ) == ["sales", "public"])
+        #expect(DatabaseTreeVisibility.keptSchemas(
+            selected: ["sales"], schemas: schemas, systemSchemas: systemSchemas, showsSystem: false, activeSchema: ""
+        ) == ["sales"])
+    }
+
+    @Test("The schema summary counts the selection, never the active schema it did not pick")
+    func schemaSummaryExcludesActiveSchema() {
+        let summary = DatabaseTreeVisibility.schemaSummary(
+            schemas: schemas, selected: ["sales", "hr"], systemSchemas: systemSchemas, showsSystem: false
+        )
+        #expect(summary == .init(shown: 2, total: 4))
+        #expect(DatabaseTreeVisibility.schemaFilterCandidates(schemas, systemSchemas: systemSchemas, showsSystem: true)
+            == schemas)
+    }
+
+    @Test("With system schemas shown, the schema filter selects them like any other")
+    func schemaFilterSelectsSystemSchemasWhenShown() {
+        #expect(visibleSchemas(selected: ["pg_catalog", "hr"], showsSystem: true) == ["hr", "pg_catalog"])
     }
 }

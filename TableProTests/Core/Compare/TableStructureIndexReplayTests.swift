@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Table structure index replay")
 struct TableStructureIndexReplayTests {
     private static let table = PluginTableInfo(name: "users", schema: "src", comment: nil)
 

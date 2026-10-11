@@ -9,7 +9,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Cloud SQL Auth Proxy pane view model")
 struct CloudSQLProxyPaneViewModelTests {
     @Test("disabled reports no issues")
     func disabledNoIssues() {
@@ -55,5 +54,13 @@ struct CloudSQLProxyPaneViewModelTests {
 
         viewModel.state.serviceAccountKeyJSON = "{\"type\":\"service_account\"}"
         #expect(viewModel.validationIssues.isEmpty)
+    }
+
+    @Test("The not-found caption is plain text that names the install command")
+    func binaryNotFoundMessageIsPlainText() {
+        let message = CloudSQLProxyPaneViewModel().binaryNotFoundMessage
+
+        #expect(!message.contains("`"))
+        #expect(message.contains("brew install cloud-sql-proxy"))
     }
 }

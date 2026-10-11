@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Editable index catalog spellings")
 struct IndexDefinitionCatalogSpellingTests {
     private static let keys = "USING btree (tenant_id, lower(email)) INCLUDE (name)"
     private static let predicate = "(m = 'a'::src.mood)"
@@ -75,6 +74,20 @@ struct IndexDefinitionCatalogSpellingTests {
         var type = Self.loaded()
         type.type = .hash
         #expect(type.ddlMethodAndKeys == nil)
+    }
+
+    @Test("A changed key prefix retires the key spelling")
+    func prefixEditRetiresTheKeySpelling() {
+        let keys = "(`v` DESC, `email`(20)) USING BTREE"
+        var index = EditableIndexDefinition.from(IndexInfo(
+            name: "i_desc", columns: ["v", "email"], isUnique: false, isPrimary: false, type: "BTREE",
+            columnPrefixes: ["email": 20], ddlMethodAndKeys: keys
+        ))
+        index.name = "i_desc_renamed"
+        #expect(index.ddlMethodAndKeys == keys)
+
+        index.columnPrefixes = ["email": 30]
+        #expect(index.ddlMethodAndKeys == nil)
     }
 
     @Test("Changing a field and changing it back restores the spelling")

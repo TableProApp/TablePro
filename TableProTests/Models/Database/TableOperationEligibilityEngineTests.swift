@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Table operation eligibility, engine dimension")
 struct TableOperationEligibilityEngineTests {
     private func ref(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(

@@ -19,7 +19,8 @@ extension MainContentCoordinator {
             schemaColumns: schema.columns,
             hiddenColumns: tab.columnLayout.hiddenColumns,
             primaryKeyColumns: schema.primaryKeys,
-            sortColumns: tab.sortState.columns.compactMap(\.columnName)
+            sortColumns: tab.sortState.columns.compactMap(\.columnName),
+            valueFilteredColumns: tab.valueFilter.activeColumns.compactMap { tab.valueFilter.columnName(forColumn: $0) }
         )
     }
 
@@ -61,16 +62,37 @@ extension MainContentCoordinator {
                     try await driver.fetchColumns(table: tableName, schema: scope.schema)
                 }
                 guard !columns.isEmpty else {
-                    columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
+                    columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .private(mask: .hash)); cannot scope")
                     return nil
                 }
                 return SchemaColumnStore.Entry(fetchedColumns: columns)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
-                columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 return nil
             }
         }
+    }
+
+    /// The metadata a load commits with its rows after it fetched the table's definition itself, and
+    /// the same definition's columns in place of the set a definition change dropped. A load that
+    /// started before the latest definition change still commits what it read, and the tab stays
+    /// marked, but its columns never reach the cache the next query builds its select list from.
+    func adoptLoadedDefinition(
+        _ schema: FetchedTableSchema?,
+        of tableName: String?,
+        in scope: DatabaseScope,
+        readBy claim: TabExecutionClaim
+    ) -> ParsedSchemaMetadata? {
+        guard let schema else { return nil }
+        if let tableName, !schema.columns.isEmpty,
+           tabSessionRegistry.definitionIsCurrent(asOf: claim.startedAt, for: claim.tabId) {
+            schemaColumns.store(
+                SchemaColumnStore.Entry(fetchedColumns: schema.columns),
+                for: schemaColumnsKey(tableName, scope: scope)
+            )
+        }
+        return parseSchemaMetadata(schema)
     }
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {

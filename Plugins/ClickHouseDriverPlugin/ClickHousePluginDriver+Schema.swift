@@ -10,13 +10,28 @@ import TableProPluginKit
 extension ClickHousePluginDriver {
     // MARK: - Schema Operations
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let sql = """
+    /// Names the database rather than taking the session's, so a caller asking about another one is
+    /// answered about the one it asked about. The export tree asks for every database over the one
+    /// connection it holds, and answering all of them from `currentDatabase()` listed the same tables
+    /// under every name.
+    ///
+    /// The name is a literal, so it takes the driver's own escaper. A ClickHouse literal reads
+    /// backslash escapes as well as doubled quotes, and a name is free to hold either: measured on
+    /// 24.8.14.39, a database created as ``CREATE DATABASE `trail\\` `` ended the statement with
+    /// `Code 62 SYNTAX_ERROR` under quote-only escaping, and one created as ``q\\' OR 1=1 -- ``
+    /// closed the literal early and listed every table on the server.
+    static func tableListSQL(schema: String?) -> String {
+        let database = schema.flatMap { $0.isEmpty ? nil : $0 }
+            .map { "'\(Self.escapeStringLiteral($0))'" } ?? "currentDatabase()"
+        return """
             SELECT name, engine FROM system.tables
-            WHERE database = currentDatabase() AND name NOT LIKE '.%'
+            WHERE database = \(database) AND name NOT LIKE '.%'
             ORDER BY name
             """
-        let result = try await execute(query: sql)
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        let result = try await execute(query: Self.tableListSQL(schema: schema))
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let engine = row[safe: 1]?.asText
@@ -218,8 +233,7 @@ extension ClickHousePluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let escapedTable = table.replacingOccurrences(of: "`", with: "``")
-        let sql = "SHOW CREATE TABLE `\(escapedTable)`"
+        let sql = "SHOW CREATE TABLE \(clickHouseQuotedIdentifier(table))"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.asText ?? ""
     }
@@ -348,13 +362,11 @@ extension ClickHousePluginDriver {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let escapedName = request.name.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "CREATE DATABASE `\(escapedName)`")
+        _ = try await execute(query: "CREATE DATABASE \(clickHouseQuotedIdentifier(request.name))")
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
+        _ = try await execute(query: "DROP DATABASE \(clickHouseQuotedIdentifier(name))")
     }
 
     /// Both sides are qualified with the same database, so this renames in place. Qualifying them
@@ -395,7 +407,6 @@ extension ClickHousePluginDriver {
         ORDER BY name
         """
     }
-
 }
 
 /// MATERIALIZED, ALIAS and EPHEMERAL are column kinds that store their expression in the same

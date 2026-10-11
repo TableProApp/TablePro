@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("DatabaseConnection externalAccess")
 struct DatabaseConnectionExternalAccessTests {
     @Test("Default value is readOnly")
     func defaultValueIsReadOnly() {

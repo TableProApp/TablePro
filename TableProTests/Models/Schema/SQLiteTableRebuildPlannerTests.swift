@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQLite Table Rebuild Planner")
 struct SQLiteTableRebuildPlannerTests {
     /// The statement SQLite stores for a table carrying every trap the rewrite has to survive: a
     /// comma inside a string default, a comma inside a type's parentheses, a comma inside a

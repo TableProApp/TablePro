@@ -6,7 +6,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL Generated Column Classification")
 struct MySQLGeneratedColumnClassificationTests {
     @Test("STORED GENERATED is generated")
     func storedGenerated() {
@@ -66,7 +65,6 @@ struct MySQLGeneratedColumnClassificationTests {
     }
 }
 
-@Suite("MySQL Identity Classification")
 struct MySQLIdentityClassificationTests {
     /// MySQL leaves `COLUMN_DEFAULT` null for an AUTO_INCREMENT column, so `Extra` is the only
     /// place the allocation is reported and the app read it as a column with no default.

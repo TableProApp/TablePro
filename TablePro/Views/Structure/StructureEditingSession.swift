@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProPluginKit
 
 /// Everything one tab's structure editor is, held outside the view that presents it.
@@ -33,6 +34,8 @@ import TableProPluginKit
 /// fetch is the only version of this that keeps the edits.
 @MainActor
 internal final class StructureEditingSession: ObservableObject {
+    static let logger = Logger(subsystem: "com.TablePro", category: "StructureEditingSession")
+
     /// The scope and table this session was opened against. A tab retargeted to another table gets
     /// a new session rather than inheriting edits staged against the old one.
     internal let identity: String
@@ -68,6 +71,13 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var ddlStatement: String = ""
     @Published internal var tabData = StructureTabDataState()
 
+    @Published internal var concurrentRefresh: MetadataLoadState<PluginConcurrentRefreshAvailability?> = .idle
+    private var concurrentRefreshRequest = 0
+
+    @Published internal private(set) var tableComment: MetadataLoadState<String?> = .idle
+
+    internal var loadedTableComment: String? { tableComment.value ?? nil }
+
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
     /// editors: one being on Indexes must not move the other, and neither should lose its place to
     /// a trip through the Data view.
@@ -76,7 +86,33 @@ internal final class StructureEditingSession: ObservableObject {
     @Published internal var sortState = SortState()
     @Published internal var sortDescriptor: StructureSortDescriptor?
     @Published internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
-    @Published internal var serverSupport = StructureServerSupport.unrestricted
+
+    /// A tab the server withdraws cannot stay selected, or the editor shows a grid for something
+    /// the server has none of and no segment matches the selection.
+    @Published internal var serverSupport = StructureServerSupport.unrestricted {
+        didSet {
+            guard !availableTabs.contains(selectedTab) else { return }
+            selectedTab = .columns
+        }
+    }
+
+    internal var availableTabs: [StructureTab] {
+        StructureTabAvailability.tabs(for: connection.type, serverSupport: serverSupport)
+    }
+
+    /// What a mount fetches: the sub-tabs the change manager is baselined from, then the one the
+    /// user left selected. A mount does not change the selection, so nothing else fetches that one,
+    /// and after `markStructureStale` or an apply it would go on showing the object as it was.
+    internal var tabsFetchedOnMount: [StructureTab] {
+        var tabs: [StructureTab] = [.columns, .indexes, .foreignKeys]
+        if availableTabs.contains(.checkConstraints) {
+            tabs.append(.checkConstraints)
+        }
+        if !tabs.contains(selectedTab) {
+            tabs.append(selectedTab)
+        }
+        return tabs
+    }
 
     /// What the bottom bar offers while this tab is showing its structure.
     ///
@@ -103,13 +139,19 @@ internal final class StructureEditingSession: ObservableObject {
     /// what the save has just re-fetched.
     @Published internal var lastAppliedAt: Date?
 
+    /// What every save from this tab is authorized through. A test supplies one whose prompts
+    /// answer themselves, because the real gate raises an application-modal alert that nothing on
+    /// a CI runner can dismiss.
+    internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
+
     internal init(
         identity: String,
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
         tableName: String,
-        objectKind: TableInfo.TableType = .table
+        objectKind: TableInfo.TableType = .table,
+        serverSupport: StructureServerSupport = .unrestricted
     ) {
         self.identity = identity
         self.connection = connection
@@ -117,6 +159,7 @@ internal final class StructureEditingSession: ObservableObject {
         self.schemaName = schemaName
         self.tableName = tableName
         self.objectKind = objectKind
+        self.serverSupport = serverSupport
         gridDelegate = StructureGridDelegate(
             structureChangeManager: changeManager,
             selectedTab: .columns,
@@ -131,6 +174,76 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal func markApplied() {
         appliedVersion += 1
+    }
+
+    /// A change made elsewhere while edits were staged here. Fetching it would re-baseline the change
+    /// manager and discard the edits without asking, so it waits for them to go. An apply fetches
+    /// everything again, which answers it; an undo or a discard leaves it to `settleOwedRefetch`.
+    internal private(set) var owesRefetch = false
+
+    /// The object changed outside this editor, so the next mount fetches it again. A session holding
+    /// staged edits keeps them and the baseline they were made against, and owes the fetch instead.
+    internal func markStructureStale() {
+        guard !changeManager.hasChanges else {
+            owesRefetch = true
+            return
+        }
+        markEveryTabStale()
+        hasLoaded = false
+    }
+
+    /// Answers a change owed from while edits were staged, once they are gone. True when it did, and
+    /// the structure on screen, if any, has to be fetched again now.
+    @discardableResult
+    internal func settleOwedRefetch() -> Bool {
+        guard owesRefetch, !changeManager.hasChanges else { return false }
+        markStructureStale()
+        return true
+    }
+
+    /// Every sub-tab is fetched again from here, which answers an owed change too.
+    internal func markEveryTabStale() {
+        tabData.markAllStale()
+        owesRefetch = false
+    }
+
+    internal func beginTableCommentLoad() {
+        tableComment = tableComment.enteringLoad
+    }
+
+    /// A saved comment is the loaded one from the moment the save lands, so a refetch that fails
+    /// afterwards keeps it rather than the text the save replaced.
+    internal func adoptWrittenTableComment(from changes: [SchemaChange]) {
+        for case .modifyTableComment(_, let new) in changes {
+            tableComment = .loaded(new)
+        }
+    }
+
+    internal func settleTableComment(_ outcome: MetadataFetchOutcome<String?>) {
+        tableComment = tableComment.settled(by: outcome, discardingValue: false)
+    }
+
+    internal func reloadConcurrentRefreshAvailability(
+        provider: any ScopedMetadataProviding = DatabaseManager.shared
+    ) async {
+        guard objectKind == .materializedView else { return }
+        concurrentRefreshRequest += 1
+        let request = concurrentRefreshRequest
+        concurrentRefresh = concurrentRefresh.enteringLoad
+        let loader = TableStructureLoader(scope: scope, tableName: tableName, provider: provider)
+        let outcome: MetadataFetchOutcome<PluginConcurrentRefreshAvailability?>
+        do {
+            outcome = .fetched(try await loader.concurrentRefreshAvailability())
+        } catch is CancellationError {
+            outcome = .cancelled
+        } catch {
+            Self.logger.error(
+                "Concurrent refresh check failed: \(error.publicLogShape, privacy: .public)"
+            )
+            outcome = .failed(error.localizedDescription)
+        }
+        guard request == concurrentRefreshRequest else { return }
+        concurrentRefresh = concurrentRefresh.settled(by: outcome, discardingValue: true)
     }
 
     /// Breaks the cycle the mounted view's wiring creates.

@@ -10,7 +10,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Data Change Models")
 struct DataChangeModelsTests {
 
     @Test("ChangeType equality - matching types")

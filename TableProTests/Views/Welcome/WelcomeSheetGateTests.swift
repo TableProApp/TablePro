@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("WelcomeSheetGate")
 struct WelcomeSheetGateTests {
     @Test("A first launch shows the sheet")
     func firstLaunch() {

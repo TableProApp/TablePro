@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Issue"
+  short_description: "Fix a TablePro issue at its cause, in one PR"
+  default_prompt: "Use $fix-issue to fix issue #1234 in TablePro."

@@ -13,10 +13,9 @@ import Testing
 /// seed list that runs when sync is switched on, and the encode and decode switches. A category
 /// in the first and missing from the rest is marked dirty, never encodes, never clears, and never
 /// reaches the user's other Mac, with nothing reporting a problem.
-@Suite("AppSettingsCategory parity")
 struct AppSettingsCategoryParityTests {
     private static let managerSource = sourceFile("TablePro/Core/Storage/AppSettingsManager.swift")
-    private static let syncSource = sourceFile("TablePro/Core/Sync/SyncCoordinator.swift")
+    private static let syncSource = sourceFile("TablePro/Core/Sync/Extensions/SyncCoordinator+Settings.swift")
 
     @Test("Every synced category can be encoded and decoded")
     func syncedCategoriesRoundTrip() throws {

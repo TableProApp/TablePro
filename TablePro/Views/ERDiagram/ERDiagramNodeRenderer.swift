@@ -14,8 +14,10 @@ enum ERDiagramNodeRenderer {
     private static var badgeXOffset: CGFloat { 14 * ERDiagramLayout.typeScale }
     private static var columnNameXOffset: CGFloat { 24 * ERDiagramLayout.typeScale }
     private static var typeRightMargin: CGFloat { 8 * ERDiagramLayout.typeScale }
+    private static var nameTypeGap: CGFloat { 8 * ERDiagramLayout.typeScale }
+    /// How much of a type stays readable beside a long name: enough for "varchar" or "timestam".
+    private static let typeFloorCharacters = 8
     private static let maxTableNameChars = 24
-    private static let maxTypeChars = 18
     private static let cornerRadius: CGFloat = 6
 
     private static var headerPointSize: CGFloat {
@@ -110,8 +112,8 @@ enum ERDiagramNodeRenderer {
         in context: CGContext
     ) {
         let rowHeight = ERDiagramLayout.columnRowHeight
-        let nameFont = NSFont.monospacedSystemFont(ofSize: columnNamePointSize * scale, weight: .regular)
-        let typeFont = NSFont.monospacedSystemFont(ofSize: columnTypePointSize * scale, weight: .regular)
+        let nameFont = columnNameFont(scale: scale)
+        let typeFont = columnTypeFont(scale: scale)
 
         for (index, column) in node.displayColumns.enumerated() {
             let rowY = dividerY + CGFloat(index) * rowHeight + rowHeight / 2
@@ -134,26 +136,70 @@ enum ERDiagramNodeRenderer {
                 )
             }
 
+            let widths = columnTextWidths(name: column.name, type: column.dataType, nodeWidth: rect.width)
             ERDiagramTextRenderer.draw(
                 column.name,
                 font: nameFont,
                 color: .labelColor,
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
                 anchor: .leading,
+                maxWidth: widths.name,
                 in: context
             )
 
-            let displayType = (column.dataType as NSString).length > maxTypeChars
-                ? String(column.dataType.prefix(maxTypeChars)) + "\u{2026}"
-                : column.dataType
             ERDiagramTextRenderer.draw(
-                displayType,
+                column.dataType,
                 font: typeFont,
                 color: .secondaryLabelColor,
                 at: CGPoint(x: rect.maxX - typeRightMargin, y: rowY),
                 anchor: .trailing,
+                maxWidth: widths.type,
                 in: context
             )
         }
+    }
+
+    private static func columnNameFont(scale: CGFloat) -> NSFont {
+        .monospacedSystemFont(ofSize: columnNamePointSize * scale, weight: .regular)
+    }
+
+    private static func columnTypeFont(scale: CGFloat) -> NSFont {
+        .monospacedSystemFont(ofSize: columnTypePointSize * scale, weight: .regular)
+    }
+
+    /// The widths a column row draws its name and type at, measured in the fonts the row uses.
+    ///
+    /// The name is drawn from the leading edge and the type to the trailing edge, so nothing kept
+    /// the two apart: a long name ran under its type ("shipping_addr" over "character varying(…").
+    /// They now share the row. The name comes first, because it is what a reader is looking for,
+    /// but it leaves the type at least its first few characters; the type then takes what is left.
+    static func columnTextWidths(name: String, type: String, nodeWidth: CGFloat) -> ERColumnTextWidths {
+        let scale = ERDiagramLayout.typeScale
+        let typeFont = columnTypeFont(scale: scale)
+        let typeFloor = ERDiagramTextRenderer.width(
+            of: String(repeating: "0", count: typeFloorCharacters), font: typeFont
+        )
+        return ERColumnTextWidths(
+            room: nodeWidth - columnNameXOffset - typeRightMargin,
+            gap: nameTypeGap,
+            name: ERDiagramTextRenderer.width(of: name, font: columnNameFont(scale: scale)),
+            type: ERDiagramTextRenderer.width(of: type, font: typeFont),
+            typeFloor: typeFloor
+        )
+    }
+}
+
+/// How one column row shares its room between the name and the type. Each width is the most that
+/// text may draw at; neither ever exceeds the text's own width, and the two plus the gap between
+/// them never exceed the room.
+struct ERColumnTextWidths: Equatable {
+    let name: CGFloat
+    let type: CGFloat
+
+    init(room: CGFloat, gap: CGFloat, name: CGFloat, type: CGFloat, typeFloor: CGFloat) {
+        let separation = type > 0 ? gap : 0
+        let nameRoom = max(0, room - separation - min(type, typeFloor))
+        self.name = min(name, nameRoom)
+        self.type = min(type, max(0, room - separation - self.name))
     }
 }

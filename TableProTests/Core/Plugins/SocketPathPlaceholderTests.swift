@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("Default Unix socket path per database type")
 struct SocketPathPlaceholderTests {
     @Test("MySQL and MariaDB use the mysqld socket")
     func mysqlFamilyUsesMysqldSocket() {
@@ -38,6 +37,20 @@ struct SocketPathPlaceholderTests {
     func typesWithoutSocketHaveNoDefault() {
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .sqlite) == nil)
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .clickhouse) == nil)
+    }
+
+    @Test("MySQL and MariaDB offer a socket on this Mac at the mysql client's default path")
+    func mysqlFamilyHasALocalSocket() {
+        #expect(PluginManager.shared.defaultLocalSocketPath(for: .mysql) == "/tmp/mysql.sock")
+        #expect(PluginManager.shared.defaultLocalSocketPath(for: .mariadb) == "/tmp/mysql.sock")
+    }
+
+    @Test("No other type offers a socket on this Mac")
+    func otherTypesHaveNoLocalSocket() {
+        let unknown = DatabaseType(rawValue: "FuturePlugin")
+        for type in [DatabaseType.tidb, .databend, .oceanbase, .postgresql, .redis, .sqlite, unknown] {
+            #expect(PluginManager.shared.defaultLocalSocketPath(for: type) == nil, "\(type.rawValue)")
+        }
     }
 
     @Test("Unknown type has no default")

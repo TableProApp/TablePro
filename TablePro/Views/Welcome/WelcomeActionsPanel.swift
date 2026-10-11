@@ -122,16 +122,16 @@ struct WelcomeActionsPanel: View {
 
     /// The badge follows entitlement and the support link follows whether anything has been paid,
     /// which are different questions: a license the server has not confirmed in 30 days still
-    /// pauses Pro features, and its owner is still not someone to ask for a purchase.
+    /// pauses paid features, and its owner is still not someone to ask for a purchase.
     @ViewBuilder
     private var licenseBadge: some View {
         switch licenseManager.status {
         case .active:
-            Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
+            Label(licenseManager.currentTier.displayName, systemImage: "checkmark.seal.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.green)
         case .validationFailed:
-            Label(String(localized: "Pro"), systemImage: "exclamationmark.seal.fill")
+            Label(licenseManager.currentTier.displayName, systemImage: "exclamationmark.seal.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.orange)
                 .help(String(localized: "License not verified in 30 days. Connect to the internet to check it."))

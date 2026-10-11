@@ -59,6 +59,10 @@ internal enum SupportLinks {
     /// from the pricing page, and the one the docs already send people to.
     internal static let account = URL(string: "https://tablepro.app/account")!
 
+    /// The account's Macs page, the only place a seat can be freed from a Mac that holds none.
+    /// A signed-out visit signs in and comes back here, not to the overview.
+    internal static let accountMachines = URL(string: "https://tablepro.app/account/machines")!
+
     internal static func pricing(_ referrer: SupportReferrer) -> URL {
         pricingPage.appending(queryItems: [URLQueryItem(name: "ref", value: referrer.parameterValue)])
     }

@@ -13,7 +13,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Outline Column Visibility")
 @MainActor
 struct QueryPlanOutlineColumnVisibilityTests {
     private func node(

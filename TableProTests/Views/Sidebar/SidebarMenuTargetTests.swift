@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Sidebar Menu Target")
 struct SidebarMenuTargetTests {
     @Test("Clicking inside the selection acts on the whole selection")
     func clickInsideSelectionActsOnSelection() {

@@ -2,7 +2,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("BoundKey Event Matching")
 struct BoundKeyMatchTests {
     // MARK: - Helper
 

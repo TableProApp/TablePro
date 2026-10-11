@@ -2,17 +2,21 @@ import AppKit
 import SwiftUI
 
 struct ServerDashboardSplitView: NSViewControllerRepresentable {
-    let viewModel: ServerDashboardViewModel
+    /// Observed, not just held. As a plain reference the representable compared equal to itself on
+    /// every refresh, so SwiftUI never called `updateNSViewController` and the metrics and slow
+    /// query panes kept the empty values they were built with: Server Metrics never left its
+    /// spinner. The sessions pane only updated because `SessionsTableView` observes the model itself.
+    @ObservedObject var viewModel: ServerDashboardViewModel
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
     func makeNSViewController(context: Context) -> NSSplitViewController {
-        let splitViewController = ResizeCursorSplitViewController()
+        let splitViewController = ServerDashboardSplitViewController()
         splitViewController.splitView.isVertical = false
         splitViewController.splitView.dividerStyle = .thin
-        splitViewController.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current("ServerDashboardSplit"))
+        splitViewController.splitView.autosaveName = SplitViewAutosaveName.current("ServerDashboardSplit")
 
         for panel in orderedPanels() {
             let item = makeItem(for: panel, coordinator: context.coordinator)
@@ -93,7 +97,6 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             controller.sizingOptions = []
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 100
-            item.canCollapse = true
             item.holdingPriority = .splitPaneHolding
             coordinator.slowQueriesController = controller
             return item
@@ -104,5 +107,18 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         var sessionsController: NSHostingController<SessionsTableView>?
         var metricsController: NSHostingController<MetricsBarView>?
         var slowQueriesController: NSHostingController<SlowQueryListView>?
+    }
+}
+
+/// No dashboard pane collapses, because a collapsed last pane loses its divider and nothing else
+/// reopens it. A record autosaved while the slow query pane could still be dragged shut brings it
+/// back collapsed anyway, applied by the time the split view reaches a window.
+@MainActor
+internal final class ServerDashboardSplitViewController: ResizeCursorSplitViewController {
+    override internal func viewWillAppear() {
+        super.viewWillAppear()
+        for item in splitViewItems where item.isCollapsed {
+            item.isCollapsed = false
+        }
     }
 }

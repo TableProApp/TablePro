@@ -75,16 +75,18 @@ internal extension LaunchIntent {
         case .openConnection,
              .openTable,
              .openQuery,
+             .openAgentSession,
              .importConnection,
              .openSQLFile,
              .openDatabaseFile,
-             .openInspectorFile,
+             .openDataFile,
              .openConnectionShare,
              .pairIntegration,
              .openDatabaseURL,
              .installPlugin,
              .reopenClosedTab,
-             .openSampleDatabase:
+             .openSampleDatabase,
+             .openSettings:
             return true
         }
     }

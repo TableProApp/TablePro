@@ -39,7 +39,7 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     static let databendVariant = "Databend"
     static let oceanbaseVariant = "OceanBase"
 
-    static let oceanbaseUnlimitedQueryTimeoutMicroseconds = 3_216_672_000_000_000
+    static let oceanbaseUnlimitedQueryTimeoutMicroseconds: Int64 = 3_216_672_000_000_000
 
     static func fromBanner(_ banner: String?) -> MySQLServerFlavor {
         guard let banner else { return .mysql }
@@ -113,6 +113,22 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         }
     }
 
+    /// Whether the server's replies carry the session status flags `SERVER_STATUS_IN_TRANS` is read
+    /// from, so a caller can be told what the session has open.
+    ///
+    /// Measured with the app's own libmariadb 3.4.4 against MySQL 5.5.62 and 8.4.11, MariaDB 5.5.64
+    /// and 11.4.13 and TiDB v8.5.1: all five report the flag, including the transaction that
+    /// `SET autocommit = 0` plus a write opens. Databend and OceanBase are unmeasured, so they
+    /// report nothing rather than reporting "no transaction" from a flag that may never be set.
+    var reportsSessionStatusFlags: Bool {
+        switch self {
+        case .mysql, .mariadb, .tidb:
+            return true
+        case .databend, .oceanbase:
+            return false
+        }
+    }
+
     var listsSequencesAsTables: Bool { !isTiDB }
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }
@@ -135,16 +151,19 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     }
 
     func queryTimeoutStatements(seconds: Int) -> [String] {
+        let seconds = PluginQueryTimeout.boundedSeconds(seconds)
         switch self {
         case .mariadb:
             return ["SET SESSION max_statement_time = \(seconds)"]
         case .databend:
             return ["SET max_execute_time_in_seconds = \(seconds)"]
         case .oceanbase:
-            let microseconds = seconds > 0 ? seconds * 1_000_000 : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
+            let microseconds = seconds > 0
+                ? PluginQueryTimeout.microseconds(seconds)
+                : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
             return ["SET SESSION ob_query_timeout = \(microseconds)", "SET SESSION max_execution_time = 0"]
         case .mysql, .tidb:
-            return ["SET SESSION max_execution_time = \(seconds * 1_000)"]
+            return ["SET SESSION max_execution_time = \(PluginQueryTimeout.milliseconds(seconds))"]
         }
     }
 

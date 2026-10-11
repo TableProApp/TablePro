@@ -26,9 +26,9 @@ internal enum GridSelectionOwner: Equatable {
             switch resultsViewMode {
             case .structure:
                 return .schemaGrid
-            case .chart:
-                /// Nothing in a chart selects a row, so the indices left over from the grid are
-                /// nobody's.
+            case .chart, .output:
+                /// Nothing in a chart or in printed output selects a row, so the indices left over
+                /// from the grid are nobody's.
                 return .none
             case .data, .json, .map:
                 break
@@ -41,7 +41,7 @@ internal enum GridSelectionOwner: Equatable {
             /// indices it writes are the data grid's display positions, resolved through
             /// `DisplayRowMapping`.
             return .dataGrid
-        case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource:
+        case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory:
             return .none
         }
     }

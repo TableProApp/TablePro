@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum PostgreSQLCatalogBoolean {
+nonisolated enum PostgreSQLCatalogBoolean {
     private static let trueSpellings: Set<String> = ["t", "true", "yes", "on", "1"]
 
     static func isTrue(_ text: String?) -> Bool {

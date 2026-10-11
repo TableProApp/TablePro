@@ -91,10 +91,10 @@ struct ConnectionWindowChromeTests {
         harness.controller.transition(to: .connecting, for: harness.selected.connectionId)
 
         let identifiers = try #require(harness.window.toolbar).items.map(\.itemIdentifier)
-        /// `connection` itself is a subitem of the centred group, so the group is the identifier a
-        /// toolbar reports. Both of these are the window's own commands and answer with no subject.
-        #expect(identifiers.contains(MainWindowToolbar.connectionGroup))
-        #expect(identifiers.contains(MainWindowToolbar.sidebarToggle))
+        /// Both of these are the window's own commands and answer with no subject: Switch
+        /// Connection, and AppKit's sidebar toggle, which the window validates in every phase.
+        #expect(identifiers.contains(MainWindowToolbar.connection))
+        #expect(identifiers.contains(.toggleSidebar))
         #expect(harness.controller.commandActions == nil)
     }
 
@@ -116,13 +116,49 @@ struct ConnectionWindowChromeTests {
         #expect(!before.isEmpty)
     }
 
-    /// Switch Connection reaches the window itself, so it needs no subject. The toolbar's sidebar
-    /// item is the Tables/Favorites segmented control and does need one, however window-owned the
-    /// sidebar is: the tab it selects is per-connection state.
-    @Test("Switch Connection answers with no coordinator and the sidebar segment does not")
+    /// Switch Connection reaches the window itself, so it needs no subject, and the toolbar's own
+    /// validation says so for a window whose connection has not come up.
+    @Test("Switch Connection answers with no coordinator behind the toolbar")
     func windowScopedToolbarItemsAnswerWithoutASubject() throws {
-        #expect(MainWindowToolbar.isWindowScoped(MainWindowToolbar.connection))
-        #expect(!MainWindowToolbar.isWindowScoped(MainWindowToolbar.sidebarToggle))
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.controller.transition(to: .unavailable(.notConnected), for: harness.selected.connectionId)
+        #expect(harness.controller.commandActions == nil)
+
+        let owner = try #require(harness.controller.toolbarOwner)
+        #expect(owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.connection)))
+        #expect(!owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.refresh)))
+    }
+
+    /// The toolbar's shape is the selected workspace's, and a workspace with no session has no
+    /// coordinator. A switch between two of them is a repoint from nothing to nothing, which returns
+    /// before it reaches the toolbar, so the outgoing connection's hidden set stayed on screen: a
+    /// down SQLite connection took the container capsule away from the down PostgreSQL one selected
+    /// after it, until that one came up.
+    @available(macOS 15.0, *)
+    @Test("The toolbar's shape follows a switch between two connections with no session")
+    func toolbarShapeFollowsACoordinatorlessSwitch() throws {
+        let harness = try Harness(selectedType: .sqlite, siblingType: .postgresql)
+        defer { harness.tearDown() }
+
+        let owner = try #require(harness.controller.toolbarOwner)
+        #expect(harness.controller.commandActions == nil)
+        #expect(owner.coordinator == nil)
+        #expect(
+            owner.visibility.hides(MainWindowToolbar.database),
+            "A file-based engine has no container to switch, so the capsule starts hidden"
+        )
+
+        harness.controller.workspaces.select(harness.sibling.connectionId)
+        #expect(owner.coordinator == nil, "Neither workspace has a coordinator, which is the case under test")
+        #expect(
+            !owner.visibility.hides(MainWindowToolbar.database),
+            "PostgreSQL switches databases, so its capsule has to come back"
+        )
+
+        harness.controller.workspaces.select(harness.selected.connectionId)
+        #expect(owner.visibility.hides(MainWindowToolbar.database), "And go again on the way back")
     }
 
     /// The sidebar is the window's and stands in every phase, so its command answers in every
@@ -160,6 +196,30 @@ struct ConnectionWindowChromeTests {
         let item = Self.item(for: #selector(NSSplitViewController.toggleInspector(_:)))
         #expect(harness.controller.validateUserInterfaceItem(item))
         #expect(harness.controller.validateMenuItem(item))
+    }
+
+    /// The same rule for the assistant, read through the toolbar's own context rather than one built
+    /// by hand, since that context is where the toolbar's button learns what the menu command knows.
+    /// It used to check for a live session instead, which dimmed the button beside a Hide Assistant
+    /// the menu still offered.
+    @available(macOS 14.0, *)
+    @Test("An assistant the user left open can still be closed from the toolbar with the session gone")
+    func openAssistantStaysClosableFromTheToolbar() throws {
+        try AIFeatureScope.enabled {
+            let harness = try Harness()
+            defer { harness.tearDown() }
+
+            harness.attachRenderableSession()
+            harness.controller.transition(to: .connected, for: harness.selected.connectionId)
+            harness.controller.showAssistant()
+            #expect(harness.controller.isAssistantVisible)
+
+            harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.selected.connectionId)
+
+            #expect(harness.controller.validateMenuItem(
+                Self.item(for: #selector(MainSplitViewController.toggleAssistant(_:)))
+            ))
+        }
     }
 
     /// The other half of the same rule: a pane the user never opened offers nothing to open.
@@ -245,8 +305,10 @@ struct ConnectionWindowChromeTests {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        #expect(harness.controller.switcherPresenter === harness.controller.switcherPresenter)
-        #expect(harness.controller.quickSwitcherPanel === harness.controller.quickSwitcherPanel)
+        let presenter = harness.controller.switcherPresenter
+        let panel = harness.controller.quickSwitcherPanel
+        #expect(harness.controller.switcherPresenter === presenter)
+        #expect(harness.controller.quickSwitcherPanel === panel)
     }
 
     /// The connections strip and the View menu reach a window's other connections without asking a
@@ -281,14 +343,17 @@ struct ConnectionWindowChromeTests {
     private struct Harness {
         let controller: MainSplitViewController
         let selected: ConnectionWorkspace
+        let sibling: ConnectionWorkspace
         let window: NSWindow
-        private let sibling: ConnectionWorkspace
         private let connection: DatabaseConnection
 
-        init() throws {
-            connection = TestFixtures.makeConnection(name: "Selected")
+        init(selectedType: DatabaseType = .mysql, siblingType: DatabaseType = .mysql) throws {
+            connection = TestFixtures.makeConnection(name: "Selected", type: selectedType)
             selected = Self.makeWorkspace(connection: connection, phase: .connected)
-            sibling = Self.makeWorkspace(connection: TestFixtures.makeConnection(name: "Sibling"), phase: .connected)
+            sibling = Self.makeWorkspace(
+                connection: TestFixtures.makeConnection(name: "Sibling", type: siblingType),
+                phase: .connected
+            )
 
             controller = MainSplitViewController(payload: nil, sessionState: nil, adopting: selected)
             controller.workspaces.insert(sibling, select: false)
@@ -335,12 +400,16 @@ struct ConnectionWindowChromeTests {
             selected.sessionState = SessionStateFactory.create(connection: connection, payload: nil)
         }
 
+        /// The pane state is built on the app's own defaults, which a unit test does not redirect, so
+        /// a case that reveals a surface writes a key under this run's random connection id. It is
+        /// removed here rather than left to pile up in the domain of whoever ran the suite.
         func tearDown() {
             resetPaneLayout()
             window.orderOut(nil)
             window.contentViewController = nil
             sibling.teardown()
             selected.teardown()
+            ConnectionLocalState.purgeTrailingPaneKeys([connection.id, sibling.connectionId])
         }
 
         private static func makeWorkspace(

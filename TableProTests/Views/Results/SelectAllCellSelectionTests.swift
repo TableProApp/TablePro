@@ -112,7 +112,6 @@ private struct SelectAllGrid {
     }
 }
 
-@Suite("KeyHandlingTableView.selectAll")
 @MainActor
 struct SelectAllCellSelectionTests {
     /// `selectAll` falls through to AppKit's own when the grid presents no data columns, and that

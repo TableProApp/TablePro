@@ -22,21 +22,20 @@ enum AIProviderFactory {
             if let cached = cache[config.id], cached.apiKey == apiKey, cached.config == config {
                 return cached.provider
             }
-            let provider: ChatTransport
-            if let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) {
-                provider = descriptor.makeProvider(config, apiKey)
-            } else {
-                provider = OpenAICompatibleProvider(
-                    endpoint: config.endpoint,
-                    apiKey: apiKey,
-                    providerType: config.type,
-                    model: config.model,
-                    maxOutputTokens: config.maxOutputTokens
-                )
-            }
+            let provider = makeUncachedProvider(for: config, apiKey: apiKey)
             cache[config.id] = (config, apiKey, provider)
             return provider
         }
+    }
+
+    /// A transport built outside the per-id cache, for testing a configuration that is still being
+    /// edited. The Settings sheet works on a copy of a saved provider under the same id, so caching
+    /// a half-typed endpoint would hand it to the session already streaming through that provider.
+    static func makeUncachedProvider(for config: AIProviderConfig, apiKey: String?) -> ChatTransport {
+        guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else {
+            return OpenAICompatibleProvider(config: config, apiKey: apiKey)
+        }
+        return descriptor.makeProvider(config, apiKey)
     }
 
     static func invalidateCache() {
@@ -47,21 +46,24 @@ enum AIProviderFactory {
         cacheLock.withLock { $0.removeValue(forKey: configID) }
     }
 
-    static func resetCopilotConversation() {
+    /// Both of these name a session, because Copilot conversation state is per session even though
+    /// the provider is cached per configuration. Without the id, one session starting a new
+    /// conversation reset every other session sharing that configuration.
+    static func resetCopilotConversation(sessionId: UUID) {
         cacheLock.withLock { cache in
             for (_, entry) in cache {
                 if let copilot = entry.provider as? CopilotChatProvider {
-                    copilot.resetConversation()
+                    copilot.resetConversation(sessionId: sessionId)
                 }
             }
         }
     }
 
-    static func copilotDeleteLastTurn() {
+    static func copilotDeleteLastTurn(sessionId: UUID) {
         cacheLock.withLock { cache in
             for (_, entry) in cache {
                 if let copilot = entry.provider as? CopilotChatProvider {
-                    copilot.deleteLastTurn()
+                    copilot.deleteLastTurn(sessionId: sessionId)
                 }
             }
         }
@@ -82,7 +84,7 @@ enum AIProviderFactory {
         }
         guard let config else { return nil }
         let apiKey: String?
-        switch config.type.authStyle {
+        switch config.authStyle {
         case .apiKey, .optionalApiKey:
             apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
         case .oauth, .none:

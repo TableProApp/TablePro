@@ -6,7 +6,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("MySQL Server-Side Row Cap")
 struct MySQLSelectLimitTests {
     @Test("The statement asks for one row past the cap")
     func statementAsksForOneRowPastTheCap() {

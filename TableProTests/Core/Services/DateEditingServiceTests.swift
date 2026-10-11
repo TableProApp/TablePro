@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Date Editing")
 struct DateEditingServiceTests {
     @Test("MySQL datetime round-trips unchanged")
     func mysqlDatetimeRoundTrip() throws {

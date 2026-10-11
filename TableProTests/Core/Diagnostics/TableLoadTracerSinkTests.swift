@@ -25,7 +25,6 @@ private final class RecordingSink: TableLoadSummarySink, @unchecked Sendable {
 }
 
 @MainActor
-@Suite("TableLoadTracer sink")
 struct TableLoadTracerSinkTests {
     private func makeTracer() -> (tracer: TableLoadTracer, sink: RecordingSink) {
         let sink = RecordingSink()

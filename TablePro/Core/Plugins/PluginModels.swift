@@ -24,7 +24,6 @@ struct PluginEntry: Identifiable {
 
     let exportFormatId: String?
     let importFormatId: String?
-    let inspectorId: String?
 }
 
 enum PluginSource {

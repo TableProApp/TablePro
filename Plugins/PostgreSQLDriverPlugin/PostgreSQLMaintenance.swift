@@ -27,52 +27,60 @@ internal enum PostgreSQLMaintenance {
     internal static let fullKey = "full"
     internal static let analyzeKey = "analyze"
 
-    internal static let operations: [PluginMaintenanceOperation] = [
-        PluginMaintenanceOperation(
-            name: vacuum,
-            appliesTo: [.table, .partitionedTable, .materializedView],
-            scope: .objectOrDatabase,
-            options: [
-                PluginMaintenanceOption(
-                    key: fullKey,
-                    label: String(localized: "FULL (rewrites the whole object, blocks access)"),
-                    defaultValue: "false"
-                ),
-                PluginMaintenanceOption(
-                    key: analyzeKey,
-                    label: String(localized: "ANALYZE (update statistics afterwards)"),
-                    defaultValue: "false"
-                ),
-                PluginMaintenanceOption(
-                    key: verboseKey,
-                    label: String(localized: "VERBOSE (report progress)"),
-                    defaultValue: "false"
-                )
-            ]
-        ),
-        PluginMaintenanceOperation(
-            name: analyze,
-            appliesTo: [.table, .partitionedTable, .materializedView, .foreignTable],
-            scope: .objectOrDatabase
-        ),
+    internal static func operations(capabilities: PostgreSQLCapabilities) -> [PluginMaintenanceOperation] {
+        [
+            vacuumOperation,
+            analyzeOperation,
+            reindexOperation(capabilities: capabilities),
+            clusterOperation
+        ]
+    }
+
+    private static let vacuumOperation = PluginMaintenanceOperation(
+        name: vacuum,
+        appliesTo: [.table, .partitionedTable, .materializedView],
+        scope: .objectOrDatabase,
+        options: [
+            PluginMaintenanceOption(
+                key: fullKey,
+                label: String(localized: "FULL (rewrites the whole object, blocks access)"),
+                defaultValue: "false"
+            ),
+            PluginMaintenanceOption(
+                key: analyzeKey,
+                label: String(localized: "ANALYZE (update statistics afterwards)"),
+                defaultValue: "false"
+            ),
+            verboseOption
+        ]
+    )
+
+    private static let analyzeOperation = PluginMaintenanceOperation(
+        name: analyze,
+        appliesTo: [.table, .partitionedTable, .materializedView, .foreignTable],
+        scope: .objectOrDatabase
+    )
+
+    private static func reindexOperation(capabilities: PostgreSQLCapabilities) -> PluginMaintenanceOperation {
         PluginMaintenanceOperation(
             name: reindex,
             appliesTo: [.table, .partitionedTable, .materializedView],
             scope: .objectOrDatabase,
-            options: [
-                PluginMaintenanceOption(
-                    key: verboseKey,
-                    label: String(localized: "VERBOSE (report progress)"),
-                    defaultValue: "false"
-                )
-            ]
-        ),
-        PluginMaintenanceOperation(
-            name: cluster,
-            appliesTo: [.table, .materializedView],
-            scope: .object
+            options: capabilities.hasReindexOptions ? [verboseOption] : []
         )
-    ]
+    }
+
+    private static let clusterOperation = PluginMaintenanceOperation(
+        name: cluster,
+        appliesTo: [.table, .materializedView],
+        scope: .object
+    )
+
+    private static let verboseOption = PluginMaintenanceOption(
+        key: verboseKey,
+        label: String(localized: "VERBOSE (report progress)"),
+        defaultValue: "false"
+    )
 
     /// A nil `schema` leaves the name unqualified, which is what a caller with no schema to offer
     /// means. Everything in the app does have one, and has to pass it: `search_path` resolves a bare
@@ -97,14 +105,16 @@ internal enum PostgreSQLMaintenance {
         case analyze:
             return [target.map { "ANALYZE \($0)" } ?? "ANALYZE"]
         case reindex:
+            let verbose = isOn(options[verboseKey])
             guard let target else {
                 return PostgreSQLVersionedStatements.reindexDatabase(
                     currentDatabase: connectedDatabase,
+                    verbose: verbose,
                     capabilities: capabilities
                 ).map { [$0] }
             }
-            let clause = isOn(options[verboseKey]) ? " (VERBOSE)" : ""
-            return ["REINDEX\(clause) TABLE \(target)"]
+            let keyword = PostgreSQLVersionedStatements.reindex(verbose: verbose, capabilities: capabilities)
+            return ["\(keyword) TABLE \(target)"]
         case cluster:
             return target.map { ["CLUSTER \($0)"] }
         default:

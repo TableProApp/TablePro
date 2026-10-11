@@ -135,6 +135,11 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
 
+      # One simulator, not clones. TableProMobileTests is one bundle and xcodebuild never split it:
+      # every test in every run so far, passing and failing, executed on "Clone 1 of iPhone 17 Pro".
+      # The extra clone only booted, and on a 3-core runner booting a second iOS 26 simulator is what
+      # killed three of the last twelve runs with "Failed to launch app ... (ipc/mig) server died"
+      # while Clone 1 had already finished the suite.
       - name: Run unit tests
         run: |
           set -o pipefail
@@ -143,6 +148,7 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -destination "$TEST_DESTINATION" \
             -only-testing:TableProMobileTests \
+            -parallel-testing-enabled NO \
             -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \

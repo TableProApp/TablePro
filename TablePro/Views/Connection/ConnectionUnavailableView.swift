@@ -67,7 +67,7 @@ internal struct ConnectionUnavailableView: View {
     private var icon: some View {
         switch reason {
         case .notConnected, .cancelled:
-            ConnectionTypeIcon(type: connection.type)
+            ConnectionTypeIcon(type: connection.type, iconName: connection.iconName)
         case .disconnected:
             Image(systemName: "bolt.horizontal.circle")
                 .symbolRenderingMode(.hierarchical)

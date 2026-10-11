@@ -101,7 +101,7 @@ final class SQLTypeRendererModifierTests: XCTestCase {
         }
     }
 
-    /// Oracle reports an `INTEGER` as a bare `number`. Read as unconstrained it would reach MySQL as
+    /// A bare Oracle `NUMBER` keeps 38 significant digits. Read as unconstrained it would reach MySQL as
     /// `DECIMAL(65, 30)`, which refuses a 36-digit integer a `DECIMAL(38)` holds.
     func testABareOracleNumberKeepsItsExactRendering() {
         let toMySQL = rendered("NUMBER", from: .oracle, to: .mysql)

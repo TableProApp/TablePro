@@ -20,25 +20,43 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
     private let connection: SQLiteAgentConnection
     private let path: String
     private let token: String
+    private let helloBudget: SQLiteAgentHelloBudget
     private var busyTimeoutMilliseconds: Int32 = 0
 
     nonisolated let canceller: SQLiteCanceller
     nonisolated var resolvedServerVersion: String? { connection.cachedServerVersion }
 
-    init(host: String, port: Int, path: String, token: String) {
+    init(
+        host: String,
+        port: Int,
+        path: String,
+        token: String,
+        helloBudget: SQLiteAgentHelloBudget
+    ) {
         let connection = SQLiteAgentConnection(host: host, port: port)
         self.connection = connection
         self.path = path
         self.token = token
+        self.helloBudget = helloBudget
         self.canceller = SQLiteRemoteCanceller(connection: connection)
     }
 
-    func open() async throws {
+    /// Extensions are files on this Mac and the statements run on the server, so a list here has
+    /// nothing it could load into.
+    func open(loading extensions: [LoadableExtension]) async throws {
+        guard extensions.isEmpty else { throw LoadableExtensionError.remoteSession }
         try connection.connect(token: token)
-        let ready = try await connection.hello(
-            path: path,
-            busyTimeoutMilliseconds: UInt32(max(0, busyTimeoutMilliseconds))
-        )
+        let ready: SQLiteAgentReady
+        do {
+            ready = try await connection.hello(
+                path: path,
+                busyTimeoutMilliseconds: UInt32(max(0, busyTimeoutMilliseconds)),
+                timeoutMilliseconds: helloBudget.remainingMilliseconds()
+            )
+        } catch {
+            connection.close()
+            throw error
+        }
         connection.cachedServerVersion = ready.sqliteVersion
         Self.logger.info(
             "Remote SQLite agent ready: SQLite \(ready.sqliteVersion, privacy: .public), Python \(ready.pythonVersion, privacy: .public)"
@@ -218,7 +236,6 @@ struct SQLiteAgentExecuteOutcome: Sendable {
 /// the reader thread's cancel and heartbeat frames never interleave with a partial request.
 final class SQLiteAgentConnection: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteAgentConnection")
-    private static let readyTimeout: TimeInterval = 30
     private static let heartbeatInterval: TimeInterval = 15
 
     private let host: String
@@ -280,13 +297,18 @@ final class SQLiteAgentConnection: @unchecked Sendable {
         thread.start()
     }
 
-    func hello(path: String, busyTimeoutMilliseconds: UInt32) async throws -> SQLiteAgentReady {
+    func hello(
+        path: String,
+        busyTimeoutMilliseconds: UInt32,
+        timeoutMilliseconds: Int
+    ) async throws -> SQLiteAgentReady {
         let request = SQLiteAgentRequest.hello(
             protocolVersion: SQLiteAgentProtocol.version,
             path: path,
             busyTimeoutMilliseconds: busyTimeoutMilliseconds
         )
-        let ready: SQLiteAgentReady = try await withOperation(deadline: Self.readyTimeout) { _ in
+        let timeout = TimeInterval(max(1, timeoutMilliseconds)) / 1_000
+        let ready: SQLiteAgentReady = try await withOperation(deadline: timeout) { _ in
             try self.writeAll(SQLiteAgentFrameEncoder.encode(request))
         }
         startHeartbeat()

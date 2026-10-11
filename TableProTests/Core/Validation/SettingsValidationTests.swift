@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("Settings Validation")
 struct SettingsValidationTests {
     // MARK: - String Sanitization Tests
 

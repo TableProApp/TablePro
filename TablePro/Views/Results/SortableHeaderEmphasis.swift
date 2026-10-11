@@ -12,10 +12,11 @@ internal enum SortableHeaderEmphasis {
         tableViewHoldsFocus && isKeyWindow
     }
 
-    /// A cell being edited puts the field editor in the responder chain below the table, so focus
-    /// is resolved by ancestry rather than by identity.
+    /// A cell being edited or viewed takes focus in a text view the grid mounts in the table's
+    /// scroll view, beside the table rather than inside it, so focus is resolved by ancestry from
+    /// the scroll view rather than by identity with the table.
     internal static func holdsFocus(tableView: NSTableView?, in window: NSWindow?) -> Bool {
         guard let tableView, let responder = window?.firstResponder as? NSView else { return false }
-        return responder === tableView || responder.isDescendant(of: tableView)
+        return responder.isDescendant(of: tableView.enclosingScrollView ?? tableView)
     }
 }

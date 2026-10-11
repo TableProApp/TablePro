@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Outline Sort")
 @MainActor
 struct QueryPlanOutlineSortTests {
     private func node(

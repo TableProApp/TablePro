@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -58,7 +59,11 @@ extension RowEditingCoordinator {
                 tableOperationOptions: tableOperationOptions
             )
         } catch {
-            failSave(message: error.localizedDescription)
+            failSave(
+                message: [error.localizedDescription, (error as? DataWriteError)?.recoverySuggestion]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            )
             return
         }
 
@@ -109,7 +114,7 @@ extension RowEditingCoordinator {
             /// The gate and the confirmation alert show the plan with its values written in.
             /// Approving `UPDATE "users" SET "email" = ? WHERE "id" = ?` is approving nothing:
             /// it names no row and no value.
-            let decision = await ExecutionGateProvider.shared.authorize(
+            let decision = await parent.executionGate.authorize(
                 OperationRequest(
                     connectionId: connId,
                     databaseType: parent.connection.type,
@@ -133,7 +138,7 @@ extension RowEditingCoordinator {
                     pendingDeletes: &dels,
                     tableOperationOptions: &opts
                 )
-            case .denied(let reason):
+            case .denied(let reason, _):
                 if hasPendingTableOps {
                     restorePendingTableOperations(
                         connectionId: connId,
@@ -186,6 +191,8 @@ extension RowEditingCoordinator {
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
         let savingTabId = parent.tabManager.selectedTabId
+        let serverOwned = serverOwnedColumns(of: savingTabId)
+        let columnTypeNames = parent.changeManager.columnTypeNames
 
         Task { [weak self, parent] in
             guard let self else { return }
@@ -205,7 +212,13 @@ extension RowEditingCoordinator {
                     steps: validSteps, results: run.results, connection: conn, scope: scope
                 )
                 recordSideStatementHistory(run.sideStatements, connection: conn, scope: scope)
-                captureRewindRecord(plan: plan, history: history, connection: conn)
+                captureRewindRecord(
+                    plan: plan,
+                    history: history,
+                    connection: conn,
+                    serverOwned: serverOwned,
+                    columnTypeNames: columnTypeNames
+                )
 
                 finishSuccessfulSave(
                     plan: plan,
@@ -323,18 +336,56 @@ extension RowEditingCoordinator {
         /// The saving tab reloads only when this save changed its rows: rows it wrote, or a truncate of
         /// the table it shows. A save of table operations alone used to re-run whatever the selected
         /// tab held, which on a query tab executed its statement again. A tab on a dropped table closes.
-        guard savingTabIsSelected,
-              let savedTabIndex = parent.tabManager.selectedTabIndex,
-              !tab(at: savedTabIndex, shows: deletedTables),
-              plan.steps.contains(where: { $0.kind == .rowWrite }) || tab(at: savedTabIndex, shows: truncatedTables)
-        else { return }
+        /// A tab another change marked stale while it held these edits reloads now they are saved.
+        let reloadIndex = parent.tabManager.selectedTabIndex.flatMap { index -> Int? in
+            guard savingTabIsSelected, !tab(at: index, shows: deletedTables) else { return nil }
+            let changedItsRows = plan.steps.contains(where: { $0.kind == .rowWrite })
+                || tab(at: index, shows: truncatedTables)
+                || parent.tabSessionRegistry.isStale(parent.tabManager.tabs[index].id)
+            return changedItsRows ? index : nil
+        }
+        announceWrittenTables(
+            plan: plan,
+            truncatedTables: truncatedTables,
+            reloadingTabId: reloadIndex.map { parent.tabManager.tabs[$0].id }
+        )
+        guard let savedTabIndex = reloadIndex else { return }
 
         /// An insert or a delete changes the number this tab is reporting, so a count
         /// the user asked for before the save no longer describes the table. Without
         /// retiring it the reload's automatic count refuses to replace it, and the bar
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-        parent.runQuery(viewport: .keepPlace)
+        parent.reloadActiveResult()
+    }
+
+    /// Every table this save wrote rows to or truncated, so a tab showing one in this window or
+    /// another stops showing the rows as they were. The saving tab reloads itself and is left out.
+    private func announceWrittenTables(
+        plan: DataWritePlan,
+        truncatedTables: Set<DatabaseTreeTableRef>,
+        reloadingTabId: UUID?
+    ) {
+        let connectionId = parent.connectionId
+        let adoption = catalogEditAdoption
+        var written = Set(plan.steps.filter { $0.kind == .rowWrite }.compactMap { step in
+            step.tableName.map { DataWriteTarget(database: plan.scope.database, schema: plan.scope.schema, table: $0) }
+        })
+        for ref in truncatedTables {
+            guard let scope = adoption.objectScope(for: ref, connectionId: connectionId) else { continue }
+            written.insert(DataWriteTarget(database: scope.database, schema: scope.schema, table: ref.table.name))
+        }
+        for target in written {
+            AppCommands.shared.objectChanged.send(
+                DatabaseObjectChange(
+                    connectionId: connectionId,
+                    scope: DatabaseScope(connectionId: connectionId, database: target.database, schema: target.schema),
+                    name: target.table,
+                    kind: .rows,
+                    originTabId: reloadingTabId
+                )
+            )
+        }
     }
 
     /// MySQL, MariaDB and Oracle commit each DROP as it runs, so a save that failed part way can
@@ -476,10 +527,24 @@ extension RowEditingCoordinator {
     /// `history_id` is a foreign key, so the snapshot waits for the history row to be confirmed
     /// written and carries nil when it was not. History capture can be paused, in which case there
     /// is no row to point at and every snapshot would otherwise be rejected outright.
+    /// Read before the save is sent, because by the time it commits the user may be on another tab, and the record
+    /// has to describe the table the save wrote.
+    private func serverOwnedColumns(of tabId: UUID?) -> (generated: [String], identity: [String]) {
+        let generated = Array(parent.changeManager.generatedColumns)
+        guard let tabId else { return (generated, []) }
+        let identity = parent.tabSessionRegistry.tableRows(for: tabId).columnIdentity
+            .filter { $0.value == .always }
+            .map(\.key)
+            .sorted()
+        return (generated, identity)
+    }
+
     private func captureRewindRecord(
         plan: DataWritePlan,
         history: (id: UUID, stored: Task<Bool, Never>)?,
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        serverOwned: (generated: [String], identity: [String]),
+        columnTypeNames: [String: String]
     ) {
         guard parent.services.licenseManager.isFeatureAvailable(.dataRewind) else { return }
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
@@ -487,7 +552,8 @@ extension RowEditingCoordinator {
         guard !operations.isEmpty, let target = operations.first?.target else { return }
 
         let storage = parent.services.queryHistoryManager
-        let generatedColumns = Array(parent.changeManager.generatedColumns)
+        let generatedColumns = serverOwned.generated
+        let identityColumns = serverOwned.identity
         let databaseType = connection.type
         let connectionId = connection.id
         let capturedAt = Date()
@@ -506,6 +572,8 @@ extension RowEditingCoordinator {
                     target: target,
                     capturedAt: capturedAt,
                     generatedColumns: generatedColumns,
+                    identityColumns: identityColumns,
+                    columnTypeNames: columnTypeNames,
                     operations: operations
                 )
             )

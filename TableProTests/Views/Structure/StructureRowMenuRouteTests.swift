@@ -30,7 +30,6 @@ private final class StructureRouteLayoutPersister: ColumnLayoutPersisting {
 /// runner: an open contextual menu is not a child of the application element, and the titles that
 /// would discriminate (`Export Results…`) also sit in the menu bar, so an app-rooted query answers
 /// from there whatever the contextual menu holds.
-@Suite("Structure row menu route")
 @MainActor
 struct StructureRowMenuRouteTests {
     /// Only the structure menu builds this.
@@ -121,5 +120,30 @@ struct StructureRowMenuRouteTests {
         #expect(rowView.menu(for: try rightClick()) == nil)
         #expect(rowView.contextMenu(for: try rightClick()) == nil)
         #expect(rowView.contextMenu(target: .row) == nil)
+    }
+
+    /// A materialized view refuses `DROP COLUMN` and `ADD COLUMN`. The menu used to offer Delete and
+    /// Duplicate on its columns anyway, and choosing either did nothing at all.
+    @Test("Delete and Duplicate appear only where the object accepts them")
+    func rowEditsFollowTheGate() {
+        let refused = makeRowView()
+        refused.canDelete = false
+        refused.canDuplicate = false
+        let refusedItems = titles(refused.contextMenu(target: .row))
+        #expect(!refusedItems.contains(String(localized: "Delete")))
+        #expect(!refusedItems.contains(String(localized: "Duplicate")))
+        #expect(refusedItems.last != "")
+
+        let deleteOnly = makeRowView(tab: .indexes)
+        deleteOnly.canDelete = true
+        deleteOnly.canDuplicate = false
+        let deleteOnlyItems = titles(deleteOnly.contextMenu(target: .row))
+        #expect(deleteOnlyItems.contains(String(localized: "Delete")))
+        #expect(!deleteOnlyItems.contains(String(localized: "Duplicate")))
+
+        let accepted = makeRowView()
+        let acceptedItems = titles(accepted.contextMenu(target: .row))
+        #expect(acceptedItems.contains(String(localized: "Delete")))
+        #expect(acceptedItems.contains(String(localized: "Duplicate")))
     }
 }

@@ -6,12 +6,9 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 struct EtcdStatementGenerator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdStatementGenerator")
-
     let prefix: String
     let columns: [String]
 
@@ -19,36 +16,50 @@ struct EtcdStatementGenerator {
     private var valueColumnIndex: Int? { columns.firstIndex(of: "Value") }
     private var leaseColumnIndex: Int? { columns.firstIndex(of: "Lease") }
 
-    func generateStatements(
+    /// The columns a `put` can set. The rest, the version and the two revisions, are etcd's own.
+    /// etcd stores no NULL, so a NULL written to Value means an empty value, and to Lease, no lease.
+    private static let writableColumns: Set<String> = ["Key", "Value", "Lease"]
+
+    /// The commands that write the grid's changes, each naming the change it writes. A change
+    /// carrying a value these commands cannot express is refused whole, because writing the rest
+    /// of it would let the save succeed and clear the value it left out.
+    func generateRowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+    ) throws -> [PluginRowWrite] {
+        var writes: [PluginRowWrite] = []
 
         for change in changes {
+            let commands: [String]
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                statements += generateInsert(for: change, insertedRowData: insertedRowData)
+                commands = try insertCommands(for: change, insertedRowData: insertedRowData)
             case .update:
-                statements += generateUpdate(for: change)
+                commands = try updateCommands(for: change)
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let key = extractKey(from: change) {
-                    statements.append((statement: "del \(escapeArgument(key))", parameters: []))
+                guard let key = extractKey(from: change) else {
+                    throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
                 }
+                commands = ["del \(EtcdCommandArgument.quoted(key))"]
             }
+            writes += commands.map { PluginRowWrite(statement: $0, rowIndices: [change.rowIndex]) }
         }
 
-        return statements
+        return writes
     }
 
-    private func generateInsert(
+    private func insertCommands(
         for change: PluginRowChange,
         insertedRowData: [Int: [PluginCellValue]]
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
+    ) throws -> [String] {
+        if let column = serverOwnedColumn(in: change) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(column))
+        }
+
         var key: String?
         var value: String?
         var leaseId: String?
@@ -69,8 +80,7 @@ struct EtcdStatementGenerator {
         }
 
         guard let k = key, !k.isEmpty else {
-            Self.logger.warning("Skipping INSERT - no key provided")
-            return []
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(localized: "A new key needs a name."))
         }
 
         // Prepend the current browse prefix if the key doesn't already include it
@@ -80,86 +90,83 @@ struct EtcdStatementGenerator {
         } else {
             fullKey = k
         }
-        let v = value ?? ""
-        var cmd = "put \(escapeArgument(fullKey)) \(escapeArgument(v))"
-        if let lease = leaseId, !lease.isEmpty, lease != "0" {
-            cmd += " --lease=\(lease)"
-        }
-
-        return [(statement: cmd, parameters: [])]
+        return [Self.putCommand(key: fullKey, value: value ?? "", lease: leaseId)]
     }
 
-    private func generateUpdate(
-        for change: PluginRowChange
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
+    private func updateCommands(for change: PluginRowChange) throws -> [String] {
         guard !change.cellChanges.isEmpty else { return [] }
         guard let originalKey = extractKey(from: change) else {
-            Self.logger.warning("Skipping UPDATE - no original key")
-            return []
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.unaddressableKeyReason)
+        }
+        if let column = serverOwnedColumn(in: change) {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(column))
         }
 
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+        var commands: [String] = []
 
         let keyChange = change.cellChanges.first { $0.columnName == "Key" }
-        let newKey = keyChange?.newValue.asText ?? originalKey
-
-        guard !newKey.isEmpty else {
-            Self.logger.warning("Skipping UPDATE - empty key")
-            return []
-        }
-
-        let shouldDeleteOriginalKey = newKey != originalKey
         let valueChange = change.cellChanges.first { $0.columnName == "Value" }
         let leaseChange = change.cellChanges.first { $0.columnName == "Lease" }
 
-        if valueChange != nil || newKey != originalKey {
-            let newValue = valueChange?.newValue.asText ?? extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(newValue))"
-            if let lease = leaseChange?.newValue.asText, !lease.isEmpty, lease != "0" {
-                cmd += " --lease=\(lease)"
-            }
-            statements.append((statement: cmd, parameters: []))
-            if shouldDeleteOriginalKey {
-                statements.append((statement: "del \(escapeArgument(originalKey))", parameters: []))
-            }
-        } else if let lease = leaseChange?.newValue.asText {
-            let currentValue = extractOriginalValue(from: change) ?? ""
-            var cmd = "put \(escapeArgument(newKey)) \(escapeArgument(currentValue))"
-            if !lease.isEmpty && lease != "0" {
-                cmd += " --lease=\(lease)"
-            }
-            statements.append((statement: cmd, parameters: []))
+        let newKey = keyChange.map { $0.newValue.asText ?? "" } ?? originalKey
+        guard !newKey.isEmpty else {
+            throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(localized: "A key needs a name."))
         }
 
-        return statements
+        let shouldDeleteOriginalKey = newKey != originalKey
+        let editedLease = leaseChange.map { $0.newValue.asText ?? "" }
+        let lease = editedLease ?? originalText(at: leaseColumnIndex, of: change)
+
+        if valueChange != nil || newKey != originalKey {
+            let newValue = valueChange.map { $0.newValue.asText ?? "" } ?? originalText(at: valueColumnIndex, of: change) ?? ""
+            commands.append(Self.putCommand(key: newKey, value: newValue, lease: lease))
+            if shouldDeleteOriginalKey {
+                commands.append("del \(EtcdCommandArgument.quoted(originalKey))")
+            }
+        } else if editedLease != nil {
+            let currentValue = originalText(at: valueColumnIndex, of: change) ?? ""
+            commands.append(Self.putCommand(key: newKey, value: currentValue, lease: lease))
+        }
+
+        return commands
+    }
+
+    private static func putCommand(key: String, value: String, lease: String?) -> String {
+        let put = "put \(EtcdCommandArgument.quoted(key)) \(EtcdCommandArgument.quoted(value))"
+        guard let lease, !lease.isEmpty, lease != "0" else { return put }
+        return put + " --lease=\(lease)"
+    }
+
+    /// An edit to a column no `put` can set, which the save would otherwise drop. A new row's NULL
+    /// there leaves the value to etcd, so only a value set in one counts.
+    private func serverOwnedColumn(in change: PluginRowChange) -> String? {
+        change.cellChanges
+            .first { cell in
+                !Self.writableColumns.contains(cell.columnName) && (change.type == .update || !cell.newValue.isNull)
+            }?
+            .columnName
+    }
+
+    // MARK: - Refusals
+
+    private static var unaddressableKeyReason: String {
+        String(localized: "This key's name is not text, so it cannot be addressed from the grid.")
+    }
+
+    private static func serverOwnedReason(_ column: String) -> String {
+        String(format: String(localized: "'%@' is set by etcd and cannot be edited."), column)
     }
 
     // MARK: - Helpers
 
     private func extractKey(from change: PluginRowChange) -> String? {
-        guard let keyIndex = keyColumnIndex,
-              let originalRow = change.originalRow,
-              keyIndex < originalRow.count else { return nil }
-        return originalRow[keyIndex].asText
+        originalText(at: keyColumnIndex, of: change)
     }
 
-    private func extractOriginalValue(from change: PluginRowChange) -> String? {
-        guard let valueIndex = valueColumnIndex,
+    private func originalText(at columnIndex: Int?, of change: PluginRowChange) -> String? {
+        guard let columnIndex,
               let originalRow = change.originalRow,
-              valueIndex < originalRow.count else { return nil }
-        return originalRow[valueIndex].asText
-    }
-
-    private func escapeArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
-        if needsQuoting {
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-            return "\"\(escaped)\""
-        }
-        return value
+              columnIndex < originalRow.count else { return nil }
+        return originalRow[columnIndex].asText
     }
 }

@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIChatViewModel.assembleToolUseBlocks")
 struct AssembleToolUseBlocksTests {
     @Test("Empty inputs produce empty objects")
     func emptyInputs() {

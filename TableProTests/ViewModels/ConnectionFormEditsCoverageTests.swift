@@ -13,7 +13,6 @@ import Testing
 /// `DatabaseConnection` is either written by the form or carried over untouched.
 /// A property that is neither is one the connection form silently resets on save,
 /// which is how the favorite mark, the sort order and the AI tool grants were lost.
-@Suite("Connection form edits coverage")
 struct ConnectionFormEditsCoverageTests {
     private static let writtenByForm: Set<String> = [
         "name",
@@ -25,6 +24,7 @@ struct ConnectionFormEditsCoverageTests {
         "sshConfig",
         "sslConfig",
         "color",
+        "iconName",
         "tagIds",
         "groupId",
         "sshProfileId",
@@ -107,6 +107,7 @@ struct ConnectionFormEditsCoverageTests {
         original.isSample = true
         original.aiAlwaysAllowedTools = ["run_query"]
         original.passwordSource = .env(variable: "PGPASSWORD")
+        original.iconName = "server.rack"
 
         let result = ConnectionFormEdits(
             name: original.name,
@@ -118,6 +119,7 @@ struct ConnectionFormEditsCoverageTests {
             sshConfig: original.sshConfig,
             sslConfig: original.sslConfig,
             color: original.color,
+            iconName: original.iconName,
             tagIds: original.tagIds,
             groupId: original.groupId,
             sshProfileId: original.sshProfileId,
@@ -131,6 +133,8 @@ struct ConnectionFormEditsCoverageTests {
             aiPolicy: original.aiPolicy,
             aiRules: original.aiRules,
             externalAccess: original.externalAccess,
+            connectTimeoutSeconds: original.connectTimeoutSeconds,
+            queryTimeoutSeconds: original.queryTimeoutSeconds,
             redisDatabase: original.redisDatabase,
             startupCommands: original.startupCommands,
             localOnly: original.localOnly,

@@ -38,6 +38,18 @@ internal struct LicenseNotice: Equatable {
     let tone: LicenseNoticeTone
 }
 
+/// A page on tablepro.app that clears an activation failure, offered as a link under its message.
+internal struct LicenseActivationLink: Equatable {
+    let title: String
+    let destination: URL
+}
+
+/// What the activation form says when activating fails, and where to go about it.
+internal struct LicenseActivationFailure: Equatable {
+    let message: String
+    let link: LicenseActivationLink?
+}
+
 /// Turns license state into what the pane shows. Pure and free of any view type, so the whole grid
 /// of states can be tested without building a view, the same way `LicenseManager.resolveStatus` is.
 internal enum LicensePresentation {
@@ -78,7 +90,7 @@ internal enum LicensePresentation {
         case .expired:
             return LicenseNotice(
                 title: String(localized: "License Expired"),
-                message: String(localized: "Renew it to use Pro features again. Everything else keeps working."),
+                message: String(localized: "Renew it to use paid features again. Everything else keeps working."),
                 action: .renew,
                 tone: .warning
             )
@@ -95,7 +107,7 @@ internal enum LicensePresentation {
             return LicenseNotice(
                 title: String(localized: "Could Not Check This License"),
                 message: String(
-                    localized: "TablePro has not reached the license server in 30 days, so Pro features are paused."
+                    localized: "TablePro has not reached the license server in 30 days, so paid features are paused."
                 ),
                 action: .retryValidation,
                 tone: .warning
@@ -152,6 +164,28 @@ internal enum LicensePresentation {
         }
     }
 
+    /// What the activation form shows after activating `entry` failed.
+    ///
+    /// The Macs link goes with a license key only. An invite code fails with the same status when
+    /// the team has no seat left, which only the team's owner can change, and the Macs page lists
+    /// only the licenses bought with the signed-in email.
+    static func activationFailure(for error: Error, entry: String) -> LicenseActivationFailure {
+        let licenseError = error as? LicenseError
+        let message = licenseError?.friendlyDescription ?? error.localizedDescription
+
+        guard case .activationLimitReached? = licenseError, LicenseManager.isLicenseKey(entry) else {
+            return LicenseActivationFailure(message: message, link: nil)
+        }
+
+        return LicenseActivationFailure(
+            message: message,
+            link: LicenseActivationLink(
+                title: String(localized: "Manage Macs"),
+                destination: SupportLinks.accountMachines
+            )
+        )
+    }
+
     /// The seat count, as a phrase rather than two numbers glued together, so a translation can put
     /// them wherever its grammar needs and vary the noun by count.
     static func deviceCount(used: Int, limit: Int) -> String {
@@ -166,8 +200,8 @@ internal enum LicensePresentation {
 
     /// What a licence is, in one line under the licensee's email.
     ///
-    /// A lifetime licence states that once. Its billing cycle is already the word "lifetime", so
-    /// taking the cycle and the absent expiry both spelled the plan "Team · Lifetime · Lifetime".
+    /// A one-time licence has no expiry and says so once. Its billing cycle is the server's word for
+    /// the same thing, "lifetime", so taking both spelled the plan "Team · Lifetime · Lifetime".
     static func planDescription(tier: String, billingCycle: String?, expiry: String?) -> String {
         var parts = [LicenseTier(rawValue: tier).displayName]
 
@@ -177,7 +211,7 @@ internal enum LicensePresentation {
             }
             parts.append(String(format: String(localized: "Expires %@"), expiry))
         } else {
-            parts.append(String(localized: "Lifetime"))
+            parts.append(String(localized: "One-time"))
         }
 
         return parts.joined(separator: " · ")

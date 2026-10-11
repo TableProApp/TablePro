@@ -122,8 +122,8 @@ struct ConnectionURLFormatter {
         var sshPathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
-        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
-            sshPathComponent = String(redisDb)
+        if connection.type == .redis {
+            sshPathComponent = redisPath(for: connection)
         }
         result += "/\(sshPathComponent)"
 
@@ -151,7 +151,10 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        if connection.type.pluginTypeId == "MongoDB",
+        let socketPath = connection.localSocketPath
+        if socketPath != nil {
+            result += "localhost"
+        } else if connection.type.pluginTypeId == "MongoDB",
            let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
             result += mongoHosts
         } else {
@@ -164,17 +167,40 @@ struct ConnectionURLFormatter {
         var pathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
-        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
-            pathComponent = String(redisDb)
+        if connection.type == .redis {
+            pathComponent = redisPath(for: connection)
         }
-        result += "/\(pathComponent)"
+        // Unencoded, a `#` or `?` in the name would swallow the query, socket included.
+        result += "/\(pathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pathComponent)"
 
+        var params: [String] = []
+        if let socketPath {
+            params.append("socket=\(percentEncodeSocketPath(socketPath))")
+        }
         let query = buildQueryString(connection)
         if !query.isEmpty {
-            result += "?\(query)"
+            params.append(query)
+        }
+        if !params.isEmpty {
+            result += "?\(params.joined(separator: "&"))"
         }
 
         return result
+    }
+
+    private static let socketPathAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+
+    // MySQL's documented form, `socket=%2Ftmp%2Fmysql.sock`. Only unreserved characters stay
+    // literal, so `+` and a space survive both percent and form decoding.
+    private static func percentEncodeSocketPath(_ path: String) -> String {
+        path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed) ?? path
+    }
+
+    private static func redisPath(for connection: DatabaseConnection) -> String {
+        let index = connection.redisDatabaseIndex
+        return index == 0 ? "" : String(index)
     }
 
     private static func buildQueryString(
@@ -211,7 +237,7 @@ struct ConnectionURLFormatter {
             params.append("sshNoAuth=true")
         }
 
-        if let sslParam = sslModeParam(connection.sslConfig.mode) {
+        if let sslParam = sslModeParam(for: connection) {
             params.append("sslmode=\(sslParam)")
         }
 
@@ -264,9 +290,20 @@ struct ConnectionURLFormatter {
         }
     }
 
-    private static func sslModeParam(_ mode: SSLMode) -> String? {
+    private static func sslModeParam(for connection: DatabaseConnection) -> String? {
+        guard connection.type != .etcd else {
+            return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
+                .map(sslModeParamValue)
+        }
+        let mode = connection.sslConfig.mode
+        let portImpliesTLS = connection.type.impliedSSLMode(forPort: connection.port) != nil
+        guard mode != connection.type.defaultSSLMode || portImpliesTLS else { return nil }
+        return sslModeParamValue(mode)
+    }
+
+    private static func sslModeParamValue(_ mode: SSLMode) -> String {
         switch mode {
-        case .disabled: return nil
+        case .disabled: return "disable"
         case .preferred: return "prefer"
         case .required: return "require"
         case .verifyCa: return "verify-ca"

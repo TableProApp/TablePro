@@ -14,10 +14,7 @@ internal struct FileConflictDiffSheet: View {
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-
-    private var diffLines: [DiffPair] {
-        FileConflictDiff.pairs(mine: mineContent, disk: diskContent)
-    }
+    @State private var presentation: FileConflictPresentation?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +26,9 @@ internal struct FileConflictDiffSheet: View {
         }
         .frame(minWidth: 600, idealWidth: 760, maxWidth: .infinity,
                minHeight: 400, idealHeight: 540, maxHeight: .infinity)
+        .task {
+            presentation = await FileConflictPresentation.load(mine: mineContent, disk: diskContent)
+        }
     }
 
     private var header: some View {
@@ -38,48 +38,30 @@ internal struct FileConflictDiffSheet: View {
             Text(String(format: String(localized: "\"%@\" was changed since you opened it. Review the diff and choose how to resolve."), fileName))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if presentation?.showsLineDiff == false {
+                Text(String(localized: "Too many lines differ to compare line by line."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
     }
 
+    @ViewBuilder
     private var diffBody: some View {
-        HSplitView {
-            DiffColumnView(
-                title: String(localized: "Your Changes"),
-                lines: diffLines.map {
-                    DiffColumnLine(
-                        text: $0.before,
-                        tint: tint(for: $0.kind, side: .mine)
-                    )
-                }
-            )
-            .frame(minWidth: 200)
+        if let presentation {
+            HSplitView {
+                DiffColumnView(title: String(localized: "Your Changes"), rows: presentation.mineRows)
+                    .frame(minWidth: 200)
 
-            DiffColumnView(
-                title: String(localized: "On Disk"),
-                lines: diffLines.map {
-                    DiffColumnLine(
-                        text: $0.after,
-                        tint: tint(for: $0.kind, side: .disk)
-                    )
-                }
-            )
-            .frame(minWidth: 200)
-        }
-    }
-
-    private enum Side { case mine, disk }
-
-    private func tint(for kind: DiffPair.Kind, side: Side) -> Color? {
-        switch (kind, side) {
-        case (.unchanged, _): return nil
-        case (.removed, .mine): return .red.opacity(0.18)
-        case (.removed, .disk): return Color.gray.opacity(0.06)
-        case (.added, .mine): return Color.gray.opacity(0.06)
-        case (.added, .disk): return .green.opacity(0.18)
-        case (.changed, .mine): return .red.opacity(0.18)
-        case (.changed, .disk): return .green.opacity(0.18)
+                DiffColumnView(title: String(localized: "On Disk"), rows: presentation.diskRows)
+                    .frame(minWidth: 200)
+            }
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -109,14 +91,9 @@ internal struct FileConflictDiffSheet: View {
     }
 }
 
-internal struct DiffColumnLine {
-    let text: String?
-    let tint: Color?
-}
-
 private struct DiffColumnView: View {
     let title: String
-    let lines: [DiffColumnLine]
+    let rows: [FileConflictRow]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -132,24 +109,35 @@ private struct DiffColumnView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    ForEach(rows) { row in
                         HStack(alignment: .top, spacing: 8) {
-                            Text(verbatim: "\(index + 1)")
+                            Text(verbatim: "\(row.id + 1)")
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 32, alignment: .trailing)
 
-                            Text(line.text ?? " ")
+                            Text(row.text ?? " ")
                                 .font(.system(.body, design: .monospaced))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 1)
-                        .background(line.tint ?? Color.clear)
+                        .background(row.highlight.tint)
                     }
                 }
             }
             .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+}
+
+private extension FileConflictRowHighlight {
+    var tint: Color {
+        switch self {
+        case .plain: return .clear
+        case .removed: return .red.opacity(0.18)
+        case .added: return .green.opacity(0.18)
+        case .filler: return .gray.opacity(0.06)
         }
     }
 }

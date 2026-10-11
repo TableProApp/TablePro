@@ -28,7 +28,10 @@ struct FindAndReplaceEntryTests {
         func setCursorPositions(_ positions: [CursorPosition], scrollToVisible: Bool) {
             cursorPositions = positions
         }
+        var isFindReplaceEditable: Bool { true }
+
         func updateCursorPosition() { }
+        func replaceFindMatches(_ replacements: [TextReplacement]) -> Bool { false }
         func findPanelWillShow(panelHeight: CGFloat) { }
         func findPanelWillHide(panelHeight: CGFloat) { }
         func findPanelModeDidChange(to mode: FindPanelMode) { }

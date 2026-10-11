@@ -10,7 +10,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection recovery presentation")
 @MainActor
 struct ConnectionRecoveryPresentationTests {
     private static let failure = ConnectionFailureInfo(message: "The plugin is turned off.")

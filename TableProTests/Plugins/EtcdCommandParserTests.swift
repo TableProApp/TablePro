@@ -11,7 +11,6 @@ import Testing
 
 // MARK: - KV Commands
 
-@Suite("EtcdCommandParser - GET")
 struct EtcdCommandParserGetTests {
     @Test("Basic get parses key")
     func basicGet() throws {
@@ -26,6 +25,47 @@ struct EtcdCommandParserGetTests {
         #expect(keysOnly == false)
         #expect(sortOrder == nil)
         #expect(sortTarget == nil)
+    }
+
+    @Test("A boolean flag written before the key leaves the key alone")
+    func getWithPrefixBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("get --prefix /app --keys-only")
+        guard case .get(let key, let prefix, _, let keysOnly, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+        #expect(keysOnly == true)
+    }
+
+    @Test("A value flag written before the key still takes its value")
+    func getWithLimitBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("get --limit 5 /app --prefix")
+        guard case .get(let key, let prefix, let limit, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+        #expect(limit == 5)
+    }
+
+    @Test(
+        "A revision or consistency flag written before the key keeps its value off the key",
+        arguments: [
+            "--consistency s", "--max-create-rev 5", "--max-mod-rev 5", "--min-create-rev 5",
+            "--min-mod-rev 5", "--rev 5"
+        ]
+    )
+    func getWithRevisionFlagBeforeKey(flag: String) throws {
+        let op = try EtcdCommandParser.parse("get \(flag) /app --prefix")
+        guard case .get(let key, let prefix, _, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
     }
 
     @Test("Get with --prefix flag")
@@ -133,7 +173,6 @@ struct EtcdCommandParserGetTests {
     }
 }
 
-@Suite("EtcdCommandParser - PUT")
 struct EtcdCommandParserPutTests {
     @Test("Basic put parses key and value")
     func basicPut() throws {
@@ -225,7 +264,6 @@ struct EtcdCommandParserPutTests {
     }
 }
 
-@Suite("EtcdCommandParser - DEL")
 struct EtcdCommandParserDelTests {
     @Test("Basic del parses key")
     func basicDel() throws {
@@ -249,6 +287,36 @@ struct EtcdCommandParserDelTests {
         #expect(prefix == true)
     }
 
+    @Test("Del with --prefix written before the key")
+    func delWithPrefixBeforeKey() throws {
+        let op = try EtcdCommandParser.parse("del --prefix /app")
+        guard case .del(let key, let prefix) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == true)
+    }
+
+    @Test(
+        "An etcdctl global flag written before the key keeps its value off the key",
+        arguments: [
+            "--cacert ca.pem", "--cert client.pem", "--command-timeout 5s", "--dial-timeout 2s",
+            "--discovery-srv example.com", "--discovery-srv-name etcd", "--endpoints 127.0.0.1:2379",
+            "--keepalive-time 2s", "--keepalive-timeout 6s", "--key client-key.pem", "--password secret",
+            "--user root", "--write-out json"
+        ]
+    )
+    func delWithGlobalValueFlagBeforeKey(flag: String) throws {
+        let op = try EtcdCommandParser.parse("del \(flag) /app")
+        guard case .del(let key, let prefix) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(key == "/app")
+        #expect(prefix == false)
+    }
+
     @Test("Delete alias works")
     func deleteAlias() throws {
         let op = try EtcdCommandParser.parse("delete mykey")
@@ -267,7 +335,6 @@ struct EtcdCommandParserDelTests {
     }
 }
 
-@Suite("EtcdCommandParser - WATCH")
 struct EtcdCommandParserWatchTests {
     @Test("Basic watch parses key")
     func basicWatch() throws {
@@ -307,11 +374,58 @@ struct EtcdCommandParserWatchTests {
             try EtcdCommandParser.parse("watch")
         }
     }
+
+    @Test("A negative timeout is rejected instead of reaching the transport")
+    func watchNegativeTimeout() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout -1")
+        }
+    }
+
+    @Test("A timeout past the transport ceiling is rejected")
+    func watchTimeoutTooLarge() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout 1e30")
+        }
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse(
+                "watch key --timeout \(Int(EtcdCommandParser.maximumWatchTimeout) + 1)"
+            )
+        }
+    }
+
+    @Test("A non-finite timeout is rejected")
+    func watchTimeoutNotFinite() {
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout inf")
+        }
+        #expect(throws: EtcdParseError.self) {
+            try EtcdCommandParser.parse("watch key --timeout nan")
+        }
+    }
+
+    @Test("Zero and the ceiling are accepted")
+    func watchTimeoutBounds() throws {
+        let zero = try EtcdCommandParser.parse("watch key --timeout 0")
+        guard case .watch(_, _, let zeroTimeout) = zero else {
+            Issue.record("Expected .watch")
+            return
+        }
+        #expect(zeroTimeout == 0)
+
+        let ceiling = try EtcdCommandParser.parse(
+            "watch key --timeout \(Int(EtcdCommandParser.maximumWatchTimeout))"
+        )
+        guard case .watch(_, _, let ceilingTimeout) = ceiling else {
+            Issue.record("Expected .watch")
+            return
+        }
+        #expect(ceilingTimeout == EtcdCommandParser.maximumWatchTimeout)
+    }
 }
 
 // MARK: - Lease Commands
 
-@Suite("EtcdCommandParser - Lease")
 struct EtcdCommandParserLeaseTests {
     @Test("Lease grant parses TTL")
     func leaseGrant() throws {
@@ -337,7 +451,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseRevoke, got \(op)")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
     }
 
     @Test("Lease revoke parses hex ID with 0x prefix")
@@ -374,7 +488,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseTimetolive, got \(op)")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
         #expect(keys == false)
     }
 
@@ -385,7 +499,7 @@ struct EtcdCommandParserLeaseTests {
             Issue.record("Expected .leaseTimetolive")
             return
         }
-        #expect(leaseId == 12345)
+        #expect(leaseId == 12_345)
         #expect(keys == true)
     }
 
@@ -425,7 +539,6 @@ struct EtcdCommandParserLeaseTests {
 
 // MARK: - Cluster Commands
 
-@Suite("EtcdCommandParser - Cluster")
 struct EtcdCommandParserClusterTests {
     @Test("Member list")
     func memberList() throws {
@@ -485,7 +598,6 @@ struct EtcdCommandParserClusterTests {
 
 // MARK: - Maintenance Commands
 
-@Suite("EtcdCommandParser - Maintenance")
 struct EtcdCommandParserMaintenanceTests {
     @Test("Compaction parses revision")
     func compaction() throws {
@@ -519,7 +631,6 @@ struct EtcdCommandParserMaintenanceTests {
 
 // MARK: - Auth Commands
 
-@Suite("EtcdCommandParser - Auth")
 struct EtcdCommandParserAuthTests {
     @Test("Auth enable")
     func authEnable() throws {
@@ -556,7 +667,6 @@ struct EtcdCommandParserAuthTests {
 
 // MARK: - User Commands
 
-@Suite("EtcdCommandParser - User")
 struct EtcdCommandParserUserTests {
     @Test("User add with name only")
     func userAddNameOnly() throws {
@@ -666,7 +776,6 @@ struct EtcdCommandParserUserTests {
 
 // MARK: - Role Commands
 
-@Suite("EtcdCommandParser - Role")
 struct EtcdCommandParserRoleTests {
     @Test("Role add")
     func roleAdd() throws {
@@ -728,7 +837,6 @@ struct EtcdCommandParserRoleTests {
 
 // MARK: - Error Cases
 
-@Suite("EtcdCommandParser - Error Cases")
 struct EtcdCommandParserErrorTests {
     @Test("Empty string throws emptySyntax")
     func emptyInput() {
@@ -758,7 +866,6 @@ struct EtcdCommandParserErrorTests {
 
 // MARK: - Tokenizer / Edge Cases
 
-@Suite("EtcdCommandParser - Tokenizer")
 struct EtcdCommandParserTokenizerTests {
     @Test("Extra whitespace between tokens is handled")
     func extraWhitespace() throws {
@@ -854,12 +961,11 @@ struct EtcdCommandParserTokenizerTests {
 
 // MARK: - Lease ID Parsing
 
-@Suite("EtcdCommandParser - Lease ID Parsing")
 struct EtcdCommandParserLeaseIdTests {
     @Test("Decimal lease ID")
     func decimalLeaseId() throws {
         let result = try EtcdCommandParser.parseLeaseId("12345")
-        #expect(result == 12345)
+        #expect(result == 12_345)
     }
 
     @Test("Hex lease ID with 0x prefix")

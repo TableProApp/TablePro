@@ -57,7 +57,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             var columns: [String] = []
             let headerRowCount = settings.includeHeaderRow ? 1 : 0
 
-            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            let stream = dataSource.streamRows(for: table)
             for try await element in stream {
                 try progress.checkCancellation()
 
@@ -162,7 +162,6 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 )
                 writer.finishSheet()
             }
-
         }
 
         try await writer.write(to: destination)

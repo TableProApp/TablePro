@@ -21,6 +21,7 @@ final class FakeSOCKS5Server: @unchecked Sendable {
     }
 
     private struct CapturedState {
+        var acceptedConnectionCount = 0
         var connectRequests: [ConnectRequest] = []
         var sawAuthNegotiation = false
     }
@@ -36,6 +37,10 @@ final class FakeSOCKS5Server: @unchecked Sendable {
 
     var capturedConnectRequest: ConnectRequest? {
         captured.withLock { $0.connectRequests.last }
+    }
+
+    var acceptedConnectionCount: Int {
+        captured.withLock { $0.acceptedConnectionCount }
     }
 
     var sawAuthNegotiation: Bool {
@@ -86,6 +91,7 @@ final class FakeSOCKS5Server: @unchecked Sendable {
     }
 
     private func handle(_ connection: NWConnection) {
+        captured.withLock { $0.acceptedConnectionCount += 1 }
         connection.start(queue: queue)
         guard behavior != .neverReply else { return }
         Task {

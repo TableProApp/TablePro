@@ -57,17 +57,14 @@ public enum LibraryOutlineBuilder {
         var sections: [LibrarySection] = []
         let isQueryActive = request.query.isActive
 
-        if request.includesFavorites, !isQueryActive {
-            let nodes = favoriteIds(request).map { LibraryNode.connection(id: $0) }
-            if !nodes.isEmpty {
-                sections.append(LibrarySection(kind: .favorites, nodes: nodes))
+        if !isQueryActive {
+            let favorites = favoriteIds(request).map { LibraryNode.connection(id: $0) }
+            if !favorites.isEmpty {
+                sections.append(LibrarySection(kind: .favorites, nodes: favorites))
             }
-        }
-
-        if request.includesRecent, !isQueryActive {
-            let nodes = recentIds(request).map { LibraryNode.connection(id: $0) }
-            if !nodes.isEmpty {
-                sections.append(LibrarySection(kind: .recent, nodes: nodes))
+            let recent = recentIds(request).map { LibraryNode.connection(id: $0) }
+            if !recent.isEmpty {
+                sections.append(LibrarySection(kind: .recent, nodes: recent))
             }
         }
 
@@ -97,6 +94,7 @@ public enum LibraryOutlineBuilder {
     public static func favoriteIds<Connection, Group, Tag>(
         _ request: LibraryOutlineRequest<Connection, Group, Tag>
     ) -> [UUID] {
+        guard request.includesFavorites else { return [] }
         let favorites = request.connections.filter(\.isFavorite)
         guard request.sortMode == .manual else {
             return LibrarySorting.sorted(favorites, mode: request.sortMode, lastConnected: request.lastConnected).map(\.id)
@@ -123,7 +121,7 @@ public enum LibraryOutlineBuilder {
     public static func recentIds<Connection, Group, Tag>(
         _ request: LibraryOutlineRequest<Connection, Group, Tag>
     ) -> [UUID] {
-        guard request.recentLimit > 0 else { return [] }
+        guard request.includesRecent, request.recentLimit > 0 else { return [] }
         let eligible = Set(request.connections.filter { !$0.isFavorite }.map(\.id))
         return request.lastConnected
             .filter { eligible.contains($0.key) }

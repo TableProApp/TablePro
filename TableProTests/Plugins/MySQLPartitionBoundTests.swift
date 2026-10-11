@@ -8,7 +8,6 @@ import Testing
 
 /// The values are what MariaDB 12.3.3 actually returns from `information_schema.PARTITIONS`,
 /// measured against a live server rather than transcribed from the manual.
-@Suite("MySQL partition bounds put back the syntax the catalog leaves out")
 struct MySQLPartitionBoundTests {
     @Test("RANGE reports only its upper bound, so the row says what that bound is")
     func rangeWrapsDescription() {
@@ -50,7 +49,6 @@ struct MySQLPartitionBoundTests {
     }
 }
 
-@Suite("MySQL partition catalog SQL")
 struct MySQLPartitionQueryTests {
     @Test("A table listing carries the partition count without a second round trip")
     func tableListJoinsPartitionCount() {
@@ -90,15 +88,24 @@ struct MySQLPartitionQueryTests {
     }
 }
 
-@Suite("The partition count is attached to one exact table")
 struct MySQLPartitionCountIdentityTests {
-    /// `INFORMATION_SCHEMA` compares identifiers case-insensitively, so on a server with
-    /// `lower_case_table_names=0` a schema holding both `orders` and `Orders` would otherwise merge
-    /// their counts and could label the unpartitioned one `PARTITIONED TABLE`.
-    @Test("Grouping and joining are both binary, so case-distinct siblings stay apart")
+    /// `INFORMATION_SCHEMA` collates its identifiers case-insensitively on MySQL 5.7 and earlier and
+    /// on every MariaDB measured, so on a server with `lower_case_table_names=0` a schema holding both
+    /// `orders` and `Orders` would otherwise merge their counts and could label the unpartitioned one
+    /// `PARTITIONED TABLE`.
+    @Test("Grouping and joining both compare bytes, so case-distinct siblings stay apart")
     func countJoinIsCaseExact() {
         let query = MySQLObjectQueries.tableList(schema: "shop", includePartitions: true)
-        #expect(query.contains("GROUP BY BINARY TABLE_NAME, TABLE_NAME"))
-        #expect(query.contains("ON BINARY p.P_TABLE_NAME = BINARY t.TABLE_NAME"))
+        #expect(query.contains("GROUP BY CAST(TABLE_NAME AS BINARY), TABLE_NAME"))
+        #expect(query.contains("ON CAST(p.P_TABLE_NAME AS BINARY) = CAST(t.TABLE_NAME AS BINARY)"))
+    }
+
+    /// MySQL 8.0.27 deprecated the `BINARY` operator, and 8.4 raises three of Warning 1287 on every
+    /// table-list read that uses it. A future release removes it, which would fail the read.
+    @Test("The deprecated BINARY operator is gone from the table list")
+    func countJoinAvoidsTheDeprecatedOperator() {
+        let query = MySQLObjectQueries.tableList(schema: "shop", includePartitions: true)
+        #expect(!query.contains("BY BINARY "))
+        #expect(!query.contains("ON BINARY "))
     }
 }

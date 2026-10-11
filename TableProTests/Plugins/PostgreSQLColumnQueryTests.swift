@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLSchemaQueries.columnsQuery")
 struct PostgreSQLColumnsQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -40,8 +39,8 @@ struct PostgreSQLColumnsQueryTests {
     func singleTableFiltersOnRequestedSchema() {
         let query = singleTable(schema: "s2", table: "orders")
         #expect(query.contains("WHERE c.table_schema = 's2' AND c.table_name = 'orders'"))
-        #expect(query.contains("AND tc.table_schema = 's2'"))
-        #expect(query.contains("AND tc.table_name = 'orders'"))
+        #expect(query.contains("AND pkn.nspname = 's2'"))
+        #expect(query.contains("AND pkc.relname = 'orders'"))
     }
 
     @Test("a non-active schema is not ignored", arguments: ["s2", "analytics", "public"])
@@ -85,13 +84,27 @@ struct PostgreSQLColumnsQueryTests {
         #expect(query.contains("AND a.attnum = c.ordinal_position"))
     }
 
-    @Test("a server without identity or generated columns never names pg_attribute")
+    /// Re-pinned deliberately: the join itself is no longer version-gated, because the declared
+    /// type is `format_type(a.atttypid, a.atttypmod)` and every server back to 9.1 has both. What
+    /// stays gated is the two attributes 9.1 does not have.
+    @Test("a server without identity or generated columns reads no attidentity or attgenerated")
     func legacyServerSkipsAttributes() {
         let query = allTables(schema: "s2")
-        #expect(!query.contains("pg_attribute"))
+        #expect(query.contains("pg_catalog.pg_attribute a"))
         #expect(!query.contains("a.attidentity"))
         #expect(!query.contains("a.attgenerated"))
         #expect(!query.contains("c.generation_expression"))
+    }
+
+    @Test("both the modern and the legacy query read the declared type and the domain name")
+    func everyServerReadsTheDeclaredType() {
+        for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
+            #expect(query.contains("pg_catalog.format_type(a.atttypid, a.atttypmod)"))
+            #expect(query.contains("AS declared_type"))
+            #expect(query.contains("c.domain_name AS domain_name"))
+            #expect(query.contains("ON a.attrelid = rel.oid"))
+            #expect(query.contains("AND a.attnum = c.ordinal_position"))
+        }
     }
 
     @Test("column comments are read through the relation's pg_class oid, not a statistics view")
@@ -103,15 +116,30 @@ struct PostgreSQLColumnsQueryTests {
         }
     }
 
-    @Test("primary key columns are matched to the constraint's own table")
-    func primaryKeyJoinIsTableScoped() {
+    @Test("primary key columns come from pg_constraint, which a role that can only read the table still sees")
+    func primaryKeyReadsPgConstraint() throws {
         for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
-            #expect(query.contains("AND tc.table_name = kcu.table_name"))
+            let start = try #require(query.range(of: "FROM pg_catalog.pg_constraint con"))
+            let end = try #require(query.range(of: ") pk ON", range: start.upperBound..<query.endIndex))
+            let block = query[start.lowerBound..<end.lowerBound]
+            #expect(block.contains("pka.attnum = ANY (con.conkey)"))
+            #expect(block.contains("con.contype = 'p'"))
+            #expect(block.contains("pkn.nspname = 's2'"))
+            #expect(!block.contains("privilege"))
+            #expect(!block.contains("pg_has_role"))
+            #expect(!query.contains("information_schema.table_constraints"))
         }
+    }
+
+    @Test("only the one-table read names the table inside the key block")
+    func primaryKeyBlockNamesTheTableOnlyWhenAsked() {
+        #expect(singleTable(schema: "s2", table: "orders").contains("SELECT DISTINCT pka.attname AS column_name"))
+        #expect(singleTable(schema: "s2", table: "orders").contains("AND pkc.relname = 'orders'"))
+        #expect(allTables(schema: "s2").contains("SELECT DISTINCT pkc.relname AS table_name, pka.attname AS column_name"))
+        #expect(!allTables(schema: "s2").contains("pkc.relname = '"))
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnsQuery materialized views")
 struct PostgreSQLMaterializedViewColumnsQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -120,7 +148,7 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         "UNION ALL",
         "mvc.relkind = 'm'",
         "pg_catalog.pg_attribute mva",
-        "pg_catalog.format_type"
+        "pg_catalog.format_type(mva.atttypid"
     ]
 
     private static let outerColumns = [
@@ -135,7 +163,9 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         "cols.identity_kind",
         "cols.generated_kind",
         "cols.udt_schema",
-        "cols.generation_expression"
+        "cols.generation_expression",
+        "cols.declared_type",
+        "cols.domain_name"
     ]
 
     private func query(
@@ -197,7 +227,7 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         #expect(rendered.contains("'NO' AS is_pk"))
         #expect(rendered.contains("NULL::text AS column_default"))
         #expect(!rendered.contains("pg_attrdef"))
-        #expect(rendered.components(separatedBy: "information_schema.table_constraints").count - 1 == 1)
+        #expect(rendered.components(separatedBy: "FROM pg_catalog.pg_constraint con").count - 1 == 1)
     }
 
     @Test("identity and generated mirror the capability switches the base arm uses")
@@ -211,12 +241,19 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         #expect(!legacyQuery.contains("mva.attgenerated"))
     }
 
-    @Test("type names are spelled the way information_schema spells them, without a typmod")
+    @Test("classified type names are spelled the way information_schema spells them, without a typmod")
     func armSpellsTypesLikeInformationSchema() {
         let rendered = query()
         #expect(rendered.contains("pg_catalog.format_type(mva.atttypid, NULL)"))
         #expect(rendered.contains("pg_catalog.format_type(mvt.typbasetype, NULL)"))
-        #expect(!rendered.contains("atttypmod"))
+    }
+
+    @Test("the declared type carries the modifier and the domain name comes from the type itself")
+    func armReadsTheDeclaredType() {
+        let rendered = query()
+        #expect(rendered.contains("pg_catalog.format_type(mva.atttypid, mva.atttypmod)"))
+        #expect(rendered.contains("AS declared_type"))
+        #expect(rendered.contains("CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name"))
     }
 
     @Test("a domain resolves to its base type, as information_schema does")
@@ -247,7 +284,6 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
     }
 }
 
-@Suite("RedshiftSchemaQueries.columnsQuery")
 struct RedshiftColumnsQueryTests {
     @Test("single-table query filters on the requested schema and table")
     func singleTableFiltersOnRequestedSchema() {
@@ -293,7 +329,6 @@ struct RedshiftColumnsQueryTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnDDLQuery")
 struct PostgreSQLColumnDDLQueryTests {
     private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
     private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
@@ -344,7 +379,6 @@ struct PostgreSQLColumnDDLQueryTests {
     }
 }
 
-@Suite("PostgreSQLSchemaQueries.columnDDL")
 struct PostgreSQLColumnDDLParsingTests {
     private func row(
         _ table: String?,

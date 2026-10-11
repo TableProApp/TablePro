@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("PostgreSQL comment statements")
 struct PostgreSQLCommentStatementsTests {
     private func row(relkind: String, column: String?, description: String?) -> [String?] {
         [relkind, column, description]
@@ -152,6 +151,25 @@ struct PostgreSQLCommentStatementsTests {
         #expect(query.contains("NOT a.attisdropped"))
         #expect(query.contains("a.attnum > 0"))
         #expect(query.contains("ORDER BY ordinal, attnum"))
+    }
+
+    @Test("relationCommentQuery reads the relation's own pg_description row")
+    func relationCommentQueryReadsObjsubidZero() {
+        let query = PostgreSQLCommentStatements.relationCommentQuery(name: "orders", schema: "app")
+
+        #expect(query.contains("SELECT d.description"))
+        #expect(query.contains("JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0"))
+        #expect(query.contains("n.nspname = 'app'"))
+        #expect(query.contains("c.relname = 'orders'"))
+        #expect(!query.contains("obj_description"))
+    }
+
+    @Test("relationCommentQuery quotes both literals")
+    func relationCommentQueryQuotesItsLiterals() {
+        let query = PostgreSQLCommentStatements.relationCommentQuery(name: "O'Brien", schema: #"sa\les"#)
+
+        #expect(query.contains("c.relname = 'O''Brien'"))
+        #expect(query.contains(#"n.nspname = E'sa\\les'"#))
     }
 
     @Test("catalogQuery reads both description functions and drops a relation with neither")

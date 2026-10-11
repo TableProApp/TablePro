@@ -46,6 +46,22 @@ enum MongoScriptText {
         String(localized: "This cursor has already been closed.")
     }
 
+    static func refusedUnderRead(_ operation: String) -> String {
+        String(format: String(localized: "Refused %@: this statement ran as a read."), operation)
+    }
+
+    static var refusedWritingPipelineUnderRead: String {
+        String(localized: "Refused a pipeline with $out or $merge: this statement ran as a read.")
+    }
+
+    static var refusedWritingPipelineInExport: String {
+        String(localized: "Refused a pipeline with $out or $merge: an export only reads.")
+    }
+
+    static func missingArgument(_ name: String) -> String {
+        String(format: String(localized: "Missing required argument: %@"), name)
+    }
+
     static func cursorAlreadyStarted(_ key: String) -> String {
         String(format: String(localized: ".%@() cannot be set once the cursor has started."), key)
     }
@@ -75,5 +91,53 @@ enum MongoScriptText {
 
     static func switchedDatabase(_ name: String) -> String {
         String(format: String(localized: "Switched to %@"), name)
+    }
+
+    static func writeRefused(code: UInt32) -> String {
+        String(format: String(localized: "MongoDB refused the write (error %u)."), code)
+    }
+
+    static var insertStoppedAtOversizedDocument: String {
+        String(localized: "The insert stopped at a document larger than MongoDB accepts.")
+    }
+
+    static func writeNotAcknowledged(reason: String) -> String {
+        String(
+            format: String(localized: "The write was applied, but the servers did not confirm it as the write concern asks: %@"),
+            reason
+        )
+    }
+
+    static func writesChanged(_ count: Int) -> String {
+        String(
+            format: String(
+                localized: """
+                %d document(s) had already been changed when this failed. \
+                MongoDB does not undo them, so check the data before you run it again.
+                """
+            ),
+            count
+        )
+    }
+
+    static var writesMayHaveChanged: String {
+        String(
+            localized: """
+            Some documents may already have been changed when this failed. \
+            MongoDB does not undo them, so check the data before you run it again.
+            """
+        )
+    }
+
+    static func writesChangedAndMaybeMore(_ count: Int) -> String {
+        String(
+            format: String(
+                localized: """
+                %d document(s), and possibly more that MongoDB does not report, had already been changed \
+                when this failed. MongoDB does not undo them, so check the data before you run it again.
+                """
+            ),
+            count
+        )
     }
 }

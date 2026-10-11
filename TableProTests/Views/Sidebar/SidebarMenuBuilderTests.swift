@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Sidebar menu builder")
 @MainActor
 struct SidebarMenuBuilderTests {
     private func build(_ sections: [DatabaseTreeMenuSection]) -> NSMenu {

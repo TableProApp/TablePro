@@ -22,13 +22,23 @@ let package = Package(
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
+        .library(name: "TableProTLSTestFixtures", targets: ["TableProTLSTestFixtures"]),
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
+        .library(name: "TableProJavaScriptText", targets: ["TableProJavaScriptText"]),
+        .library(name: "TableProLogRedaction", targets: ["TableProLogRedaction"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
-        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
+        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
+        .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
+        .library(name: "CSQLite", targets: ["CSQLite"]),
+        .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"]),
+        .library(name: "TableProTabularIO", targets: ["TableProTabularIO"]),
+        .library(name: "TableProTabular", targets: ["TableProTabular"])
     ],
     targets: [
         .target(
@@ -40,6 +50,16 @@ let package = Package(
             name: "TableProDocumentPath",
             dependencies: [],
             path: "Sources/TableProDocumentPath"
+        ),
+        .target(
+            name: "TableProJavaScriptText",
+            dependencies: [],
+            path: "Sources/TableProJavaScriptText"
+        ),
+        .target(
+            name: "TableProLogRedaction",
+            dependencies: [],
+            path: "Sources/TableProLogRedaction"
         ),
         .target(
             name: "TableProCoreTypes",
@@ -63,17 +83,17 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: [],
+            dependencies: ["TableProConnectionLibrary"],
             path: "Sources/TableProImport"
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -83,7 +103,7 @@ let package = Package(
         ),
         .target(
             name: "TableProSync",
-            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes"],
+            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes", "TableProConnectionLibrary"],
             path: "Sources/TableProSync"
         ),
         .target(
@@ -93,7 +113,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: [],
+            dependencies: ["TableProCoreTypes"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(
@@ -105,6 +125,16 @@ let package = Package(
             name: "TableProTrinoCore",
             dependencies: [],
             path: "Sources/TableProTrinoCore"
+        ),
+        .target(
+            name: "TableProTLSClientIdentity",
+            dependencies: [],
+            path: "Sources/TableProTLSClientIdentity"
+        ),
+        .target(
+            name: "TableProTLSTestFixtures",
+            dependencies: [],
+            path: "Tests/TableProTLSTestFixtures"
         ),
         .target(
             name: "TableProGoogleCloud",
@@ -131,10 +161,60 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProConnectionLibrary"
         ),
+        .target(
+            name: "TableProSQLGrammar",
+            dependencies: [],
+            path: "Sources/TableProSQLGrammar"
+        ),
+        .target(
+            name: "TableProSSHTransport",
+            dependencies: [],
+            path: "Sources/TableProSSHTransport"
+        ),
+        .target(
+            name: "CSQLite",
+            dependencies: [],
+            path: "Sources/CSQLite"
+        ),
+        .target(
+            name: "TableProTabularIO",
+            dependencies: [],
+            path: "Sources/TableProTabularIO"
+        ),
+        .target(
+            name: "TableProTabular",
+            dependencies: ["TableProTabularIO", "TableProNumberFormatting"],
+            path: "Sources/TableProTabular"
+        ),
+        .target(
+            name: "TableProSQLiteCore",
+            dependencies: ["CSQLite"],
+            path: "Sources/TableProSQLiteCore"
+        ),
+        .testTarget(
+            name: "TableProTabularIOTests",
+            dependencies: ["TableProTabularIO", "TableProPluginKit"],
+            path: "Tests/TableProTabularIOTests"
+        ),
+        .testTarget(
+            name: "TableProTabularTests",
+            dependencies: ["TableProTabular", "TableProTabularIO", "TableProNumberFormatting"],
+            path: "Tests/TableProTabularTests"
+        ),
         .testTarget(
             name: "TableProConnectionLibraryTests",
             dependencies: ["TableProConnectionLibrary"],
             path: "Tests/TableProConnectionLibraryTests"
+        ),
+        .testTarget(
+            name: "TableProCoreTypesTests",
+            dependencies: ["TableProCoreTypes"],
+            path: "Tests/TableProCoreTypesTests"
+        ),
+        .testTarget(
+            name: "TableProSSHTransportTests",
+            dependencies: ["TableProSSHTransport"],
+            path: "Tests/TableProSSHTransportTests"
         ),
         .testTarget(
             name: "TableProGeometryTests",
@@ -152,6 +232,16 @@ let package = Package(
             path: "Tests/TableProDocumentPathTests"
         ),
         .testTarget(
+            name: "TableProJavaScriptTextTests",
+            dependencies: ["TableProJavaScriptText"],
+            path: "Tests/TableProJavaScriptTextTests"
+        ),
+        .testTarget(
+            name: "TableProLogRedactionTests",
+            dependencies: ["TableProLogRedaction"],
+            path: "Tests/TableProLogRedactionTests"
+        ),
+        .testTarget(
             name: "TableProModelsTests",
             dependencies: ["TableProModels", "TableProPluginKit"],
             path: "Tests/TableProModelsTests"
@@ -163,13 +253,18 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
             name: "TableProQueryTests",
             dependencies: ["TableProQuery", "TableProModels", "TableProPluginKit"],
             path: "Tests/TableProQueryTests"
+        ),
+        .testTarget(
+            name: "TableProSQLGrammarTests",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Tests/TableProSQLGrammarTests"
         ),
         .testTarget(
             name: "TableProAnalyticsTests",
@@ -188,8 +283,13 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore"],
+            dependencies: ["TableProTrinoCore", "TableProTLSClientIdentity", "TableProTLSTestFixtures"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProTLSClientIdentityTests",
+            dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
+            path: "Tests/TableProTLSClientIdentityTests"
         ),
         .testTarget(
             name: "TableProGoogleCloudTests",

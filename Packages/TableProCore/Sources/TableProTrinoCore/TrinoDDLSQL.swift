@@ -61,18 +61,30 @@ public enum TrinoDDLSQL {
 
     public static func setColumnComment(qualifiedTable: String, name: String, comment: String?) -> String {
         let reference = "\(qualifiedTable).\(TrinoIntrospectionSQL.quoteIdentifier(name))"
-        let value = comment.flatMap { $0.isEmpty ? nil : $0 }
-        guard let value else {
-            return "COMMENT ON COLUMN \(reference) IS NULL"
-        }
-        return "COMMENT ON COLUMN \(reference) IS \(TrinoIntrospectionSQL.quoteLiteral(value))"
+        return "COMMENT ON COLUMN \(reference) IS \(commentValue(comment))"
     }
 
     public static func setTableComment(qualifiedTable: String, comment: String?) -> String {
-        let value = comment.flatMap { $0.isEmpty ? nil : $0 }
-        guard let value else {
-            return "COMMENT ON TABLE \(qualifiedTable) IS NULL"
+        "COMMENT ON TABLE \(qualifiedTable) IS \(commentValue(comment))"
+    }
+
+    public static func setViewComment(qualifiedView: String, comment: String?) -> String {
+        "COMMENT ON VIEW \(qualifiedView) IS \(commentValue(comment))"
+    }
+
+    public static func objectComment(qualifiedName: String, objectType: String, comment: String?) -> String? {
+        switch objectType.uppercased() {
+        case "TABLE":
+            return setTableComment(qualifiedTable: qualifiedName, comment: comment)
+        case "VIEW":
+            return setViewComment(qualifiedView: qualifiedName, comment: comment)
+        default:
+            return nil
         }
-        return "COMMENT ON TABLE \(qualifiedTable) IS \(TrinoIntrospectionSQL.quoteLiteral(value))"
+    }
+
+    private static func commentValue(_ comment: String?) -> String {
+        guard let comment, !comment.isEmpty else { return "NULL" }
+        return TrinoIntrospectionSQL.quoteLiteral(comment)
     }
 }

@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection failure classifier")
 struct ConnectionFailureClassifierTests {
     @Test("A Swift cancellation is a cancel, not a failure")
     func swiftCancellationIsCancelled() {
@@ -31,6 +30,31 @@ struct ConnectionFailureClassifierTests {
     func routerCancellationIsCancelled() {
         #expect(ConnectionFailureClassifier.isUserCancelled(TabRouterError.userCancelled))
         #expect(ConnectionFailureClassifier.outcome(for: TabRouterError.userCancelled) == .cancelled)
+    }
+
+    @Test("An extension that failed to load sends the user to the connection, with the loader's reason")
+    func extensionFailureOffersEditConnection() {
+        let item = LoadableExtension(path: "/opt/homebrew/lib/vec0.dylib")
+        let error = LoadableExtensionError.libraryNotLoaded(item, detail: "slice is not valid mach-o file")
+
+        guard case .actionRequired(let info, let action) = ConnectionFailureClassifier.outcome(for: error) else {
+            Issue.record("Expected an action to be offered")
+            return
+        }
+        #expect(action == .editConnection)
+        #expect(info.message.contains("vec0.dylib"))
+        #expect(info.failureReason == "slice is not valid mach-o file")
+        #expect(ConnectionFailureClassifier.recoveryAction(for: error, canEditConnection: false) == nil)
+    }
+
+    @Test("Extensions nobody approved are a failure whose retry asks, not an edit")
+    func unapprovedExtensionsRetry() {
+        let error = LoadableExtensionApprovalError.notApproved([LoadableExtension(path: "/x/vec0.dylib")])
+        guard case .failed(let info) = ConnectionFailureClassifier.outcome(for: error) else {
+            Issue.record("Expected a plain failure")
+            return
+        }
+        #expect(info.failureReason == "/x/vec0.dylib")
     }
 
     @Test("An unrelated Cocoa error is not a cancel")
@@ -146,6 +170,36 @@ struct ConnectionFailureClassifierTests {
 
         #expect(info.message == SSLHandshakeError.formatted(error))
         #expect(info.message.contains("self signed certificate"))
+    }
+
+    @Test(
+        "A TLS failure only a settings change can fix stops the reconnect with its reason",
+        arguments: TLSFailureFixtures.configurationFailures
+    )
+    func configurationTLSFailureStopsReconnecting(error: SSLHandshakeError) {
+        #expect(
+            ConnectionFailureClassifier.reconnectVerdict(for: error)
+                == .stop(ConnectionFailureClassifier.info(for: error))
+        )
+    }
+
+    @Test(
+        "A certificate failure keeps the reconnect going and carries its reason",
+        arguments: TLSFailureFixtures.certificateFailures
+    )
+    func certificateFailureKeepsRetryingWithItsReason(error: SSLHandshakeError) {
+        #expect(
+            ConnectionFailureClassifier.reconnectVerdict(for: error)
+                == .retry(ConnectionFailureClassifier.info(for: error))
+        )
+    }
+
+    @Test(
+        "A TLS failure a server restart also produces keeps the reconnect going with no reason of its own",
+        arguments: TLSFailureFixtures.transientFailures
+    )
+    func transientTLSFailureKeepsRetrying(error: SSLHandshakeError) {
+        #expect(ConnectionFailureClassifier.reconnectVerdict(for: error) == .retry(nil))
     }
 
     @Test("A TLS failure never leaks credentials from the server message")

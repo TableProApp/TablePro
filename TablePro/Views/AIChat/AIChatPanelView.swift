@@ -15,8 +15,13 @@ struct AIChatPanelView: View {
     let connection: DatabaseConnection
     var currentQuery: String?
     var queryResults: String?
+    var editorTarget: AssistantEditorTarget?
+    var editorSnapshot: (() -> AssistantEditorSnapshot)?
 
     @ObservedObject var viewModel: AIChatViewModel
+    /// Fills its column in the trailing pane, and takes a reading measure in the window's content
+    /// column, where filling it would run a line the whole width of the window.
+    var contentWidth: ChatContentWidth = .pane
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var bottomVisibleMessageID: UUID?
     @State private var pinnedToBottom: Bool = true
@@ -57,10 +62,13 @@ struct AIChatPanelView: View {
                 }
 
                 inputArea
+            } else if !viewModel.messages.isEmpty {
+                noProviderFooter
             }
         }
         .environment(\.chatPrimaryPendingToolUseId, primaryPendingToolUseId)
         .environment(\.chatApprovalConnectionName, connection.name)
+        .environment(\.chatApprovalSessionId, viewModel.sessionId)
         .onAppear {
             viewModel.connection = connection
         }
@@ -97,6 +105,32 @@ struct AIChatPanelView: View {
             description: String(localized: "AI responses may be inaccurate")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// A transcript outlives the provider that produced it, so removing the active provider leaves
+    /// this pane with messages and nothing to send another. Without this the pane keeps the
+    /// transcript and drops the composer, the model picker and the send button with no reason
+    /// given and no route back: the "Go to Settings…" affordance lives on the empty-transcript
+    /// branch alone.
+    private var noProviderFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+                Text("No AI provider is active, so this conversation is read-only.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button(String(localized: "Settings…")) {
+                    WindowOpener.shared.openSettings(tab: .ai)
+                }
+                .controlSize(.small)
+            }
+            .chatColumn(contentWidth)
+            .padding(8)
+        }
     }
 
     private var noProviderState: some View {
@@ -166,7 +200,7 @@ struct AIChatPanelView: View {
                             }
                         )
                 }
-                .frame(maxWidth: .infinity)
+                .chatColumn(contentWidth)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
             }
@@ -175,7 +209,9 @@ struct AIChatPanelView: View {
                 pinnedToBottom = atBottom
                 bottomVisibleMessageID = atBottom ? lastMessageID : visibleMessages.dropLast().last?.id
             }
-            .onAppear { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
+            .modifier(ScrollsToBottomOnFirstAppearance {
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            })
             .onChange(of: visibleMessages.count) { _ in
                 if pinnedToBottom {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
@@ -212,7 +248,7 @@ struct AIChatPanelView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 8)
                 .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                .motionAnimation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
                 .accessibilityLabel(String(localized: "Scroll to latest message"))
             }
         }
@@ -239,6 +275,7 @@ struct AIChatPanelView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(String(localized: "Dismiss error"))
         }
+        .chatColumn(contentWidth)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.yellow.opacity(Self.warningBackgroundOpacity))
@@ -283,6 +320,10 @@ struct AIChatPanelView: View {
                     },
                     onImageAttachmentFailed: { message in
                         viewModel.reportImageAttachmentFailure(message)
+                    },
+                    highlightEnabled: settingsManager.ai.composerHighlightEnabled,
+                    onToggleHighlight: {
+                        settingsManager.ai.composerHighlightEnabled.toggle()
                     }
                 )
 
@@ -291,9 +332,13 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
+                    Spacer(minLength: 0)
                     sendOrStopButton
                 }
             }
+            /// Capped before the padding, the way the transcript above it is, so the composer's
+            /// leading edge lines up with the first character of the conversation.
+            .chatColumn(contentWidth)
             .padding(8)
         }
     }
@@ -321,7 +366,7 @@ struct AIChatPanelView: View {
             }
         )
         return Menu {
-            Picker("", selection: binding) {
+            Picker(String(localized: "Mode"), selection: binding) {
                 ForEach(AIChatMode.allCases) { mode in
                     Label(mode.displayName, systemImage: mode.symbolName)
                         .tag(mode)
@@ -372,6 +417,14 @@ struct AIChatPanelView: View {
         }
     }
 
+    /// Sized to the model's name, and able to compress below it.
+    ///
+    /// Its label used to carry `maxWidth: .infinity`, which spread the button across the window as
+    /// soon as the conversation had one to spread across. `.fixedSize()` is the other end of the same
+    /// mistake: measured on macOS 27, a 44-character model name holds the button at 339pt, which
+    /// overflows the trailing pane's composer row by 85pt at 240pt wide. Unframed it takes the name's
+    /// width where there is room and truncates where there is not, and the spacer after it is what
+    /// keeps Send at the trailing edge in both widths.
     @ViewBuilder
     private var modelPicker: some View {
         let providers = settingsManager.ai.providers
@@ -403,7 +456,7 @@ struct AIChatPanelView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(String(localized: "Choose AI provider and model"))
             }
             .menuStyle(.button)
             .buttonStyle(.borderless)
@@ -474,7 +527,7 @@ struct AIChatPanelView: View {
                     updateContext()
                     viewModel.runSlashCommand(command)
                 } label: {
-                    Text("/\(command.name) · \(command.description)")
+                    Text("/\(command.name) (\(command.description))")
                 }
             }
             if !customCommands.isEmpty {
@@ -488,7 +541,7 @@ struct AIChatPanelView: View {
                             if command.description.isEmpty {
                                 Text("/\(command.name)")
                             } else {
-                                Text("/\(command.name) · \(command.description)")
+                                Text("/\(command.name) (\(command.description))")
                             }
                         }
                     }
@@ -503,6 +556,7 @@ struct AIChatPanelView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
+        .disabled(viewModel.isStreaming)
         .help(String(localized: "Slash commands"))
     }
 
@@ -547,7 +601,7 @@ struct AIChatPanelView: View {
             viewModel.selectedModel = model
         } label: {
             HStack {
-                Text(showProviderPrefix ? "\(provider.displayName) · \(model)" : model)
+                Text(showProviderPrefix ? "\(provider.displayName) (\(model))" : model)
                 if isSelected {
                     Image(systemName: "checkmark")
                 }
@@ -558,12 +612,14 @@ struct AIChatPanelView: View {
     // MARK: - Helpers
 
     private func updateContext() {
-        viewModel.currentQuery = currentQuery
+        let live = editorSnapshot?()
+        viewModel.currentQuery = live.map(\.currentQuery) ?? currentQuery
         viewModel.queryResults = queryResults
+        viewModel.editorTarget = live.map(\.target) ?? editorTarget
     }
 
     /// Hide system turns and user turns that exist only to carry tool-result
-    /// blocks back to the model — those are protocol plumbing, not user input.
+    /// blocks back to the model: those are protocol plumbing, not user input.
     private func isVisibleInMessageList(_ message: ChatTurn) -> Bool {
         guard message.role != .system else { return false }
         if message.role == .user {
@@ -683,5 +739,22 @@ private struct ChatAtBottomKey: PreferenceKey {
 
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = nextValue()
+    }
+}
+
+/// Re-adding the pane to the window fires `onAppear` again while the scroll view keeps its offset,
+/// so scrolling on every appearance threw a reader who had scrolled up back to the bottom. The flag
+/// lives with the scroll view, so a transcript rebuilt after the empty state still opens at the end.
+private struct ScrollsToBottomOnFirstAppearance: ViewModifier {
+    let scrollToBottom: () -> Void
+
+    @State private var hasScrolled = false
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !hasScrolled else { return }
+            hasScrolled = true
+            scrollToBottom()
+        }
     }
 }

@@ -9,7 +9,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Diagram scroll zoom")
 struct DiagramScrollZoomTests {
     private func input(
         deltaY: CGFloat,

@@ -195,7 +195,8 @@ final class AppSettingsManager: ObservableObject {
             permissions: .readWrite,
             connectionAccess: .all,
             expiresAt: nil,
-            isBridgeCredential: false
+            isBridgeCredential: false,
+            extraScopes: []
         )
         mcp.requireAuthentication = value
         return result
@@ -209,6 +210,7 @@ final class AppSettingsManager: ObservableObject {
     private let queryHistoryManager: QueryHistoryManager
     private let mcpServerManager: MCPServerManager
     private let copilotService: CopilotService
+    private let connectionListPreferences: ConnectionListPreferences
     private var isValidating = false
 
     init(
@@ -219,7 +221,8 @@ final class AppSettingsManager: ObservableObject {
         dateFormattingService: DateFormattingService = .shared,
         queryHistoryManager: QueryHistoryManager = .shared,
         mcpServerManager: MCPServerManager = .shared,
-        copilotService: CopilotService = .shared
+        copilotService: CopilotService = .shared,
+        connectionListPreferences: ConnectionListPreferences = .shared
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
@@ -229,6 +232,7 @@ final class AppSettingsManager: ObservableObject {
         self.queryHistoryManager = queryHistoryManager
         self.mcpServerManager = mcpServerManager
         self.copilotService = copilotService
+        self.connectionListPreferences = connectionListPreferences
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
@@ -299,6 +303,7 @@ final class AppSettingsManager: ObservableObject {
         sync = .default
         mcp = .default
         storage.resetToDefaults()
+        connectionListPreferences.resetShowsRecent()
         SoftwareUpdater.shared.resetUpdatePreferences()
     }
 }

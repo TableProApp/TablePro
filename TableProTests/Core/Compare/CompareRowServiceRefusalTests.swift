@@ -29,7 +29,7 @@ final class CompareRowServiceRefusalTests: XCTestCase {
         let service = CompareRowService()
         let scope = endpoint(database: "shop")
 
-        XCTAssertNotNil(service.concurrentReadRefusal(source: scope, target: scope))
+        XCTAssertEqual(service.concurrentReadRefusal(source: scope, target: scope), .sameScope)
     }
 
     func testTwoDatabasesOnOneConnectionAreNotRefusedForBeingTheSameScope() {
@@ -40,7 +40,7 @@ final class CompareRowServiceRefusalTests: XCTestCase {
             target: endpoint(database: "shop_staging")
         )
 
-        XCTAssertNotEqual(refusal, String(localized: "The source and the target are the same database."))
+        XCTAssertNotEqual(refusal, .sameScope)
     }
 
     func testTwoSchemasInOneDatabaseAreTwoScopes() {
@@ -51,7 +51,13 @@ final class CompareRowServiceRefusalTests: XCTestCase {
             target: endpoint(database: "shop", schema: "archive")
         )
 
-        XCTAssertNotEqual(refusal, String(localized: "The source and the target are the same database."))
+        XCTAssertNotEqual(refusal, .sameScope)
+    }
+
+    func testASharedConnectionRefusalKeepsTheComparisonWording() {
+        let refusal = ConcurrentReadRefusal.sharedConnection(.duckdb)
+
+        XCTAssertTrue(refusal.comparisonMessage.hasPrefix("DuckDB cannot compare"))
     }
 
     func testTwoConnectionsAreNeverRefused() {

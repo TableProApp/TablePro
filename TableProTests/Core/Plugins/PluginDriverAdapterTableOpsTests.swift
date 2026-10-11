@@ -48,7 +48,6 @@ private final class StubTableOpsDriver: PluginDatabaseDriver, @unchecked Sendabl
     }
 }
 
-@Suite("PluginDriverAdapter table operations")
 struct PluginDriverAdapterTableOpsTests {
     private func makeAdapter(driver: StubTableOpsDriver) -> PluginDriverAdapter {
         let connection = DatabaseConnection(name: "Test", type: .postgresql)

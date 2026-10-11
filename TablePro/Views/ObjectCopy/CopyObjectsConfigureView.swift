@@ -73,6 +73,7 @@ internal struct CopyObjectsConfigureView: View {
             labelled(String(localized: "New database")) {
                 TextField(String(localized: "Name"), text: $session.newDatabaseName)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(String(localized: "New database"))
                     .accessibilityIdentifier("copy-objects-new-database-name")
             }
             if let spec = session.createDatabaseForm {
@@ -83,7 +84,7 @@ internal struct CopyObjectsConfigureView: View {
 
     private var contentSection: some View {
         labelled(String(localized: "Copy")) {
-            Picker("", selection: $session.content) {
+            Picker(String(localized: "Copy"), selection: $session.content) {
                 ForEach(ObjectCopyContent.allCases, id: \.self) { content in
                     Text(content.displayName).tag(content)
                 }
@@ -96,7 +97,7 @@ internal struct CopyObjectsConfigureView: View {
 
     private var existingSection: some View {
         labelled(String(localized: "If the object is already there")) {
-            Picker("", selection: $session.existingPolicy) {
+            Picker(String(localized: "If the object is already there"), selection: $session.existingPolicy) {
                 ForEach(ObjectCopyExistingPolicy.allCases, id: \.self) { policy in
                     Text(policy.displayName).tag(policy)
                 }

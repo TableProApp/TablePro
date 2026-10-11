@@ -80,7 +80,6 @@ private final class TypeMockDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
-@Suite("SchemaService user-defined types")
 @MainActor
 struct SchemaServiceUserDefinedTypesTests {
     private let mood = UserDefinedTypeInfo(name: "mood", kind: .enumeration, schema: "public", enumLabels: ["sad", "ok"])

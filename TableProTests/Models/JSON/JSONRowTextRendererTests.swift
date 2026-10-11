@@ -11,7 +11,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONRowTextRenderer")
 struct JSONRowTextRendererTests {
     private func makeRoot() -> JSONRowNode {
         JSONRowNodeBuilder.build(

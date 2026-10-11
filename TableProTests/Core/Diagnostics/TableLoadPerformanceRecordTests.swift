@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("TableLoadPerformanceRecord")
 struct TableLoadPerformanceRecordTests {
     private static let stamp = TableLoadRuntimeStamp(
         appVersion: "0.68.0",

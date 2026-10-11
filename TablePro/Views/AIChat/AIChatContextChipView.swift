@@ -35,6 +35,7 @@ struct AIChatContextChipView: View {
             Capsule()
                 .stroke(.tint.opacity(0.2), lineWidth: 0.5)
         )
+        .help(item.helpText ?? item.displayLabel)
     }
 }
 

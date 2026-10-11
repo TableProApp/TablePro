@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Sidebar object list presentation")
 struct SidebarObjectListPresentationTests {
     private func table(_ name: String) -> TableInfo {
         TableInfo(name: name, type: .table, rowCount: nil, schema: nil)

@@ -22,6 +22,19 @@ internal struct LinkedSQLFavorite: Identifiable, Hashable {
         encodingName.lowercased() == "utf-8"
     }
 
+    var encodingDisplayName: String {
+        encoding.map(String.localizedName(of:)) ?? encodingName
+    }
+
+    var encodingCannotRepresentEveryCharacter: Bool {
+        guard let encoding else { return !isUTF8 }
+        return !encoding.representsAllOfUnicode
+    }
+
+    private var encoding: String.Encoding? {
+        String.Encoding(ianaCharacterSetName: encodingName)
+    }
+
     init(
         folderId: UUID,
         fileURL: URL,

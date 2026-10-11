@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Oracle partitions carry a position rather than a bound")
 struct OraclePartitionMappingTests {
     @Test("A partition states no bound, because HIGH_VALUE is a LONG column the driver cannot read")
     func partitionsCarryNoBound() {

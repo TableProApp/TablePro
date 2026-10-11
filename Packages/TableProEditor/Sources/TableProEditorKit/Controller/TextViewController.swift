@@ -268,6 +268,11 @@ public class TextViewController: NSViewController {
         for coordinator in textCoordinators.values() {
             coordinator.textViewDidReplaceDocument(controller: self)
         }
+        // Deferred because the binding replaces the document from inside a SwiftUI update, where the find panel's
+        // model must not publish.
+        DispatchQueue.main.async { [weak findViewController] in
+            findViewController?.viewModel.documentDidReplace()
+        }
     }
 
     /// Release the caches an editor can rebuild (tree-sitter, highlighter, coordinators, observers)

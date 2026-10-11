@@ -11,7 +11,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("QueryHistoryStorage")
 struct QueryHistoryStorageTests {
     private let storage: QueryHistoryStorage
 

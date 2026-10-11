@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("TableTabSchemaResolution")
 struct TableTabSchemaResolutionTests {
     @MainActor
     private func makeCoordinator(
@@ -181,7 +180,10 @@ struct TableTabSchemaResolutionTests {
             store.removeEntries(for: connection.id)
             SharedSidebarState.removeConnection(connection.id)
         }
-        store.record(connectionId: connection.id, database: "testdb", schema: nil, name: "routes", isView: false)
+        store.record(
+            connectionId: connection.id, database: "testdb", schema: nil, name: "routes",
+            isView: false, objectType: nil
+        )
 
         let state = SessionStateFactory.create(
             connection: connection,
@@ -214,7 +216,6 @@ struct TableTabSchemaResolutionTests {
 /// A table tab must carry the schema the row was listed under. SQL Server has no
 /// session-level schema, so a tab that opens without one queries an unqualified
 /// name and the server answers "Invalid object name" (#2004).
-@Suite("TableTabListingSchema")
 @MainActor
 struct TableTabListingSchemaTests {
     private func withCoordinator(

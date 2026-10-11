@@ -9,7 +9,10 @@ protocol ChangeManaging: AnyObject {
     var canRedo: Bool { get }
     var rowChanges: [RowChange] { get }
     var insertedRowIDs: Set<RowID> { get }
+    var deletedRowIDs: Set<RowID> { get }
+    var modifiedCells: [RowID: Set<Int>] { get }
     var generatedColumns: Set<String> { get }
+    var supportsFieldRemoval: Bool { get }
     func isRowDeleted(_ rowID: RowID) -> Bool
     func recordCellChange(
         rowID: RowID,
@@ -19,6 +22,15 @@ protocol ChangeManaging: AnyObject {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?
     )
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence
+    )
     func undoRowDeletion(rowID: RowID)
 }
 
@@ -26,6 +38,32 @@ protocol ChangeManaging: AnyObject {
 /// inspector grids edit schema definitions, where the concept does not apply.
 extension ChangeManaging {
     var generatedColumns: Set<String> { [] }
+
+    var deletedRowIDs: Set<RowID> { [] }
+
+    var modifiedCells: [RowID: Set<Int>] { [:] }
+
+    var supportsFieldRemoval: Bool { false }
+
+    /// Only the data grid can show a row without a field; every other grid records the value.
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence
+    ) {
+        recordCellChange(
+            rowID: rowID,
+            columnIndex: columnIndex,
+            columnName: columnName,
+            oldValue: oldValue,
+            newValue: newValue,
+            originalRow: originalRow
+        )
+    }
 }
 
 @MainActor
@@ -37,7 +75,10 @@ final class AnyChangeManager: ObservableObject {
     var canRedo: Bool { wrapped.canRedo }
     var rowChanges: [RowChange] { wrapped.rowChanges }
     var insertedRowIDs: Set<RowID> { wrapped.insertedRowIDs }
+    var deletedRowIDs: Set<RowID> { wrapped.deletedRowIDs }
+    var modifiedCells: [RowID: Set<Int>] { wrapped.modifiedCells }
     var generatedColumns: Set<String> { wrapped.generatedColumns }
+    var supportsFieldRemoval: Bool { wrapped.supportsFieldRemoval }
 
     func isRowDeleted(_ rowID: RowID) -> Bool {
         wrapped.isRowDeleted(rowID)
@@ -58,6 +99,26 @@ final class AnyChangeManager: ObservableObject {
             oldValue: oldValue,
             newValue: newValue,
             originalRow: originalRow
+        )
+    }
+
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue],
+        absence: FieldAbsence
+    ) {
+        wrapped.recordCellChange(
+            rowID: rowID,
+            columnIndex: columnIndex,
+            columnName: columnName,
+            oldValue: oldValue,
+            newValue: newValue,
+            originalRow: originalRow,
+            absence: absence
         )
     }
 

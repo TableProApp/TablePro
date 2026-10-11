@@ -21,6 +21,7 @@ import Foundation
 internal enum ConnectionCloseAction {
     internal enum Decision: Equatable {
         case closeImmediately
+        case confirmEndingTransaction
         case confirmUnsavedWork
     }
 
@@ -40,9 +41,26 @@ internal enum ConnectionCloseAction {
         return !targets.isEmpty
     }
 
-    internal static func decision(hasSession: Bool, hasUnsavedWork: Bool) -> Decision {
-        guard hasSession, hasUnsavedWork else { return .closeImmediately }
-        return .confirmUnsavedWork
+    /// The transaction is asked about before unsaved work, whose Save writes at once: a Cancel on the
+    /// transaction after it would keep the connection open with that write already made.
+    internal static func decision(hasSession: Bool, holdsTransaction: Bool, hasUnsavedWork: Bool) -> Decision {
+        guard hasSession else { return .closeImmediately }
+        if holdsTransaction { return .confirmEndingTransaction }
+        return hasUnsavedWork ? .confirmUnsavedWork : .closeImmediately
+    }
+
+    internal static func transactionMessage(for databases: [String]) -> String? {
+        guard let first = databases.first else { return nil }
+        guard databases.count > 1 else {
+            return String(
+                format: String(localized: "The database “%@” has an open transaction. Closing rolls it back and discards its uncommitted changes."),
+                first
+            )
+        }
+        return String(
+            format: String(localized: "These databases have open transactions: %@. Closing rolls them back and discards their uncommitted changes."),
+            ListFormatter.localizedString(byJoining: databases.map { "“\($0)”" })
+        )
     }
 
     internal static func close(connectionId: UUID) async {
@@ -51,21 +69,42 @@ internal enum ConnectionCloseAction {
         /// reported the connection as safe to close over work nobody had been shown.
         let coordinators = WindowManager.shared.coordinators(for: connectionId)
         let coordinator = coordinators.first ?? WindowManager.shared.coordinator(for: connectionId)
-        let decision = decision(
-            hasSession: coordinator != nil,
-            hasUnsavedWork: coordinators.contains { $0.hasAnyUnsavedWork() }
+        /// Read at each decision, not once: the window stays editable while the transaction state
+        /// and the alert are awaited.
+        let hasUnsavedWork = {
+            coordinators.contains { $0.hasAnyUnsavedWork() }
                 || (coordinators.isEmpty && coordinator?.hasAnyUnsavedWork() == true)
-        )
-        guard decision == .confirmUnsavedWork else {
-            WindowManager.shared.closeWindow(for: connectionId)
-            return
         }
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: connectionId)
+        var decision = decision(
+            hasSession: coordinator != nil,
+            holdsTransaction: !holding.isEmpty,
+            hasUnsavedWork: hasUnsavedWork()
+        )
 
         /// Shown, then asked. A data-loss alert over a connection the user cannot see names work
         /// they have no way to look at before answering. Revealing switches the window to it, so an
         /// answer that closes nothing puts the user back where they were: a close that leaves them
         /// on another connection, with its entry still in the strip, reads as a switch.
         let wasShowing = WindowManager.shared.shownConnection(besides: connectionId)
+        if decision == .confirmEndingTransaction, let coordinator, let message = transactionMessage(for: holding) {
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(format: String(localized: "Close the connection “%@”?"), coordinator.connection.name),
+                message: message,
+                confirmButton: String(localized: "Close"),
+                window: reveal(connectionId: connectionId)
+            )
+            guard confirmed else {
+                WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
+                return
+            }
+            decision = Self.decision(hasSession: true, holdsTransaction: false, hasUnsavedWork: hasUnsavedWork())
+        }
+        guard decision == .confirmUnsavedWork else {
+            WindowManager.shared.closeWindow(for: connectionId)
+            return
+        }
+
         let presentingWindow = reveal(connectionId: connectionId)
         switch await AlertHelper.confirmSaveChanges(
             message: String(localized: "Your changes will be lost if you don't save them."),

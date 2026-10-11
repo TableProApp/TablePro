@@ -21,11 +21,13 @@ import SwiftUI
 struct FindModePicker: NSViewRepresentable {
     @Binding var mode: FindPanelMode
     @Binding var wrapAround: Bool
+    /// Replace is offered only where the text can change, as the native find bar does.
+    var canReplace = true
     @Environment(\.controlActiveState) var activeState
 
     private func createSymbolButton(context: Context) -> NSButton {
         let button = NSButton(frame: .zero)
-        button.bezelStyle = .regularSquare
+        button.bezelStyle = .flexiblePush
         button.isBordered = false
         button.controlSize = .small
         button.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
@@ -41,7 +43,7 @@ struct FindModePicker: NSViewRepresentable {
 
     private func createPopupButton(context: Context) -> NSPopUpButton {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.bezelStyle = .regularSquare
+        popup.bezelStyle = .flexiblePush
         popup.isBordered = false
         popup.controlSize = .small
         popup.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
@@ -61,6 +63,7 @@ struct FindModePicker: NSViewRepresentable {
             )
             item.target = context.coordinator
             item.tag = mode == .find ? 0 : 1
+            item.isEnabled = mode == .find || canReplace
             menu.addItem(item)
         }
 
@@ -126,6 +129,7 @@ struct FindModePicker: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if let popup = nsView.subviews.last as? NSPopUpButton {
+            popup.item(at: 1)?.isEnabled = canReplace
             popup.selectItem(at: mode == .find ? 0 : 1)
             if let wrapItem = popup.menu?.items.last {
                 wrapItem.state = wrapAround ? .on : .off

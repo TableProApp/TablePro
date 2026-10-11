@@ -2,13 +2,9 @@
 //  SchemaChange.swift
 //  TablePro
 //
-//  Schema change operations for editable structure tab.
-//  Represents ADD/MODIFY/DELETE operations on columns, indexes, and foreign keys.
-//
 
 import Foundation
 
-/// Enum representing all possible schema change types
 enum SchemaChange: Hashable, Equatable {
     case addColumn(EditableColumnDefinition)
     case modifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition)
@@ -28,7 +24,9 @@ enum SchemaChange: Hashable, Equatable {
 
     case modifyPrimaryKey(old: [String], new: [String])
 
-    /// Whether this change is a deletion
+    /// Nil on either side means no comment.
+    case modifyTableComment(old: String?, new: String?)
+
     var isDelete: Bool {
         switch self {
         case .deleteColumn, .deleteIndex, .deleteForeignKey, .deleteCheckConstraint:
@@ -38,7 +36,6 @@ enum SchemaChange: Hashable, Equatable {
         }
     }
 
-    /// Whether this change is destructive (may cause data loss)
     var isDestructive: Bool {
         switch self {
         case .deleteColumn, .modifyColumn, .deleteIndex, .deleteForeignKey, .modifyPrimaryKey,
@@ -53,11 +50,9 @@ enum SchemaChange: Hashable, Equatable {
         }
     }
 
-    /// Whether this change requires data migration
     var requiresDataMigration: Bool {
         switch self {
         case .modifyColumn(let old, let new):
-            // Type changes or making nullable -> not nullable requires data check
             return old.dataType != new.dataType || (old.isNullable && !new.isNullable)
         case .deleteColumn, .modifyPrimaryKey:
             return true
@@ -70,7 +65,6 @@ enum SchemaChange: Hashable, Equatable {
         }
     }
 
-    /// Human-readable description of the change
     var description: String {
         switch self {
         case .addColumn(let col):
@@ -99,15 +93,17 @@ enum SchemaChange: Hashable, Equatable {
             return "Delete check constraint '\(constraint.name)'"
         case .modifyPrimaryKey(let old, let new):
             return "Change primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]"
+        case .modifyTableComment:
+            return "Change comment on table"
         }
     }
 }
 
-/// Identifier for schema changes (used for tracking pending changes)
 enum SchemaChangeIdentifier: Hashable {
     case column(UUID)
     case index(UUID)
     case foreignKey(UUID)
     case checkConstraint(UUID)
     case primaryKey
+    case tableComment
 }

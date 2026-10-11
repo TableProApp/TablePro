@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("XAIGrokProvider request encoding")
 struct XAIGrokProviderEncodingTests {
     @Test("Requests carry the Grok CLI identity headers and the model override")
     func requestHeaders() {

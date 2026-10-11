@@ -3,7 +3,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MCPArgumentDecoder")
 struct MCPArgumentDecoderTests {
     private func expectInvalidParams(_ body: () throws -> some Any) {
         #expect(throws: MCPProtocolError.self) { _ = try body() }

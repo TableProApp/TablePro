@@ -132,7 +132,7 @@ final class CrossEngineTypeModifierTranslationTests: XCTestCase {
         XCTAssertTrue(result.notes.contains { $0.subject == "fine" && $0.isLossy })
     }
 
-    /// Oracle reports an `INTEGER` as a bare `number`, which keeps the exact rendering it always had.
+    /// A bare Oracle `NUMBER` declares no precision, and keeps the exact rendering it always had.
     func testABareOracleNumberCrossesAsItAlwaysDid() {
         let source = TableStructureSnapshot(name: "t", columns: [column("id", "number")])
         let toMySQL = CrossEngineStructureTranslator.translate(source, from: .oracle, to: .mysql)
@@ -140,6 +140,40 @@ final class CrossEngineTypeModifierTranslationTests: XCTestCase {
         XCTAssertTrue(toMySQL.notes.isEmpty)
         let toSQLServer = CrossEngineStructureTranslator.translate(source, from: .oracle, to: .mssql)
         XCTAssertEqual(dataType(toSQLServer, "id"), "DECIMAL(38)")
+    }
+
+    /// The catalog spells an Oracle key `NUMBER(10)` and an `INTEGER` `NUMBER(*,0)`, and both hold whole numbers.
+    /// Read as decimals, the key reached MySQL as `DECIMAL(10)` and stopped being an integer.
+    func testOracleWholeNumbersCrossAsIntegers() {
+        let source = TableStructureSnapshot(name: "t", columns: [
+            column("id", "NUMBER(10)"),
+            column("qty", "NUMBER(*,0)"),
+            column("price", "NUMBER(*,2)"),
+            column("rounded", "NUMBER(5,-2)")
+        ])
+        let toMySQL = CrossEngineStructureTranslator.translate(source, from: .oracle, to: .mysql)
+        XCTAssertEqual(dataType(toMySQL, "id"), "BIGINT")
+        XCTAssertEqual(dataType(toMySQL, "qty"), "DECIMAL(39, 0)")
+        XCTAssertEqual(dataType(toMySQL, "price"), "DECIMAL(38, 2)")
+        XCTAssertEqual(dataType(toMySQL, "rounded"), "DECIMAL(7, 0)")
+        let toPostgres = CrossEngineStructureTranslator.translate(source, from: .oracle, to: .postgresql)
+        XCTAssertEqual(dataType(toPostgres, "id"), "BIGINT")
+    }
+
+    /// A zone declared after the precision is still a zone: `TIMESTAMP(6) WITH TIME ZONE` reached PostgreSQL as a plain
+    /// `timestamp` when the catalog wrote a length after the zone.
+    func testAnOracleZonedTimestampKeepsItsZone() {
+        let source = TableStructureSnapshot(name: "t", columns: [
+            column("at", "TIMESTAMP(6) WITH TIME ZONE"),
+            column("seen", "TIMESTAMP(3) WITH LOCAL TIME ZONE"),
+            column("flag", "BOOLEAN"),
+            column("doc", "JSON")
+        ])
+        let toPostgres = CrossEngineStructureTranslator.translate(source, from: .oracle, to: .postgresql)
+        XCTAssertEqual(dataType(toPostgres, "at"), "TIMESTAMPTZ(6)")
+        XCTAssertEqual(dataType(toPostgres, "seen"), "TIMESTAMPTZ(3)")
+        XCTAssertEqual(dataType(toPostgres, "flag"), "BOOLEAN")
+        XCTAssertEqual(dataType(toPostgres, "doc"), "JSONB")
     }
 
     func testAppendingIntoATableReadsItsCatalogSpelling() {

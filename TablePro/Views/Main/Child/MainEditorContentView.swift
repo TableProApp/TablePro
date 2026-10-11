@@ -20,6 +20,18 @@ private struct TabLoadKey: Hashable {
     let loadEpoch: Int
 }
 
+/// Picking another database reruns the tab only while it shows rows. An error, a plan or a write's
+/// count is not a view of the data the new database holds, and rerunning it was an unasked run.
+@MainActor
+internal enum ContainerChangeRerunPolicy {
+    internal static func reruns(showing activeResult: ResultSet?) -> Bool {
+        guard let activeResult else { return false }
+        return activeResult.errorMessage == nil
+            && !activeResult.isExplainResult
+            && !activeResult.resultColumns.isEmpty
+    }
+}
+
 struct MainEditorContentView: View {
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var licenseManager = LicenseManager.shared
@@ -53,8 +65,6 @@ struct MainEditorContentView: View {
     let onAddRow: () -> Void
     let onSelectionChange: (Set<Int>) -> Void
     let onFilterColumn: (String) -> Void
-    let onApplyFilters: ([TableFilter]) -> Void
-    let onClearFilters: () -> Void
 
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
@@ -191,7 +201,6 @@ struct MainEditorContentView: View {
             updateHasQueryText()
             cachedChangeManager = AnyChangeManager(changeManager)
             wireDataTabDelegateStableRefs()
-            refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
         }
         .onDisappear {
@@ -206,18 +215,6 @@ struct MainEditorContentView: View {
         .onChange(of: selectionState.indices) { newIndices in
             onSelectionChange(newIndices)
         }
-        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
-        .onChange(of: coordinator.safeModeLevel) { _ in
-            refreshDataTabDelegateMutableRefs()
-        }
     }
 
     private func wireDataTabDelegateStableRefs() {
@@ -225,15 +222,8 @@ struct MainEditorContentView: View {
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSortStateChanged = onSortStateChanged
+        dataTabDelegate.onAddRow = onAddRow
         dataTabDelegate.onFilterColumn = onFilterColumn
-    }
-
-    private func refreshDataTabDelegateMutableRefs() {
-        dataTabDelegate.onAddRow = currentTabAllowsAddRow ? onAddRow : nil
-    }
-
-    private var currentTabAllowsAddRow: Bool {
-        coordinator.canAddRow
     }
 
     // MARK: - Tab Content
@@ -257,6 +247,40 @@ struct MainEditorContentView: View {
             queryInsightsContent(tab: tab)
         case .objectSource:
             objectSourceContent(tab: tab)
+        case .versionHistory:
+            versionHistoryContent(tab: tab)
+        }
+    }
+
+    // MARK: - Version History Tab Content
+
+    @ViewBuilder
+    private func versionHistoryContent(tab: QueryTab) -> some View {
+        if let subject = tab.display.versionHistorySubject {
+            VersionHistoryTabView(
+                tabId: tab.id,
+                subject: subject,
+                databaseType: connection.type,
+                exportFileName: Self.versionHistoryExportName(for: subject, title: tab.title),
+                onOpenInEditor: { content in
+                    coordinator.openVersionInEditor(content)
+                }
+            )
+            .id(subject)
+        } else {
+            UnavailableStateView(
+                String(localized: "No History"),
+                systemImage: "clock.arrow.circlepath"
+            )
+        }
+    }
+
+    private static func versionHistoryExportName(for subject: VersionHistorySubject, title: String) -> String {
+        switch subject {
+        case .linkedFile(let url):
+            return url.lastPathComponent
+        case .savedQuery:
+            return "query.sql"
         }
     }
 
@@ -421,8 +445,10 @@ struct MainEditorContentView: View {
               tabManager.mutate(tabId: tabId, { $0.tableContext.databaseName = name }) else { return }
         tabManager.markTabRenamed(tabId)
         SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
-        guard tabManager.selectedTabId == tabId else { return }
-        coordinator.runQuery(viewport: .firstRow)
+        guard tabManager.selectedTabId == tabId,
+              ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
+        /// The statement at the caret may not be the one that produced the rows, so a write asks first.
+        coordinator.runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
     }
 
     // MARK: - Query Tab Content
@@ -441,12 +467,14 @@ struct MainEditorContentView: View {
             autosaveName: SplitViewAutosaveName.querySplit(connectionId: connectionId),
             topContent: {
                 VStack(spacing: 0) {
-                    if tab.content.externalModificationDetected,
+                    if let change = tab.content.diskChange,
                        let url = tab.content.sourceFileURL {
-                        FileModifiedOnDiskBanner(
+                        SourceFileDiskChangeBanner(
                             fileName: url.lastPathComponent,
-                            onReload: { reloadFileForTab(tabId: tab.id, url: url) },
-                            onDismiss: { dismissExternalModBanner(tabId: tab.id) }
+                            change: change,
+                            onReload: { coordinator.commandActions?.reloadFileFromDisk(tabId: tab.id, url: url) },
+                            onSaveAs: { coordinator.commandActions?.saveFileAs() },
+                            onDismiss: { dismissDiskChangeBanner(tabId: tab.id) }
                         )
                         Divider()
                     }
@@ -459,7 +487,6 @@ struct MainEditorContentView: View {
                         databaseType: coordinator.connection.type,
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
-                        connectionAIPolicy: coordinator.connection.aiPolicy ?? settingsManager.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
@@ -480,14 +507,8 @@ struct MainEditorContentView: View {
                         onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
                         onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
-                        onAIExplain: { text in
-                            coordinator.showAssistant()
-                            coordinator.aiViewModel?.handleExplainSelection(text)
-                        },
-                        onAIOptimize: { text in
-                            coordinator.showAssistant()
-                            coordinator.aiViewModel?.handleOptimizeSelection(text)
-                        },
+                        currentAIAvailability: { coordinator.aiQueryActionAvailability },
+                        onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },
                         onSaveAsFavorite: { text in
                             guard !text.isEmpty else { return }
                             coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
@@ -498,7 +519,7 @@ struct MainEditorContentView: View {
                         onRun: { coordinator.runQuery(viewport: .firstRow) },
                         onRunAllStatements: { coordinator.runAllStatements() },
                         onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
-                        onStop: { coordinator.cancelCurrentQuery() },
+                        onStop: { coordinator.stopExecution(for: tab.id) },
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
                         onSaveAsFavoriteCommand: { coordinator.saveCurrentQueryAsFavorite() },
@@ -526,23 +547,8 @@ struct MainEditorContentView: View {
         }
     }
 
-    private func reloadFileForTab(tabId: UUID, url: URL) {
-        Task {
-            guard let loaded = FileTextLoader.load(url) else { return }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            await MainActor.run {
-                coordinator.tabManager.mutate(tabId: tabId) { tab in
-                    tab.content.query = loaded.content
-                    tab.content.savedFileContent = loaded.content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
-                }
-            }
-        }
-    }
-
-    private func dismissExternalModBanner(tabId: UUID) {
-        coordinator.tabManager.mutate(tabId: tabId) { $0.content.externalModificationDetected = false }
+    private func dismissDiskChangeBanner(tabId: UUID) {
+        coordinator.tabManager.mutate(tabId: tabId) { FileTabBaseline.dismissDiskChange(in: &$0.content) }
     }
 
     /// Both facts the toolbar's query items validate against, written together. They used to be one
@@ -621,7 +627,7 @@ struct MainEditorContentView: View {
         if let error = tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage {
             InlineErrorBanner(
                 message: error,
-                onFixWithAI: settingsManager.ai.enabled && tab.tabType == .query
+                onFixWithAI: coordinator.aiQueryActionAvailability(for: tab).isVisible
                     ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
                     : nil,
                 onDismiss: {
@@ -697,7 +703,8 @@ struct MainEditorContentView: View {
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
                             tableName: tableName,
-                            objectKind: tab.tableContext.resolvedObjectKind()
+                            objectKind: tab.tableContext.resolvedObjectKind(),
+                            serverSupport: StructureServerSupport.forConnection(connection.id)
                         )
                     }
             }
@@ -762,7 +769,7 @@ struct MainEditorContentView: View {
         case .idle:
             Spacer()
         case .executing:
-            Spacer()
+            ExecutingResultPane()
         case let .structure(tableName):
             structureContent(tab: tab, tableName: tableName)
         case .queryPlan:
@@ -823,12 +830,15 @@ struct MainEditorContentView: View {
             dataGridView(tab: tab)
         case let .noRows(executionTime):
             emptyResultView(executionTime: executionTime)
-        case let .statementSucceeded(rowsAffected, executionTime, statusMessage):
+        case let .statementSucceeded(rowsAffected, executionTime, statusMessage, serverOutput):
             ResultSuccessView(
                 rowsAffected: rowsAffected,
                 executionTime: executionTime,
-                statusMessage: statusMessage
+                statusMessage: statusMessage,
+                serverOutput: serverOutput
             )
+        case let .serverOutput(output):
+            ServerOutputView(output: output)
         case let .unavailable(mode):
             unavailableModeView(mode)
         }
@@ -861,6 +871,7 @@ struct MainEditorContentView: View {
         inputs.activeResultRowsAffected = activeResultSet?.rowsAffected ?? 0
         inputs.activeResultExecutionTime = activeResultSet?.executionTime
         inputs.activeResultStatusMessage = activeResultSet?.statusMessage
+        inputs.activeResultServerOutput = activeResultSet?.serverOutput ?? .none
         inputs.activeResultErrorMessage = activeResultSet?.errorMessage
         inputs.loadedColumnCount = rows.columns.count
         inputs.loadedRowCount = rows.rows.count
@@ -884,14 +895,13 @@ struct MainEditorContentView: View {
             if let descriptor = coordinator.browseFilterDescriptor {
                 KeyPatternSearchBar(coordinator: coordinator, descriptor: descriptor)
             } else {
-                FilterPanelView(
+                QueryTabFilterPanel(
                     coordinator: coordinator,
+                    tabManager: tabManager,
                     columns: rows.columns,
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
-                    enumValuesByColumn: rows.columnEnumValues,
-                    onApply: onApplyFilters,
-                    onUnset: onClearFilters
+                    enumValuesByColumn: rows.columnEnumValues
                 )
             }
             Divider()
@@ -964,6 +974,8 @@ struct MainEditorContentView: View {
                 showRowNumbers: settingsManager.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
                 appliesRowSortPreferences: true,
+                supportsColumnSort: tab.tabType != .table
+                    || PluginManager.shared.supportsColumnSort(for: connection.type),
                 editRefusalMessage: refusal?.message
             ),
             displayFormats: coordinator.displayFormats(for: tab),
@@ -987,7 +999,8 @@ struct MainEditorContentView: View {
             },
             viewportPlacementProvider: { [coordinator] in
                 coordinator.takeViewportPlacement(forTab: tabId)
-            }
+            },
+            selectionSummary: coordinator.selectionSummary
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -1068,7 +1081,8 @@ struct MainEditorContentView: View {
             isFetching: isExecuting,
             hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
-            paginationCapability: coordinator.paginationCapability
+            paginationCapability: coordinator.paginationCapability,
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
         )
         return ResultStatusBar(
             model: ResultStatusModel(
@@ -1098,7 +1112,7 @@ struct MainEditorContentView: View {
                 onChange: { [coordinator, tabId = tab.id] rules in
                     coordinator.setHighlightRules(rules, forTab: tabId)
                 },
-                onDismiss: { [coordinator, tabId = tab.id] in
+                onDismiss: { [coordinator] tabId in
                     coordinator.discardIncompleteHighlightRules(forTab: tabId)
                 }
             ),
@@ -1117,8 +1131,9 @@ struct MainEditorContentView: View {
                 tabId: tab.id,
                 execution: coordinator.tabExecution,
                 lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
-                onCancel: { coordinator.cancelCurrentQuery() }
+                onCancel: { coordinator.stopExecution(for: tab.id) }
             ),
+            selectionSummary: coordinator.selectionSummary,
             isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab),
@@ -1183,8 +1198,11 @@ struct MainEditorContentView: View {
             isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
             hasQueryText: tab.hasQueryText,
             isExecuting: coordinator.tabExecution.isExecuting(tab.id),
+            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
             hasResults: coordinator.canClearActiveQueryResults,
             explainVariants: coordinator.connection.type.explainVariants,
+            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
+            aiActions: coordinator.aiQueryActionAvailability(for: tab),
             shortcutHint: { label, action in
                 settingsManager.keyboard.shortcutHint(label, for: action)
             }

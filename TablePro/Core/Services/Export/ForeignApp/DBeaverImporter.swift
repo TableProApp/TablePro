@@ -19,9 +19,7 @@ struct DBeaverImporter: ForeignAppImporter {
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
     let readsPasswordsFromKeychain = false
 
-    /// All known DBeaver product identifiers. Community, Enterprise, Ultimate,
-    /// and Lite variants each register a different bundle ID, but they all
-    /// write to the same `~/Library/DBeaverData/workspace*`.
+    // Every edition registers its own bundle id but writes to the same `~/Library/DBeaverData/workspace*`.
     private static let knownBundleIdentifiers = [
         "org.jkiss.dbeaver.core.product",
         "org.jkiss.dbeaver.ee.core.product",
@@ -30,14 +28,17 @@ struct DBeaverImporter: ForeignAppImporter {
         "com.dbeaver.product.ultimate"
     ]
 
-    /// Root directory containing DBeaver workspace folders. The actual
-    /// workspace path is discovered by scanning for `workspace*` subdirs so
-    /// future versions (workspace7, etc.) keep working without code changes.
     var dbeaverDataRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DBeaverData")
 
     var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
+    var savedQuerySupport: ForeignSavedQuerySupport {
+        .reads(caption: String(
+            localized: "Scripts import with the connection they run on. Scripts with a default name start unchecked."
+        ))
     }
 
     func installedAppURL() -> URL? {
@@ -53,14 +54,18 @@ struct DBeaverImporter: ForeignAppImporter {
         installedAppURL() != nil || findDataSourcesFile() != nil
     }
 
-    func connectionCount() -> Int {
-        guard let url = findDataSourcesFile(),
-              let json = loadJSON(from: url),
-              let connections = json["connections"] as? [String: Any] else { return 0 }
-        return connections.count
+    func inventory() -> ForeignAppInventory {
+        guard let url = findDataSourcesFile() else {
+            return ForeignAppInventory(connections: 0, savedQueries: 0)
+        }
+        let connections = loadJSON(from: url)?["connections"] as? [String: Any]
+        return ForeignAppInventory(
+            connections: connections?.count ?? 0,
+            savedQueries: DBeaverScriptReader.count(projectURL: Self.projectURL(for: url))
+        )
     }
 
-    func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
+    func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
         guard let dataSourcesURL = findDataSourcesFile() else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
@@ -79,60 +84,43 @@ struct DBeaverImporter: ForeignAppImporter {
             .appendingPathComponent("credentials-config.json")
         let credentialsMap = loadCredentials(from: credentialsURL)
 
-        var exportableConnections: [ExportableConnection] = []
-        var groupNames: Set<String> = []
-        var credentials: [String: ExportableCredentials] = [:]
-
+        var records: [ForeignConnectionRecord] = []
         for (connId, connDict) in connectionsDict {
-            do {
-                let credentialUsername = (credentialsMap[connId]?["#connection"] as? [String: Any])?["user"] as? String
-                let conn = try parseConnection(
-                    connId, dict: connDict, folders: foldersDict, credentialUsername: credentialUsername
-                )
-                let index = exportableConnections.count
-                exportableConnections.append(conn)
-
-                if let groupName = conn.groupName {
-                    groupNames.insert(groupName)
-                }
-
-                if includePasswords, let connCreds = credentialsMap[connId] {
-                    let creds = extractCredentials(from: connCreds)
-                    if creds.password != nil || creds.sshPassword != nil {
-                        credentials[String(index)] = creds
-                    }
-                }
-            } catch {
-                Self.logger.warning("Skipping DBeaver connection \(connId): \(error.localizedDescription)")
-            }
+            try Task.checkCancellation()
+            let credentialUsername = (credentialsMap[connId]?["#connection"] as? [String: Any])?["user"] as? String
+            let credentials = request.includePasswords ? credentialsMap[connId].flatMap { extractCredentials(from: $0) } : nil
+            records.append(ForeignConnectionRecord(
+                sourceId: connId,
+                settings: parseConnection(connId, dict: connDict, credentialUsername: credentialUsername),
+                groupPath: Self.groupPath(connDict["folder"] as? String, folders: foldersDict),
+                credentials: credentials
+            ))
         }
+        // The JSON object has no order once parsed, so sort for a stable review list.
+        records.sort { ($0.settings.name, $0.sourceId ?? "") < ($1.settings.name, $1.sourceId ?? "") }
 
-        guard !exportableConnections.isEmpty else {
-            throw ForeignAppImportError.noConnectionsFound
-        }
+        let savedQueries = request.includeSavedQueries
+            ? try DBeaverScriptReader.savedQueries(
+                projectURL: Self.projectURL(for: dataSourcesURL),
+                limit: SavedQuerySize.maximumSyncableByteCount
+            )
+            : []
 
-        let groups: [ExportableGroup]? = groupNames.isEmpty ? nil : groupNames.map {
-            ExportableGroup(name: $0, color: nil)
-        }
-
-        let envelope = ConnectionExportEnvelope(
-            formatVersion: 1,
-            exportedAt: Date(),
-            appVersion: "DBeaver Import",
-            connections: exportableConnections,
-            groups: groups,
-            tags: nil,
-            credentials: credentials.isEmpty ? nil : credentials
+        return try ForeignBundleAssembly.collect(
+            appName: displayName,
+            connections: records,
+            savedQueries: savedQueries,
+            credentialsAborted: false
         )
-
-        return ForeignAppImportResult(envelope: envelope, sourceName: displayName)
     }
 
     // MARK: - File Discovery
 
-    /// Scans `~/Library/DBeaverData/workspace*` for a project folder that
-    /// contains `.dbeaver/data-sources.json`. Supports any workspace version
-    /// (workspace6, workspace7, ...) by enumeration rather than hardcoding.
+    private static func projectURL(for dataSourcesURL: URL) -> URL {
+        dataSourcesURL.deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    // Enumerates `workspace*` so a future `workspace7` keeps working.
     private func findDataSourcesFile() -> URL? {
         let fm = FileManager.default
         guard let workspaceDirs = try? fm.contentsOfDirectory(
@@ -170,9 +158,8 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseConnection(
         _ connId: String,
         dict: [String: Any],
-        folders: [String: [String: Any]],
         credentialUsername: String?
-    ) throws -> ExportableConnection {
+    ) -> ExportableConnection {
         let name = dict["name"] as? String ?? connId
         let provider = dict["provider"] as? String ?? ""
         let dbType = mapProvider(provider)
@@ -192,22 +179,6 @@ struct DBeaverImporter: ForeignAppImporter {
             .compactMap { $0 }
             .first { !$0.isEmpty } ?? ""
 
-        let folderPath = dict["folder"] as? String
-        let groupName: String?
-        if let path = folderPath, !path.isEmpty {
-            if let folderInfo = folders[path], let desc = folderInfo["description"] as? String, !desc.isEmpty {
-                groupName = desc
-            } else {
-                groupName = path.components(separatedBy: "/").last
-            }
-        } else {
-            groupName = nil
-        }
-
-        let sshConfig = parseSSHConfig(config)
-        let sslConfig = parseSSLConfig(config)
-        let color = parseColor(config)
-
         return ExportableConnection(
             name: name,
             host: host,
@@ -215,19 +186,23 @@ struct DBeaverImporter: ForeignAppImporter {
             database: database,
             username: username,
             type: dbType,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: color,
-            tagName: nil,
-            groupName: groupName,
-            sshProfileId: nil,
-            safeModeLevel: nil,
-            aiPolicy: nil,
-            additionalFields: nil,
-            redisDatabase: nil,
-            startupCommands: nil,
-            localOnly: nil
+            sshConfig: parseSSHConfig(config),
+            sslConfig: parseSSLConfig(config),
+            color: parseColor(config)
         )
+    }
+
+    // A folder key is its full path; a folder's description, when set, is the name DBeaver shows.
+    private static func groupPath(_ folder: String?, folders: [String: [String: Any]]) -> [String] {
+        guard let folder, !folder.isEmpty else { return [] }
+        let components = folder.split(separator: "/").map(String.init)
+        return components.indices.map { index in
+            let key = components[...index].joined(separator: "/")
+            if let description = folders[key]?["description"] as? String, !description.isEmpty {
+                return description
+            }
+            return components[index]
+        }
     }
 
     private func parseSSHConfig(_ config: [String: Any]) -> ExportableSSHConfig? {
@@ -307,7 +282,6 @@ struct DBeaverImporter: ForeignAppImporter {
 
     private func parseColor(_ config: [String: Any]) -> String? {
         guard let colorString = config["color"] as? String, !colorString.isEmpty else { return nil }
-        // DBeaver stores colors as comma-separated RGB values like "255,0,0"
         let components = colorString.components(separatedBy: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         guard components.count >= 3 else { return nil }
         let (r, g, b) = (components[0], components[1], components[2])
@@ -367,12 +341,13 @@ struct DBeaverImporter: ForeignAppImporter {
         return Data(decryptedBytes.prefix(decryptedLength))
     }
 
-    private func extractCredentials(from connCreds: [String: Any]) -> ExportableCredentials {
+    private func extractCredentials(from connCreds: [String: Any]) -> ExportableCredentials? {
         let connectionBlock = connCreds["#connection"] as? [String: Any] ?? [:]
         let password = connectionBlock["password"] as? String
 
         let sshBlock = connCreds["ssh_tunnel"] as? [String: Any] ?? [:]
         let sshPassword = sshBlock["password"] as? String
+        guard password != nil || sshPassword != nil else { return nil }
 
         return ExportableCredentials(
             password: password,

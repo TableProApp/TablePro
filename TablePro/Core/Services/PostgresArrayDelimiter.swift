@@ -13,7 +13,7 @@ import Foundation
 /// nothing else. A `box[]` therefore arrives as `{(3,4),(1,2);(7,8),(5,6)}`, and reading it with a
 /// comma splits one box into four fragments.
 ///
-/// An extension is free to declare another, so `scripts/check-postgres-array-delimiters.sh` diffs
+/// An extension is free to declare another, so `scripts/probes/check-postgres-array-delimiters.sh` diffs
 /// this against a live server rather than leaving it as a fact nothing re-checks.
 internal enum PostgresArrayDelimiter {
     internal static let `default`: Character = ","

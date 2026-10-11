@@ -47,12 +47,14 @@ enum HighlightRuleDescription {
         )
     }
 
+    /// A limited value is shown on one line, so its line breaks become spaces: `NSMenu` lays a
+    /// title's line break out as nothing at all, which ran the two lines together.
     static func truncated(_ value: String, to limit: Int?) -> String {
         guard let limit, limit > 0 else { return value }
         let source = value as NSString
-        guard source.length > limit else { return value }
+        guard source.length > limit else { return value.sanitizedForCellDisplay }
         let cut = source.rangeOfComposedCharacterSequence(at: limit).location
-        return source.substring(to: cut) + "\u{2026}"
+        return source.substring(to: cut).sanitizedForCellDisplay + "\u{2026}"
     }
 
     private static func operatorText(_ filterOperator: FilterOperator) -> String {

@@ -6,7 +6,8 @@ public protocol SSHProvider: Sendable {
         config: SSHConfiguration,
         connectionId: UUID,
         remoteHost: String,
-        remotePort: Int
+        remotePort: Int,
+        prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel
 
     func closeTunnel(for connectionId: UUID) async throws

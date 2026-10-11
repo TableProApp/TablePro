@@ -21,6 +21,16 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
         super.performClose(sender)
     }
 
+    /// The window's first focus belongs to the tab it shows. AppKit reads `initialFirstResponder`
+    /// once, as the window is first placed on screen, so it is named as soon as the content that
+    /// owns the answer is installed.
+    override var contentViewController: NSViewController? {
+        didSet {
+            initialFirstResponder = (contentViewController as? MainSplitViewController)?
+                .initialFirstResponderContainer
+        }
+    }
+
     /// Hiding the toolbar is what drops the content pane's top safe area, so the titlebar has to be
     /// reconsidered every time the user sends this from View > Show Toolbar.
     override func toggleToolbarShown(_ sender: Any?) {
@@ -73,8 +83,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     /// so a case that resized the window used to hand that size to every case after it in its
     /// shard. See `SplitViewAutosaveName`.
     @MainActor
-    internal static var frameAutosaveName: NSWindow.FrameAutosaveName {
-        NSWindow.FrameAutosaveName(SplitViewAutosaveName.current("MainEditorWindow"))
+    internal static var frameAutosaveName: NSWindow.FrameAutosaveName? {
+        SplitViewAutosaveName.current("MainEditorWindow")
     }
 
     internal let payload: EditorTabPayload
@@ -86,10 +96,14 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
     /// second one around the same connection.
+    ///
+    /// `pinnedWindowSize` is the screenshot size, passed in so a test can build the real window at
+    /// one without the UI test sandbox.
     internal init(
         payload: EditorTabPayload,
         sessionState: SessionStateFactory.SessionState? = nil,
         autoConnect: Bool = false,
+        pinnedWindowSize: CGSize? = ScreenshotEnvironment.windowSize,
         adopting workspace: ConnectionWorkspace? = nil
     ) {
         self.payload = payload
@@ -107,22 +121,14 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         FileDropDestination.register(on: window)
         window.title = splitVC.windowTitle
         window.subtitle = splitVC.windowSubtitle
+        window.representedURL = splitVC.windowRepresentedURL
         splitVC.installTabStripAccessory(on: window)
 
         super.init(window: window)
 
         window.isReleasedWhenClosed = false
+        Self.placeInitialFrame(of: window, pinnedSize: pinnedWindowSize)
         window.delegate = self
-
-        if !window.setFrameUsingName(Self.frameAutosaveName) {
-            let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
-                ?? NSSize(width: 1_440, height: 900)
-            window.setContentSize(NSSize(
-                width: min(1_200, visibleSize.width),
-                height: min(800, visibleSize.height)
-            ))
-            window.center()
-        }
 
         Self.lifecycleLogger.info(
             "[open] TabWindowController.init payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) controllerId=\(self.controllerId, privacy: .public) eagerToolbar=\(sessionState != nil)"
@@ -132,6 +138,35 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TabWindowController does not support NSCoder init")
+    }
+
+    /// Every frame the window starts with is settled here, before it is shown or laid out. A resize
+    /// issued from inside the window's own layout pass lands under `_layoutSubtreeWithOldSize:`,
+    /// which has already captured the old size and resizes the content view by the difference a
+    /// second time. Measured on macOS 27 with a 1200x800 window pinned to 1512x861 from a SwiftUI
+    /// `viewDidMoveToWindow`, which is where the screenshot pin used to run: the split view came out
+    /// 1824x922 at y -61, so the sidebar's top row sat under the titlebar and the inspector divider
+    /// stood 312pt past the window's edge, taking the toolbar's trailing items into the overflow
+    /// menu. Activating the window afterwards did not repair it.
+    ///
+    /// Placed before the controller becomes the window's delegate, so the starting frame is not
+    /// filed under `frameAutosaveName` as if the user had chosen it. A pinned size is not theirs.
+    /// The frame is still saved on close.
+    private static func placeInitialFrame(of window: NSWindow, pinnedSize: CGSize?) {
+        let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame
+        if let pinnedSize {
+            let pinned = visibleFrame.map { ScreenshotEnvironment.pinnedFrame(size: pinnedSize, in: $0) }
+                ?? NSRect(origin: window.frame.origin, size: pinnedSize)
+            window.setFrame(pinned, display: false)
+            return
+        }
+        guard !window.setFrame(usingAutosaveName: frameAutosaveName) else { return }
+        let visibleSize = visibleFrame?.size ?? NSSize(width: 1_440, height: 900)
+        window.setContentSize(NSSize(
+            width: min(1_200, visibleSize.width),
+            height: min(800, visibleSize.height)
+        ))
+        window.center()
     }
 
     /// The one place an editor window's chrome is configured, so a test can hold the whole shape.
@@ -190,17 +225,17 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         guard !window.inLiveResize else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     internal func windowDidEndLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     internal func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
     }
 
     /// Both hooks name the state they are moving to, because neither runs at the moment the style
@@ -228,6 +263,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.startActivationConnectIfNeeded()
+            splitVC.syncFrontmostTabManager()
         }
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
@@ -261,6 +297,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         // Closing or backgrounding this window leaves its yield on a menu it no longer
         // owns, and the window taking over may not be one of ours.
         MainMenuBuilder.syncKeyEquivalents()
+        (window.contentViewController as? MainSplitViewController)?.syncFrontmostTabManager()
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         Self.lifecycleLogger.debug(
@@ -283,7 +320,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
         cancelPendingConnectionIfNeeded()
 
-        window.saveFrame(usingName: Self.frameAutosaveName)
+        window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.invalidateToolbar()

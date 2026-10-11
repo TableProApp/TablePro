@@ -144,8 +144,12 @@ internal struct WelcomeViewOptionsMenu: View {
                 }
             }
         } label: {
-            Label(String(localized: "View Options"), systemImage: "line.3.horizontal.decrease.circle")
+            Label(String(localized: "View Options"), systemImage: ToolbarSymbols.filter())
         }
+        /// A toolbar-hosted `Menu` is named by this modifier and not by its label: built against
+        /// the macOS 26 SDK, the label alone publishes "chevron.pulldown". An in-view `Menu` is the
+        /// reverse, which is the rule `MenuDisclosureIndicatorTests` holds everywhere else.
+        .accessibilityLabel(String(localized: "View Options"))
         .help(String(localized: "Sort and filter connections"))
         .accessibilityIdentifier("welcome-toolbar-view-options")
     }

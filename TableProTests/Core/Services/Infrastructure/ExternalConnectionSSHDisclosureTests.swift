@@ -12,7 +12,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("External connection SSH disclosure")
 @MainActor
 struct ExternalConnectionSSHDisclosureTests {
     private func tunnelled(

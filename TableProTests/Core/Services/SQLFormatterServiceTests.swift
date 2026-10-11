@@ -10,7 +10,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SQL Formatter Service")
 @MainActor
 struct SQLFormatterServiceTests {
     let formatter = SQLFormatterService()

@@ -5,6 +5,8 @@
 
 import Foundation
 import os
+import TableProPluginKit
+import TableProSQLGrammar
 
 /// Connecting, switching container and running one statement, for a caller that is not a person
 /// clicking in the app.
@@ -174,11 +176,14 @@ internal actor DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> StatementOutcome {
-        let normalizedQuery = Self.stripTrailingSemicolons(query)
-        guard !normalizedQuery.isEmpty else {
+        guard !Self.statementText(query, grammar: .ansi).isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         let databaseType = try await ensureConnected(scope.connectionId)
+        let normalizedQuery = Self.statementText(query, grammar: databaseType.lexicalGrammar)
+        guard !normalizedQuery.isEmpty else {
+            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
+        }
         let classification = QueryClassifier.classify(normalizedQuery, databaseType: databaseType)
         let hasReturning = normalizedQuery.range(
             of: #"\bRETURNING\b"#,
@@ -194,15 +199,14 @@ internal actor DatabaseAccessBridge {
             statement = LeadingRowsStatement(sql: normalizedQuery, rowCap: nil)
         }
         let connectionId = scope.connectionId
-        let policy: DriverCancellationPolicy = classification.tier == .safe ? .cancellableRead : .protectedWrite
+        /// One owner per statement, so a cancel or a timeout reaches this statement's lease and not
+        /// whatever a query tab or another client has running on the same connection.
+        let owner = DriverLeaseOwner()
+        let policy: DriverCancellationPolicy = classification.tier == .safe
+            ? .cancellableRead(owner)
+            : .protectedWrite
 
-        if let cancellation {
-            await cancellation.onCancelRequested {
-                await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
-                }
-            }
-        }
+        await forwardCancellation(cancellation, to: owner, on: connectionId)
 
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -213,18 +217,32 @@ internal actor DatabaseAccessBridge {
         /// A write that timed out or failed may still have committed: a group only returns once
         /// every child has, so by the time the error arrives the driver call has finished one way or
         /// the other, and a catalog that might have changed is refreshed rather than trusted.
+        let grammar = databaseType.lexicalGrammar
         let result: QueryResult
+        let tableEdits: SucceededStatements?
         do {
-            result = try await runRacingTimeout(
+            (result, tableEdits) = try await runRacingTimeout(
                 scope: scope,
                 route: route,
                 policy: policy,
-                statement: statement,
-                shouldCap: shouldCap,
-                maxRows: maxRows,
-                normalizedQuery: normalizedQuery,
+                owner: owner,
                 timeoutSeconds: timeoutSeconds
-            )
+            ) { driver in
+                let answer: QueryResult
+                if shouldCap {
+                    answer = try await driver.executeUserQuery(
+                        query: statement.sql,
+                        rowCap: statement.rowCap ?? maxRows,
+                        parameters: nil
+                    )
+                } else {
+                    answer = try await driver.execute(query: normalizedQuery)
+                }
+                let edits = await SucceededStatements.single(
+                    normalizedQuery, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
+                )
+                return (answer, edits)
+            }
         } catch {
             if classification.tier != .safe {
                 CatalogChangeService.post(statementRan)
@@ -233,41 +251,51 @@ internal actor DatabaseAccessBridge {
         }
 
         CatalogChangeService.post(statementRan)
+        if let tableEdits {
+            CatalogChangeService.post(.statementsSucceeded(tableEdits))
+        }
         return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
     }
 
-    private func runRacingTimeout(
+    internal func forwardCancellation(
+        _ cancellation: (any StatementCancellationSignal)?,
+        to owner: DriverLeaseOwner,
+        on connectionId: UUID
+    ) async {
+        guard let cancellation else { return }
+        await cancellation.onCancelRequested {
+            await MainActor.run {
+                try? DatabaseManager.shared.cancelRunningQuery(
+                    owner: owner, on: connectionId, delivery: .immediate
+                )
+            }
+        }
+    }
+
+    internal func runRacingTimeout<Output: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         policy: DriverCancellationPolicy,
-        statement: LeadingRowsStatement,
-        shouldCap: Bool,
-        maxRows: Int,
-        normalizedQuery: String,
-        timeoutSeconds: Int
-    ) async throws -> QueryResult {
+        owner: DriverLeaseOwner,
+        timeoutSeconds: Int,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> Output
+    ) async throws -> Output {
         let connectionId = scope.connectionId
-        return try await withThrowingTaskGroup(of: QueryResult.self) { group in
+        return try await withThrowingTaskGroup(of: Output.self) { group in
             group.addTask {
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
-                    cancellation: policy
-                ) { driver in
-                    if shouldCap {
-                        return try await driver.executeUserQuery(
-                            query: statement.sql,
-                            rowCap: statement.rowCap ?? maxRows,
-                            parameters: nil
-                        )
-                    }
-                    return try await driver.execute(query: normalizedQuery)
-                }
+                    cancellation: policy,
+                    body
+                )
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
                 await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
+                    try? DatabaseManager.shared.cancelRunningQuery(
+                        owner: owner, on: connectionId, delivery: .immediate
+                    )
                 }
                 throw DatabaseAccessError.timeout(
                     String(
@@ -284,12 +312,13 @@ internal actor DatabaseAccessBridge {
         }
     }
 
-    internal static func stripTrailingSemicolons(_ query: String) -> String {
-        var result = StatementBlank.trimming(query)
-        while result.hasSuffix(";") {
-            result = StatementBlank.trimming(String(result.dropLast()))
-        }
-        return result
+    /// The text an external client's statement reaches the driver as.
+    ///
+    /// Trailing separators come off and a terminator that belongs to the statement stays, as the editor decides it:
+    /// a PL/SQL unit sent without the `;` after its `END` fails, or is stored INVALID, on Oracle. A caller may check
+    /// emptiness with `.ansi` before it knows the engine and again once it does.
+    internal static func statementText(_ query: String, grammar: SQLLexicalGrammar) -> String {
+        SQLStatementScanner.executableText(of: query, grammar: grammar)
     }
 }
 

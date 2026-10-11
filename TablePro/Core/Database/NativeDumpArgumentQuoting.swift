@@ -82,4 +82,8 @@ enum NativeDumpArgumentQuoting {
     static func mongoNamespace(database: String, collection: String) -> String {
         "\(database).\(collection)"
     }
+
+    static func mongoRestoreRenaming(into database: String) -> [String] {
+        ["--nsFrom=$db$.$coll$", "--nsTo=\(database).$coll$"]
+    }
 }

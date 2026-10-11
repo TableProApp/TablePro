@@ -12,7 +12,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("Database type brand colour")
 struct DatabaseTypeBrandColorTests {
     /// The reason the hand-written fallback table could be deleted outright rather than kept for
     /// the types the registry might not cover. If this fails, some type has lost its registry

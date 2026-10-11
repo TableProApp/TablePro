@@ -80,7 +80,7 @@ extension MCPConnectionBridge {
         let databaseType = try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let dialect = try? resolveSQLDialect(for: databaseType)
-        let pagination = PaginationCapability.of(databaseType)
+        let pagination = await MainActor.run { PluginManager.shared.paginationCapability(for: databaseType) }
         let limit = try MCPConnectionBridge.browseLimit(for: request, pagination: pagination)
 
         let sql = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver -> String in
@@ -92,14 +92,14 @@ extension MCPConnectionBridge {
             }
             let names = columnInfos.map(\.name)
             let classifier = ColumnTypeClassifier()
-            let types = columnInfos.map { classifier.classify(rawTypeName: $0.dataType) }
+            let types = columnInfos.map { classifier.classify(rawTypeName: $0.typeNameForClassification) }
             let builder = TableQueryBuilder(
                 databaseType: databaseType,
                 pluginDriver: driver.queryBuildingPluginDriver,
                 dialect: dialect,
                 pagination: pagination
             )
-            let sortState = MCPConnectionBridge.sortState(from: request.sort, columns: names)
+            let sortState = try MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
             let sortColumnNames = sortState?.columns.compactMap(\.columnName) ?? []
             /// A projection that leaves out the sorted column drops the sort with it on any driver
@@ -121,7 +121,7 @@ extension MCPConnectionBridge {
                     offset: request.offset
                 )
             }
-            return builder.buildFilteredQuery(
+            guard let query = builder.buildFilteredQuery(
                 tableName: request.table,
                 schemaName: schema,
                 filters: request.filters,
@@ -132,7 +132,12 @@ extension MCPConnectionBridge {
                 selectColumns: selected,
                 limit: limit,
                 offset: request.offset
-            )
+            ) else {
+                throw DatabaseAccessError.dataSourceError(
+                    String(localized: "This engine cannot filter that table with those conditions.")
+                )
+            }
+            return query
         }
 
         var payload = try await executeQuery(
@@ -166,69 +171,80 @@ extension MCPConnectionBridge {
         return pagination.clampedRowCount(request.limit)
     }
 
-    func searchSchema(scope: DatabaseScope, term: String, limit: Int) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let schema = scope.schema
-        let needle = term.lowercased()
-
-        let matches = try await DatabaseManager.shared.withMetadataDriver(
-            scope: scope,
-            workload: .bulk
-        ) { driver -> [JsonValue] in
-            let tables = MCPConnectionBridge.sortedTables(try await driver.fetchTables(schema: schema))
-            var found: [JsonValue] = []
-            for table in tables where table.name.lowercased().contains(needle) {
-                found.append(.object([
-                    "kind": .string("table"),
-                    "name": .string(table.name),
-                    "object_type": .string(table.type.rawValue),
-                    "schema": table.schema.map(JsonValue.string) ?? JsonValue.null
-                ]))
-                if found.count >= limit { return found }
-            }
-            let allColumns = (try? await driver.fetchAllColumns()) ?? [:]
-            for tableName in allColumns.keys.sorted() {
-                for column in allColumns[tableName] ?? [] where column.name.lowercased().contains(needle) {
-                    found.append(.object([
-                        "kind": .string("column"),
-                        "name": .string(column.name),
-                        "table": .string(tableName),
-                        "data_type": .string(column.dataType)
-                    ]))
-                    if found.count >= limit { return found }
-                }
-            }
-            return found
+    func searchSchema(scope: DatabaseScope, term: String, limit: Int, schemaIsNamed: Bool) async throws -> JsonValue {
+        let databaseType = try await ensureConnected(scope.connectionId)
+        let tableReach = await MainActor.run {
+            MCPSchemaSearch.tableReach(
+                schemaIsNamed: schemaIsNamed,
+                grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+                systemSchemas: Set(PluginManager.shared.systemSchemaNames(for: databaseType))
+            )
         }
-        return .object([
+        let result = try await MCPSchemaSearch.run(
+            MCPSchemaSearch.Request(scope: scope, term: term, limit: limit, tableReach: tableReach),
+            metadata: DatabaseManager.shared
+        )
+        return Self.encode(search: result, term: term, scope: scope, schemaIsNamed: schemaIsNamed)
+    }
+
+    static func encode(
+        search result: MCPSchemaSearch.Result,
+        term: String,
+        scope: DatabaseScope,
+        schemaIsNamed: Bool
+    ) -> JsonValue {
+        var payload: [String: JsonValue] = [
             "term": .string(term),
-            "matches": .array(matches),
-            "is_truncated": .bool(matches.count >= limit)
-        ])
+            "database": .string(scope.database),
+            "schema": schemaIsNamed ? nullable(scope.schema) : .null,
+            "matches": .array(result.matches.map(encode(match:))),
+            "is_truncated": .bool(result.isTruncated),
+            "unlisted_schemas": .array(result.unlistedSchemas.map(JsonValue.string)),
+            "column_search": .string(result.columnSearch.outcome.rawValue)
+        ]
+        if case .searched(let schema) = result.columnSearch {
+            payload["columns_schema"] = nullable(schema)
+        }
+        return .object(payload)
+    }
+
+    static func encode(match: MCPSchemaSearch.Match) -> JsonValue {
+        switch match {
+        case .table(let name, let schema, let type):
+            return .object([
+                "kind": .string("table"),
+                "name": .string(name),
+                "schema": nullable(schema),
+                "object_type": .string(type.rawValue)
+            ])
+        case .column(let name, let table, let schema, let dataType):
+            return .object([
+                "kind": .string("column"),
+                "name": .string(name),
+                "table": .string(table),
+                "schema": nullable(schema),
+                "data_type": .string(dataType)
+            ])
+        }
+    }
+
+    private static func nullable(_ value: String?) -> JsonValue {
+        value.map(JsonValue.string) ?? .null
     }
 
     func insertRows(
         scope: DatabaseScope,
         table: String,
         columns: [String],
-        rows: [[JsonValue]],
-        cancellation: MCPCancellationToken?
+        rows: [[JsonValue]]
     ) async throws -> JsonValue {
         let databaseType = try await ensureConnected(scope.connectionId)
         let style = await MainActor.run {
             PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle
                 ?? ParameterStyle.questionMark
         }
-        let connectionId = scope.connectionId
-
-        if let cancellation {
-            await cancellation.onCancel { _ in
-                await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
-                }
-            }
-        }
-
+        /// No cancel handler: the insert runs under a `.protectedWrite` lease, which nothing may
+        /// abort, so a request here could only ever have reached another owner's read.
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let schema = scope.schema
         let inserted = try await DatabaseManager.shared.withScopedDriver(
@@ -287,7 +303,8 @@ extension MCPConnectionBridge {
         }
     }
 
-    static func sortState(from sort: [(column: String, descending: Bool)], columns: [String]) -> SortState? {
+    static func sortState(from sort: [(column: String, descending: Bool)], columns: [String]) throws -> SortState? {
+        try rejectUnknownColumns(sort.map(\.column), available: columns)
         let resolved: [SortColumn] = sort.compactMap { entry in
             guard let index = columns.firstIndex(of: entry.column) else { return nil }
             return SortColumn(
@@ -302,8 +319,13 @@ extension MCPConnectionBridge {
 
     static func validatedSelection(_ requested: [String]?, available: [String]) throws -> [String]? {
         guard let requested, !requested.isEmpty else { return nil }
+        try rejectUnknownColumns(requested, available: available)
+        return requested
+    }
+
+    private static func rejectUnknownColumns(_ requested: [String], available: [String]) throws {
         let known = Set(available)
-        let unknown = requested.filter { !known.contains($0) }.sorted()
+        let unknown = Set(requested.filter { !known.contains($0) }).sorted()
         guard unknown.isEmpty else {
             throw DatabaseAccessError.invalidArgument(
                 String(
@@ -312,7 +334,6 @@ extension MCPConnectionBridge {
                 )
             )
         }
-        return requested
     }
 }
 
@@ -360,31 +381,58 @@ extension MCPConnectionBridge {
         variantId: String?,
         analyze: Bool
     ) throws -> String {
-        let variants = databaseType.explainVariants
-        let prefix: String
-        if let variantId {
-            guard let variant = variants.first(where: { $0.id == variantId }) else {
-                throw DatabaseAccessError.invalidArgument(
-                    String(
-                        format: String(localized: "Unknown explain variant '%@'."),
-                        variantId
-                    )
-                )
-            }
-            prefix = variant.sqlPrefix
-        } else if analyze, let variant = variants.first(where: { $0.sqlPrefix.uppercased().contains("ANALYZE") }) {
-            prefix = variant.sqlPrefix
-        } else if let variant = variants.first {
-            prefix = variant.sqlPrefix
-        } else {
-            prefix = analyze ? "EXPLAIN ANALYZE" : "EXPLAIN"
-        }
-        let trimmed = stripTrailingSemicolons(query)
+        let trimmed = statementText(query, databaseType: databaseType)
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         guard !QueryClassifier.isExplainStatement(trimmed) else { return trimmed }
-        return "\(prefix) \(trimmed)"
+        let variants = databaseType.explainVariants
+        guard let first = variants.first else {
+            throw DatabaseAccessError.invalidArgument(String(localized: "This database does not explain statements."))
+        }
+        let variant = try explainVariant(id: variantId, analyze: analyze, in: variants, first: first)
+        return "\(variant.sqlPrefix) \(trimmed)"
+    }
+
+    private static func explainVariant(
+        id: String?,
+        analyze: Bool,
+        in variants: [ExplainVariant],
+        first: ExplainVariant
+    ) throws -> ExplainVariant {
+        let offered = variants.map(\.id).joined(separator: ", ")
+        let running = variants.filter { $0.sqlPrefix.uppercased().contains("ANALYZE") }
+        let chosen: ExplainVariant
+        if let id {
+            guard let variant = variants.first(where: { $0.id == id }) else {
+                throw DatabaseAccessError.invalidArgument(
+                    String(format: String(localized: "Unknown explain variant '%@'. This database offers: %@."), id, offered)
+                )
+            }
+            chosen = variant
+        } else {
+            chosen = analyze ? running.first ?? first : first
+        }
+        guard analyze, !running.contains(where: { $0.id == chosen.id }) else { return chosen }
+        guard !running.isEmpty else {
+            throw DatabaseAccessError.invalidArgument(
+                String(
+                    format: String(
+                        localized: "This database has no explain variant that runs the statement. Leave 'analyze' off, or pass one of these as 'variant': %@."
+                    ),
+                    offered
+                )
+            )
+        }
+        throw DatabaseAccessError.invalidArgument(
+            String(
+                format: String(
+                    localized: "The '%1$@' variant does not run the statement. Leave 'analyze' off, or pass one that does: %2$@."
+                ),
+                chosen.id,
+                running.map(\.id).joined(separator: ", ")
+            )
+        )
     }
 
     static func explainVariants(for databaseType: DatabaseType) -> JsonValue {

@@ -9,7 +9,6 @@ import Foundation
 import Testing
 import TableProPluginKit
 
-@Suite("Operation confirmation prompt")
 @MainActor
 struct OperationConfirmationPromptTests {
     private static let escape = "\u{1B}"

@@ -7,7 +7,6 @@ import AppKit
 @testable import TablePro
 import Testing
 
-@Suite("Alert window resolution")
 @MainActor
 struct AlertWindowResolutionTests {
     private func makeWindow() -> NSWindow {

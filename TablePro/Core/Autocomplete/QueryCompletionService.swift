@@ -14,7 +14,6 @@ struct QueryCompletionSession {
 protocol QueryCompletionService: AnyObject {
     var triggerCharacters: Set<String> { get }
 
-    func seedItems() -> [SQLCompletionItem]
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession?
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem]
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int

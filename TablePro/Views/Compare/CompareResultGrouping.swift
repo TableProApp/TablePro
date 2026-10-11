@@ -164,11 +164,12 @@ internal enum CompareResultGrouping {
         )
     }
 
-    /// A source-defined object has no parsed change list, only a body of SQL, so it deliberately
-    /// summarises to nothing rather than to a count of zero.
+    /// Most source-defined objects have no parsed change list, only a body of SQL, so they summarise
+    /// to nothing rather than to a count of zero. A materialized view's index changes are counted
+    /// like a table's.
     private static func changeSummary(for result: CompareObjectResult) -> String {
         if let error = result.comparisonError { return error }
-        guard result.identity.kind == .table, !result.changes.isEmpty else { return "" }
+        guard !result.changes.isEmpty else { return "" }
         return String(format: String(localized: "%d changes"), result.changes.count)
     }
 }

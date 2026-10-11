@@ -125,6 +125,7 @@ struct NestedFieldPathPicker: View {
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
                     .help(String(localized: "Inside an array"))
+                    .accessibilityLabel(String(localized: "Inside an array"))
             }
             Text(path.typeName)
                 .font(.caption)

@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SortableHeaderView comment height")
 @MainActor
 struct SortableHeaderViewTests {
     private struct Grid {

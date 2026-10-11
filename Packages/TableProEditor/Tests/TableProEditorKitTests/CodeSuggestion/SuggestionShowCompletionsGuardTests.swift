@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 @testable import TableProEditorKit
 import XCTest
 
@@ -13,7 +12,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = DelayedStubDelegate(items: [GuardStubEntry(label: "SELECT")])
+        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
 
         var presentationCount = 0
         model.showCompletions(
@@ -44,7 +43,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = DelayedStubDelegate(items: [GuardStubEntry(label: "SELECT")])
+        let delegate = DelayedStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
 
         var presentedWindows: [NSWindow] = []
         model.showCompletions(
@@ -74,9 +73,9 @@ private final class DelayedStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
-    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+    ) async -> CodeSuggestionResponse? {
         try? await Task.sleep(for: .milliseconds(50))
-        return (windowPosition: cursorPosition, items: items)
+        return .answeringAnEmptyPrefix(items, at: cursorPosition)
     }
 
     func completionOnCursorMove(
@@ -91,16 +90,4 @@ private final class DelayedStubDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition?
     ) {}
-}
-
-private struct GuardStubEntry: CodeSuggestionEntry {
-    var label: String
-    var detail: String? { nil }
-    var documentation: String? { nil }
-    var pathComponents: [String]? { nil }
-    var targetPosition: CursorPosition? { nil }
-    var sourcePreview: String? { nil }
-    var image: Image { Image(systemName: "circle") }
-    var imageColor: Color { .gray }
-    var deprecated: Bool { false }
 }

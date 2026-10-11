@@ -10,7 +10,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("JSONForeignKeyExpansionPolicy")
 struct JSONForeignKeyExpansionPolicyTests {
     private func visit(_ table: String, _ value: String) -> JSONForeignKeyVisit {
         JSONForeignKeyVisit(table: table, schema: nil, column: "id", value: value)

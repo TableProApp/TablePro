@@ -50,7 +50,7 @@ internal extension CompareRunner {
 
     func runDataCompare(_ context: Context, claim: CompareSyncSession.RunClaim) async throws {
         if let refusal = rowService.concurrentReadRefusal(source: context.source, target: context.target) {
-            throw CompareSyncError.unsupportedOperation(refusal)
+            throw CompareSyncError.unsupportedOperation(refusal.comparisonMessage)
         }
 
         /// The metadata is read again on every explicit Compare, never reused from the preload.
@@ -179,7 +179,7 @@ internal extension CompareRunner {
             session.dataPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
         let sourceSnapshots = Dictionary(
-            sourceReads.compactMap { $0.snapshot }.map { ($0.qualifiedName, $0) },
+            sourceReads.compactMap { $0.sourceSnapshot }.map { ($0.qualifiedName, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -216,8 +216,8 @@ internal extension CompareRunner {
             guard let targetColumn = targetColumns[column.name.lowercased()] else { return nil }
             return CompareColumn(
                 name: column.name,
-                sourceType: column.dataType,
-                targetType: targetColumn.dataType,
+                sourceType: column.typeNameForClassification,
+                targetType: targetColumn.typeNameForClassification,
                 collation: column.collation,
                 isGeneratedOnTarget: targetColumn.isGenerated,
                 targetIdentity: targetColumn.identityKind

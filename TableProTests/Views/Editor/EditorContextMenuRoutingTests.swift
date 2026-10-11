@@ -13,7 +13,6 @@ import TableProTextEngine
 import Testing
 
 @MainActor
-@Suite("Editor context menu routing")
 struct EditorContextMenuRoutingTests {
     @Test("A menu assigned to the text view wins over the standard editing items")
     func assignedMenuIsResolved() {

@@ -6,6 +6,7 @@ final class StubTransport: TrinoTransport, @unchecked Sendable {
         let statusCode: Int
         let headers: [String: String]
         let body: Data
+        var clientCertificateRequest: TrinoClientCertificateRequest?
     }
 
     private let lock = NSLock()
@@ -53,13 +54,24 @@ final class StubTransport: TrinoTransport, @unchecked Sendable {
         return TrinoHTTPResponse(
             statusCode: canned.statusCode,
             headers: TrinoHeaderFields(canned.headers),
-            body: canned.body
+            body: canned.body,
+            clientCertificateRequest: canned.clientCertificateRequest
         )
     }
 }
 
-func canned(_ json: String, status: Int = 200, headers: [String: String] = [:]) -> StubTransport.Canned {
-    StubTransport.Canned(statusCode: status, headers: headers, body: Data(json.utf8))
+func canned(
+    _ json: String,
+    status: Int = 200,
+    headers: [String: String] = [:],
+    clientCertificateRequest: TrinoClientCertificateRequest? = nil
+) -> StubTransport.Canned {
+    StubTransport.Canned(
+        statusCode: status,
+        headers: headers,
+        body: Data(json.utf8),
+        clientCertificateRequest: clientCertificateRequest
+    )
 }
 
 /// Hands the client to an `onSend` hook that runs on whatever thread the transport was resumed on,

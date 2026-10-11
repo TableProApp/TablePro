@@ -15,7 +15,6 @@ import Testing
 @testable import TablePro
 
 @MainActor
-@Suite("Observed value change")
 struct ObservedValueChangeTests {
     private final class Child: ObservableObject {
         @Published var value = 0

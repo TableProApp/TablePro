@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("QueryClassifier fails closed")
 struct QueryClassifierFailClosedTests {
     @Test("Statements the keyword table does not know are treated as writes")
     func unknownKeywordIsWrite() {
@@ -252,7 +251,6 @@ struct QueryClassifierFailClosedTests {
     }
 }
 
-@Suite("QueryClassifier comment boundaries")
 struct QueryClassifierCommentBoundaryTests {
     @Test(
         "A line comment ends at a carriage return as well as a line feed",
@@ -342,7 +340,6 @@ struct QueryClassifierCommentBoundaryTests {
     }
 }
 
-@Suite("QueryClassifier non-SQL engines")
 struct QueryClassifierNonSqlTests {
     @Test("MongoDB read methods stay safe and writes never look like reads")
     func mongoTiers() {
@@ -385,6 +382,12 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("runCommand", databaseType: .mongodb))
     }
 
+    /// XAUTOCLAIM moves pending entries to another consumer and drops deleted ones from the PEL.
+    @Test("Redis XAUTOCLAIM is a write")
+    func redisAutoclaimIsWrite() {
+        #expect(QueryClassifier.isWriteQuery("XAUTOCLAIM orders workers mallory 0 0-0 COUNT 10", databaseType: .redis))
+    }
+
     @Test("Redis reads come from an allowlist and everything else is a write")
     func redisAllowlist() {
         for command in ["GET key", "HGETALL hash", "LRANGE list 0 -1", "SCAN 0", "TTL key"] {
@@ -419,6 +422,31 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("CONFIG SET maxmemory 100", databaseType: .redis) == .destructive)
     }
 
+    /// Read as the bare word `DB`, `DB 0 FLUSHDB` passed as an ordinary write and skipped the
+    /// confirmation a destructive statement asks for.
+    @Test("A Redis DB prefix is classified by the command it wraps")
+    func redisDatabasePrefix() {
+        #expect(QueryClassifier.classifyTier("DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("db db2 CONFIG SET maxmemory 1", databaseType: .redis) == .destructive)
+        #expect(!QueryClassifier.isWriteQuery("DB 3 GET key", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("DB 3 SET key value", databaseType: .redis))
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("DB 1 EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("DB 3", databaseType: .redis))
+    }
+
+    /// The driver strips redis-cli quoting before it sends, so a quoted command runs as the bare
+    /// one. Read as written, `"FLUSHALL"` matched no set and passed as an ordinary write.
+    @Test("A quoted Redis command is classified as the command the driver runs")
+    func redisQuotedCommand() {
+        #expect(QueryClassifier.classifyTier("\"FLUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("'FLUSHDB' ASYNC", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 \"FLUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("'DB' 0 FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("\"\\x46LUSHALL\"", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("CONFIG \"SET\" maxmemory 1", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("\"GET\" key", databaseType: .redis) == .safe)
+    }
+
     @Test("etcd verbs separate reads, writes, deletes and snapshots")
     func etcdTiers() {
         #expect(!QueryClassifier.isWriteQuery("get /keys", databaseType: .etcd))
@@ -429,13 +457,117 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.reachesFilesystemOrExecutesCode("snapshot save backup.db", databaseType: .etcd))
     }
 
+    @Test("etcd subcommands that delete keys, users or roles, or turn authentication off, are destructive")
+    func etcdDestructiveSubcommands() {
+        let destructive = [
+            "lease revoke 7b",
+            "LEASE REVOKE 0x7b",
+            "\"lease\" 'revoke' 7b",
+            "user delete alice",
+            "role delete readers",
+            "auth disable",
+            "\"del\" /keys --prefix",
+            "delete /keys",
+            "compaction 5 --physical"
+        ]
+        for statement in destructive {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .destructive,
+                "\(statement) must be destructive"
+            )
+        }
+    }
+
+    @Test("etcd list, status and lookup subcommands are reads")
+    func etcdReadSubcommands() {
+        let reads = [
+            "member list",
+            "lease list",
+            "lease timetolive 7b --keys",
+            "endpoint status",
+            "endpoint health",
+            "user list",
+            "role list",
+            "'get' /keys --prefix"
+        ]
+        for statement in reads {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .safe,
+                "\(statement) must be safe"
+            )
+        }
+    }
+
+    @Test("etcd grants, keep-alives and account additions are plain writes")
+    func etcdWriteSubcommands() {
+        let writes = [
+            "lease grant 60",
+            "lease keep-alive 7b",
+            "auth enable",
+            "user add alice secret",
+            "role add readers",
+            "user grant-role alice readers",
+            "user revoke-role alice readers",
+            "put /keys value --lease 7b"
+        ]
+        for statement in writes {
+            #expect(
+                QueryClassifier.classifyTier(statement, databaseType: .etcd) == .write,
+                "\(statement) must be a write"
+            )
+        }
+    }
+
+    @Test("etcd text the parser rejects is tiered by the worst its command can do")
+    func etcdUnparsedFailsClosed() {
+        #expect(QueryClassifier.classifyTier("del --from-key /a", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("lease revoke", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("member remove 8e9e05c52164694d", databaseType: .etcd) == .destructive)
+        #expect(QueryClassifier.classifyTier("put /keys", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.classifyTier("get", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.classifyTier("move-leader 8e9e05c52164694d", databaseType: .etcd) == .write)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("defrag", databaseType: .etcd))
+    }
+
     @Test("Elasticsearch separates read verbs from writes and deletes")
     func elasticsearchTiers() {
         #expect(!QueryClassifier.isWriteQuery("GET /index/_search", databaseType: .elasticsearch))
-        #expect(!QueryClassifier.isWriteQuery("POST /index/_search {}", databaseType: .elasticsearch))
+        #expect(!QueryClassifier.isWriteQuery("POST /index/_search\n{}", databaseType: .elasticsearch))
         #expect(QueryClassifier.isWriteQuery("PUT /index/_doc/1", databaseType: .elasticsearch))
         #expect(QueryClassifier.isWriteQuery("POST /index/_doc", databaseType: .elasticsearch))
         #expect(QueryClassifier.classifyTier("DELETE /index", databaseType: .elasticsearch) == .destructive)
+    }
+
+    @Test(
+        "An Elasticsearch request reads only when the request the driver sends reads",
+        arguments: [
+            "GET /orders/_search\n{\"query\": {\"match_all\": {}}}",
+            "POST /orders/_search/template\n{}",
+            "POST /_sql?format=txt\n{\"query\": \"SELECT 1\"}",
+            "POST /orders,archive/_count",
+            "GET /_cat/indices"
+        ]
+    )
+    func elasticsearchReads(request: String) {
+        #expect(QueryClassifier.classifyTier(request, databaseType: .elasticsearch) == .safe)
+    }
+
+    /// The driver sends a GET or HEAD with a body as a POST, and resolves dot segments in the path.
+    @Test(
+        "An Elasticsearch write is not read off an index name, the body or a GET",
+        arguments: [
+            "POST /site_search/_delete_by_query\n{\"query\": {\"match_all\": {}}}",
+            "POST /orders/_mapping\n{\"properties\": {}}",
+            "POST /orders/_doc\n{\"note\": \"_search\"}",
+            "GET /orders/_delete_by_query\n{\"query\": {\"match_all\": {}}}",
+            "GET /orders/_doc/1\n{\"a\": 1}",
+            "POST /_search/../orders/_update_by_query\n{}",
+            "POST /orders/_search /../_delete_by_query\n{}",
+            "POST /orders/%5Fsearch\n{}"
+        ]
+    )
+    func elasticsearchWrites(request: String) {
+        #expect(QueryClassifier.classifyTier(request, databaseType: .elasticsearch) != .safe)
     }
 
     @Test("Typesense separates search from writes and deletes")

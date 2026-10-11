@@ -72,7 +72,6 @@ private final class StubForeignKeyDriver: PluginDatabaseDriver, @unchecked Senda
     func foreignKeyEnableStatements() -> [String]? { ["SET FOREIGN_KEY_CHECKS=1"] }
 }
 
-@Suite("TableOperationSQLBuilder")
 @MainActor
 struct TableOperationSQLBuilderTests {
     private func ref(

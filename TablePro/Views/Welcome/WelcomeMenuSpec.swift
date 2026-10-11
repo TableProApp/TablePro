@@ -9,6 +9,9 @@ import TableProConnectionLibrary
 internal enum WelcomeMenuCommand: Equatable {
     case connect([LibraryRowID])
     case disconnect(UUID)
+    /// Open the connection and hand its window to the agent, which is the welcome window's second
+    /// way in. Its own command rather than a mode on Connect, because they land somewhere different.
+    case startAgentSession(UUID)
     case edit(UUID)
     case rename(LibraryRowID)
     case duplicate(UUID)
@@ -28,6 +31,7 @@ internal enum WelcomeMenuCommand: Equatable {
     case clearRecent
     case showInFinder(UUID)
     case newSubgroup(UUID)
+    case editGroup(UUID)
     case setGroupColor(UUID, ConnectionColor)
     case moveGroup(UUID, UUID?)
     case deleteGroup(UUID)
@@ -68,6 +72,7 @@ internal struct WelcomeMenuContext {
     internal let canPublishToTeamLibrary: Bool
 }
 
+@MainActor
 internal enum WelcomeMenuSpec {
     internal static func sections(for context: WelcomeMenuContext) -> [WelcomeMenuSection] {
         let resolved = context.resolved
@@ -135,7 +140,10 @@ internal enum WelcomeMenuSpec {
         context: WelcomeMenuContext
     ) -> [WelcomeMenuSection] {
         let id = connection.id
-        var primary: [WelcomeMenuItem] = [.command(Titles.connect(count: 1), .connect(context.rows))]
+        var primary: [WelcomeMenuItem] = [
+            .command(Titles.connect(count: 1), .connect(context.rows)),
+            .command(Titles.startAgentSession, .startAgentSession(id)),
+        ]
         if context.disconnectableConnectionIds.contains(id) {
             primary.append(.command(Titles.disconnect, .disconnect(id)))
         }
@@ -242,7 +250,7 @@ internal enum WelcomeMenuSpec {
                 command: .moveToGroup(ids, group.id),
                 isOn: currentGroupId == group.id,
                 indentationLevel: flat.depth,
-                symbol: SidebarMenuSymbol(systemName: "folder.fill", color: group.color)
+                symbol: groupSymbol(group)
             ))
         }
         return .submenu(title: Titles.moveToGroup, sections: [
@@ -264,18 +272,22 @@ internal enum WelcomeMenuSpec {
         let graph = LibraryGroupGraph(groups: context.groups)
         guard let group = context.groups.first(where: { $0.id == groupId }) else { return [] }
 
-        var edit: [WelcomeMenuItem] = [.command(Titles.rename, .rename(.group(groupId)))]
+        var edit: [WelcomeMenuItem] = [
+            .command(Titles.editGroup, .editGroup(groupId)),
+            .command(Titles.rename, .rename(.group(groupId))),
+        ]
         if graph.canCreateSubgroup(under: groupId) {
             edit.append(.command(Titles.newSubgroup, .newSubgroup(groupId)))
         }
 
+        let symbolName = LibraryGlyph.groupSymbol(group.iconName)
         var arrange: [WelcomeMenuItem] = [
             .submenu(title: Titles.color, items: ConnectionColor.allCases.map { color in
                 .command(SidebarMenuEntry(
                     title: color.displayName,
                     command: .setGroupColor(groupId, color),
                     isOn: group.color == color,
-                    symbol: SidebarMenuSymbol(systemName: "folder.fill", color: color)
+                    symbol: SidebarMenuSymbol(systemName: symbolName, color: color)
                 ))
             }),
         ]
@@ -307,7 +319,7 @@ internal enum WelcomeMenuSpec {
                 command: .moveGroup(groupId, flat.id),
                 isOn: currentParent == flat.id,
                 indentationLevel: flat.depth,
-                symbol: SidebarMenuSymbol(systemName: "folder.fill", color: target.color)
+                symbol: groupSymbol(target)
             ))
         }
         guard !targets.isEmpty || currentParent != nil else { return [] }
@@ -324,6 +336,10 @@ internal enum WelcomeMenuSpec {
     }
 
     // MARK: - Helpers
+
+    private static func groupSymbol(_ group: ConnectionGroup) -> SidebarMenuSymbol {
+        SidebarMenuSymbol(systemName: LibraryGlyph.groupSymbol(group.iconName), color: group.color)
+    }
 
     private static func section(of connectionId: UUID, in rows: [LibraryRowID]) -> LibrarySectionKind {
         for row in rows {
@@ -370,10 +386,13 @@ internal extension WelcomeMenuSpec {
         static var deleteConnection: String { String(localized: "Delete Connection…") }
         static var showInFinder: String { String(localized: "Show in Finder") }
         static var newSubgroup: String { String(localized: "New Subgroup…") }
+        static var editGroup: String { String(localized: "Edit Group…") }
         static var color: String { String(localized: "Color") }
         static var moveGroupTo: String { String(localized: "Move Group To") }
         static var topLevel: String { String(localized: "Top Level") }
         static var deleteGroup: String { String(localized: "Delete Group…") }
+
+        static let startAgentSession = String(localized: "Open in Agent Mode")
 
         static func connect(count: Int) -> String {
             count == 1

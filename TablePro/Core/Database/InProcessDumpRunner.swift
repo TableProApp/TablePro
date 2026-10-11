@@ -98,7 +98,7 @@ final class InProcessDumpRunner: NativeDumpRunner, @unchecked Sendable {
             finish(NativeDumpRunResult(exitCode: 0, stderr: "", wasCancelled: readCancelled()))
         } catch {
             let cancelled = readCancelled()
-            Self.logger.error("in-engine dump failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("in-engine dump failed: \(error.publicLogShape, privacy: .public)")
             finish(
                 NativeDumpRunResult(
                     exitCode: cancelled ? 130 : 1,

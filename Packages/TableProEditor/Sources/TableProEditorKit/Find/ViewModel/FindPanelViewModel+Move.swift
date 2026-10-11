@@ -34,7 +34,7 @@ extension FindPanelViewModel {
         }
 
         guard let currentFindMatchIndex else {
-            self.currentFindMatchIndex = 0
+            moveFromCaret(forwards: forwards, targetView: target.findPanelTargetView)
             return
         }
 
@@ -54,7 +54,24 @@ extension FindPanelViewModel {
         }
     }
 
-    private func showWrapNotification(forwards: Bool, error: Bool, targetView: NSView) {
+    /// With no current match, which is where a search ends after the last replacement, the next match is the one past
+    /// the caret, as the native find bar searches from the selection. Wrap Around decides what happens past the end.
+    private func moveFromCaret(forwards: Bool, targetView: NSView) {
+        let caret = target?.cursorPositions.first?.range ?? NSRange(location: 0, length: 0)
+        let nearest = forwards
+            ? findMatches.firstIndex { $0.location >= NSMaxRange(caret) }
+            : findMatches.lastIndex { NSMaxRange($0) <= caret.location }
+        if let nearest {
+            currentFindMatchIndex = nearest
+        } else if wrapAround {
+            currentFindMatchIndex = forwards ? 0 : findMatches.count - 1
+            showWrapNotification(forwards: forwards, error: false, targetView: targetView)
+        } else {
+            showWrapNotification(forwards: forwards, error: true, targetView: targetView)
+        }
+    }
+
+    func showWrapNotification(forwards: Bool, error: Bool, targetView: NSView) {
         if error {
             NSSound.beep()
         }

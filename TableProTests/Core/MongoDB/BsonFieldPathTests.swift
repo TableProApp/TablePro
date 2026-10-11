@@ -9,7 +9,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("BSON Field Paths")
 struct BsonFieldPathTests {
     private func paths(_ documents: [[String: Any]], maxDepth: Int = 4) -> [PluginFieldPath] {
         BsonDocumentFlattener.fieldPaths(from: documents, representation: .unspecified, maxDepth: maxDepth)

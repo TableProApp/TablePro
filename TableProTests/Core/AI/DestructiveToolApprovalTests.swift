@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Destructive tool approval contract")
 struct DestructiveToolApprovalTests {
     @Test("ConfirmDestructiveOperationChatTool is agentOnly mode")
     func toolIsAgentOnly() {

@@ -69,10 +69,11 @@ struct RoutineInfo: Identifiable, Hashable, Sendable {
     }
 
     var id: String {
+        let path = IdentityPath.qualified(name: name, schema: schema)
         guard let discriminator else {
-            return "\(kind.rawValue)_\(qualifiedName)"
+            return "\(kind.rawValue)_\(path)"
         }
-        return "\(kind.rawValue)_\(qualifiedName)_\(discriminator)"
+        return "\(kind.rawValue)_\(path)_\(discriminator)"
     }
 
     /// Equality follows `id` alone so a Set, a Dictionary and an outline view can never disagree

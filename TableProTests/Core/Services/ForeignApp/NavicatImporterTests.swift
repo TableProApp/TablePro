@@ -96,17 +96,36 @@ struct NavicatImporterTests {
         #expect(NavicatImporter().readsPasswordsFromKeychain == false)
     }
 
-    // MARK: - connectionCount
+    // MARK: - inventory
 
-    @Test("connectionCount is 0 without a file")
+    @Test("inventory is empty without a file")
     func connectionCountZeroWithoutFile() {
-        #expect(NavicatImporter().connectionCount() == 0)
+        #expect(NavicatImporter().inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
     }
 
-    @Test("connectionCount reflects the file contents")
+    @Test("inventory counts the file's connections and never any saved queries")
     func connectionCountReflectsFile() throws {
         try writeNCX([conn(name: "A"), conn(name: "B")])
-        #expect(importer.connectionCount() == 2)
+        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0))
+    }
+
+    // MARK: - Saved queries
+
+    @Test("Saved queries are unavailable, with the reason the picker shows")
+    func savedQueriesUnavailable() {
+        #expect(
+            NavicatImporter().savedQuerySupport
+                == .unavailable(reason: String(localized: "Navicat's export file has no saved queries."))
+        )
+    }
+
+    @Test("Asking for saved queries still imports connections only")
+    func savedQueryRequestImportsConnectionsOnly() throws {
+        try writeNCX([conn(name: "A")])
+        let result = try importer.collect(ForeignImportRequest(includePasswords: true, includeSavedQueries: true))
+        #expect(result.connections.count == 1)
+        #expect(result.bundle.savedQueries.isEmpty)
+        #expect(result.oversizedQueries.isEmpty)
     }
 
     // MARK: - Errors
@@ -115,7 +134,7 @@ struct NavicatImporterTests {
     func importWithoutFileThrows() {
         let bare = NavicatImporter()
         #expect(throws: ForeignAppImportError.self) {
-            _ = try bare.importConnections(includePasswords: true)
+            _ = try bare.collect(.withPasswords)
         }
     }
 
@@ -124,7 +143,7 @@ struct NavicatImporterTests {
         guard let url = importer.ncxFileURL else { return }
         try "<<<not xml".write(to: url, atomically: true, encoding: .utf8)
         #expect(throws: ForeignAppImportError.self) {
-            _ = try importer.importConnections(includePasswords: true)
+            _ = try importer.collect(.withPasswords)
         }
     }
 
@@ -132,7 +151,7 @@ struct NavicatImporterTests {
     func noConnectionsThrows() throws {
         try writeNCX([])
         #expect(throws: ForeignAppImportError.self) {
-            _ = try importer.importConnections(includePasswords: true)
+            _ = try importer.collect(.withPasswords)
         }
     }
 
@@ -144,14 +163,14 @@ struct NavicatImporterTests {
             conn(type: "MYSQL"), conn(type: "MARIADB"), conn(type: "POSTGRESQL"),
             conn(type: "ORACLE"), conn(type: "SQLITE"), conn(type: "SQLSERVER"), conn(type: "MONGODB")
         ])
-        let types = try importer.importConnections(includePasswords: false).envelope.connections.map(\.type)
+        let types = try importer.collect(.connectionsOnly).connections.map(\.type)
         #expect(types == ["MySQL", "MariaDB", "PostgreSQL", "Oracle", "SQLite", "SQL Server", "MongoDB"])
     }
 
     @Test("Passes an unknown ConnType through unchanged")
     func passesUnknownConnTypeThrough() throws {
         try writeNCX([conn(type: "EXOTICDB", port: "")])
-        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        let connection = try importer.collect(.connectionsOnly).connections[0]
         #expect(connection.type == "EXOTICDB")
         #expect(connection.port == 0)
     }
@@ -159,7 +178,7 @@ struct NavicatImporterTests {
     @Test("Resolves a ConnType TablePro knows under another case to its registered type")
     func resolvesConnTypeCaseInsensitively() throws {
         try writeNCX([conn(type: "COCKROACHDB", port: "")])
-        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        let connection = try importer.collect(.connectionsOnly).connections[0]
         #expect(connection.type == "CockroachDB")
         #expect(connection.port == 26_257)
     }
@@ -167,7 +186,7 @@ struct NavicatImporterTests {
     @Test("Falls back to the default port when Port is absent")
     func usesDefaultPortWhenPortMissing() throws {
         try writeNCX([conn(type: "POSTGRESQL", port: "")])
-        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        let connection = try importer.collect(.connectionsOnly).connections[0]
         #expect(connection.port == 5_432)
     }
 
@@ -177,7 +196,7 @@ struct NavicatImporterTests {
             type: "SQLITE", host: "", port: "", user: "", database: "",
             extra: ["DatabaseFileName": "/Users/me/data.db"]
         )])
-        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        let connection = try importer.collect(.connectionsOnly).connections[0]
         #expect(connection.type == "SQLite")
         #expect(connection.database == "/Users/me/data.db")
         #expect(connection.host == "")
@@ -194,7 +213,7 @@ struct NavicatImporterTests {
             "SSH_UserName": "deploy",
             "SSH_AuthenMethod": "PASSWORD"
         ])])
-        let ssh = try importer.importConnections(includePasswords: false).envelope.connections[0].sshConfig
+        let ssh = try importer.collect(.connectionsOnly).connections[0].sshConfig
         #expect(ssh?.host == "bastion.example.com")
         #expect(ssh?.port == 2_222)
         #expect(ssh?.username == "deploy")
@@ -208,7 +227,7 @@ struct NavicatImporterTests {
             "SSL_PGSSLMode": "VERIFY-CA",
             "SSL_CACert": "/certs/ca.pem"
         ])])
-        let ssl = try importer.importConnections(includePasswords: false).envelope.connections[0].sslConfig
+        let ssl = try importer.collect(.connectionsOnly).connections[0].sslConfig
         #expect(ssl?.mode == "Verify CA")
         #expect(ssl?.caCertificatePath == "/certs/ca.pem")
     }
@@ -228,50 +247,49 @@ struct NavicatImporterTests {
                 "SSH_Password": "B75D320B6211468D63EB3B67C9E85933"
             ]
         )])
-        let credentials = try importer.importConnections(includePasswords: true).envelope.credentials
-        #expect(credentials?["0"]?.password == "This is a test")
-        #expect(credentials?["0"]?.sshPassword == "This is a test")
+        let result = try importer.collect(.withPasswords)
+        #expect(result.credentials(at: 0)?.password == "This is a test")
+        #expect(result.credentials(at: 0)?.sshPassword == "This is a test")
     }
 
-    @Test("Maps credentials to the right index when some connections have no saved password")
+    @Test("Maps credentials to the right connection when some have no saved password")
     func mapsSparseCredentialsByIndex() throws {
         try writeNCX([
             conn(name: "Zero", type: "MYSQL", savePassword: "true", password: "B75D320B6211468D63EB3B67C9E85933"),
             conn(name: "One", type: "POSTGRESQL", savePassword: "false"),
             conn(name: "Two", type: "MARIADB", savePassword: "true", password: "2E6C8CF471EB0268D3239A0AD531F1B1")
         ])
-        let result = try importer.importConnections(includePasswords: true)
-        let credentials = result.envelope.credentials
-        #expect(result.envelope.connections.count == 3)
-        #expect(Set(credentials?.keys.map { $0 } ?? []) == Set(["0", "2"]))
-        #expect(credentials?["0"]?.password == "This is a test")
-        #expect(credentials?["1"] == nil)
-        #expect(credentials?["2"]?.password == "Sup3rSecret!Pass")
+        let result = try importer.collect(.withPasswords)
+        #expect(result.connections.count == 3)
+        #expect(result.bundle.credentials.count == 2)
+        #expect(result.credentials(at: 0)?.password == "This is a test")
+        #expect(result.credentials(at: 1) == nil)
+        #expect(result.credentials(at: 2)?.password == "Sup3rSecret!Pass")
     }
 
     @Test("Skips the password when SavePassword is false")
     func skipsPasswordWhenNotSaved() throws {
         try writeNCX([conn(savePassword: "false", password: "B75D320B6211468D63EB3B67C9E85933")])
-        let result = try importer.importConnections(includePasswords: true)
-        #expect(result.envelope.connections.count == 1)
-        #expect(result.envelope.credentials == nil)
+        let result = try importer.collect(.withPasswords)
+        #expect(result.connections.count == 1)
+        #expect(result.bundle.credentials.isEmpty)
     }
 
     @Test("Skips passwords entirely when includePasswords is false")
     func skipsPasswordsWhenExcluded() throws {
         try writeNCX([conn(savePassword: "true", password: "B75D320B6211468D63EB3B67C9E85933")])
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.credentials == nil)
+        let result = try importer.collect(.connectionsOnly)
+        #expect(result.bundle.credentials.isEmpty)
     }
 
-    // MARK: - Envelope
+    // MARK: - Bundle
 
-    @Test("Stamps the envelope and source metadata")
+    @Test("Stamps the bundle and source, with a row ref for each connection")
     func stampsEnvelopeMetadata() throws {
-        try writeNCX([conn()])
-        let result = try importer.importConnections(includePasswords: true)
-        #expect(result.envelope.formatVersion == 1)
-        #expect(result.envelope.appVersion == "Navicat Import")
-        #expect(result.sourceName == "Navicat")
+        try writeNCX([conn(name: "A"), conn(name: "B")])
+        let result = try importer.collect(.withPasswords)
+        #expect(result.bundle.appVersion == "Navicat Import")
+        #expect(result.source == .foreignApp(name: "Navicat"))
+        #expect(result.bundle.connections.map { $0.ref } == ["row-0", "row-1"])
     }
 }

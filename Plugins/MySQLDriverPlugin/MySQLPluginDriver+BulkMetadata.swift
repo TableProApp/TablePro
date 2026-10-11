@@ -28,29 +28,45 @@ extension MySQLPluginDriver {
     /// would depend on how the driver rendered an integer cell.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         guard !flavor.isDatabend else { return [:] }
-        let escapedDb = mysqlEscapeStringLiteral(routineSchema(schema))
+        let database = routineSchema(schema)
+        return try await catalogOrShow(
+            database: database,
+            catalogExists: serverHasInformationSchema,
+            catalog: { try await self.catalogIndexes(database: database) },
+            show: { try await self.showIndexesByTable(database: database) }
+        )
+    }
+
+    private func catalogIndexes(database: String) async throws -> [String: [PluginIndexInfo]] {
+        let escapedDb = mysqlEscapeStringLiteral(database)
+        let identity = serverIdentity
+        let expression = MySQLFunctionalKeyParts.catalogReportsExpressions(
+            banner: identity.banner, flavor: identity.flavor
+        ) ? "EXPRESSION" : "NULL"
         let query = """
             SELECT
                 TABLE_NAME, INDEX_NAME, COLUMN_NAME,
-                CAST(NON_UNIQUE AS CHAR), INDEX_TYPE, CAST(SUB_PART AS CHAR)
+                CAST(NON_UNIQUE AS CHAR), INDEX_TYPE, CAST(SUB_PART AS CHAR),
+                COLLATION, \(expression)
             FROM INFORMATION_SCHEMA.STATISTICS
             WHERE TABLE_SCHEMA = '\(escapedDb)'
             ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
             """
 
-        let result = try await execute(query: query)
+        let result = try await execute(ownStatement: query)
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let table = row[safe: 0]?.asText,
-                  let index = row[safe: 1]?.asText,
-                  let column = row[safe: 2]?.asText
+                  let index = row[safe: 1]?.asText
             else { return nil }
             return MySQLIndexRow(
                 table: table,
                 index: index,
-                column: column,
+                column: row[safe: 2]?.asText,
+                catalogExpression: row[safe: 7]?.asText,
+                prefixLength: (row[safe: 5]?.asText).flatMap { Int($0) },
+                collation: row[safe: 6]?.asText,
                 isNonUnique: (row[safe: 3]?.asText) == "1",
-                type: (row[safe: 4]?.asText) ?? "BTREE",
-                prefixLength: (row[safe: 5]?.asText).flatMap { Int($0) }
+                type: (row[safe: 4]?.asText) ?? "BTREE"
             )
         }
         return MySQLIndexGrouping.group(rows)
@@ -63,39 +79,22 @@ extension MySQLPluginDriver {
     /// so a caller asking about another one is answered about the one it asked about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: routineSchema(schema)) }
-        let database = mysqlQuoteIdentifier(routineSchema(schema))
-        let result = try await execute(query: "SHOW TABLE STATUS FROM \(database)")
+        let result = try await execute(query: Self.tableStatusStatement(database: routineSchema(schema)))
+        let appendsInnoDBStatus = serverAppendsInnoDBStatus
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {
             guard let name = row[safe: 0]?.asText else { continue }
-            metadata[name] = MySQLTableStatusRow.metadata(from: row, tableName: name)
+            metadata[name] = MySQLTableStatusRow.metadata(
+                from: row, tableName: name, appendsInnoDBStatus: appendsInnoDBStatus
+            )
         }
         return metadata
     }
-}
 
-enum MySQLTableStatusRow {
-    /// The positions `SHOW TABLE STATUS` documents, read in one place so the per-table and
-    /// whole-schema reads cannot index the same row differently.
-    static func metadata(from row: [PluginCellValue], tableName: String) -> PluginTableMetadata {
-        let dataSize = (row[safe: 6]?.asText).flatMap { Int64($0) }
-        let indexSize = (row[safe: 8]?.asText).flatMap { Int64($0) }
-        let comment = row[safe: 17]?.asText
-
-        let totalSize: Int64? = {
-            guard let data = dataSize, let index = indexSize else { return nil }
-            return data + index
-        }()
-
-        return PluginTableMetadata(
-            tableName: tableName,
-            dataSize: dataSize,
-            indexSize: indexSize,
-            totalSize: totalSize,
-            rowCount: (row[safe: 4]?.asText).flatMap { Int64($0) },
-            comment: comment?.isEmpty == true ? nil : comment,
-            engine: row[safe: 1]?.asText,
-            collation: row[safe: 14]?.asText?.nilIfEmpty
-        )
+    /// Every table's status row in one database. With no database named the session's own is meant,
+    /// since `FROM` an empty name is `ERROR 1102`.
+    static func tableStatusStatement(database: String) -> String {
+        guard !database.isEmpty else { return "SHOW TABLE STATUS" }
+        return "SHOW TABLE STATUS FROM \(mysqlQuoteIdentifier(database))"
     }
 }

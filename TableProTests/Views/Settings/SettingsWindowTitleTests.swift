@@ -73,6 +73,20 @@ final class SettingsWindowTitleTests: XCTestCase {
         XCTAssertEqual(window.title, SettingsPane.keyboard.title)
     }
 
+    func testAStoredMCPPaneRestoresThePaneTitledMCP() {
+        AppStorageEnvironment.shared.defaults.set("mcp", forKey: PreferenceKeys.selectedSettingsPane.name)
+
+        let (_, window) = makePanes()
+
+        XCTAssertEqual(window.title, "MCP")
+    }
+
+    // The rawValue is the persisted pane and the tab item identifier, so it outlives any title.
+    func testPaneIdentifiersSurviveTitleChanges() {
+        XCTAssertEqual(SettingsPane.mcp.rawValue, "mcp")
+        XCTAssertEqual(SettingsPane.account.rawValue, "account")
+    }
+
     func testAskingForNoPaneReadsTheStoredPaneRatherThanStayingPut() {
         let (panes, window) = makePanes()
         panes.select(.plugins)

@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("LibPQSSLMapping.sslmode")
 struct LibPQSSLMappingTests {
     @Test("disabled maps to disable")
     func disabled() {

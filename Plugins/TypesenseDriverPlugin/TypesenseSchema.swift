@@ -78,6 +78,11 @@ enum TypesensePathEncoding {
 }
 
 enum TypesenseSchema {
+    enum CellLength {
+        case display
+        case whole
+    }
+
     private static let maxNestedJsonLength = 10_000
 
     static let idColumn = "id"
@@ -147,7 +152,7 @@ enum TypesenseSchema {
         var seen = Set<String>()
         var ordered: [String] = []
         for document in documents {
-            for key in flatten(document).keys where !seen.contains(key) {
+            for key in flatten(document, length: .display).keys where !seen.contains(key) {
                 seen.insert(key)
                 ordered.append(key)
             }
@@ -166,36 +171,45 @@ enum TypesenseSchema {
 
     // MARK: - Rows
 
-    static func rows(for documents: [[String: Any]], columns: [String]) -> [[PluginCellValue]] {
+    static func rows(
+        for documents: [[String: Any]],
+        columns: [String],
+        length: CellLength
+    ) -> [[PluginCellValue]] {
         documents.map { document in
-            let flat = flatten(document)
+            let flat = flatten(document, length: length)
             return columns.map { column in
                 if let value = flat[column] { return value }
-                return cell(DocumentPath.value(in: document, atPath: column))
+                return cell(DocumentPath.value(in: document, atPath: column), length: length)
             }
         }
     }
 
-    static func flatten(_ document: [String: Any]) -> [String: PluginCellValue] {
+    static func flatten(_ document: [String: Any], length: CellLength) -> [String: PluginCellValue] {
         var result: [String: PluginCellValue] = [:]
-        flatten(value: document, prefix: "", into: &result)
+        flatten(value: document, prefix: "", length: length, into: &result)
         return result
     }
 
-    private static func flatten(value: Any, prefix: String, into result: inout [String: PluginCellValue]) {
+    private static func flatten(
+        value: Any,
+        prefix: String,
+        length: CellLength,
+        into result: inout [String: PluginCellValue]
+    ) {
         if let dictionary = value as? [String: Any] {
             for (key, nested) in dictionary {
                 let path = prefix.isEmpty ? key : "\(prefix).\(key)"
-                flatten(value: nested, prefix: path, into: &result)
+                flatten(value: nested, prefix: path, length: length, into: &result)
             }
             return
         }
-        result[prefix] = cell(value)
+        result[prefix] = cell(value, length: length)
     }
 
     // MARK: - Cell Conversion
 
-    static func cell(_ value: Any?) -> PluginCellValue {
+    static func cell(_ value: Any?, length: CellLength) -> PluginCellValue {
         guard let value, !(value is NSNull) else { return .null }
 
         switch value {
@@ -207,16 +221,21 @@ enum TypesenseSchema {
             }
             return .text(NumberText.text(for: number))
         case let array as [Any]:
-            return .text(serializeJson(array))
+            return .text(serializeJson(array, length: length))
         case let dictionary as [String: Any]:
-            return .text(serializeJson(dictionary))
+            return .text(serializeJson(dictionary, length: length))
         default:
             return .text(String(describing: value))
         }
     }
 
-    private static func serializeJson(_ value: Any) -> String {
+    private static func serializeJson(_ value: Any, length: CellLength) -> String {
         guard let json = NumberText.json(from: value) else { return String(describing: value) }
-        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
+        switch length {
+        case .display:
+            return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
+        case .whole:
+            return json
+        }
     }
 }

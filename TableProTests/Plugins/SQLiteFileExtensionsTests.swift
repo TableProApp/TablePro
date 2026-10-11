@@ -8,7 +8,6 @@ import Foundation
 import Testing
 
 @MainActor
-@Suite("SQLite file extension registration")
 struct SQLiteFileExtensionsTests {
     private static let canonical: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
 
@@ -16,6 +15,14 @@ struct SQLiteFileExtensionsTests {
     func registryHasCanonicalExtensions() throws {
         let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SQLite"))
         #expect(snapshot.schema.fileExtensions.sorted() == Self.canonical.sorted())
+    }
+
+    @Test("SQLite, libSQL and Turso name a new database file with the canonical SQLite extensions")
+    func newDatabaseFilesUseTheCanonicalExtensions() throws {
+        for typeId in ["SQLite", "libSQL", "Turso"] {
+            let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+            #expect(snapshot.capabilities.newDatabaseFileExtensions == Self.canonical, "\(typeId)")
+        }
     }
 
     @Test("URLClassifier resolves every canonical extension to the SQLite database type")

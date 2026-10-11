@@ -8,7 +8,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Database Drop Request")
 struct DatabaseDropRequestTests {
     private func request(
         _ targets: [DatabaseContainerRef],

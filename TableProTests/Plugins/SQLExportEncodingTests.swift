@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL export encoding declaration")
 struct SQLExportEncodingTests {
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory

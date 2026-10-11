@@ -8,7 +8,6 @@ import Foundation
 import TableProConnectionLibrary
 import Testing
 
-@Suite("Welcome drag token")
 struct WelcomeDragTokenTests {
     @Test("A saved connection row round-trips with its section")
     func connectionRoundTrip() throws {

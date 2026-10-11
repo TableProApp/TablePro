@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("LibPQ type name registry")
 struct LibPQTypeNameRegistryTests {
     @Test("A later merge overwrites an oid learned earlier and keeps the ones it does not name")
     func mergeOverwritesLearnedName() {

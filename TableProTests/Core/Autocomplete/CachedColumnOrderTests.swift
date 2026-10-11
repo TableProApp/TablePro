@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Cached column emission order")
 struct CachedColumnOrderTests {
     private func loadedProvider(
         tables: [(name: String, schema: String?, columns: [String])]

@@ -9,7 +9,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Query Plan Cost")
 struct QueryPlanCostTests {
     private func node(
         _ operation: String,

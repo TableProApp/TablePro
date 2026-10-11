@@ -46,6 +46,17 @@ final class LibPQDriverCore: @unchecked Sendable {
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
     var standardConformingStrings: Bool { libpqConnection?.standardConformingStrings ?? true }
 
+    /// Whether a backslash escapes in a plain string literal on this session, which is exactly what
+    /// `standard_conforming_strings` decides. The connection re-reads it from every `ParameterStatus` the server
+    /// sends, so a `SET standard_conforming_strings` the user runs is reflected once it has run.
+    var sessionLexicalState: PluginSessionLexicalState? {
+        guard let connection = libpqConnection else { return nil }
+        return PluginSessionLexicalState(
+            determined: .backslashEscapesInSingleQuotes,
+            enabled: connection.standardConformingStrings ? [] : .backslashEscapesInSingleQuotes
+        )
+    }
+
     init(
         config: DriverConnectionConfig,
         schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
@@ -67,33 +78,55 @@ final class LibPQDriverCore: @unchecked Sendable {
             database: config.database,
             sslConfig: config.ssl,
             options: config.additionalFields["connectionOptions"],
-            suppressServerSideCancel: singleConnectionMode
+            applicationName: LibPQConnectionString.applicationName(
+                forPurpose: config.additionalFields["connectionPurpose"]
+            ),
+            suppressServerSideCancel: singleConnectionMode,
+            connectTimeout: LibPQConnectTimeout(additionalFields: config.additionalFields)
         )
 
-        try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
-        connectionLock.withLock {
-            _libpqConnection = pqConn
-            _lostConnection = false
-        }
+        do {
+            try await withTaskCancellationHandler {
+                try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
+                // Provisional only: bootstrap callers can reach the handle, but the connection does
+                // not become usable until finishConnecting clears the absolute connect deadline.
+                connectionLock.withLock {
+                    _libpqConnection = pqConn
+                    _lostConnection = false
+                }
 
-        switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
-        case .schema(let schema):
-            currentSchema = schema
-        case .empty:
-            if let fallback = await firstFallbackSchema(pqConn) {
-                currentSchema = fallback
-                _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+                case .schema(let schema):
+                    currentSchema = schema
+                case .empty:
+                    if let fallback = await firstFallbackSchema(pqConn) {
+                        currentSchema = fallback
+                        _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+                    }
+                case .failed:
+                    break
+                }
+
+                if let selectedSchema,
+                   (try? await pqConn.executeQuery(
+                       PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
+                   )) != nil {
+                    currentSchema = selectedSchema
+                }
+
+                await onPostConnect?()
+                try await pqConn.finishConnecting()
+                try Task.checkCancellation()
+            } onCancel: {
+                pqConn.cancelConnect()
             }
-        case .failed:
-            break
+        } catch {
+            connectionLock.withLock {
+                if _libpqConnection === pqConn { _libpqConnection = nil }
+            }
+            pqConn.disconnect()
+            throw error
         }
-
-        if let selectedSchema,
-           (try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema))) != nil {
-            currentSchema = selectedSchema
-        }
-
-        await onPostConnect?()
     }
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
@@ -131,7 +164,7 @@ final class LibPQDriverCore: @unchecked Sendable {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
         }
-        _ = try await pqConn.executeQuery("SELECT 1")
+        try await pqConn.ping()
     }
 
     // MARK: - Query Execution
@@ -215,8 +248,16 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        let ms = seconds * 1_000
+        let ms = PluginQueryTimeout.milliseconds(seconds)
         _ = try await execute(query: "SET statement_timeout = \(ms)")
+    }
+
+    /// A connection that has gone away answers `.unknown` rather than `.idle`: a caller that reads
+    /// "nothing open" opens a transaction of its own, and this is the one answer that must never be
+    /// a guess.
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        guard let pqConn = libpqConnection else { return .unknown }
+        return await pqConn.transactionState().sessionTransactionState
     }
 
     private func connection() throws -> LibPQPluginConnection {
@@ -239,6 +280,10 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 }
 
 extension LibPQBackedDriver {
+    var sessionLexicalState: PluginSessionLexicalState? {
+        core.sessionLexicalState
+    }
+
     /// The new name must be bare. Every libpq engine here rejects a qualified one, because this
     /// statement renames in place and never moves the object; `SET SCHEMA` is the separate verb.
     ///
@@ -262,6 +307,30 @@ extension LibPQBackedDriver {
         _ = try await execute(
             query: "ALTER SCHEMA \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
         )
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
+            schema: schema ?? core.currentSchema,
+            table: table
+        )
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { return nil }
+            return PluginCheckConstraintInfo(
+                name: name,
+                expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),
+                columns: PostgreSQLTextArray.values(row[safe: 3]?.asText),
+                isValidated: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
+            )
+        }
+    }
+
+    func fetchRelationComment(table: String, schema: String) async throws -> String? {
+        let query = PostgreSQLCommentStatements.relationCommentQuery(name: table, schema: schema)
+        let result = try await execute(query: query)
+        return result.rows.first?.first?.asText?.nilIfEmpty
     }
 
     func connect() async throws {
@@ -306,6 +375,10 @@ extension LibPQBackedDriver {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         try await core.applyQueryTimeout(seconds)
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        await core.sessionTransactionState()
     }
 
     func switchSchema(to schema: String) async throws {

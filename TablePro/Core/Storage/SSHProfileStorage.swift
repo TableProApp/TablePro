@@ -63,8 +63,9 @@ final class SSHProfileStorage {
     /// tombstones can abort instead of stranding them against a profile that was never persisted.
     @discardableResult
     func saveProfiles(_ profiles: [SSHProfile]) -> Bool {
+        let previous = loadProfiles()
         guard saveProfilesWithoutSync(profiles) else { return false }
-        syncTracker.markDirty(.sshProfile, ids: profiles.map { $0.id.uuidString })
+        syncTracker.markDirty(.sshProfile, ids: SyncRecordChanges.changedIds(from: previous, to: profiles))
         return true
     }
 

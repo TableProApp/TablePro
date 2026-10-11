@@ -57,7 +57,7 @@ final class ObjectCopyPlanTests: XCTestCase {
             dropStatements: [],
             sequenceStatements: [],
             createStatements: [],
-            truncateStatements: truncates ? [statement("DELETE FROM \(name);", name)] : [],
+            truncateStatements: truncates ? [statement("DELETE FROM \(name)", name)] : [],
             columns: copiesData ? ["id"] : [],
             primaryKeyColumns: ["id"],
             sourceQuery: "SELECT \"id\" FROM \"\(name)\"",
@@ -147,11 +147,42 @@ final class ObjectCopyPlanTests: XCTestCase {
     /// A new database carries only whatever schema its engine gives it, so the rest are created
     /// before the first `CREATE TABLE` names one.
     func testSchemaStatementsLeadTheScriptAndTheDDL() {
-        let create = statement("CREATE SCHEMA IF NOT EXISTS \"sales\";", "sales")
+        let create = statement("CREATE SCHEMA IF NOT EXISTS \"sales\"", "sales")
         let built = plan([step("orders", truncates: false)], schemaStatements: [create])
 
         XCTAssertEqual(built.ddlStatements.first?.sql, create.sql)
-        XCTAssertTrue(built.scriptText.hasPrefix(create.sql))
+        XCTAssertTrue(built.scriptText.hasPrefix(create.sql + ";\n"))
+    }
+
+    /// What the review shows is a script for the target's own client, so an Oracle unit is followed
+    /// by the `/` line SQL*Plus needs to run it, while the statement the runner sends stays bare.
+    func testTheScriptEndsEachStatementTheWayTheTargetsClientDoes() {
+        let oracle = DatabaseEndpoint(
+            scope: DatabaseScope(connectionId: UUID(), database: "APP", schema: nil),
+            connectionName: "server",
+            databaseType: .oracle,
+            safeModeLevel: .silent,
+            color: .blue
+        )
+        let unit = "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;"
+        let copy = ObjectCopyPlan(
+            request: ObjectCopyRequest(
+                source: oracle,
+                destination: .existing(oracle),
+                objects: [],
+                content: .structure,
+                existingPolicy: .replace,
+                errorHandling: .stopAndRollback,
+                wrapEachTableInTransaction: true
+            ),
+            createsDatabase: false,
+            tableSteps: [],
+            definitionSteps: [],
+            schemaStatements: [statement("CREATE TABLE t (a NUMBER)", "t"), statement(unit, "p")]
+        )
+
+        XCTAssertEqual(copy.scriptText, "CREATE TABLE t (a NUMBER);\n\(unit)\n/")
+        XCTAssertEqual(copy.ddlStatements.map(\.sql), ["CREATE TABLE t (a NUMBER)", unit])
     }
 
     /// One object fails once per phase it reaches, so a table whose CREATE failed under Skip and
@@ -175,5 +206,45 @@ final class ObjectCopyPlanTests: XCTestCase {
         XCTAssertEqual(failures.map(\.outcome.error), ["syntax error", "does not exist"])
         /// The summary still counts the object once, which is the reason the ids had to collide.
         XCTAssertEqual(result.failedCount, 1)
+    }
+
+    func testPartlyCopiedListsViewsAsWellAsTables() {
+        let table = ObjectCopyTableStep(
+            selection: ObjectCopySelection(kind: .table, name: "orders", schema: "public"),
+            dropStatements: [],
+            sequenceStatements: [],
+            createStatements: [statement("CREATE TABLE orders (id int)", "orders")],
+            truncateStatements: [],
+            columns: [],
+            primaryKeyColumns: [],
+            sourceQuery: "",
+            targetTable: "orders",
+            targetSchema: "public",
+            estimatedRows: nil,
+            copiesData: false,
+            copiesIdentityColumn: false,
+            note: "The source and the target share no writable column."
+        )
+        let view = ObjectCopyDefinitionStep(
+            selection: ObjectCopySelection(kind: .materializedView, name: "totals", schema: "public"),
+            dropStatements: [],
+            createStatements: [statement("CREATE MATERIALIZED VIEW totals AS SELECT 1", "totals")],
+            note: SourceObjectIndexes.notCarriedByTargetNote
+        )
+        let quiet = ObjectCopyDefinitionStep(
+            selection: ObjectCopySelection(kind: .view, name: "recent", schema: "public"),
+            dropStatements: [],
+            createStatements: [statement("CREATE VIEW recent AS SELECT 1", "recent")]
+        )
+
+        let copy = ObjectCopyPlan(
+            request: request(content: .structure),
+            createsDatabase: false,
+            tableSteps: [table],
+            definitionSteps: [view, quiet]
+        )
+
+        XCTAssertEqual(copy.partialNotes.map(\.selection.name), ["orders", "totals"])
+        XCTAssertEqual(copy.partialNotes.last?.text, SourceObjectIndexes.notCarriedByTargetNote)
     }
 }

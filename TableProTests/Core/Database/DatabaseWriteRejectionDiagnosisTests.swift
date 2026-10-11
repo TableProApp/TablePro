@@ -18,7 +18,6 @@ private struct PlainError: Error, LocalizedError {
     var errorDescription: String? { "Something else went wrong" }
 }
 
-@Suite("DatabaseWriteRejectionDiagnosis")
 struct DatabaseWriteRejectionDiagnosisTests {
     @Test("MySQL 1792 in a read-only transaction is recognised by its portable SQLSTATE")
     func recognisesMySQLReadOnlyTransaction() {

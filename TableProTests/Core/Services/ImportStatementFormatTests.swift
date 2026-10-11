@@ -9,7 +9,6 @@ import Testing
 /// The statement dialog runs a file of statements. A format that needs a target table is routed to
 /// the row mapping sheet instead, so listing one in the statement dialog's picker only ever
 /// produced "No target table configured for row import" once the user pressed Import.
-@Suite("Import statement format availability")
 struct ImportStatementFormatTests {
     private func isStatementFormat(
         requiresTargetTable: Bool = false,

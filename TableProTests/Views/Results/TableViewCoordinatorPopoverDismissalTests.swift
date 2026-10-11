@@ -14,7 +14,6 @@ import Testing
 /// than an identity. Replacing the rows moves that record elsewhere, so an editor left open across
 /// the replacement commits its edit onto whichever record now sits at the position. That is the
 /// `Selection indices are display positions` invariant, and the answer is to close the editor.
-@Suite("TableViewCoordinator closes editors whose rows were replaced")
 @MainActor
 struct TableViewCoordinatorPopoverDismissalTests {
     private func makeCoordinator() -> TableViewCoordinator {

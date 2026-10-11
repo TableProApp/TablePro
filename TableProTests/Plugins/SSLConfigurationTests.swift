@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SSLConfiguration boundary")
 struct SSLConfigurationTests {
     @Test("default mode is disabled and all paths empty")
     func defaults() {

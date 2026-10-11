@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("CellInteractionResolver - read-only path")
 struct CellInteractionResolverReadOnlyTests {
     private let resolver = CellInteractionResolver()
 
@@ -88,7 +87,6 @@ struct CellInteractionResolverReadOnlyTests {
     }
 }
 
-@Suite("CellInteractionResolver - editable path")
 struct CellInteractionResolverEditableTests {
     private let resolver = CellInteractionResolver()
 
@@ -181,7 +179,6 @@ struct CellInteractionResolverEditableTests {
     }
 }
 
-@Suite("CellInteractionResolver - binary values")
 struct CellInteractionResolverBinaryTests {
     private let resolver = CellInteractionResolver()
 
@@ -227,7 +224,6 @@ struct CellInteractionResolverBinaryTests {
     }
 }
 
-@Suite("CellInteractionResolver - foreign key columns")
 struct CellInteractionResolverForeignKeyTests {
     private let resolver = CellInteractionResolver()
 
@@ -326,7 +322,6 @@ private enum ContextFactory {
     }
 }
 
-@Suite("CellInteractionResolver - image content")
 struct CellInteractionResolverImageTests {
     private let resolver = CellInteractionResolver()
     private let markup = "<svg><rect/></svg>"

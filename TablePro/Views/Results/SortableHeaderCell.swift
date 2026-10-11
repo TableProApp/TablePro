@@ -19,6 +19,10 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
+    /// Switched off for one pass of `SortableHeaderView.draw`: the row-number title belongs to the
+    /// pinned heading alone, and the overhang a bounce exposes takes a heading's chrome with no cell.
+    var drawsInterior = true
+    var drawsDivider = true
 
     private static let indicatorPadding: CGFloat = 4
     private static let indicatorSpacing: CGFloat = 2
@@ -55,7 +59,10 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
-        SortableHeaderChrome.drawColumnDivider(in: cellFrame)
+        if drawsDivider {
+            SortableHeaderChrome.drawColumnDivider(in: cellFrame)
+        }
+        guard drawsInterior else { return }
         drawInterior(withFrame: cellFrame, in: controlView)
     }
 

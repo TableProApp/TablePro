@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("StructureEditingSupport Field Diff")
 @MainActor
 struct StructureEditingSupportFieldDiffTests {
     // MARK: - Fixtures
@@ -174,6 +173,16 @@ struct StructureEditingSupportFieldDiffTests {
         #expect(result == [1])
     }
 
+    @Test("A key that turns from a column into an expression flags the columns index")
+    func indexExpressionsChanged() {
+        var original = makeIndex()
+        original.columns = ["lower(email)"]
+        var changed = original
+        changed.expressions = ["lower(email)"]
+
+        #expect(StructureEditingSupport.indexModifiedIndices(old: original, new: changed) == [1])
+    }
+
     @Test("Toggling unique flags only the unique index")
     func indexUniqueChanged() {
         let original = makeIndex()
@@ -236,7 +245,6 @@ struct StructureEditingSupportFieldDiffTests {
 
 // MARK: - undoDelete(for:at:)
 
-@Suite("StructureChangeManager Row-Specific Undo Delete")
 @MainActor
 struct StructureChangeManagerUndoDeleteTests {
     private func makeManagerWithSchema() -> StructureChangeManager {

@@ -58,7 +58,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
         do {
             try await core.connect()
         } catch let error as OracleCoreError {
-            throw mapToConnectionError(error)
+            throw Self.connectionError(for: error)
         }
 
         if let schema = try? await runQuery(OracleSchemaQueries.currentSchema).rows.first?.first ?? nil,
@@ -79,7 +79,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
         do {
             try await core.ping()
         } catch let error as OracleCoreError {
-            throw mapToConnectionError(error)
+            throw Self.connectionError(for: error)
         }
         return true
     }
@@ -96,7 +96,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             let raw = try await core.executeQuery(query)
             return raw.toQueryResult(executionTime: Date().timeIntervalSince(startTime))
         } catch let error as OracleCoreError {
-            throw mapToConnectionError(error)
+            throw Self.connectionError(for: error)
         }
     }
 
@@ -104,7 +104,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
         do {
             return try await core.executeQuery(query).rows
         } catch let error as OracleCoreError {
-            throw mapToConnectionError(error)
+            throw Self.connectionError(for: error)
         }
     }
 
@@ -156,7 +156,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                     }
                     continuation.finish()
                 } catch let error as OracleCoreError {
-                    continuation.finish(throwing: mapToConnectionError(error))
+                    continuation.finish(throwing: Self.connectionError(for: error))
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -180,7 +180,9 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     // MARK: - Transactions
 
-    func beginTransaction() async throws {}
+    func beginTransaction() async throws {
+        core.beginTransaction()
+    }
 
     func commitTransaction() async throws {
         _ = try await runQuery(OracleSchemaQueries.commitTransaction)
@@ -188,6 +190,10 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     func rollbackTransaction() async throws {
         _ = try await runQuery(OracleSchemaQueries.rollbackTransaction)
+    }
+
+    func sessionTransactionState() async -> DriverTransactionState {
+        core.holdsTransaction ? .explicitTransaction : .idle
     }
 
     // MARK: - Database & Schema Navigation
@@ -216,6 +222,11 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     private var effectiveSchema: String { currentSchema ?? fallbackSchema }
 
+    private func serverRelease() throws -> OracleServerRelease {
+        guard let release = core.serverRelease else { throw ConnectionError.notConnected }
+        return release
+    }
+
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let rows = try await rawRows(OracleSchemaQueries.tables(schema: schema ?? effectiveSchema))
         return rows.compactMap(OracleSchemaQueries.parseTableRow).map {
@@ -225,7 +236,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let rows = try await rawRows(
-            OracleSchemaQueries.columns(schema: schema ?? effectiveSchema, table: table)
+            OracleSchemaQueries.columns(schema: schema ?? effectiveSchema, table: table, release: serverRelease())
         )
         return rows.compactMap(OracleSchemaQueries.parseColumnRow).enumerated().map { index, parsed in
             ColumnInfo(
@@ -233,8 +244,8 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 typeName: parsed.displayType,
                 isPrimaryKey: parsed.isPrimaryKey,
                 isNullable: parsed.isNullable,
-                defaultValue: nil,
-                characterMaxLength: parsed.dataLength.flatMap { Int($0) },
+                defaultValue: parsed.defaultValue,
+                characterMaxLength: parsed.charLength,
                 ordinalPosition: index
             )
         }
@@ -273,12 +284,14 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
 
     // MARK: - Error Mapping
 
-    private func mapToConnectionError(_ error: OracleCoreError) -> Error {
+    static func connectionError(for error: OracleCoreError) -> Error {
         switch error {
         case .notConnected:
             return ConnectionError.notConnected
         case .cancelled:
             return CancellationError()
+        case .certificateAuthorityRequired:
+            return DatabaseError(message: DriverSSLConfiguration.oracleVerifyCaUnavailableMessage)
         default:
             return DatabaseError(message: error.localizedDescription)
         }

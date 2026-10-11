@@ -22,6 +22,18 @@ extension MainSplitViewController {
         activateWorkspace(offsetBy: 1)
     }
 
+    /// Both routes to a mode, View > Mode and the Actions pull-down, send a menu item that names
+    /// its mode in `representedObject`. An item without one does nothing.
+    @objc func setContentModeFromMenu(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return }
+        setContentMode(mode)
+    }
+
+    @objc func toggleContentModeFromMenu(_ sender: Any?) {
+        toggleContentMode(sender)
+    }
+
     @objc func setResultView(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let mode = ResultsViewMode(rawValue: raw) else { return }
@@ -77,6 +89,14 @@ extension MainSplitViewController {
 
     @objc func showAllDatabases(_ sender: Any?) {
         clearDatabaseFilter()
+    }
+
+    @objc func filterSchemas(_ sender: Any?) {
+        presentSchemaFilter()
+    }
+
+    @objc func showAllSchemas(_ sender: Any?) {
+        clearSchemaFilter()
     }
 
     @objc func toggleFilterBar(_ sender: Any?) {

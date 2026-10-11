@@ -10,7 +10,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis reply - error detection")
 struct RedisReplyErrorDetectionTests {
     @Test("An error reply is recognised")
     func recognisesError() {
@@ -34,7 +33,6 @@ struct RedisReplyErrorDetectionTests {
     }
 }
 
-@Suite("Redis reply - throwIfError")
 struct RedisReplyThrowTests {
     @Test("A READONLY reply throws rather than passing for success")
     func throwsOnReadOnly() {
@@ -76,7 +74,6 @@ struct RedisReplyThrowTests {
     }
 }
 
-@Suite("Redis transport failure")
 struct RedisTransportFailureTests {
     @Test("A failure records whether the command reached the server")
     func recordsDelivery() {

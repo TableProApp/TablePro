@@ -9,7 +9,8 @@ import Foundation
 final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private let command: NativeDumpCommand
     private let process = Process()
-    private let stderrPipe = Pipe()
+    private let stderrPipe: Pipe
+    private let stderrReader: PipeReader
     private let stateLock = NSLock()
     private var stderrBuffer = Data()
     private var wasCancelled = false
@@ -18,8 +19,10 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private var redirectedHandle: FileHandle?
     private var credentialsFileURL: URL?
 
-    init(command: NativeDumpCommand) {
+    init(command: NativeDumpCommand, stderrPipe: Pipe = Pipe()) {
         self.command = command
+        self.stderrPipe = stderrPipe
+        stderrReader = PipeReader(stderrPipe.fileHandleForReading)
     }
 
     func start() throws {
@@ -33,20 +36,13 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 
         try attachRedirection(for: command)
 
-        stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty, let self else { return }
-            self.stateLock.lock()
-            self.stderrBuffer.append(chunk)
-            if self.stderrBuffer.count > stderrCap {
-                self.stderrBuffer = Data(self.stderrBuffer.suffix(stderrCap))
-            }
-            self.stateLock.unlock()
+        stderrReader.start { [weak self] chunk in
+            self?.append(chunk, cap: stderrCap)
         }
 
         process.terminationHandler = { [weak self] proc in
             guard let self else { return }
-            self.stderrPipe.fileHandleForReading.readabilityHandler = nil
+            self.stderrReader.stop(drainingUpTo: stderrCap)
             self.releaseRedirection()
 
             self.stateLock.lock()
@@ -74,6 +70,15 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         stateLock.unlock()
         if process.isRunning {
             process.terminate()
+        }
+    }
+
+    private func append(_ chunk: Data, cap: Int) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        stderrBuffer.append(chunk)
+        if stderrBuffer.count > cap {
+            stderrBuffer = Data(stderrBuffer.suffix(cap))
         }
     }
 

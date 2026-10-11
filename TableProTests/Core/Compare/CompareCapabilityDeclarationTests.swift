@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("Compare capability declaration")
 struct CompareCapabilityDeclarationTests {
     private static let repositoryRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)

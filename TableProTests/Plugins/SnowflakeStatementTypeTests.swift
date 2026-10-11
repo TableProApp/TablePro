@@ -8,7 +8,6 @@
 import Foundation
 import Testing
 
-@Suite("Snowflake Statement Type")
 struct SnowflakeStatementTypeTests {
     private func counts(_ values: [String]) -> [PluginCellValueBox] {
         values.map { .text($0) }

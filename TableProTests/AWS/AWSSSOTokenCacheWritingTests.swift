@@ -2,7 +2,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("AWS SSO token cache writing")
 struct AWSSSOTokenCacheWritingTests {
     private func makeCacheDirectory() throws -> String {
         let directory = FileManager.default.temporaryDirectory

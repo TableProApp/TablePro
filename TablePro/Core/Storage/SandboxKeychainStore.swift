@@ -60,7 +60,7 @@ internal final class SandboxKeychainStore: KeychainStoring {
             try data.write(to: fileURL, options: .atomic)
             return true
         } catch {
-            Self.logger.error("Sandbox keychain write failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Sandbox keychain write failed: \(error.publicLogShape, privacy: .public)")
             return false
         }
     }

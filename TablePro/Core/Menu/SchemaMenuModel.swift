@@ -17,9 +17,17 @@ internal enum SchemaMenuModel {
 
     /// Server order is kept rather than sorted, because that order is meaningful on some engines
     /// (a search path puts the schema you will actually hit first).
-    internal static func sections(all: [String], system: Set<String>) -> Sections {
-        Sections(
-            user: all.filter { !system.contains($0) },
+    internal static func sections(
+        all: [String],
+        system: Set<String>,
+        selected: Set<String> = [],
+        active: String? = nil
+    ) -> Sections {
+        let user = all.filter { !system.contains($0) }
+        // The filter shortens the user schemas only: a picker is where any schema is reached by name.
+        let selection = selected.intersection(user)
+        return Sections(
+            user: user.filter { selection.isEmpty || selection.contains($0) || $0 == active },
             system: all.filter { system.contains($0) }
         )
     }

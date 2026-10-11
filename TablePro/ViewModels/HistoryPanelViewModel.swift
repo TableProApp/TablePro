@@ -69,9 +69,11 @@ final class HistoryPanelViewModel: ObservableObject {
     /// and a panel nobody can see has no reason to hold a subscription or refetch behind them.
     var isObserving: Bool { updateSubscription != nil }
 
+    /// A workspace switch or a collapsed drawer re-runs this on return. Refetch for what was recorded
+    /// while away, but keep the pages and selection the user had; only the first activation starts over.
     func activate() async {
         startObserving()
-        await reload()
+        await reload(preservingLoadedWindow: hasLoadedOnce)
     }
 
     func deactivate() {

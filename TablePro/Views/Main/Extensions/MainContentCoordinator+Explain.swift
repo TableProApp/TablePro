@@ -10,49 +10,62 @@
 import Foundation
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
-    func runExplain(variant: ExplainVariant? = nil) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    @discardableResult
+    func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runExplain")
-            return
+            return nil
         }
-        guard let statement = explainStatement(in: tab) else { return }
+        guard !isShowingSafeModePrompt else { return nil }
+        guard let statement = explainStatement(in: tab) else { return nil }
         let anchor = tab.tabType == .table ? nil : StatementAnchor(statement)
-        guard let request = explainRequest(variant: variant, statement: statement.sql) else {
+        guard let request = ExplainRequest.make(
+            variant: variant,
+            declaredVariants: connection.type.explainVariants,
+            databaseType: connection.type,
+            statement: statement.sql
+        ) else {
             tabManager.mutate(at: index) {
                 $0.execution.errorMessage = String(
                     localized: "EXPLAIN is not supported for this database type."
                 )
             }
-            return
+            return nil
         }
 
-        let level = safeModeLevel
-        guard level.appliesToAllQueries, level.requiresConfirmation else {
-            run(request, anchor: anchor)
-            return
-        }
-
-        Task {
-            let decision = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connectionId,
-                    databaseType: connection.type,
-                    sql: request.sql,
-                    kind: .readQuery,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Execute Query")
-                )
-            )
-            guard case .authorized = decision else { return }
-            run(request, anchor: anchor)
+        isShowingSafeModePrompt = true
+        let tabId = tab.id
+        let authorization = authorizationRequest(for: request)
+        return Task {
+            defer { isShowingSafeModePrompt = false }
+            switch await executionGate.authorize(authorization) {
+            case .authorized:
+                executeExplain(request, anchor: anchor, tabId: tabId)
+            case .denied(let reason, .policy):
+                tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
+            case .denied(_, .cancelledByUser):
+                return
+            }
         }
     }
 
     // MARK: - Request
+
+    private func authorizationRequest(for request: ExplainRequest) -> OperationRequest {
+        OperationRequest(
+            connectionId: connectionId,
+            databaseType: connection.type,
+            sql: request.sql,
+            kind: OperationKind.worst(of: [request.sql], databaseType: connection.type),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: String(localized: "Execute Query")
+        )
+    }
 
     /// The statement EXPLAIN will describe, and where it sits in the tab's query.
     ///
@@ -66,77 +79,33 @@ extension MainContentCoordinator {
         if tab.tabType == .table {
             sql = fullQuery
             sourceOffset = 0
-        } else if let firstCursor = cursorPositions.first, firstCursor.range.length > 0 {
-            let nsQuery = fullQuery as NSString
-            let clampedRange = NSIntersectionRange(
-                firstCursor.range,
-                NSRange(location: 0, length: nsQuery.length)
-            )
-            sql = nsQuery.substring(with: clampedRange)
-            sourceOffset = clampedRange.location
         } else {
-            let statement = QueryStatementScanner.locatedStatementAtCursor(
-                in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0,
-                model: statementModel,
-                dialect: sqlDialect
-            )
-            sql = statement.sql
-            sourceOffset = statement.offset
+            let target = selectionOrStatementAtCursor(in: fullQuery)
+            sql = target.sql
+            sourceOffset = target.offset
         }
 
         return QueryStatementScanner
-            .executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+            .executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
             .first?
             .offset(by: sourceOffset)
     }
 
-    private func explainRequest(variant: ExplainVariant?, statement: String) -> ExplainRequest? {
-        if let request = ExplainRequest.make(
-            variant: variant,
-            declaredVariants: connection.type.explainVariants,
-            databaseType: connection.type,
-            statement: statement
-        ) {
-            return request
-        }
-
-        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
-              let fallbackSQL = adapter.buildExplainQuery(statement)
-        else { return nil }
-
-        return ExplainRequest.driverBuilt(
-            sql: fallbackSQL,
-            databaseType: connection.type,
-            subjectSQL: statement
-        )
-    }
-
     // MARK: - Execution
 
-    private func run(_ request: ExplainRequest, anchor: StatementAnchor?) {
-        guard !request.isDriverBuilt else {
-            executeQueryInternal(request.sql, anchor: anchor)
-            return
-        }
-        executeExplain(request, anchor: anchor)
-    }
-
-    private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
+    private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?, tabId: UUID) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
         guard let scope = scope(for: tab) else {
-            tabManager.mutate(at: index) {
+            tabManager.mutate(tabId: tabId) {
                 $0.execution.errorMessage = String(localized: "Not connected to database")
             }
             return
         }
 
-        supersedeExecution(for: tab.id)
-        let claim = tabExecution.claim(tab.id)
-        let tabId = tab.id
+        let (claim, lease) = beginTabExecution(for: tabId)
         let conn = connection
 
-        tabManager.mutate(at: index) { $0.execution.errorMessage = nil }
+        tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
         let explainTask = Task { [weak self] in
             guard let self else { return }
@@ -144,7 +113,7 @@ extension MainContentCoordinator {
                 let fetchResult = try await services.databaseManager.withScopedDriver(
                     scope: scope,
                     route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead
+                    cancellation: .cancellableRead(lease)
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver, sql: request.sql, parameters: nil, rowCap: nil
@@ -160,7 +129,7 @@ extension MainContentCoordinator {
                     // that cleared the spinner or nilled the task handle would be reporting on a
                     // query that is still running, so the gate comes before all of them.
                     guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(for: claim)
+                    retireQueryTask(.claim(claim))
                     guard !Task.isCancelled else {
                         reportEndedExecutions([
                             EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
@@ -238,7 +207,7 @@ extension MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(for: claim)
+                    retireQueryTask(.claim(claim))
 
                     // A cancelled EXPLAIN is not a failure the user needs told about, and it does
                     // not belong in history either.
@@ -285,6 +254,6 @@ extension MainContentCoordinator {
                 }
             }
         }
-        installQueryTask(explainTask, for: claim)
+        installQueryTask(explainTask, owner: .claim(claim), lease: lease)
     }
 }

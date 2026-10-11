@@ -11,7 +11,6 @@
 import Foundation
 import Testing
 
-@Suite("CockroachRelationSQL")
 struct CockroachRelationSQLTests {
     @Test("SHOW CREATE TABLE names the requested schema")
     func showCreateTableNamesRequestedSchema() {
@@ -58,6 +57,16 @@ struct CockroachRelationSQLTests {
         #expect(CockroachRelationSQL.showCreateTable(table: "t", schema: "s").hasSuffix(target))
         #expect(CockroachRelationSQL.showCreateView(view: "t", schema: "s").hasSuffix(target))
         #expect(CockroachRelationSQL.showIndexes(table: "t", schema: "s").hasSuffix(target))
+    }
+
+    @Test("the column read pairs each key constraint with its own table", arguments: ["orders", nil] as [String?])
+    func columnReadPairsKeysWithTheirTable(table: String?) {
+        let query = CockroachRelationSQL.columnsQuery(schema: "analytics", table: table)
+        #expect(query.contains("AND tc.table_name = kcu.table_name"))
+        #expect(query.contains("AND tc.table_schema = 'analytics'"))
+        #expect(query.contains("WHERE c.table_schema = 'analytics'"))
+        #expect(query.contains("AND tc.table_name = 'orders'") == (table != nil))
+        #expect(query.contains("c.table_name,\n") == (table == nil))
     }
 
     @Test("the name carries no database component")

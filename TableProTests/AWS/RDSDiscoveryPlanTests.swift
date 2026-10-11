@@ -2,7 +2,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("RDS discovery plan")
 struct RDSDiscoveryPlanTests {
     private func instance(
         identifier: String,

@@ -3,9 +3,10 @@
 //  TablePro
 //
 //  Window-lifecycle handlers invoked by TabWindowController's NSWindowDelegate
-//  methods. windowDidBecomeKey is intentionally lightweight (focus state +
-//  sidebar sync only) per Apple's documentation; visibility-scoped lazy-load
-//  lives in MainEditorContentView's `.task(id:)` modifier.
+//  methods. windowDidBecomeKey is intentionally lightweight (focus state,
+//  sidebar sync, and a file check that stats off the main actor) per Apple's
+//  documentation; visibility-scoped lazy-load lives in MainEditorContentView's
+//  `.task(id:)` modifier.
 //
 
 import AppKit
@@ -17,8 +18,9 @@ extension MainContentCoordinator {
     // MARK: - Window Delegate Dispatch
 
     /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
-    /// Updates focus state, refreshes file-based schema if stale, and syncs the
-    /// sidebar selection to the active tab. The one query-related action here is
+    /// Updates focus state, refreshes file-based schema if stale, starts a check of
+    /// each file-backed tab against its file on disk, and syncs the sidebar selection
+    /// to the active tab. The one query-related action here is
     /// consuming a deferred restore load: a restored background tab loads its data
     /// the first time its window becomes key. All other lazy-load is owned by
     /// `MainEditorContentView`'s `.task(id:)` modifier.
@@ -32,6 +34,7 @@ extension MainContentCoordinator {
         evictionTask = nil
 
         consumeDeferredRestoreLoadIfNeeded()
+        refreshSourceFileDiskChanges()
 
         recordSelectedTabContainer()
         syncSidebarObjectSelection()
@@ -106,15 +109,22 @@ extension MainContentCoordinator {
         )
     }
 
-    func selectTabAndFocusWindow(_ tabId: UUID) {
+    @discardableResult
+    func selectTabAndFocusWindow(_ tabId: UUID) -> Bool {
         tabManager.selectedTabId = tabId
-        focusWindow()
+        return focusWindow()
     }
 
-    func focusWindow() {
+    @discardableResult
+    func focusWindow() -> Bool {
         guard let windowId,
-              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return false }
+        (window.contentViewController as? MainSplitViewController)?.selectHostedConnection(connectionId)
+        if let group = window.tabGroup, group.selectedWindow !== window {
+            group.selectedWindow = window
+        }
         window.makeKeyAndOrderFront(nil)
+        return true
     }
 
     // MARK: - Sidebar Sync
@@ -189,7 +199,7 @@ extension MainContentCoordinator {
         clearAbandonedExecutingFlagIfNeeded(for: tab)
 
         /// The task slot above stops answering the moment the load hands off to an execution:
-        /// `executeQueryInternal` supersedes, and `supersedeExecution` nils the very slot held by
+        /// `executeQueryInternal` supersedes, and `supersedeExecution` clears the very slot held by
         /// the task it is running inside. Every later trigger for the same navigation then found an
         /// empty slot and scheduled a second identical load, whose predecessor took the successor's
         /// claim down with it on the way out (#2342). The registry owns the other half of the same
@@ -219,7 +229,7 @@ extension MainContentCoordinator {
                 }
             }
             await self.openTableTabQuery(tabId: tabId, trigger: trigger)
-            if let queryTask = self.currentQueryTask {
+            if let queryTask = self.queryTasks.task(for: tabId) {
                 await queryTask.value
             }
         }
@@ -231,11 +241,13 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = nil
     }
 
+    /// Becoming key ends the deferral whichever tab is selected. A link or an agent can select
+    /// another tab before the window comes forward, and a deferral left standing refused every
+    /// later load of that tab, including the table the user next opened into it.
     func consumeDeferredRestoreLoadIfNeeded() {
-        guard isKeyWindow else { return }
-        guard let deferredId = deferredRestoreLoadTabId,
-              deferredId == tabManager.selectedTabId else { return }
+        guard isKeyWindow, let deferredId = deferredRestoreLoadTabId else { return }
         deferredRestoreLoadTabId = nil
+        guard deferredId == tabManager.selectedTabId else { return }
         lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 
@@ -245,9 +257,9 @@ extension MainContentCoordinator {
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let isEvicted = tabSessionRegistry.isEvicted(tab.id)
-        let hasFreshRows = !rows.rows.isEmpty && !isEvicted
-        let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
+        let needsReload = tabSessionRegistry.isEvicted(tab.id) || tabSessionRegistry.isStale(tab.id)
+        let hasFreshRows = !rows.rows.isEmpty && !needsReload
+        let hasExecuted = tab.execution.lastExecutedAt != nil && !needsReload
         guard !hasFreshRows, !hasExecuted else { return false }
 
         let hasPendingEdits = changeManager.hasChanges || tab.pendingChanges.hasChanges
@@ -255,7 +267,7 @@ extension MainContentCoordinator {
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
-        guard tabExecution.isExecuting(tab.id), currentQueryTask == nil else { return }
+        guard tabExecution.isExecuting(tab.id), !queryTasks.hasTask(for: tab.id) else { return }
         TableLoadTracer.shared.anomaly(
             .preparationAbandoned,
             tabId: tab.id,

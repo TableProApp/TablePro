@@ -43,6 +43,18 @@ extension TrinoPluginDriver {
         )
     }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        TrinoDDLSQL.objectComment(
+            qualifiedName: qualifiedName(table: name, schema: schema),
+            objectType: objectType,
+            comment: comment
+        )
+    }
+
+    func createViewTemplate() -> String? {
+        "CREATE OR REPLACE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
+    }
+
     private func columnSpec(_ column: PluginColumnDefinition) -> TrinoColumnSpec {
         TrinoColumnSpec(
             name: column.name,

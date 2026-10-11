@@ -14,35 +14,6 @@ internal struct JSONTreeView: View {
             rootNode: rootNode,
             searchText: $searchText,
             fullValueModeName: String(localized: "Text")
-        ) { node in
-            JSONTreeRowView(node: node)
-        }
-    }
-}
-
-// MARK: - Row View
-
-private struct JSONTreeRowView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
-    let node: JSONTreeNode
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let key = node.key {
-                Text(key)
-                    .font(themeEngine.valueFontEmphasizedSwiftUI)
-                    .foregroundStyle(.blue)
-                    .lineLimit(1)
-                Text(":")
-                    .foregroundStyle(.secondary)
-            }
-            Text(node.displayValue)
-                .font(themeEngine.valueFontSwiftUI)
-                .foregroundStyle(Color(nsColor: node.valueType.color))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            TypeBadge(node.valueType.badgeLabel)
-        }
-        .padding(.vertical, 1)
+        )
     }
 }

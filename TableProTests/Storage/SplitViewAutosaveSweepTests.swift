@@ -9,7 +9,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("SplitViewAutosaveSweep")
 @MainActor
 struct SplitViewAutosaveSweepTests {
     private func key(_ name: String) -> String {

@@ -6,7 +6,6 @@
 import Foundation
 import Testing
 
-@Suite("ClickHouse Credentials")
 struct ClickHouseCredentialsTests {
     @Test("A blank username resolves to the ClickHouse default user")
     func blankUsernameResolvesToDefaultUser() {

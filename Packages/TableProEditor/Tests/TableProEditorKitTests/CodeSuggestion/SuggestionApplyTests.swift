@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 @testable import TableProEditorKit
 import XCTest
 
@@ -149,7 +148,7 @@ private final class StubSuggestionDelegate: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
-    ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
+    ) async -> CodeSuggestionResponse? {
         nil
     }
 
@@ -173,16 +172,4 @@ private final class StubSuggestionDelegate: CodeSuggestionDelegate {
     func completionWindowDidClose() {
         didCloseCount += 1
     }
-}
-
-private struct StubSuggestionEntry: CodeSuggestionEntry {
-    var label: String
-    var detail: String? { nil }
-    var documentation: String? { nil }
-    var pathComponents: [String]? { nil }
-    var targetPosition: CursorPosition? { nil }
-    var sourcePreview: String? { nil }
-    var image: Image { Image(systemName: "circle") }
-    var imageColor: Color { .gray }
-    var deprecated: Bool { false }
 }

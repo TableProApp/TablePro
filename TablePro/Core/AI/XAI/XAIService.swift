@@ -95,7 +95,7 @@ final class XAIService: ObservableObject {
     }
 
     private func failSignIn(_ error: Error) {
-        Self.logger.error("xAI sign-in failed: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("xAI sign-in failed: \(error.publicLogShape, privacy: .public)")
         errorMessage = error.localizedDescription
         authState = .signedOut
     }

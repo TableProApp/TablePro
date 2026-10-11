@@ -22,5 +22,6 @@ prepare_arch_libs "$ARCH" \
     libmariadb \
     libpq libpgcommon libpgport libssl libcrypto \
     libmongoc libbson \
-    libhiredis libhiredis_ssl
+    libhiredis libhiredis_ssl \
+    libsqlite3_vendored
 echo "✅ Static libraries ready for $ARCH"

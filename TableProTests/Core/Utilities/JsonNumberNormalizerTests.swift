@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("JSON Number Normalizer")
 struct JsonNumberNormalizerTests {
     // MARK: - Integer literals
 

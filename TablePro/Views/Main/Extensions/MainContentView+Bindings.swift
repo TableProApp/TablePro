@@ -39,7 +39,7 @@ extension MainContentView {
         }
     }
 
-    /// What the inspector's header names.
+    /// What the inspector names above its fields.
     ///
     /// A schema grid's selection is a column definition, not a row of a result: it has no position
     /// and no identity, so it gets its own case rather than being rendered as "Row 0 of 0".
@@ -258,4 +258,8 @@ struct PendingChangeTrigger: Equatable {
     let hasStructureChanges: Bool
     let isFileDirty: Bool
     let hasCreateTablePending: Bool
+    /// The fifth source. Without it staging a principal edit changes nothing this value can see, so
+    /// `updateToolbarPendingState()` is never re-run and the commit control stays dim however many
+    /// changes the Users & Roles tab holds.
+    let hasPrincipalChanges: Bool
 }

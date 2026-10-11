@@ -44,7 +44,7 @@ internal enum InspectorFieldLayout: Equatable {
     private static func dataLayout(for kind: FieldEditorKind) -> InspectorFieldLayout {
         switch kind {
         case .singleLine, .boolean, .enumPicker, .setPicker, .arrayElements, .schemaText, .typePicker,
-             .valuePicker, .multiLine, .json, .phpSerialized, .blobHex, .image:
+             .valuePicker, .multiLine, .json, .phpSerialized, .blobHex, .image, .geometry:
             return .stacked
         }
     }
@@ -56,7 +56,7 @@ internal enum InspectorFieldLayout: Equatable {
         case .singleLine, .boolean, .enumPicker, .setPicker, .arrayElements, .schemaText, .typePicker,
              .valuePicker:
             return .inline
-        case .multiLine, .json, .phpSerialized, .blobHex, .image:
+        case .multiLine, .json, .phpSerialized, .blobHex, .image, .geometry:
             return .stacked
         }
     }

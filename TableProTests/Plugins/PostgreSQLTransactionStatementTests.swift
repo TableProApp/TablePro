@@ -6,7 +6,6 @@
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQL Begin Transaction Statement")
 struct PostgreSQLTransactionStatementTests {
     @Test("A read-write transaction declares the access mode so a read-only session default is overridden")
     func readWriteDeclaresAccessMode() {

@@ -36,6 +36,9 @@ struct SwitchDatabaseReconnectFailureTests {
             requiresReconnectForDatabaseSwitch: true,
             supportsDropDatabase: capabilities.supportsDropDatabase
         )
+        /// No second connection, so a switch still takes the reconnect this suite is about rather
+        /// than opening a connection of its own for the database.
+        capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
             displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,

@@ -120,7 +120,9 @@ struct ImportFromURLSheet: View {
                     previewRow(String(localized: "Host"), parsed.host)
                 }
             case .network:
-                if let multiHost = parsed.multiHost, multiHost.contains(",") {
+                if let socketPath = parsed.localSocketPath {
+                    previewRow(String(localized: "Socket"), socketPath)
+                } else if let multiHost = parsed.multiHost, multiHost.contains(",") {
                     previewRow(String(localized: "Hosts"), multiHost)
                 } else if !parsed.host.isEmpty {
                     let portStr = parsed.port.map { ":\($0)" } ?? ""

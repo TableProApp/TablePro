@@ -67,11 +67,19 @@ final class ExportService: ObservableObject {
     @Published var state = ExportState()
 
     private let driver: DatabaseDriver?
-    private let databaseType: DatabaseType
+    private let databaseType: DatabaseType?
+    private let effectiveQueryTimeoutSeconds: Int
+    private let exportPlugin: @MainActor (String) -> (any ExportFormatPlugin)?
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         self.driver = driver
         self.databaseType = databaseType
+        self.effectiveQueryTimeoutSeconds = (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+            ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                configuredSeconds: driver.connection.queryTimeoutSeconds,
+                globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+            )
+        self.exportPlugin = Self.installedExportPlugin
     }
 
     /// Rows already in memory still need the engine that produced them: a SQL export has to quote
@@ -82,6 +90,32 @@ final class ExportService: ObservableObject {
     init(queryResultsDriver driver: DatabaseDriver?, databaseType: DatabaseType) {
         self.driver = driver
         self.databaseType = databaseType
+        self.effectiveQueryTimeoutSeconds = driver.map { driver in
+            (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+                ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+                    configuredSeconds: driver.connection.queryTimeoutSeconds,
+                    globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+                )
+        } ?? Self.effectiveGlobalQueryTimeoutSeconds
+        self.exportPlugin = Self.installedExportPlugin
+    }
+
+    init(exportPlugin: @escaping @MainActor (String) -> (any ExportFormatPlugin)? = ExportService.installedExportPlugin) {
+        self.driver = nil
+        self.databaseType = nil
+        self.effectiveQueryTimeoutSeconds = Self.effectiveGlobalQueryTimeoutSeconds
+        self.exportPlugin = exportPlugin
+    }
+
+    private static var effectiveGlobalQueryTimeoutSeconds: Int {
+        ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
+        )
+    }
+
+    static func installedExportPlugin(forFormat formatId: String) -> (any ExportFormatPlugin)? {
+        PluginManager.shared.exportPlugin(forFormat: formatId)
     }
 
     /// The one table a query export writes. `QueryExportOptions` says why it carries no structure.
@@ -136,7 +170,7 @@ final class ExportService: ObservableObject {
             throw ExportError.noTablesSelected
         }
 
-        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
+        guard let plugin = exportPlugin(config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
 
@@ -148,14 +182,18 @@ final class ExportService: ObservableObject {
             currentProgress = nil
         }
 
-        guard let driver else {
+        guard let driver, let databaseType else {
             throw ExportError.notConnected
         }
 
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
         state.totalRows = await fetchTotalRowCount(
-            for: objects.filter { $0.kind.carriesRows }, driver: driver, dataSource: dataSource)
+            for: objects.filter { $0.kind.carriesRows },
+            driver: driver,
+            databaseType: databaseType,
+            dataSource: dataSource
+        )
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -231,9 +269,8 @@ final class ExportService: ObservableObject {
     }
 
     func restoreStatementTimeout(on driver: DatabaseDriver) async {
-        let timeout = AppSettingsManager.shared.general.queryTimeoutSeconds
         do {
-            try await driver.applyQueryTimeout(timeout)
+            try await driver.applyQueryTimeout(effectiveQueryTimeoutSeconds)
         } catch {
             Self.logger.warning("Failed to restore statement timeout after export: \(error.localizedDescription)")
         }
@@ -246,24 +283,35 @@ final class ExportService: ObservableObject {
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
-            throw ExportError.formatNotFound(config.formatId)
+        guard let databaseType else {
+            throw ExportError.notConnected
         }
-
-        let totalRows = tableRows.count
-        state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
-
-        defer {
-            state.isExporting = false
-                state.statusMessage = ""
-            currentProgress = nil
-        }
-
         let dataSource = QueryResultExportDataSource(
             tableRows: tableRows,
             databaseType: databaseType,
             driver: driver
         )
+        try await export(dataSource: dataSource, config: config, to: url)
+    }
+
+    func export(
+        dataSource: any PluginExportDataSource,
+        config: ExportConfiguration,
+        to url: URL
+    ) async throws {
+        guard let plugin = exportPlugin(config.formatId) else {
+            throw ExportError.formatNotFound(config.formatId)
+        }
+
+        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
+        let totalRows = await Self.approximateRowCount(of: exportTable, in: dataSource)
+        state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
+
+        defer {
+            state.isExporting = false
+            state.statusMessage = ""
+            currentProgress = nil
+        }
 
         let nsProgress = Progress(totalUnitCount: Int64(totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -291,8 +339,6 @@ final class ExportService: ObservableObject {
         let statusObservation = observeStatus(on: nsProgress)
         defer { statusObservation.invalidate() }
 
-        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
-
         let result: ExportFormatResult
         do {
             result = try await plugin.export(
@@ -312,15 +358,30 @@ final class ExportService: ObservableObject {
         state.notes = result.notes
     }
 
+    private static func approximateRowCount(
+        of table: PluginExportTable,
+        in dataSource: any PluginExportDataSource
+    ) async -> Int {
+        do {
+            return try await dataSource.fetchApproximateRowCount(
+                table: table.name,
+                databaseName: table.databaseName
+            ) ?? 0
+        } catch {
+            logger.warning("Failed to count the rows to export: \(error.localizedDescription)")
+            return 0
+        }
+    }
+
     func exportStreamingQuery(
         query: String,
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard let plugin = PluginManager.shared.exportPlugin(forFormat: config.formatId) else {
+        guard let plugin = exportPlugin(config.formatId) else {
             throw ExportError.formatNotFound(config.formatId)
         }
-        guard let driver else {
+        guard let driver, let databaseType else {
             throw ExportError.exportFailed("No database connection")
         }
 
@@ -394,7 +455,11 @@ final class ExportService: ObservableObject {
 
     // MARK: - Row Count Fetching
 
-    private func qualifiedTableRef(for table: ExportObjectItem, driver: DatabaseDriver) -> String {
+    private func qualifiedTableRef(
+        for table: ExportObjectItem,
+        driver: DatabaseDriver,
+        databaseType: DatabaseType
+    ) -> String {
         SchemaQualifiedName.render(
             name: table.name,
             schema: table.databaseName,
@@ -410,6 +475,7 @@ final class ExportService: ObservableObject {
     private func fetchTotalRowCount(
         for tables: [ExportObjectItem],
         driver: DatabaseDriver,
+        databaseType: DatabaseType,
         dataSource: ExportDataSourceAdapter
     ) async -> Int {
         guard !tables.isEmpty else { return 0 }
@@ -445,7 +511,7 @@ final class ExportService: ObservableObject {
             let batch = tables[chunkStart ..< end]
 
             let unionParts = batch.map { table -> String in
-                let tableRef = qualifiedTableRef(for: table, driver: driver)
+                let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
                 return "SELECT COUNT(*) AS c FROM \(tableRef)"
             }
             let batchQuery = unionParts.joined(separator: " UNION ALL ")
@@ -460,7 +526,7 @@ final class ExportService: ObservableObject {
             } catch {
                 for table in batch {
                     do {
-                        let tableRef = qualifiedTableRef(for: table, driver: driver)
+                        let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
                         if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
                             total += count

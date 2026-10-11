@@ -101,6 +101,61 @@ final class SQLTypeParserTests: XCTestCase {
         XCTAssertEqual(kind("NUMBER", .oracle), .decimal(precision: 38, scale: nil))
     }
 
+    /// The catalog writes a whole-number column as `NUMBER(p)` and an `INTEGER` as `NUMBER(*,0)`. Read as a
+    /// list of numbers, `NUMBER(10)` was a decimal and the `*` dropped out, so the scale became the precision.
+    func testOracleCatalogSpellingsOfANumber() {
+        XCTAssertEqual(kind("NUMBER(10)", .oracle), .integer(bytes: 8))
+        XCTAssertEqual(kind("NUMBER(4)", .oracle), .integer(bytes: 2))
+        XCTAssertEqual(kind("number(9)", .oracle), .integer(bytes: 4))
+        XCTAssertEqual(kind("NUMBER(*,0)", .oracle), .integer(bytes: 16))
+        XCTAssertEqual(kind("NUMBER(*, 0)", .oracle), .integer(bytes: 16))
+        XCTAssertEqual(kind("NUMBER(*,2)", .oracle), .decimal(precision: 38, scale: 2))
+        XCTAssertEqual(kind("NUMBER(*)", .oracle), .decimal(precision: 38, scale: nil))
+        XCTAssertEqual(kind("NUMBER(10,-2)", .oracle), .decimal(precision: 10, scale: -2))
+        XCTAssertEqual(kind("FLOAT(126)", .oracle), .floatingPoint(bits: 64))
+    }
+
+    /// Oracle's reading of a lone parameter is its own: everywhere else it stays a precision with no scale.
+    func testOtherFamiliesStillReadALoneParameterAsAPrecision() {
+        XCTAssertEqual(kind("DECIMAL(10)", .mysql), .decimal(precision: 10, scale: nil))
+        XCTAssertEqual(kind("numeric(10)", .postgres), .decimal(precision: 10, scale: nil))
+        XCTAssertEqual(kind("DECIMAL(10)", .mssql), .decimal(precision: 10, scale: nil))
+        XCTAssertEqual(kind("NUMBER(10)", .generic), .decimal(precision: 10, scale: nil))
+    }
+
+    func testOracleTemporalTypesKeepTheirZoneAndPrecision() {
+        XCTAssertEqual(kind("TIMESTAMP(6) WITH TIME ZONE", .oracle), .timestamp(precision: 6, hasTimeZone: true))
+        XCTAssertEqual(
+            kind("TIMESTAMP(9) WITH LOCAL TIME ZONE", .oracle), .timestamp(precision: 9, hasTimeZone: true)
+        )
+        XCTAssertEqual(kind("TIMESTAMP(6)", .oracle), .timestamp(precision: 6, hasTimeZone: false))
+        XCTAssertEqual(kind("TIMESTAMP(0)", .oracle), .timestamp(precision: 0, hasTimeZone: false))
+        XCTAssertEqual(kind("INTERVAL YEAR(4) TO MONTH", .oracle), .interval)
+        XCTAssertEqual(kind("INTERVAL DAY(3) TO SECOND(2)", .oracle), .interval)
+    }
+
+    func testOracleNationalCharacterTypesCountCharacters() {
+        XCTAssertEqual(kind("NVARCHAR2(100)", .oracle), .text(length: 100, isFixed: false))
+        XCTAssertEqual(kind("NCHAR(10)", .oracle), .text(length: 10, isFixed: true))
+    }
+
+    func testOracle23aiTypes() {
+        XCTAssertEqual(kind("BOOLEAN", .oracle), .boolean)
+        XCTAssertEqual(kind("JSON", .oracle), .json)
+        XCTAssertEqual(kind("VECTOR", .oracle), .unsupported)
+        XCTAssertEqual(kind("VECTOR(3, FLOAT32)", .oracle), .unsupported)
+    }
+
+    /// A type from another schema is spelled with its owner for DDL, and classified by its bare name.
+    func testAnOwnerQualifiedOracleTypeIsReadByItsBareName() {
+        XCTAssertEqual(kind("\"MDSYS\".\"SDO_GEOMETRY\"", .oracle), .unsupported)
+        XCTAssertEqual(kind("REF \"APP\".\"T_ADDR\"", .oracle), .unsupported)
+        XCTAssertEqual(
+            SQLTypeParser.parse("SDO_GEOMETRY", catalogSpelling: "\"MDSYS\".\"SDO_GEOMETRY\"", family: .oracle).kind,
+            .spatial
+        )
+    }
+
     // MARK: - Unknowns
 
     /// An unknown word carries its own spelling so the renderer can name it, rather than being

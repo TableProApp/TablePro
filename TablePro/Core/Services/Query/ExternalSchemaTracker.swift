@@ -38,7 +38,7 @@ final class ExternalSchemaTracker: ObservableObject {
             namesByDatabase[key] = names
         } catch {
             Self.logger.warning(
-                "Could not load external schema names for \(database, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Could not load external schema names for \(database, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             namesByDatabase[key] = []
         }

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Statement Generator: keyless row match on text")
 @MainActor
 struct SQLStatementGeneratorRowMatchTextTests {
     private let columns = ["price", "ratio", "doc", "qty"]

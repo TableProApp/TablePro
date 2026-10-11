@@ -35,6 +35,12 @@ nonisolated public enum PostgreSQLObjectQueries {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
+    /// `IN ()` does not parse, so an empty list is `false`.
+    static func membership(_ column: String, in values: [String]) -> String {
+        guard !values.isEmpty else { return "false" }
+        return "\(column) IN (\(values.map(quoteLiteral).joined(separator: ", ")))"
+    }
+
     public static func quoteIdentifier(_ name: String) -> String {
         "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
@@ -49,7 +55,8 @@ nonisolated public enum PostgreSQLObjectQueries {
     ///
     /// Aggregates (prokind 'a') and window functions ('w') are excluded because
     /// pg_get_functiondef raises on them, which would fail the whole listing over one object the
-    /// viewer could not have shown anyway.
+    /// viewer could not have shown anyway. The extension test names `pg_proc`: an oid alone also
+    /// matched an extension member of another catalog.
     static func routineList(schema: String, capabilities: PostgreSQLCapabilities) -> String {
         let schemaLiteral = quoteLiteral(schema)
         let modern = capabilities.hasProcedureKind
@@ -78,7 +85,7 @@ nonisolated public enum PostgreSQLObjectQueries {
                 AND \(kindFilter)
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
-                    WHERE d.objid = p.oid AND d.deptype = 'e'
+                    WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e'
                 )
             ORDER BY p.proname, arguments
             """
@@ -155,8 +162,26 @@ nonisolated public enum PostgreSQLObjectQueries {
     /// A listing names a schema; a reload names an oid and no schema, because a type keeps its oid
     /// when it is moved. Naming neither would list the whole database, so a caller passes one.
     static func userDefinedTypeList(schema: String?, identity: String?, capabilities: PostgreSQLCapabilities) -> String {
-        let schemaPredicate = schema.map { "AND n.nspname = \(quoteLiteral($0))" } ?? ""
-        let identityPredicate = identity.flatMap { UInt32($0) }.map { "AND t.oid = \($0)::oid" } ?? ""
+        let predicates = [
+            schema.map { "AND n.nspname = \(quoteLiteral($0))" },
+            identity.flatMap { UInt32($0) }.map { "AND t.oid = \($0)::oid" }
+        ].compactMap { $0 }
+        return userDefinedTypeList(predicates: predicates, orderBy: "t.typname", capabilities: capabilities)
+    }
+
+    static func userDefinedTypeList(schemas: [String], capabilities: PostgreSQLCapabilities) -> String {
+        userDefinedTypeList(
+            predicates: ["AND \(membership("n.nspname", in: schemas))"],
+            orderBy: "n.nspname, t.typname",
+            capabilities: capabilities
+        )
+    }
+
+    private static func userDefinedTypeList(
+        predicates: [String],
+        orderBy: String,
+        capabilities: PostgreSQLCapabilities
+    ) -> String {
         let kinds = capabilities.hasRangeTypes ? "('e', 'c', 'd', 'r')" : "('e', 'c', 'd')"
         let fieldCollation = """
             CASE WHEN a.attcollation <> 0 AND a.attcollation <> ty.typcollation
@@ -233,9 +258,8 @@ nonisolated public enum PostgreSQLObjectQueries {
                     SELECT 1 FROM pg_catalog.pg_depend d
                     WHERE d.classid = 'pg_catalog.pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
                 )
-                \(schemaPredicate)
-                \(identityPredicate)
-            ORDER BY t.typname
+                \(predicates.joined(separator: "\n    "))
+            ORDER BY \(orderBy)
             """
     }
 

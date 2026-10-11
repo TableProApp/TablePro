@@ -13,7 +13,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Password hiding from connection fields")
 struct PasswordHidingTests {
     private func dropdown(default defaultValue: String, _ values: [String]) -> ConnectionField {
         ConnectionField(
@@ -28,7 +27,7 @@ struct PasswordHidingTests {
 
     private let pgpassToggle = ConnectionField(
         id: "usePgpass",
-        label: "Use Password File",
+        label: "Use ~/.pgpass",
         defaultValue: "false",
         fieldType: .toggle,
         section: .authentication,
@@ -117,7 +116,6 @@ struct PasswordHidingTests {
     }
 }
 
-@Suite("Username hiding from connection fields")
 struct UsernameHidingTests {
     private func mssqlAuthFields() -> [ConnectionField] {
         [
@@ -172,7 +170,6 @@ struct UsernameHidingTests {
     }
 }
 
-@Suite("Password hiding resolved from plugin metadata")
 @MainActor
 struct PluginManagerPasswordHidingTests {
     private func connection(type: DatabaseType, fields: [String: String]) -> DatabaseConnection {
@@ -204,6 +201,7 @@ struct PluginManagerPasswordHidingTests {
         #expect(hides("DuckDB", ["duckdbMode": "local"]))
         #expect(hides("DuckDB", ["duckdbMode": "remote"]))
         #expect(hides("DynamoDB", ["awsAuthMethod": "profile"]))
+        #expect(hides("DynamoDB", ["awsAuthMethod": "local"]))
         #expect(hides("BigQuery", ["bqAuthMethod": "adc"]))
         #expect(hides("Spanner", ["spAuthMethod": "adc"]))
         #expect(hides("Snowflake", ["snowflakeAuthMethod": "externalBrowser"]))

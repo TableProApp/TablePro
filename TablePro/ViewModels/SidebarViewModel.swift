@@ -6,6 +6,7 @@
 import Combine
 import os
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 final class SidebarViewModel: ObservableObject {
@@ -99,12 +100,21 @@ final class SidebarViewModel: ObservableObject {
         searchTextObservation = sharedState.onMainActorChange { [weak self] in
             guard let self else { return }
             self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
+            // The schema filter lives there too, and an edit to it during a search selects another listing.
+            self.loadAllSchemaTablesForSearch()
         }
     }
 
     @Published private(set) var filterQuery = "" {
-        didSet { invalidateFilterCaches() }
+        didSet {
+            invalidateFilterCaches()
+            listingDemand.reset()
+            loadAllSchemaTablesForSearch()
+        }
     }
+
+    private var listingDemand = AllSchemaTablesDemand()
+    private var listingDemandObservations: [AnyCancellable] = []
 
     private var filterDebounceTask: Task<Void, Never>?
 
@@ -127,9 +137,13 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
-    var redisKeyTreeViewModel: RedisKeyTreeViewModel? {
-        get { sharedState.redisKeyTreeViewModel }
-        set { sharedState.redisKeyTreeViewModel = newValue }
+    @Published var isFoldersExpanded: Bool {
+        didSet {
+            AppStorageEnvironment.shared.defaults.set(
+                isFoldersExpanded,
+                forKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId)
+            )
+        }
     }
     @Published var showOperationDialog = false
     @Published var pendingOperationType: TableOperationType?
@@ -205,10 +219,22 @@ final class SidebarViewModel: ObservableObject {
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
             defaultValue: true
         )
+        self.isFoldersExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId),
+            defaultValue: true
+        )
         /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
         /// initializer instead ran on every view-graph pass.
         self.filterQuery = self.sharedState.searchText
         observeSearchText()
+        observeListingDemand()
+    }
+
+    private func observeListingDemand() {
+        listingDemandObservations = [
+            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() },
+            DatabaseManager.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() }
+        ]
     }
 
     private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
@@ -430,9 +456,10 @@ final class SidebarViewModel: ObservableObject {
     }
 
     func filteredRecentTables(_ tables: [TableInfo]) -> [TableInfo] {
-        let query = filterQuery
-        guard !query.isEmpty else { return tables }
-        return tables.filter { SidebarNameFilter.matches(query: query, candidate: $0.name) }
+        let search = SidebarSearch(filterQuery)
+        guard !search.isEmpty else { return tables }
+        let database = browsedDatabase
+        return tables.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
     }
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
@@ -456,7 +483,7 @@ final class SidebarViewModel: ObservableObject {
         if cachedFilteredTriggersFingerprint?.count != fingerprint.count
             || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
             || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
-            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query)
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query, database: browsedDatabase)
             cachedFilteredTriggersFingerprint = fingerprint
         }
         return cachedFilteredTriggers
@@ -468,7 +495,9 @@ final class SidebarViewModel: ObservableObject {
         if cachedFilteredUserTypesFingerprint?.count != fingerprint.count
             || cachedFilteredUserTypesFingerprint?.generation != fingerprint.generation
             || cachedFilteredUserTypesFingerprint?.query != fingerprint.query {
-            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(types, searchText: query)
+            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(
+                types, searchText: query, database: browsedDatabase
+            )
             cachedFilteredUserTypesFingerprint = fingerprint
         }
         return cachedFilteredUserTypes
@@ -479,8 +508,13 @@ final class SidebarViewModel: ObservableObject {
         return expanded[kind]
     }
 
+    /// A qualified search reaches this list only when it names the schema being browsed: the flat
+    /// list holds that schema alone, and the other schemas it names are listed below it.
     private func applyQuery(_ query: String, to tables: [TableInfo]) -> [TableInfo] {
-        SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
+        let search = SidebarSearch(query)
+        let database = browsedDatabase
+        let admitted = tables.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
+        return SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
     }
 
     /// Goes through DatabaseTreeFilter so the flat root and the tree share one dedup owner. The
@@ -488,7 +522,65 @@ final class SidebarViewModel: ObservableObject {
     /// handed NSOutlineView the same node object at several row indices and selection snapped back
     /// to the first of them.
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        DatabaseTreeFilter.filteredRoutines(routines, searchText: query)
+        DatabaseTreeFilter.filteredRoutines(routines, searchText: query, database: browsedDatabase)
+    }
+
+    /// Every object the flat list holds lives in this database, which a qualified search can name.
+    private var browsedDatabase: String? {
+        DatabaseManager.shared.browseScope(for: connectionId)?.database
+    }
+
+    /// A search has to judge schemas nobody has opened, and the all-schema listing is what answers
+    /// for them. It is asked for here rather than by the outline, because a flat list with no local
+    /// match shows "No Results" in place of the outline, which then never sees the search at all.
+    private func loadAllSchemaTablesForSearch() {
+        guard !filterQuery.isEmpty else { return }
+        let service = DatabaseTreeMetadataService.shared
+        let connectionId = connectionId
+        let databases = Self.databasesListedForSearch(
+            grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+            browsedDatabase: browsedDatabase,
+            databasesWithSchemaLists: Set(
+                service.schemaList.compactMap { key, state in
+                    key.connectionId == connectionId && state.value != nil ? key.database : nil
+                }
+            ),
+            layout: sharedState.sidebarLayout
+        )
+        let isConnected = DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        let schemaFilter = SidebarSchemaFilter()
+        for database in databases {
+            listingDemand.requestIfNeeded(
+                connectionId: connectionId,
+                database: database,
+                selection: schemaFilter.selection(connectionId: connectionId, database: database),
+                isConnected: isConnected,
+                service: service
+            )
+        }
+    }
+
+    /// A schema-grouped tree asks for the browsed database and every database whose schemas it
+    /// already shows, never one the user has not opened. A hierarchical tree shows the schemas of
+    /// the browsed database alone, and an engine connected with no database name still has one.
+    nonisolated static func databasesListedForSearch(
+        grouping: GroupingStrategy,
+        browsedDatabase: String?,
+        databasesWithSchemaLists: Set<String>,
+        layout: SidebarLayout = .tree
+    ) -> Set<String> {
+        switch grouping {
+        case .bySchema:
+            let browsed = browsedDatabase.flatMap { $0.isEmpty ? nil : $0 }
+            // The flat list never shows another database.
+            if layout == .flat { return Set([browsed].compactMap { $0 }) }
+            guard let browsed else { return databasesWithSchemaLists }
+            return databasesWithSchemaLists.union([browsed])
+        case .hierarchicalSchema:
+            return Set([browsedDatabase].compactMap { $0 })
+        case .flat, .byDatabase:
+            return []
+        }
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {

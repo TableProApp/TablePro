@@ -33,6 +33,7 @@ internal final class HostingTableCellView: NSTableCellView {
         hosting = NSHostingView(rootView: AnyView(EmptyView()))
         super.init(frame: .zero)
         self.identifier = identifier
+        hosting.sizingOptions = []
         hosting.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hosting)
         NSLayoutConstraint.activate([

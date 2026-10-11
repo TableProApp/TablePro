@@ -8,9 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Row stream abort reaches a producer that polls it")
 struct PluginStreamAbortTests {
-
     @Test("Terminating the stream sets the flag, and a serial-queue producer stops early")
     func serialQueueProducerStopsEarly() async throws {
         let queue = DispatchQueue(label: "test.stream.abort.serial")
@@ -88,10 +86,14 @@ struct PluginStreamAbortTests {
         #expect(observed.value == true)
     }
 
-    @Test("A stream still held in scope has not terminated, however long the consumer has stopped")
+    @Test(
+        "A stream still held in scope has not terminated, however long the consumer has stopped",
+        .timeLimit(.minutes(1))
+    )
     func holdingTheStreamKeepsItAlive() async throws {
         let queue = DispatchQueue(label: "test.stream.abort.held")
         let counter = ProducedRowCounter()
+        let producerFinished = ProducerCompletion()
 
         let stream = PluginRowStream.make { continuation, abort in
             queue.async {
@@ -102,6 +104,7 @@ struct PluginStreamAbortTests {
                     usleep(20_000)
                 }
                 continuation.finish()
+                producerFinished.signal()
             }
         }
 
@@ -111,7 +114,11 @@ struct PluginStreamAbortTests {
             if seen >= 2 { break }
         }
 
-        try await Task.sleep(for: .seconds(0.6))
+        /// Waited on the producer rather than on the clock. It paces itself at 20ms a row, so a
+        /// fixed sleep asserts the runner's load as much as the stream's behaviour: CI saw 19 of 20.
+        /// An abort would leave the loop early, and the signal still arrives, so the count is what
+        /// says whether the stream stayed alive. The time limit is what fails a producer that hangs.
+        await producerFinished.wait()
         #expect(counter.value == 20)
         _ = stream
     }
@@ -150,6 +157,36 @@ private final class ProducedRowCounter: @unchecked Sendable {
         lock.lock()
         count += rows
         lock.unlock()
+    }
+}
+
+/// One shot, and safe to await after the fact: a producer that finished before the consumer asked
+/// resumes the waiter immediately rather than leaving it there.
+private final class ProducerCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasFinished = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func signal() {
+        lock.lock()
+        hasFinished = true
+        let pending = waiter
+        waiter = nil
+        lock.unlock()
+        pending?.resume()
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if hasFinished {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            waiter = continuation
+            lock.unlock()
+        }
     }
 }
 

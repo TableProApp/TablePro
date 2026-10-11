@@ -12,12 +12,19 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
     case json
     case chart
     case map
+    /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`. Offered only for a result that
+    /// printed something.
+    case output
 
     /// How much of the loaded result the mode is showing, and how to load more. A chart draws the
     /// same buffer the grid does, so it needs the same scope controls: a warning that the chart is
     /// incomplete is only useful next to the control that completes it. A map draws that same
-    /// buffer, so the same argument puts it here.
+    /// buffer, so the same argument puts it here. Output is not drawn from the buffer at all.
     var showsResultScope: Bool {
+        self != .structure && self != .output
+    }
+
+    var reportsExecution: Bool {
         self != .structure
     }
 
@@ -217,7 +224,8 @@ struct QueryTab: Identifiable, Equatable {
         self.content = TabQueryContent(
             query: persisted.query,
             queryParameters: persisted.queryParameters ?? [],
-            sourceFileURL: persisted.sourceFileURL
+            sourceFileURL: persisted.sourceFileURL,
+            sourceFileEncoding: persisted.sourceFileEncoding
         )
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(
@@ -230,7 +238,8 @@ struct QueryTab: Identifiable, Equatable {
         )
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
-            objectRef: persisted.objectRef
+            objectRef: persisted.objectRef,
+            versionHistorySubject: persisted.versionHistorySubject
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
@@ -319,11 +328,12 @@ struct QueryTab: Identifiable, Equatable {
             return pluginQuery
         }
 
-        switch PluginManager.shared.editorLanguage(for: databaseType) {
-        case .javascript:
-            let escaped = tableName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "db[\"\(escaped)\"].find({}).limit(\(pageSize))"
-        case .bash:
+        /// Keyed by engine: Elasticsearch, Typesense and Weaviate also highlight as JavaScript and etcd as a
+        /// command line, and none of them runs these. Without their plugin they reach the dialect, which throws.
+        switch databaseType {
+        case .mongodb:
+            return "\(MongoCollectionAccessor.expression(for: tableName)).find({}).limit(\(pageSize))"
+        case .redis:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
             let dialect = try resolveSQLDialect(for: databaseType)
@@ -405,8 +415,10 @@ struct QueryTab: Identifiable, Equatable {
             databaseName: tableContext.databaseName,
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
+            sourceFileEncoding: content.sourceFileEncoding,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
             objectRef: display.objectRef,
+            versionHistorySubject: display.versionHistorySubject,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             sortSource: persistedSortSource,

@@ -156,7 +156,7 @@ actor MCPAuditLogStorage {
             try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
         } catch {
             logger.error(
-                "Could not restrict permissions on the MCP audit store: \(error.localizedDescription, privacy: .public)"
+                "Could not restrict permissions on the MCP audit store: \(error.publicLogShape, privacy: .public)"
             )
         }
     }

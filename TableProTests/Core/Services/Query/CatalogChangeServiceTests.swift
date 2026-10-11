@@ -62,7 +62,6 @@ private final class OrderedCatalogTarget: CatalogChangeTarget {
     }
 }
 
-@Suite("CatalogChange")
 struct CatalogChangeTests {
     @Test("an empty database or schema reaches everything")
     func emptyScopeIsConnectionWide() {
@@ -99,7 +98,6 @@ struct CatalogChangeTests {
     }
 }
 
-@Suite("CatalogChangeService")
 @MainActor
 struct CatalogChangeServiceTests {
     private func makeService(

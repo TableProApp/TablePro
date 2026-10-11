@@ -46,7 +46,6 @@ private final class ExecutionRecordingDriver: PluginDatabaseDriver, @unchecked S
     }
 }
 
-@Suite("A statement holding a NUL character is never sent")
 struct StatementTextValidatorTests {
     private let truncatingDelete = "DELETE FROM t\u{0} WHERE id = 1"
 
@@ -77,6 +76,9 @@ struct StatementTextValidatorTests {
         }
         await #expect(throws: DatabaseError.self) {
             _ = try await adapter.executeBoundedQuery(query: truncatingDelete, rowCap: 10)
+        }
+        await #expect(throws: DatabaseError.self) {
+            _ = try await adapter.executeBatch(query: truncatingDelete, rowCap: nil, parameters: nil)
         }
         #expect(driver.executedQueries.isEmpty)
     }

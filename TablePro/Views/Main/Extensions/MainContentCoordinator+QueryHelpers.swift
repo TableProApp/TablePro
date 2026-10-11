@@ -9,11 +9,6 @@ import os
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func fixErrorWithAI(query: String, error: String) {
-        showAssistant()
-        aiViewModel?.handleFixError(query: query, error: error)
-    }
-
     /// The banner appears without the user doing anything, and macOS has no live region to mark it
     /// with, so an announcement is the only way VoiceOver hears about it. Announcements are
     /// app-scoped rather than window-scoped, so a background window has to stay quiet instead of
@@ -32,19 +27,20 @@ extension MainContentCoordinator {
     func withExecutionDriver<T: Sendable>(
         scope: DatabaseScope,
         isTableTab: Bool,
+        lease: DriverLeaseOwner,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         guard isTableTab else {
             return try await services.databaseManager.withScopedDriver(
                 scope: scope,
                 route: services.databaseManager.executionRoute(for: scope),
-                cancellation: .cancellableRead,
+                cancellation: .cancellableRead(lease),
                 body
             )
         }
         return try await services.databaseManager.withTableReadDriver(
             scope: scope,
-            cancellation: .cancellableRead,
+            cancellation: .cancellableRead(lease),
             body
         )
     }
@@ -57,7 +53,8 @@ extension MainContentCoordinator {
         claim: TabExecutionClaim,
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
-        traceToken: TableLoadTraceToken?
+        traceToken: TableLoadTraceToken?,
+        serverOutput: PluginServerOutput = .none
     ) {
         guard tabExecution.settle(claim) else {
             traceStaleResultDropped(traceToken)
@@ -70,7 +67,7 @@ extension MainContentCoordinator {
             tab.pagination.isLoadingMore = false
             tab.pagination.isLoading = false
         }
-        retireQueryTask(for: claim)
+        retireQueryTask(.claim(claim))
         traceExecutionFailed(traceToken, error: error)
         if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
             reportEndedExecutions([
@@ -82,7 +79,7 @@ extension MainContentCoordinator {
             pendingLoadTrigger = trigger
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput)
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
@@ -125,13 +122,18 @@ extension MainContentCoordinator {
         isEditable: Bool,
         metadata: ParsedSchemaMetadata?,
         hasSchema: Bool,
+        read: TableFreshness.Read,
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
         anchor: StatementAnchor? = nil,
         timing: PluginQueryTiming? = nil,
-        viewport: GridReloadIntent = .firstRow
+        viewport: GridReloadIntent = .firstRow,
+        source: ResultSourceChange = .newSource,
+        serverOutput: PluginServerOutput = .none,
+        rowLocators: [String?]? = nil,
+        absentCells: [Int: Set<Int>] = [:]
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -145,13 +147,18 @@ extension MainContentCoordinator {
             isEditable: isEditable,
             metadata: metadata,
             hasSchema: hasSchema,
+            read: read,
             sql: sql,
             connection: conn,
             isTruncated: isTruncated,
             queryParameterValues: queryParameterValues,
             anchor: anchor,
             timing: timing,
-            viewport: viewport
+            viewport: viewport,
+            source: source,
+            serverOutput: serverOutput,
+            rowLocators: rowLocators,
+            absentCells: absentCells
         )
     }
 
@@ -208,13 +215,15 @@ extension MainContentCoordinator {
         _ error: Error,
         sql: String,
         tabId: UUID,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        serverOutput: PluginServerOutput = .none
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
             sql: sql,
             tabId: tabId,
-            connection: conn
+            connection: conn,
+            serverOutput: serverOutput
         )
     }
 }

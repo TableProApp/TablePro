@@ -1,6 +1,6 @@
 import Foundation
 
-/// Which databases and schemas the sidebar tree and its database filter list.
+/// Which databases and schemas the sidebar tree and its filters list.
 ///
 /// A browsing list, so system containers are hidden unless the user asked for them. Switchers are a
 /// different kind of list and use `DatabaseSwitchList`, which always offers them.
@@ -65,10 +65,79 @@ enum DatabaseTreeVisibility {
         _ schemas: [String],
         systemSchemas: Set<String>,
         activeSchema: String?,
-        showsSystem: Bool
+        showsSystem: Bool,
+        selected: Set<String> = [],
+        pinned: Set<String> = []
     ) -> [String] {
-        guard !showsSystem else { return schemas }
         let active = activeSchema.flatMap { $0.isEmpty ? nil : $0 }
-        return schemas.filter { !systemSchemas.contains($0) || $0 == active }
+        let selection = effectiveSchemaSelection(
+            selected, schemas: schemas, systemSchemas: systemSchemas, showsSystem: showsSystem
+        )
+        return schemas.filter { schema in
+            if schema == active || pinned.contains(schema) { return true }
+            if !showsSystem, systemSchemas.contains(schema) { return false }
+            return selection.isEmpty || selection.contains(schema)
+        }
+    }
+
+    static func schemaFilterCandidates(_ schemas: [String], systemSchemas: Set<String>, showsSystem: Bool) -> [String] {
+        guard !showsSystem else { return schemas }
+        return schemas.filter { !systemSchemas.contains($0) }
+    }
+
+    /// Unlike a database filter, a name the schema list no longer holds is set aside too, or a filter
+    /// of dropped schemas shows the browsed schema alone. Nil `schemas` is a list not read yet.
+    static func effectiveSchemaSelection(
+        _ selected: Set<String>,
+        schemas: [String]?,
+        systemSchemas: Set<String>,
+        showsSystem: Bool
+    ) -> Set<String> {
+        var selection = showsSystem ? selected : selected.subtracting(systemSchemas)
+        if let schemas {
+            selection.formIntersection(schemas)
+        }
+        return selection
+    }
+
+    static func isFilteringSchemas(
+        selected: Set<String>,
+        schemas: [String]?,
+        systemSchemas: Set<String>,
+        showsSystem: Bool
+    ) -> Bool {
+        !effectiveSchemaSelection(selected, schemas: schemas, systemSchemas: systemSchemas, showsSystem: showsSystem)
+            .isEmpty
+    }
+
+    static func schemaSummary(
+        schemas: [String],
+        selected: Set<String>,
+        systemSchemas: Set<String>,
+        showsSystem: Bool
+    ) -> Summary {
+        let candidates = schemaFilterCandidates(schemas, systemSchemas: systemSchemas, showsSystem: showsSystem)
+        let selection = effectiveSchemaSelection(
+            selected, schemas: schemas, systemSchemas: systemSchemas, showsSystem: showsSystem
+        )
+        let shown = selection.isEmpty ? candidates.count : candidates.filter { selection.contains($0) }.count
+        return Summary(shown: shown, total: candidates.count)
+    }
+
+    /// The schemas a filtered reader may read, or nil when nothing is filtered. The browsed schema
+    /// joins a non-empty selection because the tree lists it whatever the filter says.
+    static func keptSchemas(
+        selected: Set<String>,
+        schemas: [String]?,
+        systemSchemas: Set<String>,
+        showsSystem: Bool,
+        activeSchema: String?
+    ) -> Set<String>? {
+        let selection = effectiveSchemaSelection(
+            selected, schemas: schemas, systemSchemas: systemSchemas, showsSystem: showsSystem
+        )
+        guard !selection.isEmpty else { return nil }
+        guard let active = activeSchema, !active.isEmpty else { return selection }
+        return selection.union([active])
     }
 }

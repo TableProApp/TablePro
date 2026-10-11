@@ -32,6 +32,9 @@ internal final class RowInspectorState: ObservableObject {
         }
     }
 
+    /// Whether the window draws this connection's inspector right now. `MainSplitViewController` is the only writer.
+    @Published internal private(set) var isOnScreen = false
+
     /// Still genuinely multi-row: a selection of several rows edits one field across all of them,
     /// and each field reports whether they disagree.
     internal let editState = MultiRowEditState()
@@ -40,7 +43,7 @@ internal final class RowInspectorState: ObservableObject {
     /// the reader's expansions and the rows already fetched for them.
     internal let jsonViewModel = JSONRowInspectorViewModel()
 
-    internal init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
+    internal init(connectionId: UUID? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.connectionId = connectionId
         self.defaults = defaults
         if let connectionId,
@@ -50,6 +53,11 @@ internal final class RowInspectorState: ObservableObject {
         } else {
             self.viewMode = .fields
         }
+    }
+
+    internal func setOnScreen(_ value: Bool) {
+        guard isOnScreen != value else { return }
+        isOnScreen = value
     }
 
     internal func teardown() {

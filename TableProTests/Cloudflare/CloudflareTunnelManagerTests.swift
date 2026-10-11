@@ -17,10 +17,12 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
         case ready
         case browserAuth
         case startupFailure
+        case neverReady
     }
 
     let behavior: Behavior
-    private(set) var stopCallCount = 0
+    private var startCalls = 0
+    private var stopCalls = 0
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -40,7 +42,17 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
 
     var processIdentifier: Int32? { 4_242 }
 
+    var startCallCount: Int {
+        lock.withLock { startCalls }
+    }
+
+    var stopCallCount: Int {
+        lock.withLock { stopCalls }
+    }
+
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
+        lock.withLock { startCalls += 1 }
+
         switch behavior {
         case .ready:
             if let port = Self.parsePort(arguments) {
@@ -53,13 +65,15 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
         case .startupFailure:
             stderrContinuation.yield("ERR failed to dial origin: connection refused")
             finish(exitCode: 1)
+        case .neverReady:
+            break
         }
     }
 
     func stop() {
         lock.lock()
         requested = true
-        stopCallCount += 1
+        stopCalls += 1
         lock.unlock()
         if let fd = listenerFd {
             close(fd)
@@ -131,6 +145,18 @@ struct CloudflareTunnelManagerTests {
         CloudflareConfiguration(accessHostname: hostname, localPort: localPort, binaryPath: "/bin/echo")
     }
 
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        _ condition: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return condition()
+    }
+
     @Test("createTunnel returns the allocated port once cloudflared is listening")
     func readinessSucceeds() async throws {
         let fake = FakeCloudflaredRunner(behavior: .ready)
@@ -168,6 +194,43 @@ struct CloudflareTunnelManagerTests {
         }
     }
 
+    @Test("connect deadline stops cloudflared before registration")
+    func deadlineStopsUnreadyProcess() async throws {
+        let fake = FakeCloudflaredRunner(behavior: .neverReady)
+        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let id = UUID()
+        let creation = Task {
+            let deadline = ConnectionDeadline(
+                configuredSeconds: 30,
+                instant: ContinuousClock.now.advanced(by: .milliseconds(500))
+            )
+            return try await manager.createTunnel(
+                connectionId: id,
+                config: self.config(),
+                deadline: deadline
+            )
+        }
+        defer {
+            creation.cancel()
+            fake.stop()
+        }
+
+        try #require(await waitUntil { fake.startCallCount > 0 })
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) {
+            await creation.result
+        })
+        guard case .failure(let error) = result else {
+            Issue.record("Expected cloudflared readiness to reach the connection deadline")
+            return
+        }
+        #expect((error as? ConnectionTimeoutError) == ConnectionTimeoutError(
+            endpoint: .tunnel("db.example.com"),
+            configuredSeconds: 30
+        ))
+        #expect(fake.stopCallCount >= 1)
+        #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
     @Test("missing binary throws binaryNotFound")
     func missingBinary() async {
         let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
@@ -188,17 +251,20 @@ struct CloudflareTunnelManagerTests {
         #expect(fake.stopCallCount >= 1)
 
         await manager.closeAllTunnels()
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 
     @Test("sweepStalePidsIfNeeded clears the persisted records")
     func sweepClearsRecords() async {
         let records = [CloudflaredPidRecord(pid: -1, binaryPath: "/nonexistent")]
-        UserDefaults.standard.set(try? JSONEncoder().encode(records), forKey: "cloudflaredStalePids")
+        AppStorageEnvironment.shared.defaults.set(
+            try? JSONEncoder().encode(records),
+            forKey: "cloudflaredStalePids"
+        )
 
         let manager = CloudflareTunnelManager(runnerFactory: { FakeCloudflaredRunner(behavior: .ready) })
         await manager.sweepStalePidsIfNeeded()
 
-        #expect(UserDefaults.standard.data(forKey: "cloudflaredStalePids") == nil)
+        #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudflaredStalePids") == nil)
     }
 }

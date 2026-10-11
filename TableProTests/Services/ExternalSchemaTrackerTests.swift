@@ -77,7 +77,6 @@ private final class ExternalSchemaMockDriver: DatabaseDriver, @unchecked Sendabl
     func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
 }
 
-@Suite("ExternalSchemaTracker")
 @MainActor
 struct ExternalSchemaTrackerTests {
     private func freshTracker(connectionId: UUID) -> ExternalSchemaTracker {

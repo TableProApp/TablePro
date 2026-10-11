@@ -7,15 +7,8 @@
 
 import SwiftUI
 
-private struct InsideControlGroupKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
 extension EnvironmentValues {
-    var isInsideControlGroup: Bool {
-        get { self[InsideControlGroupKey.self] }
-        set { self[InsideControlGroupKey.self] = newValue }
-    }
+    @Entry var isInsideControlGroup: Bool = false
 }
 
 struct PanelControlGroupStyle: ControlGroupStyle {

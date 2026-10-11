@@ -3,7 +3,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP Base64 Sentinel")
 struct MCPBase64SentinelTests {
     @Test("Spec encoding examples round-trip exactly")
     func specEncodingExamples() {

@@ -23,7 +23,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
     static let additionalConnectionFields: [ConnectionField] =
-        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()] + [
+        GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()] + [
         ConnectionField(
             id: "mysqlIdleReleaseMinutes",
             label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),

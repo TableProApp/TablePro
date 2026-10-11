@@ -10,6 +10,7 @@ import os
 import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
+private let exactCountLog = Logger(subsystem: "com.TablePro", category: "ExactRowCount")
 
 @MainActor
 final class PaginationCoordinator: ObservableObject {
@@ -150,19 +151,11 @@ final class PaginationCoordinator: ObservableObject {
 
     // MARK: - Cancel Current Query
 
+    /// Stop and `Cmd+.` act on the tab the user is looking at. A window-wide stop is what let one
+    /// tab's Stop roll back the batch another tab was running.
     func cancelCurrentQuery() {
-        parent.cancelInFlightQueryTask()
-        parent.cancelAllRowCountTasks()
-        parent.releaseAllExactCounts()
-        parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
-        for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
-            parent.tabManager.mutate(at: idx) { tab in
-                tab.pagination.isLoadingMore = false
-                tab.pagination.isCountingExact = false
-                tab.pagination.isCountPending = false
-                tab.pagination.isLoading = false
-            }
-        }
+        guard let tabId = parent.tabManager.selectedTabId else { return }
+        parent.stopExecution(for: tabId)
     }
 
     // MARK: - Exact Row Count
@@ -178,6 +171,9 @@ final class PaginationCoordinator: ObservableObject {
         let schemaName = tab.tableContext.schemaName
         let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
         let logicMode = tab.filterState.filterLogicMode
+        /// A browse narrowed by the plugin's own search runs that search instead of the table
+        /// filters, so the count has to read the same search or it counts the whole table.
+        let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
         let queryColumns = parent.queryColumns(for: tab)
         let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(
@@ -197,11 +193,12 @@ final class PaginationCoordinator: ObservableObject {
         let token = UUID()
         parent.claimExactCount(for: tabId, token: token)
         let task = Task(priority: .userInitiated) { [parent] in
-            let count = await Self.exactRowCount(
+            let outcome = await Self.exactRowCount(
                 scope: scope,
                 tableName: tableName,
                 filters: filters,
                 logicMode: logicMode,
+                browseFilters: browseFilters,
                 countSQL: countSQL
             )
 
@@ -218,25 +215,54 @@ final class PaginationCoordinator: ObservableObject {
                 if ownsIndicator {
                     tab.pagination.isCountingExact = false
                 }
-                guard isCurrent, let count, count >= 0 else { return }
-                tab.pagination.totalRowCount = count
-                tab.pagination.isApproximateRowCount = false
+                guard isCurrent else { return }
+                Self.applyExactCount(outcome, to: &tab)
             }
         }
         parent.setRowCountTask(task, token: token, for: tabId)
     }
 
+    static func applyExactCount(_ outcome: Result<Int?, Error>, to tab: inout QueryTab) {
+        switch outcome {
+        case .success(let count):
+            if let shown = tab.pagination.exactCountError, tab.execution.errorMessage == shown {
+                tab.execution.errorMessage = nil
+            }
+            tab.pagination.exactCountError = nil
+            guard let count, count >= 0 else { return }
+            tab.pagination.totalRowCount = count
+            tab.pagination.isApproximateRowCount = false
+        case .failure(let error):
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return }
+            let message = DatabaseWriteRejectionDiagnosis.formatted(error)
+            tab.execution.errorMessage = message
+            tab.pagination.exactCountError = message
+        }
+    }
+
+    /// The user asked for this count, so a failure is shown on the tab rather than dropped: an engine whose count
+    /// only its driver can run, such as a throttled DynamoDB scan, has no other answer to fall back on.
     private static func exactRowCount(
         scope: DatabaseScope,
         tableName: String,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
+        browseFilters: [PluginQueryFilter]?,
         countSQL: String?
-    ) async -> Int? {
-        try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-            try await ExactRowCounter.count(
-                on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
-            )
+    ) async -> Result<Int?, Error> {
+        do {
+            let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                if let browseFilters {
+                    return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
+                }
+                return try await ExactRowCounter.count(
+                    on: driver, table: tableName, filters: filters, logicMode: logicMode, countSQL: countSQL
+                )
+            }
+            return .success(count)
+        } catch {
+            exactCountLog.warning("Exact row count failed: \(error.publicLogShape, privacy: .public)")
+            return .failure(error)
         }
     }
 
@@ -288,7 +314,7 @@ final class PaginationCoordinator: ObservableObject {
     /// The rows belong to the result the fetch was started on. A result switch leaves the content
     /// epoch alone, so the fetch is fenced on the result set as well, or the full row set lands on
     /// whichever result is showing when it arrives, normalized to that result's column count.
-    private func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
+    internal func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
@@ -303,17 +329,29 @@ final class PaginationCoordinator: ObservableObject {
         /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
         /// the titlebar reporting it, and releases that on every exit including cancellation.
         let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
+        let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
+        let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
 
         let startedAt = ContinuousClock.Instant.now
+        /// Both releases belong to the whole task rather than to its exits: the cancelled path used
+        /// to clear the loading flag and bare return, leaving a finished fetch installed under the
+        /// tab's id, and the next `installQueryTask` read it as a live displaced entry and ended it.
         let fetchAllTask = Task { [weak self, parent] in
-            defer { parent.tabExecution.endUnclaimedWork(workToken, for: tabId) }
+            defer {
+                parent.tabExecution.endUnclaimedWork(workToken, for: tabId)
+                parent.retireQueryTask(owner)
+            }
             guard let self, !parent.isTearingDown else { return }
 
             do {
                 let start = CFAbsoluteTimeGetCurrent()
-                progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let result = try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab) { driver in
+                progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .private)")
+                let result = try await parent.withExecutionDriver(
+                    scope: scope,
+                    isTableTab: isTableTab,
+                    lease: lease
+                ) { driver in
                     try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,
@@ -344,16 +382,12 @@ final class PaginationCoordinator: ObservableObject {
                         .contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
                     guard parent.tabExecution.isSameContent(contentEpoch, for: tabId), stillSameResult else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
-                        parent.retireQueryTask(for: nil)
                         return
                     }
-                    guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-                        parent.retireQueryTask(for: nil)
-                        return
-                    }
+                    guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
                     let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(rows: result.rows)
+                        rows.replace(rows: result.rows, rowLocators: isTableTab ? result.rowLocators : nil, absentCells: result.absentCells)
                     }
                     parent.tabManager.mutate(at: idx) { tab in
                         tab.execution.executionTime = result.executionTime
@@ -362,7 +396,6 @@ final class PaginationCoordinator: ObservableObject {
                         tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
-                    parent.retireQueryTask(for: nil)
                     parent.toolbarState.recordQueryTiming(result.resolvedTiming, for: tabId)
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
@@ -385,8 +418,7 @@ final class PaginationCoordinator: ObservableObject {
                         guard !isStale, !isCancelled else { return }
                         tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
                     }
-                    parent.retireQueryTask(for: nil)
-                    MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
+                    MainContentCoordinator.logger.error("Fetch all failed: \(error.publicLogShape, privacy: .public)")
                     guard !isStale, !isCancelled else { return }
                     parent.reportOperation(
                         kind: .fetchAll,
@@ -398,6 +430,6 @@ final class PaginationCoordinator: ObservableObject {
                 }
             }
         }
-        parent.installQueryTask(fetchAllTask, for: nil)
+        parent.installQueryTask(fetchAllTask, owner: owner, lease: lease)
     }
 }

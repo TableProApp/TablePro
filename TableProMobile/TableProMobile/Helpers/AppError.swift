@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProDatabase
 import TableProModels
 import TableProOracleCore
 
@@ -8,6 +9,7 @@ import TableProOracleCore
 nonisolated enum AppErrorCategory: Sendable {
     case network
     case auth
+    case permission
     case config
     case query
     case ssh
@@ -95,7 +97,25 @@ nonisolated enum ErrorClassifier {
     static func classify(_ error: Error, context: ErrorContext) -> AppError {
         let message = error.localizedDescription.lowercased()
 
-        logger.error("[\(context.operation)] \(error.localizedDescription, privacy: .public)")
+        logger.error("[\(context.operation, privacy: .public)] \(error.localizedDescription, privacy: .private)")
+
+        if let fileError = error as? LocalDatabaseFileError {
+            return AppError(
+                category: .config,
+                title: String(localized: "Database File Unavailable"),
+                message: fileError.localizedDescription,
+                recovery: fileError.recoverySuggestion,
+                underlying: error
+            )
+        }
+
+        if let connectionError = error as? ConnectionError {
+            return connectionFailure(connectionError)
+        }
+
+        if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
+            return classified
+        }
 
         if error is LocalNetworkPermissionError {
             return AppError(
@@ -162,6 +182,126 @@ nonisolated enum ErrorClassifier {
             title: String(localized: "Error"),
             message: error.localizedDescription,
             recovery: nil,
+            underlying: error
+        )
+    }
+
+    /// A typed error is classified by its case. The substring rules below read a message the user
+    /// writes part of, so a connection called "Prod Tunnel" reported itself as an SSH tunnel failure.
+    private static func connectionFailure(_ error: ConnectionError) -> AppError {
+        switch error {
+        case .previousSessionStillClosing:
+            return AppError(
+                category: .system,
+                title: String(localized: "Still Closing"),
+                message: String(localized: "The previous session has not finished closing."),
+                recovery: String(localized: "Tap Retry in a moment."),
+                underlying: error
+            )
+        case .driverNotFound:
+            return AppError(
+                category: .config,
+                title: String(localized: "Driver Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "This build has no driver for that database type."),
+                underlying: error
+            )
+        case .notConnected:
+            return AppError(
+                category: .system,
+                title: String(localized: "Not Connected"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Reconnect and try again."),
+                underlying: error
+            )
+        case .sshNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "SSH Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Turn off the SSH tunnel for this connection."),
+                underlying: error
+            )
+        case .localSocketNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "Socket Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Open it on the Mac, or change it there to connect by host and port."),
+                underlying: error
+            )
+        }
+    }
+
+    /// A Redis reply is read by its error class, never by its words, because the server echoes the
+    /// user's own arguments back: `FOO password` answers `ERR unknown command 'FOO', with args
+    /// beginning with: 'password'`. A transport or setup failure returns nil and is read as text.
+    private static func redisFailure(_ error: RedisError, context: ErrorContext) -> AppError? {
+        switch error {
+        case .authenticationFailed, .sessionUnverified(.unauthenticated):
+            return auth(error, context: context)
+        case .queryFailed(let serverMessage), .sessionUnverified(.refused(let serverMessage)):
+            return redisReplyFailure(error, serverMessage: serverMessage, context: context)
+        case .commandQueued:
+            return redisQueryFailure(error)
+        case .notConnected:
+            return AppError(
+                category: .system,
+                title: String(localized: "Not Connected"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Reconnect and try again."),
+                underlying: error
+            )
+        case .keyNotFound:
+            return AppError(
+                category: .query,
+                title: String(localized: "Key Not Found"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Pull down on the key list to refresh it."),
+                underlying: error
+            )
+        case .keyTypeNotBrowsable:
+            return AppError(
+                category: .config,
+                title: String(localized: "Unsupported Key Type"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Read it with a command in Query."),
+                underlying: error
+            )
+        case .sessionUnverified(.established), .connectionFailed, .unsupported:
+            return nil
+        }
+    }
+
+    private static func redisReplyFailure(_ error: RedisError, serverMessage: String, context: ErrorContext) -> AppError {
+        switch RedisConnectProbe.errorClass(of: serverMessage) {
+        case "NOAUTH", "WRONGPASS":
+            return auth(error, context: context)
+        case "NOPERM":
+            return permissionDenied(error)
+        default:
+            return redisQueryFailure(error)
+        }
+    }
+
+    private static func redisQueryFailure(_ error: RedisError) -> AppError {
+        AppError(
+            category: .query,
+            title: String(localized: "Query Error"),
+            message: error.localizedDescription,
+            recovery: nil,
+            underlying: error
+        )
+    }
+
+    private static func permissionDenied(_ error: Error) -> AppError {
+        AppError(
+            category: .permission,
+            title: String(localized: "Permission Denied"),
+            message: error.localizedDescription,
+            recovery: String(
+                localized: "This connection's Redis user is not allowed to run this command or reach this key. Ask an administrator to grant it in the user's ACL."
+            ),
             underlying: error
         )
     }

@@ -2,7 +2,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("IntegrationStatusIndicator")
 struct IntegrationStatusIndicatorTests {
     @Test("Running status exposes a localized accessibility label")
     func runningLabel() {

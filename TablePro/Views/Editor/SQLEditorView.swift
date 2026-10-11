@@ -27,7 +27,6 @@ struct SQLEditorView: View {
     var databaseType: DatabaseType?
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
-    var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
     /// Called once the editor has latched a focus claim. The owner's one-shot intent is cleared
@@ -44,8 +43,8 @@ struct SQLEditorView: View {
     var onRunStatement: ((String, Int) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting: Bool = false
-    var onAIExplain: ((String) -> Void)?
-    var onAIOptimize: ((String) -> Void)?
+    var currentAIAvailability: (() -> AIQueryActionAvailability)?
+    var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
 
     @State private var editorState = SourceEditorState()
@@ -62,11 +61,10 @@ struct SQLEditorView: View {
         coordinator.onRunStatement = onRunStatement
         coordinator.setStatementRunControlsEnabled(!isExecuting)
         coordinator.setStatementHighlightEnabled(settingsManager.editor.highlightCurrentStatement)
-        coordinator.onAIExplain = onAIExplain
-        coordinator.onAIOptimize = onAIOptimize
+        coordinator.currentAIAvailability = currentAIAvailability
+        coordinator.onAIAction = onAIAction
         coordinator.onSaveAsFavorite = onSaveAsFavorite
         coordinator.schemaProvider = schemaProvider
-        coordinator.connectionAIPolicy = connectionAIPolicy
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
         coordinator.connectionId = connectionId
@@ -102,10 +100,6 @@ struct SQLEditorView: View {
         }
         .onChange(of: editorState.cursorPositions) { newValue in
             guard let positions = newValue else { return }
-            // Skip cursor propagation when the editor doesn't have focus
-            // (e.g., find panel match highlighting). Propagating triggers
-            // a SwiftUI re-render that disrupts the find panel's focus.
-            guard coordinator.isEditorFirstResponder else { return }
             // Guard against stale propagation during tab switch (.id() recreation):
             // verify the editor's text still matches the binding before propagating.
             // Use O(1) length pre-check to avoid O(n) string comparison on large docs.

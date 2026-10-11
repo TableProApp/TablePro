@@ -123,7 +123,7 @@ final class XAICallbackServer: @unchecked Sendable {
                 }
                 self?.finishReady(.success(()))
             case .failed(let error):
-                Self.logger.error("xAI callback listener failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("xAI callback listener failed: \(error.publicLogShape, privacy: .public)")
                 self?.finishReady(.failure(ServerError.unavailable))
                 self?.finishCode(.failure(ServerError.unavailable))
             default:

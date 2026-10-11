@@ -21,6 +21,12 @@ extension MainContentView {
         await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
 
+    func loadTableInfo() async {
+        guard currentTab?.execution.lastExecutedAt != nil else { return }
+        await loadTableMetadataIfNeeded()
+        scheduleInspectorUpdate()
+    }
+
     func handleConnectionStatusChange() {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
@@ -91,9 +97,11 @@ extension MainContentView {
     /// assistant was never revealed has nothing to tell.
     func updateAssistantContext() {
         guard trailingPaneState.assistant.isActivated else { return }
+        let snapshot = coordinator.assistantEditorSnapshot
         trailingPaneState.assistant.context = AssistantContext(
-            currentQuery: coordinator.tabManager.selectedTab?.content.query,
-            queryResults: cachedQueryResultsSummary()
+            currentQuery: snapshot.currentQuery,
+            queryResults: cachedQueryResultsSummary(),
+            editorTarget: snapshot.target
         )
     }
 

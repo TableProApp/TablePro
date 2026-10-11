@@ -27,10 +27,8 @@ struct IntentDatabaseSession {
             secureStore: secureStore,
             sshProvider: sshProvider
         )
-        if connection.sshEnabled {
-        }
         do {
-            let session = try await manager.connect(connection)
+            let session = try await manager.connect(connection, prompter: nil)
             return IntentDatabaseSession(connection: connection, session: session, manager: manager)
         } catch {
             throw IntentDataError.connectionFailed(error.localizedDescription)
@@ -39,9 +37,10 @@ struct IntentDatabaseSession {
 
     static func with<T>(
         connectionId: UUID,
+        savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:),
         _ body: (IntentDatabaseSession) async throws -> T
     ) async throws -> T {
-        guard let connection = IntentConnectionLoader.connection(id: connectionId) else {
+        guard let connection = savedConnection(connectionId) else {
             throw IntentDataError.connectionNotFound
         }
         return try await with(connection: connection, body)

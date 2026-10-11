@@ -132,21 +132,7 @@ struct GeneralSettingsView: View {
                 .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
             }
 
-            Section("Connections") {
-                Picker("Check connections:", selection: $settings.connectionHealthCheck) {
-                    ForEach(ConnectionHealthCheck.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .accessibilityIdentifier("connection-health-check-picker")
-                .help(String(localized: """
-                    TablePro runs a small query on each open connection so it can notice a dropped \
-                    one and reconnect before you hit it. Only when I use the connection stops that \
-                    background traffic, which is what a database that sleeps when idle, or bills \
-                    per query, needs; TablePro then checks the connection the first time you use \
-                    it after a pause.
-                    """))
-            }
+            ConnectionsSettingsSection(healthCheck: $settings.connectionHealthCheck)
 
             Section("Query Execution") {
                 Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {
@@ -198,11 +184,16 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("Share anonymous usage data", isOn: $settings.shareAnalytics)
+                Toggle("Share usage data", isOn: $settings.shareAnalytics)
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
+                Text(
+                    """
+                    One report a day: hashed Mac ID, versions, architecture, language, database types, connection count, \
+                    license status, update settings, first-use dates. Never hostnames, credentials, queries, or rows.
+                    """
+                )
             }
 
             Section {

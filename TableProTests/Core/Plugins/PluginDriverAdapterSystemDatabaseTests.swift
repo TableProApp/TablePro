@@ -49,7 +49,6 @@ private final class StubDatabaseMetadataDriver: PluginDatabaseDriver, @unchecked
 /// SQL Server and ClickHouse never set `isSystemDatabase`, so the switcher's metadata pass listed
 /// `master`, `model`, `msdb` and `tempdb` as ordinary databases once it landed, while the sidebar,
 /// classifying by the connection type's own list, kept them apart.
-@Suite("PluginDriverAdapter system databases")
 struct PluginDriverAdapterSystemDatabaseTests {
     private func makeAdapter(type: DatabaseType, metadata: [PluginDatabaseMetadata]) -> PluginDriverAdapter {
         PluginDriverAdapter(
@@ -69,8 +68,8 @@ struct PluginDriverAdapterSystemDatabaseTests {
         let result = try await adapter.fetchAllDatabaseMetadata()
 
         #expect(result.filter(\.isSystemDatabase).map(\.name) == ["master", "tempdb"])
-        #expect(result.first { $0.name == "master" }?.icon == "gearshape.fill")
-        #expect(result.first { $0.name == "sales" }?.icon == "cylinder.fill")
+        #expect(result.first { $0.name == "master" }?.icon == "gearshape")
+        #expect(result.first { $0.name == "sales" }?.icon == "cylinder")
     }
 
     @Test("A database the driver flags stays a system database even when the type's list omits it")

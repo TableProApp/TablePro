@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PostgreSQLColumnClauses")
 struct PostgreSQLColumnClausesTests {
     private func column(
         dataType: String = "geometry",

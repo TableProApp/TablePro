@@ -45,16 +45,36 @@ public enum MySQLObjectQueries {
         qualifiedIdentifier(schema: schema, name: name, quote: quoteIdentifier)
     }
 
+    // Neither MySQL's nor MariaDB's ALTER VIEW has a COMMENT clause.
+    public static func takesTableComment(objectType: String) -> Bool {
+        switch objectType.uppercased() {
+        case "TABLE", "PARTITIONED TABLE":
+            return true
+        default:
+            return false
+        }
+    }
+
+    public static func tableCommentStatement(qualifiedTable: String, objectType: String, comment: String?) -> String? {
+        guard takesTableComment(objectType: objectType) else { return nil }
+        return "ALTER TABLE \(qualifiedTable) COMMENT = '\(escapeLiteral(comment ?? ""))'"
+    }
+
     /// Lists a schema's tables, with the partition count joined in for the ones that have any.
     ///
     /// `information_schema.PARTITIONS` holds one all-null row for a table that is not partitioned,
     /// so `PARTITION_NAME IS NOT NULL` is what separates the two. A subpartitioned table repeats its
     /// partition name once per subpartition, so the count is over distinct names rather than rows.
     ///
-    /// The grouping and the join are both binary. `INFORMATION_SCHEMA` compares identifiers
-    /// case-insensitively, so on a server with `lower_case_table_names=0` a schema holding both
-    /// `orders` and `Orders` would merge their counts and could label the unpartitioned one
-    /// `PARTITIONED TABLE`.
+    /// The grouping and the join both compare the name as bytes. `INFORMATION_SCHEMA` collates its
+    /// identifiers case-insensitively on MySQL 5.7 and earlier and on every MariaDB measured, so on a
+    /// server with `lower_case_table_names=0` a schema holding both `orders` and `Orders` would merge
+    /// their counts and could label the unpartitioned one `PARTITIONED TABLE`.
+    ///
+    /// `CAST(... AS BINARY)` rather than the `BINARY` operator, which MySQL 8.0.27 deprecated: it
+    /// raises three of Warning 1287 on every read from 8.4 on. Measured warning-free with identical
+    /// rows on MySQL 5.5 to 9.7, MariaDB 5.5 to 11.4 and TiDB. `TABLE_NAME` stays in the `GROUP BY`,
+    /// or `ONLY_FULL_GROUP_BY` rejects the query with 1055.
     ///
     /// `includePartitions` is false for Databend, which answers the same wire protocol through the
     /// same driver without this catalog.
@@ -74,8 +94,8 @@ public enum MySQLObjectQueries {
                 SELECT TABLE_NAME AS P_TABLE_NAME, COUNT(DISTINCT PARTITION_NAME) AS PARTITION_COUNT
                 FROM information_schema.PARTITIONS
                 WHERE TABLE_SCHEMA = '\(schemaLiteral)' AND PARTITION_NAME IS NOT NULL
-                GROUP BY BINARY TABLE_NAME, TABLE_NAME
-            ) p ON BINARY p.P_TABLE_NAME = BINARY t.TABLE_NAME
+                GROUP BY CAST(TABLE_NAME AS BINARY), TABLE_NAME
+            ) p ON CAST(p.P_TABLE_NAME AS BINARY) = CAST(t.TABLE_NAME AS BINARY)
             WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
             """
     }
@@ -84,6 +104,82 @@ public enum MySQLObjectQueries {
     /// `information_schema`, it reports an account with no table privilege there as an access error.
     public static func showFullTables(schema: String) -> String {
         "SHOW FULL TABLES FROM \(quoteIdentifier(schema))"
+    }
+
+    /// The listing a server before 5.0.2 understands: one column of names, and every row a base
+    /// table, since views arrived with 5.0.1.
+    public static func showTables(schema: String) -> String {
+        "SHOW TABLES FROM \(quoteIdentifier(schema))"
+    }
+
+    /// The table list read the server can answer: the catalog where it exists, then `SHOW`.
+    public static func listedTables(schema: String, hasInformationSchema: Bool) -> String {
+        hasInformationSchema ? showFullTables(schema: schema) : showTables(schema: schema)
+    }
+
+    /// One table's `SHOW TABLE STATUS` row. Below 5.0.3 the statement takes `LIKE` only, so the
+    /// pattern escapes its wildcards and the caller still keeps only the row named exactly.
+    public static func tableStatus(schema: String?, table: String, acceptsWhere: Bool) -> String {
+        let from = schema.flatMap { $0.isEmpty ? nil : " FROM \(quoteIdentifier($0))" } ?? ""
+        guard acceptsWhere else {
+            return "SHOW TABLE STATUS\(from) LIKE '\(escapeLiteral(likePattern(matching: table)))'"
+        }
+        return "SHOW TABLE STATUS\(from) WHERE Name = '\(escapeLiteral(table))'"
+    }
+
+    public static func likePattern(matching name: String) -> String {
+        name
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    /// Whether `information_schema` describes this database at all, in one scalar.
+    ///
+    /// A direct server always answers a scalar aggregate with one row. DBLE 3.23 answers it with no
+    /// row at all, which is the unambiguous signal that the catalog is the proxy's own and not the
+    /// database's.
+    public static func catalogTableCount(schema: String) -> String {
+        """
+        SELECT COUNT(*)
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+        """
+    }
+
+    /// The columns of every foreign key in a database, or of one table's.
+    ///
+    /// Read on its own rather than joined to `REFERENTIAL_CONSTRAINTS`, because ShardingSphere-Proxy
+    /// 5.5.3 answers any join of two `information_schema` tables with an OK packet carrying no
+    /// columns while answering either read correctly alone.
+    ///
+    /// `ORDINAL_POSITION` in the `ORDER BY` is what puts a composite key's columns in declaration
+    /// order. Without it, MariaDB 11.4.13 returns them reversed: measured on a two-column key,
+    /// ordering by `CONSTRAINT_NAME` alone answered `p_tenant` then `p_id`.
+    public static func foreignKeyColumns(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "AND TABLE_NAME = '\(escapeLiteral($0))'" } ?? ""
+        return """
+            SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME,
+                   REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+                \(tablePredicate)
+                AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+            """
+    }
+
+    /// The two referential actions of every foreign key in a database, or of one table's.
+    /// `TABLE_NAME` is on this catalog from MySQL 5.5 and MariaDB 5.5, so the pair names one key
+    /// without a join.
+    public static func referentialActions(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "AND TABLE_NAME = '\(escapeLiteral($0))'" } ?? ""
+        return """
+            SELECT TABLE_NAME, CONSTRAINT_NAME, DELETE_RULE, UPDATE_RULE
+            FROM information_schema.REFERENTIAL_CONSTRAINTS
+            WHERE CONSTRAINT_SCHEMA = '\(escapeLiteral(schema))'
+                \(tablePredicate)
+            """
     }
 
     /// One table's partitions, subpartitions included. A subpartition arrives as its own row
@@ -101,19 +197,11 @@ public enum MySQLObjectQueries {
     }
 
     /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's
-    /// return value rather than a parameter.
-    public static func routineList(schema: String) -> String {
+    /// return value rather than a parameter. A server before 5.5.3 has no such table, so the list
+    /// comes back as NULL there rather than failing the whole read.
+    public static func routineList(schema: String, includesParameters: Bool = true) -> String {
         let schemaLiteral = escapeLiteral(schema)
-        return """
-            SELECT
-                r.ROUTINE_NAME,
-                r.ROUTINE_TYPE,
-                r.DTD_IDENTIFIER,
-                r.SQL_DATA_ACCESS,
-                r.IS_DETERMINISTIC,
-                r.SECURITY_TYPE,
-                r.DEFINER,
-                r.ROUTINE_SCHEMA,
+        let parameterList = includesParameters ? """
                 (
                     SELECT GROUP_CONCAT(
                         CONCAT_WS(' ', p.PARAMETER_MODE, p.PARAMETER_NAME, p.DTD_IDENTIFIER)
@@ -125,6 +213,18 @@ public enum MySQLObjectQueries {
                         AND p.ROUTINE_TYPE = r.ROUTINE_TYPE
                         AND p.ORDINAL_POSITION > 0
                 ) AS PARAMETER_LIST
+            """ : "NULL AS PARAMETER_LIST"
+        return """
+            SELECT
+                r.ROUTINE_NAME,
+                r.ROUTINE_TYPE,
+                r.DTD_IDENTIFIER,
+                r.SQL_DATA_ACCESS,
+                r.IS_DETERMINISTIC,
+                r.SECURITY_TYPE,
+                r.DEFINER,
+                r.ROUTINE_SCHEMA,
+                \(parameterList)
             FROM information_schema.ROUTINES r
             WHERE r.ROUTINE_SCHEMA = '\(schemaLiteral)'
             ORDER BY r.ROUTINE_TYPE, r.ROUTINE_NAME

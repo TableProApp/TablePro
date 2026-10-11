@@ -14,10 +14,7 @@ internal enum FavoritesOutlineSelection {
         return false
     }
 
-    internal static func selection(
-        for kind: FavoritesOutlineNode.Kind,
-        database: String?
-    ) -> FavoriteSelection? {
+    internal static func selection(for kind: FavoritesOutlineNode.Kind) -> FavoriteSelection? {
         switch kind {
         case .header:
             return nil
@@ -25,8 +22,8 @@ internal enum FavoritesOutlineSelection {
             return .node(id: FavoritesOutlineNode.databaseEnvironmentId(group.environment))
         case .database(let entry):
             return .node(id: FavoritesOutlineNode.databaseId(entry))
-        case .table(let table):
-            return .table(database: database, schema: table.schema, name: table.name)
+        case .table(let row):
+            return .table(database: row.entry.database, schema: row.entry.schema, name: row.entry.name)
         case .query(let node):
             return .node(id: node.id)
         case .teamQuery(let id, _, _):
@@ -53,8 +50,8 @@ internal enum FavoritesOutlineSelection {
             return group.environment.title
         case .database(let entry):
             return entry.database
-        case .table(let table):
-            return table.name
+        case .table(let row):
+            return row.entry.name
         case .teamQuery(_, let name, _):
             return name
         case .query(let node):

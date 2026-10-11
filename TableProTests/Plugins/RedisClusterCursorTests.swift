@@ -12,7 +12,6 @@ import Testing
 
 private let nodes = ["a1b2", "c3d4", "e5f6"]
 
-@Suite("Redis cluster cursor - walking the nodes")
 struct RedisClusterCursorWalkTests {
     @Test("A fresh scan starts on the first node")
     func startsAtFirstNode() {
@@ -54,7 +53,6 @@ struct RedisClusterCursorWalkTests {
     }
 }
 
-@Suite("Redis cluster cursor - topology changes")
 struct RedisClusterCursorTopologyTests {
     @Test("A cursor naming a node the cluster no longer has restarts rather than scanning the wrong one")
     func unknownNodeRestarts() {

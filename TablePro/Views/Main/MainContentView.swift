@@ -31,6 +31,7 @@ struct MainContentView: View {
     // Shared state from parent
     @Binding var windowTitle: String
     @Binding var windowSubtitle: String
+    @Binding var windowRepresentedURL: URL?
     @ObservedObject var schemaService = SchemaService.shared
     @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
@@ -57,7 +58,6 @@ struct MainContentView: View {
     @State var inspectorContextRefreshTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
-    @State var hasInitialized = false
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
 
@@ -71,6 +71,7 @@ struct MainContentView: View {
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
         windowSubtitle: Binding<String>,
+        windowRepresentedURL: Binding<URL?>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
@@ -85,6 +86,7 @@ struct MainContentView: View {
         self.payload = payload
         self._windowTitle = windowTitle
         self._windowSubtitle = windowSubtitle
+        self._windowRepresentedURL = windowRepresentedURL
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -234,6 +236,8 @@ struct MainContentView: View {
             CopyObjectsSheet(launch: launch, connection: connection)
         case .editObjectComment(let target):
             ObjectCommentSheet(target: target, connection: connection)
+        case .documentEditor(let request):
+            DocumentEditorSheet(request: request, databaseType: connection.type)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
              .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
@@ -278,18 +282,21 @@ struct MainContentView: View {
                     isPresented: dismissBinding,
                     statements: request.scriptStatements,
                     databaseType: connection.type,
+                    title: request.confirmationTitle,
+                    subtitle: request.confirmationSubtitle(connectionName: connection.name),
+                    showsStatementsVerbatim: request.showsStatementsVerbatim,
                     warning: request.warning,
-                    primaryAction: request.isRunnable
-                        ? SQLReviewSheet.PrimaryAction(
-                            title: request.actionTitle,
+                    primaryAction: request.runnableAction.map { action in
+                        SQLReviewSheet.PrimaryAction(
+                            title: action.title,
                             isDestructive: true,
                             perform: {
-                                await request.perform()
+                                await action.perform()
                                 coordinator.tableRebuildRequest = nil
                                 coordinator.activeSheet = nil
                             }
                         )
-                        : nil,
+                    },
                     onOpenInEditor: {
                         coordinator.openTableRebuildScriptInEditor(request)
                     }
@@ -308,7 +315,8 @@ struct MainContentView: View {
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
-            hasCreateTablePending: toolbarState.hasCreateTablePending
+            hasCreateTablePending: toolbarState.hasCreateTablePending,
+            hasPrincipalChanges: toolbarState.hasPrincipalChanges
         )
     }
 
@@ -321,9 +329,7 @@ struct MainContentView: View {
                 }
             }
             .task(id: currentTab?.tableContext.tableName) {
-                guard currentTab?.execution.lastExecutedAt != nil else { return }
-                await loadTableMetadataIfNeeded()
-                scheduleInspectorUpdate()
+                await loadTableInfo()
             }
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.
@@ -343,6 +349,10 @@ struct MainContentView: View {
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
             }
+            .onValueChange(of: \.isOnScreen, in: trailingPaneState.inspector) { _, isOnScreen in
+                guard isOnScreen else { return }
+                Task { await loadTableInfo() }
+            }
             /// A value window detached from a field goes on writing while the JSON rendering is the
             /// one on screen, and it moves nothing the trigger above watches. Debounced, because it
             /// commits per keystroke and rebuilding the JSON tree cancels the reader's fetches.
@@ -359,6 +369,9 @@ struct MainContentView: View {
                 updateToolbarPendingState()
                 updateInspectorContext()
                 coordinator.trailingPaneState = trailingPaneState
+                trailingPaneState.assistant.editorSnapshot = { [weak coordinator = self.coordinator] in
+                    coordinator?.assistantEditorSnapshot ?? .empty
+                }
 
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -468,12 +481,6 @@ struct MainContentView: View {
             },
             onFilterColumn: { columnName in
                 coordinator.addFilterForColumn(columnName)
-            },
-            onApplyFilters: { filters in
-                coordinator.applyFilters(filters)
-            },
-            onClearFilters: {
-                coordinator.clearFiltersAndReload()
             },
             onFirstPage: {
                 coordinator.goToFirstPage()

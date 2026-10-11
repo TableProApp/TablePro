@@ -7,7 +7,6 @@ import Testing
 /// first and Info.plist second, so an undeclared key is `NO`, `allowsAutomaticUpdates` is then `NO`
 /// too, and `setAutomaticallyDownloadsUpdates` returns without writing. `SUAutomaticallyUpdate` was
 /// `true` in Info.plist and `false` everywhere it mattered.
-@Suite("SparkleUpdatePreferences")
 struct SparkleUpdatePreferencesTests {
     /// The unit-test bundle is hosted by the app, so the process's main bundle is the app bundle.
     /// A runner that ever stopped hosting would fail `everyRequiredKeyIsDeclared` rather than pass

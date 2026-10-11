@@ -77,7 +77,15 @@ extension DatabaseManager {
         rollsBack: Bool,
         connectionId: UUID
     ) async throws {
-        let useTransaction = driver.supportsTransactions && rollsBack
+        /// No transaction is opened over one the session already holds: on this shared session an
+        /// app-owned `COMMIT` commits the user's pending work, and MySQL's `START TRANSACTION`
+        /// commits it implicitly. Joining it instead leaves the statements pending, which is what
+        /// the failure then reports.
+        let owner = WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
+        let useTransaction = owner.opensTransaction && rollsBack
         if useTransaction {
             try await driver.beginTransaction(mode: .readWrite)
         }
@@ -92,11 +100,13 @@ extension DatabaseManager {
                 try await driver.commitTransaction()
             }
         } catch {
-            var rolledBack = false
+            var disposition: PrincipalApplyError.Disposition = owner == .session
+                ? .pendingInSessionTransaction
+                : .applied
             if useTransaction {
                 do {
                     try await driver.rollbackTransaction()
-                    rolledBack = true
+                    disposition = .rolledBack
                 } catch {
                     Self.logger.error(
                         "Rollback failed after principal change error: \(error.localizedDescription)"
@@ -107,7 +117,7 @@ extension DatabaseManager {
                 failedStatement: statements[min(appliedCount, statements.count - 1)],
                 appliedCount: appliedCount,
                 totalCount: statements.count,
-                rolledBack: rolledBack,
+                disposition: disposition,
                 underlying: error
             )
         }

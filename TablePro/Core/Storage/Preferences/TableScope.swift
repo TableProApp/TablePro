@@ -18,6 +18,10 @@ struct TableScope: Hashable, Codable, Sendable {
         self.table = table
     }
 
+    init(table: String, in scope: DatabaseScope) {
+        self.init(connectionId: scope.connectionId, database: scope.database, schema: scope.schema, table: table)
+    }
+
     var storageComponent: String {
         Self.encode([connectionId.uuidString, database ?? "", schema ?? "", table])
     }

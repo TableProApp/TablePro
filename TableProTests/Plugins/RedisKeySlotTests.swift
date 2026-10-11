@@ -9,7 +9,6 @@
 import Foundation
 import Testing
 
-@Suite("Redis key slot - measured vectors")
 struct RedisKeySlotVectorTests {
     static let measured: [(key: String, slot: Int)] = [
         ("foo", 12_182),
@@ -37,7 +36,6 @@ struct RedisKeySlotVectorTests {
     }
 }
 
-@Suite("Redis key slot - hash tags")
 struct RedisKeySlotHashTagTests {
     static let measured: [(key: String, slot: Int)] = [
         ("{user1000}.following", 3_443),
@@ -67,7 +65,7 @@ struct RedisKeySlotHashTagTests {
     @Test("An empty tag falls back to hashing the whole key")
     func emptyTagHashesWholeKey() {
         #expect(RedisKeySlot.slot(for: "somekey{}") != RedisKeySlot.slot(for: ""))
-        #expect(RedisKeySlot.slot(for: "foo{}{bar}") == RedisKeySlot.slot(for: "foo{}{bar}"))
+        #expect(RedisKeySlot.slot(for: "foo{}{bar}") != RedisKeySlot.slot(for: "bar"))
     }
 
     @Test("An unclosed brace is not a tag")
@@ -82,7 +80,6 @@ struct RedisKeySlotHashTagTests {
     }
 }
 
-@Suite("Redis key slot - cross-slot detection")
 struct RedisKeySlotCrossSlotTests {
     @Test("Keys sharing a hash tag are same-slot")
     func sharedTagIsSameSlot() {
@@ -98,5 +95,23 @@ struct RedisKeySlotCrossSlotTests {
     @Test("An empty key list is trivially same-slot")
     func emptyListIsSameSlot() {
         #expect(RedisKeySlot.slotsAreEqual(for: []))
+    }
+}
+
+struct RedisKeySlotGroupingTests {
+    @Test("Keys group by slot in the order each slot first appears")
+    func firstSeenOrder() {
+        let groups = RedisKeySlot.groupedBySlot(["allowed:1", "{u}a", "forbidden:1", "{u}b"]) { $0 }
+        #expect(groups == [["allowed:1"], ["{u}a", "{u}b"], ["forbidden:1"]])
+    }
+
+    @Test("A duplicate key stays in its group")
+    func keepsDuplicates() {
+        #expect(RedisKeySlot.groupedBySlot(["a", "a", "b"]) { $0 } == [["a", "a"], ["b"]])
+    }
+
+    @Test("No keys make no groups")
+    func empty() {
+        #expect(RedisKeySlot.groupedBySlot([String]()) { $0 }.isEmpty)
     }
 }

@@ -62,14 +62,15 @@ internal enum ObjectCopyServerSideInsert {
         )
         let targetList = input.targetColumns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
         let sourceList = input.sourceColumns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
-        var select = "SELECT \(sourceList) FROM \(from)"
-        if let filter = input.scope?.sanitizedFilter, !filter.isEmpty {
-            select += " WHERE \(filter)"
-        }
-        if let rowLimit = input.scope?.rowLimit {
-            select = driver.injectRowLimit(select, limit: rowLimit) ?? "\(select) LIMIT \(rowLimit)"
-        }
-        return "INSERT INTO \(into) (\(targetList)) \(select);"
+        let select = SQLRowLimitClause.select(
+            columns: sourceList,
+            from: from,
+            where: input.scope?.sanitizedFilter.nilIfEmpty,
+            limit: input.scope?.rowLimit,
+            driver: driver,
+            databaseType: input.target.databaseType
+        )
+        return "INSERT INTO \(into) (\(targetList)) \(select)"
     }
 
     internal struct Input: Sendable {

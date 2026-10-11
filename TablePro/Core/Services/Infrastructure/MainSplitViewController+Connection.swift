@@ -47,10 +47,11 @@ internal extension MainSplitViewController {
         }
 
         /// Reopening a session at launch is the app's gesture, not the user's, so it never runs a
-        /// saved script on its own. The window waits in its not-connected state instead, where
-        /// Connect asks first. Prompting here would also put one modal per restored connection on
-        /// screen at startup, which the HIG rules out twice over.
-        guard !connection.hasPreConnectScript else {
+        /// saved script or loads extensions this Mac has not approved on its own. The window waits
+        /// in its not-connected state instead, where Connect asks first. Prompting here would also
+        /// put one modal per restored connection on screen at startup, which the HIG rules out
+        /// twice over.
+        guard !ConnectConsent.requiresPrompt(for: connection) else {
             transition(to: .unavailable(.notConnected))
             return
         }
@@ -70,6 +71,20 @@ internal extension MainSplitViewController {
               let connection = workspace.connection else { return }
         workspaces.select(connectionId)
         connect(connection, cancellingPrevious: true)
+    }
+
+    /// Shows the connection and dials only when its phase allows a manual connect. Redialing one
+    /// that is already connecting cancels that attempt and restarts it, prompts included.
+    internal func reconnectWorkspaceIfIdle(_ connectionId: UUID) {
+        guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        workspaces.select(connectionId)
+        guard ConnectionWindowPhaseMachine.allowsManualConnect(phase: workspace.phase) else { return }
+        reconnectWorkspace(connectionId)
+    }
+
+    internal func isShowingInKeyWindow(_ connectionId: UUID) -> Bool {
+        guard isViewLoaded, view.window?.isKeyWindow == true else { return false }
+        return workspaces.selectedConnectionId == connectionId
     }
 
     /// The window stays open and repaints itself from its own phase once the session entry goes
@@ -146,7 +161,7 @@ internal extension MainSplitViewController {
         )
 
         Task { [weak self] in
-            guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
+            guard await ConnectConsent.confirmIfNeeded(for: connection) else {
                 self?.finishAttempt(token, for: connection.id, outcome: .cancelled)
                 return
             }
@@ -158,7 +173,7 @@ internal extension MainSplitViewController {
                 self?.finishAttempt(token, for: connection.id, outcome: nil)
             } catch {
                 Self.connectionLogger.error(
-                    "Connect failed for \(connection.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Connect failed for \(connection.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 if await self?.offerSignInAndReconnect(for: connection, error: error) == true {
                     return
@@ -201,7 +216,7 @@ internal extension MainSplitViewController {
         return true
     }
 
-    private func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
+    func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let isCurrentAttempt = workspace.attemptToken == token
         if isCurrentAttempt { workspace.attemptToken = nil }

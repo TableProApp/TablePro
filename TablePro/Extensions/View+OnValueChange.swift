@@ -44,11 +44,15 @@ private struct PairedValueChangeModifier<Value: Equatable>: ViewModifier {
     let value: Value
     let action: (Value, Value) -> Void
 
+    /// Seeded on the first appearance only. A pane re-attached after a workspace switch runs
+    /// `onAppear` before the change it missed while detached, so a reseed would swallow that change.
     @State private var previous: Value?
 
     func body(content: Content) -> some View {
         content
-            .onAppear { previous = value }
+            .onAppear {
+                if previous == nil { previous = value }
+            }
             .onChange(of: value) { current in
                 let old = previous ?? current
                 previous = current

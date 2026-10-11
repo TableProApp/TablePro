@@ -2,7 +2,6 @@ import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("DatabaseType Redis Properties")
 struct DatabaseTypeRedisTests {
     @Test("Default port is 6379")
     func defaultPort() {

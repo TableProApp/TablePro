@@ -22,7 +22,7 @@ final class ERDiagramViewModel: ObservableObject {
         services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
     }
 
-    private static let noSchemaMarker = "default"
+    nonisolated private static let noSchemaMarker = "default"
 
     /// `schemaKey` is the diagram's identity, written as `database.schema` with
     /// `noSchemaMarker` standing in for an engine that has no schemas. It is also the only
@@ -30,12 +30,21 @@ final class ERDiagramViewModel: ObservableObject {
     /// database into the tab's table context but never a schema. Stripping the database
     /// prefix rather than splitting on the separator keeps a database name that contains a
     /// dot intact.
-    static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
+    nonisolated static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
         let prefix = databaseName + "."
         guard !databaseName.isEmpty, schemaKey.hasPrefix(prefix) else { return nil }
         let schema = String(schemaKey.dropFirst(prefix.count))
         guard !schema.isEmpty, schema != noSchemaMarker else { return nil }
         return schema
+    }
+
+    nonisolated static func schemaKey(databaseName: String, schema: String?) -> String {
+        "\(databaseName).\(schema ?? noSchemaMarker)"
+    }
+
+    nonisolated static func schemaKeyPreserves(_ schema: String, databaseName: String) -> Bool {
+        resolveSchemaName(fromSchemaKey: schemaKey(databaseName: databaseName, schema: schema), databaseName: databaseName)
+            == schema
     }
 
     // MARK: - State
@@ -55,7 +64,6 @@ final class ERDiagramViewModel: ObservableObject {
     }
 
     @Published var loadState: LoadState = .loading
-    @Published var needsInitialFit = true
     @Published var graph: ERDiagramGraph = .empty
     @Published var isCompactMode = false {
         didSet { rebuildVisibleGraph() }
@@ -110,6 +118,7 @@ final class ERDiagramViewModel: ObservableObject {
     private var nodeIdToName: [UUID: String] = [:]
 
     private let services: AppServices
+    private var loadTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -129,7 +138,21 @@ final class ERDiagramViewModel: ObservableObject {
     // MARK: - Loading
 
     func loadDiagram() async {
+        if let inFlight = loadTask {
+            Self.logger.debug("ER diagram load already in flight, awaiting it")
+            await inFlight.value
+            return
+        }
         guard loadState != .loaded else { return }
+        let task = Task {
+            await fetchAndLayOutDiagram()
+            loadTask = nil
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func fetchAndLayOutDiagram() async {
         loadState = .loading
 
         if services.databaseManager.driver(for: connectionId) == nil {
@@ -175,7 +198,7 @@ final class ERDiagramViewModel: ObservableObject {
             loadPersistedPositions()
             invalidateCachedRects()
             loadState = .loaded
-            needsInitialFit = true
+            viewport.fitToWindowOnceLaidOut()
 
             Self.logger.debug("ER diagram loaded: \(self.graph.nodes.count) tables, \(self.graph.edges.count) edges")
         } catch {

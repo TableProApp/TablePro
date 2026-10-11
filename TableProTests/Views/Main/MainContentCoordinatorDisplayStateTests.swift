@@ -12,7 +12,6 @@ import Testing
 
 @testable import TablePro
 
-@Suite("MainContentCoordinator retained grid display state")
 @MainActor
 struct MainContentCoordinatorDisplayStateTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {

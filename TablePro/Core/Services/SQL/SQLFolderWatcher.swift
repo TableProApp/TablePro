@@ -19,11 +19,20 @@ internal final class SQLFolderWatcher: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private var hasStarted = false
 
-    nonisolated private static let eventCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
+    nonisolated private static let eventCallback: FSEventStreamCallback = { _, info, _, eventPaths, _, _ in
         guard let info else { return }
+        let paths = (Unmanaged<CFArray>.fromOpaque(eventPaths).takeUnretainedValue() as NSArray) as? [String] ?? []
+        guard !touchesOnlyRepositoryMetadata(paths) else { return }
         let watcher = Unmanaged<SQLFolderWatcher>.fromOpaque(info).takeUnretainedValue()
         Task { @MainActor in
             watcher.scheduleDebouncedRescan()
+        }
+    }
+
+    nonisolated static func touchesOnlyRepositoryMetadata(_ paths: [String]) -> Bool {
+        guard !paths.isEmpty else { return false }
+        return paths.allSatisfy { path in
+            path.split(separator: "/").contains(".git")
         }
     }
 
@@ -68,6 +77,7 @@ internal final class SQLFolderWatcher: ObservableObject {
             kFSEventStreamCreateFlagFileEvents
             | kFSEventStreamCreateFlagNoDefer
             | kFSEventStreamCreateFlagWatchRoot
+            | kFSEventStreamCreateFlagUseCFTypes
         )
 
         guard let stream = FSEventStreamCreate(

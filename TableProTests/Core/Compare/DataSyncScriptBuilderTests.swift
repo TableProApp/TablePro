@@ -166,7 +166,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, 'O''Hara');"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, 'O''Hara')"])
     }
 
     func testInsertQualifiesWithTheSchemaWhenTheTableHasOne() {
@@ -174,7 +174,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: PlanSyncFixture.makePlan(schema: "app"))
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `app`.`users` (`id`, `name`) VALUES (1, 'a');"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `app`.`users` (`id`, `name`) VALUES (1, 'a')"])
     }
 
     func testUpdateSetsNonKeyColumnsAndKeysTheWhereClause() {
@@ -186,7 +186,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = 'new' WHERE `id` = 1;"])
+        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = 'new' WHERE `id` = 1"])
     }
 
     func testUpdateIsSkippedWhenEveryColumnIsAnUnchangedKey() {
@@ -216,7 +216,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         XCTAssertEqual(
             statements.map(\.sql),
-            ["UPDATE `users` SET `name` = 'new' WHERE `tenant` = 'a' AND `id` = 1;"]
+            ["UPDATE `users` SET `name` = 'new' WHERE `tenant` = 'a' AND `id` = 1"]
         )
     }
 
@@ -225,7 +225,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `id` = 7;"])
+        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `id` = 7"])
         let delete = try XCTUnwrap(statements.first)
         XCTAssertTrue(delete.isRefusedByDefault, "a delete must be held back until it is allowed")
         XCTAssertEqual(delete.hazards.map(\.kind), [.dataLoss])
@@ -236,7 +236,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `id` IS NULL;"])
+        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `id` IS NULL"])
     }
 
     func testNullValueIsWrittenAsANullLiteralOnInsert() {
@@ -244,7 +244,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, NULL);"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, NULL)"])
     }
 
     func testNullValueIsAssignedAsANullLiteralOnUpdate() {
@@ -256,7 +256,7 @@ final class DataSyncScriptBuilderTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry])
 
-        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = NULL WHERE `id` = 1;"])
+        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = NULL WHERE `id` = 1"])
     }
 
     func testDisabledActionsProduceNoStatements() {
@@ -318,9 +318,9 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
         )
 
         XCTAssertEqual(statements.map(\.sql), [
-            #"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'c');"#,
-            #"UPDATE "public"."users" SET "name" = 'a' WHERE "id" = 2;"#,
-            #"DELETE FROM "public"."users" WHERE "id" = 3;"#
+            #"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'c')"#,
+            #"UPDATE "public"."users" SET "name" = 'a' WHERE "id" = 2"#,
+            #"DELETE FROM "public"."users" WHERE "id" = 3"#
         ])
         XCTAssertFalse(statements.contains { $0.sql.contains("staging") })
     }
@@ -351,8 +351,8 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
         let statements = PlanSyncFixture.build(entries, plan: plan, options: options)
 
         XCTAssertEqual(statements.map(\.sql), [
-            "UPDATE `accounts` SET `balance` = 12.50 WHERE `account_id` = 42;",
-            "DELETE FROM `accounts` WHERE `account_id` = 77;"
+            "UPDATE `accounts` SET `balance` = 12.50 WHERE `account_id` = 42",
+            "DELETE FROM `accounts` WHERE `account_id` = 77"
         ])
     }
 
@@ -382,7 +382,7 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
 
         XCTAssertEqual(
             statements.map(\.sql),
-            ["INSERT INTO `users` (`id`, `code`, `qty`) VALUES (1, '007', 7);"]
+            ["INSERT INTO `users` (`id`, `code`, `qty`) VALUES (1, '007', 7)"]
         )
     }
 
@@ -397,7 +397,7 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan)
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `code`) VALUES (1, '007');"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `users` (`id`, `code`) VALUES (1, '007')"])
     }
 
     /// A bare `007` against a VARCHAR key widens the predicate to every row MySQL coerces to 7.
@@ -413,7 +413,7 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan)
 
-        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `code` = '007';"])
+        XCTAssertEqual(statements.map(\.sql), ["DELETE FROM `users` WHERE `code` = '007'"])
     }
 
     /// Two keys that matched under a case-insensitive collation still differ byte for byte, so the
@@ -431,7 +431,7 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
 
         XCTAssertEqual(
             statements.map(\.sql),
-            ["UPDATE `users` SET `name` = 'new', `code` = 'ABC' WHERE `code` = 'abc';"]
+            ["UPDATE `users` SET `name` = 'new', `code` = 'ABC' WHERE `code` = 'abc'"]
         )
     }
 
@@ -446,7 +446,7 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan)
 
-        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = 'new' WHERE `code` = 'abc';"])
+        XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = 'new' WHERE `code` = 'abc'"])
     }
 
     /// An excluded column is left out of the comparison so an `updated_at` does not make every row
@@ -475,8 +475,8 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
         let statements = PlanSyncFixture.build(entries, plan: plan)
 
         XCTAssertEqual(statements.map(\.sql), [
-            "INSERT INTO `users` (`id`, `name`, `updated_at`) VALUES (1, 'a', '2026-01-01 10:00:00');",
-            "UPDATE `users` SET `name` = 'b', `updated_at` = '2026-02-02 10:00:00' WHERE `id` = 2;"
+            "INSERT INTO `users` (`id`, `name`, `updated_at`) VALUES (1, 'a', '2026-01-01 10:00:00')",
+            "UPDATE `users` SET `name` = 'b', `updated_at` = '2026-02-02 10:00:00' WHERE `id` = 2"
         ])
     }
 
@@ -497,8 +497,8 @@ final class DataSyncScriptBuilderPlanTests: XCTestCase {
         let statements = PlanSyncFixture.build(entries, plan: plan)
 
         XCTAssertEqual(statements.map(\.sql), [
-            "INSERT INTO `users` (`id`, `name`) VALUES (1, 'a');",
-            "UPDATE `users` SET `name` = 'b' WHERE `id` = 2;"
+            "INSERT INTO `users` (`id`, `name`) VALUES (1, 'a')",
+            "UPDATE `users` SET `name` = 'b' WHERE `id` = 2"
         ])
     }
 
@@ -558,7 +558,7 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan, databaseType: .postgresql)
 
-        XCTAssertEqual(statements.map(\.sql), [#"UPDATE "public"."users" SET "name" = 'new' WHERE "id" = 1;"#])
+        XCTAssertEqual(statements.map(\.sql), [#"UPDATE "public"."users" SET "name" = 'new' WHERE "id" = 1"#])
     }
 
     func testPostgresFamilyInsertIntoAnIdentityAlwaysColumnOverridesTheSystemValue() {
@@ -571,7 +571,7 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
 
             XCTAssertEqual(
                 statements.map(\.sql),
-                [#"INSERT INTO "public"."users" ("id", "name") OVERRIDING SYSTEM VALUE VALUES (1, 'a');"#],
+                [#"INSERT INTO "public"."users" ("id", "name") OVERRIDING SYSTEM VALUE VALUES (1, 'a')"#],
                 databaseType.rawValue
             )
         }
@@ -585,7 +585,7 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan, databaseType: .postgresql)
 
-        XCTAssertEqual(statements.map(\.sql), [#"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'a');"#])
+        XCTAssertEqual(statements.map(\.sql), [#"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'a')"#])
     }
 
     func testSQLServerBracketsTheInsertsWithAPairedIdentityInsertToggle() throws {
@@ -604,14 +604,14 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
         let statements = PlanSyncFixture.build(entries, plan: plan, databaseType: .mssql)
 
         XCTAssertEqual(statements.map(\.sql), [
-            "SET IDENTITY_INSERT [dbo].[users] ON;",
-            "INSERT INTO [dbo].[users] ([id], [name]) VALUES (1, N'a');",
-            "INSERT INTO [dbo].[users] ([id], [name]) VALUES (2, N'b');",
-            "SET IDENTITY_INSERT [dbo].[users] OFF;",
-            "UPDATE [dbo].[users] SET [name] = N'new' WHERE [id] = 3;"
+            "SET IDENTITY_INSERT [dbo].[users] ON",
+            "INSERT INTO [dbo].[users] ([id], [name]) VALUES (1, N'a')",
+            "INSERT INTO [dbo].[users] ([id], [name]) VALUES (2, N'b')",
+            "SET IDENTITY_INSERT [dbo].[users] OFF",
+            "UPDATE [dbo].[users] SET [name] = N'new' WHERE [id] = 3"
         ])
         let open = try XCTUnwrap(statements.first)
-        let close = try XCTUnwrap(statements.first { $0.sql.hasSuffix("OFF;") })
+        let close = try XCTUnwrap(statements.first { $0.sql.hasSuffix("OFF") })
         guard case .opens(let openScope, let closingSQL)? = open.sessionEffect else {
             XCTFail("the ON statement must open a session scope")
             return
@@ -683,7 +683,7 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan, databaseType: .mssql)
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO [dbo].[users] ([id], [name]) VALUES (1, N'a');"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO [dbo].[users] ([id], [name]) VALUES (1, N'a')"])
     }
 
     /// A generated column is never written, so its identity cannot need an override either.
@@ -704,7 +704,7 @@ final class DataSyncScriptBuilderIdentityTests: XCTestCase {
 
         let statements = PlanSyncFixture.build([entry], plan: plan, databaseType: .postgresql)
 
-        XCTAssertEqual(statements.map(\.sql), [#"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'a');"#])
+        XCTAssertEqual(statements.map(\.sql), [#"INSERT INTO "public"."users" ("id", "name") VALUES (1, 'a')"#])
     }
 
     private func openScope(of statements: [SyncStatement]) -> String? {
@@ -741,14 +741,14 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
 
         XCTAssertEqual(
             statements.map(\.sql),
-            [#"INSERT INTO "public"."files" ("id", "blob") VALUES (1, '\x8950'::bytea);"#]
+            [#"INSERT INTO "public"."files" ("id", "blob") VALUES (1, '\x8950'::bytea)"#]
         )
     }
 
     func testBitStringEnginesKeepTheirOwnSpelling() {
         let statements = PlanSyncFixture.build([binaryInsert()], plan: binaryPlan())
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `files` (`id`, `blob`) VALUES (1, X'8950');"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO `files` (`id`, `blob`) VALUES (1, X'8950')"])
     }
 
     func testSQLServerWritesBinaryAsAZeroXLiteral() {
@@ -758,7 +758,7 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
             databaseType: .mssql
         )
 
-        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO [dbo].[files] ([id], [blob]) VALUES (1, 0x8950);"])
+        XCTAssertEqual(statements.map(\.sql), ["INSERT INTO [dbo].[files] ([id], [blob]) VALUES (1, 0x8950)"])
     }
 
     /// The three buckets exist so a caller can interleave several tables in dependency order. A
@@ -773,9 +773,9 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
         }
         builder.finish(&statements)
 
-        XCTAssertEqual(statements.inserts.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, 'c');"])
-        XCTAssertEqual(statements.updates.map(\.sql), ["UPDATE `users` SET `name` = 'a' WHERE `id` = 2;"])
-        XCTAssertEqual(statements.deletes.map(\.sql), ["DELETE FROM `users` WHERE `id` = 3;"])
+        XCTAssertEqual(statements.inserts.map(\.sql), ["INSERT INTO `users` (`id`, `name`) VALUES (1, 'c')"])
+        XCTAssertEqual(statements.updates.map(\.sql), ["UPDATE `users` SET `name` = 'a' WHERE `id` = 2"])
+        XCTAssertEqual(statements.deletes.map(\.sql), ["DELETE FROM `users` WHERE `id` = 3"])
         XCTAssertFalse(statements.isEmpty)
         XCTAssertEqual(PlanSyncFixture.verbs(statements.flattened), ["INSERT", "UPDATE", "DELETE"])
     }
@@ -790,12 +790,12 @@ final class DataSyncScriptBuilderColumnTests: XCTestCase {
         builder.finish(&statements)
 
         XCTAssertEqual(statements.inserts.map(\.sql), [
-            "SET IDENTITY_INSERT [dbo].[files] ON;",
-            "INSERT INTO [dbo].[files] ([id], [name]) VALUES (1, N'c');",
-            "SET IDENTITY_INSERT [dbo].[files] OFF;"
+            "SET IDENTITY_INSERT [dbo].[files] ON",
+            "INSERT INTO [dbo].[files] ([id], [name]) VALUES (1, N'c')",
+            "SET IDENTITY_INSERT [dbo].[files] OFF"
         ])
-        XCTAssertEqual(statements.updates.map(\.sql), ["UPDATE [dbo].[files] SET [name] = N'a' WHERE [id] = 2;"])
-        XCTAssertEqual(statements.deletes.map(\.sql), ["DELETE FROM [dbo].[files] WHERE [id] = 3;"])
+        XCTAssertEqual(statements.updates.map(\.sql), ["UPDATE [dbo].[files] SET [name] = N'a' WHERE [id] = 2"])
+        XCTAssertEqual(statements.deletes.map(\.sql), ["DELETE FROM [dbo].[files] WHERE [id] = 3"])
     }
 
     func testFinishAddsNothingWhenTheInsertBucketIsEmpty() {

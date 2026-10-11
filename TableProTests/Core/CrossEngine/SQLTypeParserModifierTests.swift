@@ -88,8 +88,8 @@ final class SQLTypeParserModifierTests: XCTestCase {
     }
 
     /// PostgreSQL's `numeric` with no modifier has no precision limit. Every other family's bare
-    /// decimal keeps the 38 digits it has always been read with, because Oracle reports an `INTEGER`
-    /// that way too.
+    /// decimal keeps the 38 digits it has always been read with, which is what a bare Oracle `NUMBER`
+    /// holds.
     func testOnlyPostgreSQLReadsABareDecimalAsUnconstrained() {
         XCTAssertEqual(kind("numeric", .postgres), .decimal(precision: nil, scale: nil))
         XCTAssertEqual(kind("numeric(10,2)", .postgres), .decimal(precision: 10, scale: 2))

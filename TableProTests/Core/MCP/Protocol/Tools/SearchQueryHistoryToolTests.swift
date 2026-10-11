@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("SearchQueryHistoryTool")
 struct SearchQueryHistoryToolTests {
     private let tool = SearchQueryHistoryTool()
     private let granted = UUID()

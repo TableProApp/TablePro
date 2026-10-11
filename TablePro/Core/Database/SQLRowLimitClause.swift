@@ -44,6 +44,48 @@ internal enum SQLRowLimitClause {
         }
     }
 
+    internal static func select(
+        columns: String,
+        from source: String,
+        where condition: String?,
+        limit: Int?,
+        driver: any PluginDatabaseDriver,
+        databaseType: DatabaseType
+    ) -> String {
+        let unlimited = base(columns: columns, from: source, where: condition, top: nil)
+        guard let limit else { return unlimited }
+        if let injected = driver.injectRowLimit(unlimited, limit: limit) {
+            return injected
+        }
+        return leadingRows(
+            columns: columns,
+            from: source,
+            where: condition,
+            limit: limit,
+            dialect: PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect
+        )
+    }
+
+    private static func leadingRows(
+        columns: String,
+        from source: String,
+        where condition: String?,
+        limit: Int,
+        dialect: SQLDialectDescriptor?
+    ) -> String {
+        switch dialect?.autoLimitStyle ?? .limit {
+        case .top:
+            return base(columns: columns, from: source, where: condition, top: limit)
+        case .fetchFirst:
+            return base(columns: columns, from: source, where: condition, top: nil)
+                + " FETCH FIRST \(limit) ROWS ONLY"
+        case .limit:
+            return base(columns: columns, from: source, where: condition, top: nil) + " LIMIT \(limit)"
+        default:
+            return select(columns: columns, from: source, where: condition, limit: limit, dialect: dialect)
+        }
+    }
+
     private static func base(columns: String, from source: String, where condition: String?, top: Int?) -> String {
         var sql = "SELECT "
         if let top {

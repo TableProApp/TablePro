@@ -23,10 +23,7 @@ internal struct FavoriteRowView: View {
             Spacer()
 
             if favorite.connectionId == nil {
-                Image(systemName: "globe")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                GlobalScopeBadge()
             }
 
             if let keyword = favorite.keyword, !keyword.isEmpty {
@@ -46,7 +43,7 @@ internal struct FavoriteRowView: View {
     private var accessibilityDescription: String {
         var desc = favorite.name
         if favorite.connectionId == nil {
-            desc += ", " + String(localized: "global")
+            desc += ", " + GlobalScopeBadge.accessibilityDescription
         }
         if let keyword = favorite.keyword, !keyword.isEmpty {
             desc += ", " + String(format: String(localized: "keyword: %@"), keyword)

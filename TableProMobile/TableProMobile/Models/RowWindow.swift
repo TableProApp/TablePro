@@ -39,10 +39,6 @@ struct RowWindow: Sendable {
         totalAppended = 0
     }
 
-    var lastAbsoluteIndex: Int {
-        firstAbsoluteIndex + rows.count - 1
-    }
-
     var isEmpty: Bool {
         rows.isEmpty
     }

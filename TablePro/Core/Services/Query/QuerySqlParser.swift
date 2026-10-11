@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum QuerySqlParser {
     private static let mongoCollectionRegex = try? NSRegularExpression(
@@ -28,9 +29,10 @@ enum QuerySqlParser {
     static func extractTableName(
         from sql: String,
         dialect: SqlDialect = .generic,
+        readings: SQLLexicalReadings = .single(.ansi),
         browseSchema: String? = nil
     ) -> String? {
-        if let source = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) {
+        if let source = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect, readings: readings) {
             guard let schema = source.schema else { return source.name }
             guard let browseSchema, matchesSessionSchema(schema, browseSchema) else { return nil }
             return source.name
@@ -71,10 +73,10 @@ enum QuerySqlParser {
     /// Appending it to the end instead produced `... LIMIT 100 ORDER BY "total" ASC`, a syntax
     /// error on every engine, and stripping the old ORDER BY took the user's LIMIT with it, which
     /// silently replaced their limit with the app's row cap.
-    static func applyingOrderBy(_ orderClause: String, to sql: String, lexicalDialect: SqlDialect) -> String {
+    static func applyingOrderBy(_ orderClause: String, to sql: String, grammar: SQLLexicalGrammar) -> String {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         let buffer = trimmed as NSString
-        let splitOffset = SQLLimitDetector.firstRowLimitClauseOffset(trimmed, lexicalDialect: lexicalDialect)
+        let splitOffset = SQLLimitDetector.firstRowLimitClauseOffset(trimmed, grammar: grammar)
         let head = splitOffset.map { buffer.substring(to: $0) } ?? trimmed
         let tail = splitOffset.map { buffer.substring(from: $0) } ?? ""
 

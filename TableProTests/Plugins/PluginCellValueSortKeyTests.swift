@@ -7,7 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("PluginCellValue - sortKey")
 struct PluginCellValueSortKeyTests {
     @Test(".null sortKey is empty string")
     func nullSortKey() {

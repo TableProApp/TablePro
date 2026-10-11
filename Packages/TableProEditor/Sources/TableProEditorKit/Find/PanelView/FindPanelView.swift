@@ -84,22 +84,17 @@ struct FindPanelView: View {
     }
 }
 
-/// A preference key used to track the width of the find mode picker
-private struct FindModePickerWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 /// A mock target for previews that implements the FindPanelTarget protocol
 class MockFindPanelTarget: FindPanelTarget {
     var textView: TextView!
     var findPanelTargetView = NSView()
     var cursorPositions: [CursorPosition] = []
 
+    var isFindReplaceEditable: Bool { true }
+
     func setCursorPositions(_ positions: [CursorPosition], scrollToVisible: Bool) {}
     func updateCursorPosition() {}
+    func replaceFindMatches(_ replacements: [TextReplacement]) -> Bool { false }
     func findPanelWillShow(panelHeight: CGFloat) {}
     func findPanelWillHide(panelHeight: CGFloat) {}
     func findPanelModeDidChange(to mode: FindPanelMode) {}
