@@ -6,6 +6,9 @@ use sqlparser::parser::Parser;
 use crate::classify::dialect_for;
 use crate::mask::column_is_sensitive;
 
+#[path = "projection_sources.rs"]
+mod projection_sources;
+
 #[cfg(test)]
 pub fn sensitive_projection(sql: &str, driver_id: &str, patterns: &[String], output_columns: usize) -> Vec<bool> {
     let dialect = dialect_for(driver_id);
@@ -46,11 +49,14 @@ fn select_projection_sensitivity(query: &Query, patterns: &[String]) -> Option<V
         };
         return select_projection_sensitivity(subquery, patterns);
     }
+    let records = projection_sources::source_records(select)?;
     let mut sensitive = Vec::with_capacity(select.projection.len());
     for item in &select.projection {
         match item {
             SelectItem::UnnamedExpr(expr) | SelectItem::ExprWithAlias { expr, .. } => {
-                sensitive.push(expr_references_sensitive(expr, patterns));
+                sensitive.push(
+                    expr_references_sensitive(expr, patterns) || projection_sources::references_record(expr, &records),
+                );
             }
             SelectItem::Wildcard(_) | SelectItem::QualifiedWildcard(_, _) => return None,
         }
@@ -104,7 +110,7 @@ fn contains_function_call(sql: &str, function_name: &str) -> bool {
 }
 
 fn text_identifiers(text: &str) -> impl Iterator<Item = &str> {
-    text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+    text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|s| !s.is_empty())
 }
 
@@ -312,6 +318,43 @@ mod tests {
             assert_eq!(
                 sensitive_projection(sql, "postgres", &sensitive_patterns(), 1),
                 vec![true],
+                "{sql}"
+            );
+        }
+    }
+    #[test]
+    fn hidden_source_names_are_redacted() {
+        for sql in [
+            "SELECT (SELECT p FROM cards AS c(p)) AS payload",
+            "SELECT d.p FROM (SELECT pan AS p FROM cards) d",
+            "SELECT d.payload FROM (SELECT json_agg(c) AS payload FROM cards c) d",
+            "SELECT c.p FROM cards AS c(p)",
+            "SELECT c FROM cards c",
+            "SELECT array_agg(c) FROM cards c",
+            "SELECT CAST(c AS text) FROM cards c",
+            "SELECT CAST(array_agg(c.*) AS text) FROM cards c",
+            "SELECT array_agg(\"κ\") FROM cards AS \"κ\"",
+            "SELECT p FROM cards c JOIN (SELECT pan AS p FROM cards) d ON true",
+        ] {
+            assert_eq!(
+                sensitive_projection(sql, "postgres", &sensitive_patterns(), 1),
+                vec![true],
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_qualified_columns_remain_visible() {
+        for sql in [
+            "SELECT c.amount AS a FROM cards c",
+            "SELECT sum(c.amount) AS a FROM cards c",
+            "SELECT amount AS a FROM cards",
+            "SELECT count(*) AS a FROM cards c",
+        ] {
+            assert_eq!(
+                sensitive_projection(sql, "postgres", &sensitive_patterns(), 1),
+                vec![false],
                 "{sql}"
             );
         }

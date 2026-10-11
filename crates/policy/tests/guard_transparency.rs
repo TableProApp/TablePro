@@ -232,3 +232,42 @@ async fn an_agent_guard_masks_json_aggregates_that_serialize_a_record() {
 
     assert_eq!(result.result_sets[0].rows[0][0], Value::Text("***REDACTED***".into()));
 }
+
+#[tokio::test]
+async fn an_agent_guard_masks_a_named_derived_projection() {
+    use tablepro_policy::{AutoApproveSink, Principal};
+    use tokio_util::sync::CancellationToken;
+
+    let inner: Arc<dyn Connection> = Arc::new(StubConnection {
+        server_cancellation: false,
+    });
+    let guard = PolicyGuard::new(
+        inner,
+        GuardContext {
+            connection_id: Uuid::new_v4(),
+            connection_name: "json aggregate mask test".into(),
+            driver_id: "postgres".into(),
+            environment: Environment::Prod,
+            read_only: false,
+            principal: Principal::Agent {
+                token: "test-token".into(),
+                client: None,
+                model: None,
+            },
+            policy: Arc::new(PolicyConfig::default()),
+            approval: Arc::new(AutoApproveSink),
+            audit: Arc::new(AcceptingAudit),
+            audit_state: Arc::new(AuditState::new()),
+        },
+    );
+    let result = guard
+        .query_result_sets_controlled(
+            "SELECT d.payload FROM (SELECT json_agg(c) AS payload FROM cards c) d",
+            &[],
+            &OperationControl::new(CancellationToken::new(), None),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.result_sets[0].rows[0][0], Value::Text("***REDACTED***".into()));
+}

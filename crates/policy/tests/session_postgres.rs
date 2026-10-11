@@ -276,3 +276,42 @@ async fn a_read_only_repeatable_read_session_keeps_one_snapshot_across_queries()
     assert_eq!(reads.len(), 3);
     assert_eq!(reads[0].terminal_status, AuditTerminalStatus::Succeeded);
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections() {
+    let (_container, opts) = start_pg().await;
+    let raw = connect(opts).await;
+    raw.execute("CREATE TABLE cards (pan TEXT NOT NULL, amount BIGINT NOT NULL)")
+        .await
+        .unwrap();
+    raw.execute("INSERT INTO cards VALUES ('4111111111111111', 7)")
+        .await
+        .unwrap();
+    let audit = Arc::new(CapturingAudit::new());
+    let mut context = guard_context(audit, Arc::new(AuditState::new()));
+    context.environment = Environment::Prod;
+    context.principal = Principal::Agent {
+        token: "mask-test".into(),
+        client: None,
+        model: None,
+    };
+    let guard = PolicyGuard::new(Arc::from(raw), context);
+    for sql in [
+        "SELECT d.p FROM (SELECT pan AS p FROM cards) d",
+        "SELECT d.payload FROM (SELECT json_agg(c) AS payload FROM cards c) d",
+        "SELECT c.p FROM cards AS c(p, amount)",
+        "SELECT CAST(c AS text) AS payload FROM cards c",
+        "SELECT array_agg(c)::text AS payload FROM cards c",
+        "SELECT (SELECT p FROM cards AS c(p, amount)) AS payload",
+        "SELECT CAST(array_agg(c.*) AS text) AS payload FROM cards c",
+    ] {
+        let result = guard.query_params_controlled(sql, &[], &no_timeout()).await.unwrap();
+        assert_eq!(result.rows, vec![vec![Value::Text("***REDACTED***".into())]], "{sql}");
+    }
+    let visible = guard
+        .query_params_controlled("SELECT c.amount FROM cards c", &[], &no_timeout())
+        .await
+        .unwrap();
+    assert_eq!(visible.rows, vec![vec![Value::Int(7)]]);
+}
