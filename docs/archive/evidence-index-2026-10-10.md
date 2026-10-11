@@ -19,8 +19,8 @@ retest tables; this file only classifies directories.
 ## Live retest tables (authoritative)
 
 - [Sprint retest indicators](../bookie-0.2-sprint.md#retest-indicators-do-not-drop)
-- [B3 retest indicators](../type-contract-strategy.md#retest-indicators)
-- [B4 retest indicators](../b4-task-board.md#retest-indicators-from-archived-checkpoints)
+- [B3 retest indicators](type-contract-strategy-pre-project-migration-2026-10-12.md#retest-indicators)
+- [B4 retest indicators](b4-task-board-pre-project-migration-2026-10-12.md#retest-indicators-from-archived-checkpoints)
 
 ## Passed with retest signal
 

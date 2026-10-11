@@ -156,7 +156,7 @@ The completed ClickHouse nested consumer follow-up added
 server test and strict 165-test, 11-suite value runner passed. Exact JSON/CSV
 matches the native `toJSONString` oracle; SQL literal, binding and grid edit
 refusals preserve the stored row. Other nested combinations remain open; see
-the [type matrix](../type-contract-strategy.md#current-evidence-and-next-targets)
+the [type matrix](type-contract-strategy-pre-project-migration-2026-10-12.md#current-evidence-and-next-targets)
 and [value evidence](value-contract-history.md#clickhouse-nested-map-of-tuple-arrays-2026-10-01).
 
 Two further nested cases add tuple- and array-nested maps of nullable decimals,

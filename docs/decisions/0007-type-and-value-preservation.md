@@ -10,7 +10,7 @@ A successful query or matching display text can hide a changed native type, roun
 
 ## Decision
 
-This ADR is the shared type/value standard for drivers, core, grid editing, filters, bound parameters, SQL literals, import/export and MCP. Architecture rules live here; [the B3 board](../type-contract-strategy.md) tracks open work and [the value index](../value-contracts.md) points to case evidence.
+This ADR is the shared type/value standard for drivers, core, grid editing, filters, bound parameters, SQL literals, import/export and MCP. Architecture rules live here; open B3 work is on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B3), [the B3 board pointer](../type-contract-strategy.md) keeps accepted refusals and the case record, and [the value index](../value-contracts.md) points to case evidence.
 
 ### Four explicit outcomes
 

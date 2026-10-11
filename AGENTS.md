@@ -15,7 +15,7 @@ These rules apply to every coding agent and every contributor. `CLAUDE.md` point
 
 1. [docs/README.md](docs/README.md): the documentation map and where each fact belongs.
 2. [The active sprint](docs/bookie-0.2-sprint.md): milestone order, 0.2.0 readiness and acceptance. The [0.2.0 scope](docs/0.2.0-scope.md) lists the blockers; everything else is in the [backlog](docs/backlog.md), and [known limitations](docs/known-limitations.md) says what the application cannot do. 0.2.0 ships as a development release for the Arch and Hyprland target, with hotfixes to follow.
-3. [The ledger](docs/known-issues.md): every open issue with its status, evidence and owner. Pick work from your lane's row in [Owners and handoff](docs/known-issues.md#owners-and-handoff).
+3. [Bookie Project #3](https://github.com/users/cozyGarage/projects/3): open work, status and lane. The [ledger index](docs/known-issues.md) maps ledger IDs to issues. Filter the project by **Lane** (B3, B4, UX, Maintainer).
 4. The ADR that governs your change ([index](docs/decisions/README.md)). Every type or value change follows [ADR 0007](docs/decisions/0007-type-and-value-preservation.md).
 
 Accepted ADRs constrain architecture. The sprint owns sequencing and acceptance; ROADMAP and PLAN only point to it. Dated reviews and archives prove their recorded source only; they do not override current decisions.
@@ -26,18 +26,18 @@ Accepted ADRs constrain architecture. The sprint owns sequencing and acceptance;
 
 ## Lanes and ownership
 
-Lanes keep parallel agents from editing the same files. Pick open work from your lane in the ledger [Owners and handoff](docs/known-issues.md#owners-and-handoff) table. Each open ledger row has exactly one owner; edit only that lane's files unless a handoff is recorded first.
+Lanes keep parallel agents from editing the same files. Pick open work from [Project #3](https://github.com/users/cozyGarage/projects/3) filtered by your **Lane**. Each open issue has one lane; edit only that lane's files unless a handoff comment on the issue records otherwise.
 
 | Lane | Owns |
 | --- | --- |
-| B3 | Types, values, drivers and result paths: `crates/core` value and result types, decoders under `crates/drivers/`, grid value display, the [B3 board](docs/type-contract-strategy.md) |
-| B4 | Transport, guard, audit, SSH, rollback and acceptance: `crates/policy`, `crates/transport`, `crates/ssh`, audit storage, the [B4 board](docs/b4-task-board.md) |
-| UX | App layer (`apps/linux/`), packaging, CI and the lab, the ledger, and shared documentation. UX also runs the Forgejo gate for every pull request that is green on GitHub and merges it once both agree |
+| B3 | Types, values, drivers and result paths: `crates/core` value and result types, decoders under `crates/drivers/`, grid value display, the [B3 board pointer](docs/type-contract-strategy.md) |
+| B4 | Transport, guard, audit, SSH, rollback and acceptance: `crates/policy`, `crates/transport`, `crates/ssh`, audit storage, the [B4 board pointer](docs/b4-task-board.md) |
+| UX | App layer (`apps/linux/`), packaging, CI and the lab, the ledger index, and shared documentation. UX also runs the Forgejo gate for every pull request that is green on GitHub and merges it once both agree |
 | Cursor | Documentation and tests only. UX reviews its test pull requests; the maintainer merges its documentation pull requests, which need no Forgejo run |
 | Maintainer | Decisions and anything needing a person or a real desktop |
 
-- To work in another lane's files, first record the handoff in the ledger (the owner table and, for a shared task, a row in the handoff table) in the same commit as the first change.
-- When a lane finishes a row, cross it out with the commit, PR or test that closed it, and remove it from the owner table.
+- To work in another lane's files, first record the handoff on the GitHub issue (and update the project **Lane** / `lane:*` label plus the [ledger index](docs/known-issues.md) Lane column) in the same commit as the first change.
+- When a lane finishes a row, close or move the issue on the project and remove its line from the ledger index.
 - Each agent works in its own git worktree (a sibling directory named for the lane, for example `bookie-b3`), never in another agent's checkout. Branch from the latest `linux` on [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). Name branches `<lane>/<topic>` or `<type>/<topic>`.
 
 ## Workflow

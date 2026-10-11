@@ -6,7 +6,7 @@ Read this page before loading long plans or evidence. Rules for agents and contr
 
 1. [AGENTS.md](../AGENTS.md).
 2. The [active sprint](bookie-0.2-sprint.md), including 0.2.0 readiness.
-3. Your lane's rows in the [ledger](known-issues.md#owners-and-handoff).
+3. Your lane's issues on [Bookie Project #3](https://github.com/users/cozyGarage/projects/3) (filter by **Lane**). The [ledger index](known-issues.md) maps ledger IDs to issues.
 4. The governing [ADR](decisions/README.md); for every type or value change, [ADR 0007](decisions/0007-type-and-value-preservation.md).
 5. The affected checks in the [validation playbook](validation-playbook.md).
 
@@ -20,7 +20,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Anyone comparing clients | [0.2 feature comparison](0.2-feature-comparison.md) |
 | Contributors writing code | [AGENTS.md](../AGENTS.md), [architecture](../ARCHITECTURE.md) (including [where new code goes](../ARCHITECTURE.md#where-new-code-goes) and the boundary checklist), [code conventions](code-conventions.md), [adding drivers](adding-drivers.md), [state management](state-management.md), [connections](connections.md), [disconnection contracts](disconnection-contracts.md), [storage](storage.md), [error handling](error-handling.md) |
 | Contributors testing | [Validation playbook](validation-playbook.md) (including [CI tiers](validation-playbook.md#ci-tiers): GitHub cheap vs Forgejo merge), [testing](testing.md), [ignored-test inventory](ignored-tests.md) (generated), [manual verification](manual-verification-0.2-features.md), [capability evidence](capability-evidence.md) |
-| Planning and status | [Sprint](bookie-0.2-sprint.md), [0.2.0 scope](0.2.0-scope.md), [backlog](backlog.md), [known limitations](known-limitations.md), [ledger](known-issues.md), [B3 board](type-contract-strategy.md), [B4 board](b4-task-board.md), [value evidence index](value-contracts.md), [ROADMAP](../ROADMAP.md), [changelog](../CHANGELOG.md) |
+| Planning and status | [Sprint](bookie-0.2-sprint.md), [0.2.0 scope](0.2.0-scope.md), [backlog](backlog.md), [known limitations](known-limitations.md), [Project #3](https://github.com/users/cozyGarage/projects/3), [ledger index](known-issues.md), [B3 board pointer](type-contract-strategy.md), [B4 board pointer](b4-task-board.md), [value evidence index](value-contracts.md), [ROADMAP](../ROADMAP.md), [changelog](../CHANGELOG.md) |
 | Product context and specs | [PRODUCT.md](../PRODUCT.md), [personas](personas.md), [PRINCIPLES.md](../PRINCIPLES.md), [SECURITY.md](../SECURITY.md), [capability specs](../specs/README.md) (drafts until reviewed; AGENTS and ADRs rank above them) |
 | Decisions | [ADRs](decisions/README.md), [decision checklist](decisions/checklist.md), [proposals](proposals/) |
 | Proof and history | [evidence](evidence/), [archive](archive/), [upstream sync](upstream-sync.md) |
@@ -35,10 +35,10 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | An architecture or behaviour decision | An [ADR](decisions/README.md) | Proposed, then Accepted by the maintainer; change a decision explicitly in a new or amended ADR; keep the [checklist](decisions/checklist.md) row in sync |
 | Which forks already have an answer | The [decision checklist](decisions/checklist.md) | Link, N/A, or open item; do not invent a decision to fill a cell |
 | A design not yet decided | [proposals/](proposals/) | Becomes an ADR or is deleted |
-| An open issue, its status, evidence and owner | The [ledger](known-issues.md) | One row per issue; cross out only with the closing commit, PR or test; `scripts/check-known-issues.py` checks the format and owners |
+| An open issue, its status and lane | [Project #3](https://github.com/users/cozyGarage/projects/3); ID map in the [ledger index](known-issues.md) | Status and Lane on the project; keep the index ID→issue→Lane table in sync; `scripts/check-known-issues.py` checks the index format |
 | Milestones, order, acceptance, 0.2.0 readiness | The [sprint](bookie-0.2-sprint.md) | Compact current instructions; move dated progress to the archive |
-| B3 remaining work | The [B3 board](type-contract-strategy.md) | One bounded case, outcome, evidence pointer and next action |
-| B4 implementation and acceptance | The [B4 board](b4-task-board.md) | Update the owning task and integrated status |
+| B3 remaining work | Project #3 Lane B3; [B3 board pointer](type-contract-strategy.md) | Issues on the project; pointer keeps accepted refusals and the case record |
+| B4 implementation and acceptance | Project #3 Lane B4; [B4 board pointer](b4-task-board.md) | Issues on the project; acceptance checklists stay in the archived board |
 | Type and consumer proof lookup | The [value evidence index](value-contracts.md) | Link to the case; detailed logs belong in evidence or history |
 | Distros, toolchain, packages, Flathub, accessibility | [Platforms](platforms.md) | Keep the build/CI floor and GNOME 50 package line distinct ([ADR 0002](decisions/0002-rust-gtk4-libadwaita.md)) |
 | Commands, layers, gates, handoff format | The [validation playbook](validation-playbook.md) | Reuse existing layers; say whether a result was local, Forgejo or installed |
@@ -54,12 +54,12 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 - A new reference document goes in `docs/` with a lowercase, hyphenated name and a line in the audience table above. Keep it under about 3,000 words; split by concern before it grows past that.
 - Number ADRs sequentially (`decisions/NNNN-title.md`) and add them to the ADR index with their status.
 - Evidence directories are named `<topic>-<YYYY-MM-DD>` and hold only what a reviewer needs to check a claim. Large or raw logs stay in the PR or CI run.
-- When a document stops being current, move it to `archive/` with its date in the name, update links (`scripts/check-doc-links.py` finds the broken ones) and leave its open items in the ledger.
+- When a document stops being current, move it to `archive/` with its date in the name, update links (`scripts/check-doc-links.py` finds the broken ones) and leave its open items on Project #3.
 - Do not move or rename a current document casually: scripts, CI and other lanes link to these paths.
 
 ## Archive starting points
 
-[archive/](archive/) holds dated reviews, audits, inventories and long histories. They are source-pinned evidence, not instructions; open items from them live in the ledger. The [changelog engineering history index](../CHANGELOG.md#historical-engineering-records) locates dated records.
+[archive/](archive/) holds dated reviews, audits, inventories and long histories. They are source-pinned evidence, not instructions; open items from them live on [Project #3](https://github.com/users/cozyGarage/projects/3). The [changelog engineering history index](../CHANGELOG.md#historical-engineering-records) locates dated records.
 
 - [Sprint history](archive/bookie-0.2-history.md) (includes 2026-10-08/09 continuation snapshots)
 - [B4 history](archive/b4-history.md) (includes superseded tip checkpoints, [completed local slices](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation) and [remaining-task prose](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4))
@@ -74,4 +74,4 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 
 ## Keep context bounded
 
-Record a rule once in an ADR and a task once on its board or in the ledger. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.
+Record a rule once in an ADR and a task once on Project #3. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.

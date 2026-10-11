@@ -500,7 +500,7 @@ candidate, followed by the required Debian phase and the existing B7 process.
 ## September 28 continuation (historical evidence)
 
 Reviewed at `85fecbe0b`. See the [commit archive](sprint-review-2026-09-28.md)
-and [active B4 acceptance work](../b4-task-board.md#next-b4-acceptance-run).
+and [active B4 acceptance work](b4-task-board-pre-project-migration-2026-10-12.md#next-b4-acceptance-run).
 A/B, C1–C5, D, G1/G2/G4 and H have recorded implementation/regression evidence;
 B4 remains open for C6, E, F, G3/G5 and active I tasks. A5's monitor follow-up is F9.
 Existing results apply to their recorded revisions; this review reran no tests.
