@@ -59,7 +59,6 @@ What the application does not do, or does differently from what you might expect
 ## Known bugs
 
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): accessibility timeouts under capacity pressure, and a separate startup restore abort when GTK logs an `AdwBin` width near minus two billion under `G_DEBUG=fatal-criticals`. It is not yet known whether the layout abort can happen outside that test setup, where GTK only warns.
-- **MySQL TLS Disabled may still apply a saved client cert/key** ([#581](https://github.com/cozyGarage/BookiE/issues/581)). `mysql_connect_options` sets `MySqlSslMode::Disabled` then still calls `ssl_client_cert` / `ssl_client_key` when paths are present (macOS fixed the analogue in 0.80).
 
 ## Test and CI limits
 

@@ -1,6 +1,11 @@
 # Backlog after 0.2.0
 
-Rows here are real work that does not block 0.2.0. The ledger keeps the evidence; this page keeps the order. Draft of 2026-10-11, for the maintainer.
+Rows here are selected work that does not block 0.2.0. The ledger keeps the evidence; this page keeps the order. Draft of 2026-10-11, for the maintainer.
+
+The [feature comparison](0.2-feature-comparison.md) holds the wider parity
+candidate inventory. An item becomes backlog work only after selection; add an
+owner, acceptance layer and GitHub issue when promoting it. Do not treat the
+candidate inventory as a release commitment.
 
 ## 0.2.x features
 
@@ -76,4 +81,3 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant) |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
-| [#581](https://github.com/cozyGarage/BookiE/issues/581) | MySQL TLS Disabled still applies client cert/key |
