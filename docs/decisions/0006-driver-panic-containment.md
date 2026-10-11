@@ -3,10 +3,6 @@
 - **Status**: Accepted
 - **Date**: 2026-09-18
 
-## October 3 implementation/privacy note
-
-The unwind containment decision remains accepted. The source currently logs the caught payload, and the default panic hook may also expose it. “Logs only” below describes the original routing; it does not make arbitrary payload text safe or override the no-secret/SQL logging rule. [The consistency review](../archive/architecture-consistency-review-2026-10-03.md#remaining-source-risks) defines the redaction and headless retirement follow-ups. Keep unwind enabled while addressing them.
-
 ## Context
 
 Drivers decode whatever the server sends. A hostile, compromised, or merely buggy server can drive a decoder into a state its author did not anticipate, and some of our dependencies answer that with a panic rather than an error. The SQL Server driver is the concrete case: `tiberius` panics inside its codec on input it cannot parse, and we consume it as a pinned git dependency, so we cannot fix it in our own code.
@@ -24,7 +20,7 @@ The workspace lints deny `unwrap`, `expect` and `panic!` in our own code. They s
 
 The guard then reports the fault through an optional `ConnectionFaultSink` installed by whoever owns the connection. `app::services::database_service` implements that sink and wakes the connection monitor, which replaces the connection rather than waiting for the next ping.
 
-Returned errors, audit fields and UI messages must omit the raw panic payload. The current logger sends it to `tracing`, and the default hook can also print it; this violates the shared logging privacy rule and remains an implementation gap tracked by [the release audit](../archive/release-audit-2026-10-03.md#small-release-tasks). Keep operation identity and containment while removing arbitrary payload text.
+Returned errors, audit fields and UI messages must omit the raw panic payload.
 
 ## Rationale
 
@@ -38,9 +34,11 @@ Replacing the connection is a separate necessity from reporting the error. A pan
 
 ## Consequences
 
-The application survives a panicking driver with an honest error, a logged cause, a correct audit record, and a fresh connection, instead of a permanent silent hang.
+The application survives a panicking driver with an honest error, a correct audit record, and a fresh connection, instead of a permanent silent hang.
 
-Containment is not a repair. A caught panic means a dependency reached a state its author did not expect, and we resume on a new connection without knowing why. The log line is the only evidence, so it must stay useful.
+Containment is not a repair. A caught panic means a dependency reached a state its author did not expect, and we resume on a new connection without knowing why.
+
+Known implementation gap: the source still logs the caught payload, and the default panic hook may also print it. That violates the no-secret and no-SQL logging rule. Redaction and headless follow-ups are in [the consistency review](../archive/architecture-consistency-review-2026-10-03.md#remaining-source-risks) and [the release audit](../archive/release-audit-2026-10-03.md#small-release-tasks). Keep unwind enabled while addressing them. The log may keep operation identity; it must not keep arbitrary payload text.
 
 `catch_unwind` requires the unwinding panic strategy. Setting `panic = "abort"` in a release profile would silently disable this entire boundary, so that setting must not be introduced without replacing this mechanism.
 

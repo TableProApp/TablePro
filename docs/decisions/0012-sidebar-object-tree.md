@@ -18,13 +18,7 @@ Replace the list with a `GtkListView` over a `GtkTreeListModel`.
 5. Opening a table, view or catalog object keeps the current messages (`SelectTable`, `EditStructureTab`, and so on). Selection sync maps a tab to its node by schema, kind and name.
 6. Row context menus keep their actions. Group rows offer New Table and Table from CSV, which today sit on the schema header.
 
-## Slices
-
-1. The tree model (nodes, collapse state, search visibility), pure and tested. Done in `services/sidebar_tree.rs`.
-2. Group and schema rows in the existing `GtkListBox`, one row per tree node, with the filter driven by the model. Done on 2026-10-08. The groups are real rows, which was the point of the `GtkListView`, so the list view is not needed until a group holds lazily loaded children.
-3. Selection sync, the context menus and the open messages on the new rows. Done.
-4. Lazy catalog groups through the guarded connection. Open, tracked with UI-23.
-5. Saved collapse state per connection. Done (`collapsed_groups`).
+Implementation tracking is in the [ledger](../known-issues.md) (UI-11, UI-23).
 
 ## Consequences
 

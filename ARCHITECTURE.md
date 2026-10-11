@@ -375,7 +375,7 @@ Also useful for prose density: [helix-editor/helix `docs/architecture.md`](https
 
 | Topic | Document |
 |---|---|
-| Governed SQL / PolicyGuard | [specs/governed-sql](specs/governed-sql/spec.md) |
+| Governed SQL / PolicyGuard | [ADR 0016](docs/decisions/0016-governed-consumer-seam.md), [specs/governed-sql](specs/governed-sql/spec.md) |
 | SSH host-key trust | [specs/ssh-transport](specs/ssh-transport/spec.md) |
 | Type and value preservation | [ADR 0007](docs/decisions/0007-type-and-value-preservation.md), [B3 board](docs/type-contract-strategy.md) |
 | Connection and session ownership | [ADR 0008](docs/decisions/0008-connection-and-session-ownership.md), [B4 board](docs/b4-task-board.md) |

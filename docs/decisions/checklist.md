@@ -30,7 +30,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 | Fork | Status | Where it lives |
 | --- | --- | --- |
 | API / contract style & versioning | Decided | No public HTTP product API. MCP tools; `tablepro` protocol contracts stay on the rename boundary. [ARCHITECTURE](../../ARCHITECTURE.md). |
-| Auth & authorization model | Decided | Desktop: Secret Service. MCP: token scopes, connection allowlists, then `PolicyGuard`. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0008](0008-connection-and-session-ownership.md), [AGENTS](../../AGENTS.md). |
+| Auth & authorization model | Decided | Desktop: Secret Service. MCP: token scopes, connection allowlists, then `PolicyGuard`. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0008](0008-connection-and-session-ownership.md), [ADR 0016](0016-governed-consumer-seam.md), [AGENTS](../../AGENTS.md). |
 | Error & result modeling | Decided | Typed `thiserror` at crate boundaries. Panic containment: [ADR 0006](0006-driver-panic-containment.md). |
 | Config & secrets management | Decided | Secrets in Secret Service. Never in JSON, argv, traces, errors or audit fields. [ADR 0004](0004-libsecret-secret-storage.md), [AGENTS](../../AGENTS.md). |
 
@@ -79,6 +79,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 | Topic | Record |
 | --- | --- |
 | Secret Service credentials | [ADR 0004](0004-libsecret-secret-storage.md), [secret-storage spec](../../specs/secret-storage/spec.md) (draft) |
+| Governed consumer seam (`PolicyGuard`) | [ADR 0016](0016-governed-consumer-seam.md), [governed SQL spec](../../specs/governed-sql/spec.md) (draft) |
 | Server-side cancellation | [ADR 0005](0005-server-side-cancellation.md) |
 | Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted; not fully implemented) |
 | Sidebar object tree | [ADR 0012](0012-sidebar-object-tree.md) |
@@ -92,7 +93,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 | Fork | Who unblocks | Next step |
 | --- | --- | --- |
 | PRODUCT / personas / North Star draft markers | Maintainer / product | Clear `NEEDS REVIEW` on [PRODUCT.md](../../PRODUCT.md) and [personas](../personas.md) |
-| PolicyGuard and SSH capability specs | Architect | Review [specs/](../../specs/README.md); when a spec and the code disagree, fix the spec |
+| SSH and capability specs | Architect | Review [specs/](../../specs/README.md); when a spec and the code disagree, fix the spec. The `PolicyGuard` decision is [ADR 0016](0016-governed-consumer-seam.md); the governed SQL spec is still a draft |
 | Security baseline ADR (R19-style axes) | Architect | Extract from AGENTS security invariants only if a contestable choice remains |
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |

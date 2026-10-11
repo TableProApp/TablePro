@@ -1,0 +1,61 @@
+# 0016: PolicyGuard is the only consumer connection
+
+- **Status**: Accepted
+- **Date**: 2026-10-12
+
+## Context
+
+The GTK app, MCP tools and `bookie-agentd` all need a live database handle. Optional checks around a raw driver connection are easy to skip from a new screen, tool or import path. Later features borrowed from other clients must not open a second execute path or a second value model.
+
+Behaviour extracted from the code lives in [the governed SQL spec](../../specs/governed-sql/spec.md). This record is the architecture choice. Cancellation is [ADR 0005](0005-server-side-cancellation.md). Panic containment is [ADR 0006](0006-driver-panic-containment.md). Values are [ADR 0007](0007-type-and-value-preservation.md). Identity and trust are [ADR 0008](0008-connection-and-session-ownership.md).
+
+## Decision
+
+`PolicyGuard` is the only `Connection` a consumer may hold. Composition roots may keep a raw driver internally for reconnect and monitoring. They wrap it before the GUI, MCP or `bookie-agentd` issues a handle.
+
+Three checks stay separate. None replaces another:
+
+| Check | Question |
+|---|---|
+| MCP token scopes | Who may call which tools? |
+| Connection allowlists | Which saved connections may that token use? |
+| `PolicyGuard` | What SQL may run, how is it masked, and what is audited? |
+
+A user SQL statement follows this order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome. Preview, transaction, retry and batch paths use the same order. When audit intent is required, a failed write prevents execution. Denied, failed, cancelled, timed-out and unknown outcomes still get a terminal audit state. Exact when intent is required, and that agent masking is conditional, stay in the governed SQL spec.
+
+Metadata and browse fetches that do not carry user SQL still go through the guard. They do not invent a raw driver path.
+
+Modularity means crate seams and capability flags, not a runtime driver ABI ([ADR 0001](0001-no-plugin-system.md)).
+
+Later work may adopt these ideas from other clients when they stay on this seam:
+
+- Presentation of read-only or production connections (colors, watermarks, confirmations). The presentation does not become a second gate, and an MCP or CLI path cannot widen a human unlock.
+- Grid bandwidth: previews, hidden-column projection and cursor paging ([ADR 0011](0011-paged-query-results.md)) through the guard.
+- One headless service facade that the GTK app and `bookie-agentd` both call, so a new tool cannot diverge from the GUI path.
+- Optional engine capabilities, as in [ADR 0011](0011-paged-query-results.md) and [ADR 0015](0015-database-snapshots.md). Unsupported engines refuse or keep the existing capped path.
+
+These stay rejected:
+
+- Runtime driver plugins, OSGi JDBC bundles, or out-of-process JDBC/JSON-RPC agents ([ADR 0001](0001-no-plugin-system.md)).
+- A browser or webview UI ([ADR 0002](0002-rust-gtk4-libadwaita.md)).
+- JSON or string cells as the value contract ([ADR 0007](0007-type-and-value-preservation.md)).
+- Any execute path that skips `PolicyGuard`.
+
+The [statement-effects proposal](../proposals/policy-effects-and-verdict.md) is not accepted here. Rule join and a single AST walk stay a proposal until a later ADR accepts them.
+
+## Rationale
+
+One typed handle covers every consumer. A new surface inherits classify, approval, masking and audit without a separate checklist. Capability flags and a shared facade let the product take useful UI and paging ideas without copying another client's plugin host or value model.
+
+## Consequences
+
+- A consumer that holds a raw driver `Connection` is a defect.
+- MCP scope or allowlist work does not move SQL decisions out of `tablepro-policy`.
+- Cross-surface features (GUI and agent) change the guarded path once and update both callers.
+- Performance work bounds pages and bytes through the guard. It does not remove classify or audit to go faster.
+
+## Alternatives considered
+
+- **Safety as preferences on a normal connection.** Rejected. A new path can forget a preference. The type boundary cannot.
+- **Policy only inside the GTK app.** Rejected. MCP and `bookie-agentd` would need a second implementation.
+- **Copy a plugin or agent driver host for modularity.** Rejected in [ADR 0001](0001-no-plugin-system.md). Seams are crates and traits.

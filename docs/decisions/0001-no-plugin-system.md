@@ -50,3 +50,7 @@ Gained:
 **Rust dynamic loading with a stable ABI layer.** Rejected because versioning and loading costs exceed the value for the current driver set.
 
 **C ABI drivers.** Rejected because they would reduce type safety and make async, typed values, and errors harder to evolve.
+
+**OSGi or JDBC plugin hosts.** Rejected for the same reason as a runtime ABI. A third-party bundle can return values and open connections outside the type-checked driver crates and outside release proof of [PolicyGuard](0016-governed-consumer-seam.md).
+
+**Out-of-process JDBC or JSON-RPC driver agents.** Rejected. A sidecar process is another trust boundary around credentials and sockets, and it makes typed values and policy integration harder to prove in the shipped binary.

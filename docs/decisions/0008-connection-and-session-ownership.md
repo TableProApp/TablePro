@@ -22,9 +22,9 @@ The GUI must ask before accepting a new built-in SSH host key; unattended agentd
 
 ### Uncertainty scope
 
-The approved B4 target blocks governed writes for the connection with an unknown outcome, with recovery on the approved connection restart path. Journal-wide failure and unresolved durable recovery obligations remain fail-closed; reconnect cannot erase an audit intent or prove whether the server committed a write. Old-generation callbacks cannot clear or poison a replacement's state.
+An unknown write outcome blocks governed writes for that connection. Recovery uses the approved connection restart path. Journal-wide failure and unresolved durable recovery obligations stay fail-closed. Reconnect cannot erase an audit intent or prove whether the server committed a write. Old-generation callbacks cannot clear or poison a replacement's state. Each live connection owns its audit generation; a shared generation across connections is not this contract.
 
-F8's GUI generation split is merged in `6346a431c`; the daemon still supplies one shared `AuditState` to all cached connections. GUI source integration does not prove headless parity or installed recovery. F4/F9 reconnect/session invalidation and F6 host consent are merged. Remaining transport, daemon, audit and installed acceptance live on [the B4 board](../b4-task-board.md), with current source findings in [the release audit](../archive/release-audit-2026-10-03.md).
+Remaining transport, audit and installed acceptance live on [the B4 board](../b4-task-board.md).
 
 ## Rationale
 
