@@ -4,6 +4,19 @@
 
 The Cargo workspace lives at the repository root (Rust 1.98). Crate and Cargo binary names stay `tablepro-*`. Packaging and Meson install `bookie` / `bookie-agentd` and add `tablepro` / `tablepro-agentd` aliases. App ID, XDG paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Check the [active sprint](docs/bookie-0.2-sprint.md) before renaming any of them.
 
+## Repository layout
+
+| Path | Holds |
+|---|---|
+| `crates/` | Platform-neutral crates: `core`, `policy`, `storage`, `ssh`, `transport`, `mcp`, `agentd`, and `drivers/*`. None depends on GTK. |
+| `apps/linux/` | The GTK application (`app/`) and what only it needs: `data/`, `po/`, `flatpak/`, `packaging/`. |
+| `tests/` | Cross-crate test crates (`release/`, `driver-tls/`), fixtures and shared test data (`data/`). Unit tests stay beside their code; per-crate integration tests stay in `crates/<name>/tests`. |
+| `scripts/`, `ci/`, `vendor/`, `docs/` | Tooling, CI helpers, vendored patches and documentation. |
+| root | `Cargo.toml` workspace, toolchain and lint config, `meson.build`, baselines. |
+
+A new platform app would sit beside `apps/linux/` and reuse `crates/` unchanged.
+
+
 This page is the one-page map. Accepted [ADRs](docs/decisions/README.md) constrain behaviour; [AGENTS.md](./AGENTS.md) owns contributor rules; the sprint owns sequencing. Capability behaviour extracted from code lives under [`specs/`](specs/README.md).
 
 | If you want to… | Read |
