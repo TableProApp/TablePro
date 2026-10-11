@@ -1,0 +1,24 @@
+   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-mask-source-lineage/linux/crates/policy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.86s
+     Running tests/session_postgres.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_postgres-045535c311019cde)
+
+running 1 test
+test an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections ... FAILED
+
+failures:
+
+---- an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections stdout ----
+
+thread 'an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections' (846218) panicked at crates/policy/tests/session_postgres.rs:310:9:
+assertion `left == right` failed: SELECT CAST(array_agg(c.*) AS text) AS payload FROM cards c
+  left: [[Text("{\"(4111111111111111,7)\"}")]]
+ right: [[Text("***REDACTED***")]]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 4.09s
+
+error: test failed, to rerun pass `-p tablepro-policy --test session_postgres`

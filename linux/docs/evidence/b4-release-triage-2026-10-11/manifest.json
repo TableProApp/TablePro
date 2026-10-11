@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-11",
+  "source_commit": "63f6d2eb320e309f2663f257fbddf7f4e54a37ee",
+  "scope": "Focused B4 source and security survivor triage; local regressions, not candidate qualification",
+  "results": [
+    {
+      "case": "PostgreSQL whole-row wildcard before fix",
+      "source_commit": "06cdf632c9802aecc8e502d31e5cd32edc6c259b",
+      "command": "cargo test -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections -- --ignored --exact",
+      "exit_code": 101,
+      "note": "Added final wildcard case to the native test; synthetic sensitive value was returned unchanged"
+    },
+    {
+      "case": "PostgreSQL whole-row wildcard after fix",
+      "source_commit": "fda9ec6bddfd2cb7e30457d4cfc0e1e315c7987c",
+      "command": "same native selector",
+      "exit_code": 0
+    },
+    {
+      "case": "Public audit failure method replaced with no-op",
+      "source_commit": "5694544f2d248770fe4df48bf98cd77cae8795be",
+      "command": "cargo test -p tablepro-policy --lib uncertainty_is_scoped_to_a_connection_generation_but_journal_failure_is_global",
+      "exit_code": 101,
+      "note": "Test changed to invoke public entry; temporary no-op mutation failed the assertion; production method restored"
+    },
+    {
+      "case": "Export preservation and widget regression",
+      "source_commit": "52eccec6994ee794e7710e2c30161054360723bf",
+      "commands": [
+        "cargo test -p tablepro-app --lib ui::export_dialog",
+        "bash scripts/test-gtk-widgets.sh",
+        "bash scripts/preflight.sh",
+        "cargo clippy -p tablepro-app --all-targets -- -D warnings"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "export_unit_passed": 10,
+        "gtk_widgets_passed": 26
+      },
+      "note": "Source-build Xvfb only; merged release documentation does not change tested app source"
+    }
+  ],
+  "sha256": {
+    "mask-wildcard-before.log": "aa43281f4324644f77775b39cf840a3ad854dfb8b540b729ee53ba28283da304",
+    "mask-wildcard-after.log": "001e4849c4447258b843104a634afc6d3376f1ad2edd41a54c3a38ce46a18b4c",
+    "audit-lockdown-noop-mutant.log": "92645bb3f42f20edaff8a576c0af5414ef98680a82e25015b3362b5334c65105"
+  },
+  "not_established": [
+    "Full mutation rerun",
+    "Selected SSH and keyring mutants with fixture tiers enabled",
+    "Power-loss or file-system sync fault injection",
+    "Forgejo or installed/native Wayland acceptance",
+    "Release qualification"
+  ]
+}
