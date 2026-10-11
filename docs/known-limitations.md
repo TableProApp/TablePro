@@ -4,11 +4,11 @@ What the application does not do, or does differently from what you might expect
 
 ## Data and values
 
-- **Full-table export is unavailable** (UI-13b). The current drivers do not have
+- **Full-table export is unavailable** (UI-13b / [#553](https://github.com/cozyGarage/BookiE/issues/553)). The current drivers do not have
   a verified snapshot export path, so the application refuses full-table export
   before opening the destination dialog or publishing a file. Export the current
   page or a loaded query result instead. Snapshot export support is planned.
-- **Large results are capped and held in memory** (PERF-2, PERF-8). Results stop at
+- **Large results are capped and held in memory** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Results stop at
   1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
   measurement was about 2.5 times the result memory; #518 now shares immutable
   values with materialized rows, and comparable profiling remains open. Nothing
@@ -33,8 +33,9 @@ What the application does not do, or does differently from what you might expect
 
 ## Editing and connections
 
-- **SSH jump chains cannot be edited in the form** (UI-1b). They connect and run, but the form refuses to edit them until per-hop secrets, transport identity and the bundle format all land and pass together.
+- **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but the form refuses to edit them until per-hop secrets, transport identity and the bundle format all land and pass together.
 - **Reusable SSH profiles cannot be edited** (UI-26).
+- **MySQL and MariaDB have no Unix socket endpoint in the connect dialog** ([#579](https://github.com/cozyGarage/BookiE/issues/579)). PostgreSQL sockets work; MySQL/MariaDB use TCP in the UI, and `Transport::Socket` is only for SSH-forwarded rendezvous.
 - **SQL Server with Kerberos** has a Samba AD and verified-TLS fixture that passed the Kerberos selectors; Windows AD interoperability and package acceptance remain open (B4-21).
 - **DuckDB read-only flat files** need Linux and a writable directory on the same filesystem as the file (the application pins the file through a private link there). A read-only in-memory DuckDB connection is refused.
 
@@ -42,21 +43,23 @@ What the application does not do, or does differently from what you might expect
 
 - No code folding, multi-cursor or split panes (UI-22). Vim keys are an opt-in preference; typed vim commands in a running editor are not yet covered by an installed scenario. No preview tabs (UI-17b); history is a dialog (UI-18).
 - The PostgreSQL catalog lists materialized views, routines, triggers, sequences, extensions and roles; a typed activity console is deferred and the activity dialog stays a plain result grid (UI-23).
-- No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4).
-- No foreign key picker, enum or set pickers, or paste of tab-separated rows (UI-19).
-- No database snapshots or restore (SNAP-1 accepted the feature for 0.2.x; build is SNAP-2 to SNAP-4).
+- No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).
+- No foreign key picker, enum or set pickers, or paste of tab-separated rows (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)).
+- No Filter Schemas control for large PostgreSQL catalogs ([#580](https://github.com/cozyGarage/BookiE/issues/580)); sidebar schema groups exist (UI-11).
+- No database snapshots or restore (SNAP-1 accepted the feature for 0.2.x; build is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)).
 - Accessibility with Orca, keyboard-only order and high contrast has not been verified (DOC-3).
 
 ## Platforms and packaging
 
-- 0.2.0 is tested on Arch Linux with Hyprland as a native Wayland client (Omarchy Arch first). The install, upgrade and rollback pass on the real desktop is pending (PKG-1); Xvfb results do not count.
+- 0.2.0 is tested on Arch Linux with Hyprland as a native Wayland client (Omarchy Arch first). The install, upgrade and rollback pass on the real desktop is pending (PKG-1 / [#574](https://github.com/cozyGarage/BookiE/issues/574)); Xvfb results do not count.
 - GNOME on Debian and Ubuntu is not accepted on a real desktop yet (PKG-2), although the packages build and the installed test suite passes in containers.
 - The Flatpak build installs and shows a window on a Debian 13 guest, but Flathub submission and screenshots are not done and the package is not offered (PKG-4, PKG-8).
 - Windows and macOS are not supported; the application is built for Linux with GTK 4 and libadwaita.
 
 ## Known bugs
 
-- **Installed GTK suite is intermittent on Forgejo** (TEST-31): accessibility timeouts under capacity pressure, and a separate startup restore abort when GTK logs an `AdwBin` width near minus two billion under `G_DEBUG=fatal-criticals`. It is not yet known whether the layout abort can happen outside that test setup, where GTK only warns.
+- **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): accessibility timeouts under capacity pressure, and a separate startup restore abort when GTK logs an `AdwBin` width near minus two billion under `G_DEBUG=fatal-criticals`. It is not yet known whether the layout abort can happen outside that test setup, where GTK only warns.
+- **MySQL TLS Disabled may still apply a saved client cert/key** ([#581](https://github.com/cozyGarage/BookiE/issues/581)). `mysql_connect_options` sets `MySqlSslMode::Disabled` then still calls `ssl_client_cert` / `ssl_client_key` when paths are present (macOS fixed the analogue in 0.80).
 
 ## Test and CI limits
 

@@ -74,3 +74,6 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#573](https://github.com/cozyGarage/BookiE/issues/573) | Lab runners: Hyper-Threading, sizing, overlapping gates |
 | [#574](https://github.com/cozyGarage/BookiE/issues/574) | PKG-1 Arch / Omarchy / Hyprland Wayland acceptance |
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
+| [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant) |
+| [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
+| [#581](https://github.com/cozyGarage/BookiE/issues/581) | MySQL TLS Disabled still applies client cert/key |
