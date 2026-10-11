@@ -1,8 +1,8 @@
 project('bookie', version: '0.1.6-dev', meson_version: '>=1.4', license: 'AGPL-3.0-or-later')
 
 gnome = import('gnome')
-subdir('data')
-install_data('data/com.tablepro.linux.gschema.xml', install_dir: get_option('datadir') / 'glib-2.0' / 'schemas')
+subdir('apps/linux/data')
+install_data('apps/linux/data/com.tablepro.linux.gschema.xml', install_dir: get_option('datadir') / 'glib-2.0' / 'schemas')
 python = find_program('python3')
 dependency('glib-2.0', version: '>=2.88')
 dependency('gio-2.0', version: '>=2.88')
@@ -40,25 +40,25 @@ custom_target('cargo-build',
 install_symlink('tablepro', pointing_to: 'bookie', install_dir: get_option('bindir'))
 install_symlink('tablepro-agentd', pointing_to: 'bookie-agentd', install_dir: get_option('bindir'))
 desktop_file = configure_file(
-  input: 'flatpak/com.tablepro.linux.desktop',
+  input: 'apps/linux/flatpak/com.tablepro.linux.desktop',
   output: application_id + '.desktop',
   command: [python, files('scripts/configure-app-id.py'), '@INPUT@', '@OUTPUT@', application_id],
   install: true,
   install_dir: get_option('datadir') / 'applications',
 )
 metainfo_file = configure_file(
-  input: 'flatpak/com.tablepro.linux.metainfo.xml',
+  input: 'apps/linux/flatpak/com.tablepro.linux.metainfo.xml',
   output: application_id + '.metainfo.xml',
   command: [python, files('scripts/configure-app-id.py'), '@INPUT@', '@OUTPUT@', application_id],
   install: true,
   install_dir: get_option('datadir') / 'metainfo',
 )
 install_data(
-  'flatpak/icons/scalable/com.tablepro.linux.svg',
+  'apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg',
   rename: application_id + '.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
 )
 install_data('LICENSE.md', install_dir: get_option('datadir') / 'licenses/bookie')
-install_data('packaging/policy.example.toml', install_dir: get_option('datadir') / 'doc/bookie')
+install_data('apps/linux/packaging/policy.example.toml', install_dir: get_option('datadir') / 'doc/bookie')
 meson.add_devenv(cargo_env)
 gnome.post_install(glib_compile_schemas: true, gtk_update_icon_cache: true, update_desktop_database: true)

@@ -52,17 +52,17 @@
                 "install -Dm755 target/release/tablepro-askpass /app/bin/tablepro-askpass",
                 "ln -s bookie-agentd /app/bin/tablepro-agentd",
                 "ln -s bookie /app/bin/tablepro",
-                "install -Dm644 data/com.tablepro.linux.gschema.xml /app/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml",
+                "install -Dm644 apps/linux/data/com.tablepro.linux.gschema.xml /app/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml",
                 "glib-compile-schemas /app/share/glib-2.0/schemas",
-                "install -Dm644 flatpak/com.tablepro.linux.desktop /app/share/applications/com.tablepro.linux.desktop",
-                "install -Dm644 flatpak/com.tablepro.linux.metainfo.xml /app/share/metainfo/com.tablepro.linux.metainfo.xml",
-                "install -Dm644 flatpak/icons/scalable/com.tablepro.linux.svg /app/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg",
-                "if [ -f po/LINGUAS ]; then for lang in $(grep -v '^#' po/LINGUAS | grep -v '^$' || true); do mkdir -p /app/share/locale/$lang/LC_MESSAGES && msgfmt po/$lang.po -o /app/share/locale/$lang/LC_MESSAGES/tablepro.mo; done; fi"
+                "install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop /app/share/applications/com.tablepro.linux.desktop",
+                "install -Dm644 apps/linux/flatpak/com.tablepro.linux.metainfo.xml /app/share/metainfo/com.tablepro.linux.metainfo.xml",
+                "install -Dm644 apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg /app/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg",
+                "if [ -f apps/linux/po/LINGUAS ]; then for lang in $(grep -v '^#' apps/linux/po/LINGUAS | grep -v '^$' || true); do mkdir -p /app/share/locale/$lang/LC_MESSAGES && msgfmt apps/linux/po/$lang.po -o /app/share/locale/$lang/LC_MESSAGES/tablepro.mo; done; fi"
             ],
             "sources": [
                 {
                     "type": "dir",
-                    "path": "../"
+                    "path": "../../../"
                 }
             ]
         }

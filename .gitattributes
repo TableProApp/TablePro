@@ -39,6 +39,6 @@
 *.AppImage binary
 *.flatpak binary
 
-po/*.po linguist-generated=true
+apps/linux/po/*.po linguist-generated=true
 vendor/** linguist-vendored
 .github/workflows/*.lock.yml linguist-generated=true merge=ours

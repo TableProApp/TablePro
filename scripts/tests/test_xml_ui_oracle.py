@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
 
-SOURCE = Path(__file__).resolve().parents[2] / "crates/app/tests/gtk_xml.py"
+SOURCE = Path(__file__).resolve().parents[2] / "apps/linux/app/tests/gtk_xml.py"
 spec = importlib.util.spec_from_file_location("xml_scenarios", SOURCE)
 scenarios = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scenarios)

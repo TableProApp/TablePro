@@ -40,8 +40,8 @@ check() {
   cd "$srcdir/TablePro-${_commit}"
   export CARGO_TARGET_DIR="$srcdir/target"
   cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins --locked
-  desktop-file-validate flatpak/com.tablepro.linux.desktop
-  appstreamcli validate --no-net flatpak/com.tablepro.linux.metainfo.xml
+  desktop-file-validate apps/linux/flatpak/com.tablepro.linux.desktop
+  appstreamcli validate --no-net apps/linux/flatpak/com.tablepro.linux.metainfo.xml
 }
 
 package() {
@@ -51,20 +51,20 @@ package() {
   install -Dm755 "$srcdir/target/release/tablepro-askpass" "$pkgdir/usr/bin/tablepro-askpass"
   ln -s bookie "$pkgdir/usr/bin/tablepro"
   ln -s bookie-agentd "$pkgdir/usr/bin/tablepro-agentd"
-  install -Dm644 flatpak/com.tablepro.linux.desktop \
+  install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop \
     "$pkgdir/usr/share/applications/com.tablepro.linux.desktop"
-  install -Dm644 flatpak/com.tablepro.linux.metainfo.xml \
+  install -Dm644 apps/linux/flatpak/com.tablepro.linux.metainfo.xml \
     "$pkgdir/usr/share/metainfo/com.tablepro.linux.metainfo.xml"
-  install -Dm644 flatpak/icons/scalable/com.tablepro.linux.svg \
+  install -Dm644 apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg"
-  install -Dm644 data/com.tablepro.linux.gschema.xml \
+  install -Dm644 apps/linux/data/com.tablepro.linux.gschema.xml \
     "$pkgdir/usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml"
   install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
-  install -Dm644 packaging/policy.example.toml \
+  install -Dm644 apps/linux/packaging/policy.example.toml \
     "$pkgdir/usr/share/doc/$pkgname/policy.example.toml"
 
   local catalog locale
-  for catalog in po/*.po; do
+  for catalog in apps/linux/po/*.po; do
     [[ -e "$catalog" ]] || continue
     locale="$(basename "$catalog" .po)"
     install -d "$pkgdir/usr/share/locale/$locale/LC_MESSAGES"

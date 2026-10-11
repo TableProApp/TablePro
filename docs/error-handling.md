@@ -41,7 +41,7 @@ Certificate verification failures reach sqlx as I/O errors, so the PostgreSQL dr
 ## UI display
 
 `app` translates domain errors into recovery messages in
-[error_text](../crates/app/src/ui/error_text.rs). Preserve typed categories
+[error_text](../apps/linux/app/src/ui/error_text.rs). Preserve typed categories
 through assembly and wrappers before selecting the user-facing message.
 
 Do not display raw `Debug` or `Display` output for domain errors. Always go through this layer.

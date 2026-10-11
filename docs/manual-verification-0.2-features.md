@@ -231,7 +231,7 @@ Main menu, then Catalog, on a PostgreSQL connection with a few objects of each k
 
 A text or JSON cell over 40,000 bytes shows a shortened value ending in
 `… (+N more chars)`. Editing used to start from that shortened text; this is
-now fixed (`FULL_EDIT_TEXT_SLOT` in `crates/app/src/ui/grid/display.rs`) and its
+now fixed (`FULL_EDIT_TEXT_SLOT` in `apps/linux/app/src/ui/grid/display.rs`) and its
 isolated GTK regression passed on 2026-09-26. The installed workflow remains open. Use a table with a `text` or `json` column
 and insert one row with a value of at least 50,000 characters (for example
 `SELECT repeat('a', 50000)` cast to the column's type, or a JSON array with

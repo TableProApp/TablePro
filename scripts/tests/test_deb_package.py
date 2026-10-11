@@ -36,22 +36,22 @@ def _stage_package(
         (stage / "usr/bin/tablepro").symlink_to("bookie")
         (stage / "usr/bin/tablepro-agentd").symlink_to("bookie-agentd")
     (stage / "usr/share/applications/com.tablepro.linux.desktop").write_text(
-        (source / "flatpak/com.tablepro.linux.desktop").read_text()
+        (source / "apps/linux/flatpak/com.tablepro.linux.desktop").read_text()
     )
     (stage / "usr/share/metainfo/com.tablepro.linux.metainfo.xml").write_text(
-        (source / "flatpak/com.tablepro.linux.metainfo.xml").read_text()
+        (source / "apps/linux/flatpak/com.tablepro.linux.metainfo.xml").read_text()
     )
     (stage / "usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg").write_text(
-        (source / "flatpak/icons/scalable/com.tablepro.linux.svg").read_text()
+        (source / "apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg").read_text()
     )
     if include_schema:
         shutil.copyfile(
-            source / "data/com.tablepro.linux.gschema.xml",
+            source / "apps/linux/data/com.tablepro.linux.gschema.xml",
             stage / "usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml",
         )
     (stage / "usr/share/doc/tablepro/LICENSE.md").write_text((source / "LICENSE.md").read_text())
     (stage / "usr/share/doc/tablepro/policy.example.toml").write_text(
-        (source / "packaging/policy.example.toml").read_text()
+        (source / "apps/linux/packaging/policy.example.toml").read_text()
     )
     (stage / "DEBIAN/control").write_text(
         "Package: tablepro\n"

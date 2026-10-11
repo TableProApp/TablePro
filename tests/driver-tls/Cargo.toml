@@ -20,18 +20,18 @@ path = "tests/mssql_kerberos.rs"
 required-features = ["mssql-kerberos"]
 
 [dependencies]
-tablepro-core = { path = "../core" }
-tablepro-ssh = { path = "../ssh" }
-tablepro-transport = { path = "../transport" }
+tablepro-core = { path = "../../crates/core" }
+tablepro-ssh = { path = "../../crates/ssh" }
+tablepro-transport = { path = "../../crates/transport" }
 secrecy.workspace = true
 
 [dev-dependencies]
-tablepro-driver-clickhouse = { path = "../drivers/clickhouse" }
-tablepro-driver-mongodb = { path = "../drivers/mongodb" }
-tablepro-driver-mssql = { path = "../drivers/mssql" }
-tablepro-driver-mysql = { path = "../drivers/mysql" }
-tablepro-driver-postgres = { path = "../drivers/postgres" }
-tablepro-driver-redis = { path = "../drivers/redis" }
+tablepro-driver-clickhouse = { path = "../../crates/drivers/clickhouse" }
+tablepro-driver-mongodb = { path = "../../crates/drivers/mongodb" }
+tablepro-driver-mssql = { path = "../../crates/drivers/mssql" }
+tablepro-driver-mysql = { path = "../../crates/drivers/mysql" }
+tablepro-driver-postgres = { path = "../../crates/drivers/postgres" }
+tablepro-driver-redis = { path = "../../crates/drivers/redis" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 

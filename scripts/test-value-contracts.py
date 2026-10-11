@@ -20,7 +20,7 @@ def expected_suites(gtk=False, duckdb=False):
     suites = {f"crates/drivers/{name}/Cargo.toml": "integration" for name in DRIVERS}
     suites.update({"crates/core/Cargo.toml": "tablepro_core", "crates/mcp/Cargo.toml": "tablepro_mcp"})
     if gtk:
-        suites["crates/app/Cargo.toml"] = "tablepro_app"
+        suites["apps/linux/app/Cargo.toml"] = "tablepro_app"
     if duckdb:
         suites["crates/drivers/duckdb/Cargo.toml"] = "integration"
     return suites

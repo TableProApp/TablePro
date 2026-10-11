@@ -7,7 +7,7 @@ async fn value_contract_preserves_numbers_and_text_through_json_commands() {
     let (_container, host, port) = super::start_mongo().await;
     let connection = MongodbDriver.connect(super::opts(&host, port, "appdb")).await.unwrap();
     let corpus: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../../testdata/value-contract.json")).unwrap();
+        serde_json::from_str(include_str!("../../../../../tests/data/value-contract.json")).unwrap();
     let mut cases = vec![(serde_json::Value::Null, Value::Null)];
     for text in corpus["integers"].as_array().unwrap() {
         let number: i64 = text.as_str().unwrap().parse().unwrap();

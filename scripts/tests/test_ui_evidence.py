@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 class UiEvidenceTests(unittest.TestCase):
     def run_scenario(self, scenario, artifact_dir):
-        source = Path(__file__).resolve().parents[2] / "crates/app/tests/gtk_safety.py"
+        source = Path(__file__).resolve().parents[2] / "apps/linux/app/tests/gtk_safety.py"
         tree = ast.parse(source.read_text())
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "run_scenario")
         namespace = dict(Path=Path, tempfile=tempfile, os=os, json=json, shutil=shutil)

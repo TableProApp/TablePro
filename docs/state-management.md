@@ -16,7 +16,7 @@ If you find yourself adding a global singleton for application state, you are no
 
 ## Component structure
 
-Use [the existing editor component](../crates/app/src/ui/editor/mod.rs) for the
+Use [the existing editor component](../apps/linux/app/src/ui/editor/mod.rs) for the
 message/command shape. Commands return `Result` outcomes to the update loop;
 a failed storage read must remain visible rather than becoming an empty model.
 

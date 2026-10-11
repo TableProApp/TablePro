@@ -23,7 +23,7 @@ Use a short-lived local branch when useful, then open the pull request against `
 
 ## Project layout
 
-The Cargo workspace is at the repository root. Crate roles, the governed request pipeline and the import DAG are in [`ARCHITECTURE.md`](ARCHITECTURE.md). Read that page before changing crate boundaries, policy enforcement, connection ownership, or async execution. Packaging lives in `packaging/`; the documentation map is [`docs/README.md`](docs/README.md).
+The Cargo workspace is at the repository root. Crate roles, the governed request pipeline and the import DAG are in [`ARCHITECTURE.md`](ARCHITECTURE.md). Read that page before changing crate boundaries, policy enforcement, connection ownership, or async execution. Packaging lives in `apps/linux/packaging/`; the documentation map is [`docs/README.md`](docs/README.md).
 
 ## Code style
 

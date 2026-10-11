@@ -46,7 +46,7 @@ class DocLinkTests(unittest.TestCase):
     def test_markdown_in_generated_package_output_is_not_indexed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            generated = root / "packaging/out/pkg/usr/share/doc/app/LICENSE.md"
+            generated = root / "apps/linux/packaging/out/pkg/usr/share/doc/app/LICENSE.md"
             source = root / "docs/source.md"
             generated.parent.mkdir(parents=True)
             source.parent.mkdir(parents=True)

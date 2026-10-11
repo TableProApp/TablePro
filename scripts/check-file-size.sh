@@ -47,7 +47,7 @@ while IFS= read -r -d '' file; do
     echo "error: $rel has $lines lines (soft limit $WARN_LIMIT). Split the file, or add it to file-size-baselines.txt with that exact line count." >&2
     errors=$((errors + 1))
   fi
-done < <(find "$CRATES" -type f -name '*.rs' -print0 | sort -z)
+done < <(find "$ROOT/crates" "$ROOT/apps" "$ROOT/tests" -type f -name '*.rs' -print0 | sort -z)
 
 for rel in "${!MAX_LINES[@]}"; do
   if [[ ! -f "$ROOT/$rel" ]]; then

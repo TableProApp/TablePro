@@ -65,7 +65,7 @@ python3 scripts/run-change-contract-tests.py
 python3 scripts/run-change-contract-tests.py --base fork/linux
 ```
 
-Changes under `crates/core/src/`, `crates/core/tests/`, `crates/app/src/`,
+Changes under `crates/core/src/`, `crates/core/tests/`, `apps/linux/app/src/`,
 `crates/mcp/src/`, and database-driver `src/` paths select focused exact
 regressions where mapped, otherwise the changed package's unit or integration
 tests. Edit `scripts/change-test-map.json` when adding a focused value
@@ -284,7 +284,7 @@ have no secret and skip the scan.
 ### GTK CSS node selectors
 
 SonarCloud reports eight “Unknown type selector” findings on
-`data/resources/style.css:25-26` for `columnview`, `listview`, `row` and
+`apps/linux/data/resources/style.css:25-26` for `columnview`, `listview`, `row` and
 `cell`.
 
 These are GTK CSS node names in the focus-ring selector. GTK documents

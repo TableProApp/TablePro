@@ -72,4 +72,4 @@ if [[ -z "$test_binary" || ! -x "$test_binary" ]]; then
   echo "installed GTK test binary is not executable: ${test_binary:-bookie}" >&2
   exit 1
 fi
-timeout 600s python3 "$ROOT/crates/app/tests/gtk_safety.py" "$test_binary"
+timeout 600s python3 "$ROOT/apps/linux/app/tests/gtk_safety.py" "$test_binary"

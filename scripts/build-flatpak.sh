@@ -26,7 +26,7 @@ fi
 
 mkdir -p "$BUILD_DIR" "$REPO_DIR"
 cd "$ROOT"
-flatpak-builder --force-clean --repo="$REPO_DIR" "$BUILD_DIR" flatpak/com.tablepro.linux.json
+flatpak-builder --force-clean --repo="$REPO_DIR" "$BUILD_DIR" apps/linux/flatpak/com.tablepro.linux.json
 flatpak build-bundle "$REPO_DIR" /tmp/tablepro.flatpak com.tablepro.linux
 echo "Bundle: /tmp/tablepro.flatpak"
 echo "Install: flatpak install --user /tmp/tablepro.flatpak"

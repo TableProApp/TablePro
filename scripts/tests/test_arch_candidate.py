@@ -11,7 +11,7 @@ def main():
         root = Path(temporary)
         scripts = root / "scripts"
         scripts.mkdir(parents=True)
-        (root / "packaging/arch").mkdir(parents=True)
+        (root / "apps/linux/packaging/arch").mkdir(parents=True)
         shutil.copy(source / "scripts/build-arch-rc.sh", scripts)
         (scripts / "validate-arch-package.sh").write_text("#!/bin/sh\ntest -f \"$1\"\n")
         (scripts / "validate-arch-package.sh").chmod(0o755)

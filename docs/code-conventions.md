@@ -77,7 +77,7 @@ codebase; reach for those before a nested `match`.
 ## GTK construction is the known exception
 
 Fifty-nine of the eighty-nine functions currently over the limit live in
-`crates/app/src/ui`. Relm4 `init`, `update`, and `build_*` functions accumulate
+`apps/linux/app/src/ui`. Relm4 `init`, `update`, and `build_*` functions accumulate
 widget wiring that has no natural seam, and splitting them arbitrarily produces
 helpers that are called once and read worse than the original.
 

@@ -75,9 +75,9 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 | [linux/docs/upstream-u1-sql-server-2026-10-03.md](upstream-u1-sql-server-2026-10-03.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/validation-playbook.md](../validation-playbook.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/value-contracts.md](../value-contracts.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
-| [linux/flatpak/screenshots/README.md](../../flatpak/screenshots/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
-| [linux/packaging/README.md](../../packaging/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
-| [linux/po/README.md](../../po/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
+| [linux/flatpak/screenshots/README.md](../../apps/linux/flatpak/screenshots/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
+| [linux/packaging/README.md](../../apps/linux/packaging/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
+| [linux/po/README.md](../../apps/linux/po/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/tests/fixtures/postgres-release/README.md](../../tests/fixtures/postgres-release/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/tests/manual-connections/README.md](../../tests/manual-connections/README.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/vendor/README.md](../../vendor/README.md) | vendored reference | Screened; preserve upstream scope |

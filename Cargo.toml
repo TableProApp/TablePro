@@ -1,16 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/app",
+    "apps/linux/app",
     "crates/core",
     "crates/policy",
-    "crates/release-tests",
+    "tests/release",
     "crates/mcp",
     "crates/agentd",
     "crates/ssh",
     "crates/storage",
     "crates/transport",
-    "crates/driver-tls-tests",
+    "tests/driver-tls",
     "crates/drivers/clickhouse",
     "crates/drivers/duckdb",
     "crates/drivers/mongodb",

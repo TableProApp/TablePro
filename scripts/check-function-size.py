@@ -16,7 +16,7 @@ from pathlib import Path
 LIMIT = 60
 
 ROOT = Path(__file__).resolve().parent.parent
-CRATES = ROOT / "crates"
+CRATES = [ROOT / "crates", ROOT / "apps", ROOT / "tests"]
 BASELINES = ROOT / "function-size-baselines.txt"
 
 RAW_STRING = re.compile(r'b?r(?P<hashes>#*)"')
@@ -172,7 +172,7 @@ def main() -> int:
     errors = 0
     seen: set[str] = set()
 
-    for path in sorted(CRATES.rglob("*.rs")):
+    for path in sorted(p for d in CRATES for p in d.rglob("*.rs")):
         relative = path.relative_to(ROOT).as_posix()
         if "/tests/" in relative or path.name.endswith("_tests.rs"):
             continue

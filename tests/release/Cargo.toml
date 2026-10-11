@@ -11,12 +11,12 @@ name = "tablepro_release_tests"
 path = "src/lib.rs"
 
 [dependencies]
-tablepro-core = { path = "../core" }
-tablepro-policy = { path = "../policy" }
-tablepro-ssh = { path = "../ssh" }
-tablepro-transport = { path = "../transport" }
-tablepro-driver-postgres = { path = "../drivers/postgres" }
-tablepro-storage = { path = "../storage" }
+tablepro-core = { path = "../../crates/core" }
+tablepro-policy = { path = "../../crates/policy" }
+tablepro-ssh = { path = "../../crates/ssh" }
+tablepro-transport = { path = "../../crates/transport" }
+tablepro-driver-postgres = { path = "../../crates/drivers/postgres" }
+tablepro-storage = { path = "../../crates/storage" }
 tempfile.workspace = true
 secrecy.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
@@ -24,7 +24,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tablepro-mcp = { path = "../mcp" }
+tablepro-mcp = { path = "../../crates/mcp" }
 async-trait.workspace = true
 serde_json.workspace = true
 

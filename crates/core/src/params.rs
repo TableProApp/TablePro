@@ -182,7 +182,7 @@ mod tests {
     fn value_contract_named_parameters_do_not_round_decimals() {
         let corpus: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../testdata/value-contract.json"
+            "/../../tests/data/value-contract.json"
         )))
         .unwrap();
         for text in corpus["decimals"].as_array().unwrap() {

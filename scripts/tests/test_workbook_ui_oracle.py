@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import zipfile
 
-SOURCE = Path(__file__).resolve().parents[2] / "crates/app/tests/gtk_workbook.py"
+SOURCE = Path(__file__).resolve().parents[2] / "apps/linux/app/tests/gtk_workbook.py"
 spec = importlib.util.spec_from_file_location("workbook", SOURCE)
 workbook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(workbook)

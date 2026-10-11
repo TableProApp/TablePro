@@ -168,7 +168,7 @@ The workspace manifest is `Cargo.toml`.
 - `crates/agentd`: headless MCP process and composition root without GTK.
 - `crates/drivers/*`: one static crate per engine, implementing `core` traits,
   never depending on the app.
-- `crates/app`: the GTK application and composition root.
+- `apps/linux/app`: the GTK application and composition root.
 
 Dependencies point toward `core`. Domain and driver crates never import GTK or
 Relm4. A new engine is a driver crate implementing the `core` contracts, added
@@ -285,11 +285,11 @@ Every test belongs to one tier with one script and one gate. Use the
 | unit | `--lib --bins` across the workspace | `scripts/preflight.sh` |
 | sandbox | integration targets needing no Docker, database or display | `scripts/test-sandbox.sh` |
 | driver | `crates/drivers/*/tests/integration.rs`, SSH and socket fixtures | `scripts/ci-local.sh integration` |
-| driver-tls | `crates/driver-tls-tests` | `scripts/test-driver-tls.sh` |
-| release | `crates/release-tests` against PostgreSQL | `scripts/test-postgres-release.sh` |
+| driver-tls | `tests/driver-tls` | `scripts/test-driver-tls.sh` |
+| release | `tests/release` against PostgreSQL | `scripts/test-postgres-release.sh` |
 | gtk-widgets | `#[ignore]` widget tests listed in `scripts/isolated-tests.json` under `gtk` | `scripts/test-gtk-widgets.sh` |
 | keyring | `#[ignore]` tests listed under `keyring` | `scripts/test-secret-service.sh` |
-| gtk | `crates/app/tests/gtk_safety.py` on an installed build | `scripts/test-gtk-safety.sh` |
+| gtk | `apps/linux/app/tests/gtk_safety.py` on an installed build | `scripts/test-gtk-safety.sh` |
 
 All tiers run on Forgejo (`.forgejo/workflows/ci.yml` and `nightly.yml`). New
 gtk-widgets and keyring tests must be added to `isolated-tests.json`, and the

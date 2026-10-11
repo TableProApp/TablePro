@@ -42,8 +42,8 @@ jobs:
         uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb
         with:
           bundle: ${{ matrix.profile == 'development' && 'bookie-devel.flatpak' || 'bookie.flatpak' }}
-          manifest-path: ${{ matrix.profile == 'development' && 'flatpak/com.tablepro.linux.Devel.json' || 'flatpak/com.tablepro.linux.json' }}
-          cache-key: flatpak-builder-${{ matrix.profile }}-${{ hashFiles('flatpak/**') }}
+          manifest-path: ${{ matrix.profile == 'development' && 'apps/linux/flatpak/com.tablepro.linux.Devel.json' || 'apps/linux/flatpak/com.tablepro.linux.json' }}
+          cache-key: flatpak-builder-${{ matrix.profile }}-${{ hashFiles('apps/linux/flatpak/**') }}
           upload-artifact: true
       - name: Record packaging scope
         run: |

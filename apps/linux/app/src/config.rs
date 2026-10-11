@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn the_desktop_file_window_class_is_the_program_name_the_app_sets() {
-        let desktop = include_str!("../../../flatpak/com.tablepro.linux.desktop");
+        let desktop = include_str!("../../flatpak/com.tablepro.linux.desktop");
         let class = desktop
             .lines()
             .find_map(|line| line.strip_prefix("StartupWMClass="))

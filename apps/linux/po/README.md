@@ -2,7 +2,7 @@
 
 BookiE uses [GNU gettext](https://www.gnu.org/software/gettext/) for
 localisation. Source strings are wrapped at the call site with the `tr!`
-macro defined in `crates/app/src/i18n.rs`; at runtime
+macro defined in `apps/linux/app/src/i18n.rs`; at runtime
 `bindtextdomain("tablepro", …)` points gettext at the locale directory
 shipped by the package (`/app/share/locale` under Flatpak,
 `/usr/share/locale` for system installs, or `$TABLEPRO_LOCALEDIR` for
@@ -15,7 +15,7 @@ ad-hoc testing).
 3. Copy `tablepro.pot` to `xx.po` and translate the entries:
 
    ```sh
-   msginit --locale=xx --input=po/tablepro.pot --output=po/xx.po
+   msginit --locale=xx --input=apps/linux/po/tablepro.pot --output=apps/linux/po/xx.po
    ```
 
 4. Compile and install (the package build does this automatically; for
@@ -23,7 +23,7 @@ ad-hoc testing).
 
    ```sh
    mkdir -p ~/.local/share/locale/xx/LC_MESSAGES
-   msgfmt po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
+   msgfmt apps/linux/po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
    TABLEPRO_LOCALEDIR=~/.local/share/locale cargo run -p tablepro-app
    ```
 
@@ -40,7 +40,7 @@ python3 scripts/update-translations.py
 Use `msgmerge` to fold new strings into existing translations:
 
 ```sh
-for f in po/*.po; do msgmerge --update "$f" po/tablepro.pot; done
+for f in apps/linux/po/*.po; do msgmerge --update "$f" apps/linux/po/tablepro.pot; done
 ```
 
 ## Notes

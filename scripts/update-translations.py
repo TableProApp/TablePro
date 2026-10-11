@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
-files = sorted(path for path in (root / "crates/app/src").rglob("*.rs") if "tr!" in path.read_text())
+files = sorted(path for path in (root / "apps/linux/app/src").rglob("*.rs") if "tr!" in path.read_text())
 with tempfile.TemporaryDirectory(prefix="bookie-gettext-") as temporary:
     stage = Path(temporary)
     for path in files:
@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix="bookie-gettext-") as temporary:
         "--package-name=BookiE", "--package-version=0.1.6-dev",
         "--copyright-holder=BookiE contributors and TablePro Authors",
         "--msgid-bugs-address=https://github.com/cozyGarage/TablePro/issues",
-        "--output=" + str(root / "po/tablepro.pot"),
+        "--output=" + str(root / "apps/linux/po/tablepro.pot"),
         *[str(path.relative_to(root)) for path in files],
     ], cwd=stage, check=True)
-(root / "po/POTFILES.in").write_text("\n".join(str(path.relative_to(root)) for path in files) + "\n")
+(root / "apps/linux/po/POTFILES.in").write_text("\n".join(str(path.relative_to(root)) for path in files) + "\n")

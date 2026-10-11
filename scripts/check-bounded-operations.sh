@@ -5,7 +5,7 @@
 # runs until the server answers, however long that takes.
 #
 # The controlled forms end in `_controlled`. Anything else on a
-# connection handle in `crates/app/src` is a regression.
+# connection handle in `apps/linux/app/src` is a regression.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

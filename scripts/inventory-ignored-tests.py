@@ -75,7 +75,7 @@ output = io.StringIO()
 original_stdout = sys.stdout
 sys.stdout = output
 rows = []
-for path in sorted((root / "crates").rglob("*.rs")):
+for path in sorted(p for d in ("crates", "apps", "tests") for p in (root / d).rglob("*.rs")):
     source = path.read_text()
     for match in re.finditer(r'#\[ignore(?:\s*=\s*"([^"\n]*)")?\]', source):
         function = re.search(r'\b(?:async\s+)?fn\s+(\w+)', source[match.end():])
@@ -88,9 +88,9 @@ for path in sorted((root / "crates").rglob("*.rs")):
             tier, enable = "Helper", "Run parent unit/sandbox test; do not enable globally"
         elif "mssql_kerberos.rs" in relative:
             tier, enable = "MSSQL Kerberos", "scripts/test-mssql-kerberos.sh"
-        elif "driver-tls-tests" in relative:
+        elif relative.startswith("tests/driver-tls/"):
             tier, enable = "TLS", "scripts/test-driver-tls.sh"
-        elif "release-tests" in relative:
+        elif relative.startswith("tests/release/"):
             tier, enable = "Release", POSTGRES_RELEASE_RUNNER
         elif "postgres release fixture" in reason.lower():
             tier, enable = "Release", POSTGRES_RELEASE_RUNNER
@@ -113,7 +113,7 @@ for path in sorted((root / "crates").rglob("*.rs")):
             if path.stem not in targets:
                 raise RuntimeError(f"unmapped Docker SSH target: {path.stem}")
             tier, enable = "Driver", "bash scripts/test-ssh.sh (CI integration)"
-        elif "docker" in reason.lower() and relative.startswith("crates/app/"):
+        elif "docker" in reason.lower() and relative.startswith("apps/linux/app/"):
             if name not in mapped:
                 raise RuntimeError(f"unowned app Docker contract: {name}")
             tier, enable = "App server", "scripts/run-test-layer.py app-server"

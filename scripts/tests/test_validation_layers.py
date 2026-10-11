@@ -95,7 +95,7 @@ class LayerRunnerTests(unittest.TestCase):
             text=True,
             check=True,
         )
-        self.assertIn("../crates/app/tests/support/value_parse.rs)", result.stdout)
+        self.assertIn("../apps/linux/app/tests/support/value_parse.rs)", result.stdout)
         self.assertIn("value_contract_mongodb_decimal128_grid_edit_preserves_wide_precision", result.stdout)
         self.assertIn("App server", result.stdout)
 

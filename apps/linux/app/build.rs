@@ -1,5 +1,5 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let schema_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data");
+    let schema_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data");
     println!(
         "cargo:rerun-if-changed={}",
         schema_dir.join("com.tablepro.linux.gschema.xml").display()
@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-env=TABLEPRO_GSETTINGS_SCHEMA_DIR={}", out_dir.display());
 
     glib_build_tools::compile_resources(
-        &["../../data/resources"],
-        "../../data/resources/resources.gresource.xml",
+        &["../data/resources"],
+        "../data/resources/resources.gresource.xml",
         "tablepro.gresource",
     );
     Ok(())

@@ -352,7 +352,7 @@ class CiWorkflowTests(unittest.TestCase):
             "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
             flatpak.split("concurrency:", 1)[1].split("jobs:", 1)[0],
         )
-        self.assertIn("hashFiles('flatpak/**')", flatpak)
+        self.assertIn("hashFiles('apps/linux/flatpak/**')", flatpak)
         self.assertNotIn("github.sha }}", flatpak.split("cache-key:", 1)[1].split("\n", 1)[0])
         self.assertIn("""'["default"]' || '["default","development"]'""", flatpak)
         self.assertNotIn("matrix.manifest", flatpak)

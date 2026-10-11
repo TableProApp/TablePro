@@ -1,7 +1,7 @@
 # Platforms, toolchains and packaging
 
 One page for what runs where. The [sprint](bookie-0.2-sprint.md) owns release
-approval; [packaging](../packaging/README.md) owns package builds.
+approval; [packaging](../apps/linux/packaging/README.md) owns package builds.
 
 ## Supported stacks
 
@@ -61,13 +61,13 @@ ID, D-Bus name, XDG paths and keyring schema stay `com.tablepro.linux` and
 
 ## Flathub
 
-The Flatpak manifests (`../flatpak/com.tablepro.linux*`) build, but a manifest
+The Flatpak manifests (`../apps/linux/flatpak/com.tablepro.linux*`) build, but a manifest
 build is not release qualification or publication. Submission checklist:
 
-1. Capture screenshots under `flatpak/screenshots/` (1280x800 or larger):
+1. Capture screenshots under `apps/linux/flatpak/screenshots/` (1280x800 or larger):
    welcome, browse, editor, structure; reference them from the metainfo.
-2. `flatpak-builder --user --install build-dir flatpak/com.tablepro.linux.json`.
-3. `appstreamcli validate flatpak/com.tablepro.linux.metainfo.xml`.
+2. `flatpak-builder --user --install build-dir apps/linux/flatpak/com.tablepro.linux.json`.
+3. `appstreamcli validate apps/linux/flatpak/com.tablepro.linux.metainfo.xml`.
 4. Fork flathub/flathub, open the manifest PR, attach a release blurb.
 
 Permissions stay minimal: network, home (saved connections, SSH keys) and
@@ -88,5 +88,5 @@ disconnect; keyboard-only tab order through the connect dialog, sidebar, grid
 and editor; high contrast and large text; accessible names on custom grid cells
 and popovers.
 
-Translations: `po/tablepro.pot` exists, new strings go through `tr!`, see
-[../po/README.md](../po/README.md).
+Translations: `apps/linux/po/tablepro.pot` exists, new strings go through `tr!`, see
+[../apps/linux/po/README.md](../apps/linux/po/README.md).

@@ -863,7 +863,7 @@ pub(super) fn parse_time_value(text: &str) -> Result<Value, String> {
 }
 
 #[cfg(test)]
-#[path = "../../../../core/tests/support/parser_contract.rs"]
+#[path = "../../../../../../crates/core/tests/support/parser_contract.rs"]
 mod parser_contract;
 
 #[cfg(test)]

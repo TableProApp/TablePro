@@ -1,6 +1,6 @@
 //! Per-table WHERE-clause builder used by the Browse-tab filter UI.
 //!
-//! The dialog (in `crates/app`) constructs a `FilterSet` from the
+//! The dialog (in `apps/linux/app`) constructs a `FilterSet` from the
 //! user's input and hands it to `build_filter_where`, which:
 //!
 //! 1. Looks each rule's column up in the supplied schema.

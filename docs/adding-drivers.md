@@ -68,7 +68,7 @@ references; they do not introduce a Linux runtime plugin ABI.
    Initialize the shared crypto provider in test composition roots that link
    multiple TLS drivers. Do not load saved secrets inside a driver.
 7. Add the workspace member and dependencies in both composition roots.
-   Register in [app::build_registry](../crates/app/src/lib.rs) and
+   Register in [app::build_registry](../apps/linux/app/src/lib.rs) and
    [agentd::build_registry](../crates/agentd/src/main.rs). Apply matching feature
    gates where native build cost requires them.
 8. Update maturity/connection documentation and the user-facing changelog.

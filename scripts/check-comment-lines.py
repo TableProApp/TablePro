@@ -9,7 +9,7 @@ COMMENT = re.compile(r"\s*//")
 
 
 def source_files(root):
-    for crate in sorted((root / "crates").glob("**/src")):
+    for crate in sorted(c for d in ("crates", "apps", "tests") for c in (root / d).glob("**/src")):
         yield from sorted(crate.rglob("*.rs"))
 
 

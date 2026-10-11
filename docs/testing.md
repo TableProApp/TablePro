@@ -233,20 +233,20 @@ The suite verifies:
 25. XML export round-trips carriage returns, CRLF, LF, tabs, literal entity-looking text and Unicode through an independent XML parser; NULL remains distinct from empty text.
 26. XML export of NUL-containing text shows the code point and row/column error, publishes no file, leaves no temporary export and does not change source rows.
 
-The XML scenarios live in `crates/app/tests/gtk_xml.py`. Run
+The XML scenarios live in `apps/linux/app/tests/gtk_xml.py`. Run
 `xml_export_preserves_line_endings_and_null_distinctions` or
 `xml_export_refuses_illegal_text_without_publishing` with `TABLEPRO_GTK_SCENARIO`.
 Their Python oracle tests deliberately normalize carriage returns and collapse
 empty text into NULL, requiring both corruptions to fail. Core tests independently
 check atomic destination preservation for XML-illegal controls and U+FFFE/U+FFFF.
 
-The parameter scenarios live in `crates/app/tests/gtk_parameters.py`; select
+The parameter scenarios live in `apps/linux/app/tests/gtk_parameters.py`; select
 `repeated_parameters_preserve_wide_ids_and_sql_like_text` or
 `cancelled_parameters_never_execute_and_retry_uses_new_values` through
 `TABLEPRO_GTK_SCENARIO` to run one. Registration tests require both in the default
 suite. Each checks committed SQLite rows independently of the visible UI result.
 
-The workbook scenarios live in `crates/app/tests/gtk_workbook.py` and are registered
+The workbook scenarios live in `apps/linux/app/tests/gtk_workbook.py` and are registered
 in the default suite. Their XML oracle has separate negative tests that reject
 rounded values, wrong types, lost precision, formulas and incorrect page boundaries.
 SQLite supplies typed Date/Time/DateTime for these UI scenarios; typed TimestampTz

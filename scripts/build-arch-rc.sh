@@ -44,7 +44,7 @@ archive="$archive_dir/bookie-$version.tar.gz"
 git -C "$root" archive --format=tar.gz --prefix="TablePro-$commit/" "$commit" > "$archive"
 checksum="$(sha256sum "$archive" | awk '{print $1}')"
 
-cd "$root/packaging/arch"
+cd "$root/apps/linux/packaging/arch"
 export TABLEPRO_RC_COMMIT="$commit"
 export TABLEPRO_RC_SHA256="$checksum"
 export TABLEPRO_RC_VERSION="$version"

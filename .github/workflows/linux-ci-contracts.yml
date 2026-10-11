@@ -3,10 +3,10 @@ name: Linux CI contracts
 on:
   push:
     branches: [linux, main]
-    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "packaging/**", "docs/**", "**.md"]
+    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "apps/linux/packaging/**", "docs/**", "**.md"]
   pull_request:
     branches: [linux, main]
-    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "packaging/**", "docs/**", "**.md"]
+    paths: [".github/workflows/**", ".github/actions/**", "scripts/**", "apps/linux/packaging/**", "docs/**", "**.md"]
   workflow_dispatch:
 
 permissions:

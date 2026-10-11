@@ -464,7 +464,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let schema = dir.path().join("com.tablepro.linux.gschema.xml");
         std::fs::copy(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/com.tablepro.linux.gschema.xml"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../data/com.tablepro.linux.gschema.xml"),
             &schema,
         )
         .unwrap();

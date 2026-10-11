@@ -8,7 +8,7 @@
 
 crates/core/src/import/cell.rs 1151
 crates/core/src/sql_dialect.rs 1074
-crates/app/src/ui/connect_dialog/mod.rs 1258
+apps/linux/app/src/ui/connect_dialog/mod.rs 1258
 crates/storage/src/connections.rs 1191
 crates/drivers/mssql/tests/integration.rs 1157
 crates/drivers/mysql/tests/support/value_contracts.rs 1201

@@ -434,7 +434,7 @@ async fn value_contract_preserves_integer_and_text_command_arguments() {
     let (_container, host, port) = start_redis().await;
     let connection = RedisDriver.connect(opts(&host, port, "0")).await.unwrap();
     let corpus: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../testdata/value-contract.json")).unwrap();
+        serde_json::from_str(include_str!("../../../../tests/data/value-contract.json")).unwrap();
     for integer in corpus["integers"].as_array().unwrap() {
         let integer = integer.as_str().unwrap();
         connection.query(&format!("SET boundary {integer}")).await.unwrap();

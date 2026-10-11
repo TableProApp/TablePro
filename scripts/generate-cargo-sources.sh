@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate flatpak/generated-sources.json from Cargo.lock for offline /
+# Generate apps/linux/flatpak/generated-sources.json from Cargo.lock for offline /
 # Flathub builds. Requires flatpak-builder-tools (cargo sources script).
 #
 #   git clone https://github.com/flatpak/flatpak-builder-tools
@@ -17,7 +17,7 @@ fi
 
 python3 "$TOOLS/cargo/flatpak-cargo-generator.py" \
   "$ROOT/Cargo.lock" \
-  -o "$ROOT/flatpak/generated-sources.json"
+  -o "$ROOT/apps/linux/flatpak/generated-sources.json"
 
-echo "Wrote $ROOT/flatpak/generated-sources.json"
+echo "Wrote $ROOT/apps/linux/flatpak/generated-sources.json"
 echo "For Flathub, set CARGO_NET_OFFLINE=true and add \"generated-sources.json\" to the tablepro-app module sources."

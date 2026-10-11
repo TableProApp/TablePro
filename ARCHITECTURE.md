@@ -209,7 +209,7 @@ Rules that keep this sound:
 
 | You are changing | Put it here |
 |---|---|
-| GTK widget, Relm4 component, tab or browse UX | `crates/app` (main context only for widgets) |
+| GTK widget, Relm4 component, tab or browse UX | `apps/linux/app` (main context only for widgets) |
 | Headless MCP process wiring | `crates/agentd` |
 | MCP tool, token scope, allowlist or rate limit | `crates/mcp` (must still return a `PolicyGuard`) |
 | Classify, approve, mask, blast radius, audit types | `crates/policy` |

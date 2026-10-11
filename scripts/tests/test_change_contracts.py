@@ -21,7 +21,7 @@ class ChangeContractTests(unittest.TestCase):
             CHECKER.validate_exact_test_names(data)
 
     def test_row_edit_source_maps_to_its_required_regressions(self):
-        actions = CHECKER.select_actions(["crates/app/src/ui/browse_tab/row_ops.rs"], CHECKER.load_map())
+        actions = CHECKER.select_actions(["apps/linux/app/src/ui/browse_tab/row_ops.rs"], CHECKER.load_map())
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0]["package"], "tablepro-app")
         self.assertEqual(actions[0]["target"], "--lib")
@@ -84,7 +84,7 @@ class ChangeContractTests(unittest.TestCase):
         self.assertEqual(actions, [])
 
     def test_exact_app_integration_regression_selects_only_its_test_target(self):
-        actions = CHECKER.select_actions(["crates/app/tests/stale_grid_update.rs"], CHECKER.load_map())
+        actions = CHECKER.select_actions(["apps/linux/app/tests/stale_grid_update.rs"], CHECKER.load_map())
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0]["target"], "--test=stale_grid_update")
         self.assertEqual(actions[0]["required_tests"], [

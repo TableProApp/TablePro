@@ -43,7 +43,7 @@ the user's XDG configuration, data, state, and keyring records untouched.
 Current GTK CI uses a Debian testing container. A distro name alone does not
 establish compatibility with a rebuilt `.deb`; verify its required libraries.
 The build floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) is above it. Neither distro packages Rust 1.98, so build with rustup.
-Use `flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak.
+Use `apps/linux/flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak.
 
 ```bash
 DEB_VERSION=0.1.5-1 ./scripts/build-deb.sh

@@ -21,25 +21,25 @@ kerberos = ["tablepro-driver-mssql/kerberos"]
 duckdb = ["dep:tablepro-driver-duckdb"]
 
 [dependencies]
-tablepro-core = { path = "../core" }
-tablepro-policy = { path = "../policy" }
-tablepro-mcp = { path = "../mcp" }
-tablepro-driver-clickhouse = { path = "../drivers/clickhouse" }
-tablepro-driver-duckdb = { path = "../drivers/duckdb", optional = true }
-tablepro-driver-mongodb = { path = "../drivers/mongodb" }
-tablepro-driver-mssql = { path = "../drivers/mssql" }
-tablepro-driver-mysql = { path = "../drivers/mysql" }
-tablepro-driver-postgres = { path = "../drivers/postgres" }
-tablepro-driver-redis = { path = "../drivers/redis" }
-tablepro-driver-sqlite = { path = "../drivers/sqlite" }
+tablepro-core = { path = "../../../crates/core" }
+tablepro-policy = { path = "../../../crates/policy" }
+tablepro-mcp = { path = "../../../crates/mcp" }
+tablepro-driver-clickhouse = { path = "../../../crates/drivers/clickhouse" }
+tablepro-driver-duckdb = { path = "../../../crates/drivers/duckdb", optional = true }
+tablepro-driver-mongodb = { path = "../../../crates/drivers/mongodb" }
+tablepro-driver-mssql = { path = "../../../crates/drivers/mssql" }
+tablepro-driver-mysql = { path = "../../../crates/drivers/mysql" }
+tablepro-driver-postgres = { path = "../../../crates/drivers/postgres" }
+tablepro-driver-redis = { path = "../../../crates/drivers/redis" }
+tablepro-driver-sqlite = { path = "../../../crates/drivers/sqlite" }
 chrono.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tablepro-ssh = { path = "../ssh" }
-tablepro-storage = { path = "../storage" }
-tablepro-transport = { path = "../transport" }
+tablepro-ssh = { path = "../../../crates/ssh" }
+tablepro-storage = { path = "../../../crates/storage" }
+tablepro-transport = { path = "../../../crates/transport" }
 gtk4.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true

@@ -59,12 +59,12 @@ Thumbs.db
 .b4*
 # from the former linux/ folder
 docs/audit-*.md
-packaging/out/
-packaging/arch/src/
-packaging/arch/pkg/
-packaging/arch/*.pkg.tar.zst
-packaging/arch/*.tar.gz
-packaging/arch/*.tar.gz.part
+apps/linux/packaging/out/
+apps/linux/packaging/arch/src/
+apps/linux/packaging/arch/pkg/
+apps/linux/packaging/arch/*.pkg.tar.zst
+apps/linux/packaging/arch/*.tar.gz
+apps/linux/packaging/arch/*.tar.gz.part
 # test-quality tooling output (cargo-mutants, cargo-llvm-cov)
 /mutants.out/
 /mutants.out.old/

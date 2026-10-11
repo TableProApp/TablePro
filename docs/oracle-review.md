@@ -14,7 +14,7 @@ installed checks this review sits beside) and ledger row TEST-32.
 | Class | Meaning | Example |
 |---|---|---|
 | N, native | The database or a standard computes the expected value | `value = 'FFFFFFFF/FFFFFFFF'::pg_lsn AS server_match`, `pg_typeof(value)`, `value::text` in the same query |
-| R, round trip | A value goes in and the same value comes out through our code and the engine | the shared corpus in `testdata/value-contract.json` run by `assert_scalar_contract` on every engine |
+| R, round trip | A value goes in and the same value comes out through our code and the engine | the shared corpus in `tests/data/value-contract.json` run by `assert_scalar_contract` on every engine |
 | H, hand typed | The author typed the expected literal | `assert_eq!(decode(...), "{\"NULL\",...}")` |
 | C, computed | The expectation is computed by the code under test, or by a copy of its algorithm | an expected string built with the same formatter the driver uses |
 | P, policy | The expected decision comes from an ADR, `AGENTS.md` or a written rule | "TRUNCATE needs approval in Local" |
@@ -39,7 +39,7 @@ oracle class in the description.
 
 | # | Area | Test (file:line) | What it asserts | Class | Verdict | Notes |
 |---|---|---|---|---|---|---|
-| 1 | All engines, scalars | `core/tests/support/value_contract.rs` `assert_scalar_contract`, run by `value_contract_preserves_scalar_boundaries_through_parameters_and_exports` in each driver | The 10 integers, 8 floats, 11 texts and 6 decimals in `testdata/value-contract.json` survive a parameter and a literal export | R | OK | `value_contract.rs:5-99` loads `testdata/value-contract.json` and compares bind (`:84-90`) and literal export (`:91-98`) to the same corpus value. Strong against loss; Part B still needed for symmetric encode/decode errors. |
+| 1 | All engines, scalars | `core/tests/support/value_contract.rs` `assert_scalar_contract`, run by `value_contract_preserves_scalar_boundaries_through_parameters_and_exports` in each driver | The 10 integers, 8 floats, 11 texts and 6 decimals in `tests/data/value-contract.json` survive a parameter and a literal export | R | OK | `value_contract.rs:5-99` loads `tests/data/value-contract.json` and compares bind (`:84-90`) and literal export (`:91-98`) to the same corpus value. Strong against loss; Part B still needed for symmetric encode/decode errors. |
 | 2 | PostgreSQL | `drivers/postgres/tests/support/value_contracts.rs:478` `value_contract_pg_lsn_maximum_preserves_text_and_wire_identity` | `pg_lsn` max keeps its text, native type name and wire bytes; the server confirms equality | N | OK | `value_contracts.rs:483-498`: `pg_typeof`, `value::text`, `encode(pg_lsn_send(...))` and `value = 'FFFFFFFF/FFFFFFFF'::pg_lsn AS server_match` are computed by PostgreSQL. |
 | 3 | PostgreSQL | `drivers/postgres/tests/support/value_contracts.rs:106` `value_contract_wide_numeric_csv_round_trips_through_native_insert_plan` | A 40-digit `numeric(65,0)`, a narrow value and NULL survive CSV export and import | R | OK | `value_contracts.rs:106-183`: values travel CSV export → import plan → insert; final check uses server `amount::text` (`:171-182`). Plan row carriers at `:159-166` are hand-typed text of those same digits. |
 | 4 | PostgreSQL | `drivers/postgres/src/array.rs:464` `value_contract_enum_array_labels_quote_null_text_and_preserve_sql_null` | Enum array labels `NULL`, empty, `a,b`, `a"b`, `東京` and a real SQL NULL render as one array literal | H | WEAK | `array.rs:464-482`: expected `{"NULL","","a,b","a\"b","東京",NULL}` is author-typed against synthetic wire bytes; no live `array_out` / `::text` server oracle in this unit test. |
@@ -82,7 +82,7 @@ collection:
    The stored value must be the one you typed.
 6. Record the result next to each line, never blank.
 
-Values (from `testdata/value-contract.json`):
+Values (from `tests/data/value-contract.json`):
 
 | Kind | Values to check |
 |---|---|

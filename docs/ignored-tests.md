@@ -8,124 +8,72 @@ Total: 688 declarations. App server: 35; Driver: 494; GTK: 25; Helper: 2; Keyrin
 
 | Test | Tier | Reason | Activation condition / runner |
 |---|---|---|---|
+| [value_contract_mysql_unparseable_procedure_uses_human_approval_before_execution](../apps/linux/app/src/services/approval_router.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [mongodb_guarded_refetch_preserves_long_text_and_binary_values](../apps/linux/app/src/services/browse_query/tests/mongodb_value.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [redis_guarded_refetch_preserves_binary_key_and_value](../apps/linux/app/src/services/browse_query/tests/redis_value.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [mysql_value_query_refetches_the_exact_blob_for_a_composite_key](../apps/linux/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [clickhouse_value_query_refetches_the_exact_text_for_a_composite_key](../apps/linux/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [postgres_value_query_refetches_by_enum_and_domain_composite_key](../apps/linux/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [mssql_value_query_refetches_the_exact_blob_for_a_composite_key](../apps/linux/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [the_shortcuts_window_lists_keys_and_describes_mouse_gestures](../apps/linux/app/src/ui/app/shortcuts.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [value_contract_mongodb_collection_wide_mixed_metadata_refuses_edit](../apps/linux/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_off_page_type_change_during_census_refuses_edit](../apps/linux/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_census_is_not_a_snapshot_for_already_read_documents](../apps/linux/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_browse_uses_a_bounded_sample_and_page_find](../apps/linux/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_run_find_merges_page_types_and_exports_materialized_values](../apps/linux/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [find_selects_matches_and_replace_all_rewrites_every_occurrence](../apps/linux/app/src/ui/editor/find_bar.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [a_failed_statement_offers_a_copy_button](../apps/linux/app/src/ui/editor/outcomes.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [each_statement_gets_a_gutter_mark_for_its_outcome](../apps/linux/app/src/ui/editor/run_marks.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [vim_keys_are_attached_only_when_enabled](../apps/linux/app/src/ui/editor/schema.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [session_end_dialog_keeps_the_toggle_active_until_the_selected_action_finishes](../apps/linux/app/src/ui/editor/session_mode.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [moving_the_cursor_moves_the_band_between_statements](../apps/linux/app/src/ui/editor/statement_band.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [boolean_affinity_mismatch_cannot_emit_an_edit](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [mysql_bit_one_grid_shows_numeric_values_and_emits_boolean_edits](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [bind_does_not_open_binary_bytes_in_a_text_column_for_editing](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [mysql_spatial_grid_bytes_bind_as_read_only_labels_without_edits](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [entering_edit_on_a_truncated_long_text_cell_seeds_the_full_value](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [editing_literal_null_sentinel_text_keeps_it_distinct_from_sql_null](../apps/linux/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [stale_picker_cannot_target_a_replacement_grid](../apps/linux/app/src/ui/grid/column_jump.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [a_saved_order_is_shown_and_a_new_drag_is_saved](../apps/linux/app/src/ui/grid/column_order.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [hiding_a_column_hides_it_persists_it_and_keeps_the_last_one](../apps/linux/app/src/ui/grid/column_visibility.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [copying_a_previewed_cell_copies_the_full_value](../apps/linux/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [copy_value_keeps_keyless_previews_pending_edits_and_drafts_whole](../apps/linux/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [the_cell_menu_opens_with_the_menu_key_and_shift_f10](../apps/linux/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [typed_widget_slots_round_trip_and_keep_same_value_types_apart](../apps/linux/app/src/ui/grid/display.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [clipboard_csv_is_published_and_read_back_exactly](../apps/linux/app/src/ui/grid/export.rs) | GTK | requires isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [clipboard_tsv_is_published_and_keeps_null_and_formula_cells_distinct](../apps/linux/app/src/ui/grid/export.rs) | GTK | requires isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [the_viewer_dialog_builds_and_shows_the_full_value](../apps/linux/app/src/ui/grid/value_viewer.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [the_inspector_lists_a_row_and_returns_to_its_placeholder](../apps/linux/app/src/ui/row_inspector.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [a_group_row_shows_a_chevron_that_follows_its_collapse_state](../apps/linux/app/src/ui/sidebar_row.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
+| [value_contract_clickhouse_enum8_and_enum16_grid_edits_preserve_labels_and_refuse_invalid_values](../apps/linux/app/tests/support/clickhouse_enum_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_int32_grid_edit_preserves_integer_width](../apps/linux/app/tests/support/mongodb_integer_width.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_nested_document_edit_preserves_extended_bson_and_row_identity](../apps/linux/app/tests/support/mongodb_nested_edit_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mssql_datetimeoffset_grid_edit_preserves_local_time_offset_and_siblings](../apps/linux/app/tests/support/mssql_datetimeoffset_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mssql_legacy_datetime_text_grid_edit_preserves_wire_value_and_siblings](../apps/linux/app/tests/support/mssql_legacy_datetime_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mssql_max_values_survive_connection_session_and_consumers](../apps/linux/app/tests/support/mssql_max_value_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers](../apps/linux/app/tests/support/mssql_server_owned_columns.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mysql_enum_set_keyed_edits_preserve_native_values_across_sql_modes](../apps/linux/app/tests/support/mysql_enum_set_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mariadb_enum_set_grid_edit_preserves_values_across_sql_modes](../apps/linux/app/tests/support/mysql_enum_set_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mysql_unsigned_integer_grid_edits_refuse_coercion_and_preserve_u64](../apps/linux/app/tests/support/mysql_integer_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mysql_spatial_grid_refusal_preserves_native_bytes](../apps/linux/app/tests/support/mysql_spatial_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mysql_temporal_parser_keyed_edit_preserves_native_values_and_siblings](../apps/linux/app/tests/support/mysql_temporal_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_temporal_array_grid_edits_preserve_boundaries_and_siblings](../apps/linux/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_float4_array_grid_edit_preserves_extreme_values_and_sibling](../apps/linux/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_integer_array_grid_edits_preserve_width_and_siblings](../apps/linux/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_text_array_grid_edit_preserves_escaped_values_and_siblings](../apps/linux/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_bit_array_grid_edit_preserves_wire_values_and_sibling](../apps/linux/app/tests/support/postgres_bit_array_grid.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_postgres_citext_array_grid_edit_preserves_case_nulls_and_sibling](../apps/linux/app/tests/support/postgres_citext_array_grid.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [postgres_numeric_parser_outputs_round_trip_through_server](../apps/linux/app/tests/support/postgres_numeric_csv.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [postgres_extended_temporal_grid_edits_preserve_native_values](../apps/linux/app/tests/support/postgres_temporal.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_date_grid_edit_preserves_millisecond_instant](../apps/linux/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mongodb_decimal128_grid_edit_preserves_wide_precision](../apps/linux/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
+| [value_contract_mysql_bit_parser_edits_preserve_native_values](../apps/linux/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
 | [agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust](../crates/agentd/tests/g5_system_openssh.rs) | Release | requires the postgres release fixture, Secret Service, system OpenSSH, and tablepro-askpass | `scripts/test-postgres-release.sh` |
 | [agentd_uses_a_saved_client_certificate_for_the_database_session](../crates/agentd/tests/mtls.rs) | Release | requires the postgres release fixture and Secret Service | `scripts/test-postgres-release.sh` |
 | [agentd_refuses_a_saved_client_certificate_from_an_untrusted_authority](../crates/agentd/tests/mtls.rs) | Release | requires the postgres release fixture and Secret Service | `scripts/test-postgres-release.sh` |
 | [agentd_uses_a_saved_client_certificate_through_its_saved_ssh_route](../crates/agentd/tests/mtls.rs) | Release | requires the postgres release fixture and Secret Service | `scripts/test-postgres-release.sh` |
 | [a_saved_ssh_hop_is_used_instead_of_dialling_the_database_directly](../crates/agentd/tests/saved_transport.rs) | Keyring | requires a running Secret Service; scripts/test-secret-service.sh provides one | `scripts/test-secret-service.sh in isolated session` |
 | [saved_socket_is_available_through_the_agent_provider](../crates/agentd/tests/socket_local.rs) | Socket | requires scripts/test-postgres-socket.sh | `scripts/test-postgres-socket.sh` |
-| [value_contract_mysql_unparseable_procedure_uses_human_approval_before_execution](../crates/app/src/services/approval_router.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [mongodb_guarded_refetch_preserves_long_text_and_binary_values](../crates/app/src/services/browse_query/tests/mongodb_value.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [redis_guarded_refetch_preserves_binary_key_and_value](../crates/app/src/services/browse_query/tests/redis_value.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [mysql_value_query_refetches_the_exact_blob_for_a_composite_key](../crates/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [clickhouse_value_query_refetches_the_exact_text_for_a_composite_key](../crates/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [postgres_value_query_refetches_by_enum_and_domain_composite_key](../crates/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [mssql_value_query_refetches_the_exact_blob_for_a_composite_key](../crates/app/src/services/browse_query.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [the_shortcuts_window_lists_keys_and_describes_mouse_gestures](../crates/app/src/ui/app/shortcuts.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [value_contract_mongodb_collection_wide_mixed_metadata_refuses_edit](../crates/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_off_page_type_change_during_census_refuses_edit](../crates/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_census_is_not_a_snapshot_for_already_read_documents](../crates/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_browse_uses_a_bounded_sample_and_page_find](../crates/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_run_find_merges_page_types_and_exports_materialized_values](../crates/app/src/ui/browse_tab/tests.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [find_selects_matches_and_replace_all_rewrites_every_occurrence](../crates/app/src/ui/editor/find_bar.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [a_failed_statement_offers_a_copy_button](../crates/app/src/ui/editor/outcomes.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [each_statement_gets_a_gutter_mark_for_its_outcome](../crates/app/src/ui/editor/run_marks.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [vim_keys_are_attached_only_when_enabled](../crates/app/src/ui/editor/schema.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [session_end_dialog_keeps_the_toggle_active_until_the_selected_action_finishes](../crates/app/src/ui/editor/session_mode.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [moving_the_cursor_moves_the_band_between_statements](../crates/app/src/ui/editor/statement_band.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [boolean_affinity_mismatch_cannot_emit_an_edit](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [mysql_bit_one_grid_shows_numeric_values_and_emits_boolean_edits](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [bind_does_not_open_binary_bytes_in_a_text_column_for_editing](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [mysql_spatial_grid_bytes_bind_as_read_only_labels_without_edits](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [entering_edit_on_a_truncated_long_text_cell_seeds_the_full_value](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [editing_literal_null_sentinel_text_keeps_it_distinct_from_sql_null](../crates/app/src/ui/grid/column.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [stale_picker_cannot_target_a_replacement_grid](../crates/app/src/ui/grid/column_jump.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [a_saved_order_is_shown_and_a_new_drag_is_saved](../crates/app/src/ui/grid/column_order.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [hiding_a_column_hides_it_persists_it_and_keeps_the_last_one](../crates/app/src/ui/grid/column_visibility.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [copying_a_previewed_cell_copies_the_full_value](../crates/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [copy_value_keeps_keyless_previews_pending_edits_and_drafts_whole](../crates/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [the_cell_menu_opens_with_the_menu_key_and_shift_f10](../crates/app/src/ui/grid/context_menu.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [typed_widget_slots_round_trip_and_keep_same_value_types_apart](../crates/app/src/ui/grid/display.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [clipboard_csv_is_published_and_read_back_exactly](../crates/app/src/ui/grid/export.rs) | GTK | requires isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [clipboard_tsv_is_published_and_keeps_null_and_formula_cells_distinct](../crates/app/src/ui/grid/export.rs) | GTK | requires isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [the_viewer_dialog_builds_and_shows_the_full_value](../crates/app/src/ui/grid/value_viewer.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [the_inspector_lists_a_row_and_returns_to_its_placeholder](../crates/app/src/ui/row_inspector.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [a_group_row_shows_a_chevron_that_follows_its_collapse_state](../crates/app/src/ui/sidebar_row.rs) | GTK | requires an isolated GTK display | `scripts/test-gtk-widgets.sh` |
-| [value_contract_clickhouse_enum8_and_enum16_grid_edits_preserve_labels_and_refuse_invalid_values](../crates/app/tests/support/clickhouse_enum_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_int32_grid_edit_preserves_integer_width](../crates/app/tests/support/mongodb_integer_width.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_nested_document_edit_preserves_extended_bson_and_row_identity](../crates/app/tests/support/mongodb_nested_edit_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mssql_datetimeoffset_grid_edit_preserves_local_time_offset_and_siblings](../crates/app/tests/support/mssql_datetimeoffset_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mssql_legacy_datetime_text_grid_edit_preserves_wire_value_and_siblings](../crates/app/tests/support/mssql_legacy_datetime_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mssql_max_values_survive_connection_session_and_consumers](../crates/app/tests/support/mssql_max_value_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers](../crates/app/tests/support/mssql_server_owned_columns.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mysql_enum_set_keyed_edits_preserve_native_values_across_sql_modes](../crates/app/tests/support/mysql_enum_set_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mariadb_enum_set_grid_edit_preserves_values_across_sql_modes](../crates/app/tests/support/mysql_enum_set_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mysql_unsigned_integer_grid_edits_refuse_coercion_and_preserve_u64](../crates/app/tests/support/mysql_integer_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mysql_spatial_grid_refusal_preserves_native_bytes](../crates/app/tests/support/mysql_spatial_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mysql_temporal_parser_keyed_edit_preserves_native_values_and_siblings](../crates/app/tests/support/mysql_temporal_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_temporal_array_grid_edits_preserve_boundaries_and_siblings](../crates/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_float4_array_grid_edit_preserves_extreme_values_and_sibling](../crates/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_integer_array_grid_edits_preserve_width_and_siblings](../crates/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_text_array_grid_edit_preserves_escaped_values_and_siblings](../crates/app/tests/support/postgres_array_contract.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_bit_array_grid_edit_preserves_wire_values_and_sibling](../crates/app/tests/support/postgres_bit_array_grid.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_postgres_citext_array_grid_edit_preserves_case_nulls_and_sibling](../crates/app/tests/support/postgres_citext_array_grid.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [postgres_numeric_parser_outputs_round_trip_through_server](../crates/app/tests/support/postgres_numeric_csv.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [postgres_extended_temporal_grid_edits_preserve_native_values](../crates/app/tests/support/postgres_temporal.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_date_grid_edit_preserves_millisecond_instant](../crates/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mongodb_decimal128_grid_edit_preserves_wide_precision](../crates/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [value_contract_mysql_bit_parser_edits_preserve_native_values](../crates/app/tests/support/value_parse.rs) | App server | requires docker | `scripts/run-test-layer.py app-server` |
-| [a_verifying_mode_connects_with_the_fixture_authority](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_without_an_authority_is_refused](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_naming_the_wrong_authority_is_refused](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [an_encrypt_only_mode_connects_without_an_authority](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_plaintext_mode_does_not_reach_the_https_port](../crates/driver-tls-tests/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_connects_with_the_fixture_authority](../crates/driver-tls-tests/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_plaintext_mode_is_refused_by_a_tls_only_server](../crates/driver-tls-tests/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verifying_modes_reject_an_ip_endpoint_absent_from_the_certificate](../crates/driver-tls-tests/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_without_an_authority_is_refused](../crates/driver-tls-tests/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_naming_the_wrong_authority_is_refused](../crates/driver-tls-tests/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [kerberos_ticket_connects_over_verified_tls_and_executes_query](../crates/driver-tls-tests/tests/mssql_kerberos.rs) | MSSQL Kerberos | requires the opt-in SQL Server Kerberos fixture | `scripts/test-mssql-kerberos.sh` |
-| [kerberos_refuses_an_unregistered_sql_server_spn](../crates/driver-tls-tests/tests/mssql_kerberos.rs) | MSSQL Kerberos | requires the opt-in SQL Server Kerberos fixture | `scripts/test-mssql-kerberos.sh` |
-| [a_verifying_mode_connects_with_the_fixture_authority](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_ca_accepts_the_fixture_authority](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_naming_the_wrong_authority_is_refused](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [an_encrypt_only_mode_connects_without_an_authority](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_rejects_an_untrusted_authority](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_rejects_a_wrong_or_local_identity](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [the_server_forces_encryption_and_dropping_tunnel_closes_forward](../crates/driver-tls-tests/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_connects_with_the_fixture_authority](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_ca_accepts_the_fixture_authority](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_plaintext_mode_is_refused_by_a_tls_only_server](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_without_an_authority_is_refused](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_naming_the_wrong_authority_is_refused](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [an_encrypt_only_mode_connects_without_an_authority](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_rejects_an_untrusted_authority](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verify_full_through_ssh_rejects_a_wrong_or_local_identity](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_tls_rejection_does_not_fall_back_to_plaintext_and_dropping_tunnel_cleans_up](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_server_requiring_a_client_certificate_accepts_a_valid_identity](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_server_requiring_a_client_certificate_rejects_a_missing_identity](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_server_requiring_a_client_certificate_rejects_an_untrusted_identity](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_rotated_valid_client_identity_connects](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_server_requiring_a_client_certificate_accepts_the_identity_through_ssh](../crates/driver-tls-tests/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [mongodb_still_connects_to_a_server_without_encryption](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [redis_still_connects_to_a_server_without_encryption](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mongodb_client_will_not_fall_back_to_plaintext](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_redis_client_will_not_fall_back_to_plaintext](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mysql_client_will_not_fall_back_to_plaintext](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_clickhouse_client_will_not_fall_back_to_plaintext](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mssql_client_will_not_fall_back_to_plaintext](../crates/driver-tls-tests/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_connects_with_the_fixture_authority](../crates/driver-tls-tests/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_plaintext_mode_is_refused_by_a_tls_only_server](../crates/driver-tls-tests/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [verifying_modes_reject_an_ip_endpoint_absent_from_the_certificate](../crates/driver-tls-tests/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_without_an_authority_is_refused](../crates/driver-tls-tests/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [a_verifying_mode_naming_the_wrong_authority_is_refused](../crates/driver-tls-tests/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [system_store_verifies_when_no_authority_is_named](../crates/driver-tls-tests/tests/system_trust.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
-| [system_store_verify_ca_checks_the_chain_while_verify_full_checks_the_hostname](../crates/driver-tls-tests/tests/system_trust.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
 | [a_lost_clickhouse_server_is_reported_as_disconnected](../crates/drivers/clickhouse/tests/integration.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-driver-clickhouse --test integration -- --include-ignored --test-threads=1` |
 | [wide_integer_binding_and_sql_export_preserve_exact_server_values](../crates/drivers/clickhouse/tests/integration.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-driver-clickhouse --test integration -- --include-ignored --test-threads=1` |
 | [wide_integer_grid_edits_preserve_exact_values_and_row_identity](../crates/drivers/clickhouse/tests/integration.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-driver-clickhouse --test integration -- --include-ignored --test-threads=1` |
@@ -601,65 +549,6 @@ Total: 688 declarations. App server: 35; Driver: 494; GTK: 25; Helper: 2; Keyrin
 | [a_commit_failing_on_a_deferred_constraint_closes_the_batch](../crates/policy/tests/session_postgres.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1` |
 | [closing_a_session_with_an_open_transaction_rolls_it_back_on_real_postgres](../crates/policy/tests/session_postgres.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1` |
 | [a_read_only_repeatable_read_session_keeps_one_snapshot_across_queries](../crates/policy/tests/session_postgres.rs) | Driver | requires docker | `Docker plus cargo test -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1` |
-| [activity_templates_run_against_a_verified_session](../crates/release-tests/tests/activity_locks.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [blocking_lock_query_reports_a_contended_row](../crates/release-tests/tests/activity_locks.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [the_shared_transport_verifies_the_database_hostname_through_the_bastion](../crates/release-tests/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_tunnelled_connection_fails_closed_when_the_bastion_is_unreachable](../crates/release-tests/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_direct_session_and_a_tunnelled_session_reach_the_same_database](../crates/release-tests/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [shared_transport_records_builtin_unknown_and_changed_host_key_refusals](../crates/release-tests/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [every_filter_operator_selects_the_expected_rows](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [combinators_and_raw_sql_compose_with_bound_rules](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_filter_value_carrying_sql_stays_data](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [an_unknown_filter_column_is_refused_before_reaching_the_database](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [keyset_paging_walks_the_same_rows_as_offset_paging](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_composite_keyset_seeks_past_the_last_seen_pair](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [postgres_patterns_search_non_text_columns_without_changing_comparisons](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [capped_stream_preserves_columns_values_and_connection_reuse](../crates/release-tests/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_read_scoped_agent_cannot_read_a_query_plan](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [explain_analyze_is_denied_and_leaves_the_table_intact](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [explain_analyze_stays_denied_on_a_read_only_connection_with_write_scope](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [csv_export_escapes_values_read_from_the_database](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_read_scoped_agent_cannot_run_a_write_through_execute_query](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_denied_agent_write_is_journalled](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_read_scoped_agent_reads_table_metadata_a_count_and_a_page](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_metadata_tool_is_refused_for_a_connection_outside_the_allowlist](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_hostile_table_name_cannot_inject_sql_through_a_metadata_tool](../crates/release-tests/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [named_parameters_bind_values_through_the_driver](../crates/release-tests/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_sql_payload_in_a_parameter_stays_data](../crates/release-tests/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [repeated_parameters_bind_the_same_value_at_every_position](../crates/release-tests/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_dollar_quoted_function_body_executes_as_one_statement](../crates/release-tests/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_copied_insert_round_trips_a_value_holding_a_backslash_and_a_quote](../crates/release-tests/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [read_only_denies_a_data_changing_cte_and_leaves_rows_in_place](../crates/release-tests/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [read_only_denies_an_administrative_function](../crates/release-tests/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [batch_rollback_discards_every_statement_after_a_failure](../crates/release-tests/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [interactive_rollback_discards_uncommitted_writes](../crates/release-tests/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [direct_reconnect_restores_a_verified_session](../crates/release-tests/tests/reconnect.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [ssh_reconnect_replaces_the_tunnel_and_the_session](../crates/release-tests/tests/reconnect.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_saved_certificate_authority_verifies_a_privately_issued_certificate](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_saved_connection_without_an_authority_cannot_verify_a_private_certificate](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_saved_connection_naming_the_wrong_authority_is_refused](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [an_unverified_mode_ignores_a_saved_authority](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [saved_mtls_connection_authenticates_directly_with_client_certificate](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [saved_mtls_connection_authenticates_through_ssh](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [server_requiring_client_certificate_rejects_missing_identity](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [server_requiring_client_certificate_rejects_untrusted_identity](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_rotated_valid_client_certificate_is_used_by_the_saved_connection](../crates/release-tests/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_created_table_matches_the_drafted_columns_indexes_and_keys](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_drafted_foreign_key_is_created_and_enforced](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [an_edited_draft_applies_the_diffed_column_changes](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_renamed_table_keeps_its_rows](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_failed_statement_rolls_back_the_whole_ddl_batch](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [structure_batches_do_not_commit_or_rollback_an_editor_transaction](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [column_comments_are_created_added_edited_and_cleared](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [a_renamed_column_keeps_a_comment_edited_in_the_same_save](../crates/release-tests/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_succeeds_against_the_certificate_hostname](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_rejects_a_hostname_outside_the_certificate](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_rejects_an_unknown_certificate_authority](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_ca_rejects_an_unknown_certificate_authority](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [ssh_tunnel_reaches_a_database_with_no_published_port](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_through_ssh_uses_the_original_database_hostname](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_through_ssh_rejects_a_hostname_outside_the_certificate](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
-| [verify_full_over_a_tcp_tunnel_never_downgrades_to_the_local_dial_address](../crates/release-tests/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
 | [the_built_in_client_authenticates_with_a_key_held_by_ssh_agent](../crates/ssh/tests/agent_auth.rs) | Driver | requires docker | `bash scripts/test-ssh.sh (CI integration)` |
 | [a_paused_bastion_is_reported_closed_through_keepalive_instead_of_hanging_forever](../crates/ssh/tests/agent_auth.rs) | Driver | requires docker, and waits out the keepalive window | `bash scripts/test-ssh.sh (CI integration)` |
 | [password_authentication_succeeds_with_the_correct_password](../crates/ssh/tests/agent_auth.rs) | Driver | requires docker | `bash scripts/test-ssh.sh (CI integration)` |
@@ -696,3 +585,114 @@ Total: 688 declarations. App server: 35; Driver: 494; GTK: 25; Helper: 2; Keyrin
 | [legacy_jump_key_passphrase_is_refused_before_keyring_access](../crates/transport/src/lib.rs) | Keyring | requires a running Secret Service; scripts/test-secret-service.sh provides one | `scripts/test-secret-service.sh in isolated session` |
 | [private_key_passphrases_use_the_secret_bound_to_each_hop](../crates/transport/src/tests/ssh_passphrase_tests.rs) | Keyring | requires a running Secret Service; scripts/test-secret-service.sh provides one | `scripts/test-secret-service.sh in isolated session` |
 | [a_missing_jump_key_passphrase_does_not_receive_the_root_secret](../crates/transport/src/tests/ssh_passphrase_tests.rs) | Keyring | requires a running Secret Service; scripts/test-secret-service.sh provides one | `scripts/test-secret-service.sh in isolated session` |
+| [a_verifying_mode_connects_with_the_fixture_authority](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_without_an_authority_is_refused](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_naming_the_wrong_authority_is_refused](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [an_encrypt_only_mode_connects_without_an_authority](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_plaintext_mode_does_not_reach_the_https_port](../tests/driver-tls/tests/clickhouse_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_connects_with_the_fixture_authority](../tests/driver-tls/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_plaintext_mode_is_refused_by_a_tls_only_server](../tests/driver-tls/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verifying_modes_reject_an_ip_endpoint_absent_from_the_certificate](../tests/driver-tls/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_without_an_authority_is_refused](../tests/driver-tls/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_naming_the_wrong_authority_is_refused](../tests/driver-tls/tests/mongodb_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [kerberos_ticket_connects_over_verified_tls_and_executes_query](../tests/driver-tls/tests/mssql_kerberos.rs) | MSSQL Kerberos | requires the opt-in SQL Server Kerberos fixture | `scripts/test-mssql-kerberos.sh` |
+| [kerberos_refuses_an_unregistered_sql_server_spn](../tests/driver-tls/tests/mssql_kerberos.rs) | MSSQL Kerberos | requires the opt-in SQL Server Kerberos fixture | `scripts/test-mssql-kerberos.sh` |
+| [a_verifying_mode_connects_with_the_fixture_authority](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_ca_accepts_the_fixture_authority](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_naming_the_wrong_authority_is_refused](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [an_encrypt_only_mode_connects_without_an_authority](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_rejects_an_untrusted_authority](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_rejects_a_wrong_or_local_identity](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [the_server_forces_encryption_and_dropping_tunnel_closes_forward](../tests/driver-tls/tests/mssql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_connects_with_the_fixture_authority](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_ca_accepts_the_fixture_authority](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_plaintext_mode_is_refused_by_a_tls_only_server](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_rejects_an_ip_endpoint_absent_from_the_certificate](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_without_an_authority_is_refused](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_naming_the_wrong_authority_is_refused](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [an_encrypt_only_mode_connects_without_an_authority](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_rejects_an_untrusted_authority](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verify_full_through_ssh_rejects_a_wrong_or_local_identity](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_tls_rejection_does_not_fall_back_to_plaintext_and_dropping_tunnel_cleans_up](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_server_requiring_a_client_certificate_accepts_a_valid_identity](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_server_requiring_a_client_certificate_rejects_a_missing_identity](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_server_requiring_a_client_certificate_rejects_an_untrusted_identity](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_rotated_valid_client_identity_connects](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_server_requiring_a_client_certificate_accepts_the_identity_through_ssh](../tests/driver-tls/tests/mysql_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [mongodb_still_connects_to_a_server_without_encryption](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [redis_still_connects_to_a_server_without_encryption](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mongodb_client_will_not_fall_back_to_plaintext](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_redis_client_will_not_fall_back_to_plaintext](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mysql_client_will_not_fall_back_to_plaintext](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_clickhouse_client_will_not_fall_back_to_plaintext](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mssql_client_will_not_fall_back_to_plaintext](../tests/driver-tls/tests/plaintext_regression.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_connects_with_the_fixture_authority](../tests/driver-tls/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_plaintext_mode_is_refused_by_a_tls_only_server](../tests/driver-tls/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [verifying_modes_reject_an_ip_endpoint_absent_from_the_certificate](../tests/driver-tls/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_without_an_authority_is_refused](../tests/driver-tls/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [a_verifying_mode_naming_the_wrong_authority_is_refused](../tests/driver-tls/tests/redis_tls.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [system_store_verifies_when_no_authority_is_named](../tests/driver-tls/tests/system_trust.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [system_store_verify_ca_checks_the_chain_while_verify_full_checks_the_hostname](../tests/driver-tls/tests/system_trust.rs) | TLS | requires the driver tls fixture | `scripts/test-driver-tls.sh` |
+| [activity_templates_run_against_a_verified_session](../tests/release/tests/activity_locks.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [blocking_lock_query_reports_a_contended_row](../tests/release/tests/activity_locks.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [the_shared_transport_verifies_the_database_hostname_through_the_bastion](../tests/release/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_tunnelled_connection_fails_closed_when_the_bastion_is_unreachable](../tests/release/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_direct_session_and_a_tunnelled_session_reach_the_same_database](../tests/release/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [shared_transport_records_builtin_unknown_and_changed_host_key_refusals](../tests/release/tests/agent_transport.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [every_filter_operator_selects_the_expected_rows](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [combinators_and_raw_sql_compose_with_bound_rules](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_filter_value_carrying_sql_stays_data](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [an_unknown_filter_column_is_refused_before_reaching_the_database](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [keyset_paging_walks_the_same_rows_as_offset_paging](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_composite_keyset_seeks_past_the_last_seen_pair](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [postgres_patterns_search_non_text_columns_without_changing_comparisons](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [capped_stream_preserves_columns_values_and_connection_reuse](../tests/release/tests/browse_filters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_read_scoped_agent_cannot_read_a_query_plan](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [explain_analyze_is_denied_and_leaves_the_table_intact](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [explain_analyze_stays_denied_on_a_read_only_connection_with_write_scope](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [csv_export_escapes_values_read_from_the_database](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_read_scoped_agent_cannot_run_a_write_through_execute_query](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_denied_agent_write_is_journalled](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_read_scoped_agent_reads_table_metadata_a_count_and_a_page](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_metadata_tool_is_refused_for_a_connection_outside_the_allowlist](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_hostile_table_name_cannot_inject_sql_through_a_metadata_tool](../tests/release/tests/mcp_tools.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [named_parameters_bind_values_through_the_driver](../tests/release/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_sql_payload_in_a_parameter_stays_data](../tests/release/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [repeated_parameters_bind_the_same_value_at_every_position](../tests/release/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_dollar_quoted_function_body_executes_as_one_statement](../tests/release/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_copied_insert_round_trips_a_value_holding_a_backslash_and_a_quote](../tests/release/tests/parameters.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [read_only_denies_a_data_changing_cte_and_leaves_rows_in_place](../tests/release/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [read_only_denies_an_administrative_function](../tests/release/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [batch_rollback_discards_every_statement_after_a_failure](../tests/release/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [interactive_rollback_discards_uncommitted_writes](../tests/release/tests/policy_transactions.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [direct_reconnect_restores_a_verified_session](../tests/release/tests/reconnect.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [ssh_reconnect_replaces_the_tunnel_and_the_session](../tests/release/tests/reconnect.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_saved_certificate_authority_verifies_a_privately_issued_certificate](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_saved_connection_without_an_authority_cannot_verify_a_private_certificate](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_saved_connection_naming_the_wrong_authority_is_refused](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [an_unverified_mode_ignores_a_saved_authority](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [saved_mtls_connection_authenticates_directly_with_client_certificate](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [saved_mtls_connection_authenticates_through_ssh](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [server_requiring_client_certificate_rejects_missing_identity](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [server_requiring_client_certificate_rejects_untrusted_identity](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_rotated_valid_client_certificate_is_used_by_the_saved_connection](../tests/release/tests/saved_tls.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_created_table_matches_the_drafted_columns_indexes_and_keys](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_drafted_foreign_key_is_created_and_enforced](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [an_edited_draft_applies_the_diffed_column_changes](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_renamed_table_keeps_its_rows](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_failed_statement_rolls_back_the_whole_ddl_batch](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [structure_batches_do_not_commit_or_rollback_an_editor_transaction](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [column_comments_are_created_added_edited_and_cleared](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [a_renamed_column_keeps_a_comment_edited_in_the_same_save](../tests/release/tests/structure_ddl.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_succeeds_against_the_certificate_hostname](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_rejects_a_hostname_outside_the_certificate](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_rejects_an_unknown_certificate_authority](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_ca_rejects_an_unknown_certificate_authority](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [ssh_tunnel_reaches_a_database_with_no_published_port](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_through_ssh_uses_the_original_database_hostname](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_through_ssh_rejects_a_hostname_outside_the_certificate](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |
+| [verify_full_over_a_tcp_tunnel_never_downgrades_to_the_local_dial_address](../tests/release/tests/tls_identity.rs) | Release | requires the postgres release fixture | `scripts/test-postgres-release.sh` |

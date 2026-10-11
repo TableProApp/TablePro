@@ -54,7 +54,7 @@ Include before and after screenshots for visible changes. Test both light and da
 ## Packaging
 
 GitHub Release packages are Arch x86_64 and Ubuntu 25.10 amd64. Test
-`packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and
+`apps/linux/packaging/arch/PKGBUILD`, `scripts/validate-arch-package.sh`, and
 `scripts/validate-deb-package.sh` when a change affects installed files,
 native dependencies, desktop integration, or launch behavior. Public AUR
 and Flathub publication are deferred and must not define current requirements.

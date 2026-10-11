@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("gtk_shard", ROOT / "crates/app/tests/gtk_shard.py")
+SPEC = importlib.util.spec_from_file_location("gtk_shard", ROOT / "apps/linux/app/tests/gtk_shard.py")
 shard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(shard)
 

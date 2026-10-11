@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="${DEB_OUT:-$ROOT/packaging/out}"
+OUT="${DEB_OUT:-$ROOT/apps/linux/packaging/out}"
 VERSION="${DEB_VERSION:-0.1.5-1}"
 ARCH="${DEB_ARCH:-amd64}"
 PKG_NAME="tablepro_${VERSION}_${ARCH}"
@@ -42,12 +42,12 @@ install -Dsm755 "$CARGO_TARGET_DIR/release/tablepro-agentd" "$STAGE/usr/bin/book
 install -Dsm755 "$CARGO_TARGET_DIR/release/tablepro-askpass" "$STAGE/usr/bin/tablepro-askpass"
 ln -s bookie "$STAGE/usr/bin/tablepro"
 ln -s bookie-agentd "$STAGE/usr/bin/tablepro-agentd"
-install -Dm644 flatpak/com.tablepro.linux.desktop "$STAGE/usr/share/applications/com.tablepro.linux.desktop"
-install -Dm644 flatpak/com.tablepro.linux.metainfo.xml "$STAGE/usr/share/metainfo/com.tablepro.linux.metainfo.xml"
-install -Dm644 data/com.tablepro.linux.gschema.xml "$STAGE/usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml"
-install -Dm644 flatpak/icons/scalable/com.tablepro.linux.svg \
+install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop "$STAGE/usr/share/applications/com.tablepro.linux.desktop"
+install -Dm644 apps/linux/flatpak/com.tablepro.linux.metainfo.xml "$STAGE/usr/share/metainfo/com.tablepro.linux.metainfo.xml"
+install -Dm644 apps/linux/data/com.tablepro.linux.gschema.xml "$STAGE/usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml"
+install -Dm644 apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg \
   "$STAGE/usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg"
-install -Dm644 packaging/policy.example.toml "$STAGE/usr/share/doc/tablepro/policy.example.toml"
+install -Dm644 apps/linux/packaging/policy.example.toml "$STAGE/usr/share/doc/tablepro/policy.example.toml"
 install -Dm644 LICENSE.md "$STAGE/usr/share/doc/tablepro/LICENSE.md"
 
 mkdir -p "$STAGE/DEBIAN"

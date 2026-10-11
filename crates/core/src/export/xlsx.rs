@@ -192,7 +192,7 @@ mod tests {
     fn value_contract_workbook_preserves_wide_integers_and_exact_decimals_as_text() {
         let corpus: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../testdata/value-contract.json"
+            "/../../tests/data/value-contract.json"
         )))
         .unwrap();
         let mut values = vec![Value::Int(1_000_000_000_000_000), Value::Int(-1_000_000_000_000_000)];

@@ -146,7 +146,7 @@ GitHub runs the cheap tier only; merge acceptance is the Forgejo gate (`bash scr
 
 ## Packaging
 
-The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [packaging/README.md](packaging/README.md). To rebuild the Arch package from a clean commit:
+The current package is BookiE 0.1.5. Download it from the [linux-v0.1.5 GitHub Release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5), or see [the release evidence](docs/archive/release-0.1.4.md) and [apps/linux/packaging/README.md](apps/linux/packaging/README.md). To rebuild the Arch package from a clean commit:
 
 ```bash
 cd linux

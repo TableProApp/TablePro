@@ -22,7 +22,7 @@ def unbounded_calls(paths):
 def main():
     paths = [
         path
-        for folder in [ROOT / "crates/app/src", ROOT / "crates/mcp/src"]
+        for folder in [ROOT / "apps/linux/app/src", ROOT / "crates/mcp/src"]
         for path in folder.rglob("*.rs")
         if not path.name.endswith("_tests.rs")
     ]

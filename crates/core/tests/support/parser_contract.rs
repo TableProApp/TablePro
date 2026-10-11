@@ -3,7 +3,7 @@
 use tablepro_core::Value;
 
 pub fn corpus() -> serde_json::Value {
-    serde_json::from_str(include_str!("../../../../testdata/value-contract.json")).unwrap()
+    serde_json::from_str(include_str!("../../../../tests/data/value-contract.json")).unwrap()
 }
 
 pub fn corpus_texts(field: &str) -> Vec<String> {

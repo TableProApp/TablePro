@@ -78,11 +78,11 @@ string assertions with behavior proof.
 
 ### R1 — High: relational grid saves do not detect an intervening value edit
 
-[Change-tracker materialization](../../crates/app/src/services/change_tracker.rs)
+[Change-tracker materialization](../../apps/linux/app/src/services/change_tracker.rs)
 retains `(column, previous_value, new_value)` but discards `previous_value` for
 ordinary SQL engines. [The shared builder](../../crates/core/src/sql_dialect/updates.rs)
 generates `SET new_value WHERE primary_key`. MongoDB uses original-value
-predicates. [The save handler](../../crates/app/src/ui/app/row_ops.rs) examines
+predicates. [The save handler](../../apps/linux/app/src/ui/app/row_ops.rs) examines
 affected counts after commit; one affected row cannot distinguish a stale
 overwrite from a legitimate update. Its helper also accepts every positive
 count, despite surrounding text describing an exactly-one invariant.

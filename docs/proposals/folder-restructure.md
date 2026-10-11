@@ -1,6 +1,6 @@
 # Folder restructure: move out of `linux/`
 
-Status: proposal for the maintainer. Nothing here has been moved. It follows the
+Status: done in two steps on 2026-10-11 (the lift out of `linux/`, then the split below). Differences from this plan: `meson.build` and `meson_options.txt` stay at the repository root, because Meson cannot reach files outside its source root; the TLS and release test crates went to `tests/driver-tls` and `tests/release`; `testdata` is `tests/data`. It follows the
 [backlog](../backlog.md) item on separating the platform-neutral crates from the
 Linux application and on moving tests out of the source folders.
 
@@ -27,7 +27,7 @@ relative links. A half-done move breaks the gate, so it has to land as one chang
 crates/                 platform-neutral crates (core, policy, storage, ssh,
                         transport, mcp, agentd, drivers/*)
 apps/linux/             the GTK app crate, plus what only it needs:
-                        data/, po/, flatpak/, packaging/, meson.build, meson_options.txt
+                        apps/linux/data/, apps/linux/po/, apps/linux/flatpak/, apps/linux/packaging/, meson.build, meson_options.txt
 tests/                  cross-crate fixtures, test data, release and TLS test crates
 scripts/                from scripts
 ci/                     from ci
@@ -40,18 +40,18 @@ Workspace files (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.tom
 
 ### Move map
 
-| From | To |
+| From (before) | To |
 |---|---|
-| `crates/{core,policy,storage,ssh,transport,mcp,agentd}` | `crates/<name>` |
-| `crates/drivers/*` | `crates/drivers/*` |
-| `crates/app` | `apps/linux/app` |
-| `data`, `po`, `flatpak`, `packaging` | `apps/linux/` |
-| `meson.build`, `meson_options.txt` | `apps/linux/` |
-| `crates/release-tests`, `crates/driver-tls-tests` | `tests/release`, `tests/driver-tls` |
-| `tests/fixtures`, `testdata` | `tests/fixtures`, `tests/data` |
-| `scripts`, `ci`, `vendor` | `scripts`, `ci`, `vendor` |
-| `docs`, `ARCHITECTURE.md`, `ROADMAP.md`, `CHANGELOG.md` | `docs/`, root |
-| `Cargo.toml` and tool config files | repository root |
+| `linux/crates/{core,policy,storage,ssh,transport,mcp,agentd}` | `crates/<name>` |
+| `linux/crates/drivers/*` | `crates/drivers/*` |
+| `linux/crates/app` | `apps/linux/app` |
+| `linux/data`, `linux/po`, `linux/flatpak`, `linux/packaging` | `apps/linux/` |
+| `linux/meson.build`, `linux/meson_options.txt` | repository root |
+| `linux/crates/release-tests`, `linux/crates/driver-tls-tests` | `tests/release`, `tests/driver-tls` |
+| `linux/tests/fixtures`, `linux/testdata` | `tests/fixtures`, `tests/data` |
+| `linux/scripts`, `linux/ci`, `linux/vendor` | `scripts`, `ci`, `vendor` |
+| `linux/docs`, `linux/ARCHITECTURE.md`, `linux/ROADMAP.md`, `linux/CHANGELOG.md` | `docs/`, root |
+| `linux/Cargo.toml` and tool config files | repository root |
 
 ### Decision for the maintainer: unit and integration tests
 

@@ -6008,7 +6008,7 @@ native `typeof()`/`quote()` oracles distinguish text labels, numeric
 INTEGER/REAL values, BLOB bytes and SQL NULL. Grid and typed CSV parsing also
 preserve numeric affinity and refuse unsafe numeric inputs
 ([driver test](../../crates/drivers/sqlite/tests/runtime_typed_values.rs), [grid
-test](../../crates/app/src/ui/browse_tab/tests.rs), [CSV
+test](../../apps/linux/app/src/ui/browse_tab/tests.rs), [CSV
 test](../../crates/core/src/import/cell/tests/sqlite_affinity.rs)). Declared `ANY`
 retains its conservative text path because metadata omits STRICT table status.
 
@@ -6207,7 +6207,7 @@ A Docker-backed app grid contract edits nullable Enum8/Enum16 labels against
 native type and signed-code oracles. It accepts quoted empty, literal `NULL`
 and apostrophe-bearing labels, keeps blank input as SQL NULL, and proves an
 undeclared label leaves all rows unchanged
-([test](../../crates/app/tests/support/clickhouse_enum_contract.rs)).
+([test](../../apps/linux/app/tests/support/clickhouse_enum_contract.rs)).
 Nested `Array(Enum8)`, `Array(Nullable(Enum8))`, `Array(Enum16)`,
 `Array(Nullable(Enum16))`, `Tuple(Enum8, Nullable(Enum8), Enum8)` and
 `Tuple(Enum16, Nullable(Enum16), Enum16)` use native `toJSONString` as the
@@ -6465,14 +6465,14 @@ SQLite `json_group_array()` over STRICT `ANY` preserves numeric and text
 elements, formula-shaped text, Unicode, JSON null, and empty-group output (`[]`)
 as exact JSON text through typed CSV re-import. The native `typeof()` oracle
 checks the restored value remains TEXT; see
-[`sqlite_json_group_array_any_csv_round_trip_preserves_json_null_and_text`](../../crates/app/tests/support/sqlite_any_contract/aggregate_csv.rs).
+[`sqlite_json_group_array_any_csv_round_trip_preserves_json_null_and_text`](../../apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs).
 
 SQLite `json_group_object()` over STRICT `ANY` preserves ordered duplicate keys,
 retains NULL values as JSON `null`, and returns `{}` for an empty group. It
 checks version-specific NULL-label behavior: SQLite 3.50.0+ omits NULL keys,
 while older system libraries' malformed native output is preserved exactly.
 Exact output text and restored TEXT storage are checked through typed CSV; see
-[`sqlite_json_group_object_any_csv_round_trip_preserves_native_text`](../../crates/app/tests/support/sqlite_any_contract/aggregate_csv.rs).
+[`sqlite_json_group_object_any_csv_round_trip_preserves_native_text`](../../apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs).
 
 SQLite arithmetic expressions over STRICT `ANY` verify numeric coercion,
 integer division, overflow promotion to REAL, divide-by-zero NULL and typed CSV

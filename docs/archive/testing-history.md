@@ -30,7 +30,7 @@ own change with a regression test that fails against the current code first:
    analogue (no hex viewer, no PHP-serialize/content-type detection
    feature) — missing features, not test gaps, so left alone. Added
    embedded-NUL bytes, empty bytes, edit-text-for-bytes, and truncation
-   boundary tests to [grid rendering](../../crates/app/src/ui/grid/display.rs)
+   boundary tests to [grid rendering](../../apps/linux/app/src/ui/grid/display.rs)
    (11 → 17 tests). Surfaced but did not fix a real risk found along the
    way: `is_cell_editable` gates on the column's declared type name only,
    not the runtime `Value`, so a SQLite type-affinity mismatch (a `TEXT`

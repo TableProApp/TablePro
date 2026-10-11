@@ -44,7 +44,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tablepro-release-tests = { path = "../release-tests" }
+tablepro-release-tests = { path = "../../tests/release" }
 
 [lints]
 workspace = true

@@ -12,12 +12,12 @@
       "target": "--tests"
     },
     {
-      "prefix": "crates/app/src/",
+      "prefix": "apps/linux/app/src/",
       "package": "tablepro-app",
       "target": "--lib"
     },
     {
-      "prefix": "crates/app/tests/",
+      "prefix": "apps/linux/app/tests/",
       "package": "tablepro-app",
       "target": "--tests"
     },
@@ -82,14 +82,14 @@
         "sql_dialect::updates::tests::optimistic_updates_compare_the_original_value_with_null_safe_dialect_syntax"
       ]
     },
-    "crates/app/src/services/change_tracker.rs": {
+    "apps/linux/app/src/services/change_tracker.rs": {
       "package": "tablepro-app",
       "target": "--lib",
       "tests": [
         "services::change_tracker::tests::materialize_orders_inserts_then_updates_then_deletes"
       ]
     },
-    "crates/app/tests/stale_grid_update.rs": {
+    "apps/linux/app/tests/stale_grid_update.rs": {
       "package": "tablepro-app",
       "target": "--test=stale_grid_update",
       "tests": [
@@ -107,7 +107,7 @@
         "sql_dialect::tests::postgres_domain_cast_tests::postgres_domain_text_updates_cast_to_the_qualified_type"
       ]
     },
-    "crates/app/src/ui/browse_tab/row_ops.rs": {
+    "apps/linux/app/src/ui/browse_tab/row_ops.rs": {
       "package": "tablepro-app",
       "target": "--lib",
       "tests": [
@@ -117,7 +117,7 @@
         "ui::browse_tab::row_ops::row_identity_tests::duplicating_a_row_refuses_a_source_with_wrong_cell_count"
       ]
     },
-    "crates/app/src/ui/browse_tab/value_parse.rs": {
+    "apps/linux/app/src/ui/browse_tab/value_parse.rs": {
       "package": "tablepro-app",
       "target": "--lib",
       "tests": [
@@ -277,7 +277,7 @@
         "import::plan::tests::mysql_empty_enum_set_and_varchar_csv_cells_are_reconstructed_without_binding_empty_text"
       ]
     },
-    "crates/app/src/ui/export_dialog.rs": {
+    "apps/linux/app/src/ui/export_dialog.rs": {
       "package": "tablepro-app",
       "target": "--lib",
       "tests": [
@@ -287,7 +287,7 @@
         "ui::export_dialog::tests::a_qualified_result_name_becomes_a_schema_and_table_for_sql_statements"
       ]
     },
-    "crates/app/src/ui/connection_row.rs": {
+    "apps/linux/app/src/ui/connection_row.rs": {
       "package": "tablepro-app",
       "target": "--lib",
       "tests": [

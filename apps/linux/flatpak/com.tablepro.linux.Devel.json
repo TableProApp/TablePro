@@ -42,7 +42,7 @@
             "sources": [
                 {
                     "type": "dir",
-                    "path": "../",
+                    "path": "../../../",
                     "skip": [
                         "target"
                     ]

@@ -24,7 +24,7 @@ apply; they are not interchangeable:
 
 | Floor | GTK4 | GLib | libadwaita | GtkSourceView | Where it applies |
 |---|---|---|---|---|---|
-| Build / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 distro-floor jobs, local builds that target those distros ([platforms](../platforms.md), [packaging](../../packaging/README.md)) |
+| Build / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 distro-floor jobs, local builds that target those distros ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)) |
 | GNOME 50 package line | 4.22+ | 2.88+ | 1.9+ | 5.18+ | GitHub Release `.deb` that expects GNOME 50 libraries; Arch/Omarchy packages that ship against current GNOME |
 
 Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor

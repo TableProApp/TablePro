@@ -4,7 +4,7 @@ use tablepro_core::{Connection, Value};
 
 pub async fn assert_scalar_contract(connection: &dyn Connection, driver: &str) {
     let corpus: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../testdata/value-contract.json")).unwrap();
+        serde_json::from_str(include_str!("../../../../tests/data/value-contract.json")).unwrap();
     for text in corpus["integers"].as_array().unwrap() {
         assert_scalar(
             connection,
