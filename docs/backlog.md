@@ -43,3 +43,31 @@ Rows here are real work that does not block 0.2.0. The ledger keeps the evidence
 - Enable Hyper-Threading on two lab hosts, raise executor sizes, split runners by job class, then allow two gates to overlap.
 - Stop committing the generated `docs/ignored-tests.md`. Every pull request that adds or moves an ignored test conflicts in it, and each conflict is resolved by regenerating the file. Generate it in CI and check its content there instead, or write it to a build output.
 - Folder layout: done on 2026-10-11 ([proposal](proposals/folder-restructure.md)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
+
+## GitHub issues
+
+Each backlog theme has an issue, created 2026-10-11 so the work can be picked up without reading the ledger first.
+
+| Issue | Theme |
+|---|---|
+| [#547](https://github.com/cozyGarage/BookiE/issues/547) | Database snapshots (SNAP-2 to SNAP-4) |
+| [#548](https://github.com/cozyGarage/BookiE/issues/548) | SSH jump chains and reusable profiles in the form (UI-1b, UI-26) |
+| [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key navigation, pickers, paste TSV, estimated counts (UI-19) |
+| [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
+| [#551](https://github.com/cozyGarage/BookiE/issues/551) | NULL display preference (UI-15b) |
+| [#552](https://github.com/cozyGarage/BookiE/issues/552) | Preview tabs, history panel, folding, split panes, activity console (UI-17b, 18, 22, 23, 26) |
+| [#553](https://github.com/cozyGarage/BookiE/issues/553) | Consistent snapshot for full-table export (UI-13b) |
+| [#554](https://github.com/cozyGarage/BookiE/issues/554) | Streamed results (PERF-2, 7, 8) |
+| [#555](https://github.com/cozyGarage/BookiE/issues/555) | MongoDB browse on large collections (PERF-3) |
+| [#556](https://github.com/cozyGarage/BookiE/issues/556) | Intermittent installed GTK suite (TEST-31) |
+| [#557](https://github.com/cozyGarage/BookiE/issues/557) | Debian and Ubuntu desktop acceptance (PKG-2) |
+| [#558](https://github.com/cozyGarage/BookiE/issues/558) | Flatpak (PKG-4, PKG-8) |
+| [#559](https://github.com/cozyGarage/BookiE/issues/559) | Mutation triage (TEST-2) |
+| [#560](https://github.com/cozyGarage/BookiE/issues/560) | Native Ubuntu AT-SPI and fake connection (TEST-28, UI-21) |
+| [#561](https://github.com/cozyGarage/BookiE/issues/561) | Accessibility pass and value comparison (DOC-3, DOC-5) |
+| [#562](https://github.com/cozyGarage/BookiE/issues/562) | SonarCloud and CodeQL findings (TEST-30) |
+| [#563](https://github.com/cozyGarage/BookiE/issues/563) | Comment lines into docs (AUD-5) |
+| [#564](https://github.com/cozyGarage/BookiE/issues/564) | Generated ignored-test inventory |
+| [#565](https://github.com/cozyGarage/BookiE/issues/565) | Where per-crate integration tests live |
+| [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 acceptance evidence (B4-9, 11, 17, 21) |
+| [#567](https://github.com/cozyGarage/BookiE/issues/567) | MongoDB metadata sample consistency (TEST-12) |
