@@ -108,9 +108,9 @@ These apply to the GUI, the MCP server and `tablepro-agentd`.
 `rustfmt.toml`, `clippy.toml` and the workspace lints are authoritative; [code conventions](docs/code-conventions.md) settles function length, parameters, naming and extraction.
 
 - Rust edition 2024, Rust 1.98, line width 120.
-- No comments or doc comments, except the external-system rule above. A Rust file may not gain comment lines (`check-comment-lines.py`, baselines in `comment-line-baselines.txt`); after deleting comments run `python3 scripts/check-comment-lines.py --update` to lower them.
+- No comments or doc comments, except the external-system rule above. A Rust file may not gain comment lines (`check-comment-lines.py`, baselines in `baselines/comment-line-baselines.txt`); after deleting comments run `python3 scripts/check-comment-lines.py --update` to lower them.
 - Early returns; at most three levels of indentation in a function body.
-- A function body is at most 60 lines (`check-function-size.py`, baselines in `function-size-baselines.txt`: lower a count when you split, never raise one). Rust files stay under 1,200 lines (`check-file-size.sh`, baselines in `file-size-baselines.txt`: split before growing a listed file).
+- A function body is at most 60 lines (`check-function-size.py`, baselines in `baselines/function-size-baselines.txt`: lower a count when you split, never raise one). Rust files stay under 1,200 lines (`check-file-size.sh`, baselines in `baselines/file-size-baselines.txt`: split before growing a listed file).
 - Small public APIs; private by default.
 - No `unwrap`, `expect`, `panic!`, `todo!` or `unimplemented!` in production paths. A new integration test file under `tests/` starts with `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`.
 - Typed `thiserror` errors across crate boundaries, with context but no secrets.

@@ -36,7 +36,7 @@ class CommentLineTests(unittest.TestCase):
 
     def test_the_real_tree_is_within_its_baseline(self):
         counts = checker.comment_counts(ROOT)
-        baselines = checker.read_baselines((ROOT / "comment-line-baselines.txt").read_text())
+        baselines = checker.read_baselines((ROOT / "baselines" / "comment-line-baselines.txt").read_text())
         self.assertEqual(checker.problems(counts, baselines), [])
 
 

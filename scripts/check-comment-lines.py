@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINES = ROOT / "comment-line-baselines.txt"
+BASELINES = ROOT / "baselines" / "comment-line-baselines.txt"
 COMMENT = re.compile(r"\s*//")
 
 

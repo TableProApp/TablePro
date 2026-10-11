@@ -198,7 +198,7 @@ Where each check runs is owned by [CI tiers in the validation playbook](validati
 
 ## Measuring how good the tests are
 
-The [September CI audit](archive/ci-audit-2026-09-27.md) distinguishes executed tests, intentional exclusions and packaging-only green runs. Mutation and coverage run on a schedule. The Forgejo nightly job measures line coverage of the unit tier only and holds a ratcheted floor in `coverage-floor.txt` (59%; 59.41% measured on 2026-10-11). Integration, installed GTK and value-contract tests are not part of that percentage. Mutation survivors need investigation. Dated first-run mutation notes are in [testing history](archive/testing-history.md#mutation-first-run-notes-2026-08-22).
+The [September CI audit](archive/ci-audit-2026-09-27.md) distinguishes executed tests, intentional exclusions and packaging-only green runs. Mutation and coverage run on a schedule. The Forgejo nightly job measures line coverage of the unit tier only and holds a ratcheted floor in `baselines/coverage-floor.txt` (59%; 59.41% measured on 2026-10-11). Integration, installed GTK and value-contract tests are not part of that percentage. Mutation survivors need investigation. Dated first-run mutation notes are in [testing history](archive/testing-history.md#mutation-first-run-notes-2026-08-22).
 
 ### Mutation testing
 
@@ -227,7 +227,7 @@ The [September adoption record](archive/testing-history.md#upstream-test-suite-p
 
 ## File-size guard
 
-`scripts/check-file-size.sh` enforces the Rust source limits recorded in `file-size-baselines.txt`:
+`scripts/check-file-size.sh` enforces the Rust source limits recorded in `baselines/file-size-baselines.txt`:
 
 | Limit | Lines | Result |
 |---|---:|---|

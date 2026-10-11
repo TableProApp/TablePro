@@ -2,7 +2,7 @@
 """Enforce Rust function length limits under crates.
 
 A function body longer than the limit needs an entry in
-function-size-baselines.txt, which records how many over-limit functions a file
+baselines/function-size-baselines.txt, which records how many over-limit functions a file
 may still contain. That count may shrink but never grow. Test code is excluded:
 `#[cfg(test)]` modules, `*_tests.rs` modules, and every file under a crate's tests/.
 """
@@ -17,7 +17,7 @@ LIMIT = 60
 
 ROOT = Path(__file__).resolve().parent.parent
 CRATES = [ROOT / "crates", ROOT / "apps", ROOT / "tests"]
-BASELINES = ROOT / "function-size-baselines.txt"
+BASELINES = ROOT / "baselines" / "function-size-baselines.txt"
 
 RAW_STRING = re.compile(r'b?r(?P<hashes>#*)"')
 CHAR_LITERAL = re.compile(r"b?'(?:\\.|[^\\'])'")
@@ -186,7 +186,7 @@ def main() -> int:
             for name, line, body in over_limit:
                 print(
                     f"error: {relative}:{line} {name} has a {body}-line body (limit {LIMIT}). "
-                    f"Extract a named step, or add '{relative} {len(over_limit)}' to function-size-baselines.txt.",
+                    f"Extract a named step, or add '{relative} {len(over_limit)}' to baselines/function-size-baselines.txt.",
                     file=sys.stderr,
                 )
                 errors += 1
@@ -205,7 +205,7 @@ def main() -> int:
             print(f"note: {relative} is down to {len(over_limit)} over-limit functions (baseline {ceiling}). Lower the baseline.")
 
     for relative in sorted(set(allowed) - seen):
-        print(f"error: function-size-baselines.txt lists {relative}, which no longer exists or is now clean.", file=sys.stderr)
+        print(f"error: baselines/function-size-baselines.txt lists {relative}, which no longer exists or is now clean.", file=sys.stderr)
         errors += 1
 
     if errors:

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASELINES="$ROOT/file-size-baselines.txt"
+BASELINES="$ROOT/baselines/file-size-baselines.txt"
 CRATES="$ROOT/crates"
 WARN_LIMIT=1200
 ERROR_LIMIT=1800
@@ -44,7 +44,7 @@ while IFS= read -r -d '' file; do
     echo "error: $rel has $lines lines (hard limit $ERROR_LIMIT). Split before merging." >&2
     errors=$((errors + 1))
   elif (( lines > WARN_LIMIT )); then
-    echo "error: $rel has $lines lines (soft limit $WARN_LIMIT). Split the file, or add it to file-size-baselines.txt with that exact line count." >&2
+    echo "error: $rel has $lines lines (soft limit $WARN_LIMIT). Split the file, or add it to baselines/file-size-baselines.txt with that exact line count." >&2
     errors=$((errors + 1))
   fi
 done < <(find "$ROOT/crates" "$ROOT/apps" "$ROOT/tests" -type f -name '*.rs' -print0 | sort -z)

@@ -10,12 +10,12 @@
 # `*-tests` support crate. `#[cfg(test)] mod name;` pulls a whole file
 # in as a test module, so those files are excluded too.
 #
-# The count per file is ratcheted by panic-site-baselines.txt: existing
+# The count per file is ratcheted by baselines/panic-site-baselines.txt: existing
 # sites do not block the build, but the number cannot grow.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASELINES="$ROOT/panic-site-baselines.txt"
+BASELINES="$ROOT/baselines/panic-site-baselines.txt"
 CRATES="$ROOT/crates"
 
 declare -A MAX_SITES=()

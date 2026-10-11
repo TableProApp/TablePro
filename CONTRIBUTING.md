@@ -82,7 +82,7 @@ Driver integration tests require Docker or a compatible Podman socket. See [`doc
 
 ## File size
 
-`scripts/check-file-size.sh` enforces the Rust file-size guard. New files should stay at or below 1,200 lines. Unlisted files above 1,800 lines fail. Files in `file-size-baselines.txt` cannot grow beyond their listed ceiling. Split by responsibility instead of raising a baseline.
+`scripts/check-file-size.sh` enforces the Rust file-size guard. New files should stay at or below 1,200 lines. Unlisted files above 1,800 lines fail. Files in `baselines/file-size-baselines.txt` cannot grow beyond their listed ceiling. Split by responsibility instead of raising a baseline.
 
 ## Changelog
 

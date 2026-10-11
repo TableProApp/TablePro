@@ -28,7 +28,7 @@ fn parse_limit(raw: &str) -> Result<usize, FilterError> {
 
 A function body may be at most **60 lines**, counted between its braces.
 
-This is enforced by `scripts/check-function-size.py`, which runs in `preflight.sh`. Existing longer functions are frozen by count per file in `function-size-baselines.txt`. A file listed there may not gain another over-limit function, and when you split one you lower its count in the same commit. Test code is excluded: `#[cfg(test)]` modules and files under a crate's `tests/`.
+This is enforced by `scripts/check-function-size.py`, which runs in `preflight.sh`. Existing longer functions are frozen by count per file in `baselines/function-size-baselines.txt`. A file listed there may not gain another over-limit function, and when you split one you lower its count in the same commit. Test code is excluded: `#[cfg(test)]` modules and files under a crate's `tests/`.
 
 Sixty is deliberately generous. The measured median function body in this workspace is 8 lines and the 90th percentile outside `app/src/ui` is about 25. Reaching 60 is a signal, not a budget to spend.
 

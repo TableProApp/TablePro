@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-FLOOR_FILE = Path(__file__).resolve().parent.parent / "coverage-floor.txt"
+FLOOR_FILE = Path(__file__).resolve().parent.parent / "baselines" / "coverage-floor.txt"
 
 
 def line_percent(report: dict) -> float:
@@ -14,7 +14,7 @@ def verdict(percent: float, floor: float) -> tuple[bool, str]:
     if percent < floor:
         return False, f"line coverage {percent:.2f}% is below the floor {floor:.2f}%"
     if percent >= floor + 1.0:
-        return True, f"line coverage {percent:.2f}%; raise the floor in coverage-floor.txt to {int(percent)}"
+        return True, f"line coverage {percent:.2f}%; raise the floor in baselines/coverage-floor.txt to {int(percent)}"
     return True, f"line coverage {percent:.2f}% (floor {floor:.2f}%)"
 
 

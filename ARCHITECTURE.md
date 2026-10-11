@@ -12,7 +12,8 @@ The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/Bo
 | `apps/linux/` | The GTK application (`app/`) and what only it needs: `data/`, `po/`, `flatpak/`, `packaging/`. |
 | `tests/` | Cross-crate test crates (`release/`, `driver-tls/`), fixtures and shared test data (`data/`). Unit tests stay beside their code; per-crate integration tests stay in `crates/<name>/tests`. |
 | `scripts/`, `ci/`, `vendor/`, `docs/` | Tooling, CI helpers, vendored patches and documentation. |
-| root | `Cargo.toml` workspace, toolchain and lint config, `meson.build`, baselines, this file, `AGENTS.md`, `README.md`. |
+| root | `Cargo.toml` workspace, toolchain and lint config, `meson.build`, this file, `AGENTS.md`, `README.md`. |
+| `baselines/` | Ratchet ceilings for comment lines, function size, file size, panic sites, and the coverage floor. |
 
 A new platform app would sit beside `apps/linux/` and reuse `crates/` unchanged.
 
