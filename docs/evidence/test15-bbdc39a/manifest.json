@@ -7,7 +7,7 @@
   "scope": "Local frozen-candidate TEST-15 and bounded B4 regression checks. This is not Forgejo, nightly, installed-package, native Wayland or release acceptance.",
   "environment": {
     "rust_toolchain": "1.98.0",
-    "cargo_target_dir": "/home/trung/Projects/tablepro/linux/target",
+    "cargo_target_dir": "Shared local build cache",
     "cargo_build_jobs": 2,
     "driver_fixtures": "Local Docker-backed tests",
     "secret_service": "Private D-Bus session with temporary home and keyring; desktop keyring was not used"
@@ -19,7 +19,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "postgres.log"
+      "log": "postgres.txt"
     },
     {
       "engine": "MySQL",
@@ -27,7 +27,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "mysql.log"
+      "log": "mysql.txt"
     },
     {
       "engine": "Redis",
@@ -35,7 +35,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "redis.log"
+      "log": "redis.txt"
     },
     {
       "engine": "ClickHouse",
@@ -43,7 +43,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "clickhouse.log"
+      "log": "clickhouse.txt"
     },
     {
       "engine": "SQL Server",
@@ -51,7 +51,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "mssql.log"
+      "log": "mssql.txt"
     },
     {
       "engine": "MongoDB",
@@ -59,7 +59,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "mongodb.log"
+      "log": "mongodb.txt"
     }
   ],
   "additional_checks": [
@@ -69,7 +69,7 @@
       "result": "passed",
       "passed": 232,
       "failed": 0,
-      "log": "aud11-policy.log"
+      "log": "aud11-policy.txt"
     },
     {
       "area": "AUD-9 outer alias masking",
@@ -77,7 +77,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "outer-alias.log"
+      "log": "outer-alias.txt"
     },
     {
       "area": "AUD-9 human visibility",
@@ -85,7 +85,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "human-visibility.log"
+      "log": "human-visibility.txt"
     },
     {
       "area": "Host-key refusal and SSH transport",
@@ -95,14 +95,14 @@
         "built_in_ssh": 10,
         "system_openssh": 12
       },
-      "log": "ssh.log"
+      "log": "ssh.txt"
     },
     {
       "area": "Per-hop secrets and bundle keyring rollback",
       "command": "bash scripts/test-secret-service.sh",
       "result": "passed",
       "isolated_keyring_tests": 14,
-      "log": "secret-service.log"
+      "log": "secret-service.txt"
     },
     {
       "area": "Bundle secret replacement rollback",
@@ -110,7 +110,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "bundle-rollback.log"
+      "log": "bundle-rollback.txt"
     },
     {
       "area": "Durable audit sync failure",
@@ -118,7 +118,7 @@
       "result": "passed",
       "passed": 1,
       "failed": 0,
-      "log": "durable-audit.log"
+      "log": "durable-audit.txt"
     }
   ],
   "not_established": [

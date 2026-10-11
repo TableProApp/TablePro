@@ -1,0 +1,13 @@
+$ cargo test --locked -p tablepro-driver-mssql --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed -- --include-ignored --exact --test-threads=1
+
+   Compiling tiberius v0.13.0
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling tablepro-driver-mssql v0.1.0 (crates/drivers/mssql)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.84s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-b3ab2c3ce3f5c6f0)
+
+running 1 test
+test disconnection::a_committed_update_with_a_lost_ack_is_not_replayed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 42 filtered out; finished in 11.30s
+

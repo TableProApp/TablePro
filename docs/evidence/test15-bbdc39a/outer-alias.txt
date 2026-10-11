@@ -1,0 +1,16 @@
+$ cargo test --locked -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_json_through_an_outer_alias -- --include-ignored --exact --test-threads=1
+
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling sqlx-postgres v0.9.0 (vendor/sqlx-postgres)
+   Compiling sqlx v0.9.0
+   Compiling tablepro-policy v0.1.0 (crates/policy)
+   Compiling tablepro-driver-postgres v0.1.0 (crates/drivers/postgres)
+   Compiling tablepro-driver-mssql v0.1.0 (crates/drivers/mssql)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.84s
+     Running tests/session_postgres.rs (<shared-target>/debug/deps/session_postgres-045535c311019cde)
+
+running 1 test
+test an_agent_cannot_expose_sensitive_json_through_an_outer_alias ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 2.34s
+

@@ -1,0 +1,13 @@
+$ cargo test --locked -p tablepro-driver-redis --test integration disconnection::a_lost_eval_ack_is_not_replayed_after_redis_reconnects -- --include-ignored --exact --test-threads=1
+
+   Compiling redis v1.7.0 (vendor/redis)
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling tablepro-driver-redis v0.1.0 (crates/drivers/redis)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.13s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-5a7f244960813031)
+
+running 1 test
+test disconnection::a_lost_eval_ack_is_not_replayed_after_redis_reconnects ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.89s
+

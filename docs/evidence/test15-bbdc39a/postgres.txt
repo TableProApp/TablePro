@@ -1,0 +1,15 @@
+$ cargo test --locked -p tablepro-driver-postgres --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+
+   Compiling sqlx-core v0.9.0
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling sqlx-postgres v0.9.0 (vendor/sqlx-postgres)
+   Compiling sqlx v0.9.0
+   Compiling tablepro-driver-postgres v0.1.0 (crates/drivers/postgres)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 21.50s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-cd012ef1d3ab3bd3)
+
+running 1 test
+test disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 237 filtered out; finished in 2.58s
+

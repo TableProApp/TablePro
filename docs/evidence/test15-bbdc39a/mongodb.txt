@@ -1,0 +1,13 @@
+$ cargo test --locked -p tablepro-driver-mongodb --test integration disconnection::a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+
+   Compiling mongodb v3.9.1 (vendor/mongodb)
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling tablepro-driver-mongodb v0.1.0 (crates/drivers/mongodb)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.13s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-fc39c0a96012db67)
+
+running 1 test
+test disconnection::a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 1.88s
+

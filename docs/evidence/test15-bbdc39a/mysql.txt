@@ -1,0 +1,14 @@
+$ cargo test --locked -p tablepro-driver-mysql --test integration disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect -- --include-ignored --exact --test-threads=1
+
+   Compiling sqlx-mysql v0.9.0 (vendor/sqlx-mysql)
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling sqlx v0.9.0
+   Compiling tablepro-driver-mysql v0.1.0 (crates/drivers/mysql)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.41s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-3f630a0a029525e7)
+
+running 1 test
+test disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 98 filtered out; finished in 23.76s
+

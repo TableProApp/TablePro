@@ -1,0 +1,12 @@
+$ cargo test --locked -p tablepro-driver-clickhouse --test integration disconnection::a_committed_insert_with_a_lost_http_ack_is_not_replayed -- --include-ignored --exact --test-threads=1
+
+   Compiling tablepro-core v0.1.0 (crates/core)
+   Compiling tablepro-driver-clickhouse v0.1.0 (crates/drivers/clickhouse)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.81s
+     Running tests/integration.rs (<shared-target>/debug/deps/integration-922add4b5e5d02e9)
+
+running 1 test
+test disconnection::a_committed_insert_with_a_lost_http_ack_is_not_replayed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 4.63s
+

@@ -1,0 +1,40 @@
+$ bash scripts/test-ssh.sh
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.30s
+     Running tests/agent_auth.rs (<shared-target>/debug/deps/agent_auth-079e5bc250e279d9)
+
+running 10 tests
+test a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch ... ok
+test a_key_not_in_authorized_keys_is_rejected ... ok
+test a_paused_bastion_is_reported_closed_through_keepalive_instead_of_hanging_forever ... Identity added: <fixture-key>
+ok
+test a_two_hop_chain_reaches_the_final_host ... ok
+test a_wrong_password_is_refused ... ok
+test an_encrypted_private_key_authenticates_with_its_passphrase ... ok
+test cancelling_while_trusting_the_second_hop_does_not_learn_its_host_key ... ok
+test declining_a_built_in_host_key_does_not_learn_it ... ok
+test password_authentication_succeeds_with_the_correct_password ... ok
+test the_built_in_client_authenticates_with_a_key_held_by_ssh_agent ... Identity added: <fixture-key>
+ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 89.17s
+
+     Running tests/openssh_session.rs (<shared-target>/debug/deps/openssh_session-04ca719ce67d016b)
+
+running 12 tests
+test openssh_a_changed_host_key_is_reported_as_host_key_changed ... ok
+test openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target ... ok
+test openssh_authenticates_with_a_key_held_by_ssh_agent ... Identity added: <fixture-key>
+ok
+test openssh_authenticates_with_a_passphrase_protected_private_key ... ok
+test openssh_authenticates_with_an_unencrypted_private_key ... ok
+test openssh_dropping_last_arc_ends_master ... ok
+test openssh_forward_reaches_sshd_and_socket_is_0600 ... ok
+test openssh_killing_master_fires_closed ... ok
+test openssh_password_through_prompter ... ok
+test openssh_stored_password_is_not_sent_to_a_jump_host ... ok
+test openssh_unknown_host_declined_is_host_key_unknown_declined ... ok
+test openssh_wrong_password_is_authentication_rejected ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 35.41s
+
