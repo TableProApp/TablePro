@@ -15,8 +15,60 @@ execution and installed acceptance are separate states.
 records the integrated branches, the finite finish order and the scope conflicts.
 It reproduced an AUD-9 named derived-projection leak and a missing terminal
 audit outcome for a write refused inside a read-only snapshot. The old code
-branches are merged; unique historical evidence must be preserved before their
-worktrees are retired. This review does not establish candidate acceptance.
+branches are merged. Their unique historical evidence was preserved in
+`63f6d2eb3`, and the 16 old worktrees were retired without deleting the shared
+build cache. This review does not establish candidate acceptance.
+
+### Finite code finish and candidate handoff
+
+The [0.2.0 scope](0.2.0-scope.md) owns blockers. Finish the three demonstrated
+defects below; broader features remain in the backlog. Pending PRs do not close
+their ledger rows.
+
+| Work | Implementation | Exit before candidate freeze |
+| --- | --- | --- |
+| AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537): unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | GitHub and Forgejo green on its exact head, then merge; native PostgreSQL cases include `array_agg(c.*)` cast to text |
+| Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538): snapshot writes, structural refusals and retired-session calls record a Denied terminal outcome without dispatch | GitHub and Forgejo green on its exact head, then merge; keep transaction state and journal-failure lockdown |
+| UI-13b snapshot-or-refusal | Dedicated local `b4/export-snapshot-refusal` branch; refuse unsupported full export before source/destination access, preserve loaded-result and current-page export | App preflight, widget tier, GitHub and Forgejo; merge the refusal, defer verified snapshot implementations |
+
+Mutation triage is bounded to masking, host-key refusal, per-hop secret selection,
+bundle rollback and durable audit. Existing fixture coverage and remaining proof
+gaps are recorded in [the focused triage](evidence/b4-release-triage-2026-10-11/triage.md).
+Do not turn a survivor percentage into release approval or a new blocker.
+
+After the code merges, freeze one SHA. UX/maintainer runs the affected Forgejo
+layers and installed Arch/Hyprland acceptance for AUD-2, B4-7, B4-16 and B4-22.
+Use the finite TEST-15 list below, then the sprint's retry-free soak and release
+decision. Source-build Xvfb, extracted package binaries and older green runs
+do not substitute for this candidate.
+
+### TEST-15 release acceptance list
+
+Run the existing driver layer and PostgreSQL release fixture on the frozen SHA.
+The six network-engine lost-ack scenarios below need independent stored-state
+or request-count evidence of one application, plus a usable reconnect. A later
+successful read must not dispatch the failed write again.
+
+| Path | Existing selector or contract | Candidate evidence required |
+| --- | --- | --- |
+| PostgreSQL pooled UPDATE | `a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect` | Target and trigger witness stay exactly once after reconnect |
+| MySQL pooled/prepared UPDATE | Same selector in the MySQL integration target | Target and trigger witness stay exactly once; new TCP connection is observed |
+| Redis Lua write | `a_lost_eval_ack_is_not_replayed_after_redis_reconnects` | Independent target and audit keys stay one |
+| ClickHouse HTTP INSERT | `a_committed_insert_with_a_lost_http_ack_is_not_replayed` | Native target and materialized-view witness stay one |
+| SQL Server UPDATE batch | `a_committed_update_with_a_lost_ack_is_not_replayed` | Independent committed target/audit rows survive restart exactly once |
+| MongoDB UPDATE | `a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect` | One proxy-observed request and one server-profile update; standalone fixture does not qualify replica-set retryable-write modes |
+| Pinned sessions and write batches | `guard_tests_session`, `guard_tests_audit`, `session_postgres` and the MySQL atomicity matrix | Unknown post-dispatch outcomes retire/block the affected generation; no pool fallback; close and rollback audit the actual result |
+| Allowed retry boundaries | PostgreSQL `query.rs` stale-type-cache predicate; MySQL `session.rs` prepared-protocol fallback | Source review distinguishes an explicit server rejection from a disconnect, timeout or unknown outcome; keep native session and parameter fixtures green |
+| SQLite and DuckDB | Local-file drivers, read-only and transaction fixtures | Cancellation, file state and rollback contracts; no network acknowledgement scenario is claimed |
+
+The current PostgreSQL session path enables the stale-type-cache retry, as do
+pooled query/execute paths; explicit transactions disable it. MySQL session
+fallback is parameter-free and limited to prepared-protocol rejection. These
+are reviewed code paths, not a proof that arbitrary routines have no side
+effects. MongoDB uses one direct endpoint with SDK defaults; its standalone
+lost-ack fixture must not be advertised as all-topology retry proof. Broader
+topologies, optional engine/effect matrices and fault-injection expansion stay
+open in the backlog unless the maintainer changes release scope.
 
 ## Current Linux-tip B4 checkpoint (2026-10-10)
 

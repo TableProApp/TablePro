@@ -8,7 +8,7 @@ this page keeps the order. Draft of 2026-10-11, for the maintainer.
 | Row | What | Notes |
 |---|---|---|
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 / SNAP-1 accepted the feature for 0.2.x (not a 0.2.0 blocker); limit 5 snapshots per database |
-| UI-1b | Edit SSH jump chains in the form | Storage landed in #490; transport and bundle v2 are in review; edits stay refused until the whole path passes together |
+| UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key picker and navigation, enum and set pickers, paste TSV, estimated counts | |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-15b | Null display style preference | vim keys are already an opt-in preference |
