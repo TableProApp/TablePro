@@ -1,0 +1,19 @@
+   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-release-review-20261011/linux/crates/policy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.69s
+     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+
+running 1 test
+
+thread 'sensitive_projection::tests::review_unresolved_projection_lineage_must_fail_closed' (754958) panicked at crates/policy/src/sensitive_projection.rs:330:9:
+unmasked projections: ["SELECT d.p FROM (SELECT pan AS p FROM cards) d", "SELECT c.p FROM cards AS c(p)", "SELECT c FROM cards c", "SELECT array_agg(c) FROM cards c"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test sensitive_projection::tests::review_unresolved_projection_lineage_must_fail_closed ... FAILED
+
+failures:
+
+failures:
+    sensitive_projection::tests::review_unresolved_projection_lineage_must_fail_closed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 220 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --lib`

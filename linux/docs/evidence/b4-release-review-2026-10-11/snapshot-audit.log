@@ -1,0 +1,20 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+
+running 1 test
+
+thread 'guard::guard_tests::session::review_snapshot_write_refusal_has_a_terminal_audit_outcome' (754984) panicked at crates/policy/src/guard_tests_session.rs:758:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test guard::guard_tests::session::review_snapshot_write_refusal_has_a_terminal_audit_outcome ... FAILED
+
+failures:
+
+failures:
+    guard::guard_tests::session::review_snapshot_write_refusal_has_a_terminal_audit_outcome
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 220 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --lib`
