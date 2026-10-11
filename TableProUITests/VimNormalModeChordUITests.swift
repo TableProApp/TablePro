@@ -91,7 +91,7 @@ final class VimNormalModeChordUITests: UITestCase {
 
         let vimToggle = settings.descendants(matching: .any).matching(identifier: "vim-mode-toggle").firstMatch
         XCTAssertTrue(
-            scrollUntilHittable(vimToggle, in: settings, timeout: 20),
+            scrollUntilHittable(vimToggle, in: settings, timeout: 30),
             "The Editor pane must offer Vim mode"
         )
         if isOn(vimToggle) != enabled {

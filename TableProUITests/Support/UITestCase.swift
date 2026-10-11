@@ -220,13 +220,16 @@ internal class UITestCase: XCTestCase {
 
     /// macOS clicks an element where it is and never scrolls it into view first, so a row below
     /// the fold of a scrolling pane is not hittable until the pane has been scrolled down to it.
+    /// The scroll goes to a point inside the content. Measured: scrolling a window element posts
+    /// the event at its top-left corner, over the title bar, and the pane does not move.
     internal func scrollUntilHittable(_ element: XCUIElement, in container: XCUIElement, timeout: TimeInterval) -> Bool {
+        let content = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if waitUntilHittable(element, timeout: 1) { return true }
-            container.scroll(byDeltaX: 0, deltaY: -400)
+        while !(element.exists && element.isHittable) {
+            guard Date() < deadline else { return false }
+            content.scroll(byDeltaX: 0, deltaY: -400)
         }
-        return waitUntilHittable(element, timeout: 1)
+        return true
     }
 
     /// Whether the keyboard is on this element.
