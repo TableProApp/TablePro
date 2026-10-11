@@ -636,7 +636,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 if let tableView = self?.tableView {
-                    DataGridBodyChrome.applyBackground(to: tableView)
+                    DataGridBodyChrome.applyThemeColors(to: tableView)
                     tableView.headerView?.needsDisplay = true
                     tableView.cornerView?.needsDisplay = true
                 }

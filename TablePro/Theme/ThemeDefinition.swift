@@ -209,7 +209,6 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
         case .statusSuccess: return \.status.success
         case .statusWarning: return \.status.warning
         case .statusError: return \.status.error
-
         }
     }
 

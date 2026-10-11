@@ -25,6 +25,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | --- | --- | --- |
 | Connection passwords | Keychain | `ConnectionStorage` |
 | Preferences | UserDefaults | `AppSettingsStorage`, `AppSettingsManager` |
+| Editor and grid fonts | UserDefaults, device-local, never synced | `TypographySettings` through `AppSettingsManager` |
 | Query history | SQLite FTS5 | `QueryHistoryStorage` |
 | Tab state | JSON | `TabPersistenceCoordinator`, `TabDiskActor` |
 | Filter defaults and presets | UserDefaults | `FilterSettingsStorage`, `FilterPresetStorage` |

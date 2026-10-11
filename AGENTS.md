@@ -61,7 +61,7 @@ swiftlint lint --strict <files>
 
 **Change tracking.** A cell edit goes to `DataChangeManager`; Save turns it into statements through `SQLStatementGenerator`; `AnyChangeManager` abstracts the concrete managers. Undo comes from `StructureChangeManager`'s private `UndoManager` and `ConnectionWorkspace.undoManager`.
 
-**Editor.** `ThemeEngine` owns the active theme, editor colors and fonts. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
+**Editor and theme.** `ThemeCatalog` owns the theme list, `ThemeResolver` picks the light and dark pair, and `ThemeEngine` holds the palette and the font caches; the fonts themselves are `TypographySettings`. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
 
 **Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON. The full table of which store owns what is in `.claude/rules/data-sync-storage.md`.
 

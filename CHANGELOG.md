@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Header, grid line, selection and focus colors in the theme editor.
+- Panel and status colors in the theme editor, covering the results, inspector, structure, compare and query plan panes.
+- Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
+- Reason shown in Settings > Appearance for a theme file that could not be loaded.
+
+### Changed
+
+- Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
+- Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
+- Editor font size range of 10 to 24 points everywhere, including zoom.
+
+### Removed
+
+- Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
+- Fonts from the theme file.
+
+### Fixed
+
+- Interface, Sidebar and Toolbar colors having no effect anywhere in the app.
+- Line Number color having no effect on the editor gutter.
+- Default Light used for the dark theme when the chosen dark theme could not be loaded.
+- Editor zoom lost on the next appearance or theme change.
+- DDL, trigger and SQL import previews keeping the previous theme's colors.
+- Query history preview ignoring the theme and the editor font.
+- Theme editor changing the active theme instead of the theme selected for the slot being edited.
+- Malformed theme files loading as Default Light under their own name.
+- Color with a typo in it rendering as a different color instead of being reported.
+- Content panes outside the editor and the data grid ignoring the theme.
+- JSON and PHP tree values colored differently from the same values in the row inspector.
+- Autocomplete icon colors ignoring the theme.
+
 ## [0.80.0] - 2026-10-11
 
 Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with no Cloud SQL Auth Proxy.

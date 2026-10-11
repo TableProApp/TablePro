@@ -769,6 +769,9 @@
         }
       }
     },
+    "\"%@\" is a reserved theme identifier." : {
+
+    },
     "“%@” is compressed." : {
       "localizations" : {
         "fr" : {
@@ -874,6 +877,9 @@
         }
       }
     },
+    "\"%@\" is not a system color TablePro knows." : {
+
+    },
     "\"%@\" is not a URL. Enter an endpoint such as http://localhost:8000." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -895,6 +901,9 @@
           }
         }
       }
+    },
+    "\"%@\" is not a valid color." : {
+
     },
     "\"%@\" is not a valid entry point name." : {
       "extractionState" : "manual",
@@ -919,6 +928,9 @@
           }
         }
       }
+    },
+    "\"%@\" is not a valid theme identifier." : {
+
     },
     "\"%@\" is not an AWS region" : {
       "extractionState" : "manual",
@@ -25363,6 +25375,12 @@
         }
       }
     },
+    "Applies to grid cells, the inspector, cell popovers and the row diff." : {
+
+    },
+    "Applies to the SQL editor, the JSON viewer's Text mode, and the previews." : {
+
+    },
     "Apply" : {
       "localizations" : {
         "fr" : {
@@ -28550,6 +28568,7 @@
       }
     },
     "Auto Increment" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30034,6 +30053,7 @@
       }
     },
     "Badge Background" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30074,6 +30094,7 @@
       }
     },
     "Badges" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30956,6 +30977,7 @@
       "generatesSymbol" : false
     },
     "Border" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -33633,6 +33655,7 @@
       "generatesSymbol" : false
     },
     "Card Background" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -42255,6 +42278,7 @@
       }
     },
     "Colors" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -48362,6 +48386,7 @@
       }
     },
     "Control Background" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -55311,6 +55336,9 @@
         }
       }
     },
+    "Current Statement" : {
+
+    },
     "Current value" : {
       "localizations" : {
         "fr" : {
@@ -55833,6 +55861,9 @@
           }
         }
       }
+    },
+    "Custom theme" : {
+
     },
     "Custom…" : {
       "localizations" : {
@@ -59360,6 +59391,9 @@
         }
       }
     },
+    "Default Dark" : {
+
+    },
     "Default entry point" : {
       "localizations" : {
         "fr" : {
@@ -59409,6 +59443,9 @@
           }
         }
       }
+    },
+    "Default Light" : {
+
     },
     "Default Operator" : {
       "localizations" : {
@@ -66894,7 +66931,11 @@
         }
       }
     },
+    "Duplicate it to change its colors." : {
+
+    },
     "Duplicate it to customize colors." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -67013,6 +67054,9 @@
           }
         }
       }
+    },
+    "Duplicate Selected" : {
+
     },
     "Duplicate Theme" : {
       "localizations" : {
@@ -78724,6 +78768,7 @@
       }
     },
     "Family" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -78762,6 +78807,9 @@
           }
         }
       }
+    },
+    "Family:" : {
+
     },
     "Fast" : {
       "extractionState" : "stale",
@@ -79297,6 +79345,9 @@
           }
         }
       }
+    },
+    "Field Background" : {
+
     },
     "Field name" : {
       "localizations" : {
@@ -81933,6 +81984,9 @@
         }
       }
     },
+    "Focus Border" : {
+
+    },
     "Focus Editor" : {
       "localizations" : {
         "fr" : {
@@ -82324,6 +82378,7 @@
       }
     },
     "Fonts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -85635,6 +85690,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Grid Line" : {
+
+    },
     "Group" : {
       "localizations" : {
         "fr" : {
@@ -86148,6 +86206,12 @@
           }
         }
       }
+    },
+    "Header Background" : {
+
+    },
+    "Header Text" : {
+
     },
     "Heart" : {
       "extractionState" : "manual",
@@ -87870,6 +87934,7 @@
       "generatesSymbol" : false
     },
     "Hover" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -90552,6 +90617,9 @@
         }
       }
     },
+    "Inactive Selection" : {
+
+    },
     "Include" : {
       "localizations" : {
         "fr" : {
@@ -91905,6 +91973,7 @@
       "generatesSymbol" : false
     },
     "Info" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -93738,6 +93807,7 @@
       }
     },
     "Interface" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -112088,6 +112158,7 @@
       }
     },
     "New Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -119891,6 +119962,9 @@
           }
         }
       }
+    },
+    "Not Loaded" : {
+
     },
     "Not loaded yet" : {
       "localizations" : {
@@ -128232,6 +128306,15 @@
         }
       }
     },
+    "Pane Background" : {
+
+    },
+    "Pane Text" : {
+
+    },
+    "Panels" : {
+
+    },
     "Panels to read. Omit for all." : {
       "localizations" : {
         "fr" : {
@@ -134354,6 +134437,7 @@
       }
     },
     "Primary Text" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -146451,6 +146535,7 @@
       }
     },
     "Reset to System Default" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -157057,6 +157142,7 @@
       }
     },
     "Section Header" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -157264,6 +157350,7 @@
       }
     },
     "SELECT * FROM users WHERE id = 42;" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158286,6 +158373,7 @@
       }
     },
     "Selected Item" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158380,6 +158468,9 @@
           }
         }
       }
+    },
+    "Selected Text" : {
+
     },
     "Selection" : {
       "localizations" : {
@@ -165122,7 +165213,6 @@
       }
     },
     "Size:" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -170474,6 +170564,7 @@
       }
     },
     "Status Colors" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -183440,6 +183531,9 @@
         }
       }
     },
+    "The file does not declare a theme format version." : {
+
+    },
     "The file goes back to its last committed version. You can't undo this action." : {
       "localizations" : {
         "fr" : {
@@ -186421,6 +186515,9 @@
         }
       }
     },
+    "The run button sits in the gutter, which needs line numbers." : {
+
+    },
     "The run was rolled back, but %@ cannot roll back, so the rows already written there stay. Compare again to see where the target stands." : {
       "localizations" : {
         "fr" : {
@@ -189352,6 +189449,15 @@
         }
       }
     },
+    "The theme declares %1$d colors TablePro does not use, starting with \"%2$@\"." : {
+
+    },
+    "The theme is missing %1$d required colors, starting with \"%2$@\"." : {
+
+    },
+    "The theme is missing the required field \"%@\"." : {
+
+    },
     "the TLS handshake failed" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190003,6 +190109,7 @@
       "generatesSymbol" : false
     },
     "Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -190083,6 +190190,12 @@
           }
         }
       }
+    },
+    "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d." : {
+
+    },
+    "Theme format %1$d was made for a newer TablePro. This version reads format %2$d." : {
+
     },
     "Theme Update Failed" : {
       "localizations" : {
@@ -198336,6 +198449,7 @@
       }
     },
     "Toolbar" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -204882,6 +204996,9 @@
         }
       }
     },
+    "Use System Color (%@)" : {
+
+    },
     "Use text mode to enter JSON." : {
 
     },
@@ -210781,6 +210898,7 @@
       }
     },
     "Window Background" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {

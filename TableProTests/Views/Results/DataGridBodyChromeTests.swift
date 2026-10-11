@@ -167,6 +167,15 @@ struct DataGridBodyChromeTests {
         #expect(!grid.coordinator.presentsColumn(atTableColumnIndex: rowNumber))
     }
 
+    @Test("The theme's grid line becomes the table's grid colour, which the separators draw in")
+    func themeGridLineBecomesTheTableGridColor() {
+        let tableView = NSTableView()
+        DataGridBodyChrome.applyThemeColors(to: tableView)
+
+        #expect(tableView.gridColor == ThemeEngine.shared.palette[.gridLine])
+        #expect(tableView.backgroundColor == ThemeEngine.shared.palette[.gridBackground])
+    }
+
     /// The colour has to come from `tableView.gridColor`, which is the dynamic catalog colour AppKit
     /// was filling with, so an appearance change carries the separator with it and there is no
     /// second spelling to keep in sync. A hardcoded colour would pass a geometry test and be wrong
