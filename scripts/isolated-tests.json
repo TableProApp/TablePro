@@ -301,6 +301,11 @@
       "tablepro-app",
       "--lib",
       "ui::sidebar_row::tests::a_group_row_shows_a_chevron_that_follows_its_collapse_state"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::export_dialog::tests::a_full_export_shows_a_refusal_without_opening_its_source"
     ]
   ],
   "keyring": [

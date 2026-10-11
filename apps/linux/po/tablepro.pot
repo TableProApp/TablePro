@@ -3984,3 +3984,13 @@ msgstr ""
 #: crates/app/src/ui/welcome_view.rs:340
 msgid "Ungrouped"
 msgstr ""
+
+#: crates/app/src/ui/export_dialog/file.rs:61
+msgid ""
+"Full-table export requires a consistent snapshot. Export the current page or "
+"a query result instead."
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs:202
+msgid "Full-table export unavailable"
+msgstr ""

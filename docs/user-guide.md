@@ -45,8 +45,12 @@ Ctrl+E opens a SQL editor tab for the current connection.
 
 ## Import and export
 
-- **Export**: from a table or a result, choose CSV, JSON, Markdown, HTML, XML, SQL or an Excel workbook. For a table you can export the current page or every row.
-- **Import**: right-click a table and choose **Import CSV…** to load a CSV file into it, or use the button on a schema header to create a new table from a CSV file. Separator, header row and column mapping are detected and can be changed.
+- **Export**: from a table or a result, choose CSV, JSON, Markdown, HTML, XML, SQL
+  or an Excel workbook. Export the current table page or loaded query results.
+  Full-table export is refused until a consistent snapshot path is supported.
+- **Import**: right-click a table and choose **Import CSV…** to load a CSV file
+  into it, or use the button on a schema header to create a new table from a CSV
+  file. Separator, header row and column mapping are detected and can be changed.
 
 ## Safety
 

@@ -27,6 +27,9 @@ pub(super) struct ExportJob {
 }
 
 fn write_export(job: ExportJob, cancel: &CancellationToken, completed: &AtomicUsize) -> Result<(), ExportError> {
+    if matches!(&job.source, JobSource::Paged { .. }) {
+        return Err(ExportError::Source(snapshot_refusal_message()));
+    }
     let export = ResultExport {
         format: result_format(job.format),
         csv: &job.options,
@@ -52,6 +55,10 @@ fn write_export(job: ExportJob, cancel: &CancellationToken, completed: &AtomicUs
             progress,
         ),
     }
+}
+
+pub(super) fn snapshot_refusal_message() -> String {
+    crate::tr!("Full-table export requires a consistent snapshot. Export the current page or a query result instead.")
 }
 
 fn result_format(format: super::ExportFormat) -> ResultFormat {
@@ -168,4 +175,77 @@ pub(super) fn start(parent: &adw::ApplicationWindow, toast: &adw::ToastOverlay, 
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn job(path: std::path::PathBuf, source: JobSource) -> ExportJob {
+        ExportJob {
+            path,
+            source,
+            format: super::super::ExportFormat::Csv,
+            options: CsvOptions::default(),
+            driver_id: "postgres".into(),
+            schema: None,
+            table: "t".into(),
+        }
+    }
+
+    #[test]
+    fn an_unverified_paged_export_never_opens_its_source_or_replaces_a_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("saved.csv");
+        std::fs::write(&path, "existing export").unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let opened = calls.clone();
+        let source = JobSource::Paged {
+            columns: Vec::new(),
+            total: None,
+            open: Arc::new(move |_| {
+                opened.fetch_add(1, Ordering::SeqCst);
+                Box::new(|| Ok(None))
+            }),
+        };
+        let outcome = write_export(
+            job(path.clone(), source),
+            &CancellationToken::new(),
+            &AtomicUsize::new(0),
+        );
+        assert!(matches!(outcome, Err(ExportError::Source(_))));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "existing export");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_loaded_result_still_exports_successfully() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("result.csv");
+        let source = JobSource::Loaded(tablepro_core::QueryResult {
+            columns: vec![tablepro_core::ColumnInfo {
+                name: "label".into(),
+                data_type: "text".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            rows: vec![vec![tablepro_core::Value::Text("hello, export".into())]],
+            truncated: false,
+        });
+        write_export(
+            job(path.clone(), source),
+            &CancellationToken::new(),
+            &AtomicUsize::new(0),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "label\n\"hello, export\"\n");
+    }
 }

@@ -4,12 +4,28 @@ What the application does not do, or does differently from what you might expect
 
 ## Data and values
 
-- **A full export is not a consistent snapshot** (UI-13b). Rows changed while a large export runs can be missed or repeated, because pages are read one after another. Export from a quiet database when exactness matters.
-- **Large results are capped and held in memory** (PERF-2, PERF-8). Results stop at 1 million rows, 10 million cells or 64 MiB estimated size. The historical grid measurement was about 2.5 times the result memory; #518 now shares immutable values with materialized rows, and comparable profiling remains open. Nothing is streamed yet.
-- **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a typed preview and its byte count; View Value fetches the whole value by primary key. A table without a primary key cannot refetch.
-- **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key columns out of the select and refuses full-row copy, row JSON and current-page export while those values are unfetched. Distribution Wayland/GNOME acceptance remains open.
-- **A table without a primary key cannot be deleted from the grid** (TEST-14). There is no all-column fallback, by design.
-- **ClickHouse ambiguous local times:** a `DateTime64` that falls in a repeated or missing daylight-saving hour is shown as undecodable and is never turned into a literal, because the instant cannot be known.
+- **Full-table export is unavailable** (UI-13b). The current drivers do not have
+  a verified snapshot export path, so the application refuses full-table export
+  before opening the destination dialog or publishing a file. Export the current
+  page or a loaded query result instead. Snapshot export support is planned.
+- **Large results are capped and held in memory** (PERF-2, PERF-8). Results stop at
+  1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
+  measurement was about 2.5 times the result memory; #518 now shares immutable
+  values with materialized rows, and comparable profiling remains open. Nothing
+  is streamed yet.
+- **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a
+  typed preview and its byte count; View Value fetches the whole value by primary
+  key. A table without a primary key cannot refetch.
+- **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
+  [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key
+  columns out of the select and refuses full-row copy, row JSON and current-page
+  export while those values are unfetched. Distribution Wayland/GNOME acceptance
+  remains open.
+- **A table without a primary key cannot be deleted from the grid** (TEST-14). There
+  is no all-column fallback, by design.
+- **ClickHouse ambiguous local times:** a `DateTime64` that falls in a repeated or
+  missing daylight-saving hour is shown as undecodable and is never turned into a
+  literal, because the instant cannot be known.
 - **SQLite real numbers:** negative zero and NaN cannot be bound as parameters.
 - **SQLite JSON aggregate output** can differ across system SQLite versions (TEST-25).
 - **MongoDB:** browse pages are separate observations, not one point-in-time view (TEST-12); a column with mixed types is read-only; deep unfiltered `_id` keyset browse is fast in local Docker ([#493](https://github.com/cozyGarage/BookiE/pull/493)), but filtered, sorted and keyless deep pages plus installed and network acceptance remain open (PERF-3).

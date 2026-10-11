@@ -197,6 +197,27 @@ pub(crate) fn present_with_format(
     json: bool,
     preferences: &PreferencesStore,
 ) {
+    if request.paged.is_some() {
+        let alert = adw::AlertDialog::builder()
+            .heading(crate::tr!("Full-table export unavailable"))
+            .body(file::snapshot_refusal_message())
+            .build();
+        alert.add_response("close", &crate::tr!("Close"));
+        alert.set_default_response(Some("close"));
+        alert.set_close_response("close");
+        alert.present(Some(parent));
+        return;
+    }
+    present_export(parent, toast_overlay, request, json, preferences);
+}
+
+fn present_export(
+    parent: &adw::ApplicationWindow,
+    toast_overlay: &adw::ToastOverlay,
+    request: ExportRequest,
+    json: bool,
+    preferences: &PreferencesStore,
+) {
     let ExportRequest {
         paged,
         result,
@@ -437,6 +458,45 @@ fn show_export_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn a_full_export_shows_a_refusal_without_opening_its_source() {
+        adw::init().unwrap();
+        let application = adw::Application::builder()
+            .application_id("com.tablepro.linux.export-test")
+            .build();
+        application.register(None::<&gio::Cancellable>).unwrap();
+        let window = adw::ApplicationWindow::new(&application);
+        let toast = adw::ToastOverlay::new();
+        window.set_content(Some(&toast));
+        window.present();
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let opened = calls.clone();
+        let request = ExportRequest {
+            paged: Some(PagedExport {
+                total_rows: Some(1),
+                open: std::sync::Arc::new(move |_| {
+                    opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Box::new(|| Ok(None))
+                }),
+            }),
+            result: QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                truncated: false,
+            },
+            suggested_name: "table.csv".into(),
+            driver_id: "postgres".into(),
+        };
+        present_with_format(&window, &toast, request, false, &PreferencesStore::new());
+        while glib::MainContext::default().iteration(false) {}
+        let dialog = window.visible_dialog().unwrap();
+        assert!(dialog.is::<adw::AlertDialog>());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        dialog.close();
+        window.close();
+    }
 
     #[test]
     fn a_qualified_result_name_becomes_a_schema_and_table_for_sql_statements() {

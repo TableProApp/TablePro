@@ -36,7 +36,7 @@ Rows here are real work that does not block 0.2.0. The ledger keeps the evidence
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
-| UI-13b | Consistent snapshot for a full export (ADR 0014) |
+| UI-13b | Implement verified snapshot export paths (ADR 0014); unsupported full export is refused |
 
 ## Infrastructure
 
