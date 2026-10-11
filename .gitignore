@@ -80,3 +80,6 @@ target-gtk2510/
 /.cargo/.global-cache
 /.cargo/.package-cache
 /.cargo/.package-cache-mutate
+
+# generated inventory; print it with scripts/inventory-ignored-tests.py
+/docs/ignored-tests.md

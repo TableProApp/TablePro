@@ -47,7 +47,7 @@ Toolchain: Rust/Cargo 1.93.1; GTK 4.22.4, libadwaita 1.9.3, GtkSourceView 5.20.0
 
 The [validation manifest](../evidence/2026-09-stabilization/validation.json) records commands, saved-log hashes and source hashes for the locally tested tree, now mapped to the committed candidate. The temporary PostgreSQL server was confirmed stopped during finalization. Prior process handles expired between sessions, so finalization verified saved completion output rather than recovering process exit codes.
 
-The [generated ignored-test ledger](../ignored-tests.md) lists exact tests and their activation requirements. Subprocess helpers are counted separately. Test counts are evidence inventory, not proof of defect absence.
+The [generated ignored-test ledger](../../scripts/inventory-ignored-tests.py) lists exact tests and their activation requirements. Subprocess helpers are counted separately. Test counts are evidence inventory, not proof of defect absence.
 
 Reproduce the affected real-engine slice against an isolated server compatible with the release fixture:
 

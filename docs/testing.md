@@ -28,11 +28,13 @@ Without it the file compiles locally but fails Clippy. See [error-handling.md](e
 
 Validate DuckDB explicitly with the playbook `duckdb` / Build Linux DuckDB job commands. JSON and Parquet extensions are bundled; tests disable extension installation/loading when checking availability. Flat-file tests cover CSV/TSV/JSON/Parquet, quoted filenames and malformed/missing files.
 
-The [ignored-test inventory](ignored-tests.md) names every declaration, prerequisite and activation command. Regenerate after adding or removing ignored tests:
+The ignored-test inventory names every declaration, prerequisite and activation command. It is generated from the source and is not committed, so it never conflicts between pull requests. Print it with:
 
 ```bash
-python3 scripts/inventory-ignored-tests.py > docs/ignored-tests.md
+python3 scripts/inventory-ignored-tests.py
 ```
+
+`python3 scripts/inventory-ignored-tests.py --check` (part of the harness job) fails when an ignored test is unmapped or an isolated-test registration is stale.
 
 ## Unit tests
 

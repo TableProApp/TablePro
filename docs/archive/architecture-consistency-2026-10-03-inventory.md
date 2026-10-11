@@ -52,7 +52,7 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 | [linux/docs/driver-priority.md](../adding-drivers.md#order-the-engines-were-added) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/error-handling.md](../error-handling.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/flathub.md](../platforms.md#flathub) | reference/guide | Screened; retain stated scope, no exhaustive claim |
-| [linux/docs/ignored-tests.md](../ignored-tests.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
+| [linux/docs/ignored-tests.md](../../scripts/inventory-ignored-tests.py) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/manual-verification-0.2-features.md](../manual-verification-0.2-features.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/omarchy.md](../platforms.md#arch-and-omarchy-package) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/performance-2026-09.md](performance-2026-09.md) | dated evidence/planning record | Screened; retain recorded revision and limits |
