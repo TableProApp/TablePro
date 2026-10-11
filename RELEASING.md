@@ -1,14 +1,12 @@
----
-title: Releasing
-description: Release builds, notarization, DMG packaging, static libraries, and the release tag
----
+# Releasing
 
 `scripts/build-release.sh` is the whole release build. It signs every binary in the bundle itself,
 each plugin, helper and framework first and the app bundle last, so signing again by hand
 afterwards undoes its work.
 
-Everything on this page needs credentials the maintainer holds. A contributor building from source
-wants [Building](/development/building) instead.
+Everything here needs credentials the maintainer holds. A contributor building from source wants
+[CONTRIBUTING.md](CONTRIBUTING.md#building) instead. The `release` skill in `.claude/skills/release`
+runs a whole release, from the version bump to the announcement, on top of what this file describes.
 
 ## Release builds
 
@@ -160,5 +158,5 @@ build is reached by shipping the fix, not by the withdrawal.
 ## Plugins
 
 Driver plugins release on their own `plugin-*-v*` tags through a separate workflow, and the registry
-decides which binary a user gets. [Plugin Registry](/development/plugin-registry) covers the
+decides which binary a user gets. [Plugin Registry](https://docs.tablepro.app/development/plugin-registry) covers the
 manifest, the tag names, and the bulk re-release after a PluginKit ABI change.

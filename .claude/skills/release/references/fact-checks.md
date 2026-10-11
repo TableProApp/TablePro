@@ -34,12 +34,13 @@ the plugin with the release or cut the section.
 
 ## 4. Images are real and current
 
-A `docs/images/*.png` at exactly 1560x960 is a "Screenshot coming soon" card. A real file can
-still be stale, so compare its date with the commits that changed the UI it shows:
+An `images/*.png` in the docs repository (`../tablepro-docs`) at exactly 1560x960 is a "Screenshot
+coming soon" card. A real file can still be stale, so compare its date with the commits that changed
+the UI it shows:
 
 ```bash
-sips -g pixelWidth -g pixelHeight docs/images/<file>.png
-git log -1 --format='%ad %s' --date=short -- docs/images/<file>.png
+sips -g pixelWidth -g pixelHeight ../tablepro-docs/images/<file>.png
+git -C ../tablepro-docs log -1 --format='%ad %s' --date=short -- images/<file>.png
 ```
 
 Never embed a placeholder or a stale shot. Mark the gap in the draft and list it as a blocker.
@@ -67,11 +68,11 @@ every constant in the model file, including the default range a comparison runs 
 ## 7. Every URL resolves
 
 ```bash
-ls docs/features/<page>.mdx docs/databases/<page>.mdx
-grep -n "^## " docs/databases/<page>.mdx
+ls ../tablepro-docs/features/<page>.mdx ../tablepro-docs/databases/<page>.mdx
+grep -n "^## " ../tablepro-docs/databases/<page>.mdx
 ```
 
-`docs/changelog.mdx` carries the version only after the release-day docs deploy, so that link
+The docs `changelog.mdx` carries the version only after the release-day docs deploy, so that link
 is a blocker until then, not a broken link.
 
 ## 8. Counts and references
@@ -98,6 +99,6 @@ Report these apart from any draft. Nothing goes out until every one holds.
   `shortVersionString` is an element, not an attribute.
 - Every plugin an announcement names is tagged, built and in the registry (check 3).
 - Screenshots are captured, light and dark, on a build that contains the change.
-- `docs/changelog.mdx` is deployed with the version.
+- The docs `changelog.mdx` is deployed with the version.
 - The fix count is recounted after `[Unreleased]` closed.
 - The blog post is live. Fetch the URL rather than trusting that the file was written.

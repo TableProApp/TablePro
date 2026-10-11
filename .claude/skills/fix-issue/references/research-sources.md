@@ -10,7 +10,7 @@ Where to find the correct behavior, and what counts as evidence for it.
 - **Human Interface Guidelines**: `https://developer.apple.com/design/human-interface-guidelines`. For a database client the macOS sections that matter most are windows, panels, sheets, toolbars, sidebars, menus, tables and lists, and selection. Quote the rule; "the HIG says so" without a quote is not evidence.
 - **AppKit** (`https://developer.apple.com/documentation/appkit`) and **SwiftUI** (`https://developer.apple.com/documentation/swiftui`). Check whether a SwiftUI modifier already does the job before dropping to AppKit, and check the reverse too: several TablePro views are AppKit because the SwiftUI version misbehaves, and `CLAUDE.md` records why.
 - **Availability**: the deployment target is macOS 13. An API from macOS 14, 15 or 26 needs an `if #available` branch, and the plan names the fallback. Name the modern API, and when the only option is deprecated, name its replacement.
-- **TablePro's own docs** in `docs/`: a fix must not contradict what users have been told.
+- **TablePro's own docs** in TableProApp/docs (`../tablepro-docs`): a fix must not contradict what users have been told.
 
 ## Dependencies
 

@@ -3,7 +3,7 @@ name: macOS Tests
 on:
   # No paths filter here on purpose. A required status check has to report on every pull
   # request, and a workflow skipped by a paths filter reports nothing at all, which leaves
-  # the check pending forever and blocks docs-only work. The filtering moved into the
+  # the check pending forever and blocks a PR that touches no code. The filtering moved into the
   # changes job below, so the gate job always runs and always reports.
   pull_request:
   push:
@@ -528,8 +528,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The one check to mark required on main. It reports on every pull request, so a docs-only
-  # change passes on skipped suites instead of hanging, and a red suite cannot be merged past.
+  # The one check to mark required on main. It reports on every pull request, so a change
+  # outside the code passes on skipped suites instead of hanging, and a red suite cannot be merged past.
   gate:
     name: macOS Tests Gate
     if: always()

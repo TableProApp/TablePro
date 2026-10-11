@@ -8,7 +8,7 @@ import Foundation
 import Testing
 
 /// The number of engines TablePro offers is published in three places that cannot see each other:
-/// this registry, `docs/snippets/driver-counts.mdx`, and the marketing site. Nothing at runtime
+/// this registry, `snippets/driver-counts.mdx` in TableProApp/docs, and the marketing site. Nothing at runtime
 /// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
 ///
 /// The answer is 37, and the reason it once read 28 is worth keeping. Turso is served by
@@ -19,9 +19,9 @@ import Testing
 /// being asserted on top of it. Do not "correct" it downwards by deleting that entry.
 ///
 /// A failure here means a driver was added or removed, which is a deliberate act. Update
-/// `expectedTypeIds`, then `docs/snippets/driver-counts.mdx`, the `and N more` count in the
-/// `docs/index.mdx` frontmatter, and the engine count on tablepro.app in the same change.
-/// `docs/scripts/check-docs-against-source.py` reads the registry and holds the docs half.
+/// `expectedTypeIds`, then, in TableProApp/docs, `snippets/driver-counts.mdx` and the `and N more`
+/// count in the `index.mdx` frontmatter, and the engine count on tablepro.app. The docs repository's
+/// `scripts/check-docs-against-source.py` reads this registry and holds the docs half.
 ///
 /// The count is taken from the built-in defaults rather than from `allRegisteredTypeIds()`.
 /// Both answer 37 under XCTest, where no plugin bundle ever loads, but the registry is a

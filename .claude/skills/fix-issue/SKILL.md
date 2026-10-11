@@ -98,7 +98,8 @@ Run every step through the tree's wrapper, written out in full each time (the va
 | `abi <merge-base>` | `TableProPluginKit` changed (commit first) |
 | `lint <file>...` | every changed Swift file |
 | `l10n` | strings or plugin messages changed |
-| `docs`, `agent-docs` | `docs/`, or `AGENTS.md` and `.claude/` changed |
+| `docs [<docs checkout>]` | a paired docs change, or a change to a menu, shortcut, driver list or docs.tablepro.app link |
+| `agent-docs` | `AGENTS.md` or `.claude/` changed |
 
 - Check the `root:` line names your tree. The verdict is `PASS`, `FAIL` or `INCONCLUSIVE` (exit 0, 1, 2), also written to `<log>.verdict`.
 - **Verify in batches**: build once after a coherent set of edits, then re-run only a failed step.
@@ -118,7 +119,7 @@ Fix what is real and inside the scope boundary without asking; a real finding ab
 2. **Run `scripts/check-banned-words.sh --staged`** and the same check over the PR body file.
 3. **Commit, then push, in separate calls**, after `git -C <tree> branch --show-current` in its own call. The PR title is the squash commit subject: Conventional Commits, at most 72 characters. Never override the git identity. If SSH fails: `git -c credential.helper='!gh auth git-credential' push https://github.com/TableProApp/TablePro.git <branch>`.
 4. **Open the PR, ready for review**: `gh pr create --repo TableProApp/TablePro --base main --head <branch> --title "<subject>" --body-file <file>`, the body following `.github/pull_request_template.md` and readable in under a minute. It is not a log: no investigation story, no review history, no list of every test run.
-5. **Screenshots**, only when the change is visible: from a Debug build launched with `TABLEPRO_UI_TEST_SANDBOX` set to a scratch directory, before and after, light and dark. Look at each before using it. Attach with `gh pr create --attach './after.png#After'` and reference it as `![After](./after.png)`. Reuse them in `docs/images/` when a page shows that surface. A registry-only plugin cannot load in a sandboxed Debug build; say so when that blocks a shot.
+5. **Screenshots**, only when the change is visible: from a Debug build launched with `TABLEPRO_UI_TEST_SANDBOX` set to a scratch directory, before and after, light and dark. Look at each before using it. Attach with `gh pr create --attach './after.png#After'` and reference it as `![After](./after.png)`. Reuse them in `../tablepro-docs/images/` when a page shows that surface. A registry-only plugin cannot load in a sandboxed Debug build; say so when that blocks a shot.
 
 ## Phase 7: Land
 

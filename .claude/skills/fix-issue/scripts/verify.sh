@@ -17,7 +17,7 @@
 #   verify.sh [options] ios <Suite> [Suite…]         # TableProMobileTests on a simulator
 #   verify.sh [options] abi   <merge-base>
 #   verify.sh [options] lint  <path> [path…]
-#   verify.sh [options] docs                    # docs/ house style + claims against source
+#   verify.sh [options] docs [docs-checkout]    # TableProApp/docs checks against this tree (default ../tablepro-docs)
 #   verify.sh [options] l10n                    # plugin and package strings in the app catalog, managed manually
 #   verify.sh [options] agent-docs              # CLAUDE.md, .claude/rules and this skill against the tree
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
@@ -588,7 +588,7 @@ case "$STEP" in
 
     agent-docs)
         # CLAUDE.md, .claude/rules and this skill, checked for paths, symbols and skills that no
-        # longer exist. It never reads docs/, and it used to run inside every `lint`, which made
+        # longer exist. It used to run inside every `lint`, which made
         # every code lint red whenever main carried one stale reference nobody on the branch wrote.
         log="$(new_log agent-docs)"
         run_logged "$log" "$REPO_ROOT/scripts/check-doc-symbols.sh"
@@ -622,29 +622,26 @@ case "$STEP" in
         ;;
 
     docs)
-        # The three checks that actually read docs/. None runs anywhere else in this script, and
-        # CI runs them in the "Validate docs" job, so a local run is the only way to see a failure
-        # before the push. check-links.py was missing here, so a link to a heading that does not
-        # exist reached main on a green local run (#2988).
+        # The docs live in TableProApp/docs, whose CI checks them against the app's main only. Run
+        # here with --app pointed at this tree, the same checks say whether a paired docs change
+        # passes once this branch merges, and whether this branch breaks a page that is already live.
         log="$(new_log docs)"
         : > "$log"
         code=0
-        for check in "check-writing-style.sh" "check-docs-against-source.py" "check-links.py"; do
-            script="$REPO_ROOT/docs/scripts/$check"
-            if [ ! -f "$script" ]; then
-                note "missing: docs/scripts/$check"
-                STATUS=INCONCLUSIVE
-                continue
-            fi
-            case "$check" in
-                *.sh) (cd "$REPO_ROOT/docs" && bash "scripts/$check") >> "$log" 2>&1 || code=1 ;;
-                *.py) (cd "$REPO_ROOT/docs" && python3 "scripts/$check") >> "$log" 2>&1 || code=1 ;;
-            esac
-        done
-        if [ "$STATUS" != "INCONCLUSIVE" ]; then
+        main_checkout="$(dirname "$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)")"
+        docs_root="${1:-$(dirname "$main_checkout")/tablepro-docs}"
+        if [ ! -f "$docs_root/docs.json" ]; then
+            STATUS=INCONCLUSIVE
+            note "no TableProApp/docs checkout at $docs_root: clone https://github.com/TableProApp/docs there, or pass its path"
+        else
+            {
+                (cd "$docs_root" && bash scripts/check-writing-style.sh "$REPO_ROOT") || code=1
+                (cd "$docs_root" && python3 scripts/check-docs-against-source.py --app "$REPO_ROOT") || code=1
+                (cd "$docs_root" && python3 scripts/check-links.py --app "$REPO_ROOT") || code=1
+            } >> "$log" 2>&1
             if [ $code -eq 0 ]; then
                 STATUS=PASS
-                note "docs/: house style, source claims and links all agree"
+                note "$docs_root: house style, source claims and links all agree with this tree"
             else
                 STATUS=FAIL
                 # The scripts print one line per check, most of them "ok". Show the failing check
@@ -652,8 +649,8 @@ case "$STEP" in
                 note "$(grep -A 2 -E '^ *FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
                 note "$(grep -E 'contradict|house style' "$log" 2> /dev/null | sed 's/^/  /' | head -3)"
             fi
+            note "STYLE.md rules no script enforces: see AGENTS.md in $docs_root"
         fi
-        note "STYLE.md rules no script enforces: see .claude/rules/docs-authoring.md"
         emit "$log" $code
         ;;
 
