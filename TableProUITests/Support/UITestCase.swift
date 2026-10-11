@@ -218,6 +218,17 @@ internal class UITestCase: XCTestCase {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
+    /// macOS clicks an element where it is and never scrolls it into view first, so a row below
+    /// the fold of a scrolling pane is not hittable until the pane has been scrolled down to it.
+    internal func scrollUntilHittable(_ element: XCUIElement, in container: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if waitUntilHittable(element, timeout: 1) { return true }
+            container.scroll(byDeltaX: 0, deltaY: -400)
+        }
+        return waitUntilHittable(element, timeout: 1)
+    }
+
     /// Whether the keyboard is on this element.
     ///
     /// `hasFocus` is declared on `XCUIElementAttributes` in ObjC
