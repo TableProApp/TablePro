@@ -84,9 +84,9 @@
     "mask-wildcard-before.log": "aa43281f4324644f77775b39cf840a3ad854dfb8b540b729ee53ba28283da304",
     "mask-wildcard-after.log": "001e4849c4447258b843104a634afc6d3376f1ad2edd41a54c3a38ce46a18b4c",
     "audit-lockdown-noop-mutant.log": "92645bb3f42f20edaff8a576c0af5414ef98680a82e25015b3362b5334c65105",
-    "ssh-trust.log": "892864b06776faefe7b73c914d441e1dc194260a16763c1c8a23e240ebc2dc87",
+    "ssh-trust.log": "ef4f843d0f7ba84f689abcdb0f9ad4b14c6b8a0612d5acb1c034e36d7e41ff2e",
     "session-lockdown-before.log": "dfaf170dea103124cc317d08d70a5d415eb4146e1256ae3ddbc28a15f413ff4b",
-    "session-lockdown-after.log": "185965aff8890b6788328339a87a0ad5cf078e39636e7ce96c1d18204c3b0bcf"
+    "session-lockdown-after.log": "4d103eea917e17f7c42cf7e223f156ab1e01f1a36e1a4cc1a940dd21020bd36a"
   },
   "not_established": [
     "Full mutation rerun",
@@ -94,5 +94,6 @@
     "Power-loss or file-system sync fault injection",
     "Forgejo or installed/native Wayland acceptance",
     "Release qualification"
-  ]
+  ],
+  "log_format_note": "Terminal blank lines removed from the SSH and session-after logs; diagnostic lines are unchanged."
 }
