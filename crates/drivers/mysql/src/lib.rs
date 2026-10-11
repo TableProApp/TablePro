@@ -854,11 +854,13 @@ fn mysql_connect_options(opts: &ConnectOptions) -> MySqlConnectOptions {
     if let Some(path) = &opts.tls.root_cert {
         mysql_opts = mysql_opts.ssl_ca(path);
     }
-    if let Some(path) = &opts.tls.client_cert {
-        mysql_opts = mysql_opts.ssl_client_cert(path);
-    }
-    if let Some(path) = &opts.tls.client_key {
-        mysql_opts = mysql_opts.ssl_client_key(path);
+    if opts.tls.mode != TlsMode::Disabled {
+        if let Some(path) = &opts.tls.client_cert {
+            mysql_opts = mysql_opts.ssl_client_cert(path);
+        }
+        if let Some(path) = &opts.tls.client_key {
+            mysql_opts = mysql_opts.ssl_client_key(path);
+        }
     }
     mysql_opts
 }
@@ -1120,6 +1122,55 @@ mod tests {
         let mysql_opts = mysql_connect_options(&opts);
         assert_eq!(mysql_opts.get_host(), "db.corp.example");
         assert_eq!(mysql_opts.get_socket(), None);
+    }
+
+    fn connect_opts_with_client_tls(mode: tablepro_core::TlsMode) -> ConnectOptions {
+        ConnectOptions {
+            host: "db.corp.example".into(),
+            port: 3306,
+            tls: tablepro_core::TlsConfig {
+                mode,
+                client_cert: Some(std::path::PathBuf::from("/tmp/tablepro-client.crt")),
+                client_key: Some(std::path::PathBuf::from("/tmp/tablepro-client.key")),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn mysql_url_query(mysql_opts: &MySqlConnectOptions) -> Vec<(String, String)> {
+        use sqlx::ConnectOptions as _;
+        mysql_opts
+            .to_url_lossy()
+            .query_pairs()
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect()
+    }
+
+    fn mysql_url_has_client_tls_material(mysql_opts: &MySqlConnectOptions) -> bool {
+        mysql_url_query(mysql_opts)
+            .iter()
+            .any(|(key, _)| key == "ssl-cert" || key == "ssl-key")
+    }
+
+    #[test]
+    fn disabled_tls_ignores_saved_client_cert_and_key() {
+        let mysql_opts = mysql_connect_options(&connect_opts_with_client_tls(tablepro_core::TlsMode::Disabled));
+        let query = mysql_url_query(&mysql_opts);
+        assert!(
+            query
+                .iter()
+                .any(|(key, value)| key == "ssl-mode" && value == "DISABLED")
+        );
+        assert!(!mysql_url_has_client_tls_material(&mysql_opts));
+    }
+
+    #[test]
+    fn prefer_and_require_tls_still_apply_saved_client_cert_and_key() {
+        for mode in [tablepro_core::TlsMode::Prefer, tablepro_core::TlsMode::Require] {
+            let mysql_opts = mysql_connect_options(&connect_opts_with_client_tls(mode));
+            assert!(mysql_url_has_client_tls_material(&mysql_opts));
+        }
     }
 
     /// H1: a tunnelled connection must dial the forwarded local socket but
