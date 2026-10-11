@@ -1,0 +1,24 @@
+   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-session-refusal-audit/linux/crates/policy)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.90s
+     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+
+running 1 test
+test guard::guard_tests::session::journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available ... FAILED
+
+failures:
+
+---- guard::guard_tests::session::journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available stdout ----
+
+thread 'guard::guard_tests::session::journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available' (902110) panicked at crates/policy/src/guard_tests_session.rs:874:9:
+assertion `left == right` failed: COMMIT
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    guard::guard_tests::session::journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 223 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-policy --lib`

@@ -39,12 +39,54 @@
         "gtk_widgets_passed": 26
       },
       "note": "Source-build Xvfb only; merged release documentation does not change tested app source"
+    },
+    {
+      "case": "Final session audit and public lockdown coverage",
+      "source_commit": "53b0f1abbf0689c2dc3697dfe7833f9122fb2c4f",
+      "commands": [
+        "bash scripts/preflight.sh",
+        "cargo test -p tablepro-mcp --test timeout_audit"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "policy_unit_passed": 224,
+        "mcp_timeout_audit_passed": 9
+      }
+    },
+    {
+      "case": "Isolated hop credential and bundle keyring acceptance",
+      "source_commit": "53b0f1abbf0689c2dc3697dfe7833f9122fb2c4f",
+      "command": "bash scripts/test-secret-service.sh",
+      "exit_code": 0,
+      "counts": {
+        "keyring_passed": 14
+      },
+      "note": "Private D-Bus and temporary keyring; no desktop keyring access"
+    },
+    {
+      "case": "Native SSH host-key trust fixtures",
+      "source_commit": "53b0f1abbf0689c2dc3697dfe7833f9122fb2c4f",
+      "command": "cargo test --locked -p tablepro-ssh --test agent_auth <selector> -- --ignored --exact --test-threads=1",
+      "selectors": [
+        "declining_a_built_in_host_key_does_not_learn_it",
+        "a_two_hop_chain_reaches_the_final_host",
+        "cancelling_while_trusting_the_second_hop_does_not_learn_its_host_key",
+        "a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "ssh_trust_passed": 4
+      },
+      "note": "SSH, transport and storage product sources match the reviewed linux baseline; this is not installed or full candidate acceptance"
     }
   ],
   "sha256": {
     "mask-wildcard-before.log": "aa43281f4324644f77775b39cf840a3ad854dfb8b540b729ee53ba28283da304",
     "mask-wildcard-after.log": "001e4849c4447258b843104a634afc6d3376f1ad2edd41a54c3a38ce46a18b4c",
-    "audit-lockdown-noop-mutant.log": "92645bb3f42f20edaff8a576c0af5414ef98680a82e25015b3362b5334c65105"
+    "audit-lockdown-noop-mutant.log": "92645bb3f42f20edaff8a576c0af5414ef98680a82e25015b3362b5334c65105",
+    "ssh-trust.log": "892864b06776faefe7b73c914d441e1dc194260a16763c1c8a23e240ebc2dc87",
+    "session-lockdown-before.log": "dfaf170dea103124cc317d08d70a5d415eb4146e1256ae3ddbc28a15f413ff4b",
+    "session-lockdown-after.log": "185965aff8890b6788328339a87a0ad5cf078e39636e7ce96c1d18204c3b0bcf"
   },
   "not_established": [
     "Full mutation rerun",

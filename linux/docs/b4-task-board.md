@@ -28,8 +28,8 @@ their ledger rows.
 | Work | Implementation | Exit before candidate freeze |
 | --- | --- | --- |
 | AUD-9 hidden projection sources | [#537](https://github.com/cozyGarage/BookiE/pull/537): unknown derived/renamed sources and whole records fail closed, ordinary qualified columns remain visible | GitHub and Forgejo green on its exact head, then merge; native PostgreSQL cases include `array_agg(c.*)` cast to text |
-| Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538): snapshot writes, structural refusals and retired-session calls record a Denied terminal outcome without dispatch | GitHub and Forgejo green on its exact head, then merge; keep transaction state and journal-failure lockdown |
-| UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539): refuse unsupported full export before source/destination access, preserve loaded-result and current-page export | App preflight, widget tier, GitHub and Forgejo; merge the refusal, defer verified snapshot implementations |
+| Early session refusal audit | [#538](https://github.com/cozyGarage/BookiE/pull/538): snapshot writes, structural refusals, retired-session calls and write-lockdown refusals record a Denied terminal outcome without dispatch | GitHub and Forgejo green on its exact head, then merge; keep transaction state and journal-failure lockdown |
+| UI-13b snapshot-or-refusal | [#539](https://github.com/cozyGarage/BookiE/pull/539): refuse unsupported full export before source/destination access, preserve loaded-result and current-page export | Local preflight, app Clippy, 10 export tests and 26 widgets passed; GitHub and Forgejo remain the handoff gates, then merge the refusal and defer verified snapshot implementations |
 
 Mutation triage is bounded to masking, host-key refusal, per-hop secret selection,
 bundle rollback and durable audit. Existing fixture coverage and remaining proof
