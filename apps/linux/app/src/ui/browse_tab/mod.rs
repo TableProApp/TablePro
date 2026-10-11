@@ -434,6 +434,7 @@ use chrome::*;
 pub use requests::{BrowseCellValueRequest, BrowseLoadFailure, BrowsePageRequest, BrowseRowCountRequest};
 use requests::{CellValueRequestTracker, PageRequestTracker, RowCountRequestTracker};
 use selection::*;
+pub(crate) use value_parse::mysql_enum_set_labels;
 use value_parse::*;
 
 impl BrowseTab {

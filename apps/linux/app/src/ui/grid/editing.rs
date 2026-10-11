@@ -33,6 +33,7 @@ pub(super) fn setup_editable_cell(
     column_name: String,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
+    choices: Option<(bool, Vec<String>)>,
     column_view: &gtk::ColumnView,
     menus: Option<&GridMenus>,
 ) {
@@ -47,7 +48,7 @@ pub(super) fn setup_editable_cell(
         attach_cell_gesture(label.upcast_ref(), column_view, idx, column_name, true, true, menus);
     }
     install_edit_commit_handler(&label, idx, sender.clone());
-    install_edit_triggers(&label, idx, sender, editor_kind);
+    install_edit_triggers(&label, idx, sender, editor_kind, choices);
 }
 
 pub(super) fn setup_bool_cell(
@@ -123,6 +124,7 @@ fn install_edit_triggers(
     col_index: usize,
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
+    choices: Option<(bool, Vec<String>)>,
 ) {
     let trigger: std::rc::Rc<dyn Fn(&CellEditor)> = match editor_kind {
         CellEditorKind::Text => std::rc::Rc::new(|l: &CellEditor| enter_edit_mode(l)),
@@ -141,6 +143,15 @@ fn install_edit_triggers(
         CellEditorKind::Json => {
             let sender = sender.clone();
             std::rc::Rc::new(move |l| show_json_popover(l, col_index, &sender))
+        }
+        CellEditorKind::Choice => {
+            let sender = sender.clone();
+            std::rc::Rc::new(move |l| match choices.clone() {
+                Some((is_set, labels)) => {
+                    super::choice_editor::show_choice_popover(l, col_index, &sender, labels, is_set)
+                }
+                None => enter_edit_mode(l),
+            })
         }
     };
     let trigger: std::rc::Rc<dyn Fn(&CellEditor)> = {

@@ -9,7 +9,7 @@ use super::display::{
 };
 use super::editing::{setup_bool_cell, setup_editable_cell, setup_readonly_cell};
 pub(super) use super::presentation::column_is_editable as is_cell_editable;
-use super::types::{classify_editor_kind, is_bool_type};
+use super::types::{CellEditorKind, classify_editor_kind, is_bool_type};
 use super::{GridMsg, TabGridContext};
 
 const PENDING_CSS_CLASSES: &[&str] = &[
@@ -57,6 +57,7 @@ pub(super) fn build_column(
     let table_for_persist = table;
 
     let column_data_type = info.data_type.clone();
+    let choices_for_setup = tab_ctx.choices.get(&info.name).cloned();
     let column_name = info.name.clone();
     let column_view_for_setup = column_view.clone();
     let grid_menus_for_setup = grid_menus.clone();
@@ -75,13 +76,19 @@ pub(super) fn build_column(
                     grid_menus_for_setup.as_ref(),
                 );
             } else {
-                let editor_kind = classify_editor_kind(&column_data_type);
+                let choices = choices_for_setup.clone();
+                let editor_kind = if choices.is_some() {
+                    CellEditorKind::Choice
+                } else {
+                    classify_editor_kind(&column_data_type)
+                };
                 setup_editable_cell(
                     item,
                     idx,
                     column_name.clone(),
                     edit_sender,
                     editor_kind,
+                    choices,
                     &column_view_for_setup,
                     grid_menus_for_setup.as_ref(),
                 );

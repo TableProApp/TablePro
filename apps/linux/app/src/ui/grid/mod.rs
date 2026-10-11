@@ -1,3 +1,4 @@
+mod choice_editor;
 mod column;
 mod column_jump;
 mod column_order;
@@ -91,6 +92,7 @@ pub struct TabGridContext {
     /// Marks the column header so a reference is visible before the
     /// cell value picker (a later slice) exists.
     pub foreign_key_columns: std::collections::HashSet<String>,
+    pub choices: std::collections::HashMap<String, (bool, Vec<String>)>,
 }
 
 const WIDE_TABLE_THRESHOLD: usize = 8;

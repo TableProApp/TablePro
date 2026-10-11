@@ -243,6 +243,11 @@ impl BrowseTab {
             preview_redis_strings: self.driver_id == "redis",
             preview_result_values: false,
             foreign_key_columns,
+            choices: self
+                .current_columns
+                .iter()
+                .filter_map(|column| Some((column.name.clone(), mysql_enum_set_labels(&column.data_type)?)))
+                .collect(),
         };
         let (column_view, selection) = build_column_view(
             &result,

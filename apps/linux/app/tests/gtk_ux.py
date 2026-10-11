@@ -1170,16 +1170,18 @@ def scenarios(ui):
         ui.invoke_named_action_within("bookie_test.enum_grid", "Open enum_grid")
         ui.wait_for_node(name="ready", role=pyatspi.ROLE_LABEL)
         click_cell("ready", count=2)
-        for key in "done":
-            ui.press_x11_key(key)
+        time.sleep(1.0)
+        ui.press_x11_key("Down")
+        time.sleep(0.3)
         ui.press_x11_key("Return")
+        ui.wait_for_node(name="done", role=pyatspi.ROLE_LABEL)
         click_cell("read", count=2)
-        for key in "read":
-            ui.press_x11_key(key)
-        ui.press_x11_key("comma")
-        for key in "write":
-            ui.press_x11_key(key)
+        apply = ui.wait_for_node(name="Apply", role=pyatspi.ROLE_PUSH_BUTTON)
+        ui.press_x11_key("Down")
+        time.sleep(0.3)
         ui.press_x11_key("Return")
+        time.sleep(0.3)
+        ui.invoke(apply)
         ui.wait_for_node(name="2 unsaved changes")
 
         query = (

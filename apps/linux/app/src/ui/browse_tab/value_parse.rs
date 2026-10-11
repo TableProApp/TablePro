@@ -69,6 +69,11 @@ fn parse_mysql_enum_set_input(text: &str, col: Option<&ColumnInfo>) -> Option<Re
     }
 }
 
+pub(crate) fn mysql_enum_set_labels(data_type: &str) -> Option<(bool, Vec<String>)> {
+    let is_set = data_type.trim().to_ascii_lowercase().starts_with("set");
+    parse_mysql_enum_set_labels(data_type.trim()).map(|labels| (is_set, labels))
+}
+
 fn parse_mysql_enum_set_labels(data_type: &str) -> Option<Vec<String>> {
     let open = data_type.find('(')?;
     let kind = data_type[..open].trim();
