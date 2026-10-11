@@ -99,7 +99,7 @@ Record binary/package SHA and checksum, actual Wayland backend, desktop/library 
 
 ## After 0.2.0: GNOME on Debian Wayland
 
-After UI-A1–A4, complete Debian I1 and repeat the applicable installed workflows on GNOME/Wayland with libraries meeting ADR 0002. Record the actual Debian/library versions; do not assume stable Debian meets GNOME 50 requirements. UI-D1 proves package contents; UI-D2 repeats A1–A3; UI-D3 proves upgrade/rollback; UI-D4 resolves platform differences. Source changes require a new SHA and affected Arch reruns. This phase remains planned work under PKG-2; it is not a 0.2.0 prerequisite.
+After UI-A1–A4 (Debian askpass packaging I1 is done), repeat the applicable installed workflows on GNOME/Wayland with libraries meeting ADR 0002. Record the actual Debian/library versions; do not assume stable Debian meets GNOME 50 requirements. UI-D1 proves package contents; UI-D2 repeats A1–A3; UI-D3 proves upgrade/rollback; UI-D4 resolves platform differences. Source changes require a new SHA and affected Arch reruns. This phase remains planned work under PKG-2; it is not a 0.2.0 prerequisite.
 
 ## Qualification and handoff
 

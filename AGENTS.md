@@ -6,7 +6,7 @@ These rules apply to every coding agent and every contributor. `CLAUDE.md` point
 
 **BookiE** is a Linux-only native database client (formerly TablePro on this branch). The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). Work happens on the `linux` branch in the Rust 1.98 Cargo workspace at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`).
 
-- The rename covers the display name, binary names (`bookie`, `bookie-agentd`) and branding assets only. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names stay `tablepro-*`. Check the sprint before renaming any of them.
+- The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names stay `tablepro-*`. Check the sprint before renaming any of them.
 - The UI uses GTK4, libadwaita, GtkSourceView and Relm4. Database drivers are static workspace crates registered at compile time. No cross-platform UI layers, web views or source for another operating system.
 - Every shipped feature works without an account, license key, subscription, paid tier or remote entitlement check.
 - The root [LICENSE](LICENSE) applies. User-facing changes go in [CHANGELOG.md](CHANGELOG.md).
@@ -136,7 +136,7 @@ Every test belongs to one tier with one script and one gate. Use the [validation
 
 | Tier | Contents | Script |
 |---|---|---|
-| unit | `--lib --bins` across the workspace | `scripts/preflight.sh` |
+| unit | `--lib` on the non-GTK crate list in `preflight.sh` (skips `tablepro-app`) | `scripts/preflight.sh` |
 | sandbox | integration targets needing no Docker, database or display | `scripts/test-sandbox.sh` |
 | driver | `crates/drivers/*/tests/integration.rs`, SSH and socket fixtures | `scripts/ci-local.sh integration` |
 | driver-tls | `tests/driver-tls` | `scripts/test-driver-tls.sh` |

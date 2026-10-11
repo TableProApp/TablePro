@@ -4,7 +4,7 @@ BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkS
 
 Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [October 3 consistency review](docs/archive/architecture-consistency-review-2026-10-03.md) reconciles the accumulated documentation. Earlier audits prove their recorded source trees; package release approval remains separate.
 
-The rename covers the display name, binary names (`bookie`, `bookie-agentd`) and branding assets only. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names remain `tablepro-*`.
+The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names remain `tablepro-*`.
 
 Every shipped feature is free to use. BookiE has no account, license, subscription, paid-tier, or remote entitlement gate.
 
@@ -121,7 +121,7 @@ Local cheap checks from the repository root:
 bash scripts/preflight.sh
 ```
 
-`preflight.sh` covers size and panic guards, formatting, Clippy, unit tests and the sandbox tier. It does not run the installed GTK suite. Deeper layers (Docker drivers, GTK widgets, installed GTK, release fixture) are documented in [`docs/validation-playbook.md`](docs/validation-playbook.md) and [`docs/testing.md`](docs/testing.md).
+`preflight.sh` covers size and panic guards, formatting, Clippy, unit tests on non-GTK crates (it skips `tablepro-app`) and the sandbox tier. It does not run the installed GTK suite. Deeper layers (Docker drivers, GTK widgets, installed GTK, release fixture) are documented in [`docs/validation-playbook.md`](docs/validation-playbook.md) and [`docs/testing.md`](docs/testing.md).
 
 From the repository root:
 

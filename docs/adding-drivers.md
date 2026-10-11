@@ -22,7 +22,7 @@ These are the dependencies used by the current drivers:
 | Engines | Library |
 | --- | --- |
 | PostgreSQL, MySQL/MariaDB, SQLite | `sqlx` with engine-specific features |
-| SQL Server | `tiberius` at the workspace's pinned source |
+| SQL Server | `tiberius` (workspace crates.io `0.13`) |
 | ClickHouse | `clickhouse` plus the current dynamic-result implementation |
 | Redis | `redis`, including the workspace's vendored patch |
 | MongoDB | `mongodb`, including the workspace's vendored patch |

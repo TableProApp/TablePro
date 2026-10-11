@@ -38,7 +38,7 @@ The Arch package is an internal candidate, not an AUR or Flathub release. It ins
 
 ## Flathub
 
-The Flatpak manifests (`apps/linux/flatpak/com.tablepro.linux*`) build, but a manifest build is not release qualification or publication. Submission checklist:
+Flatpak and Flathub are left out of 0.2.0 ([PRODUCT.md](../PRODUCT.md)). The Flatpak manifests (`apps/linux/flatpak/com.tablepro.linux*`) build, but a manifest build is not release qualification or publication. Submission checklist for later packaging work:
 
 1. Capture screenshots under `apps/linux/flatpak/screenshots/` (1280x800 or larger): welcome, browse, editor, structure; reference them from the metainfo.
 2. `flatpak-builder --user --install build-dir apps/linux/flatpak/com.tablepro.linux.json`.

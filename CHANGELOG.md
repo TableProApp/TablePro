@@ -1,12 +1,14 @@
-# Changelog: TablePro Linux
+# Changelog: BookiE
 
 ## [Unreleased]
+
+Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
 - PostgreSQL TLS verification now trusts the operating system certificate store when no custom authority is configured.
 - MongoDB table browsing now seeks deep pages in `_id` sort order, including collections with mixed key types.
 - MongoDB offset and `_id` keyset pages apply equality, inequality, comparison, range, set-membership, null, `LIKE` and `ILIKE` filters with SQL null behavior.
-- Saved SSH hops now have stable IDs and credential revisions, with separate Secret Service operations for per-hop passwords and key passphrases. Legacy connections-file v1 data loads and migrates to v2 on save; jump-chain editing and per-hop transport use remain disabled until their integration lands.
+- Saved SSH hops now have stable IDs and credential revisions, with separate Secret Service operations for per-hop passwords and key passphrases. Legacy connections-file v1 data loads and migrates to v2 on save. Connections use those per-hop secrets for transport; editing a jump chain in the form remains disabled until that editor lands.
 - Encrypted connection bundles now write format version 2 with each versioned SSH hop's password or key passphrase; version 1 imports remain supported and plaintext bundles still contain no credentials.
 - MongoDB browse long text, binary and structured values use guarded, ObjectId-safe `_id` refetches for full values.
 - Redis string values now use guarded, byte-safe key refetches for full values; collection and container debug strings remain untruncated.
@@ -16,15 +18,14 @@
 - Materialized result-grid rows share their source values, reducing duplicate memory for long cells while preserving pending edits on replacement.
 - Overlapping View Value requests discard stale replies so an older fetch cannot replace the latest requested cell.
 - ClickHouse long text refetch now has a guarded 12,000-byte contract with composite-key and native-value checks.
-- DuckDB BLOB values now have guarded exact-refetch coverage against an embedded database and native storage oracle.
-- MySQL and MariaDB CHAR results now have `PAD_CHAR_TO_FULL_LENGTH` coverage for padding, VARCHAR, empty values and NULL.
+- DuckDB BLOB values support guarded exact refetch of the full value from the database.
+- MySQL and MariaDB CHAR results preserve `PAD_CHAR_TO_FULL_LENGTH` padding, including VARCHAR, empty values and NULL.
 - MySQL and MariaDB CSV imports preserve impossible calendar dates accepted by `ALLOW_INVALID_DATES`.
 - PostgreSQL CSV imports preserve native BC date, timestamp and timestamptz values.
 - The sidebar groups tables and views under schemas and groups with object counts; a click collapses a group, a search expands the groups that match, and the choice is remembered per connection.
 - A Pin results button in the SQL editor keeps the current results above the results of the next run, and unpins them again.
 - Each statement of a script gets a gutter mark after a run: a tick for a statement that returned, a cross for one that failed.
-- MySQL ENUM/SET grid parsing now tests malformed metadata refusal and escaped
-  labels, using real MySQL column metadata and native ordinal/byte oracles.
+- MySQL ENUM and SET grid edits refuse malformed metadata and preserve escaped labels.
 - A failed PostgreSQL statement in the SQL editor shows the line and column of the error.
 - A failed statement in the SQL editor offers a Copy error button.
 - Selecting several rows shows each numeric column's sum and average in the selection badge tooltip, with NULLs skipped.
@@ -32,8 +33,7 @@
 - PostgreSQL's six built-in scalar range types now have native text/JSON/wire refusal checks; empty ranges remain distinct from SQL NULL, and refused literals and bindings preserve target and sibling rows.
 - MongoDB and Redis unfiltered, unsorted table pages now use native fetches even when metadata finds a primary key; a native MongoDB GTK scenario checks cursor values remain visible until refresh and an approved post-refresh edit preserves sibling fields.
 - Result column headers show the column type and mark primary-key and foreign-key columns.
-- Redis 0.2.0 support remains scoped to a single host/port endpoint; Sentinel and Cluster topologies are explicitly deferred.
-- Redis key browsing preserves arbitrary-byte keys and non-UTF-8 string values, and fills requested pages across partial SCAN batches; Docker contracts check native Redis oracles.
+- Redis key browsing preserves arbitrary-byte keys and non-UTF-8 string values, and fills requested pages across partial SCAN batches.
 - MongoDB nested null filters now compare JSON-filter and MQL results against native queries, distinguishing missing paths, explicit BSON null, and ordinary values.
 - SQL Server query batches now preserve ordered result sets through the policy guard, editor, MCP query responses, and JSON export; MCP shares its row cap across sets, and CSV export refuses multi-set results rather than dropping data.
 - ClickHouse Enum8/Enum16 values now cover signed endpoints and zero (`-128`, `0`, `127` for Enum8; `-32768`, `0`, `32767` for Enum16) through native casts, parameter writes, CSV import and SQL-literal replay; undeclared labels for both enum widths are refused without changing stored rows. Nullable Enum16 also preserves SQL NULL, the literal `NULL`, and labels through these consumers.
@@ -54,14 +54,12 @@
 - Find in Loaded Rows (Ctrl+Alt+F or the grid menu) lists the loaded rows that contain a text and selects the one you pick.
 - Holding Ctrl and pressing Tab repeatedly walks deeper through the recently used tabs; releasing Ctrl keeps the chosen tab.
 - Preferences has an Editor font family setting; an empty value keeps the system monospace font.
-- Full-table exports are refused until consistent snapshots are supported; current-page and loaded query-result exports remain available.
 - PostgreSQL `bit[]` and `varbit[]` preserve values through results, typed parameters, CSV import, and keyed grid edits, including empty bit strings, SQL NULL, non-default bounds, and refusal of invalid edits without changing sibling rows.
 - PostgreSQL `citext[]` preserves exact elements, SQL NULL, empty arrays, multidimensional shape, zero lower bounds and case-insensitive comparisons through results, typed parameters, keyed grid edits and CSV round-trips; malformed values are refused without changing target or sibling rows.
 - PostgreSQL custom enum arrays preserve three-dimensional shape and the six-dimensional limit, non-default bounds, SQL NULL, empty and escaped labels through result decoding and typed parameter rebinding, with native type, JSON and wire-byte comparisons.
-- PostgreSQL `bit[]` and `varbit[]` query results now preserve bit values through typed parameter and CSV re-import, including empty bit strings, SQL NULL, and non-default array bounds.
 - The result grid's cell menu also opens with Shift+F10, and the editor find fields have accessible names.
 - Result grids have a Columns… menu entry to hide and show columns; the choice is remembered per table and at least one column always stays visible.
-- Table browse refreshes omit hidden non-key columns while retaining keys; full-row copy and current-page export refuse incomplete rows, and full-table export waits for consistent snapshot support.
+- Table browse refreshes omit hidden non-key columns while retaining keys; full-row copy and current-page export refuse incomplete rows.
 - PostgreSQL `pg_lsn[]` preserves all 64 LSN bits and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
 - PostgreSQL `macaddr[]` preserves canonical six-octet values and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
 - PostgreSQL `macaddr8[]` preserves canonical eight-octet EUI-64 values and SQL NULL through results, inferred typed bindings, keyed updates and typed CSV import; native type/text/JSON/wire checks cover malformed-input refusal and sibling preservation.
@@ -98,14 +96,13 @@
 - The Connect button in the connection form becomes Cancel while it is reaching the server, so a slow or unreachable host no longer has to be waited out.
 
 ### Changed
+- Full-table export is refused before a destination file is chosen when a verified read snapshot is not available; current-page and loaded query-result exports remain available.
+- Redis in this development line stays a single host/port endpoint; Sentinel and Cluster topologies stay deferred.
 - A successful rollback request now warns that session state and other non-transactional side effects may remain after a failed save.
 - Startup opens the query history database while the rest of the application starts instead of waiting for it first.
-- The Debian package installs its programs without debug symbols, which makes the installed files about a quarter smaller
-- The distro-floor image installs a pinned, checksum-verified `rustup-init` instead of piping an unverified script to the shell.
+- The Debian package installs its programs without debug symbols, which makes the installed files about a quarter smaller.
 - The time shown for a statement no longer includes the wait for your approval on a guarded connection.
 - MongoDB browse pages now use a bounded schema sample and stable `_id` paging instead of scanning the full collection for every page.
-- Disposable database test fixtures use tmpfs and reduced flush syncing; lost-ack, crash and restart tests keep durable storage.
-
 - Ctrl+Tab switches to the most recently used tab, and back again, instead of the next tab in the strip.
 - Create table from CSV now explains that ClickHouse, MongoDB and Redis connections cannot do it, and DuckDB gets its own JSON type name.
 - The app builds and runs its tests on Ubuntu 24.04 and Debian 13 (GTK 4.14, libadwaita 1.5 or newer); the shortcuts window uses the standard GTK layout.
@@ -157,11 +154,13 @@
 
 ### Security
 
-- Agent result masking now treats `to_json` / `to_jsonb` and JSON object builders the same as `row_to_json` when deciding which columns to redact
-- `SELECT … INTO` is now treated as a write, so read-only connections and agent read access refuse it instead of letting it create a table
-- The row-count estimate that guards large writes no longer runs a side-effecting function in your WHERE clause before you approve the statement; such statements ask for approval without an estimate
-- A session now refuses a script that hides BEGIN, COMMIT or ROLLBACK among other statements, so the transaction BookiE tracks always matches the one on the server
-- A SQLite, PostgreSQL, MySQL or MariaDB connection marked read-only is now read-only in the database engine itself, so a statement the safety checks mistake for a read still cannot change data; a read-only SQLite connection no longer creates a missing file
+- Agent result masking now treats `to_json` / `to_jsonb` and JSON object builders the same as `row_to_json` when deciding which columns to redact.
+- Agent result masking now redacts columns whose projection source cannot be resolved, and masks whole-row wildcard arguments instead of leaving them clear.
+- A session or governed-write lockdown refusal is now recorded in the audit journal instead of ending without a terminal audit state.
+- `SELECT … INTO` is now treated as a write, so read-only connections and agent read access refuse it instead of letting it create a table.
+- The row-count estimate that guards large writes no longer runs a side-effecting function in your WHERE clause before you approve the statement; such statements ask for approval without an estimate.
+- A session now refuses a script that hides BEGIN, COMMIT or ROLLBACK among other statements, so the transaction BookiE tracks always matches the one on the server.
+- A SQLite, PostgreSQL, MySQL or MariaDB connection marked read-only is now read-only in the database engine itself, so a statement the safety checks mistake for a read still cannot change data; a read-only SQLite connection no longer creates a missing file.
 - Importing a connection bundle now refuses a file over 16 MiB, or anything that is not a regular file, before reading it.
 - Driver panic messages, which can contain query text or credentials, are no longer written to the logs or the terminal; only the location is. Set `TABLEPRO_DEBUG_PANICS=1` to print them while developing.
 
@@ -607,3 +606,7 @@ not current task instructions.
 - **Validation:** [local validation checkpoints](docs/archive/validation-history.md); current commands are in the [validation playbook](docs/validation-playbook.md).
 - **External audit (post-0.2 plan):** [deferred restructuring plan](docs/archive/external-audit-2026-10-06.md) and [client review](docs/archive/external-audit-client-review-2026-10-06.md) (moved from the repository root on 2026-10-10).
 - **BookiE 0.1.1:** retired and superseded by the 0.2 sprint; the earlier release review remains in [September 14 evidence](docs/archive/sprint-2026-09-14.md).
+
+[Unreleased]: https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux
+[0.1.5]: https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5
+[0.1.6-dev]: https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux

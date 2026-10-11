@@ -12,7 +12,7 @@ The Cargo workspace already lives at the repository root (`crates/`, `apps/linux
 
 ## After 0.2.0
 
-The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) still proposes later packets after the root-workspace move: Rust backend ownership checks, GitHub/test tooling, docs/examples/evidence synchronization and optional driver reuse. Review those after completing 0.2.0; they do not extend the active sprint.
+The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) still proposes later packets (the root-workspace move is done): Rust backend ownership checks, GitHub/test tooling, docs/examples/evidence synchronization and optional driver reuse. Review those after completing 0.2.0; they do not extend the active sprint.
 
 ## Status rules
 

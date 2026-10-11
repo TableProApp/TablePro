@@ -110,8 +110,10 @@ flowchart TB
     mcp --> storage
     transport --> storage
     transport --> ssh
+    transport --> policy
     transport --> core
     policy --> core
+    storage --> policy
     storage --> core
     drv --> core
     app --> drv
@@ -203,10 +205,10 @@ tablepro-agentd ─────┼──► mcp, policy, storage, transport, ssh
 tablepro-release-tests┘
 
 tablepro-mcp        ──► policy, storage, core
-tablepro-transport  ──► storage, ssh, core
-tablepro-storage    ──► policy (audit types), ssh (config types), core
+tablepro-transport  ──► storage, ssh, policy, core
+tablepro-storage    ──► policy (audit types), core
 tablepro-policy     ──► core
-tablepro-ssh        ──► (leaf for tunnels; config types consumed by storage/transport)
+tablepro-ssh        ──► (leaf for tunnels; saved SSH config types live in storage)
 tablepro-driver-*   ──► core
 tablepro-core       ──► (no workspace crate)
 ```

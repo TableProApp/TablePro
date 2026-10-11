@@ -28,7 +28,7 @@ The GUI defaults to `UnknownHostKey::Refuse` and installs a prompter. An unknown
 
 A saved tunnel can select `client: open_ssh`. Its ControlMaster/forward lives in a private runtime directory; `StrictHostKeyChecking=ask` applies to the destination. GUI prompts explicitly and agentd declines unanswered prompts. Saved passwords/passphrases answer only a matching destination/key prompt. Jump routing comes from `~/.ssh/config`/`ProxyJump`; saved per-hop chains are refused for this backend. Built-in SSH supports saved chains and ssh-agent.
 
-Inside Flatpak, selecting system OpenSSH fails with an explicit message before resolving saved SSH credentials or dispatching the database driver. The client does not switch to built-in SSH; select that backend explicitly if it is wanted. Native system OpenSSH remains available outside Flatpak. The executable `tablepro-askpass` helper must be installed beside the app or on PATH. The Debian standalone builder includes the helper, but debhelper rules and package validation need I1. Flatpak package/runtime behavior remains a separate acceptance check.
+Inside Flatpak, selecting system OpenSSH fails with an explicit message before resolving saved SSH credentials or dispatching the database driver. The client does not switch to built-in SSH; select that backend explicitly if it is wanted. Native system OpenSSH remains available outside Flatpak. The executable `tablepro-askpass` helper must be installed beside the app or on PATH. The Debian builder installs it with the app binaries; package validation rejects a build without it (B4-10). Flatpak package/runtime behavior remains a separate acceptance check.
 
 ## Remaining evidence
 

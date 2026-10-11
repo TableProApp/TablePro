@@ -66,10 +66,11 @@ Every testable behavior change needs a test. Put pure unit tests near the code a
 
 For GTK-only changes, include manual test steps and light and dark screenshots in the pull request. Move business logic out of widgets when it can be tested as Rust code.
 
-Run from the repository root:
+The usual local gate is `bash scripts/preflight.sh` from the repository root (non-GTK `--lib` tests, fmt, Clippy, sandbox). Details: [`AGENTS.md`](AGENTS.md) and [`docs/development.md`](docs/development.md).
+
+A fuller workspace check that includes the GTK app library/binary tests:
 
 ```bash
-bash scripts/check-file-size.sh
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
 cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins

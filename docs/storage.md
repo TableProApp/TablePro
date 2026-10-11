@@ -1,6 +1,6 @@
 # Storage
 
-TablePro uses XDG files for local state, SQLite for query history, a JSONL audit journal, and Secret Service for credentials. The code is split between `tablepro-storage` and focused application services.
+BookiE uses XDG files for local state, SQLite for query history, a JSONL audit journal, and Secret Service for credentials. Paths and schemas stay under the `tablepro` / `com.tablepro.linux` rename boundary. The code is split between `tablepro-storage` and focused application services.
 
 ## Locations
 

@@ -12,9 +12,9 @@ The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3,
 
 Run from the repository root, using the repository's Rust toolchain. Agents configured with RTK should prefix commands with `rtk proxy` so raw diagnostics are retained.
 
-### LT-TRUNG pre-push gate
+### Local pre-push gate
 
-LT-TRUNG has 16 CPUs, 30 GiB RAM and local Docker. Use its shared `target/` directory and run the available hosted-equivalent layers before pushing:
+On a strong local host with Docker, run the available hosted-equivalent layers before pushing:
 
 ```bash
 python3 scripts/run-test-layer.py full app-server values drivers tls \

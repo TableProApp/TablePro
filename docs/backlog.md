@@ -71,3 +71,8 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#565](https://github.com/cozyGarage/BookiE/issues/565) | Where per-crate integration tests live |
 | [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 acceptance evidence (B4-9, 11, 17, 21) |
 | [#567](https://github.com/cozyGarage/BookiE/issues/567) | MongoDB metadata sample consistency (TEST-12) |
+| [#571](https://github.com/cozyGarage/BookiE/issues/571) | AUD-11 single-AST-walk consolidation |
+| [#572](https://github.com/cozyGarage/BookiE/issues/572) | Clear NEEDS REVIEW on PRODUCT, personas and capability specs |
+| [#573](https://github.com/cozyGarage/BookiE/issues/573) | Lab runners: Hyper-Threading, sizing, overlapping gates |
+| [#574](https://github.com/cozyGarage/BookiE/issues/574) | PKG-1 Arch / Omarchy / Hyprland Wayland acceptance |
+| [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |

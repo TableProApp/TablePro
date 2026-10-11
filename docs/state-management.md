@@ -1,6 +1,6 @@
 # State management with Relm4
 
-The `app` crate uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns we follow inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to TablePro Linux.
+The `tablepro-app` crate (`apps/linux/app`) uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns we follow inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to BookiE.
 
 ## When to use which component flavour
 
