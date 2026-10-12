@@ -263,6 +263,9 @@ fn endpoint_for(saved: &SavedConnection) -> String {
             saved.port
         );
     }
+    if let Some(path) = &saved.socket_path {
+        return format!("{} · {}@{}", saved.driver_id, saved.username, path.display());
+    }
     match saved.auth_mode {
         AuthMode::Kerberos => format!("{} · {}:{}", saved.driver_id, saved.host, saved.port),
         AuthMode::Password => format!("{} · {}@{}:{}", saved.driver_id, saved.username, saved.host, saved.port),
@@ -282,6 +285,7 @@ mod tests {
             host: "sql.corp.example".into(),
             port: 1433,
             socket_dir: None,
+            socket_path: None,
             database: "sales".into(),
             username: username.into(),
             use_tls: true,

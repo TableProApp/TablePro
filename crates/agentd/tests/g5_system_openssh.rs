@@ -24,6 +24,7 @@ fn saved_connection(fixture: &Fixture, id: Uuid) -> SavedConnection {
         host: fixture.database_hostname.clone(),
         port: fixture.database_port,
         socket_dir: None,
+        socket_path: None,
         database: fixture.database.clone(),
         username: fixture.username.clone(),
         use_tls: true,

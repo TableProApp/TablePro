@@ -15,6 +15,7 @@ fn saved(tls_mode: Option<TlsMode>, use_tls: bool) -> SavedConnection {
         host: "db.corp.example".into(),
         port: 5432,
         socket_dir: None,
+        socket_path: None,
         database: "warehouse".into(),
         username: "reader".into(),
         use_tls,
@@ -122,6 +123,21 @@ async fn a_saved_local_socket_reaches_gui_and_agent_connection_options() {
             origin: tablepro_core::SocketOrigin::Local,
             ..
         }
+    ));
+}
+
+#[tokio::test]
+async fn a_saved_mysql_socket_file_reaches_gui_and_agent_connection_options() {
+    let mut connection = saved(Some(TlsMode::Disabled), false);
+    connection.driver_id = "mysql".into();
+    connection.socket_path = Some(PathBuf::from("/run/mysqld/mysqld.sock"));
+
+    let opts = connect_options_for(&connection).await.expect("build connect options");
+
+    assert_eq!(opts.local_socket_path, connection.socket_path);
+    assert!(matches!(
+        opts.transport(),
+        Transport::LocalSocketFile { path } if path == std::path::Path::new("/run/mysqld/mysqld.sock")
     ));
 }
 

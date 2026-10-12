@@ -723,6 +723,7 @@ impl RecordingProvider {
             host: "localhost".into(),
             port: 5432,
             socket_dir: None,
+            socket_path: None,
             database: "stub".into(),
             username: "stub".into(),
             use_tls: false,

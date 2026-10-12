@@ -21,8 +21,9 @@ use crate::connections::{SavedConnection, SavedSshConfig};
 mod secret_transaction;
 
 pub const BUNDLE_FORMAT: &str = "tablepro.connection-bundle";
-pub const BUNDLE_VERSION: u32 = 2;
+pub const BUNDLE_VERSION: u32 = 3;
 const LEGACY_BUNDLE_VERSION: u32 = 1;
+const PREVIOUS_BUNDLE_VERSION: u32 = 2;
 
 pub const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_BUNDLE_CONNECTIONS: usize = 1_000;
@@ -42,6 +43,7 @@ pub const BUNDLE_INCLUDED_FIELDS: &[&str] = &[
     "host",
     "port",
     "socket_dir",
+    "socket_path",
     "database",
     "username",
     "tls_mode",
@@ -103,6 +105,8 @@ pub struct BundleConnection {
     pub port: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub socket_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<PathBuf>,
     pub database: String,
     pub username: String,
     pub tls_mode: TlsMode,
@@ -128,6 +132,7 @@ impl BundleConnection {
             host: saved.host.clone(),
             port: saved.port,
             socket_dir: saved.socket_dir.clone(),
+            socket_path: saved.socket_path.clone(),
             database: saved.database.clone(),
             username: saved.username.clone(),
             tls_mode: saved.effective_tls_mode(),
@@ -149,6 +154,7 @@ impl BundleConnection {
             host: self.host.clone(),
             port: self.port,
             socket_dir: self.socket_dir.clone(),
+            socket_path: self.socket_path.clone(),
             database: self.database.clone(),
             username: self.username.clone(),
             use_tls: self.tls_mode.encrypts(),
@@ -487,7 +493,10 @@ pub fn parse_bundle(bytes: &[u8]) -> Result<ParsedBundle, BundleError> {
     if document.format != BUNDLE_FORMAT {
         return Err(BundleError::NotABundle);
     }
-    if document.version != BUNDLE_VERSION && document.version != LEGACY_BUNDLE_VERSION {
+    if !matches!(
+        document.version,
+        LEGACY_BUNDLE_VERSION | PREVIOUS_BUNDLE_VERSION | BUNDLE_VERSION
+    ) {
         return Err(BundleError::UnsupportedVersion(document.version));
     }
     let envelope = EnvelopeHeader {
@@ -917,7 +926,16 @@ fn higher_environment(left: Environment, right: Environment) -> Environment {
     }
 }
 
-type EndpointKey = (String, String, u16, Option<PathBuf>, String, String, Vec<SshHopKey>);
+type EndpointKey = (
+    String,
+    String,
+    u16,
+    Option<PathBuf>,
+    Option<PathBuf>,
+    String,
+    String,
+    Vec<SshHopKey>,
+);
 type SshHopKey = (String, u16, String);
 
 /// What makes two records the same server reached the same way. Name,
@@ -939,6 +957,7 @@ fn endpoint_key(saved: &SavedConnection) -> EndpointKey {
         saved.host.to_lowercase(),
         saved.port,
         saved.socket_dir.clone(),
+        saved.socket_path.clone(),
         saved.database.clone(),
         saved.username.clone(),
         hops,

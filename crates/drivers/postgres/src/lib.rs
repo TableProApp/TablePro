@@ -89,18 +89,7 @@ impl DatabaseDriver for PgDriver {
 
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         use tablepro_core::TlsMode;
-        let mut pg_opts = match opts.transport() {
-            Transport::Tcp { host, port } => PgConnectOptions::new().host(host).port(port),
-            Transport::Socket {
-                directory,
-                identity_host,
-                identity_port,
-                ..
-            } => PgConnectOptions::new()
-                .host(identity_host)
-                .port(identity_port)
-                .socket(directory),
-        };
+        let mut pg_opts = postgres_connect_options(&opts)?;
         pg_opts = pg_opts
             .database(&opts.database)
             .username(&opts.username)
@@ -148,6 +137,24 @@ impl DatabaseDriver for PgDriver {
             cancellation_pool,
             session_options,
         }))
+    }
+}
+
+fn postgres_connect_options(opts: &ConnectOptions) -> Result<PgConnectOptions, DriverError> {
+    match opts.transport() {
+        Transport::Tcp { host, port } => Ok(PgConnectOptions::new().host(host).port(port)),
+        Transport::LocalSocketFile { .. } => {
+            Err(DriverError::Unsupported("local socket files are not supported".into()))
+        }
+        Transport::Socket {
+            directory,
+            identity_host,
+            identity_port,
+            ..
+        } => Ok(PgConnectOptions::new()
+            .host(identity_host)
+            .port(identity_port)
+            .socket(directory)),
     }
 }
 

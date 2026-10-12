@@ -33,6 +33,9 @@ fn derived_connection_name(driver_id: &str, opts: &ConnectOptions) -> String {
     if let Some(directory) = &opts.local_socket_dir {
         return format!("{}@{}", opts.username, directory.display());
     }
+    if let Some(path) = &opts.local_socket_path {
+        return format!("{}@{}", opts.username, path.display());
+    }
     if opts.auth_mode == tablepro_core::AuthMode::Kerberos {
         return opts.host.clone();
     }
@@ -76,11 +79,17 @@ fn matches_endpoint(saved: &SavedConnection, identity: &ConnectionIdentity<'_>) 
     if identity.file_based {
         return true;
     }
-    match (&saved.socket_dir, &opts.local_socket_dir) {
-        (Some(saved_dir), Some(current_dir)) => {
+    match (
+        &saved.socket_dir,
+        &saved.socket_path,
+        &opts.local_socket_dir,
+        &opts.local_socket_path,
+    ) {
+        (Some(saved_dir), None, Some(current_dir), None) => {
             saved_dir == current_dir && saved.port == opts.port && saved.ssh.is_none()
         }
-        (None, None) => {
+        (None, Some(saved_path), None, Some(current_path)) => saved_path == current_path && saved.ssh.is_none(),
+        (None, None, None, None) => {
             saved.host == opts.host && saved.port == opts.port && saved_ssh_matches(&saved.ssh, identity.ssh)
         }
         _ => false,
@@ -124,6 +133,7 @@ mod tests {
             host: "sql.corp.example".into(),
             port: 1433,
             socket_dir: None,
+            socket_path: None,
             database: "sales".into(),
             username: username.into(),
             use_tls: false,
@@ -222,6 +232,29 @@ mod tests {
         assert!(!matches_existing(
             &entry,
             &identity("postgres", &network_options, false)
+        ));
+    }
+
+    #[test]
+    fn mysql_socket_entries_match_only_the_same_socket_file() {
+        let mut entry = saved("mysql", "root", AuthMode::Password);
+        entry.socket_path = Some(std::path::PathBuf::from("/run/mysqld/mysqld.sock"));
+        let same_socket = ConnectOptions {
+            database: "sales".into(),
+            username: "root".into(),
+            local_socket_path: entry.socket_path.clone(),
+            ..Default::default()
+        };
+        let different_socket = ConnectOptions {
+            local_socket_path: Some(std::path::PathBuf::from("/run/mysqld/other.sock")),
+            ..same_socket.clone()
+        };
+
+        assert!(matches_existing(&entry, &identity("mysql", &same_socket, false)));
+        assert!(!matches_existing(&entry, &identity("mysql", &different_socket, false)));
+        assert!(!matches_existing(
+            &entry,
+            &identity("mysql", &opts("root", AuthMode::Password), false)
         ));
     }
 

@@ -12,6 +12,7 @@ fn connection(name: &str, driver_id: &str) -> SavedConnection {
         host: "localhost".into(),
         port: 5432,
         socket_dir: None,
+        socket_path: None,
         database: "app".into(),
         username: "app".into(),
         use_tls: false,

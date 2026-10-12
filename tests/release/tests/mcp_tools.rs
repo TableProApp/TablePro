@@ -49,6 +49,7 @@ impl ConnectionProvider for FixtureProvider {
             host: "localhost".into(),
             port: 5433,
             socket_dir: None,
+            socket_path: None,
             database: "tablepro".into(),
             username: "tablepro".into(),
             use_tls: true,

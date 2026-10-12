@@ -119,7 +119,7 @@ Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle can cl
 
 A plaintext bundle carries no credentials at all. Only the encryption path populates `secrets`, and the parser rejects a plaintext payload that arrives with a non-empty `secrets` list.
 
-An encrypted version 2 bundle carries the database password, legacy connection-level SSH credentials where needed, and each versioned SSH hop's password or key passphrase bound to its hop ID and credential revision. A version 1 bundle carries only the database password and legacy SSH password or passphrase. Neither version carries an MCP token: a token is an authorization grant tied to allowlists on the exporting machine, a different trust class from a database credential.
+An encrypted version 3 bundle carries the database password, local MySQL socket paths, legacy connection-level SSH credentials where needed, and each versioned SSH hop's password or key passphrase bound to its hop ID and credential revision. Versions 1 and 2 remain importable; version 1 carries only the database password and legacy SSH password or passphrase. No version carries an MCP token: a token is an authorization grant tied to allowlists on the exporting machine, a different trust class from a database credential.
 
 ### Encryption
 

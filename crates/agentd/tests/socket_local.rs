@@ -23,6 +23,7 @@ async fn saved_socket_is_available_through_the_agent_provider() {
         host: "localhost".into(),
         port: 5432,
         socket_dir: Some(socket_dir.into()),
+        socket_path: None,
         database: "postgres".into(),
         username: "postgres".into(),
         use_tls: false,

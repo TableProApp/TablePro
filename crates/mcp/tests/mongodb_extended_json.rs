@@ -106,6 +106,7 @@ async fn mongodb_extended_json_survives_the_mcp_query_tool_round_trip() {
         host: host.clone(),
         port,
         socket_dir: None,
+        socket_path: None,
         database: "appdb".into(),
         username: String::new(),
         use_tls: false,

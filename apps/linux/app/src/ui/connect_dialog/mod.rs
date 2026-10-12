@@ -89,11 +89,9 @@ mod browse;
 mod form;
 mod identity;
 mod prefill;
+mod socket_endpoint;
 
-use form::{
-    AuthFormState, EndpointFormState, default_driver_row, resolved_socket_path, socket_directory_is_valid,
-    test_result_text,
-};
+use form::{AuthFormState, EndpointFormState, default_driver_row, socket_directory_is_valid, test_result_text};
 use identity::{ConnectionIdentity, find_existing, saved_connection_name};
 pub use prefill::{ConnectionPrefill, has_jump_chain, load_prefill};
 
@@ -204,7 +202,7 @@ impl Component for ConnectDialog {
 
         let endpoint_combo = adw::ComboRow::builder()
             .title(crate::tr!("Endpoint"))
-            .subtitle(crate::tr!("Connect over the network or a local PostgreSQL socket"))
+            .subtitle(crate::tr!("Connect over the network or a local Unix socket"))
             .model(&gtk::StringList::new(&["Network", "Unix socket"]))
             .build();
         let sender_for_endpoint = sender.clone();
@@ -725,10 +723,7 @@ impl ConnectDialog {
         let username_required = self.form.shows_credentials() && !socket;
         let username_empty = username_required && self.username.text().trim().is_empty();
         toggle_error(&self.username, username_empty);
-        let socket_invalid = socket && !socket_directory_is_valid(self.socket_dir.text().as_str());
-        toggle_error(&self.socket_dir, socket_invalid);
-        let resolved = resolved_socket_path(self.socket_dir.text().as_str(), self.port.value() as u16);
-        self.resolved_socket.set_subtitle(&resolved.display().to_string());
+        self.refresh_socket_path(socket);
 
         let valid = self.is_form_valid();
         self.submit.set_sensitive(valid);
@@ -831,6 +826,7 @@ impl ConnectDialog {
             self.endpoint_combo.set_selected(0);
         }
         self.apply_form_state();
+        self.configure_socket_field(driver.id());
         self.apply_tls_visibility();
         self.database_file_picker.set_visible(self.form.file_based);
         self.database.set_title(&if self.form.file_based {
@@ -846,9 +842,7 @@ impl ConnectDialog {
         let network = endpoint.shows_network();
         self.endpoint_combo.set_visible(endpoint.shows_endpoint_choice());
         self.host.set_visible(network);
-        self.port.set_visible(endpoint.shows_port());
-        self.socket_dir.set_visible(endpoint.shows_socket_rows());
-        self.resolved_socket.set_visible(endpoint.shows_socket_rows());
+        self.apply_socket_visibility(endpoint);
         self.tls_mode.set_visible(network);
         self.auth_group.set_visible(!self.form.file_based);
         self.ssh.set_visible(network);
@@ -867,6 +861,7 @@ impl ConnectDialog {
 
     fn collect_options(&self, driver: &dyn tablepro_core::DatabaseDriver) -> ConnectOptions {
         let socket = self.uses_local_socket();
+        let (local_socket_dir, local_socket_path) = self.selected_socket_options(driver.id(), socket);
         let (username, password) = if self.form.shows_credentials() {
             let entered = self.username.text().trim().to_string();
             let username = if socket && entered.is_empty() {
@@ -886,7 +881,8 @@ impl ConnectDialog {
             password: SecretString::new(password.into()),
             tls: self.tls_config_for(driver),
             auth_mode: self.form.mode(),
-            local_socket_dir: socket.then(|| std::path::PathBuf::from(self.socket_dir.text().as_str())),
+            local_socket_dir,
+            local_socket_path,
             application_name: Some("BookiE".into()),
             connect_timeout_secs: timeout_value(self.connect_timeout.value()),
             read_only: self.read_only.is_active(),
@@ -1113,6 +1109,7 @@ async fn run_connect(request: ConnectRequest) -> Result<Option<connection_servic
         host: opts_clone.host.clone(),
         port: opts_clone.port,
         socket_dir: opts_clone.local_socket_dir.clone(),
+        socket_path: opts_clone.local_socket_path.clone(),
         database: opts_clone.database.clone(),
         username: opts_clone.username.clone(),
         use_tls: tls_mode.encrypts(),

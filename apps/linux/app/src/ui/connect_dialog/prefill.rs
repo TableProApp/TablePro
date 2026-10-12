@@ -101,6 +101,10 @@ impl ConnectDialog {
             self.endpoint_combo.set_selected(1);
             self.socket_dir.set_text(&dir.to_string_lossy());
         }
+        if let Some(path) = &saved.socket_path {
+            self.endpoint_combo.set_selected(1);
+            self.socket_dir.set_text(&path.to_string_lossy());
+        }
         self.auth_combo.set_selected(auth_row(saved.auth_mode));
         self.form.selected = saved.auth_mode;
         self.apply_form_state();
@@ -161,6 +165,7 @@ mod tests {
             host: "h".into(),
             port: 5432,
             socket_dir: None,
+            socket_path: None,
             database: "d".into(),
             username: "u".into(),
             use_tls: false,

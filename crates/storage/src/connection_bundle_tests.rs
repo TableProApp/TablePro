@@ -16,6 +16,7 @@ fn saved(name: &str) -> SavedConnection {
         host: "db.example".into(),
         port: 5432,
         socket_dir: None,
+        socket_path: None,
         database: "sales".into(),
         username: "reader".into(),
         use_tls: true,
@@ -109,7 +110,7 @@ fn the_exported_record_carries_exactly_the_included_fields() {
     for field in BUNDLE_INCLUDED_FIELDS {
         let optional = matches!(
             *field,
-            "socket_dir" | "tls_root_cert" | "tls_client_cert" | "tls_client_key" | "ssh"
+            "socket_dir" | "socket_path" | "tls_root_cert" | "tls_client_cert" | "tls_client_key" | "ssh"
         );
         assert!(
             optional || record.contains_key(*field),
@@ -255,7 +256,7 @@ fn an_encrypted_v2_bundle_round_trips_credentials_for_each_ssh_hop() {
     ]);
     let bytes = export_encrypted(&export_of(vec![connection], vec![secrets]), PASSPHRASE).expect("export");
     let document: serde_json::Value = serde_json::from_slice(&bytes).expect("document");
-    assert_eq!(document["version"], 2);
+    assert_eq!(document["version"], 3);
     let rendered = String::from_utf8_lossy(&bytes);
     assert!(!rendered.contains("root-only-secret"));
     assert!(!rendered.contains("jump-only-secret"));
@@ -448,11 +449,21 @@ fn a_document_that_is_not_a_bundle_is_refused() {
 fn a_future_bundle_version_is_refused_rather_than_guessed() {
     let bytes = export_plaintext(&export_of(vec![saved("sales")], Vec::new())).expect("export");
     let mut document: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
-    document["version"] = serde_json::json!(3);
+    document["version"] = serde_json::json!(4);
     assert!(matches!(
         parse_bundle(&serde_json::to_vec(&document).expect("json")),
-        Err(BundleError::UnsupportedVersion(3))
+        Err(BundleError::UnsupportedVersion(4))
     ));
+}
+
+#[test]
+fn bundle_version_two_without_socket_paths_remains_importable() {
+    let bytes = export_plaintext(&export_of(vec![saved("sales")], Vec::new())).expect("export");
+    let mut document: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    document["version"] = serde_json::json!(2);
+
+    let parsed = parse_bundle(&serde_json::to_vec(&document).expect("json")).expect("version two bundle");
+    assert!(matches!(parsed, ParsedBundle::Plaintext(_)));
 }
 
 pub(super) fn ssh_chain(depth: usize) -> SavedSshConfig {
@@ -790,6 +801,39 @@ fn a_socket_connection_keeps_its_directory_through_a_bundle() {
     );
     let plan = plan_import(std::slice::from_ref(&connection), &body).expect("plan");
     assert_eq!(plan.items[0].disposition, ImportDisposition::UpdateInPlace);
+}
+
+#[test]
+fn a_mysql_socket_file_keeps_its_path_through_a_bundle() {
+    let mut connection = saved("local mysql");
+    connection.driver_id = "mysql".into();
+    connection.socket_path = Some(PathBuf::from("/run/mysqld/mysqld.sock"));
+    let bytes = export_plaintext(&export_of(vec![connection.clone()], Vec::new())).expect("export");
+    let body = plaintext_body(&bytes);
+
+    assert_eq!(body.connections[0].socket_path, connection.socket_path);
+    let plan = plan_import(std::slice::from_ref(&connection), &body).expect("plan");
+    assert_eq!(plan.items[0].disposition, ImportDisposition::UpdateInPlace);
+}
+
+#[test]
+fn importing_a_different_mysql_socket_path_does_not_replace_the_local_endpoint() {
+    let mut local = saved("local mysql");
+    local.driver_id = "mysql".into();
+    local.socket_path = Some(PathBuf::from("/run/mysqld/one.sock"));
+    let mut incoming = local.clone();
+    incoming.socket_path = Some(PathBuf::from("/run/mysqld/two.sock"));
+    let body = BundleBody {
+        connections: vec![BundleConnection::from_saved(&incoming)],
+        ..Default::default()
+    };
+
+    let plan = plan_import(std::slice::from_ref(&local), &body).expect("plan");
+    assert_eq!(plan.items[0].disposition, ImportDisposition::Remapped);
+    assert_eq!(
+        local.socket_path.as_deref(),
+        Some(std::path::Path::new("/run/mysqld/one.sock"))
+    );
 }
 
 #[test]

@@ -225,6 +225,7 @@ impl ConnectionProvider for GuardedProvider {
             host: "localhost".into(),
             port: 5432,
             socket_dir: None,
+            socket_path: None,
             database: "timeout".into(),
             username: "timeout".into(),
             use_tls: false,

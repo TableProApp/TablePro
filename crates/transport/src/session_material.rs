@@ -156,6 +156,7 @@ mod tests {
             host: String::new(),
             port: 0,
             socket_dir: None,
+            socket_path: None,
             database: ":memory:".into(),
             username: String::new(),
             use_tls: false,

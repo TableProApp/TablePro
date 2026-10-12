@@ -57,6 +57,7 @@ fn mcp_context(
         host,
         port,
         socket_dir: None,
+        socket_path: None,
         database: "postgres".into(),
         username: "postgres".into(),
         use_tls: false,

@@ -27,6 +27,10 @@ use tablepro_core::{
 /// layer to forward one) and `connect` (which dials it).
 const FORWARDED_SOCKET_NAME: &str = "mysqld.sock";
 
+#[cfg(test)]
+#[path = "mysql_socket_tests.rs"]
+mod mysql_socket_tests;
+
 pub struct MysqlDriver;
 
 #[async_trait]
@@ -68,6 +72,14 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     fn supports_client_tls_auth(&self) -> bool {
+        true
+    }
+
+    fn supports_local_socket(&self) -> bool {
+        true
+    }
+
+    fn supports_local_socket_file(&self) -> bool {
         true
     }
 
@@ -830,6 +842,7 @@ fn mysql_connect_options(opts: &ConnectOptions) -> MySqlConnectOptions {
     use tablepro_core::TlsMode;
     let mut mysql_opts = match opts.transport() {
         Transport::Tcp { host, port } => MySqlConnectOptions::new().host(host).port(port),
+        Transport::LocalSocketFile { path } => MySqlConnectOptions::new().socket(path),
         Transport::Socket {
             directory,
             identity_host,
@@ -1110,18 +1123,6 @@ mod tests {
         assert_eq!(quote_ident("users"), "`users`");
         assert_eq!(quote_ident("My Table"), "`My Table`");
         assert_eq!(quote_ident("evil`; DROP TABLE x; --"), "`evil``; DROP TABLE x; --`");
-    }
-
-    #[test]
-    fn a_direct_connection_dials_and_verifies_the_same_host() {
-        let opts = ConnectOptions {
-            host: "db.corp.example".into(),
-            port: 3306,
-            ..Default::default()
-        };
-        let mysql_opts = mysql_connect_options(&opts);
-        assert_eq!(mysql_opts.get_host(), "db.corp.example");
-        assert_eq!(mysql_opts.get_socket(), None);
     }
 
     fn connect_opts_with_client_tls(mode: tablepro_core::TlsMode) -> ConnectOptions {

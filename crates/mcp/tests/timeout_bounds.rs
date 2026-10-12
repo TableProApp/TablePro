@@ -317,6 +317,7 @@ fn saved_connection(id: Uuid) -> SavedConnection {
         host: "localhost".into(),
         port: 5432,
         socket_dir: None,
+        socket_path: None,
         database: "timeout-bounds".into(),
         username: "timeout-bounds".into(),
         use_tls: false,

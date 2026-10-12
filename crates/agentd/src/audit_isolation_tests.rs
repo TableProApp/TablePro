@@ -114,6 +114,7 @@ fn local_connection() -> SavedConnection {
         host: "localhost".into(),
         port: 5432,
         socket_dir: None,
+        socket_path: None,
         database: "app".into(),
         username: "dev".into(),
         use_tls: false,

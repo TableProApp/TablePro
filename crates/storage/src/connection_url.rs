@@ -105,6 +105,7 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         host,
         port,
         socket_dir: None,
+        socket_path: None,
         database,
         username,
         use_tls: false,

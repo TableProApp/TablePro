@@ -23,6 +23,7 @@ fn saved_connection(fixture: &Fixture, id: Uuid, cert: Option<&str>, key: Option
         host: fixture.proxy_host.clone(),
         port: fixture.proxy_port,
         socket_dir: None,
+        socket_path: None,
         database: fixture.database.clone(),
         username: "tablepro_mtls".into(),
         use_tls: true,

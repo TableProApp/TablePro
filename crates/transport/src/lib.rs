@@ -1,5 +1,4 @@
 use secrecy::SecretString;
-use std::os::unix::fs::FileTypeExt;
 use std::sync::Arc;
 use std::time::Duration;
 use tablepro_core::Environment;
@@ -21,6 +20,10 @@ pub use route::{OpenSshEnvironment, SshEnvironment, SshRoute, Tunnel, openssh_co
 pub use session_material::session_material_digest;
 
 const DATABASE_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+mod local_socket;
+
+use local_socket::validate_local_socket;
 
 #[derive(Clone)]
 pub struct TransportAuditContext {
@@ -170,6 +173,7 @@ pub async fn connect_options_for(saved: &SavedConnection) -> Result<ConnectOptio
         auth_mode: saved.auth_mode,
         service_endpoint: None,
         local_socket_dir: saved.socket_dir.clone(),
+        local_socket_path: saved.socket_path.clone(),
         forwarded_socket_dir: None,
         application_name: None,
         connect_timeout_secs: saved.connect_timeout_secs,
@@ -447,67 +451,6 @@ async fn connect_with_timeout(
         .map_err(TransportError::Driver)
 }
 
-fn validate_local_socket(
-    opts: &ConnectOptions,
-    driver: &dyn DatabaseDriver,
-    has_ssh: bool,
-) -> Result<(), TransportError> {
-    let Some(directory) = opts.local_socket_dir.as_deref() else {
-        return Ok(());
-    };
-    if !driver.supports_local_socket() {
-        return Err(TransportError::LocalSocketUnsupported(
-            driver.display_name().to_string(),
-        ));
-    }
-    if has_ssh {
-        return Err(TransportError::LocalSocketWithSsh);
-    }
-    if opts.tls.mode != TlsMode::Disabled {
-        return Err(TransportError::LocalSocketWithTls);
-    }
-    if opts.port == 0 {
-        return Err(TransportError::InvalidLocalSocket(
-            "PostgreSQL socket port must be greater than zero".into(),
-        ));
-    }
-    if !directory.is_absolute() {
-        return Err(TransportError::InvalidLocalSocket(format!(
-            "socket directory must be absolute: {}",
-            directory.display()
-        )));
-    }
-    let metadata = std::fs::metadata(directory).map_err(|error| {
-        TransportError::InvalidLocalSocket(format!(
-            "cannot access socket directory {}: {error}",
-            directory.display()
-        ))
-    })?;
-    if !metadata.is_dir() {
-        return Err(TransportError::InvalidLocalSocket(format!(
-            "socket path is not a directory: {}",
-            directory.display()
-        )));
-    }
-    let socket = directory.join(format!(".s.PGSQL.{}", opts.port));
-    match std::fs::metadata(&socket) {
-        Ok(metadata) if metadata.file_type().is_socket() => {}
-        Ok(_) => {
-            return Err(TransportError::InvalidLocalSocket(format!(
-                "PostgreSQL socket path is not a socket: {}",
-                socket.display()
-            )));
-        }
-        Err(error) => {
-            return Err(TransportError::InvalidLocalSocket(format!(
-                "cannot access PostgreSQL socket {}: {error}",
-                socket.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
 fn redirect_through_tunnel(opts: &mut ConnectOptions, service_endpoint: (String, u16), dial_endpoint: (String, u16)) {
     opts.service_endpoint = Some(service_endpoint);
     opts.host = dial_endpoint.0;
@@ -674,6 +617,7 @@ mod tests {
             host: "db.example".into(),
             port: 5432,
             socket_dir: None,
+            socket_path: None,
             database: "db".into(),
             username: "user".into(),
             use_tls: false,
@@ -843,6 +787,9 @@ mod tests {
         fn supports_local_socket(&self) -> bool {
             true
         }
+        fn supports_local_socket_file(&self) -> bool {
+            true
+        }
         async fn connect(&self, _opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
             Err(DriverError::Unsupported("test driver".into()))
         }
@@ -921,6 +868,54 @@ mod tests {
             validate_local_socket(&opts, &SocketDriver, false),
             Err(TransportError::InvalidLocalSocket(_))
         ));
+    }
+
+    #[test]
+    fn local_socket_file_validation_requires_an_absolute_unix_socket_without_tls_or_ssh() {
+        use std::os::unix::net::UnixListener;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mysqld.sock");
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut opts = ConnectOptions {
+            host: "localhost".into(),
+            port: 3306,
+            local_socket_path: Some(path.clone()),
+            ..Default::default()
+        };
+
+        assert!(validate_local_socket(&opts, &SocketDriver, false).is_ok());
+        assert!(matches!(
+            validate_local_socket(&opts, &TcpOnlyDriver, false),
+            Err(TransportError::LocalSocketUnsupported(_))
+        ));
+        assert!(matches!(
+            validate_local_socket(&opts, &SocketDriver, true),
+            Err(TransportError::LocalSocketWithSsh)
+        ));
+        opts.tls = tls_config(TlsMode::VerifyFull);
+        assert!(matches!(
+            validate_local_socket(&opts, &SocketDriver, false),
+            Err(TransportError::LocalSocketWithTls)
+        ));
+        opts.tls = tls_config(TlsMode::Disabled);
+        opts.local_socket_path = Some(std::path::PathBuf::from("relative.sock"));
+        assert!(matches!(
+            validate_local_socket(&opts, &SocketDriver, false),
+            Err(TransportError::InvalidLocalSocket(_))
+        ));
+        opts.local_socket_path = Some(directory.path().join("missing.sock"));
+        assert!(matches!(
+            validate_local_socket(&opts, &SocketDriver, false),
+            Err(TransportError::InvalidLocalSocket(_))
+        ));
+        opts.local_socket_path = Some(directory.path().join("regular-file"));
+        std::fs::write(opts.local_socket_path.as_ref().expect("socket path"), b"not a socket").unwrap();
+        assert!(matches!(
+            validate_local_socket(&opts, &SocketDriver, false),
+            Err(TransportError::InvalidLocalSocket(_))
+        ));
+        drop(listener);
     }
 
     #[test]

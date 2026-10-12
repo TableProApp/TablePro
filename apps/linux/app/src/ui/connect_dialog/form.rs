@@ -63,6 +63,18 @@ pub(super) fn resolved_socket_path(directory: &str, port: u16) -> std::path::Pat
     std::path::Path::new(directory).join(format!(".s.PGSQL.{port}"))
 }
 
+pub(super) fn local_socket_options(
+    driver_id: &str,
+    endpoint: &str,
+) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    let path = std::path::PathBuf::from(endpoint);
+    if driver_id == "mysql" {
+        (None, Some(path))
+    } else {
+        (Some(path), None)
+    }
+}
+
 pub(super) fn test_result_text(result: &Result<usize, String>) -> String {
     match result {
         Ok(tables) => crate::tr!("Connection ok · {n} table(s) visible").replace("{n}", &tables.to_string()),
@@ -207,6 +219,18 @@ mod tests {
         assert_eq!(
             resolved_socket_path("/tmp", 6543),
             std::path::PathBuf::from("/tmp/.s.PGSQL.6543")
+        );
+    }
+
+    #[test]
+    fn postgres_keeps_directory_sockets_and_mysql_uses_a_socket_file() {
+        assert_eq!(
+            local_socket_options("postgres", "/run/postgresql"),
+            (Some(std::path::PathBuf::from("/run/postgresql")), None)
+        );
+        assert_eq!(
+            local_socket_options("mysql", "/run/mysqld/mysqld.sock"),
+            (None, Some(std::path::PathBuf::from("/run/mysqld/mysqld.sock")))
         );
     }
 

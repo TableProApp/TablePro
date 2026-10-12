@@ -36,6 +36,7 @@ pub struct ConnectOptions {
     /// Direct local Unix-domain socket directory selected by the user.
     /// This remains distinct from SSH-created forwarding sockets.
     pub local_socket_dir: Option<PathBuf>,
+    pub local_socket_path: Option<PathBuf>,
     pub forwarded_socket_dir: Option<PathBuf>,
     pub application_name: Option<String>,
     pub connect_timeout_secs: Option<u32>,
@@ -60,8 +61,12 @@ impl ConnectOptions {
     }
 
     pub fn transport(&self) -> Transport<'_> {
-        match (&self.forwarded_socket_dir, &self.local_socket_dir) {
-            (Some(dir), _) => {
+        match (
+            &self.forwarded_socket_dir,
+            &self.local_socket_dir,
+            &self.local_socket_path,
+        ) {
+            (Some(dir), _, _) => {
                 let (host, port) = self.service_address();
                 Transport::Socket {
                     directory: dir.as_path(),
@@ -70,13 +75,14 @@ impl ConnectOptions {
                     origin: SocketOrigin::Forwarded,
                 }
             }
-            (None, Some(dir)) => Transport::Socket {
+            (None, Some(dir), _) => Transport::Socket {
                 directory: dir.as_path(),
                 identity_host: bare_host(self.host.as_str()),
                 identity_port: self.port,
                 origin: SocketOrigin::Local,
             },
-            (None, None) => Transport::Tcp {
+            (None, None, Some(path)) => Transport::LocalSocketFile { path: path.as_path() },
+            (None, None, None) => Transport::Tcp {
                 host: bare_host(self.host.as_str()),
                 port: self.port,
             },
@@ -95,6 +101,9 @@ pub enum Transport<'a> {
         identity_host: &'a str,
         identity_port: u16,
         origin: SocketOrigin,
+    },
+    LocalSocketFile {
+        path: &'a Path,
     },
 }
 
@@ -116,6 +125,7 @@ impl Default for ConnectOptions {
             auth_mode: AuthMode::Password,
             service_endpoint: None,
             local_socket_dir: None,
+            local_socket_path: None,
             forwarded_socket_dir: None,
             application_name: None,
             connect_timeout_secs: None,
@@ -663,6 +673,23 @@ mod tests {
                 identity_host: "localhost",
                 identity_port: 5432,
                 origin: SocketOrigin::Local,
+            }
+        );
+    }
+
+    #[test]
+    fn transport_uses_the_exact_path_for_a_local_socket_file() {
+        let options = ConnectOptions {
+            host: "localhost".into(),
+            port: 3306,
+            local_socket_path: Some(PathBuf::from("/run/mysqld/mysqld.sock")),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            options.transport(),
+            Transport::LocalSocketFile {
+                path: Path::new("/run/mysqld/mysqld.sock"),
             }
         );
     }

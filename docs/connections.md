@@ -14,7 +14,7 @@ A login the server refuses is never retried. PostgreSQL reports a wrong password
 
 ## TLS identity and evidence
 
-The dial endpoint and authenticated service hostname are separate. SSH retains the saved service identity. Where supported, verifying connections forward a private Unix socket; other drivers must explicitly verify the original hostname over TCP or refuse. Local PostgreSQL sockets reject SSH and TLS; forwarded sockets retain the remote identity.
+The dial endpoint and authenticated service hostname are separate. SSH retains the saved service identity. Where supported, verifying connections forward a private Unix socket; other drivers must explicitly verify the original hostname over TCP or refuse. Local PostgreSQL sockets use a socket directory plus port. MySQL and MariaDB local sockets use the full socket-file path. Local sockets reject SSH and TLS; forwarded sockets retain the remote identity. Selecting a local socket never falls back to TCP.
 
 PostgreSQL's release fixture covers TLS through SSH. Driver TLS fixtures cover direct CA/hostname/encryption and no-fallback cases, including SQL Server; B4-1 and B4-2 also cover MySQL and SQL Server TLS through real SSH routes. See [testing](testing.md) for commands and [the release audit](archive/release-audit-2026-10-03.md) for historical results.
 

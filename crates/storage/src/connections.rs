@@ -16,6 +16,10 @@ const MAX_CONNECTION_VALUE_BYTES: usize = 64 * 1024;
 #[cfg(test)]
 #[path = "connections_migration_tests.rs"]
 mod migration_tests;
+
+#[cfg(test)]
+#[path = "connections_socket_tests.rs"]
+mod socket_tests;
 /// Hops one saved SSH chain may declare. `jump` deserializes
 /// recursively, so without a cap here the only thing standing between
 /// an edited connections file and a deep recursive parse is
@@ -35,6 +39,7 @@ pub(crate) const KNOWN_CONNECTION_FIELDS: &[&str] = &[
     "host",
     "port",
     "socket_dir",
+    "socket_path",
     "database",
     "username",
     "use_tls",
@@ -62,6 +67,8 @@ pub struct SavedConnection {
     /// connections and legacy records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub socket_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<PathBuf>,
     pub database: String,
     pub username: String,
     /// Legacy boolean TLS flag. Prefer `tls_mode`. Kept for round-trip of
@@ -386,6 +393,7 @@ fn validate_connection(connection: &SavedConnection) -> Result<(), StorageError>
     }
     for path in [
         connection.socket_dir.as_deref(),
+        connection.socket_path.as_deref(),
         connection.tls_root_cert.as_deref(),
         connection.tls_client_cert.as_deref(),
         connection.tls_client_key.as_deref(),
@@ -483,6 +491,7 @@ pub(super) mod tests {
             host: "localhost".into(),
             port: 5432,
             socket_dir: None,
+            socket_path: None,
             database: "postgres".into(),
             username: "postgres".into(),
             use_tls: false,
@@ -516,19 +525,6 @@ pub(super) mod tests {
         save_to(&path, &original).await.unwrap();
         let loaded = load_from(&path).await.unwrap();
         assert_eq!(original, loaded);
-    }
-
-    #[tokio::test]
-    async fn postgres_socket_directory_round_trips_in_the_current_file_version() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let mut connection = sample_connection();
-        connection.socket_dir = Some(PathBuf::from("/run/postgresql"));
-        save_to(&path, std::slice::from_ref(&connection)).await.unwrap();
-
-        let raw = std::fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"version\": 2"));
-        assert_eq!(load_from(&path).await.unwrap(), vec![connection]);
     }
 
     #[tokio::test]
@@ -1083,6 +1079,7 @@ pub(super) mod tests {
     async fn the_known_field_list_covers_every_serialized_key() {
         let mut connection = sample_connection();
         connection.socket_dir = Some(PathBuf::from("/run/postgresql"));
+        connection.socket_path = Some(PathBuf::from("/run/mysqld/mysqld.sock"));
         connection.tls_root_cert = Some(PathBuf::from("/etc/ca.crt"));
         connection.last_opened_at = Some(Utc::now());
         connection.ssh = Some(SavedSshConfig {
