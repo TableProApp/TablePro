@@ -79,6 +79,14 @@ internal final class AppActivationPolicyController {
         apply(.foreground)
     }
 
+    /// A process a machine launched that has nothing on screen for the person.
+    internal var isIdleMachineSession: Bool {
+        AppActivationPolicyDecision.role(
+            origin: origin,
+            hasUserFacingWindow: hasUserFacingWindow(excluding: nil)
+        ) == .background
+    }
+
     /// A closing window is still visible and still in `NSApp.windows` while `willCloseNotification`
     /// runs, so the window that prompted the recount is excluded from it.
     internal func reevaluate(excluding closingWindow: NSWindow? = nil) {
