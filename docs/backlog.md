@@ -80,3 +80,12 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); merged; installed-form acceptance remaining |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
+| [#632](https://github.com/cozyGarage/BookiE/issues/632) | Paste TSV strips a leading quote from ordinary text |
+| [#633](https://github.com/cozyGarage/BookiE/issues/633) | Docked history panel is stale after reopening |
+| [#634](https://github.com/cozyGarage/BookiE/issues/634) | CSV import always skips auto-increment columns |
+| [#635](https://github.com/cozyGarage/BookiE/issues/635) | PostgreSQL pooler hint on genuine user errors |
+| [#636](https://github.com/cozyGarage/BookiE/issues/636) | agentd SessionConnection misses four trait forwards |
+| [#637](https://github.com/cozyGarage/BookiE/issues/637) | FK navigation picks the first matching key |
+| [#638](https://github.com/cozyGarage/BookiE/issues/638) | MySQL supports_local_socket accepts a socket_dir |
+| [#639](https://github.com/cozyGarage/BookiE/issues/639) | Arch package container script still runs cd linux |
+| [#640](https://github.com/cozyGarage/BookiE/issues/640) | Packaging and About metadata point at the old repository |
