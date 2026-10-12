@@ -54,11 +54,36 @@ impl BrowseTab {
         // `accent` class draws the user's eye to it; AccessibleRole
         // Status is the same role we use for the paginator label so
         // a screen reader announces both as live regions.
-        let selection_label = gtk::Label::builder().visible(false).build();
-        selection_label.add_css_class("accent");
-        selection_label.add_css_class("caption-heading");
-        selection_label.set_accessible_role(gtk::AccessibleRole::Status);
+        let selection_count_label = gtk::Label::new(None);
+        selection_count_label.add_css_class("accent");
+        selection_count_label.add_css_class("caption-heading");
+        selection_count_label.set_accessible_role(gtk::AccessibleRole::Status);
+        let selection_details_label = gtk::Label::builder().xalign(0.0).wrap(true).selectable(true).build();
+        let copy_label = crate::tr!("Copy summary");
+        let copy_selection_button = gtk::Button::with_label(&copy_label);
+        let selection_details = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        selection_details.append(&selection_details_label);
+        selection_details.append(&copy_selection_button);
+        let selection_popover = gtk::Popover::new();
+        selection_popover.set_child(Some(&selection_details));
+        let selection_label = gtk::MenuButton::new();
+        selection_label.set_child(Some(&selection_count_label));
+        selection_label.set_popover(Some(&selection_popover));
+        selection_label.set_visible(false);
         selection_label.set_margin_start(12);
+        let summary_for_copy = selection_details_label.clone();
+        copy_selection_button.connect_clicked(move |_| {
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(&summary_for_copy.label());
+            }
+        });
 
         // Use thousands-separated labels (100 / 500 / 1,000 / 5,000 /
         // 10,000) instead of "1 K" abbreviations. With a visible
@@ -195,6 +220,8 @@ impl BrowseTab {
             filter_badge,
             paginator_label,
             selection_label,
+            selection_count_label,
+            selection_details_label,
             inspector_button,
         }
     }
@@ -504,7 +531,9 @@ pub(super) struct Paginator {
     pub(super) filter_button: gtk::Button,
     pub(super) filter_badge: gtk::Label,
     pub(super) paginator_label: gtk::Label,
-    pub(super) selection_label: gtk::Label,
+    pub(super) selection_label: gtk::MenuButton,
+    pub(super) selection_count_label: gtk::Label,
+    pub(super) selection_details_label: gtk::Label,
     pub(super) inspector_button: gtk::ToggleButton,
 }
 

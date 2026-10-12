@@ -4,38 +4,111 @@ use tablepro_core::{ColumnInfo, Value};
 #[derive(Debug, PartialEq)]
 pub(in crate::ui::browse_tab) struct ColumnStats {
     pub column: String,
+    pub count: u32,
+    pub minimum: String,
+    pub maximum: String,
     pub sum: String,
     pub average: String,
 }
 
+#[derive(Clone, Copy)]
 enum Total {
-    Exact(Decimal, u32),
-    Float(f64, u32),
+    Exact {
+        sum: Decimal,
+        count: u32,
+        minimum: Decimal,
+        maximum: Decimal,
+    },
+    Float {
+        sum: f64,
+        count: u32,
+        minimum: f64,
+        maximum: f64,
+    },
 }
 
 fn add(total: Option<Total>, value: &Value) -> Option<Option<Total>> {
     match (total, value) {
         (total, Value::Null) => Some(total),
-        (None, Value::Int(n)) => Some(Some(Total::Exact(Decimal::from(*n), 1))),
-        (None, Value::Decimal(d)) => Some(Some(Total::Exact(*d, 1))),
-        (None, Value::Float(f)) => Some(Some(Total::Float(*f, 1))),
-        (Some(Total::Exact(sum, n)), Value::Int(i)) => {
-            Some(Some(Total::Exact(sum.checked_add(Decimal::from(*i))?, n + 1)))
+        (None, Value::Int(n)) => Some(Some(exact(Decimal::from(*n)))),
+        (None, Value::Decimal(d)) => Some(Some(exact(*d))),
+        (None, Value::Float(f)) if f.is_finite() => Some(Some(float(*f))),
+        (
+            Some(Total::Exact {
+                sum,
+                count,
+                minimum,
+                maximum,
+            }),
+            Value::Int(i),
+        ) => exact_add(sum, count, minimum, maximum, Decimal::from(*i)),
+        (
+            Some(Total::Exact {
+                sum,
+                count,
+                minimum,
+                maximum,
+            }),
+            Value::Decimal(d),
+        ) => exact_add(sum, count, minimum, maximum, *d),
+        (
+            Some(Total::Float {
+                sum,
+                count,
+                minimum,
+                maximum,
+            }),
+            Value::Float(f),
+        ) if f.is_finite() => {
+            let next_sum = sum + f;
+            next_sum.is_finite().then_some(Some(Total::Float {
+                sum: next_sum,
+                count: count.checked_add(1)?,
+                minimum: minimum.min(*f),
+                maximum: maximum.max(*f),
+            }))
         }
-        (Some(Total::Exact(sum, n)), Value::Decimal(d)) => Some(Some(Total::Exact(sum.checked_add(*d)?, n + 1))),
-        (Some(Total::Float(sum, n)), Value::Float(f)) => Some(Some(Total::Float(sum + f, n + 1))),
         _ => None,
     }
 }
 
+fn exact(value: Decimal) -> Total {
+    Total::Exact {
+        sum: value,
+        count: 1,
+        minimum: value,
+        maximum: value,
+    }
+}
+
+fn float(value: f64) -> Total {
+    Total::Float {
+        sum: value,
+        count: 1,
+        minimum: value,
+        maximum: value,
+    }
+}
+
+fn exact_add(sum: Decimal, count: u32, minimum: Decimal, maximum: Decimal, value: Decimal) -> Option<Option<Total>> {
+    Some(Some(Total::Exact {
+        sum: sum.checked_add(value)?,
+        count: count.checked_add(1)?,
+        minimum: minimum.min(value),
+        maximum: maximum.max(value),
+    }))
+}
+
 fn describe(total: Total) -> Option<(String, String)> {
     match total {
-        Total::Exact(sum, n) => Some((
+        Total::Exact { sum, count, .. } => Some((
             sum.normalize().to_string(),
-            (sum / Decimal::from(n)).round_dp(6).normalize().to_string(),
+            (sum / Decimal::from(count)).round_dp(6).normalize().to_string(),
         )),
-        Total::Float(sum, n) if sum.is_finite() => Some((sum.to_string(), (sum / f64::from(n)).to_string())),
-        Total::Float(..) => None,
+        Total::Float { sum, count, .. } if sum.is_finite() => {
+            Some((sum.to_string(), (sum / f64::from(count)).to_string()))
+        }
+        Total::Float { .. } => None,
     }
 }
 
@@ -48,9 +121,27 @@ pub(in crate::ui::browse_tab) fn column_stats(columns: &[ColumnInfo], rows: &[Ve
             for row in rows {
                 total = add(total, row.get(index)?)?;
             }
-            let (sum, average) = describe(total?)?;
+            let total = total?;
+            let (sum, average) = describe(total)?;
+            let (count, minimum, maximum) = match total {
+                Total::Exact {
+                    count,
+                    minimum,
+                    maximum,
+                    ..
+                } => (count, minimum.normalize().to_string(), maximum.normalize().to_string()),
+                Total::Float {
+                    count,
+                    minimum,
+                    maximum,
+                    ..
+                } => (count, minimum.to_string(), maximum.to_string()),
+            };
             Some(ColumnStats {
                 column: column.name.clone(),
+                count,
+                minimum,
+                maximum,
                 sum,
                 average,
             })
@@ -62,8 +153,11 @@ pub(in crate::ui::browse_tab) fn tooltip(stats: &[ColumnStats]) -> String {
     stats
         .iter()
         .map(|s| {
-            crate::tr!("{column}: sum {sum}, average {average}")
+            crate::tr!("{column}: count {count}, min {minimum}, max {maximum}, sum {sum}, average {average}")
                 .replace("{column}", &s.column)
+                .replace("{count}", &s.count.to_string())
+                .replace("{minimum}", &s.minimum)
+                .replace("{maximum}", &s.maximum)
                 .replace("{sum}", &s.sum)
                 .replace("{average}", &s.average)
         })
@@ -99,6 +193,9 @@ mod tests {
             stats,
             [ColumnStats {
                 column: "n".into(),
+                count: 2,
+                minimum: "1".into(),
+                maximum: "4".into(),
                 sum: "5".into(),
                 average: "2.5".into()
             }]
@@ -110,6 +207,16 @@ mod tests {
         let d = |s: &str| Value::Decimal(s.parse().unwrap());
         let stats = column_stats(&[column("p")], &[vec![d("0.1")], vec![d("0.2")]]);
         assert_eq!(stats[0].sum, "0.3");
+        assert_eq!(stats[0].minimum, "0.1");
+        assert_eq!(stats[0].maximum, "0.2");
+    }
+
+    #[test]
+    fn non_finite_and_overflowing_float_summaries_are_omitted() {
+        let non_finite = [vec![Value::Float(f64::INFINITY)]];
+        assert!(column_stats(&[column("n")], &non_finite).is_empty());
+        let overflow = [vec![Value::Float(f64::MAX)], vec![Value::Float(f64::MAX)]];
+        assert!(column_stats(&[column("n")], &overflow).is_empty());
     }
 
     #[test]

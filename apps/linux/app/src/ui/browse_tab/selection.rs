@@ -176,15 +176,35 @@ pub(super) fn row_key_is_unreadable(cells: &[Value], pk_indices: &[usize]) -> bo
 /// multi-selects so the affordance stays discoverable now that
 /// the toolbar Delete button is gone (right-click + Delete key
 /// are the action surface).
-pub(super) fn update_selection_chrome(label: &gtk::Label, n: u32, stats_tooltip: Option<&str>) {
+fn selection_details(n: u32, stats_tooltip: Option<&str>) -> String {
+    let details_text = stats_tooltip
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| crate::tr!("No numeric values in the selected rows."));
+    let scope = crate::tr!("Selected loaded rows: {n}").replace("{n}", &n.to_string());
+    format!("{scope}\n{details_text}")
+}
+
+pub(super) fn update_selection_chrome(
+    button: &gtk::MenuButton,
+    count_label: &gtk::Label,
+    details: &gtk::Label,
+    n: u32,
+    stats_tooltip: Option<&str>,
+) {
     if n <= 1 {
-        label.set_visible(false);
+        button.set_visible(false);
+        button.set_tooltip_text(None);
+        count_label.set_label("");
+        details.set_label("");
         return;
     }
     let count = n.to_string();
-    label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
-    label.set_tooltip_text(stats_tooltip.filter(|text| !text.is_empty()));
-    label.set_visible(true);
+    count_label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
+    let summary = selection_details(n, stats_tooltip);
+    details.set_label(&summary);
+    button.set_tooltip_text(stats_tooltip.filter(|text| !text.is_empty()));
+    button.set_visible(true);
 }
 
 pub(super) fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
@@ -202,6 +222,20 @@ mod tests {
     use super::{build_persisted_row_key, row_key_is_unreadable};
     use crate::services::change_tracker::RowKey;
     use tablepro_core::Value;
+
+    #[test]
+    fn copied_selection_summary_names_its_loaded_row_scope() {
+        let summary = super::selection_details(3, Some("age: count 3, min 1, max 9, sum 15, average 5"));
+        assert_eq!(
+            summary,
+            "Selected loaded rows: 3\nage: count 3, min 1, max 9, sum 15, average 5"
+        );
+    }
+
+    #[test]
+    fn selection_summary_explains_when_no_numeric_stats_are_available() {
+        assert!(super::selection_details(2, None).contains("No numeric values"));
+    }
 
     #[test]
     pub(super) fn build_pk_single_column() {

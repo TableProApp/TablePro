@@ -128,7 +128,9 @@ pub struct BrowseTab {
     /// or Ctrl+clicks to build a multi-row selection. Updated via
     /// the selection model's connect_selection_changed signal so it
     /// stays in sync without polling.
-    selection_label: gtk::Label,
+    selection_label: gtk::MenuButton,
+    selection_count_label: gtk::Label,
+    selection_details_label: gtk::Label,
     inspector: crate::ui::row_inspector::RowInspector,
     first_button: gtk::Button,
     prev_button: gtk::Button,
@@ -844,6 +846,8 @@ impl SimpleComponent for BrowseTab {
             pending_focus_restore: std::cell::RefCell::new(None),
             paginator_label: paginator.paginator_label,
             selection_label: paginator.selection_label,
+            selection_count_label: paginator.selection_count_label,
+            selection_details_label: paginator.selection_details_label,
             inspector,
             first_button: paginator.first_button,
             prev_button: paginator.prev_button,

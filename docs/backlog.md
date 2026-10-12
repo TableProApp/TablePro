@@ -15,6 +15,7 @@ candidate inventory as a release commitment.
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
+| UI-36 | Selection statistics popover with count, min/max and copy for selected loaded rows | Existing sum/average stays exact for numeric values; [#625](https://github.com/cozyGarage/BookiE/issues/625) |
 | UI-17b, UI-18, UI-22, UI-23, UI-26 | Preview tabs, history as a panel, code folding and split panes, typed PostgreSQL activity console, editable SSH profiles | accepted for later; PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
 | PKG-4, PKG-8 | Flatpak Flathub submission and screenshots, and the file-access decision (`--filesystem=home` or portal only) | guest build/install/launch is proven; not part of 0.2.0; decide PKG-8 before PKG-4 |
@@ -80,3 +81,4 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant) |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
+| [#625](https://github.com/cozyGarage/BookiE/issues/625) | Selection statistics popover (UI-36) |

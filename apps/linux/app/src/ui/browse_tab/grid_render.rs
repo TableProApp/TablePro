@@ -267,18 +267,32 @@ impl BrowseTab {
         // fresh instance per rebuild, so the previous binding (if
         // any) drops with the old selection — no leak.
         let selection_label_for_signal = self.selection_label.clone();
+        let selection_count_label_for_signal = self.selection_count_label.clone();
+        let selection_details_label_for_signal = self.selection_details_label.clone();
         if let Some(sel) = self.current_selection.as_ref() {
             let inspector = self.inspector.clone();
             let columns = self.current_columns.clone();
             sel.connect_selection_changed(move |sel, _, _| {
                 let n = sel.selection().size() as u32;
                 let tooltip = selection_tooltip(sel, &columns);
-                update_selection_chrome(&selection_label_for_signal, n, tooltip.as_deref());
+                update_selection_chrome(
+                    &selection_label_for_signal,
+                    &selection_count_label_for_signal,
+                    &selection_details_label_for_signal,
+                    n,
+                    tooltip.as_deref(),
+                );
                 inspector.show_row(inspected_row(sel, &columns));
             });
             // Page rebuild clears MultiSelection's bitset; reset the
             // chrome explicitly so a stale "5 selected" doesn't linger.
-            update_selection_chrome(&self.selection_label, 0, None);
+            update_selection_chrome(
+                &self.selection_label,
+                &self.selection_count_label,
+                &self.selection_details_label,
+                0,
+                None,
+            );
         }
 
         // Re-prepend any pending draft rows so they survive page changes,
