@@ -73,9 +73,31 @@ Next:
 - An **introduced in** field on crash and data-loss issues, filled from `git blame`, so recurring classes show up (for example the `AdwTabView` close handshake or `RefCell` re-borrow).
 - A weekly review of the open crash issues, the failure classes from step 2, and the ledger rows that need a human.
 
+## Environments and data: cheap clones instead of rebuilding databases
+
+Contributed from the 2026-10 PostgreSQL talk and the Postgres.FM episodes on Xata and RegreSQL. The idea: seed a database once, then give every test its own copy-on-write clone in seconds.
+
+What the tools are (checked 2026-10-12):
+
+| Tool | What it does | Licence | Activity |
+|---|---|---|---|
+| [DBLab Engine](https://github.com/postgres-ai/database-lab-engine) | Thin clones and branches of a PostgreSQL database on ZFS or LVM, for testing in CI | Apache-2.0 | pushed 2026-10-08 |
+| [RegreSQL](https://github.com/boringSQL/regresql) | SQL regression tests with expected results and EXPLAIN plan baselines | BSD-2-Clause | pushed 2026-10-04 |
+| Xata | Open-source PostgreSQL branching | see episode | see episode |
+
+All three are PostgreSQL-only. We have six engines, so they help one of them, though it is the main focus.
+
+Where they would pay off for BookiE, in order of value for effort:
+
+1. **Prebaked fixture images from a local registry.** The most common infrastructure failures are image pulls timing out and fixtures not becoming ready. Build each engine's fixture image once with its schema and seed data already inside, push it to a registry on the lab network, and have the Docker suites pull from there. This removes the Docker Hub dependency and most of the start-up time, with no new tool. It is the same idea as a thin clone, at our data size.
+2. **Seed once, clone by reflink on a developer machine.** The local test bench can keep a stopped PostgreSQL data directory and clone it with `cp --reflink` on btrfs (the developer machine already snapshots with btrfs), giving each experiment a fresh seeded copy instantly.
+3. **RegreSQL on the SQL we generate.** BookiE builds SQL itself: browse paging, keyed updates, catalog and foreign key queries. Baseline their EXPLAIN plans against a seeded database so a change that turns an index scan into a sequential scan fails a test. The open many-schema catalog performance work ([#580](https://github.com/cozyGarage/BookiE/issues/580)) needs exactly this.
+4. **DBLab itself**, only when we need large realistic datasets and many parallel clones; it needs ZFS or LVM and a server to run. Not worth it for fixtures of our size.
+
 ## Order of work
 
 1. Failure classifier and job-level retry (days).
+1a. Prebaked fixture images and a lab registry (days; removes the most common infrastructure failure).
 2. Crash note and `--diagnostics` (days).
 3. Pull request template and issue fields (hours).
 4. `nextest` isolation and retries, changelog fragments (a week).

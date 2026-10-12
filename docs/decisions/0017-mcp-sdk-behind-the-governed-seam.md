@@ -1,6 +1,6 @@
 # 0017: Adopt the official Rust MCP SDK behind the governed seam
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-12
 
 ## Context

@@ -1,6 +1,6 @@
 # 0018: Move GTK-free application logic into a headless crate
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-12
 
 ## Context
