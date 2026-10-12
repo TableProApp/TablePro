@@ -97,7 +97,6 @@ internal enum OperationConfirmationPrompt {
 internal struct AlertOperationConfirming: OperationConfirming {
     @MainActor
     func confirm(_ request: OperationConfirmationRequest) async -> Bool {
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let window = WindowLifecycleMonitor.shared.activeWindow(
             for: request.connectionId,
             preferring: NSApp.keyWindow

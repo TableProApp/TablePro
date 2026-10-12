@@ -146,9 +146,7 @@ internal extension MainSplitViewController {
             return
         }
         guard let connection = workspaces.workspace(for: connectionId)?.connection else { return }
-        ConnectionRecoveryPerformer.perform(action, for: connection) { [weak self] in
-            self?.reconnectWorkspace(connectionId)
-        }
+        ConnectionRecoveryPerformer.perform(action, for: connection)
     }
 
     private func connect(_ connection: DatabaseConnection, cancellingPrevious: Bool) {

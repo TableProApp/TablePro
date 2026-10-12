@@ -42,7 +42,7 @@ internal final class LaunchIntentRouter {
                 try await MCPPairingService.shared.startPairing(request)
 
             case .startMCPServer:
-                await MCPServerManager.shared.lazyStart()
+                await startMCPServer()
 
             case .openSettings(let pane):
                 WindowOpener.shared.openSettings(tab: pane)
@@ -78,6 +78,18 @@ internal final class LaunchIntentRouter {
         }
     }
 
+    /// No alert on refusal: the bridge reads the refusal file and tells its client, and an alert
+    /// would greet every client that tries while MCP is off.
+    private func startMCPServer() async {
+        do {
+            try await MCPServerManager.shared.lazyStart()
+        } catch {
+            Self.logger.info("start-mcp refused: \(error.publicLogShape, privacy: .public)")
+            guard AppActivationPolicyController.shared.isIdleMachineSession else { return }
+            NSApp.terminate(nil)
+        }
+    }
+
     private func installPlugin(_ url: URL) async throws {
         let entry = try await PluginManager.shared.installPlugin(from: url)
         Self.logger.info("Installed plugin '\(entry.name, privacy: .public)' from Finder")
@@ -97,9 +109,7 @@ internal final class LaunchIntentRouter {
             recoveryTitle: action.title,
             window: NSApp.keyWindow
         ) {
-            ConnectionRecoveryPerformer.perform(action, for: connection) {
-                Task { await LaunchIntentRouter.shared.route(intent) }
-            }
+            ConnectionRecoveryPerformer.perform(action, for: connection)
         }
         return true
     }
@@ -150,6 +160,18 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Action Failed")
         }
         if presentRecoverableError(error, for: intent, title: title) { return }
+        if error is MCPServerStartError {
+            AlertHelper.showRecoverableErrorSheet(
+                title: title,
+                message: error.localizedDescription,
+                recoverySuggestion: nil,
+                recoveryTitle: String(localized: "Open MCP Settings"),
+                window: NSApp.keyWindow
+            ) {
+                WindowOpener.shared.openSettings(tab: .mcp)
+            }
+            return
+        }
         AlertHelper.showErrorSheet(
             title: title,
             message: error.localizedDescription,

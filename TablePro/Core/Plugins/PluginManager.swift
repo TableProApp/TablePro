@@ -134,10 +134,7 @@ final class PluginManager: ObservableObject {
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
-    private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
-    private static let legacyDisabledPluginsKey = "disabledPlugins"
 
-    private let defaults: UserDefaults
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
 
@@ -214,11 +211,6 @@ final class PluginManager: ObservableObject {
 
     @Published internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
-    var disabledPluginIds: Set<String> {
-        get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
-        set { defaults.set(Array(newValue), forKey: Self.disabledPluginsKey) }
-    }
-
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
     @Published private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
@@ -248,7 +240,6 @@ final class PluginManager: ObservableObject {
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir()
     ) {
-        self.defaults = userDefaults
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         Self.clearLegacyNeedsRestartKey(in: userDefaults)
@@ -312,19 +303,9 @@ final class PluginManager: ObservableObject {
         }
     }
 
-    private func migrateDisabledPluginsKey() {
-        if let legacy = defaults.stringArray(forKey: Self.legacyDisabledPluginsKey) {
-            if defaults.stringArray(forKey: Self.disabledPluginsKey) == nil {
-                defaults.set(legacy, forKey: Self.disabledPluginsKey)
-            }
-            defaults.removeObject(forKey: Self.legacyDisabledPluginsKey)
-        }
-    }
-
     // MARK: - Loading
 
     func loadPlugins() {
-        migrateDisabledPluginsKey()
         cleanStaleStagingArtifacts()
         discoverAllPlugins()
 
@@ -455,7 +436,6 @@ final class PluginManager: ObservableObject {
             version: version,
             pluginDescription: pluginDescription,
             capabilities: capabilities,
-            isEnabled: !disabledPluginIds.contains(bundleId),
             databaseTypeId: primaryTypeId,
             additionalTypeIds: additionalTypeIds,
             pluginIconName: pluginIconName,
@@ -557,7 +537,6 @@ final class PluginManager: ObservableObject {
         guard !activatedBundleIds.contains(bundleId) else { return }
 
         let entry = plugins.first(where: { $0.id == bundleId })
-        if let entry, !entry.isEnabled { return }
 
         do {
             try assertLoadable(bundle, source: entry?.source ?? .userInstalled)
@@ -582,8 +561,7 @@ final class PluginManager: ObservableObject {
 
         validateCapabilityDeclarations(principalClass, pluginId: bundleId)
 
-        let isEnabled = entry?.isEnabled ?? false
-        if isEnabled {
+        if entry != nil {
             let instance = principalClass.init()
             registerCapabilities(instance, pluginId: bundleId)
         }
@@ -659,11 +637,7 @@ final class PluginManager: ObservableObject {
         try validateBundleVersions(bundle)
 
         if source != .builtIn {
-            let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
-            if case .developerID(let identity) = trust,
-               !PluginDeveloperTrustStore.shared.isTrusted(identity) {
-                throw PluginError.developerNotTrusted(identity: identity)
-            }
+            try PluginCodeSignatureVerifier.verify(bundle: bundle)
         }
 
         try PluginBundleLoader.load(bundle)
@@ -748,7 +722,6 @@ final class PluginManager: ObservableObject {
         let exportType = principalClass as? any ExportFormatPlugin.Type
         let importType = principalClass as? any ImportFormatPlugin.Type
 
-        let disabled = disabledPluginIds
         let version: String
         if let declared = Self.bundleShortVersion(at: url) {
             version = declared
@@ -765,7 +738,6 @@ final class PluginManager: ObservableObject {
             version: version,
             pluginDescription: principalClass.pluginDescription,
             capabilities: principalClass.capabilities,
-            isEnabled: !disabled.contains(bundleId),
             databaseTypeId: driverType?.databaseTypeId,
             additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
             pluginIconName: driverType?.iconName ?? "puzzlepiece",
@@ -776,11 +748,7 @@ final class PluginManager: ObservableObject {
 
         plugins.append(entry)
         validateCapabilityDeclarations(principalClass, pluginId: bundleId)
-
-        if entry.isEnabled {
-            let instance = principalClass.init()
-            registerCapabilities(instance, pluginId: bundleId)
-        }
+        registerCapabilities(principalClass.init(), pluginId: bundleId)
 
         Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(source == .builtIn ? "built-in" : "user")]")
         return entry

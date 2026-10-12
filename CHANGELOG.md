@@ -20,11 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
+- iCloud Sync watches the network and the iCloud account only while it is turned on.
+- tablepro command ships inside the app. Settings > General shows the Terminal line that links it; no administrator prompt.
+- MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
+- Edit > Data shown only in data file windows.
+- Delta updates from the last five releases, about 6 MB instead of the full 34 MB download.
 
 ### Removed
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Loading plugins signed by other developers, and Trusted Plugin Developers in Settings > Plugins.
+- Browse tab and plugin download counts in Settings > Plugins.
+- On/off switch for each plugin in Settings > Plugins.
+- Theme install from the plugin registry.
+- HTML and XML export.
+- File > Server-Side Export… for Oracle, Snowflake and BigQuery. Run the unload statement in a query tab instead.
+- Cursor AI provider. A saved Cursor provider is dropped; Cursor still reaches TablePro through the MCP server.
+- Sign in with xAI. An xAI provider now needs an xAI API key.
 - Per-kind toggles in Settings > Notifications. Kinds you turned off notify again while notifications are on.
 
 ### Fixed
@@ -42,6 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
+- Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
+- GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
+
+### Security
+
+- GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
+- One unreadable setting, or one unknown AI provider, resetting its whole settings group to defaults.
+
+### Security
+
+- Prompts from MCP clients, pairing and query links taking focus from other apps, and Return approving them.
 
 ## [0.80.0] - 2026-10-11
 

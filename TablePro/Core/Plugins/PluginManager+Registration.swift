@@ -176,7 +176,7 @@ extension PluginManager {
     /// All database types with loaded plugins, ordered by display name.
     var availableDatabaseTypes: [DatabaseType] {
         var types: [DatabaseType] = []
-        for entry in plugins where entry.isEnabled {
+        for entry in plugins {
             if let typeId = entry.databaseTypeId {
                 types.append(DatabaseType(rawValue: typeId))
             }
@@ -757,11 +757,7 @@ extension PluginManager {
         if let existingEntry = plugins.first(where: { entry in
             entry.databaseTypeId == pluginTypeId || entry.additionalTypeIds.contains(pluginTypeId)
         }) {
-            if !existingEntry.isEnabled {
-                setEnabled(true, pluginId: existingEntry.id)
-            }
-            if driverPlugins[pluginTypeId] != nil {
-                Self.logger.info("Re-enabled existing plugin '\(existingEntry.name)' for '\(databaseType.rawValue)'")
+            if driverPlugin(for: databaseType) != nil {
                 return
             }
             Self.logger.warning("Plugin '\(existingEntry.id)' exists but driver not registered, reinstalling")
