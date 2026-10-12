@@ -12,7 +12,7 @@ use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabO
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
 
 use super::types::{CLOSED_TABS_CAPACITY, read_workspace_tab_id, write_workspace_tab_id};
-use super::{App, AppMsg, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab};
+use super::{App, AppMsg, ClosedTabDescriptor, EditorTabSlot, WorkspaceTab};
 
 impl App {
     /// Builds the unified AdwTabOverview tree once per connection.
@@ -87,10 +87,37 @@ impl App {
         // documented way to extend the per-tab popover.
         let menu_target: Rc<RefCell<Option<adw::TabPage>>> = Rc::new(RefCell::new(None));
         let menu_target_setup = menu_target.clone();
+        let keep_tab_action = gio::SimpleAction::new("keep", None);
+        let keep_tabs = self.workspace_tabs.clone();
+        let keep_sender = sender.clone();
+        let keep_target = menu_target.clone();
+        keep_tab_action.connect_activate(move |_, _| {
+            let id = keep_target.borrow().as_ref().and_then(read_workspace_tab_id);
+            if let Some(id) = id
+                && let Some(WorkspaceTab::Table(slot)) = keep_tabs.borrow_mut().get_mut(&id)
+            {
+                slot.preview = false;
+                slot.page.set_indicator_icon(None::<&gio::Icon>);
+                keep_sender.input(AppMsg::WorkspaceTabsChanged);
+            }
+        });
+        let keep_tab_action_setup = keep_tab_action.clone();
+        let keep_tabs_setup = self.workspace_tabs.clone();
         tab_view.connect_setup_menu(move |_view, page| {
             *menu_target_setup.borrow_mut() = page.cloned();
+            let is_preview = page
+                .and_then(read_workspace_tab_id)
+                .and_then(|id| {
+                    keep_tabs_setup
+                        .borrow()
+                        .get(&id)
+                        .map(|tab| matches!(tab, WorkspaceTab::Table(slot) if slot.preview))
+                })
+                .unwrap_or(false);
+            keep_tab_action_setup.set_enabled(is_preview);
         });
         let action_group = gio::SimpleActionGroup::new();
+        action_group.add_action(&keep_tab_action);
         let close_others_action = gio::SimpleAction::new("close-others", None);
         let menu_target_others = menu_target.clone();
         let sender_close_others = sender.clone();
@@ -118,6 +145,8 @@ impl App {
         tab_view.insert_action_group("tab", Some(&action_group));
 
         let bulk_menu = gio::Menu::new();
+        bulk_menu.append(Some(&crate::tr!("Keep Tab")), Some("tab.keep"));
+        bulk_menu.append_section(None, &gio::Menu::new());
         bulk_menu.append(Some(&crate::tr!("Close Other Tabs")), Some("tab.close-others"));
         bulk_menu.append(Some(&crate::tr!("Close Tabs to the Right")), Some("tab.close-right"));
         tab_view.set_menu_model(Some(&bulk_menu));
@@ -254,8 +283,9 @@ impl App {
                     offset,
                     page_size,
                     sort,
+                    preview,
                 }) => {
-                    self.append_table_tab(schema, table, offset, page_size, sort, sender.clone());
+                    self.append_table_tab(schema, table, offset, page_size, sort, preview, sender.clone());
                 }
                 Some(workspace_state::RestoredWorkspaceTab::Structure { schema, table }) => {
                     self.append_existing_structure_tab(schema, table, sender.clone());
@@ -351,6 +381,7 @@ impl App {
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
+        preview: bool,
         sender: ComponentSender<Self>,
     ) {
         self.ensure_workspace_root(sender.clone());
@@ -416,6 +447,10 @@ impl App {
         if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
             page.set_tooltip(&tip);
         }
+        if preview {
+            page.set_indicator_icon(Some(&gio::ThemedIcon::new("document-open-recent-symbolic")));
+            page.set_indicator_tooltip(&crate::tr!("Preview tab. Use the tab menu to keep it open."));
+        }
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::TableTabSlot {
@@ -424,6 +459,7 @@ impl App {
             schema,
             table,
             browse,
+            preview,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -792,60 +828,6 @@ impl App {
         self.rebuild_schema_buffer();
         self.refresh_window_title();
     }
-
-    /// Sidebar-click dispatcher. Two behaviours:
-    ///
-    /// - `SwitchOrAppend` (plain click): if a Browse tab for
-    ///   `(schema, table)` is already open, activate it; otherwise
-    ///   append a new Browse tab. Never closes anything — tabs only
-    ///   go away when the user clicks the X.
-    /// - `NewTab` (Ctrl+click / right-click "Open in new tab"): always
-    ///   append a new tab even if the same table is already open.
-    ///
-    /// The earlier "smart-replace" sub-case (close active + append new
-    /// in one step) was dropped because AdwTabView's close-page
-    /// animation overlapped with the append, producing a visual flash
-    /// where the user briefly saw the closing tab and the new tab
-    /// side by side. Always-append is what every modern DB client
-    /// (TablePlus, DBeaver, DataGrip, Beekeeper) does anyway.
-    pub(super) fn dispatch_select_table(
-        &mut self,
-        schema: Option<String>,
-        name: String,
-        open_mode: OpenMode,
-        sender: ComponentSender<Self>,
-    ) {
-        if matches!(open_mode, OpenMode::SwitchOrAppend) {
-            // Multiple tabs may be open for the same (schema, table)
-            // pair (Ctrl+click duplicates). Prefer the currently-
-            // selected tab when it matches, then any other match.
-            let existing = {
-                let tabs = self.workspace_tabs.borrow();
-                let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
-                let matches_slot = |t: &WorkspaceTab| match t {
-                    WorkspaceTab::Table(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
-                        Some(s.page.clone())
-                    }
-                    _ => None,
-                };
-                let selected_match = selected_page.and_then(|sp| {
-                    let id = read_workspace_tab_id(&sp)?;
-                    matches_slot(tabs.get(&id)?)
-                });
-                selected_match.or_else(|| tabs.values().find_map(matches_slot))
-            };
-            if let Some(page) = existing
-                && let Some(tab_view) = self.workspace_tab_view.as_ref()
-            {
-                tab_view.set_selected_page(&page);
-                return;
-            }
-        }
-        // Default open path appends a Data-view Browse tab. Structure
-        // for the same table opens as its own separate tab via the
-        // sidebar right-click "Edit Structure" action.
-        self.append_table_tab(schema, name, 0, self.default_page_size, None, sender);
-    }
 }
 
 impl App {
@@ -885,46 +867,6 @@ impl App {
             .filter_map(|table| table.schema.as_deref())
             .collect();
         distinct.len()
-    }
-
-    /// Refresh a browse tab's title based on its tracker dirty state.
-    /// Mirrors GNOME Text Editor's leading "•" prefix convention for
-    /// unsaved buffers. The base label is recomputed (not stored) so
-    /// schema disambiguation stays correct if other tabs change.
-    ///
-    /// Also flips `set_needs_attention` on the AdwTabPage so the tab
-    /// bar's pulsing dot appears for background tabs that have unsaved
-    /// edits — matches AdwTabView's intended use and surfaces the
-    /// dirty state when the user is in another tab. The flag is
-    /// suppressed for the currently-selected tab since the user is
-    /// actively looking at it (the "•" title prefix is enough cue).
-    pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
-        let schemas_count = self.sidebar_schemas_distinct();
-        let tabs = self.workspace_tabs.borrow();
-        let Some(slot) = tabs.get(&tab_id) else {
-            return;
-        };
-        // Combined dirty state: data-side OR structure-side. The
-        // Structure-side input also calls this helper via the
-        // dirty-changed bus, so the Boolean ORs naturally compose.
-        let WorkspaceTab::Table(s) = slot else {
-            return;
-        };
-        let (page, schema, table) = (&s.page, s.schema.as_deref(), s.table.as_str());
-        let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-        let structure = crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-        let combined_dirty = data || structure || dirty;
-        let base = qualified_browse_tab_label(schemas_count, schema, table);
-        let title = if combined_dirty { format!("• {base}") } else { base };
-        page.set_title(&title);
-        let is_selected = self
-            .workspace_tab_view
-            .as_ref()
-            .and_then(|tv| tv.selected_page())
-            .map(|p| &p == page)
-            .unwrap_or(false);
-        page.set_needs_attention(combined_dirty && !is_selected);
-        self.refresh_window_title();
     }
 
     pub(super) fn this_window_tab_ids(&self) -> Vec<Uuid> {
@@ -1093,6 +1035,7 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
 fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
     match slot {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
+        WorkspaceTab::Table(s) if s.preview => None,
         WorkspaceTab::Table(s) => {
             let model = s.browse.model();
             let sort = model.current_sort();
@@ -1153,7 +1096,7 @@ impl App {
                 page_size,
                 sort,
             } => {
-                self.append_table_tab(schema, table, offset, page_size, sort, sender);
+                self.append_table_tab(schema, table, offset, page_size, sort, false, sender);
             }
             ClosedTabDescriptor::Structure { schema, table } => {
                 self.append_existing_structure_tab(schema, table, sender);

@@ -81,6 +81,7 @@ pub fn run() {
     let registry = Arc::new(build_registry());
     let persistence = services::persistence_stores::PersistenceStores::open();
     let workspace = services::workspace_state::WorkspaceStore::new();
+    workspace.discard_preview_tabs();
     let database = Arc::new(services::database_service::DatabaseService::new());
     tracing::info!(drivers = registry.len(), "starting tablepro-app");
 

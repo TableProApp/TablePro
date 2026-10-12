@@ -427,6 +427,7 @@ impl App {
                     0,
                     self.default_page_size,
                     None,
+                    false,
                     sender.clone(),
                 );
                 sender.input(AppMsg::SchemaChanged {

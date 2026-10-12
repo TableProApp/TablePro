@@ -88,6 +88,43 @@ pub struct TableTabSlot {
     pub schema: Option<String>,
     pub table: String,
     pub browse: Controller<BrowseTab>,
+    pub preview: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PreviewReplacement {
+    None,
+    Replace,
+    Promote,
+}
+
+pub(super) fn preview_replacement(is_preview: bool, has_pending_changes: bool) -> PreviewReplacement {
+    match (is_preview, has_pending_changes) {
+        (false, _) => PreviewReplacement::None,
+        (true, false) => PreviewReplacement::Replace,
+        (true, true) => PreviewReplacement::Promote,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PreviewReplacement, preview_replacement};
+
+    #[test]
+    fn a_clean_preview_can_be_replaced() {
+        assert_eq!(preview_replacement(true, false), PreviewReplacement::Replace);
+    }
+
+    #[test]
+    fn a_preview_with_pending_changes_is_promoted() {
+        assert_eq!(preview_replacement(true, true), PreviewReplacement::Promote);
+    }
+
+    #[test]
+    fn a_regular_tab_is_never_replaced_or_promoted() {
+        assert_eq!(preview_replacement(false, false), PreviewReplacement::None);
+        assert_eq!(preview_replacement(false, true), PreviewReplacement::None);
+    }
 }
 
 pub enum WorkspaceTab {

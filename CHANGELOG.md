@@ -5,6 +5,7 @@
 Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- Plain-clicking a table opens a temporary preview tab that the next table click can replace; preview tabs are not restored after restart, while editing or choosing **Keep Tab** makes one persistent.
 - PostgreSQL and SQLite query plans open in a Tree tab of the Explain dialog.
 - Ctrl+V pastes tab-separated text from a spreadsheet into grid cells, all or nothing.
 - When a cell belongs to multiple foreign keys, Go to Referenced Row lets you choose the target table.

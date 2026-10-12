@@ -20,7 +20,7 @@ Passwords are kept in your desktop keyring, never in BookiE's own files.
 
 ## Browse a table
 
-Click a table in the sidebar. The sidebar groups tables and views under each schema; click a group to collapse it, and type in the search to find a table.
+Click a table in the sidebar. It opens as a preview tab, marked with an icon, and the next table click reuses that preview. Edit the table or choose **Keep Tab** from the tab menu to keep it open. Tabs with pending edits are kept automatically. Ctrl+click or the sidebar's **Open in New Tab** action always creates a durable tab. The sidebar groups tables and views under each schema; click a group to collapse it, and type in the search to find a table.
 
 - **Edit**: double-click a cell, or press F2 or Enter. Changes stay pending (shown with a dot on the tab) until you press Ctrl+S. Ctrl+Z and Ctrl+Y undo and redo pending changes.
 - **Insert and delete**: Ctrl+N inserts a row, Delete removes the selected rows. Ctrl+Shift+N sets the focused cell to NULL.

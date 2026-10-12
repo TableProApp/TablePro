@@ -80,6 +80,6 @@ impl App {
             self.show_toast(&error);
             return;
         }
-        self.append_table_tab(schema, table, 0, self.default_page_size, None, sender);
+        self.append_table_tab(schema, table, 0, self.default_page_size, None, false, sender);
     }
 }

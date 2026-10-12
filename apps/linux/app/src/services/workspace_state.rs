@@ -198,6 +198,8 @@ pub enum WorkspaceTabRecord {
         sort_col: Option<usize>,
         #[serde(default)]
         sort_asc: Option<bool>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        preview: bool,
     },
     /// Forward-compat: an older binary reading a workspace_state.json
     /// written by a newer binary lands tabs of unrecognised kinds in
@@ -232,6 +234,7 @@ pub(crate) enum RestoredWorkspaceTab {
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
+        preview: bool,
     },
     Structure {
         schema: Option<String>,
@@ -254,6 +257,7 @@ pub(crate) fn restored_workspace_tab(record: &WorkspaceTabRecord) -> Option<Rest
             page_size,
             sort_col,
             sort_asc,
+            preview,
         } => Some(RestoredWorkspaceTab::Table {
             schema: schema.clone(),
             table: table.clone(),
@@ -263,6 +267,7 @@ pub(crate) fn restored_workspace_tab(record: &WorkspaceTabRecord) -> Option<Rest
                 (Some(column), Some(ascending)) => Some((*column, *ascending)),
                 _ => None,
             },
+            preview: *preview,
         }),
         WorkspaceTabRecord::Table {
             schema,
@@ -289,6 +294,8 @@ fn drafts_path() -> std::path::PathBuf {
         .join(crate::config::storage_dir_name())
         .join("drafts")
 }
+
+mod preview_tabs;
 
 fn load_locked() -> Result<WorkspaceState, WorkspaceFlushError> {
     let path = xdg_config_path(FILE_NAME).ok_or(WorkspaceFlushError::WriteFailed)?;
@@ -556,6 +563,7 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
                 page_size,
                 sort_col,
                 sort_asc,
+                preview: false,
             },
             WorkspaceTabRecord::Structure { schema, table } => WorkspaceTabRecord::Table {
                 schema,
@@ -565,6 +573,7 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
                 page_size: DEFAULT_PAGE_SIZE,
                 sort_col: None,
                 sort_asc: None,
+                preview: false,
             },
             other => other,
         };
@@ -1078,6 +1087,7 @@ mod tests {
             page_size: DEFAULT_PAGE_SIZE,
             sort_col: Some(1),
             sort_asc: Some(true),
+            preview: false,
         };
         assert_eq!(
             restored_workspace_tab(&record),
@@ -1098,6 +1108,7 @@ mod tests {
             page_size: 100,
             sort_col: Some(2),
             sort_asc: Some(false),
+            preview: false,
         };
         assert_eq!(
             restored_workspace_tab(&record),
@@ -1107,6 +1118,7 @@ mod tests {
                 offset: 50,
                 page_size: 100,
                 sort: Some((2, false)),
+                preview: false,
             })
         );
     }
