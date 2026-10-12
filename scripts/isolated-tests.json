@@ -180,6 +180,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::split_view::tests::split_editor_views_share_buffer_and_retain_text_across_toggles"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::row_inspector::tests::the_inspector_lists_a_row_and_returns_to_its_placeholder"
     ],
     [

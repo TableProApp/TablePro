@@ -91,6 +91,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 
 ## Editor and history
 
+- [ ] Toggle **Split** on and off with the mouse and keyboard; edit the query from either pane, confirm both views update, and check that each pane keeps its scroll position at a narrow window width.
 - [ ] Ctrl+O opens a `.sql` file into a new tab titled with the file name.
 - [ ] Typing marks the title with `•`; Ctrl+S saves, clears the mark and shows "Saved".
 - [ ] Ctrl+S on an editor tab never opened from a file asks where to save.

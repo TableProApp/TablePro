@@ -11,6 +11,7 @@ mod run_generation;
 mod run_marks;
 mod schema;
 mod session_mode;
+mod split_view;
 mod sql_text;
 mod statement_band;
 mod statement_cursor;
@@ -49,6 +50,7 @@ pub struct SqlEditor {
     catalog_origin: Option<crate::services::catalog::CatalogOrigin>,
     diagnostics: diagnostics::Diagnostics,
     source_view: sourceview5::View,
+    split_view: split_view::SplitEditorView,
     find: Option<find_bar::FindBar>,
     run_button: gtk::Button,
     session_button: gtk::ToggleButton,
@@ -124,6 +126,7 @@ pub enum SqlEditorInput {
     },
     Cancel,
     TogglePin,
+    SplitToggled(bool),
     ShowOutcomes {
         generation: u64,
         outcomes: Vec<StatementOutcome>,
@@ -322,6 +325,16 @@ impl SimpleComponent for SqlEditor {
                     add_css_class: "suggested-action",
                     connect_clicked => SqlEditorInput::Run,
                 },
+
+                #[name = "split_button"]
+                gtk::ToggleButton {
+                    set_label: &crate::tr!("Split"),
+                    set_tooltip_text: Some(crate::tr!("Show or hide a second SQL editor pane").as_str()),
+                    add_css_class: "flat",
+                    connect_toggled[sender] => move |button| {
+                        sender.input(SqlEditorInput::SplitToggled(button.is_active()));
+                    },
+                },
             },
 
             #[wrap(Some)]
@@ -332,21 +345,29 @@ impl SimpleComponent for SqlEditor {
                 set_hexpand: true,
 
                 #[wrap(Some)]
-                set_start_child = &gtk::ScrolledWindow {
-                    set_min_content_height: 200,
+                #[name = "editor_holder"]
+                set_start_child = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_vexpand: true,
+                    set_hexpand: true,
 
-                    #[wrap(Some)]
-                    #[name = "source_view"]
-                    set_child = &sourceview5::View {
-                        set_show_line_numbers: true,
-                        set_monospace: true,
-                        set_auto_indent: true,
-                        set_highlight_current_line: true,
-                        set_tab_width: 4,
-                        set_top_margin: 8,
-                        set_bottom_margin: 8,
-                        set_left_margin: 8,
-                        set_right_margin: 8,
+                    #[name = "source_scroll"]
+                    gtk::ScrolledWindow {
+                        set_min_content_height: 200,
+
+                        #[wrap(Some)]
+                        #[name = "source_view"]
+                        set_child = &sourceview5::View {
+                            set_show_line_numbers: true,
+                            set_monospace: true,
+                            set_auto_indent: true,
+                            set_highlight_current_line: true,
+                            set_tab_width: 4,
+                            set_top_margin: 8,
+                            set_bottom_margin: 8,
+                            set_left_margin: 8,
+                            set_right_margin: 8,
+                        },
                     },
                 },
 
@@ -373,6 +394,8 @@ impl SimpleComponent for SqlEditor {
             buffer.set_text(&initial_text);
             widgets.source_view.set_buffer(Some(&buffer));
         }
+        let split_view =
+            split_view::SplitEditorView::install(&widgets.editor_holder, &widgets.source_scroll, &widgets.source_view);
         statement_band::install(
             widgets.source_view.buffer().upcast_ref(),
             init.database.clone(),
@@ -391,6 +414,7 @@ impl SimpleComponent for SqlEditor {
 
         let preferences = init.preferences.load();
         apply_editor_preferences(&widgets.source_view, &preferences);
+        apply_editor_preferences(split_view.secondary_view(), &preferences);
 
         let provider = sourceview5::CompletionWords::new(Some("SQL"));
         provider.register(&init.schema_buffer);
@@ -399,6 +423,7 @@ impl SimpleComponent for SqlEditor {
         }
         let completion = widgets.source_view.completion();
         completion.add_provider(&provider);
+        split_view.secondary_view().completion().add_provider(&provider);
 
         let cursor_info = widgets.cursor_info.clone();
         let view_for_cursor = widgets.source_view.clone();
@@ -443,98 +468,10 @@ impl SimpleComponent for SqlEditor {
             refresh_on_change();
         });
 
-        let run_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("<Primary>Return"))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Run);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let cancel_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("Escape"))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Cancel);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let format_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("<Primary><Shift>f"))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::Format);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let run_at_cursor_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("<Primary><Shift>Return"))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::RunAtCursor);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let toggle_comment_shortcut = gtk::Shortcut::builder()
-            .trigger(&crate::ui::shortcut::parse("<Primary>slash"))
-            .action(&gtk::CallbackAction::new({
-                let sender = sender.clone();
-                move |_, _| {
-                    sender.input(SqlEditorInput::ToggleLineComment);
-                    glib::Propagation::Stop
-                }
-            }))
-            .build();
-        let controller = gtk::ShortcutController::new();
-        controller.add_shortcut(run_shortcut);
-        controller.add_shortcut(cancel_shortcut);
-        controller.add_shortcut(format_shortcut);
-        controller.add_shortcut(run_at_cursor_shortcut);
-        controller.add_shortcut(toggle_comment_shortcut);
-        for (trigger, forward) in [("<Alt><Shift>Down", true), ("<Alt><Shift>Up", false)] {
-            let jump_sender = sender.clone();
-            controller.add_shortcut(
-                gtk::Shortcut::builder()
-                    .trigger(&crate::ui::shortcut::parse(trigger))
-                    .action(&gtk::CallbackAction::new(move |_, _| {
-                        jump_sender.input(SqlEditorInput::JumpStatement { forward });
-                        glib::Propagation::Stop
-                    }))
-                    .build(),
-            );
-        }
-        widgets.source_view.add_controller(controller);
-
-        let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
-        let sender_for_drop = sender.clone();
-        let drop_generation_for_drop = drop_generation.clone();
-        drop_target.connect_drop(move |_, value, _, _| {
-            let Ok(file) = value.get::<gtk::gio::File>() else {
-                return false;
-            };
-            let Some(path) = file.path() else {
-                return false;
-            };
-            let sender = sender_for_drop.clone();
-            let request = drop_generation_for_drop.begin();
-            std::thread::spawn(move || {
-                let message = match read_sql_text(&path, MAX_SQL_FILE_BYTES) {
-                    Ok(text) => SqlEditorInput::InsertDroppedSql { request, text },
-                    Err(message) => SqlEditorInput::DroppedSqlFailed { request, message },
-                };
-                sender.input(message);
-            });
-            true
-        });
-        widgets.source_view.add_controller(drop_target);
+        split_view::install_shortcuts(&widgets.source_view, &sender);
+        split_view::install_shortcuts(split_view.secondary_view(), &sender);
+        split_view::install_drop_target(&widgets.source_view, &sender, &drop_generation);
+        split_view::install_drop_target(split_view.secondary_view(), &sender, &drop_generation);
 
         let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
         let grid_input = sender.input_sender().clone();
@@ -552,6 +489,7 @@ impl SimpleComponent for SqlEditor {
                 init.database.clone(),
             ),
             source_view: widgets.source_view.clone(),
+            split_view,
             find,
             run_button: widgets.run_button.clone(),
             session_button: widgets.session_button.clone(),
@@ -618,6 +556,7 @@ impl SimpleComponent for SqlEditor {
                 });
             }
             SqlEditorInput::Grid(_) => {}
+            SqlEditorInput::SplitToggled(visible) => self.split_view.set_visible(visible),
             SqlEditorInput::SessionToggled(enabled) => self.on_session_toggled(enabled, &sender),
             SqlEditorInput::SessionOpened {
                 connection_id,
