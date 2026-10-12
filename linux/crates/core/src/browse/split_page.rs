@@ -1,19 +1,17 @@
 use crate::query_result::QueryResult;
 use crate::value::Value;
 
-use super::{BrowsePage, BrowseSqlError, RowKeyLayout};
+use super::{BrowsePage, BrowseSqlError, PageSpec, RowKeyLayout};
 
 /// Take a page apart into what the user sees and what names each row.
 ///
 /// The hidden row-id columns stop here. Everything downstream, the
 /// grid, export, copy and the insert preview, only ever gets the
 /// visible ones.
-pub fn split_page(
-    result: QueryResult,
-    visible_columns: usize,
-    layout: &RowKeyLayout,
-) -> Result<BrowsePage, BrowseSqlError> {
-    let expected = visible_columns + layout.hidden_count();
+pub fn split_page(result: QueryResult, spec: &PageSpec) -> Result<BrowsePage, BrowseSqlError> {
+    let visible_columns = spec.visible_columns();
+    let layout = &spec.row_key;
+    let expected = spec.layout.width();
     if result.columns.len() != expected {
         return Err(BrowseSqlError::ShapeMismatch {
             expected,
@@ -75,10 +73,26 @@ mod tests {
     use std::sync::Arc;
 
     use crate::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, ResultColumn};
-    use crate::meta::EngineRowIdPart;
+    use crate::meta::{EngineRowIdPart, PageCost, PageStability};
+    use crate::statement::StatementBuilder;
     use crate::value::{UndecodableReason, UndecodedValue};
 
+    use super::super::PageLayout;
     use super::*;
+
+    fn spec(visible: usize, row_key: RowKeyLayout) -> PageSpec {
+        PageSpec {
+            statement: StatementBuilder::new().finish(),
+            layout: PageLayout::new(visible, row_key.hidden_count()),
+            row_key,
+            stability: PageStability::Stable,
+            cost: PageCost::KeySeek,
+        }
+    }
+
+    fn split(page: QueryResult, visible: usize, row_key: RowKeyLayout) -> Result<BrowsePage, BrowseSqlError> {
+        split_page(page, &spec(visible, row_key))
+    }
 
     fn column(name: &str) -> ResultColumn {
         ResultColumn::new(
@@ -122,7 +136,7 @@ mod tests {
             parts: &[EngineRowIdPart::SqliteRowid],
         };
 
-        let split = split_page(page, 1, &layout).expect("the page");
+        let split = split(page, 1, layout).expect("the page");
 
         assert_eq!(split.columns.len(), 1);
         assert_eq!(split.columns[0].name, "name");
@@ -138,7 +152,7 @@ mod tests {
         );
 
         // The key is (id, tenant), which is not the column order.
-        let split = split_page(page, 3, &RowKeyLayout::Columns(vec![2, 0])).expect("the page");
+        let split = split(page, 3, RowKeyLayout::Columns(vec![2, 0])).expect("the page");
 
         assert_eq!(split.key(0), Some(&vec![Value::Int(7), Value::Int(1)]));
         assert_eq!(split.columns.len(), 3, "a column-keyed page hid a column");
@@ -148,7 +162,7 @@ mod tests {
     fn split_page_undecodable_key_is_not_editable() {
         let page = result(&["id", "name"], vec![vec![undecodable(), Value::Text("a".to_owned())]]);
 
-        let split = split_page(page, 2, &RowKeyLayout::Columns(vec![0])).expect("the page");
+        let split = split(page, 2, RowKeyLayout::Columns(vec![0])).expect("the page");
 
         assert_eq!(split.key(0), None, "a row whose key could not be read looked editable");
         assert!(!split.has_editable_rows());
@@ -166,7 +180,7 @@ mod tests {
             parts: &[EngineRowIdPart::SqliteRowid],
         };
 
-        let split = split_page(page, 1, &layout).expect("the page");
+        let split = split(page, 1, layout).expect("the page");
 
         assert_eq!(split.key(0), None);
     }
@@ -179,7 +193,7 @@ mod tests {
             parts: &[EngineRowIdPart::SqliteRowid],
         };
 
-        let error = split_page(page, 1, &layout).expect_err("a page missing its hidden column");
+        let error = split(page, 1, layout).expect_err("a page missing its hidden column");
 
         assert_eq!(error, BrowseSqlError::ShapeMismatch { expected: 2, found: 1 });
     }
@@ -188,7 +202,7 @@ mod tests {
     fn a_read_only_page_keeps_every_column_and_no_keys() {
         let page = result(&["a", "b"], vec![vec![Value::Int(1), Value::Int(2)]]);
 
-        let split = split_page(page, 2, &RowKeyLayout::ReadOnly).expect("the page");
+        let split = split(page, 2, RowKeyLayout::ReadOnly).expect("the page");
 
         assert_eq!(split.columns.len(), 2);
         assert_eq!(split.row_count(), 1);
@@ -203,7 +217,7 @@ mod tests {
             parts: &[EngineRowIdPart::SqliteRowid],
         };
 
-        let split = split_page(page, 1, &layout).expect("the page");
+        let split = split(page, 1, layout).expect("the page");
 
         assert_eq!(Arc::strong_count(&split.columns), 1);
     }

@@ -114,6 +114,7 @@ mod tests {
             vec![
                 KeyComponent::EngineRowId(EngineRowIdPart::PostgresTableOid),
                 KeyComponent::EngineRowId(EngineRowIdPart::PostgresCtid),
+                KeyComponent::EngineRowId(EngineRowIdPart::PostgresXmin),
             ]
         );
     }

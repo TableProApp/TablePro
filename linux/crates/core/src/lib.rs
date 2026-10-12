@@ -51,7 +51,6 @@ mod server_info;
 mod server_name_override;
 mod session_fate;
 pub mod sql_ddl;
-pub mod sql_dialect;
 pub mod sql_syntax;
 mod ssh_failure;
 pub mod statement;
@@ -99,6 +98,7 @@ pub use file_endpoint::FileEndpoint;
 pub use file_open_mode::FileOpenMode;
 pub use filter::{
     BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter, operators_for,
+    validate_raw_predicate,
 };
 pub use foreign_key_check::ForeignKeyCheck;
 pub use foreign_key_info::ForeignKeyInfo;

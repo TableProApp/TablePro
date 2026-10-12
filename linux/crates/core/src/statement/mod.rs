@@ -17,4 +17,4 @@ pub use param_type::ParamType;
 pub use row_guard::{GuardedStatement, RowGuard};
 pub use sql_build_error::SqlBuildError;
 pub use statement::Statement;
-pub use statement_builder::{PlaceholderStyle, StatementBuilder};
+pub use statement_builder::StatementBuilder;

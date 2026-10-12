@@ -1,7 +1,7 @@
 use crate::column::ColumnInfo;
 use crate::dialect::{BindTarget, SqlDialect};
 use crate::meta::{RowIdentity, TableRef};
-use crate::statement::{BoundParam, Statement};
+use crate::statement::{Statement, StatementBuilder};
 use crate::value::Value;
 
 use super::predicate::key_predicate;
@@ -24,26 +24,17 @@ pub fn build_update(
     }
     let components = key_components(identity, columns)?;
 
-    let mut sql = String::new();
-    let mut params: Vec<BoundParam> = Vec::new();
-    for (position, (index, value)) in assignments.iter().enumerate() {
+    let mut builder = StatementBuilder::new();
+    let mut set = Vec::with_capacity(assignments.len());
+    for (index, value) in assignments {
         let column = columns.get(*index).ok_or(BuildSqlError::UnknownKeyColumn {
             name: index.to_string(),
         })?;
-        if position > 0 {
-            sql.push_str(", ");
-        }
-        let placeholder = dialect.placeholder(params.len() + 1, value.clone(), BindTarget::Column(column))?;
-        sql.push_str(&dialect.quote_identifier(&column.name));
-        sql.push_str(" = ");
-        sql.push_str(&placeholder.sql);
-        if let Some(param) = placeholder.param {
-            params.push(param);
-        }
+        let marker = builder.bind(dialect, value.clone(), BindTarget::Column(column))?;
+        set.push(format!("{} = {marker}", dialect.quote_identifier(&column.name)));
     }
+    let predicate = key_predicate(&mut builder, dialect, &components, key)?;
 
-    let (predicate, key_params) = key_predicate(dialect, &components, key, params.len() + 1)?;
-    params.extend(key_params);
-    let statement_sql = dialect.update_statement(&dialect.qualify(table), &sql, &predicate);
-    Ok(Statement::from_parts(statement_sql, params))
+    builder.push_sql(&dialect.update_statement(&dialect.qualify(table), &set.join(", "), &predicate));
+    Ok(builder.finish())
 }

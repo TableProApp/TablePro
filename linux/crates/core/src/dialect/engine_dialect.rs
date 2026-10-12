@@ -2,9 +2,7 @@ use crate::column::{
     BoolStorage, CatalogType, ColumnInfo, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm,
     SqlExpression, SqlTypeExpr, TemporalZone, TextLength, classify_type_name, has_dynamic_storage,
 };
-use crate::edit::parse_literal_text;
 use crate::meta::{EngineRowId, EngineRowIdPart};
-use crate::sql_dialect::{placeholder_for, quote_ident};
 use crate::sql_syntax::{
     ExpressionSyntaxError, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError, parse_expression, parse_type,
 };
@@ -20,7 +18,8 @@ use super::{
 ///
 /// Every difference between the engines lives here rather than in a
 /// branch inside a builder, so the browse, filter and write paths are
-/// written once.
+/// written once. It stands in until each driver crate has its own
+/// dialect, and goes when the last one does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EngineDialect {
     driver_id: &'static str,
@@ -64,10 +63,6 @@ impl EngineDialect {
     pub fn driver_id(&self) -> &'static str {
         self.driver_id
     }
-
-    pub fn grammar(&self) -> SqlGrammar {
-        self.grammar
-    }
 }
 
 /// The grammar a driver's SQL is written in, for lexing a script the
@@ -86,10 +81,15 @@ impl SqlDialect for EngineDialect {
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             // ClickHouse applies a change as a mutation and reports
-            // nothing useful about how many rows it touched, so a
-            // write there proves itself with a probe.
-            exact_row_counts: self.driver_id != "clickhouse",
+            // nothing useful about how many rows it touched, and SQL
+            // Server adds the rows its triggers touch to the count, so
+            // a write on either proves itself with a probe.
+            exact_row_counts: !matches!(self.driver_id, "clickhouse" | "mssql"),
         }
+    }
+
+    fn grammar(&self) -> SqlGrammar {
+        self.grammar
     }
 
     fn quote_identifier(&self, name: &str) -> String {
@@ -97,19 +97,24 @@ impl SqlDialect for EngineDialect {
     }
 
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError> {
-        let param_type = match target {
-            BindTarget::Pattern => ParamType::Text,
-            // A row address is text the server parses back into its own
-            // address type.
-            BindTarget::EngineRowId(_) => ParamType::Text,
-            BindTarget::Column(column) => param_type_for(column)?,
+        let (param_type, cast) = match target {
+            BindTarget::Pattern => (ParamType::Text, None),
+            BindTarget::EngineRowId(EngineRowIdPart::SqliteRowid) => (ParamType::Int64, None),
+            // A PostgreSQL row address travels as text and is cast back
+            // to its own type, which has no binary form the binder knows.
+            BindTarget::EngineRowId(part) => {
+                let cast = postgres_row_id_type(part);
+                (ParamType::ServerText(SqlTypeExpr::from_catalog_text(cast)), Some(cast))
+            }
+            BindTarget::Column(column) => (param_type_for(column)?, None),
         };
         let param = BoundParam::new(value, param_type)?;
-        // `placeholder_for` counts from zero.
-        Ok(Placeholder::bound(
-            placeholder_for(self.driver_id, ordinal.saturating_sub(1)),
-            param,
-        ))
+        let marker = marker(self.driver_id, ordinal);
+        let sql = match cast {
+            Some(cast) => format!("{marker}::{cast}"),
+            None => marker,
+        };
+        Ok(Placeholder::bound(sql, param))
     }
 
     fn literal(&self, value: &Value, _column: &ColumnType) -> Result<String, LiteralError> {
@@ -138,16 +143,34 @@ impl SqlDialect for EngineDialect {
     }
 
     fn escape_like_text(&self, text: &str) -> String {
-        text.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+        let escapes: &[char] = match self.driver_id {
+            // ClickHouse reads a backslash as the escape and has no
+            // ESCAPE clause to name another.
+            "clickhouse" => &['\\', '%', '_'],
+            // `[` opens a character class in T-SQL patterns.
+            "mssql" => &['!', '%', '_', '['],
+            _ => &['!', '%', '_'],
+        };
+        let escape = match self.driver_id {
+            "clickhouse" => '\\',
+            _ => '!',
+        };
+        let mut escaped = String::with_capacity(text.len());
+        for character in text.chars() {
+            if escapes.contains(&character) {
+                escaped.push(escape);
+            }
+            escaped.push(character);
+        }
+        escaped
     }
 
     fn like_predicate(&self, column_sql: &str, pattern_sql: &str, form: LikeForm) -> String {
         let insensitive = matches!(form.case, LikeCase::Insensitive);
-        // Only PostgreSQL spells it ILIKE. Elsewhere the collation
-        // usually already ignores case, and LOWER() on both sides is
-        // what makes it certain without an engine-specific operator.
+        // PostgreSQL and ClickHouse spell it ILIKE. Elsewhere LOWER() on
+        // both sides is what makes it certain whatever the collation.
         let (left, right, operator) = match (insensitive, self.driver_id) {
-            (true, "postgres") => (column_sql.to_owned(), pattern_sql.to_owned(), "ILIKE"),
+            (true, "postgres" | "clickhouse") => (column_sql.to_owned(), pattern_sql.to_owned(), "ILIKE"),
             (true, _) => (format!("LOWER({column_sql})"), format!("LOWER({pattern_sql})"), "LIKE"),
             (false, _) => (column_sql.to_owned(), pattern_sql.to_owned(), "LIKE"),
         };
@@ -155,14 +178,24 @@ impl SqlDialect for EngineDialect {
             true => format!("NOT {operator}"),
             false => operator.to_owned(),
         };
-        match form.escaped {
-            true => format!("{left} {operator} {right} ESCAPE '\\'"),
-            false => format!("{left} {operator} {right}"),
+        match (form.escaped, self.driver_id) {
+            (true, "clickhouse") | (false, _) => format!("{left} {operator} {right}"),
+            (true, _) => format!("{left} {operator} {right} ESCAPE '!'"),
         }
     }
 
     fn row_window(&self, order_by: Option<&str>, limit: u64, offset: u64) -> String {
-        crate::sql_dialect::build_order_and_pagination(self.driver_id, order_by, limit, offset)
+        let order_by = order_by.map(str::trim).filter(|order| !order.is_empty());
+        // OFFSET … FETCH is a suffix of ORDER BY in T-SQL, so a page
+        // with no sort still needs one; `(SELECT NULL)` orders nothing.
+        if self.driver_id == "mssql" {
+            let order = order_by.unwrap_or("(SELECT NULL)");
+            return format!(" ORDER BY {order} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY");
+        }
+        match order_by {
+            Some(order) => format!(" ORDER BY {order} LIMIT {limit} OFFSET {offset}"),
+            None => format!(" LIMIT {limit} OFFSET {offset}"),
+        }
     }
 
     fn row_value_after(&self, key_sql: &[String], markers: &[String], direction: KeysetDirection) -> String {
@@ -176,25 +209,50 @@ impl SqlDialect for EngineDialect {
     }
 
     fn engine_row_id(&self, id: EngineRowId) -> Option<String> {
-        match (self.driver_id, id) {
-            ("postgres", EngineRowId::PostgresCtid) => Some("ctid".to_owned()),
-            ("postgres", EngineRowId::PostgresTableoidCtid) => Some("tableoid, ctid".to_owned()),
-            ("sqlite", EngineRowId::SqliteRowid) => Some("rowid".to_owned()),
-            _ => None,
-        }
+        let projections: Option<Vec<String>> = id
+            .parts()
+            .iter()
+            .map(|part| {
+                let column = self.engine_row_id_column(*part)?;
+                let alias = self.quote_identifier(part.projection_alias());
+                // The PostgreSQL address types have no binary form the
+                // driver decodes, so they are read as their text.
+                Some(match self.driver_id {
+                    "postgres" => format!("{column}::text AS {alias}"),
+                    _ => format!("{column} AS {alias}"),
+                })
+            })
+            .collect();
+        projections.map(|projections| projections.join(", "))
     }
 
     fn engine_row_id_column(&self, part: EngineRowIdPart) -> Option<String> {
         match (self.driver_id, part) {
             ("postgres", EngineRowIdPart::PostgresCtid) => Some("ctid".to_owned()),
             ("postgres", EngineRowIdPart::PostgresTableOid) => Some("tableoid".to_owned()),
+            ("postgres", EngineRowIdPart::PostgresXmin) => Some("xmin".to_owned()),
             ("sqlite", EngineRowIdPart::SqliteRowid) => Some("rowid".to_owned()),
             _ => None,
         }
     }
 
+    fn count_all(&self) -> &'static str {
+        match self.driver_id {
+            // COUNT(*) is an int on SQL Server and overflows past two
+            // billion rows.
+            "mssql" => "COUNT_BIG(*)",
+            "clickhouse" => "count()",
+            _ => "COUNT(*)",
+        }
+    }
+
     fn update_statement(&self, table_sql: &str, assignments_sql: &str, predicate_sql: &str) -> String {
-        crate::sql_dialect::build_update(self.driver_id, table_sql, assignments_sql, predicate_sql)
+        match self.driver_id {
+            // Standard UPDATE only arrived in ClickHouse 25.7; the
+            // mutation spelling works on every supported release.
+            "clickhouse" => format!("ALTER TABLE {table_sql} UPDATE {assignments_sql} WHERE {predicate_sql}"),
+            _ => format!("UPDATE {table_sql} SET {assignments_sql} WHERE {predicate_sql}"),
+        }
     }
 
     fn delete_statement(&self, table_sql: &str, predicate_sql: &str) -> String {
@@ -217,9 +275,13 @@ impl SqlDialect for EngineDialect {
 
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         match self.driver_id {
-            "mssql" => {
-                format!("SELECT COUNT(*) FROM (SELECT TOP 2 1 AS one FROM {table_sql} WHERE {predicate_sql}) AS probe")
-            }
+            // The lock hints hold the probed key until commit, so the
+            // row cannot change between the probe and the write.
+            "mssql" => format!(
+                "SELECT COUNT_BIG(*) FROM (SELECT TOP (2) 1 AS one FROM {table_sql} WITH (UPDLOCK, HOLDLOCK) WHERE {predicate_sql}) AS probe"
+            ),
+            // No FINAL, so unmerged duplicates of a sorting key count.
+            "clickhouse" => format!("SELECT count() FROM (SELECT 1 FROM {table_sql} WHERE {predicate_sql} LIMIT 2)"),
             _ => format!(
                 "SELECT COUNT(*) FROM (SELECT 1 AS one FROM {table_sql} WHERE {predicate_sql} LIMIT 2) AS probe"
             ),
@@ -247,6 +309,48 @@ impl SqlDialect for EngineDialect {
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError> {
         let parsed = parse_expression(self.grammar, text, MAX_EXPRESSION_LEN)?;
         Ok(SqlExpression::from_catalog_text(parsed.text))
+    }
+}
+
+pub(crate) fn quote_ident(driver_id: &str, name: &str) -> String {
+    match driver_id {
+        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "clickhouse" => quote_clickhouse_ident(name),
+        "mssql" => format!("[{}]", name.replace(']', "]]")),
+        _ => format!("\"{}\"", name.replace('"', "\"\"")),
+    }
+}
+
+/// ClickHouse's lexer reads a backslash inside backticks as an escape,
+/// so doubling the delimiter alone lets `\`` close the identifier early.
+fn quote_clickhouse_ident(name: &str) -> String {
+    let mut quoted = String::with_capacity(name.len() + 2);
+    quoted.push('`');
+    for character in name.chars() {
+        if matches!(character, '\\' | '\'' | '`' | '\t' | '\n') {
+            quoted.push('\\');
+        }
+        quoted.push(character);
+    }
+    quoted.push('`');
+    quoted
+}
+
+/// The marker for the parameter at `ordinal`, which counts the ones
+/// already bound.
+fn marker(driver_id: &str, ordinal: usize) -> String {
+    match driver_id {
+        "postgres" => format!("${}", ordinal + 1),
+        "mssql" => format!("@P{}", ordinal + 1),
+        _ => "?".to_owned(),
+    }
+}
+
+fn postgres_row_id_type(part: EngineRowIdPart) -> &'static str {
+    match part {
+        EngineRowIdPart::PostgresTableOid => "oid",
+        EngineRowIdPart::PostgresXmin => "xid",
+        EngineRowIdPart::PostgresCtid | EngineRowIdPart::SqliteRowid => "tid",
     }
 }
 
@@ -337,11 +441,6 @@ fn integer_param_type(kind: IntegerKind) -> ParamType {
     }
 }
 
-/// Text the user typed, as a value of the column's type.
-pub fn parse_for_column(text: &str, column: &ColumnInfo) -> Result<Value, crate::edit::EditParseError> {
-    parse_literal_text(text, &column.column_type)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,12 +457,16 @@ mod tests {
     }
 
     #[test]
-    fn only_postgres_spells_it_ilike() {
+    fn postgres_and_clickhouse_spell_it_ilike() {
         let insensitive = LikeForm::insensitive(false);
 
         assert_eq!(
             dialect_for("postgres").like_predicate("\"a\"", "$1", insensitive),
             "\"a\" ILIKE $1"
+        );
+        assert_eq!(
+            dialect_for("clickhouse").like_predicate("`a`", "'x'", insensitive),
+            "`a` ILIKE 'x'"
         );
         assert_eq!(
             dialect_for("mysql").like_predicate("`a`", "?", insensitive),
@@ -396,13 +499,87 @@ mod tests {
     fn only_the_engines_with_a_row_address_offer_one() {
         assert_eq!(
             dialect_for("postgres").engine_row_id(EngineRowId::PostgresTableoidCtid),
-            Some("tableoid, ctid".to_owned())
+            Some(
+                r#"tableoid::text AS "__tablepro_row_oid", ctid::text AS "__tablepro_row_id", xmin::text AS "__tablepro_row_xmin""#
+                    .to_owned()
+            )
         );
         assert_eq!(
             dialect_for("sqlite").engine_row_id(EngineRowId::SqliteRowid),
-            Some("rowid".to_owned())
+            Some(r#"rowid AS "__tablepro_row_id""#.to_owned())
         );
         assert_eq!(dialect_for("mysql").engine_row_id(EngineRowId::SqliteRowid), None);
+    }
+
+    #[test]
+    fn a_postgres_row_address_is_cast_back_to_its_own_type() {
+        let placeholder = dialect_for("postgres")
+            .placeholder(
+                2,
+                Value::Text("742".to_owned()),
+                BindTarget::EngineRowId(EngineRowIdPart::PostgresXmin),
+            )
+            .expect("a bound xmin");
+
+        assert_eq!(placeholder.sql, "$3::xid");
+        assert_eq!(
+            placeholder.param.as_ref().map(BoundParam::param_type),
+            Some(&ParamType::ServerText(SqlTypeExpr::from_catalog_text("xid")))
+        );
+    }
+
+    #[test]
+    fn markers_count_from_the_parameters_already_bound() {
+        let column = info(
+            ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            None,
+        );
+        let text = || Value::Text("x".to_owned());
+
+        let first = dialect_for("postgres").placeholder(0, text(), BindTarget::Column(&column));
+        let third = dialect_for("mssql").placeholder(2, text(), BindTarget::Column(&column));
+
+        assert_eq!(first.map(|placeholder| placeholder.sql), Ok("$1".to_owned()));
+        assert_eq!(third.map(|placeholder| placeholder.sql), Ok("@P3".to_owned()));
+    }
+
+    #[test]
+    fn sql_server_counts_with_count_big() {
+        let statement = crate::browse::build_count(
+            dialect_for("mssql"),
+            &crate::meta::TableRef::new(Some("dbo".to_owned()), "orders"),
+            &[],
+            &crate::filter::FilterSet::default(),
+        )
+        .expect("the count");
+
+        assert_eq!(statement.sql(), "SELECT COUNT_BIG(*) FROM [dbo].[orders]");
+        assert!(
+            dialect_for("mssql")
+                .key_probe("t", "p")
+                .starts_with("SELECT COUNT_BIG(*)")
+        );
+        assert_eq!(dialect_for("postgres").count_all(), "COUNT(*)");
+    }
+
+    #[test]
+    fn like_escapes_with_bang_except_on_clickhouse() {
+        let contains = LikeForm::contains();
+
+        assert_eq!(dialect_for("postgres").escape_like_text("5!0%_"), "5!!0!%!_");
+        assert_eq!(dialect_for("mssql").escape_like_text("[a]"), "![a]");
+        assert_eq!(dialect_for("clickhouse").escape_like_text("a\\%_"), "a\\\\\\%\\_");
+        assert_eq!(
+            dialect_for("sqlite").like_predicate("\"a\"", "?", contains),
+            "\"a\" LIKE ? ESCAPE '!'"
+        );
+        assert_eq!(
+            dialect_for("clickhouse").like_predicate("`a`", "'x'", contains),
+            "`a` LIKE 'x'",
+            "ClickHouse got an ESCAPE clause"
+        );
     }
 
     #[test]
@@ -543,7 +720,7 @@ mod tests {
         for driver in ["postgres", "mysql", "sqlite", "mssql", "clickhouse"] {
             let probe = dialect_for(driver).key_probe("t", "id = 1");
             assert!(
-                probe.contains("LIMIT 2") || probe.contains("TOP 2"),
+                probe.contains("LIMIT 2") || probe.contains("TOP (2)"),
                 "{driver}: {probe}"
             );
         }

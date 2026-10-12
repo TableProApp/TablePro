@@ -2,7 +2,7 @@ use crate::column::ColumnInfo;
 use crate::dialect::{BindTarget, SqlDialect};
 use crate::edit::CellInput;
 use crate::meta::TableRef;
-use crate::statement::{BoundParam, Statement};
+use crate::statement::{Statement, StatementBuilder};
 
 use super::BuildSqlError;
 
@@ -25,9 +25,9 @@ pub fn build_insert(
     }
     let table_sql = dialect.qualify(table);
 
+    let mut builder = StatementBuilder::new();
     let mut names = Vec::new();
     let mut markers = Vec::new();
-    let mut params: Vec<BoundParam> = Vec::new();
     for (column, cell) in columns.iter().zip(cells) {
         let Some(value) = cell.value() else {
             continue;
@@ -35,12 +35,8 @@ pub fn build_insert(
         if column.is_generated || column.is_auto_increment {
             continue;
         }
-        let placeholder = dialect.placeholder(params.len() + 1, value.clone(), BindTarget::Column(column))?;
+        markers.push(builder.bind(dialect, value.clone(), BindTarget::Column(column))?);
         names.push(dialect.quote_identifier(&column.name));
-        markers.push(placeholder.sql);
-        if let Some(param) = placeholder.param {
-            params.push(param);
-        }
     }
 
     if names.is_empty() {
@@ -49,13 +45,14 @@ pub fn build_insert(
         let sql = dialect
             .insert_default_row(&table_sql)
             .ok_or(BuildSqlError::NoInsertValues)?;
-        return Ok(Statement::from_parts(sql, Vec::new()));
+        builder.push_sql(&sql);
+        return Ok(builder.finish());
     }
 
-    let sql = format!(
+    builder.push_sql(&format!(
         "INSERT INTO {table_sql} ({}) VALUES ({})",
         names.join(", "),
         markers.join(", ")
-    );
-    Ok(Statement::from_parts(sql, params))
+    ));
+    Ok(builder.finish())
 }

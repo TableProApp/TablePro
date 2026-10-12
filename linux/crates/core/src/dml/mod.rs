@@ -6,6 +6,7 @@
 
 mod build_delete;
 mod build_insert;
+mod build_key_probe;
 mod build_sql_error;
 mod build_update;
 mod key_component;
@@ -13,8 +14,9 @@ mod predicate;
 #[cfg(test)]
 mod tests;
 
-pub use build_delete::{build_delete, build_key_probe};
+pub use build_delete::build_delete;
 pub use build_insert::build_insert;
+pub use build_key_probe::build_key_probe;
 pub use build_sql_error::BuildSqlError;
 pub use build_update::build_update;
 pub use key_component::{KeyComponent, key_components};

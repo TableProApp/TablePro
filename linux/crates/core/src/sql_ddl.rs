@@ -1,9 +1,9 @@
 //! DDL string builders for CREATE / ALTER / DROP TABLE, CREATE / DROP
 //! INDEX, ADD / DROP FOREIGN KEY across MySQL + Postgres + SQLite.
 //!
-//! Pure SQL-string construction; no async, no I/O. Mirrors the
-//! parameterised-by-`driver_id` style of `sql_dialect.rs`. All
-//! identifier quoting goes through `sql_dialect::quote_ident`; type
+//! Pure SQL-string construction; no async, no I/O. Keyed by
+//! `driver_id` until the per-engine DDL dialects replace it. All
+//! identifier quoting goes through the engine dialect's quoting; type
 //! names interpolate raw because they're a syntax category, not a
 //! string-literal category — the worst case is a driver syntax error,
 //! never injection.
@@ -16,9 +16,9 @@ use thiserror::Error;
 
 use crate::column::{ColumnInfo, ColumnType};
 use crate::ddl::ReferentialAction;
+use crate::dialect::quote_ident;
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, IndexKey};
-use crate::sql_dialect::quote_ident;
 
 #[derive(Debug, Error)]
 pub enum BuildDdlError {

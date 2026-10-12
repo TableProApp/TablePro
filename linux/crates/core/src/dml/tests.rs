@@ -1,9 +1,9 @@
 use crate::column::{
     ColumnDefault, ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength,
 };
-use crate::dialect::TestDialect;
+use crate::dialect::{RecordedTarget, TestDialect, TestMarkers};
 use crate::edit::CellInput;
-use crate::meta::{EngineRowId, RowIdentity, TableRef};
+use crate::meta::{EngineRowId, EngineRowIdPart, RowIdentity, TableRef};
 use crate::value::{UndecodableReason, UndecodedValue, Value};
 
 use super::*;
@@ -159,7 +159,7 @@ fn a_key_of_the_wrong_length_is_error() {
 
 #[test]
 fn an_engine_row_id_needs_a_dialect_that_has_one() {
-    let dialect = TestDialect::exact();
+    let dialect = TestDialect::exact().without_row_ids();
     let identity = RowIdentity::EngineRowId(EngineRowId::SqliteRowid);
 
     let error = build_delete(&dialect, &table(), &columns(), &identity, &[Value::Int(11)])
@@ -238,19 +238,85 @@ fn build_insert_leaves_out_the_cells_the_user_did_not_fill() {
 }
 
 #[test]
-fn build_insert_all_default_uses_default_row() {
-    let dialect = TestDialect::exact();
+fn build_insert_all_default_uses_default_row_or_errors() {
+    let all_default = [CellInput::Default, CellInput::Default, CellInput::Default];
 
-    let statement = build_insert(
-        &dialect,
+    let statement =
+        build_insert(&TestDialect::exact(), &table(), &columns(), &all_default).expect("the default-row insert");
+    let error = build_insert(
+        &TestDialect::exact().without_default_row(),
         &table(),
         &columns(),
-        &[CellInput::Default, CellInput::Default, CellInput::Default],
+        &all_default,
     )
-    .expect("the insert");
+    .expect_err("an engine with no default-row insert");
 
     assert_eq!(statement.sql(), r#"INSERT INTO "public"."users" DEFAULT VALUES"#);
     assert!(statement.params().is_empty());
+    assert_eq!(error, BuildSqlError::NoInsertValues);
+}
+
+#[test]
+fn build_update_engine_row_id_uses_part_columns_and_targets() {
+    let dialect = TestDialect::exact();
+    let identity = RowIdentity::EngineRowId(EngineRowId::PostgresTableoidCtid);
+    let key = [
+        Value::Text("16384".to_owned()),
+        Value::Text("(0,7)".to_owned()),
+        Value::Text("742".to_owned()),
+    ];
+
+    let statement = build_update(
+        &dialect,
+        &table(),
+        &columns(),
+        &identity,
+        &key,
+        &[(1, Value::Text("new".to_owned()))],
+    )
+    .expect("the update");
+
+    assert_eq!(
+        statement.sql(),
+        r#"UPDATE "public"."users" SET "name" = $1 WHERE tableoid = $2 AND ctid = $3 AND xmin = $4"#
+    );
+    assert_eq!(
+        dialect.targets(),
+        vec![
+            RecordedTarget::Column("name".to_owned()),
+            RecordedTarget::EngineRowId(EngineRowIdPart::PostgresTableOid),
+            RecordedTarget::EngineRowId(EngineRowIdPart::PostgresCtid),
+            RecordedTarget::EngineRowId(EngineRowIdPart::PostgresXmin),
+        ]
+    );
+}
+
+#[test]
+fn positional_markers_bind_assignments_before_the_key() {
+    let dialect = TestDialect::exact().with_markers(TestMarkers::Positional);
+    let identity = RowIdentity::UniqueKey {
+        columns: vec!["id".to_owned(), "tenant".to_owned()],
+    };
+
+    let statement = build_update(
+        &dialect,
+        &table(),
+        &columns(),
+        &identity,
+        &[Value::Int(7), Value::Int(3)],
+        &[(1, Value::Text("new".to_owned()))],
+    )
+    .expect("the update");
+
+    assert_eq!(
+        statement.sql(),
+        r#"UPDATE "public"."users" SET "name" = ? WHERE "id" = ? AND "tenant" = ?"#
+    );
+    let values: Vec<_> = statement.params().iter().map(|param| param.value().clone()).collect();
+    assert_eq!(
+        values,
+        vec![Value::Text("new".to_owned()), Value::Int(7), Value::Int(3)]
+    );
 }
 
 #[test]

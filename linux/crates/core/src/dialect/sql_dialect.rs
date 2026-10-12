@@ -1,6 +1,7 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
+use crate::ddl::DdlDialect;
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
-use crate::sql_syntax::{ExpressionSyntaxError, TypeSyntaxError};
+use crate::sql_syntax::{ExpressionSyntaxError, SqlGrammar, TypeSyntaxError};
 use crate::value::Value;
 
 use super::{
@@ -13,15 +14,30 @@ use super::{
 /// driver id, so adding an engine is a new implementation rather than a
 /// new branch in the browse, filter and write paths. No method reads
 /// session state or knows which driver it belongs to.
+///
+/// Methods that take SQL fragments must keep them in the order given:
+/// the builders bind markers in that order, and an engine with
+/// positional markers (`?`) matches parameters by position.
 pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn capabilities(&self) -> DialectCapabilities;
+
+    /// The grammar the engine's SQL is written in, for validating and
+    /// lexing text the user typed.
+    fn grammar(&self) -> SqlGrammar;
 
     /// Wrap an identifier so it cannot be read as anything else,
     /// whatever it contains.
     fn quote_identifier(&self, name: &str) -> String;
 
-    /// Bind one value, giving back the SQL that names it. An engine
-    /// with no parameters returns a literal instead.
+    /// Bind one value, giving back the SQL that names it.
+    ///
+    /// `ordinal` is the number of parameters the statement already
+    /// holds, so a returned parameter lands at that index in
+    /// `Statement::params`. A numbered engine renders `$<ordinal + 1>`;
+    /// one with named server-side parameters names it from the ordinal
+    /// (ClickHouse `{p<ordinal>:<type>}`) and the driver binds
+    /// `params[i]` under the same name. An engine with no parameters
+    /// returns a literal and no parameter.
     fn placeholder(&self, ordinal: usize, value: Value, target: BindTarget<'_>) -> Result<Placeholder, BindError>;
 
     /// A value written into SQL directly, for the places a parameter
@@ -32,6 +48,9 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// so a user searching for `50%` does not match everything.
     fn escape_like_text(&self, text: &str) -> String;
 
+    /// The ORDER BY and row-window tail of a page query. It starts with
+    /// a space, because the builders append it straight after the FROM
+    /// or WHERE clause.
     fn row_window(&self, order_by: Option<&str>, limit: u64, offset: u64) -> String;
 
     /// The comparison that reads the page after (or before) a row,
@@ -39,7 +58,8 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn row_value_after(&self, key_sql: &[String], markers: &[String], direction: KeysetDirection) -> String;
 
     /// The extra columns a page selects to carry the engine's own row
-    /// address, or `None` where the engine has none.
+    /// address, one per part in `EngineRowId::parts` order, or `None`
+    /// where the engine has none.
     fn engine_row_id(&self, id: EngineRowId) -> Option<String>;
 
     /// The column one part of that address is compared against in a
@@ -49,6 +69,12 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     fn parse_type(&self, text: &str) -> Result<ColumnType, TypeSyntaxError>;
 
     fn parse_expression(&self, text: &str) -> Result<SqlExpression, ExpressionSyntaxError>;
+
+    /// The engine's structure-change spelling, or `None` where the app
+    /// does not edit this engine's structure.
+    fn ddl(&self) -> Option<&dyn DdlDialect> {
+        None
+    }
 
     fn qualify(&self, table: &TableRef) -> String {
         match table.schema.as_deref().filter(|schema| !schema.is_empty()) {
@@ -79,6 +105,9 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         "COUNT(*)"
     }
 
+    /// `!` rather than a backslash: a backslash means something else
+    /// inside a string literal under some PostgreSQL and MySQL session
+    /// modes, and is no escape at all on SQLite and SQL Server.
     fn like_predicate(&self, column_sql: &str, pattern_sql: &str, form: LikeForm) -> String {
         let operator = match (form.negated, form.case) {
             (false, LikeCase::EngineDefault) => "LIKE",
@@ -87,7 +116,7 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
             (true, LikeCase::Insensitive) => "NOT ILIKE",
         };
         match form.escaped {
-            true => format!("{column_sql} {operator} {pattern_sql} ESCAPE '\\'"),
+            true => format!("{column_sql} {operator} {pattern_sql} ESCAPE '!'"),
             false => format!("{column_sql} {operator} {pattern_sql}"),
         }
     }

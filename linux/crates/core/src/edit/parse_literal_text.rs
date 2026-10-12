@@ -16,7 +16,23 @@ use super::{EditParseError, ReadOnlyReason};
 /// the strict parse fails, because the server is the authority on what
 /// it accepts.
 pub fn parse_literal_text(input: &str, column: &ColumnType) -> Result<Value, EditParseError> {
-    match strict(input, column) {
+    parse(input, column, Purpose::Store)
+}
+
+/// What the parsed value is for, which decides whether the column's
+/// declared precision applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Purpose {
+    /// Written to the column, so it has to fit: the server would round
+    /// or refuse a value that does not.
+    Store,
+    /// Compared against the column. `price > 1.005` is a fair question
+    /// for a `numeric(10,2)` column.
+    Compare,
+}
+
+fn parse(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, EditParseError> {
+    match strict(input, column, purpose) {
         Ok(value) => Ok(value),
         Err(_) if column.dynamic_storage && keeps_text_on_failure(&column.kind) => Ok(Value::Text(input.to_owned())),
         Err(error) => Err(error),
@@ -39,13 +55,14 @@ fn keeps_text_on_failure(kind: &ColumnKind) -> bool {
     )
 }
 
-fn strict(input: &str, column: &ColumnType) -> Result<Value, EditParseError> {
+fn strict(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, EditParseError> {
     let trimmed = input.trim();
     match &column.kind {
         ColumnKind::Bool(BoolStorage::Native) => parse_bool(trimmed).map(Value::Bool),
         ColumnKind::Bool(BoolStorage::Integer) => parse_integer_bool(trimmed),
         ColumnKind::Integer(kind) => parse_integer(trimmed, *kind),
-        ColumnKind::Decimal { .. } | ColumnKind::Money { .. } => parse_decimal(trimmed),
+        ColumnKind::Decimal { precision, scale } => parse_decimal(trimmed, purpose, *precision, *scale),
+        ColumnKind::Money { scale } => parse_decimal(trimmed, purpose, None, scale.map(u32::from)),
         ColumnKind::Float(width) => parse_float(trimmed, *width),
         // Text keeps what the user typed, spaces included: a trailing
         // space is a value, not a typo the app gets to remove.
@@ -133,11 +150,37 @@ fn narrow(wide: WideInteger) -> Value {
     Value::WideInt(wide)
 }
 
-fn parse_decimal(input: &str) -> Result<Value, EditParseError> {
-    input
-        .parse::<SqlDecimal>()
-        .map(Value::Decimal)
-        .map_err(EditParseError::InvalidDecimal)
+fn parse_decimal(
+    input: &str,
+    purpose: Purpose,
+    precision: Option<u32>,
+    scale: Option<u32>,
+) -> Result<Value, EditParseError> {
+    let decimal = input.parse::<SqlDecimal>().map_err(EditParseError::InvalidDecimal)?;
+    if purpose == Purpose::Store && decimal.is_finite() {
+        check_declared_digits(&decimal, precision, scale)?;
+    }
+    Ok(Value::Decimal(decimal))
+}
+
+/// Refuse a value the column would round or overflow, rather than let
+/// the server change what the user typed. Trailing zeros past the scale
+/// are not a change, so `1.50` fits `numeric(10,1)`.
+fn check_declared_digits(
+    decimal: &SqlDecimal,
+    precision: Option<u32>,
+    scale: Option<u32>,
+) -> Result<(), EditParseError> {
+    match (precision, scale) {
+        (_, Some(scale)) if !decimal.fits(u32::MAX, scale) => Err(EditParseError::ScaleExceeded { scale }),
+        (Some(precision), Some(scale)) if !decimal.fits(precision, scale) => {
+            Err(EditParseError::PrecisionExceeded { precision })
+        }
+        (Some(precision), None) if decimal.integer_digits().is_some_and(|digits| digits > precision) => {
+            Err(EditParseError::PrecisionExceeded { precision })
+        }
+        _ => Ok(()),
+    }
 }
 
 fn parse_float(input: &str, width: FloatWidth) -> Result<Value, EditParseError> {
@@ -250,7 +293,7 @@ pub fn parse_filter_text(input: &str, column: &ColumnType) -> Result<Value, Edit
         | ColumnKind::Array { .. }
         | ColumnKind::Variant
         | ColumnKind::Composite => Ok(Value::Text(input.to_owned())),
-        _ => parse_literal_text(input, column),
+        _ => parse(input, column, Purpose::Compare),
     }
 }
 
@@ -390,6 +433,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn parse_literal_text_numeric_scale_exceeded() {
+        let numeric = ColumnKind::Decimal {
+            precision: Some(10),
+            scale: Some(2),
+        };
+
+        assert_eq!(
+            parse(numeric.clone(), "1.005"),
+            Err(EditParseError::ScaleExceeded { scale: 2 }),
+            "the server would have rounded the value"
+        );
+        assert_eq!(
+            parse(numeric.clone(), "123456789.5"),
+            Err(EditParseError::PrecisionExceeded { precision: 10 })
+        );
+        assert!(matches!(parse(numeric.clone(), "12345678.50"), Ok(Value::Decimal(_))));
+        assert!(
+            matches!(parse(numeric.clone(), "NaN"), Ok(Value::Decimal(_))),
+            "a non-finite value is the server's to judge"
+        );
+        assert!(
+            matches!(
+                parse_filter_text("1.005", &column(numeric, false)),
+                Ok(Value::Decimal(_))
+            ),
+            "a comparison was held to the column's scale"
+        );
+        assert_eq!(
+            parse(ColumnKind::Money { scale: Some(2) }, "0.001"),
+            Err(EditParseError::ScaleExceeded { scale: 2 })
+        );
     }
 
     #[test]

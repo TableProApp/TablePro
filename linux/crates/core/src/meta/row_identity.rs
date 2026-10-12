@@ -34,7 +34,31 @@ pub enum EngineRowId {
 pub enum EngineRowIdPart {
     PostgresTableOid,
     PostgresCtid,
+    /// The transaction that wrote this tuple version. VACUUM can hand a
+    /// freed ctid to a new row, and xmin is what tells the two apart,
+    /// so a save against the old row matches nothing instead of the
+    /// stranger now living at its address.
+    PostgresXmin,
     SqliteRowid,
+}
+
+impl EngineRowIdPart {
+    /// Whether rows can be ordered by this part. xmin names a version,
+    /// not a position, and PostgreSQL's xid type has no ordering
+    /// operator, so it never reaches an ORDER BY or a keyset bound.
+    pub fn orders_rows(self) -> bool {
+        !matches!(self, Self::PostgresXmin)
+    }
+
+    /// The name a page gives the hidden column that carries this part.
+    /// Fixed here so every dialect projects the same names.
+    pub fn projection_alias(self) -> &'static str {
+        match self {
+            Self::PostgresTableOid => "__tablepro_row_oid",
+            Self::PostgresCtid | Self::SqliteRowid => "__tablepro_row_id",
+            Self::PostgresXmin => "__tablepro_row_xmin",
+        }
+    }
 }
 
 impl EngineRowId {
@@ -43,8 +67,12 @@ impl EngineRowId {
     /// and the DML predicate, so they cannot disagree.
     pub fn parts(self) -> &'static [EngineRowIdPart] {
         match self {
-            Self::PostgresCtid => &[EngineRowIdPart::PostgresCtid],
-            Self::PostgresTableoidCtid => &[EngineRowIdPart::PostgresTableOid, EngineRowIdPart::PostgresCtid],
+            Self::PostgresCtid => &[EngineRowIdPart::PostgresCtid, EngineRowIdPart::PostgresXmin],
+            Self::PostgresTableoidCtid => &[
+                EngineRowIdPart::PostgresTableOid,
+                EngineRowIdPart::PostgresCtid,
+                EngineRowIdPart::PostgresXmin,
+            ],
             Self::SqliteRowid => &[EngineRowIdPart::SqliteRowid],
         }
     }
@@ -72,10 +100,27 @@ mod tests {
     fn a_partitioned_ctid_carries_its_partition_first() {
         assert_eq!(
             EngineRowId::PostgresTableoidCtid.parts(),
-            &[EngineRowIdPart::PostgresTableOid, EngineRowIdPart::PostgresCtid]
+            &[
+                EngineRowIdPart::PostgresTableOid,
+                EngineRowIdPart::PostgresCtid,
+                EngineRowIdPart::PostgresXmin
+            ]
         );
-        assert_eq!(EngineRowId::PostgresCtid.parts(), &[EngineRowIdPart::PostgresCtid]);
         assert_eq!(EngineRowId::SqliteRowid.parts(), &[EngineRowIdPart::SqliteRowid]);
+    }
+
+    #[test]
+    fn a_postgres_row_address_carries_its_tuple_version() {
+        assert_eq!(
+            EngineRowId::PostgresCtid.parts(),
+            &[EngineRowIdPart::PostgresCtid, EngineRowIdPart::PostgresXmin],
+            "a ctid reused after VACUUM would name the wrong row"
+        );
+        assert!(
+            !EngineRowIdPart::PostgresXmin.orders_rows(),
+            "xid has no ordering operator"
+        );
+        assert!(EngineRowIdPart::PostgresCtid.orders_rows());
     }
 
     #[test]
