@@ -2,11 +2,10 @@ use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 use secrecy::SecretString;
 
-use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig};
+use tablepro_ssh::{SshAuth, SshConfig};
 use tablepro_storage::SavedSshConfig;
 
 use super::ssh_inputs::{SSH_AUTH_PASSWORD, SshRowValues, saved_ssh_from_rows};
-use crate::services::connection_service::{InterimSshAuth, interim_ssh_target};
 
 /// SSH section uses a single `AdwPreferencesGroup` containing one
 /// `AdwExpanderRow`. The expander's enable-switch toggles whether the
@@ -141,37 +140,38 @@ impl SshSection {
             has_passphrase_text: !passphrase_text.is_empty(),
         };
         let saved = saved_ssh_from_rows(&rows).map_err(|error| error.message())?;
-        let target = interim_ssh_target(&saved).map_err(|error| crate::ui::error_text::ssh_message(&error))?;
-
-        let (auth, secret_to_store) = match target.auth {
-            InterimSshAuth::PrivateKey { path, has_passphrase } => {
-                let passphrase = has_passphrase.then(|| SecretString::from(passphrase_text.to_string()));
-                let secret = passphrase
-                    .clone()
-                    .map_or(SshSecretToStore::None, SshSecretToStore::Passphrase);
-                (SshAuth::PrivateKey { path, passphrase }, secret)
-            }
-            InterimSshAuth::Password => {
-                let password = SecretString::from(self.password.text().to_string());
-                (
-                    SshAuth::Password {
-                        password: password.clone(),
-                    },
-                    SshSecretToStore::Password(password),
-                )
-            }
-        };
-
+        let mut cfg = tablepro_session::connect::ssh_config(&saved)
+            .map_err(|failure| crate::ui::error_text::ssh_failure_message(&failure))?;
+        let secret_to_store = fill_secret(
+            &mut cfg,
+            SecretString::from(self.password.text().to_string()),
+            SecretString::from(passphrase_text.to_string()),
+        );
         Ok(SshInputs {
-            cfg: SshConfig {
-                host: target.host,
-                port: target.port,
-                username: target.username,
-                auth,
-            },
+            cfg,
             saved,
             secret_to_store,
         })
+    }
+}
+
+/// Put the typed secret into the configuration the rows produced, and
+/// say which one the keyring should keep. A key with no passphrase typed
+/// keeps none, so ssh asks for it itself if the key needs one.
+fn fill_secret(cfg: &mut SshConfig, password: SecretString, passphrase: SecretString) -> SshSecretToStore {
+    match &mut cfg.auth {
+        SshAuth::Password { password: slot } => {
+            *slot = password.clone();
+            SshSecretToStore::Password(password)
+        }
+        SshAuth::PrivateKey { passphrase: slot, .. } => {
+            if secrecy::ExposeSecret::expose_secret(&passphrase).is_empty() {
+                return SshSecretToStore::None;
+            }
+            *slot = Some(passphrase.clone());
+            SshSecretToStore::Passphrase(passphrase)
+        }
+        SshAuth::Agent | SshAuth::KeyboardInteractive => SshSecretToStore::None,
     }
 }
 
@@ -183,6 +183,59 @@ fn default_ssh_key_path() -> String {
         .find(|path| path.exists())
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use secrecy::ExposeSecret;
+    use tablepro_storage::SavedSshAuth;
+
+    use super::*;
+
+    fn config(auth: SavedSshAuth) -> SshConfig {
+        tablepro_session::connect::ssh_config(&SavedSshConfig {
+            host: "bastion.example.com".to_owned(),
+            port: Some(22),
+            username: Some("deploy".to_owned()),
+            jump_hosts: Vec::new(),
+            auth,
+        })
+        .expect("a valid SSH section")
+    }
+
+    #[test]
+    fn a_password_login_carries_and_keeps_the_typed_password() {
+        let mut cfg = config(SavedSshAuth::Password);
+
+        let kept = fill_secret(&mut cfg, SecretString::from("s3cret"), SecretString::from(""));
+
+        let SshAuth::Password { password } = &cfg.auth else {
+            panic!("expected password auth");
+        };
+        assert_eq!(password.expose_secret(), "s3cret");
+        assert!(matches!(kept, SshSecretToStore::Password(_)));
+    }
+
+    #[test]
+    fn a_key_with_no_passphrase_typed_keeps_none() {
+        let key = SavedSshAuth::PrivateKey {
+            path: Some("/home/u/.ssh/id_ed25519".into()),
+            has_passphrase: false,
+        };
+        let mut cfg = config(key.clone());
+        assert!(matches!(
+            fill_secret(&mut cfg, SecretString::from(""), SecretString::from("")),
+            SshSecretToStore::None
+        ));
+
+        let mut cfg = config(key);
+        let kept = fill_secret(&mut cfg, SecretString::from(""), SecretString::from("phrase"));
+        let SshAuth::PrivateKey { passphrase, .. } = &cfg.auth else {
+            panic!("expected key auth");
+        };
+        assert_eq!(passphrase.as_ref().map(ExposeSecret::expose_secret), Some("phrase"));
+        assert!(matches!(kept, SshSecretToStore::Passphrase(_)));
+    }
 }
 
 #[cfg(test)]

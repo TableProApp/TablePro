@@ -1,9 +1,8 @@
 use std::time::SystemTime;
 
+use tablepro_session::ConnectionMetadata;
 use tablepro_storage::QueryHistory;
 use tablepro_storage::query_history::{NewEntry, Outcome};
-
-use crate::services::database_service;
 
 /// What the app needs to record a statement batch it ran on the user's
 /// behalf.
@@ -16,29 +15,19 @@ use crate::services::database_service;
 #[derive(Debug, Clone)]
 pub(super) struct RanStatements {
     history: Option<QueryHistory>,
-    connection: Option<Connection>,
+    connection: Option<ConnectionMetadata>,
     sql: String,
     started_at: SystemTime,
-}
-
-#[derive(Debug, Clone)]
-struct Connection {
-    id: uuid::Uuid,
-    name: String,
-    driver_id: String,
 }
 
 impl RanStatements {
     /// Capture the batch about to run. `sql` reads as one entry in the
     /// history list, which is how the user thinks of one save.
-    pub(super) fn starting(history: Option<QueryHistory>, statements: impl IntoIterator<Item = String>) -> Self {
-        let connection = database_service::instance()
-            .active_metadata()
-            .map(|metadata| Connection {
-                id: metadata.id,
-                name: metadata.name,
-                driver_id: metadata.driver_id,
-            });
+    pub(super) fn starting(
+        history: Option<QueryHistory>,
+        connection: Option<ConnectionMetadata>,
+        statements: impl IntoIterator<Item = String>,
+    ) -> Self {
         Self {
             history,
             connection,

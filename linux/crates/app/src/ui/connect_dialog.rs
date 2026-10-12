@@ -1,27 +1,39 @@
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use relm4::adw::prelude::*;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 use secrecy::SecretString;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use tablepro_core::{AuthMode, ConnectOptions, DriverRegistry, TableInfo};
-use tablepro_storage::{ConnectionStore, SavedConnection, SavedSshConfig};
+use tablepro_core::credentials::{SecretKind, SecretSave};
+use tablepro_core::{
+    AuthMode, ConfigError, Credentials, DriverError, FileEndpoint, NetworkEndpoint, TlsConfig, TlsMode,
+    WorkspaceSettings,
+};
+use tablepro_session::connect::AttemptGeneration;
+use tablepro_session::{
+    ConnectAttempts, ConnectError, ConnectRequest, ConnectionMetadata, PendingSave, PendingSession, RequestTarget,
+    SessionKey,
+};
+use tablepro_storage::{SavedConnection, SavedSshConfig};
 
 use super::ssh_section::{SshInputs, SshSecretToStore, SshSection};
-use tablepro_core::credentials::{SecretKind, SecretVault};
 
-use crate::services::connection_service;
-use crate::services::database_service::{self, ReconnectParams};
 use crate::services::secret_labels;
-use crate::services::secret_save_report::SecretSaveReport;
+use crate::services::session_context::SessionContext;
+use crate::ui::app::ReadySession;
 
 pub struct ConnectDialog {
-    registry: Arc<DriverRegistry>,
+    context: Rc<SessionContext>,
     storage: crate::storage::SharedStorage,
-    settings: std::rc::Rc<tablepro_storage::AppSettings>,
-    tasks: tablepro_session::runtime::Tasks,
+    settings: Rc<tablepro_storage::AppSettings>,
+    /// The Connect or Test run in flight; closing the dialog or starting
+    /// another one cancels it and discards whatever it brings back.
+    attempts: ConnectAttempts,
     drivers: Vec<DriverEntry>,
     driver_combo: adw::ComboRow,
     host: adw::EntryRow,
@@ -99,10 +111,9 @@ impl AuthFormState {
 }
 
 pub struct ConnectDialogInit {
-    pub registry: Arc<DriverRegistry>,
+    pub context: Rc<SessionContext>,
     pub storage: crate::storage::SharedStorage,
-    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
-    pub tasks: tablepro_session::runtime::Tasks,
+    pub settings: Rc<tablepro_storage::AppSettings>,
 }
 
 #[derive(Debug)]
@@ -119,13 +130,8 @@ pub enum ConnectDialogInput {
 
 #[derive(Debug)]
 pub enum ConnectDialogOutput {
-    Connected {
-        tables: Vec<TableInfo>,
-        driver_id: String,
-    },
-    /// Something the user should see that did not stop the connect,
-    /// such as a password the keyring refused to keep.
-    Warning(String),
+    /// The connection works and is saved; the window adopts it.
+    Connected(Box<ReadySession>),
     Closed,
 }
 
@@ -134,18 +140,16 @@ pub enum ConnectDialogOutput {
 #[derive(Debug)]
 pub struct ConnectOutcome {
     pub saved: SavedConnection,
-    pub tables: Vec<TableInfo>,
+    pub pending: PendingSession,
     pub secret_warnings: Vec<String>,
 }
 
+/// How a Connect or a Test ended, for an error the user cancelled
+/// carries no message.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
-)]
 pub enum ConnectDialogCmd {
-    Result(Result<ConnectOutcome, String>),
-    TestResult(Result<usize, String>),
+    Result(AttemptGeneration, Box<Result<ConnectOutcome, Option<String>>>),
+    TestResult(AttemptGeneration, Result<usize, Option<String>>),
 }
 
 /// Which async operation (if any) is currently in flight. Drives
@@ -191,7 +195,8 @@ impl Component for ConnectDialog {
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let mut drivers: Vec<DriverEntry> = init
-            .registry
+            .context
+            .drivers
             .iter()
             .map(|d| DriverEntry {
                 id: d.id().to_string(),
@@ -326,10 +331,10 @@ impl Component for ConnectDialog {
         toast_overlay.set_child(Some(&page));
 
         let mut model = ConnectDialog {
-            registry: init.registry,
+            context: init.context,
             storage: init.storage,
             settings: init.settings,
-            tasks: init.tasks,
+            attempts: ConnectAttempts::new(),
             drivers: drivers.clone(),
             driver_combo,
             host,
@@ -396,167 +401,107 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::Submit => {
-                self.set_busy(BusyKind::Connecting);
-
-                let idx = self.driver_combo.selected() as usize;
-                let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::i18n::gettext("No driver selected"));
-                    return;
-                };
-
-                let driver = match self.registry.get(&entry.id) {
-                    Some(d) => d,
-                    None => {
-                        self.set_busy(BusyKind::None);
-                        self.show_toast(&crate::i18n::gettext_f(
-                            "Driver {id} not registered",
-                            &[("id", &entry.id)],
-                        ));
+                let attempt = match self.prepare_attempt() {
+                    Ok(attempt) => attempt,
+                    Err(message) => {
+                        self.show_toast(&message);
                         return;
                     }
                 };
-
-                let opts = self.collect_options();
-
-                let label = if entry.id == "sqlite" {
-                    opts.database.clone()
-                } else if opts.auth_mode == AuthMode::Kerberos {
-                    opts.host.clone()
-                } else {
-                    format!("{}@{}", opts.username, opts.host)
-                };
-                let driver_id = entry.id.clone();
-
-                let ssh_inputs = if self.ssh.is_enabled() {
-                    match self.ssh.collect() {
-                        Ok(inputs) => Some(inputs),
-                        Err(e) => {
-                            self.set_busy(BusyKind::None);
-                            self.show_toast(&e);
-                            return;
-                        }
-                    }
-                } else {
-                    None
-                };
-                let read_only = self.read_only.is_active();
-                let targets = SaveTargets {
-                    connections: self.storage.connections().clone(),
-                    secrets: self.storage.secrets().clone(),
-                    tasks: self.tasks.clone(),
-                };
-
-                sender.command(move |out, shutdown| {
-                    shutdown
-                        .register(async move {
-                            let result = run_connect(
-                                driver.clone(),
-                                targets.clone(),
-                                driver_id,
-                                label,
-                                opts,
-                                ssh_inputs,
-                                read_only,
-                            )
-                            .await;
-                            out.send(ConnectDialogCmd::Result(result)).ok();
-                        })
-                        .drop_on_shutdown()
+                self.set_busy(BusyKind::Connecting);
+                let ticket = self.attempts.begin();
+                let generation = ticket.generation();
+                let work = run_connect(attempt, ticket.cancel().clone());
+                let commands = sender.command_sender().clone();
+                crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |outcome| {
+                    let outcome = outcome.unwrap_or_else(|failure| {
+                        Err(Some(crate::ui::error_text::task_failure_message(&failure)))
+                    });
+                    commands.emit(ConnectDialogCmd::Result(generation, Box::new(outcome)));
                 });
             }
 
             ConnectDialogInput::TestConnection => {
-                self.set_busy(BusyKind::Testing);
-
-                let idx = self.driver_combo.selected() as usize;
-                let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::i18n::gettext("No driver selected"));
-                    return;
-                };
-                let Some(driver) = self.registry.get(&entry.id) else {
-                    self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::i18n::gettext_f(
-                        "Driver {id} not registered",
-                        &[("id", &entry.id)],
-                    ));
-                    return;
-                };
-                let opts = self.collect_options();
-                let ssh_inputs = if self.ssh.is_enabled() {
-                    match self.ssh.collect() {
-                        Ok(inputs) => Some(inputs.cfg),
-                        Err(e) => {
-                            self.set_busy(BusyKind::None);
-                            self.show_toast(&e);
-                            return;
-                        }
+                let attempt = match self.prepare_attempt() {
+                    Ok(attempt) => attempt,
+                    Err(message) => {
+                        self.show_toast(&message);
+                        return;
                     }
-                } else {
-                    None
                 };
-
-                sender.command(move |out, shutdown| {
-                    shutdown
-                        .register(async move {
-                            let result =
-                                match connection_service::establish(driver.as_ref(), opts, ssh_inputs, false).await {
-                                    Ok((conn, _tunnel)) => match conn.list_tables().await {
-                                        Ok(tables) => Ok(tables.len()),
-                                        Err(e) => Err(format!("list_tables: {e}")),
-                                    },
-                                    Err(e) => Err(e),
-                                };
-                            out.send(ConnectDialogCmd::TestResult(result)).ok();
-                        })
-                        .drop_on_shutdown()
+                self.set_busy(BusyKind::Testing);
+                let ticket = self.attempts.begin();
+                let generation = ticket.generation();
+                let work = run_test(attempt, ticket.cancel().clone());
+                let commands = sender.command_sender().clone();
+                crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |outcome| {
+                    let outcome = outcome.unwrap_or_else(|failure| {
+                        Err(Some(crate::ui::error_text::task_failure_message(&failure)))
+                    });
+                    commands.emit(ConnectDialogCmd::TestResult(generation, outcome));
                 });
             }
 
             ConnectDialogInput::Closed => {
+                self.attempts.cancel();
                 let _ = sender.output(ConnectDialogOutput::Closed);
             }
         }
     }
 
     fn update_cmd(&mut self, msg: Self::CommandOutput, sender: ComponentSender<Self>, root: &Self::Root) {
+        let generation = match &msg {
+            ConnectDialogCmd::Result(generation, _) | ConnectDialogCmd::TestResult(generation, _) => *generation,
+        };
+        if !self.attempts.accepts(generation) {
+            // A late answer to an attempt the user replaced or stopped.
+            if let ConnectDialogCmd::Result(_, outcome) = msg
+                && let Ok(outcome) = *outcome
+            {
+                discard(&self.context, outcome.pending);
+            }
+            return;
+        }
         self.set_busy(BusyKind::None);
+        self.refresh_validity();
         match msg {
-            ConnectDialogCmd::Result(Ok(outcome)) => {
-                tracing::info!(
-                    driver = %outcome.saved.driver_id,
-                    table_count = outcome.tables.len(),
-                    "connected"
-                );
-                // The dialog opens on this driver next time.
-                if let Err(error) = self.settings.set_connect_dialog_driver(&outcome.saved.driver_id) {
-                    tracing::warn!(%error, "could not remember the connect dialog driver");
+            ConnectDialogCmd::Result(_, outcome) => match *outcome {
+                Ok(outcome) => {
+                    tracing::info!(driver = %outcome.saved.driver_id, "connected");
+                    // The dialog opens on this driver next time.
+                    if let Err(error) = self.settings.set_connect_dialog_driver(&outcome.saved.driver_id) {
+                        tracing::warn!(%error, "could not remember the connect dialog driver");
+                    }
+                    let credentials = Arc::new(self.context.keyring_credentials(&outcome.saved));
+                    let ready = ReadySession {
+                        key: SessionKey::Saved(outcome.saved.id),
+                        pending: outcome.pending,
+                        credentials,
+                        // A keyring refusal must not be silent: the
+                        // connection opened, but the password will be
+                        // asked for next time.
+                        warnings: outcome.secret_warnings,
+                        generation: None,
+                    };
+                    let _ = sender.output(ConnectDialogOutput::Connected(Box::new(ready)));
+                    root.close();
                 }
-                // A keyring refusal must not be silent: the connection
-                // opened, but the password will be asked for next time.
-                for warning in &outcome.secret_warnings {
-                    let _ = sender.output(ConnectDialogOutput::Warning(warning.clone()));
+                Err(Some(message)) => {
+                    tracing::warn!(error = %message, "connect failed");
+                    self.show_toast(&message);
                 }
-                let _ = sender.output(ConnectDialogOutput::Connected {
-                    tables: outcome.tables,
-                    driver_id: outcome.saved.driver_id,
-                });
-                root.close();
-            }
-            ConnectDialogCmd::Result(Err(e)) => {
-                tracing::warn!(error = %e, "connect failed");
-                self.show_toast(&e);
-            }
-            ConnectDialogCmd::TestResult(Ok(table_count)) => {
+                Err(None) => {}
+            },
+            ConnectDialogCmd::TestResult(_, Ok(table_count)) => {
                 self.show_toast(&crate::i18n::gettext_f(
                     "Connection ok · {n} table(s) visible",
                     &[("n", &table_count.to_string())],
                 ));
             }
-            ConnectDialogCmd::TestResult(Err(e)) => {
-                self.show_toast(&crate::i18n::gettext_f("Test failed: {error}", &[("error", &e)]));
+            ConnectDialogCmd::TestResult(_, Err(Some(message))) => {
+                self.show_toast(&crate::i18n::gettext_f("Test failed: {error}", &[("error", &message)]));
             }
+            ConnectDialogCmd::TestResult(_, Err(None)) => {}
         }
     }
 }
@@ -604,13 +549,16 @@ impl ConnectDialog {
         let Some(entry) = self.drivers.get(index).cloned() else {
             return;
         };
-        if let Some(driver) = self.registry.get(&entry.id) {
-            self.apply_driver_form_visibility(driver.as_ref());
-            if !self.port_edited.get() {
+        if let Some(driver) = self.context.drivers.get(&entry.id) {
+            let capabilities = driver.capabilities();
+            self.apply_driver_form_visibility(capabilities);
+            if !self.port_edited.get()
+                && let Some(port) = capabilities.default_port()
+            {
                 // Writing the port would otherwise look like the user
                 // typing it, and pin the port to this driver's default.
                 self.port.block_signal(&self.port_handler);
-                self.port.set_value(driver.default_port() as f64);
+                self.port.set_value(f64::from(port));
                 self.port.unblock_signal(&self.port_handler);
             }
         }
@@ -620,9 +568,9 @@ impl ConnectDialog {
         ));
     }
 
-    fn apply_driver_form_visibility(&mut self, driver: &dyn tablepro_core::DatabaseDriver) {
-        self.form.file_based = driver.is_file_based();
-        self.form.supports_integrated = driver.supports_integrated_auth();
+    fn apply_driver_form_visibility(&mut self, capabilities: &tablepro_core::DriverCapabilities) {
+        self.form.file_based = capabilities.is_file_based();
+        self.form.supports_integrated = capabilities.supports(AuthMode::Kerberos);
         self.apply_form_state();
         self.database.set_title(&if self.form.file_based {
             crate::i18n::gettext("File path")
@@ -646,7 +594,9 @@ impl ConnectDialog {
         self.password.set_visible(credentials);
     }
 
-    fn collect_options(&self) -> ConnectOptions {
+    /// What the form says, read once so the connect works from a
+    /// snapshot rather than from widgets the user can still change.
+    fn form_values(&self) -> FormValues {
         // The credential rows keep their text while hidden, so a mode or
         // driver that does not use them must drop it here rather than
         // let it reach the driver and the keyring.
@@ -655,16 +605,50 @@ impl ConnectDialog {
         } else {
             (String::new(), String::new())
         };
-        ConnectOptions {
+        FormValues {
             host: self.host.text().to_string(),
             port: self.port.value() as u16,
             database: self.database.text().to_string(),
             username,
-            password: SecretString::new(password.into()),
-            use_tls: self.use_tls.is_active(),
+            password: SecretString::from(password),
             auth_mode: self.form.mode(),
-            service_endpoint: None,
+            use_tls: self.use_tls.is_active(),
+            read_only: self.read_only.is_active(),
+            file_based: self.form.file_based,
         }
+    }
+
+    /// Everything a Connect or a Test needs, or the sentence that says
+    /// why the form cannot be used yet.
+    fn prepare_attempt(&self) -> Result<ConnectAttempt, String> {
+        let index = self.driver_combo.selected() as usize;
+        let Some(entry) = self.drivers.get(index) else {
+            return Err(crate::i18n::gettext("No driver selected"));
+        };
+        let Some(driver) = self.context.drivers.get(&entry.id) else {
+            return Err(crate::i18n::gettext_f(
+                "Driver {id} not registered",
+                &[("id", &entry.id)],
+            ));
+        };
+        let ssh = if self.ssh.is_enabled() && !self.form.file_based {
+            Some(self.ssh.collect()?)
+        } else {
+            None
+        };
+        Ok(ConnectAttempt {
+            driver_id: entry.id.clone(),
+            driver,
+            form: self.form_values(),
+            ssh,
+            context: AttemptServices {
+                connector: self.context.connector.clone(),
+                interaction: self.context.attended(),
+                secrets: self.context.secrets.clone(),
+                connections: self.storage.connections().clone(),
+                tasks: self.context.tasks.clone(),
+            },
+        })
     }
 
     fn show_toast(&self, message: &str) {
@@ -718,202 +702,287 @@ fn toggle_error(row: &adw::EntryRow, invalid: bool) {
     }
 }
 
-/// The two stores a successful connect writes to. Bundled so the
-/// connect future takes one value instead of two.
+/// What the user typed, as the connect needs it.
+#[derive(Debug, Clone)]
+struct FormValues {
+    host: String,
+    port: u16,
+    database: String,
+    username: String,
+    password: SecretString,
+    auth_mode: AuthMode,
+    use_tls: bool,
+    read_only: bool,
+    file_based: bool,
+}
+
+impl FormValues {
+    /// How the entry is named in the connection list.
+    fn label(&self) -> String {
+        if self.file_based {
+            self.database.clone()
+        } else if self.auth_mode == AuthMode::Kerberos {
+            self.host.clone()
+        } else {
+            format!("{}@{}", self.username, self.host)
+        }
+    }
+
+    /// The TLS settings to save. The switch only says on or off; an
+    /// entry that already carries a CA file or a server name keeps them
+    /// while TLS stays on, so reconnecting through this form does not
+    /// strip settings it cannot show.
+    fn tls(&self, existing: Option<&SavedConnection>) -> TlsConfig {
+        if self.file_based || !self.use_tls {
+            return TlsConfig::disabled();
+        }
+        match existing.map(|saved| &saved.tls) {
+            Some(tls) if tls.mode != TlsMode::Disable => tls.clone(),
+            _ => TlsConfig::verify_full(),
+        }
+    }
+
+    /// Where the connect goes. A database file that is not there yet is
+    /// created, which is what this form has always done.
+    fn target(&self, tls: TlsConfig, ssh: Option<&SshInputs>) -> Result<RequestTarget, ConfigError> {
+        if self.file_based {
+            let path = PathBuf::from(self.database.trim());
+            let endpoint = if path.exists() {
+                FileEndpoint::open_existing(path)?
+            } else {
+                FileEndpoint::create_new(path)?
+            };
+            return Ok(RequestTarget::File(endpoint));
+        }
+        let credentials = match self.auth_mode {
+            AuthMode::Password => Credentials::Password {
+                username: self.username.clone(),
+                password: self.password.clone(),
+            },
+            AuthMode::Kerberos => Credentials::Integrated,
+        };
+        Ok(RequestTarget::Network {
+            endpoint: NetworkEndpoint::new(&self.host, self.port)?,
+            ssh: ssh.map(|inputs| inputs.cfg.clone()),
+            credentials,
+            database: Some(self.database.trim().to_owned()).filter(|name| !name.is_empty()),
+            tls,
+        })
+    }
+}
+
+/// The app services a connect from this dialog uses, gathered so the
+/// work can leave the GTK thread.
 #[derive(Clone)]
-struct SaveTargets {
-    connections: ConnectionStore,
-    secrets: std::sync::Arc<dyn SecretVault>,
+struct AttemptServices {
+    connector: Arc<dyn tablepro_session::Connector>,
+    interaction: tablepro_core::credentials::CredentialInteraction,
+    secrets: Arc<dyn tablepro_core::credentials::SecretVault>,
+    connections: tablepro_storage::ConnectionStore,
     tasks: tablepro_session::runtime::Tasks,
 }
 
-async fn run_connect(
-    driver: Arc<dyn tablepro_core::DatabaseDriver>,
-    targets: SaveTargets,
+/// One Connect or Test, from a snapshot of the form.
+struct ConnectAttempt {
     driver_id: String,
-    label: String,
-    opts: ConnectOptions,
+    driver: Arc<dyn tablepro_core::DatabaseDriver>,
+    form: FormValues,
     ssh: Option<SshInputs>,
-    read_only: bool,
-) -> Result<ConnectOutcome, String> {
-    let stored_password: SecretString = opts.password.clone();
-    let ssh_for_establish = ssh.as_ref().map(|s| s.cfg.clone());
-    let opts_clone = opts.clone();
+    context: AttemptServices,
+}
 
-    let (conn, tunnel) =
-        connection_service::establish(driver.as_ref(), opts.clone(), ssh_for_establish, read_only).await?;
-    let tables = conn.list_tables().await.map_err(|e| format!("list_tables: {e}"))?;
+impl ConnectAttempt {
+    fn request(&self, metadata: ConnectionMetadata, tls: TlsConfig) -> Result<ConnectRequest, String> {
+        let target = self
+            .form
+            .target(tls, self.ssh.as_ref())
+            .map_err(|error| crate::ui::error_text::driver_message(&DriverError::Config(error)))?;
+        Ok(ConnectRequest {
+            metadata,
+            driver: self.driver.clone(),
+            target,
+            workspace_settings: WorkspaceSettings::workspace(self.form.read_only),
+        })
+    }
 
-    // Read once: the entry says both which id to write under and what
-    // the user already put on it that this form does not carry.
-    let existing = find_existing(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await;
+    fn saved_connection(&self, id: Uuid, existing: Option<&SavedConnection>) -> SavedConnection {
+        SavedConnection {
+            id,
+            name: self.form.label(),
+            driver_id: self.driver_id.clone(),
+            host: self.form.host.clone(),
+            port: self.form.port,
+            database: self.form.database.clone(),
+            username: self.form.username.clone(),
+            tls: self.form.tls(existing),
+            read_only: self.form.read_only,
+            auth_mode: self.form.auth_mode,
+            ssh: self.ssh.as_ref().map(|inputs| inputs.saved.clone()),
+            // Stays None until `App::on_connected` stamps it.
+            last_opened_at: None,
+            // The colour and the group are put on from the connection
+            // list, not from this form, so reconnecting through the
+            // dialog has to carry what is already there.
+            color: existing.and_then(|saved| saved.color),
+            group: existing.and_then(|saved| saved.group.clone()),
+        }
+    }
+
+    /// The secrets the entry is saved with. The database password goes
+    /// in even when empty: a login with no password is still a login
+    /// the keyring answers for.
+    fn secrets_to_store(&self, saved: &SavedConnection) -> Vec<SecretSave> {
+        let save = |kind, secret: &SecretString| SecretSave {
+            kind,
+            secret: secret.clone(),
+            label: secret_labels::secret_label(kind, saved),
+        };
+        let mut secrets = Vec::new();
+        if !self.form.file_based && self.form.auth_mode == AuthMode::Password {
+            secrets.push(save(SecretKind::DatabasePassword, &self.form.password));
+        }
+        match self.ssh.as_ref().map(|inputs| &inputs.secret_to_store) {
+            Some(SshSecretToStore::Password(secret)) => secrets.push(save(SecretKind::SshPassword, secret)),
+            Some(SshSecretToStore::Passphrase(secret)) => secrets.push(save(SecretKind::SshPassphrase, secret)),
+            Some(SshSecretToStore::None) | None => {}
+        }
+        secrets
+    }
+
+    async fn find_existing(&self) -> Option<SavedConnection> {
+        let connections = self.context.connections.clone();
+        let loaded = self
+            .context
+            .tasks
+            .spawn_blocking_task(move || connections.load_blocking())
+            .await;
+        let existing = match loaded {
+            Ok(Ok(existing)) => existing,
+            Ok(Err(error)) => {
+                tracing::warn!(%error, "the saved connections could not be read to match this one");
+                return None;
+            }
+            Err(failure) => {
+                tracing::warn!(%failure, "the connections read task failed");
+                return None;
+            }
+        };
+        existing
+            .iter()
+            .find(|saved| matches_existing(saved, &self.driver_id, &self.form, self.ssh.as_ref()))
+            .cloned()
+    }
+}
+
+/// A cancelled connect needs no message: the user stopped it.
+fn connect_failure(error: ConnectError) -> Option<String> {
+    match error {
+        ConnectError::Cancelled => None,
+        error => Some(crate::ui::error_text::connect_error_message(&error)),
+    }
+}
+
+/// Connect, then save the entry and its secrets. Saving waits for the
+/// connect so a typo never lands in the connection list.
+async fn run_connect(attempt: ConnectAttempt, cancel: CancellationToken) -> Result<ConnectOutcome, Option<String>> {
+    let existing = attempt.find_existing().await;
     let is_new = existing.is_none();
-    let id = existing.as_ref().map(|saved| saved.id).unwrap_or_else(Uuid::new_v4);
-
-    let mut saved = SavedConnection {
+    let id = existing.as_ref().map_or_else(Uuid::new_v4, |saved| saved.id);
+    let saved = attempt.saved_connection(id, existing.as_ref());
+    let metadata = ConnectionMetadata {
         id,
-        name: label.clone(),
-        driver_id: driver_id.clone(),
-        host: opts_clone.host.clone(),
-        port: opts_clone.port,
-        database: opts_clone.database.clone(),
-        username: opts_clone.username.clone(),
-        use_tls: opts_clone.use_tls,
-        read_only,
-        auth_mode: opts_clone.auth_mode,
-        ssh: ssh.as_ref().map(|s| s.saved.clone()),
-        // Stays None until `App::on_connected` stamps it. Save then
-        // connect arrives in that order, so a freshly-saved entry is
-        // briefly None on disk before the touch lands.
-        last_opened_at: None,
-        // The colour and the group are put on from the connection list,
-        // not from this form, so reconnecting through the dialog has to
-        // carry what is already there instead of clearing it.
-        color: existing.as_ref().and_then(|saved| saved.color),
-        group: existing.as_ref().and_then(|saved| saved.group.clone()),
-    };
-
-    // Secrets go in first, so the single list write can record whether
-    // the passphrase actually landed. Storing after the write would
-    // leave has_passphrase claiming a secret that is not there.
-    let mut report = SecretSaveReport::default();
-    if saved.auth_mode == AuthMode::Password {
-        let label = secret_labels::secret_label(SecretKind::DatabasePassword, &saved);
-        report.record(
-            SecretKind::DatabasePassword,
-            targets
-                .secrets
-                .store(saved.id, SecretKind::DatabasePassword, &stored_password, &label)
-                .await,
-        );
-    }
-    if let Some(section) = &ssh {
-        match &section.secret_to_store {
-            SshSecretToStore::Password(secret) => {
-                let label = secret_labels::secret_label(SecretKind::SshPassword, &saved);
-                report.record(
-                    SecretKind::SshPassword,
-                    targets
-                        .secrets
-                        .store(saved.id, SecretKind::SshPassword, secret, &label)
-                        .await,
-                );
-            }
-            SshSecretToStore::Passphrase(secret) => {
-                let label = secret_labels::secret_label(SecretKind::SshPassphrase, &saved);
-                let stored = report.record(
-                    SecretKind::SshPassphrase,
-                    targets
-                        .secrets
-                        .store(saved.id, SecretKind::SshPassphrase, secret, &label)
-                        .await,
-                );
-                if let Some(config) = saved.ssh.as_mut()
-                    && let tablepro_storage::SavedSshAuth::PrivateKey { has_passphrase, .. } = &mut config.auth
-                {
-                    *has_passphrase = stored;
-                }
-            }
-            SshSecretToStore::None => {}
-        }
-    }
-
-    if let Err(error) = save_one(&targets, &saved).await {
-        // The list write is what makes the connection real. Without it
-        // the secrets just stored belong to nothing, so they go again.
-        if is_new {
-            let _ = targets.secrets.delete_connection(saved.id).await;
-        }
-        return Err(crate::i18n::gettext_f(
-            "The connection could not be saved: {error}",
-            &[("error", &error.to_string())],
-        ));
-    }
-    for message in report.messages() {
-        tracing::warn!(message, "a secret was not stored");
-    }
-    let secret_warnings = report.messages();
-
-    let params = ReconnectParams {
-        driver: driver.clone(),
-        opts: opts_clone,
-        ssh: ssh.as_ref().map(|s| s.cfg.clone()),
-        read_only,
-    };
-    let metadata = crate::services::database_service::ConnectionMetadata {
-        id: saved.id,
         name: saved.name.clone(),
         driver_id: saved.driver_id.clone(),
     };
-    database_service::instance().add(saved.id, metadata, conn, tunnel, read_only, params);
-    Ok(ConnectOutcome {
-        saved,
-        tables,
-        secret_warnings,
-    })
-}
-
-/// The store serialises the read, apply and write itself, so the save
-/// path is one call and two concurrent saves cannot lose an entry.
-async fn save_one(targets: &SaveTargets, connection: &SavedConnection) -> Result<(), tablepro_storage::StorageError> {
-    let connections = targets.connections.clone();
-    let connection = connection.clone();
-    targets
-        .tasks
-        .spawn_blocking_task(move || connections.upsert_blocking(connection))
+    let request = attempt.request(metadata, saved.tls.clone()).map_err(Some)?;
+    let services = attempt.context.clone();
+    let pending = services
+        .connector
+        .establish(request, services.interaction.clone(), cancel)
         .await
-        .map_err(|failure| {
-            tablepro_storage::StorageError::Schema(format!("the connections write task failed: {failure}"))
-        })?
+        .map_err(connect_failure)?;
+
+    let save = PendingSave {
+        secrets: attempt.secrets_to_store(&saved),
+        connection: saved,
+        is_new,
+    };
+    let writes = tablepro_session::connect::StoreConnectionWrites::new(services.connections, services.tasks);
+    match tablepro_session::persist_pending_save(&*services.secrets, &writes, save).await {
+        Ok(report) => {
+            let secret_warnings = report
+                .secret_failures
+                .iter()
+                .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
+                .collect();
+            Ok(ConnectOutcome {
+                saved: report.saved,
+                pending,
+                secret_warnings,
+            })
+        }
+        Err(error) => {
+            let report = pending.discard().await;
+            tracing::debug!(?report, "closed a connection whose entry could not be saved");
+            Err(Some(crate::i18n::gettext_f(
+                "The connection could not be saved: {error}",
+                &[("error", &error.to_string())],
+            )))
+        }
+    }
 }
 
-async fn load_connections(
-    targets: &SaveTargets,
-) -> Result<std::sync::Arc<[SavedConnection]>, tablepro_storage::StorageError> {
-    let connections = targets.connections.clone();
-    targets
-        .tasks
-        .spawn_blocking_task(move || connections.load_blocking())
+/// Connect, count what the sidebar would show, and close again.
+async fn run_test(attempt: ConnectAttempt, cancel: CancellationToken) -> Result<usize, Option<String>> {
+    let metadata = ConnectionMetadata {
+        id: Uuid::new_v4(),
+        name: attempt.form.label(),
+        driver_id: attempt.driver_id.clone(),
+    };
+    let request = attempt.request(metadata, attempt.form.tls(None)).map_err(Some)?;
+    let pending = attempt
+        .context
+        .connector
+        .establish(request, attempt.context.interaction.clone(), cancel)
         .await
-        .map_err(|failure| {
-            tablepro_storage::StorageError::Schema(format!("the connections read task failed: {failure}"))
-        })?
-}
-
-async fn find_existing(
-    targets: &SaveTargets,
-    driver_id: &str,
-    opts: &ConnectOptions,
-    file_based: bool,
-    ssh: Option<&SshInputs>,
-) -> Option<SavedConnection> {
-    let existing = load_connections(targets).await.ok()?;
-    existing
+        .map_err(connect_failure)?;
+    let visible = pending
+        .objects()
         .iter()
-        .find(|saved| matches_existing(saved, driver_id, opts, file_based, ssh))
-        .cloned()
+        .filter(|object| object.kind.is_browsable())
+        .count();
+    let report = pending.discard().await;
+    tracing::debug!(?report, "closed the test connection");
+    Ok(visible)
 }
 
-fn matches_existing(
-    saved: &SavedConnection,
-    driver_id: &str,
-    opts: &ConnectOptions,
-    file_based: bool,
-    ssh: Option<&SshInputs>,
-) -> bool {
-    if saved.driver_id != driver_id || saved.database != opts.database {
+/// Close a connection the dialog no longer wants, keeping the process
+/// alive until it is closed.
+fn discard(context: &SessionContext, pending: PendingSession) {
+    let hold = context.hold.acquire();
+    let closing = context.tasks.spawn_task(pending.discard());
+    glib::spawn_future_local(async move {
+        if let Ok(report) = closing.await {
+            tracing::debug!(?report, "closed a connection that arrived too late");
+        }
+        drop(hold);
+    });
+}
+
+fn matches_existing(saved: &SavedConnection, driver_id: &str, form: &FormValues, ssh: Option<&SshInputs>) -> bool {
+    if saved.driver_id != driver_id || saved.database != form.database {
         return false;
     }
     // A file-based driver is reached by its path alone. Comparing the
     // credentials there would strand every entry an older build wrote
     // with the hidden Username row's leftover text.
-    if file_based {
+    if form.file_based {
         return true;
     }
-    saved.host == opts.host
-        && saved.port == opts.port
-        && saved.username == opts.username
-        && saved.auth_mode == opts.auth_mode
+    saved.host == form.host
+        && saved.port == form.port
+        && saved.username == form.username
+        && saved.auth_mode == form.auth_mode
         && saved_ssh_matches(&saved.ssh, ssh)
 }
 
@@ -1002,7 +1071,7 @@ mod tests {
             port: 1433,
             database: "sales".into(),
             username: username.into(),
-            use_tls: false,
+            tls: TlsConfig::disabled(),
             read_only: false,
             auth_mode,
             ssh: None,
@@ -1012,68 +1081,102 @@ mod tests {
         }
     }
 
-    fn opts(username: &str, auth_mode: AuthMode) -> ConnectOptions {
-        ConnectOptions {
+    fn form(username: &str, auth_mode: AuthMode) -> FormValues {
+        FormValues {
             host: "sql.corp.example".into(),
             port: 1433,
             database: "sales".into(),
             username: username.into(),
+            password: SecretString::from(""),
             auth_mode,
-            ..Default::default()
+            use_tls: false,
+            read_only: false,
+            file_based: false,
+        }
+    }
+
+    fn file_form(path: &str) -> FormValues {
+        FormValues {
+            database: path.into(),
+            file_based: true,
+            ..form("", AuthMode::Password)
         }
     }
 
     #[test]
     fn a_file_based_entry_is_identified_by_its_path_alone() {
-        let legacy = saved("sqlite", "postgres", AuthMode::Password);
-        assert!(matches_existing(
-            &legacy,
-            "sqlite",
-            &opts("", AuthMode::Password),
-            true,
-            None
-        ));
+        let mut legacy = saved("sqlite", "postgres", AuthMode::Password);
+        legacy.database = "/srv/app.db".into();
+        assert!(matches_existing(&legacy, "sqlite", &file_form("/srv/app.db"), None));
     }
 
     #[test]
     fn a_network_entry_still_distinguishes_user_and_auth_mode() {
         let entry = saved("mssql", "sa", AuthMode::Password);
-        assert!(matches_existing(
-            &entry,
-            "mssql",
-            &opts("sa", AuthMode::Password),
-            false,
-            None
-        ));
-        assert!(!matches_existing(
-            &entry,
-            "mssql",
-            &opts("other", AuthMode::Password),
-            false,
-            None
-        ));
-        assert!(!matches_existing(
-            &entry,
-            "mssql",
-            &opts("", AuthMode::Kerberos),
-            false,
-            None
-        ));
+        assert!(matches_existing(&entry, "mssql", &form("sa", AuthMode::Password), None));
+        assert!(!matches_existing(&entry, "mssql", &form("other", AuthMode::Password), None));
+        assert!(!matches_existing(&entry, "mssql", &form("", AuthMode::Kerberos), None));
     }
 
     #[test]
     fn two_kerberos_entries_on_one_host_are_told_apart_by_database() {
         let sales = saved("mssql", "", AuthMode::Kerberos);
-        let mut finance = opts("", AuthMode::Kerberos);
+        let mut finance = form("", AuthMode::Kerberos);
         finance.database = "finance".into();
-        assert!(matches_existing(
-            &sales,
-            "mssql",
-            &opts("", AuthMode::Kerberos),
-            false,
-            None
-        ));
-        assert!(!matches_existing(&sales, "mssql", &finance, false, None));
+        assert!(matches_existing(&sales, "mssql", &form("", AuthMode::Kerberos), None));
+        assert!(!matches_existing(&sales, "mssql", &finance, None));
+    }
+
+    #[test]
+    fn the_tls_switch_keeps_the_settings_an_entry_already_has() {
+        let mut on = form("sa", AuthMode::Password);
+        on.use_tls = true;
+        let mut existing = saved("mssql", "sa", AuthMode::Password);
+        existing.tls = TlsConfig {
+            ca_file: Some(PathBuf::from("/etc/ssl/corp-ca.pem")),
+            ..TlsConfig::verify_full()
+        };
+
+        assert_eq!(on.tls(Some(&existing)), existing.tls, "a CA file was dropped");
+        assert_eq!(on.tls(None), TlsConfig::verify_full());
+        assert_eq!(form("sa", AuthMode::Password).tls(Some(&existing)), TlsConfig::disabled());
+        assert_eq!(file_form("/srv/app.db").tls(Some(&existing)), TlsConfig::disabled());
+    }
+
+    #[test]
+    fn a_kerberos_form_sends_no_password_and_an_empty_database_is_none() {
+        let mut kerberos = form("ignored", AuthMode::Kerberos);
+        kerberos.database = "  ".into();
+
+        let RequestTarget::Network {
+            credentials, database, ..
+        } = kerberos.target(TlsConfig::disabled(), None).expect("a target")
+        else {
+            panic!("expected a network target");
+        };
+
+        assert!(matches!(credentials, Credentials::Integrated));
+        assert_eq!(database, None);
+    }
+
+    #[test]
+    fn a_missing_database_file_is_created_and_an_existing_one_opened() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let present = root.path().join("present.db");
+        std::fs::write(&present, b"").expect("seed");
+        let absent = root.path().join("absent.db");
+
+        let mode = |path: &std::path::Path| match file_form(&path.to_string_lossy()).target(TlsConfig::disabled(), None) {
+            Ok(RequestTarget::File(endpoint)) => endpoint.mode(),
+            other => panic!("expected a file target, got {other:?}"),
+        };
+
+        assert_eq!(mode(&present), tablepro_core::FileOpenMode::OpenExisting);
+        assert_eq!(mode(&absent), tablepro_core::FileOpenMode::CreateNew);
+        assert_eq!(
+            file_form("relative.db").target(TlsConfig::disabled(), None).err(),
+            Some(ConfigError::RelativePath)
+        );
     }
 
     fn test_dialog() -> relm4::component::Controller<ConnectDialog> {
@@ -1088,20 +1191,19 @@ mod tests {
         let paths = tablepro_storage::StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
         let storage = std::rc::Rc::new(crate::storage::AppStorage::new(
             paths,
-            std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+            std::sync::Arc::new(tablepro_test_support::FakeSecretVault::new()),
             &runtime.tasks(),
         ));
-        let mut registry = DriverRegistry::new();
+        let mut registry = tablepro_core::DriverRegistry::new();
         registry.register(std::sync::Arc::new(drivers_clickhouse::ClickhouseDriver));
         registry.register(std::sync::Arc::new(drivers_postgres::PgDriver));
         registry.register(std::sync::Arc::new(drivers_sqlite::SqliteDriver));
 
         ConnectDialog::builder()
             .launch(ConnectDialogInit {
-                registry: Arc::new(registry),
+                context: SessionContext::for_tests(registry, runtime.tasks()),
                 storage,
                 settings: settings.get().clone(),
-                tasks: runtime.tasks(),
             })
             .detach()
     }

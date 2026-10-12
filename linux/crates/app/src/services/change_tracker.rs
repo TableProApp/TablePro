@@ -30,12 +30,11 @@ use std::collections::{HashMap, VecDeque};
 
 use uuid::Uuid;
 
-use tablepro_core::{
-    ColumnInfo, Value,
-    sql_dialect::{BuildSqlError, build_insert_from_draft, build_update, placeholder_for, quote_ident},
-};
-
-pub type MaterializedStatements = (Vec<(String, Vec<Value>)>, Vec<StatementSource>);
+use tablepro_core::dml::BuildSqlError;
+use tablepro_core::edit::CellInput;
+use tablepro_core::meta::RowIdentity;
+use tablepro_core::save::{ChangeOrigin, ChangeSet, RowInsert, RowUpdate};
+use tablepro_core::{ColumnInfo, Value};
 
 const UNDO_LIMIT: usize = 50;
 
@@ -106,10 +105,8 @@ pub enum RowState {
     InsertDraft,
 }
 
-/// Identifies which logical row produced a given materialised SQL
-/// statement. Returned alongside the statements from `materialize` so
-/// a downstream `DriverError::Transaction { statement_index }` can be
-/// mapped back to the offending grid row for scroll-and-select.
+/// Which grid row a change came from, so a save that fails at one
+/// statement can scroll to and flash the row the user edited.
 #[derive(Debug, Clone)]
 pub enum StatementSource {
     Insert { draft_id: u64 },
@@ -509,162 +506,117 @@ impl TabChangeTracker {
         }
     }
 
-    /// Build the ordered statement list for atomic commit:
+    /// What the user changed, as the change set a save is planned from.
     ///
-    /// 1. INSERTs (so server defaults / auto-increment fire first;
-    ///    subsequent FK-aware updates can reference fresh keys).
-    /// 2. UPDATEs grouped per row into a single full-row UPDATE.
-    /// 3. DELETEs.
-    ///
-    /// Each statement is a (SQL, params) pair fed straight into
-    /// `Connection::execute_in_transaction`. The parallel `sources`
-    /// vector lets the caller map a `DriverError::Transaction
-    /// { statement_index, .. }` back to the grid row that produced
-    /// the failing statement.
-    pub fn materialize(
-        &self,
-        driver_id: &str,
-        schema: Option<&str>,
-        table: &str,
-        columns: &[ColumnInfo],
-    ) -> Result<MaterializedStatements, BuildSqlError> {
-        let mut out: Vec<(String, Vec<Value>)> = Vec::new();
-        let mut sources: Vec<StatementSource> = Vec::new();
+    /// Rows are named by their primary key in column order, which is the
+    /// identity `pk_identity` describes, so the keys bind straight back.
+    /// A draft cell the user left empty asks for the server's default
+    /// where the column has one, as does any column the server fills.
+    pub fn change_set(&self, columns: &[ColumnInfo]) -> Result<TrackedChanges, BuildSqlError> {
+        let mut tracked = TrackedChanges::default();
         for draft in &self.inserts {
-            out.push(build_insert_from_draft(
-                driver_id,
-                schema,
-                table,
-                columns,
-                &draft.values,
-            )?);
-            sources.push(StatementSource::Insert {
+            let cells = columns
+                .iter()
+                .zip(&draft.values)
+                .map(|(column, value)| draft_cell(column, value))
+                .collect();
+            tracked.changes.inserts.push(RowInsert { cells });
+            tracked.inserts.push(StatementSource::Insert {
                 draft_id: draft.draft_id,
             });
         }
-        // Group updates by row_key so each row becomes ONE UPDATE
-        // (a multi-cell edit on one row is one statement, not N).
-        let mut per_row: HashMap<RowKey, Vec<(usize, Value, Value)>> = HashMap::new();
+
+        // One UPDATE per row, setting only the cells that moved, so a
+        // concurrent edit to a column this user never touched survives.
+        let mut per_row: HashMap<RowKey, Vec<(usize, Value)>> = HashMap::new();
         for ((row_key, col), edit) in &self.updates {
             per_row
                 .entry(row_key.clone())
                 .or_default()
-                .push((*col, edit.prev_value.clone(), edit.new_value.clone()));
+                .push((*col, edit.new_value.clone()));
         }
-        for (row_key, mut edits) in per_row {
-            edits.sort_by_key(|e| e.0);
-            // `build_full_row_update` writes every non-PK column, which
-            // would clobber concurrent edits to columns this user never
-            // touched. Build the SET list from the tracked edits instead
-            // and render it through the shared dialect helper.
-            let RowKey::Persisted(pk_keyvalues) = &row_key else {
-                continue; // Drafts don't go through UPDATE
-            };
-            let pk_indices: Vec<usize> = columns
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| c.primary_key)
-                .map(|(i, _)| i)
-                .collect();
-            if pk_indices.is_empty() {
-                return Err(BuildSqlError::NoPrimaryKey);
-            }
-            // Reconstruct PK values (KeyValue → Value is lossy but
-            // acceptable: PK values were captured from the original
-            // row at edit time and are still equality-correct).
-            let pk_values: Vec<Value> = pk_keyvalues.iter().map(keyvalue_to_value).collect();
-            let mut params: Vec<Value> = Vec::new();
-            let mut placeholder_idx = 0;
-            let set_clauses: Vec<String> = edits
-                .iter()
-                .map(|(col_idx, _, new_val)| {
-                    let s = format!(
-                        "{} = {}",
-                        quote_ident(driver_id, &columns[*col_idx].name),
-                        placeholder_for(driver_id, placeholder_idx)
-                    );
-                    placeholder_idx += 1;
-                    params.push(new_val.clone());
-                    s
-                })
-                .collect();
-            // NULL-safe WHERE: `col = NULL` is never true under SQL
-            // three-valued logic. A nullable PK component holding NULL
-            // must use `IS NULL` or the UPDATE silently matches zero
-            // rows and the user thinks their save worked.
-            let where_clauses: Vec<String> = pk_indices
-                .iter()
-                .enumerate()
-                .map(|(local_idx, &col_idx)| {
-                    let ident = quote_ident(driver_id, &columns[col_idx].name);
-                    if matches!(pk_values[local_idx], Value::Null) {
-                        format!("{ident} IS NULL")
-                    } else {
-                        let s = format!("{ident} = {}", placeholder_for(driver_id, placeholder_idx));
-                        placeholder_idx += 1;
-                        params.push(pk_values[local_idx].clone());
-                        s
-                    }
-                })
-                .collect();
-            let qualified = match schema {
-                Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
-                None => quote_ident(driver_id, table),
-            };
-            let sql = build_update(
-                driver_id,
-                &qualified,
-                &set_clauses.join(", "),
-                &where_clauses.join(" AND "),
-            );
-            out.push((sql, params));
-            sources.push(StatementSource::Update {
-                row_key: row_key.clone(),
-            });
-        }
-        // Deletes last so FK references unblocked first.
-        for row_key in self.deletes.keys() {
-            let RowKey::Persisted(pk_keyvalues) = row_key else {
+        for (row_key, mut assignments) in per_row {
+            let RowKey::Persisted(key) = &row_key else {
                 continue;
             };
-            let pk_indices: Vec<usize> = columns
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| c.primary_key)
-                .map(|(i, _)| i)
-                .collect();
-            if pk_indices.is_empty() {
-                return Err(BuildSqlError::NoPrimaryKey);
-            }
-            let pk_values: Vec<Value> = pk_keyvalues.iter().map(keyvalue_to_value).collect();
-            let mut params: Vec<Value> = Vec::new();
-            // Same NULL-safe rewrite as the UPDATE path above.
-            let where_clauses: Vec<String> = pk_indices
-                .iter()
-                .enumerate()
-                .map(|(local_idx, &col_idx)| {
-                    let ident = quote_ident(driver_id, &columns[col_idx].name);
-                    if matches!(pk_values[local_idx], Value::Null) {
-                        format!("{ident} IS NULL")
-                    } else {
-                        let s = format!("{ident} = {}", placeholder_for(driver_id, params.len()));
-                        params.push(pk_values[local_idx].clone());
-                        s
-                    }
-                })
-                .collect();
-            let qualified = match schema {
-                Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
-                None => quote_ident(driver_id, table),
+            require_key(columns)?;
+            assignments.sort_by_key(|(col, _)| *col);
+            tracked.changes.updates.push(RowUpdate {
+                key: key.iter().map(|part| part.value().clone()).collect(),
+                assignments,
+            });
+            tracked.updates.push(StatementSource::Update { row_key });
+        }
+
+        for row_key in self.deletes.keys() {
+            let RowKey::Persisted(key) = row_key else {
+                continue;
             };
-            let sql = format!("DELETE FROM {qualified} WHERE {}", where_clauses.join(" AND "));
-            out.push((sql, params));
-            sources.push(StatementSource::Delete {
+            require_key(columns)?;
+            tracked
+                .changes
+                .deletes
+                .push(key.iter().map(|part| part.value().clone()).collect());
+            tracked.deletes.push(StatementSource::Delete {
                 row_key: row_key.clone(),
             });
         }
-        Ok((out, sources))
+        Ok(tracked)
     }
+}
+
+/// The tracker's changes in the form a save plans from, with the row
+/// each one came from.
+#[derive(Debug, Clone, Default)]
+pub struct TrackedChanges {
+    pub changes: ChangeSet,
+    inserts: Vec<StatementSource>,
+    updates: Vec<StatementSource>,
+    deletes: Vec<StatementSource>,
+}
+
+impl TrackedChanges {
+    /// The grid row behind one step of the planned save.
+    pub fn source(&self, origin: ChangeOrigin) -> Option<StatementSource> {
+        match origin {
+            ChangeOrigin::Insert(index) => self.inserts.get(index),
+            ChangeOrigin::Update(index) => self.updates.get(index),
+            ChangeOrigin::Delete(index) => self.deletes.get(index),
+        }
+        .cloned()
+    }
+}
+
+/// The identity the tracker's row keys are written in: the primary key
+/// columns, in the order the table lists them.
+pub fn pk_identity(columns: &[ColumnInfo]) -> RowIdentity {
+    RowIdentity::UniqueKey {
+        columns: columns
+            .iter()
+            .filter(|column| column.primary_key)
+            .map(|column| column.name.clone())
+            .collect(),
+    }
+}
+
+fn require_key(columns: &[ColumnInfo]) -> Result<(), BuildSqlError> {
+    match columns.iter().any(|column| column.primary_key) {
+        true => Ok(()),
+        false => Err(BuildSqlError::NoRowIdentity),
+    }
+}
+
+/// A NULL the user left in a column with a default means "use the
+/// default" (CURRENT_TIMESTAMP, gen_random_uuid()), not an explicit
+/// NULL over it.
+fn draft_cell(column: &ColumnInfo, value: &Value) -> CellInput {
+    if column.is_auto_increment || column.is_generated {
+        return CellInput::Default;
+    }
+    if matches!(value, Value::Null) && !column.default.is_none() {
+        return CellInput::Default;
+    }
+    CellInput::Value(value.clone())
 }
 
 fn undo_op_matches_draft(op: &UndoOp, draft_id: u64) -> bool {
@@ -680,12 +632,6 @@ fn undo_op_matches_draft(op: &UndoOp, draft_id: u64) -> bool {
         } => *id == draft_id,
         _ => false,
     }
-}
-
-/// The value a key was built from, to go back into the WHERE clause.
-/// Nothing is lost on the way out, because nothing was on the way in.
-fn keyvalue_to_value(kv: &KeyValue) -> Value {
-    kv.value().clone()
 }
 
 /// Per-tab registry of trackers. Singleton via `thread_local!` because
@@ -776,13 +722,16 @@ mod tests {
         let kind = tablepro_core::column::classify_type_name(type_name);
         tablepro_core::ColumnInfo {
             name: name.to_owned(),
-            column_type: tablepro_core::column::ColumnType::new(
-                tablepro_core::column::SqlTypeExpr::from_catalog_text(type_name),
+            column_type: tablepro_core::column::ColumnType {
+                name: type_name.to_owned(),
+                dynamic_storage: tablepro_core::column::has_dynamic_storage(&kind),
                 kind,
-                tablepro_core::column::CatalogType::Unknown,
-                tablepro_core::column::has_dynamic_storage(kind),
-                tablepro_core::column::ReadForm::Native,
-            ),
+                catalog: Some(tablepro_core::column::CatalogType {
+                    declaration: tablepro_core::column::SqlTypeExpr::from_catalog_text(type_name),
+                    cast_target: tablepro_core::column::SqlTypeExpr::from_catalog_text(type_name),
+                }),
+                read_form: tablepro_core::column::ReadForm::Native,
+            },
             nullable: true,
             primary_key: false,
             is_auto_increment: false,
@@ -914,88 +863,119 @@ mod tests {
         assert!(!t.can_undo());
     }
 
+    fn postgres() -> drivers_postgres::PgDialect {
+        drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
+    }
+
+    fn plan(tracker: &TabChangeTracker, columns: &[ColumnInfo]) -> (TrackedChanges, tablepro_core::save::SavePlan) {
+        let tracked = tracker.change_set(columns).unwrap();
+        let table = tablepro_core::meta::TableRef::unqualified("t");
+        let plan =
+            tablepro_core::save::plan_save(&postgres(), &table, columns, &pk_identity(columns), &tracked.changes)
+                .unwrap();
+        (tracked, plan)
+    }
+
     #[test]
-    fn materialize_orders_inserts_then_updates_then_deletes() {
+    fn change_set_orders_inserts_then_updates_then_deletes() {
         let mut t = TabChangeTracker::new();
         let columns = vec![pk_col("id"), data_col("name")];
         let updated = rk(&[Value::Int(5)]);
         t.track_cell_edit(updated.clone(), 1, Value::Text("old".into()), Value::Text("new".into()));
         t.track_insert(vec![Value::Null, Value::Text("draft".into())]);
         t.track_delete(rk(&[Value::Int(9)]), vec![Value::Int(9), Value::Text("doomed".into())]);
-        let (stmts, sources) = t.materialize("postgres", None, "users", &columns).unwrap();
-        assert_eq!(stmts.len(), 3);
-        assert_eq!(sources.len(), 3);
-        assert!(stmts[0].0.starts_with("INSERT"));
-        assert!(matches!(sources[0], StatementSource::Insert { .. }));
-        assert!(stmts[1].0.starts_with("UPDATE"));
-        assert!(matches!(sources[1], StatementSource::Update { .. }));
-        assert!(stmts[2].0.starts_with("DELETE"));
-        assert!(matches!(sources[2], StatementSource::Delete { .. }));
+
+        let (tracked, plan) = plan(&t, &columns);
+
+        let sql: Vec<&str> = plan.batch.steps.iter().map(|step| step.statement.sql()).collect();
+        assert_eq!(sql.len(), 3);
+        assert!(sql[0].starts_with("INSERT"), "{sql:?}");
+        assert!(sql[1].starts_with("UPDATE"), "{sql:?}");
+        assert!(sql[2].starts_with("DELETE"), "{sql:?}");
+        let sources: Vec<_> = (0..3)
+            .map(|step| plan.origin(step).and_then(|o| tracked.source(o)))
+            .collect();
+        assert!(matches!(sources[0], Some(StatementSource::Insert { .. })));
+        assert!(matches!(&sources[1], Some(StatementSource::Update { row_key }) if *row_key == updated));
+        assert!(matches!(sources[2], Some(StatementSource::Delete { .. })));
     }
 
     #[test]
-    fn materialize_uses_is_null_for_null_pk_components() {
-        // Composite PK where one component is NULL — the WHERE must use
-        // `IS NULL` for that component or the UPDATE silently matches
-        // zero rows.
+    fn a_failing_step_maps_back_to_the_row_that_made_it() {
         let mut t = TabChangeTracker::new();
-        let columns = vec![
-            ColumnInfo {
-                name: "a".into(),
-                column_type: test_column("", "integer").column_type,
-                nullable: false,
-                primary_key: true,
-                is_auto_increment: false,
-                default: tablepro_core::column::ColumnDefault::None,
-                is_generated: false,
-                comment: None,
-            },
-            ColumnInfo {
-                name: "b".into(),
-                column_type: test_column("", "integer").column_type,
-                nullable: true,
-                primary_key: true,
-                is_auto_increment: false,
-                default: tablepro_core::column::ColumnDefault::None,
-                is_generated: false,
-                comment: None,
-            },
-            data_col("name"),
-        ];
-        let key = RowKey::from_pk_values(&[Value::Int(1), Value::Null]).unwrap();
+        let columns = vec![pk_col("id"), data_col("name")];
+        let doomed = rk(&[Value::Int(9)]);
+        t.track_insert(vec![Value::Null, Value::Text("draft".into())]);
+        t.track_delete(doomed.clone(), vec![Value::Int(9), Value::Text("doomed".into())]);
+
+        let (tracked, plan) = plan(&t, &columns);
+
+        let failing = plan.origin(1).and_then(|origin| tracked.source(origin));
+        assert!(matches!(failing, Some(StatementSource::Delete { row_key }) if row_key == doomed));
+        assert!(plan.origin(2).is_none());
+    }
+
+    #[test]
+    fn an_update_sets_only_the_moved_cell_and_keys_on_the_whole_primary_key() {
+        let mut t = TabChangeTracker::new();
+        let columns = vec![pk_col("a"), pk_col("b"), data_col("name")];
+        let key = RowKey::from_pk_values(&[Value::Int(1), Value::Int(2)]).unwrap();
         t.track_cell_edit(key, 2, Value::Text("old".into()), Value::Text("new".into()));
-        let (stmts, _sources) = t.materialize("postgres", None, "t", &columns).unwrap();
-        assert_eq!(stmts.len(), 1);
-        // SET "name" = $1 then WHERE "a" = $2 AND "b" IS NULL
+
+        let tracked = t.change_set(&columns).unwrap();
+
+        assert_eq!(tracked.changes.updates.len(), 1);
+        assert_eq!(tracked.changes.updates[0].key, vec![Value::Int(1), Value::Int(2)]);
         assert_eq!(
-            stmts[0].0,
-            "UPDATE \"t\" SET \"name\" = $1 WHERE \"a\" = $2 AND \"b\" IS NULL"
+            tracked.changes.updates[0].assignments,
+            vec![(2, Value::Text("new".into()))]
         );
-        assert_eq!(stmts[0].1, vec![Value::Text("new".into()), Value::Int(1)]);
+        assert_eq!(
+            pk_identity(&columns),
+            RowIdentity::UniqueKey {
+                columns: vec!["a".to_owned(), "b".to_owned()]
+            }
+        );
     }
 
     #[test]
-    fn materialize_delete_uses_is_null_for_null_pk_components() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test fixture stands in for the catalogue, which is where a default expression comes from"
+    )]
+    fn a_draft_leaves_server_filled_columns_to_the_server() {
         let mut t = TabChangeTracker::new();
-        let columns = vec![
-            ColumnInfo {
-                name: "a".into(),
-                column_type: test_column("", "integer").column_type,
-                nullable: true,
-                primary_key: true,
-                is_auto_increment: false,
-                default: tablepro_core::column::ColumnDefault::None,
-                is_generated: false,
-                comment: None,
-            },
-            data_col("name"),
-        ];
-        let key = RowKey::from_pk_values(&[Value::Null]).unwrap();
-        t.track_delete(key, vec![Value::Null, Value::Text("doomed".into())]);
-        let (stmts, _sources) = t.materialize("mysql", None, "t", &columns).unwrap();
-        assert_eq!(stmts.len(), 1);
-        assert_eq!(stmts[0].0, "DELETE FROM `t` WHERE `a` IS NULL");
-        assert!(stmts[0].1.is_empty());
+        let mut stamped = data_col("created_at");
+        stamped.default = tablepro_core::column::ColumnDefault::Expression(
+            tablepro_core::column::SqlExpression::from_catalog_text("now()"),
+        );
+        let columns = vec![pk_col("id"), data_col("name"), stamped];
+        t.track_insert(vec![Value::Null, Value::Text("draft".into()), Value::Null]);
+
+        let tracked = t.change_set(&columns).unwrap();
+
+        assert_eq!(
+            tracked.changes.inserts[0].cells,
+            vec![
+                CellInput::Default,
+                CellInput::Value(Value::Text("draft".into())),
+                CellInput::Default
+            ]
+        );
+    }
+
+    #[test]
+    fn a_table_without_a_primary_key_cannot_save_an_update() {
+        let mut t = TabChangeTracker::new();
+        let columns = vec![data_col("name")];
+        t.track_cell_edit(
+            rk(&[Value::Int(1)]),
+            0,
+            Value::Text("a".into()),
+            Value::Text("b".into()),
+        );
+
+        assert!(matches!(t.change_set(&columns), Err(BuildSqlError::NoRowIdentity)));
     }
 
     #[test]

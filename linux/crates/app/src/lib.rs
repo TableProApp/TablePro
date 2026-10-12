@@ -1,10 +1,16 @@
+use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use libadwaita as adw;
 use relm4::RelmApp;
 use thiserror::Error;
 
-use tablepro_core::DriverRegistry;
+use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
+use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
+use tablepro_session::runtime::Tasks;
+use tablepro_session::{ConnectServices, DriverConnector, SessionRegistry};
+use tablepro_ssh::SshServices;
 
 pub mod config;
 pub mod i18n;
@@ -12,7 +18,6 @@ pub mod logging;
 mod persistence;
 pub mod runtime;
 mod services;
-pub mod session;
 pub mod storage;
 #[cfg(test)]
 mod test_support;
@@ -91,19 +96,44 @@ fn start() -> Result<(), StartupError> {
         &tasks,
     ));
 
-    let registry = Arc::new(build_registry());
-    tracing::info!(drivers = registry.len(), "starting tablepro");
+    let drivers = Arc::new(build_registry());
+    tracing::info!(drivers = drivers.len(), "starting tablepro");
 
     gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
 
-    let app = RelmApp::from_app(
-        adw::Application::builder()
-            .application_id(config::APP_ID)
-            .resource_base_path(config::RESOURCE_BASE_PATH)
-            .build(),
+    let application = adw::Application::builder()
+        .application_id(config::APP_ID)
+        .resource_base_path(config::RESOURCE_BASE_PATH)
+        .build();
+    let ssh = ssh_services(&storage.paths().runtime, &tasks);
+    let liveness = LivenessPolicy::DESKTOP;
+    let deadlines: Arc<dyn DeadlinePolicy> = Arc::new(DefaultDeadlines::new(liveness));
+    let connector = DriverConnector::new(
+        ConnectServices {
+            environment: ConnectEnvironment::new(config::VERSION),
+            ssh,
+            liveness,
+        },
+        deadlines.clone(),
     );
+    let (prompter, prompts) = ui::credential_prompt::GtkCredentialPrompter::new();
+    let context = Rc::new(services::session_context::SessionContext {
+        drivers,
+        connector: Arc::new(connector),
+        deadlines,
+        prompter: Arc::new(prompter),
+        secrets: storage.secrets().clone(),
+        sessions: SessionRegistry::new(),
+        hold: Rc::new(runtime::GioProcessHold::new(&application)),
+        tasks: tasks.clone(),
+        liveness,
+        active: services::active_session::ActiveSession::new(),
+    });
+
+    let app = RelmApp::from_app(application);
     app.run::<ui::App>(ui::AppInit {
-        registry,
+        context,
+        prompts,
         settings,
         storage,
         tasks,
@@ -115,6 +145,28 @@ fn start() -> Result<(), StartupError> {
     // dropping it mid-write.
     runtime.shutdown();
     Ok(())
+}
+
+/// The system OpenSSH client, with its control sockets under the app's
+/// runtime directory.
+///
+/// A missing askpass helper is logged rather than fatal: only SSH needs
+/// it, and the connect that tries says so in its own error. The sweep
+/// ends masters a crashed instance left behind, which would otherwise
+/// keep their tunnels open until the next reboot.
+fn ssh_services(runtime_dir: &Path, tasks: &Tasks) -> SshServices {
+    let services = SshServices::system(runtime_dir.to_path_buf(), Path::new(config::LIBEXECDIR));
+    if let Err(error) = services.verify_askpass_helper() {
+        tracing::warn!(%error, "SSH connections will fail until the askpass helper is installed");
+    }
+    let sweeping = services.clone();
+    drop(tasks.spawn_task(async move {
+        let ended = tablepro_ssh::sweep_stale_masters(&sweeping).await;
+        if ended > 0 {
+            tracing::info!(ended, "ended SSH masters a previous instance left running");
+        }
+    }));
+    services
 }
 
 fn build_registry() -> DriverRegistry {

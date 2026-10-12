@@ -1,10 +1,14 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 
-use tablepro_core::{DriverError, Value};
+use tablepro_core::meta::TableRef;
+use tablepro_core::save::{SavePlan, plan_save};
+use tablepro_core::{ColumnInfo, DriverError, WriteKind};
+use tablepro_session::runtime::Tasks;
+use tablepro_session::{OperationError, OperationKind};
 use uuid::Uuid;
 
-use crate::services::change_tracker::StatementSource;
+use crate::services::change_tracker::{StatementSource, TrackedChanges, pk_identity};
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::error_text;
 
@@ -12,97 +16,108 @@ use super::ran_statements::RanStatements;
 use super::{App, AppMsg};
 
 impl App {
-    /// Atomic Save handler for the inline-spreadsheet pattern.
-    /// Receives a fully-materialised `Vec<(SQL, params)>` from a
-    /// BrowseTab's `TabChangeTracker` and runs them all inside one
-    /// transaction. On success, dispatches `BrowseTabInput::
-    /// SaveCompleted` so the tab clears its tracker + refetches. On
-    /// failure, the entire transaction has already been rolled back
-    /// by the driver; we just surface the error message.
+    /// Save a browse tab's pending changes as one batch.
+    ///
+    /// The plan is built inside the operation from the connection it
+    /// runs on, so the SQL matches that server even after a reconnect.
+    /// Every update and delete carries a row guard: a row another
+    /// session changed or removed fails the whole save rather than
+    /// passing as a save that touched nothing.
     pub(super) fn on_execute_browse_transaction(
         &self,
         tab_id: Uuid,
-        statements: Vec<(String, Vec<Value>)>,
-        sources: Vec<StatementSource>,
+        table: TableRef,
+        columns: Vec<ColumnInfo>,
+        changes: TrackedChanges,
         sender: ComponentSender<App>,
     ) {
-        let Some(conn) = crate::services::database_service::instance().active() else {
+        let Some(session) = self.context.active.get() else {
             self.dispatch_to_tab(
                 tab_id,
                 BrowseTabInput::SaveFailed(crate::i18n::gettext("No active connection")),
             );
             return;
         };
-        // Drivers that cannot report a row count for UPDATE / DELETE
-        // return 0 for every statement, which the concurrency guard
-        // below would read as "every row vanished". Skip the guard for
-        // them rather than warn on every successful save.
-        let reports_rows_affected = self
-            .current_driver_id
-            .as_ref()
-            .and_then(|id| self.registry.get(id))
-            .is_none_or(|driver| driver.reports_rows_affected());
         self.set_row_op_in_flight(true);
-        // Increment the in-flight counter so window-close blocks until
-        // the transaction resolves. Decrement happens in the
-        // SaveCompletedForTab / SaveFailedForTab handlers regardless of
-        // outcome.
+        // Window-close waits while this is above zero, so a save never
+        // commits after its tab is gone. SaveCompletedForTab and
+        // SaveFailedForTab bring it back down whatever the outcome.
         self.in_flight_saves.set(self.in_flight_saves.get() + 1);
-        let sender_for_cmd = sender.clone();
-        // A row save changes the database, so it belongs in the same
-        // history as a statement run from the editor.
-        let ran = RanStatements::starting(
-            self.history.store(),
-            statements.iter().map(|(sql, _)| sql.clone()).collect::<Vec<_>>(),
-        );
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    match conn.execute_in_transaction(&statements).await {
-                        Ok(affected) => {
-                            // Optimistic-concurrency guard: every UPDATE
-                            // and DELETE in our materialised set targets
-                            // a single PK-identified row, so each must
-                            // affect exactly one row. Zero affected for
-                            // any of them means the row was modified or
-                            // deleted by another session between fetch
-                            // and save. The transaction still committed
-                            // — there's nothing to roll back — but the
-                            // user must hear about it so a phantom save
-                            // doesn't pass silently.
-                            let warning = reports_rows_affected
-                                .then(|| compute_concurrency_warning(&statements, &affected))
-                                .flatten();
-                            let touched = affected.iter().copied().sum::<u64>();
-                            ran.finished(
-                                i64::try_from(touched).ok(),
-                                tablepro_storage::query_history::Outcome::Success,
-                            )
-                            .await;
-                            sender_for_cmd.input(AppMsg::RowOpStarted);
-                            sender_for_cmd.input(AppMsg::WorkspaceSchemaWordsChanged);
-                            sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id, warning));
-                        }
-                        Err(e) => {
-                            // If the driver pinpointed which statement
-                            // failed, look up its source and ask the
-                            // tab to scroll-and-select that row before
-                            // showing the error dialog. The user sees
-                            // the row in question without scanning the
-                            // whole grid.
-                            if let DriverError::RolledBack { statement_index, .. } = &e
-                                && let Some(source) = sources.get(*statement_index).cloned()
-                            {
-                                sender_for_cmd.input(AppMsg::FlashErrorRowForTab(tab_id, source));
-                            }
-                            let msg = error_text::driver_message(&e);
-                            ran.finished(None, tablepro_storage::query_history::Outcome::Error(msg.clone()))
-                                .await;
-                            sender_for_cmd.input(AppMsg::SaveFailedForTab(tab_id, msg));
-                        }
+        let history = self.history.store();
+        let connection = self.context.active.metadata();
+        let work = async move {
+            let changes_for_plan = changes.changes.clone();
+            let saved = session
+                .run(OperationKind::Save(WriteKind::RowChanges), move |lease, options| {
+                    let table = table.clone();
+                    let columns = columns.clone();
+                    let changes = changes_for_plan.clone();
+                    async move {
+                        let plan = plan_save(&*lease.dialect(), &table, &columns, &pk_identity(&columns), &changes)?;
+                        // A row save changes the database, so it belongs
+                        // in the same history as a statement run from the
+                        // editor.
+                        let sql: Vec<String> = plan
+                            .batch
+                            .steps
+                            .iter()
+                            .map(|step| step.statement.sql().to_owned())
+                            .collect();
+                        let outcome = lease.write_batch(&plan.batch, options).await;
+                        Ok((plan, sql, outcome))
                     }
                 })
-                .drop_on_shutdown()
+                .await;
+            (saved, changes)
+        };
+        let tasks = self.context.tasks.clone();
+        let history_tasks = tasks.clone();
+        let _delivery = crate::runtime::spawn_and_deliver(&tasks, work, move |finished| {
+            let (saved, changes) = match finished {
+                Ok(finished) => finished,
+                Err(failure) => {
+                    tracing::warn!(%failure, "the save task did not finish");
+                    sender.input(AppMsg::SaveFailedForTab(
+                        tab_id,
+                        crate::i18n::gettext("The save did not finish."),
+                    ));
+                    return;
+                }
+            };
+            let (plan, sql, outcome) = match saved {
+                Ok(planned) => planned,
+                Err(error) => {
+                    sender.input(AppMsg::SaveFailedForTab(
+                        tab_id,
+                        error_text::operation_error_message(&error),
+                    ));
+                    return;
+                }
+            };
+            let ran = RanStatements::starting(history, connection, sql);
+            match outcome {
+                Ok(report) => {
+                    let touched = report.total_rows();
+                    record(
+                        &history_tasks,
+                        ran,
+                        touched.and_then(|rows| i64::try_from(rows).ok()),
+                        None,
+                    );
+                    sender.input(AppMsg::WorkspaceSchemaWordsChanged);
+                    sender.input(AppMsg::SaveCompletedForTab(tab_id));
+                }
+                Err(error) => {
+                    // The row behind the failing step is flashed before
+                    // the error shows, so the user sees which one it was.
+                    if let Some(source) = failing_source(&plan, &changes, &error) {
+                        sender.input(AppMsg::FlashErrorRowForTab(tab_id, source));
+                    }
+                    let message = error_text::operation_error_message(&OperationError::Driver(error));
+                    record(&history_tasks, ran, None, Some(message.clone()));
+                    sender.input(AppMsg::SaveFailedForTab(tab_id, message));
+                }
+            }
         });
     }
 
@@ -111,26 +126,25 @@ impl App {
     }
 
     pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {
-        let (columns, driver_id, snapshot, table) = {
+        let (columns, snapshot, table) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
             };
             let model = controller.model();
-            (
-                model.columns().to_vec(),
-                model.driver_id().to_string(),
-                model.snapshot(),
-                model.table().to_string(),
-            )
+            (model.columns().to_vec(), model.snapshot(), model.table().to_string())
         };
         let Some(snapshot) = snapshot else { return };
         let Some(row) = snapshot.rows.get(row_position as usize) else {
             return;
         };
-        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
+        let Some(dialect) = self.context.active.get().and_then(|session| session.current_dialect()) else {
+            self.show_toast(&crate::i18n::gettext("Connect to a database first."));
+            return;
+        };
         let result_columns: Vec<_> = columns.iter().map(|column| column.result_column()).collect();
-        let sql = tablepro_core::export::render_sql_insert(dialect, &table, &result_columns, std::slice::from_ref(row));
+        let sql =
+            tablepro_core::export::render_sql_insert(&*dialect, &table, &result_columns, std::slice::from_ref(row));
         let sql = sql.trim_end().to_owned();
         self.window.clipboard().set_text(&sql);
         self.show_toast(&crate::i18n::gettext("INSERT statement copied"));
@@ -142,81 +156,113 @@ impl App {
     }
 }
 
-/// Inspect the SQL prefix of each statement and compare its expected
-/// affected-row count against the driver's reported count. Returns
-/// `Some(message)` if any UPDATE / DELETE matched zero rows.
-///
-/// `materialize` always emits one UPDATE / DELETE per PK-identified
-/// row, so each is expected to affect exactly one row. Zero means the
-/// target row was modified or deleted out-of-band between fetch and
-/// save. INSERTs are ignored — auto-increment / generated-column rows
-/// can plausibly affect zero according to driver quirks (e.g. ON
-/// CONFLICT DO NOTHING in user-extended SQL), and we don't produce
-/// those today.
-fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[u64]) -> Option<String> {
-    let mut zero_updates = 0usize;
-    let mut zero_deletes = 0usize;
-    for (idx, (sql, _)) in statements.iter().enumerate() {
-        let count = affected.get(idx).copied().unwrap_or(0);
-        if count > 0 {
-            continue;
-        }
-        let trimmed = sql.trim_start().to_ascii_uppercase();
-        if trimmed.starts_with("UPDATE") {
-            zero_updates += 1;
-        } else if trimmed.starts_with("DELETE") {
-            zero_deletes += 1;
-        }
-    }
-    if zero_updates == 0 && zero_deletes == 0 {
-        return None;
-    }
-    let total = zero_updates + zero_deletes;
-    Some(crate::i18n::gettext_f(
-        "{n} rows could not be located. They may have been changed by another session. Refresh and review.",
-        &[("n", &total.to_string())],
-    ))
+/// The grid row behind the statement a save failed at, when the
+/// engine said which one it was.
+fn failing_source(plan: &SavePlan, changes: &TrackedChanges, error: &DriverError) -> Option<StatementSource> {
+    let step = match error {
+        DriverError::RolledBack { statement_index, .. }
+        | DriverError::RowGuardFailed { statement_index, .. }
+        | DriverError::GuardUnsupported { statement_index }
+        | DriverError::PartiallyApplied { statement_index, .. } => *statement_index,
+        _ => return None,
+    };
+    changes.source(plan.origin(step)?)
+}
+
+/// Record a save in the history. The history database needs the
+/// runtime, and a history that cannot be written is worth a log line,
+/// never a lost edit, so nothing waits for it.
+fn record(tasks: &Tasks, ran: RanStatements, rows_affected: Option<i64>, failure: Option<String>) {
+    let outcome = match failure {
+        None => tablepro_storage::query_history::Outcome::Success,
+        Some(message) => tablepro_storage::query_history::Outcome::Error(message),
+    };
+    drop(tasks.spawn_task(ran.finished(rows_affected, outcome)));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::compute_concurrency_warning;
+    use tablepro_core::Value;
+    use tablepro_core::column::{ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth};
 
-    fn stmt(sql: &str) -> (String, Vec<tablepro_core::Value>) {
-        (sql.to_string(), Vec::new())
+    use super::*;
+    use crate::services::change_tracker::{RowKey, TabChangeTracker};
+
+    fn column(name: &str, primary_key: bool) -> ColumnInfo {
+        let mut column_type = ColumnType::untyped_text("integer");
+        column_type.kind = ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W32,
+            signed: true,
+        });
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type,
+            nullable: false,
+            primary_key,
+            is_auto_increment: false,
+            is_generated: false,
+            default: ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    fn planned() -> (SavePlan, TrackedChanges, RowKey) {
+        let columns = vec![column("id", true), column("n", false)];
+        let edited = RowKey::from_pk_values(&[Value::Int(3)]).unwrap();
+        let mut tracker = TabChangeTracker::new();
+        tracker.track_insert(vec![Value::Int(10), Value::Int(1)]);
+        tracker.track_cell_edit(edited.clone(), 1, Value::Int(1), Value::Int(2));
+        let changes = tracker.change_set(&columns).unwrap();
+        let dialect = drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(3, 45, 0));
+        let plan = plan_save(
+            &dialect,
+            &TableRef::unqualified("t"),
+            &columns,
+            &pk_identity(&columns),
+            &changes.changes,
+        )
+        .unwrap();
+        (plan, changes, edited)
     }
 
     #[test]
-    fn warning_none_when_all_match() {
-        let stmts = vec![stmt("UPDATE \"t\" SET …"), stmt("DELETE FROM \"t\" …")];
-        assert!(compute_concurrency_warning(&stmts, &[1, 1]).is_none());
+    fn a_guard_failure_flashes_the_row_it_was_about() {
+        let (plan, changes, edited) = planned();
+        let error = DriverError::RowGuardFailed {
+            statement_index: 1,
+            expected: 1,
+            actual: 0,
+        };
+
+        let source = failing_source(&plan, &changes, &error);
+
+        assert!(matches!(source, Some(StatementSource::Update { row_key }) if row_key == edited));
     }
 
     #[test]
-    fn warning_present_when_update_matches_zero() {
-        let stmts = vec![stmt("UPDATE \"t\" SET …"), stmt("DELETE FROM \"t\" …")];
-        let w = compute_concurrency_warning(&stmts, &[0, 1]).unwrap();
-        assert!(w.contains("1 rows"));
+    fn a_rolled_back_insert_flashes_its_draft() {
+        let (plan, changes, _) = planned();
+        let error = DriverError::RolledBack {
+            statement_index: 0,
+            source: Box::new(DriverError::server("duplicate key")),
+        };
+
+        assert!(matches!(
+            failing_source(&plan, &changes, &error),
+            Some(StatementSource::Insert { .. })
+        ));
     }
 
     #[test]
-    fn warning_counts_update_and_delete_zero_together() {
-        let stmts = vec![stmt("UPDATE a"), stmt("DELETE FROM b"), stmt("UPDATE c")];
-        let w = compute_concurrency_warning(&stmts, &[0, 0, 1]).unwrap();
-        assert!(w.contains("2 rows"));
-    }
+    fn an_error_that_names_no_statement_flashes_nothing() {
+        let (plan, changes, _) = planned();
 
-    #[test]
-    fn warning_ignores_zero_inserts() {
-        // INSERT with affected=0 is unusual but not necessarily a phantom
-        // — keep the warning specific to UPDATE / DELETE for now.
-        let stmts = vec![stmt("INSERT INTO t (a) VALUES (?)"), stmt("UPDATE t SET …")];
-        assert!(compute_concurrency_warning(&stmts, &[0, 1]).is_none());
-    }
-
-    #[test]
-    fn warning_handles_lowercase_and_whitespace() {
-        let stmts = vec![stmt("  update t set x = 1 where id = 5")];
-        assert!(compute_concurrency_warning(&stmts, &[0]).is_some());
+        assert!(failing_source(&plan, &changes, &DriverError::Busy).is_none());
+        let past_the_end = DriverError::RowGuardFailed {
+            statement_index: 7,
+            expected: 1,
+            actual: 0,
+        };
+        assert!(failing_source(&plan, &changes, &past_the_end).is_none());
     }
 }

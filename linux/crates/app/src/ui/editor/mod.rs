@@ -1,8 +1,11 @@
 mod format_plan;
+mod script_run;
 mod significant_tokens;
 mod statement_cursor;
 
-use std::time::SystemTime;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use relm4::adw::prelude::*;
 use relm4::gtk::glib;
@@ -11,16 +14,30 @@ use relm4::{adw, gtk};
 use sourceview5::prelude::*;
 use tokio_util::sync::CancellationToken;
 
-use tablepro_core::QueryResult;
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::{QueryResult, RowLimit};
+use tablepro_session::ConnectionMetadata;
+use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_storage::query_history::{NewEntry, Outcome};
 
+use self::script_run::{EditorSessionSlot, ScriptEnd, ScriptOptions};
+pub use self::script_run::{StatementOutcome, StatementOutcomeKind};
 use super::grid::{GridMsg, TabGridContext, build_column_view};
-use crate::services::database_service::{self, ConnectionMetadata};
+use crate::services::active_session::ActiveSession;
 
 pub struct SqlEditor {
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
     history: Option<tablepro_storage::QueryHistory>,
-    tasks: tablepro_session::runtime::Tasks,
+    tasks: Tasks,
+    session: ActiveSession,
+    hold: Rc<dyn ProcessHold>,
+    close_timeout: Duration,
+    /// This tab's own connection, which keeps its transaction and
+    /// temporary tables between runs.
+    editor_session: Arc<EditorSessionSlot>,
+    /// Hands the running script's end back to this tab. Aborted when the
+    /// tab goes, so nothing is delivered to a closed component.
+    run_delivery: Option<glib::JoinHandle<()>>,
     source_view: sourceview5::View,
     run_button: gtk::Button,
     cancel_button: gtk::Button,
@@ -39,33 +56,13 @@ pub struct SqlEditorInit {
     pub initial_query: Option<String>,
     pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
     pub history: Option<tablepro_storage::QueryHistory>,
-    pub tasks: tablepro_session::runtime::Tasks,
-}
-
-/// One statement's outcome inside a multi-statement script. The
-/// editor renders these as sub-tabs of the results pane so a user
-/// running a migration / ETL script sees every step's result, not
-/// just the last one. `sql_preview` is the leading ~60 chars of the
-/// statement text used for the tab tooltip.
-#[derive(Debug, Clone)]
-pub struct StatementOutcome {
-    pub sql_preview: String,
-    pub elapsed_ms: u128,
-    pub kind: StatementOutcomeKind,
-}
-
-#[derive(Debug, Clone)]
-pub enum StatementOutcomeKind {
-    /// Statement returned a result set (SELECT, RETURNING, etc.).
-    /// `rows_affected` is `None` because driver `query` doesn't
-    /// distinguish; for non-SELECT the rows vec is empty and we
-    /// surface a "executed" status instead of a row count.
-    Rows(QueryResult),
-    /// Statement failed; remaining statements are NotRun.
-    Error(String),
-    /// Statement was queued behind a failure or cancellation —
-    /// never sent to the driver.
-    NotRun,
+    pub tasks: Tasks,
+    /// The window's session, which the tab opens its own connection
+    /// from on the first run.
+    pub session: ActiveSession,
+    /// Keeps the process alive while the tab's connection closes.
+    pub hold: Rc<dyn ProcessHold>,
+    pub close_timeout: Duration,
 }
 
 #[derive(Debug)]
@@ -78,9 +75,8 @@ pub enum SqlEditorInput {
     /// vs. sub-tabs) based on Vec length.
     ShowOutcomes(Vec<StatementOutcome>),
     ShowCancelled,
-    /// Query exceeded the configured wall-clock timeout. Treated
-    /// like a manual cancel from the user's perspective but with
-    /// a different status / history-record reason.
+    /// A statement ran past the configured timeout and the server
+    /// stopped it. Reads like a cancel, but history records why.
     ShowTimedOut(u32),
     ReplaceQuery(String),
     /// Ctrl+Shift+F → reformat the buffer in place via sqlformat.
@@ -443,6 +439,11 @@ impl SimpleComponent for SqlEditor {
             settings,
             history: init.history.clone(),
             tasks: init.tasks.clone(),
+            session: init.session,
+            hold: init.hold,
+            close_timeout: init.close_timeout,
+            editor_session: Arc::new(EditorSessionSlot::new()),
+            run_delivery: None,
             source_view: widgets.source_view.clone(),
             run_button: widgets.run_button.clone(),
             cancel_button: widgets.cancel_button.clone(),
@@ -456,6 +457,29 @@ impl SimpleComponent for SqlEditor {
             executing_started_at: None,
         };
         ComponentParts { model, widgets }
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        if let Some(token) = self.cancel_token.take() {
+            token.cancel();
+        }
+        if let Some(delivery) = self.run_delivery.take() {
+            delivery.abort();
+        }
+        let Some(editor) = self.editor_session.close() else {
+            return;
+        };
+        // The tab is gone but its connection is still open on the
+        // server; the hold keeps the process up until it is closed.
+        let hold = self.hold.acquire();
+        let closing = tablepro_session::close_editor_sessions(vec![editor], self.close_timeout, &self.tasks);
+        glib::spawn_future_local(async move {
+            match closing.await {
+                Ok(reports) => tracing::debug!(?reports, "closed an editor tab's session"),
+                Err(failure) => tracing::warn!(%failure, "closing an editor tab's session failed"),
+            }
+            drop(hold);
+        });
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -562,6 +586,7 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::ShowOutcomes(outcomes) => {
+                self.run_delivery = None;
                 self.cancel_token = None;
                 self.run_button.set_sensitive(true);
                 self.cancel_button.set_visible(false);
@@ -585,7 +610,10 @@ impl SimpleComponent for SqlEditor {
                 let total_rows: i64 = outcomes
                     .iter()
                     .filter_map(|o| match &o.kind {
-                        StatementOutcomeKind::Rows(qr) => Some(qr.rows.len() as i64),
+                        StatementOutcomeKind::Rows(qr) => Some(
+                            o.rows_affected
+                                .map_or(qr.rows.len() as i64, |rows| i64::try_from(rows).unwrap_or(i64::MAX)),
+                        ),
                         _ => None,
                     })
                     .sum();
@@ -603,6 +631,7 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::ShowCancelled => {
+                self.run_delivery = None;
                 self.cancel_token = None;
                 self.run_button.set_sensitive(true);
                 self.cancel_button.set_visible(false);
@@ -626,6 +655,7 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::ShowTimedOut(secs) => {
+                self.run_delivery = None;
                 self.cancel_token = None;
                 self.run_button.set_sensitive(true);
                 self.cancel_button.set_visible(false);
@@ -670,10 +700,7 @@ impl SimpleComponent for SqlEditor {
                 if text.trim().is_empty() {
                     return;
                 }
-                let grammar = database_service::instance()
-                    .active_metadata()
-                    .map(|metadata| tablepro_core::dialect::grammar_for(&metadata.driver_id))
-                    .unwrap_or(tablepro_core::sql_syntax::SqlGrammar::PostgreSql);
+                let grammar = self.grammar();
                 let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
                 let formatted = format_plan::format_script(&text, grammar, settings);
                 if formatted == text {
@@ -689,13 +716,14 @@ impl SimpleComponent for SqlEditor {
 }
 
 impl SqlEditor {
-    /// The SQL grammar of the connection the editor is pointed at,
-    /// which decides where statements begin and end.
-    fn grammar(&self) -> tablepro_core::sql_syntax::SqlGrammar {
-        database_service::instance()
-            .active_metadata()
-            .map(|metadata| tablepro_core::dialect::grammar_for(&metadata.driver_id))
-            .unwrap_or(tablepro_core::sql_syntax::SqlGrammar::PostgreSql)
+    /// The SQL grammar of the server the editor is pointed at, which
+    /// decides where statements begin and end. With no connection the
+    /// split still has to work, and PostgreSQL's is the strictest.
+    fn grammar(&self) -> SqlGrammar {
+        self.session
+            .get()
+            .and_then(|session| session.current_dialect())
+            .map_or(SqlGrammar::PostgreSql, |dialect| dialect.grammar())
     }
 
     /// The text buffer, so the draft writer can read the script once
@@ -710,12 +738,9 @@ impl SqlEditor {
     /// (cancel token, spinner, status, history-recording context)
     /// stays in one place and can't drift between the two callers.
     fn execute_sql(&mut self, trimmed: String, sender: ComponentSender<Self>) {
-        let conn = match database_service::instance().active() {
-            Some(c) => c,
-            None => {
-                self.status.set_label(&crate::i18n::gettext("no active connection"));
-                return;
-            }
+        let Some(session) = self.session.get() else {
+            self.status.set_label(&crate::i18n::gettext("no active connection"));
+            return;
         };
 
         if let Some(prev) = self.cancel_token.take() {
@@ -732,60 +757,36 @@ impl SqlEditor {
         let _ = sender.output(SqlEditorOutput::RunStateChanged(true));
 
         self.executing_sql = Some(trimmed.clone());
-        self.executing_metadata = database_service::instance().active_metadata();
+        self.executing_metadata = Some(session.metadata().clone());
         self.executing_started_at = Some(SystemTime::now());
 
         let statements = statement_cursor::script_statements(&trimmed, self.grammar());
         let timeout = self.settings.query_timeout();
         let timeout_secs = timeout.map_or(0, |duration| duration.as_secs() as u32);
-        let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            let statements = statements.clone();
-            shutdown
-                .register(async move {
-                    // A `query_timeout_secs == 0` user opt-out turns
-                    // the timeout branch off by holding a future that
-                    // never resolves. Otherwise the tokio sleep races
-                    // against `cancelled()` and `run_statements()`;
-                    // first to finish wins.
-                    let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> = match timeout {
-                        Some(duration) => Box::pin(tokio::time::sleep(duration)),
-                        None => Box::pin(std::future::pending::<()>()),
-                    };
-                    // The cancel token is the editor's own signal
-                    // channel — the driver does not subscribe to it
-                    // (sqlx has no future-drop cancellation hook for
-                    // Postgres / MySQL). When the timeout wins, we
-                    // *also* fire `token.cancel()` so any outer logic
-                    // (pool shutdown, connection monitor) sees the
-                    // same "abandoned" signal as a manual Cancel,
-                    // and the future drops on the next poll.
-                    let token_for_timeout = token.clone();
-                    let msg = tokio::select! {
-                        biased;
-                        _ = token.cancelled() => SqlEditorInput::ShowCancelled,
-                        _ = timeout => {
-                            token_for_timeout.cancel();
-                            SqlEditorInput::ShowTimedOut(timeout_secs)
-                        }
-                        outcomes = run_statements(conn, statements) => {
-                            let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
-                            let n_ok = outcomes
-                                .iter()
-                                .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
-                                .count();
-                            let n_err = outcomes
-                                .iter()
-                                .filter(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
-                                .count();
-                            tracing::info!(n_ok, n_err, total_ms, "script run complete");
-                            SqlEditorInput::ShowOutcomes(outcomes)
-                        }
-                    };
-                    sender_clone.input(msg);
-                })
-                .drop_on_shutdown()
+        let options = ScriptOptions {
+            statement_timeout: timeout,
+            row_limit: RowLimit::EDITOR_DEFAULT,
+            close_timeout: self.close_timeout,
+        };
+        let preview = script_run::sql_preview(&trimmed);
+        let running = script_run::run_script(session, self.editor_session.clone(), statements, options, token);
+        let delivery = crate::runtime::spawn_and_deliver(&self.tasks, running, move |ended| {
+            let message = match ended {
+                Ok(ScriptEnd::Outcomes(outcomes)) => SqlEditorInput::ShowOutcomes(outcomes),
+                Ok(ScriptEnd::Cancelled) => SqlEditorInput::ShowCancelled,
+                Ok(ScriptEnd::TimedOut) => SqlEditorInput::ShowTimedOut(timeout_secs),
+                Ok(ScriptEnd::Unavailable(error)) => SqlEditorInput::ShowOutcomes(vec![failed_outcome(preview, error)]),
+                Err(failure) => SqlEditorInput::ShowOutcomes(vec![failed_outcome(
+                    preview,
+                    crate::i18n::gettext_f(
+                        "The run stopped unexpectedly: {error}",
+                        &[("error", &failure.to_string())],
+                    ),
+                )]),
+            };
+            sender.input(message);
         });
+        self.run_delivery = Some(delivery);
     }
 
     fn record_history(&mut self, duration_ms: i64, rows_affected: Option<i64>, outcome: Outcome) {
@@ -823,52 +824,14 @@ fn clear_box(b: &gtk::Box) {
     }
 }
 
-async fn run_statements(
-    conn: std::sync::Arc<dyn tablepro_core::Connection>,
-    statements: Vec<String>,
-) -> Vec<StatementOutcome> {
-    if statements.is_empty() {
-        return Vec::new();
-    }
-    let mut out = Vec::with_capacity(statements.len());
-    let mut aborted = false;
-    for sql in statements.into_iter() {
-        let preview = sql_preview(&sql);
-        if aborted {
-            out.push(StatementOutcome {
-                sql_preview: preview,
-                elapsed_ms: 0,
-                kind: StatementOutcomeKind::NotRun,
-            });
-            continue;
-        }
-        let started = std::time::Instant::now();
-        let kind = match conn.query(&sql).await {
-            Ok(qr) => StatementOutcomeKind::Rows(qr),
-            Err(e) => {
-                aborted = true;
-                StatementOutcomeKind::Error(super::error_text::driver_message(&e))
-            }
-        };
-        out.push(StatementOutcome {
-            sql_preview: preview,
-            elapsed_ms: started.elapsed().as_millis(),
-            kind,
-        });
-    }
-    out
-}
-
-/// First ~60 chars of `sql`, single-line, used for tab tooltips so
-/// the user can tell sub-tabs apart on long scripts without reading
-/// the editor.
-fn sql_preview(sql: &str) -> String {
-    let single_line: String = sql.split_whitespace().collect::<Vec<_>>().join(" ");
-    if single_line.chars().count() > 60 {
-        let prefix: String = single_line.chars().take(60).collect();
-        format!("{prefix}…")
-    } else {
-        single_line
+/// A script that failed before any statement ran, shown the way a
+/// failing first statement is.
+fn failed_outcome(sql_preview: String, message: String) -> StatementOutcome {
+    StatementOutcome {
+        sql_preview,
+        elapsed_ms: 0,
+        rows_affected: None,
+        kind: StatementOutcomeKind::Error(message),
     }
 }
 
@@ -924,12 +887,21 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
         }
         StatementOutcomeKind::Rows(_) => {
             let ms = o.elapsed_ms.to_string();
+            let description = match o.rows_affected {
+                Some(rows) => crate::i18n::ngettext_f(
+                    "{rows} row affected · {ms} ms",
+                    "{rows} rows affected · {ms} ms",
+                    u32::try_from(rows).unwrap_or(u32::MAX),
+                    &[("rows", &rows.to_string()), ("ms", &ms)],
+                ),
+                None => crate::i18n::gettext_f("No rows returned · {ms} ms", &[("ms", &ms)]),
+            };
             adw::StatusPage::builder()
                 .title(crate::i18n::gettext_f(
                     "Statement {n} executed",
                     &[("n", &(idx + 1).to_string())],
                 ))
-                .description(crate::i18n::gettext_f("No rows returned · {ms} ms", &[("ms", &ms)]))
+                .description(description)
                 .icon_name(crate::ui::icons::SUCCESS)
                 .vexpand(true)
                 .build()
@@ -1236,7 +1208,7 @@ fn choose_sql_file(sender: &ComponentSender<SqlEditor>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_name_for_query, sql_preview, summary_label};
+    use super::{export_name_for_query, summary_label};
 
     #[test]
     fn export_name_slugs_the_statement() {
@@ -1247,20 +1219,6 @@ mod tests {
     #[test]
     fn export_name_falls_back_when_there_is_no_statement() {
         assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
-    }
-
-    #[test]
-    fn sql_preview_collapses_whitespace_and_truncates() {
-        let preview = sql_preview("SELECT *\n  FROM   users\n  WHERE id = 1");
-        assert_eq!(preview, "SELECT * FROM users WHERE id = 1");
-    }
-
-    #[test]
-    fn sql_preview_appends_ellipsis_when_too_long() {
-        let long = "SELECT col1, col2, col3, col4, col5, col6, col7, col8, col9 FROM users WHERE id = 1";
-        let preview = sql_preview(long);
-        assert!(preview.ends_with('…'));
-        assert!(preview.chars().count() <= 61);
     }
 
     #[test]

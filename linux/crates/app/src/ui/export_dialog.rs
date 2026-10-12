@@ -1,20 +1,29 @@
 use std::rc::Rc;
+use std::sync::Arc;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
 use tablepro_core::QueryResult;
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 
-/// What a result needs to be written back as `INSERT` statements.
+/// The table a result can be written back to as `INSERT` statements.
 ///
-/// A browse tab knows both; a query result does not, because it may
-/// join several tables or none, so SQL is not offered for one.
+/// A browse tab knows it; a query result does not, because it may join
+/// several tables or none, so SQL is not offered for one.
 #[derive(Debug, Clone)]
 pub struct SqlTarget {
     pub table: String,
-    pub driver_id: String,
+}
+
+/// A table to insert into and the spelling of the server the rows came
+/// from. SQL is offered only with both.
+#[derive(Debug, Clone)]
+struct InsertTarget {
+    table: String,
+    dialect: Arc<dyn SqlDialect>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -49,7 +58,7 @@ impl Format {
         Format::Sql,
     ];
 
-    fn offered(target: Option<&SqlTarget>) -> &'static [Format] {
+    fn offered(target: Option<&InsertTarget>) -> &'static [Format] {
         match target {
             Some(_) => &Self::ALL_WITH_SQL,
             None => &Self::ALL,
@@ -161,8 +170,13 @@ pub fn present(
     result: QueryResult,
     name: String,
     target: Option<SqlTarget>,
+    dialect: Option<Arc<dyn SqlDialect>>,
     settings: &Rc<tablepro_storage::AppSettings>,
 ) {
+    let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
+        table: target.table,
+        dialect,
+    });
     let formats = Format::offered(target.as_ref());
     let page = adw::PreferencesPage::new();
 
@@ -326,7 +340,7 @@ pub fn present(
 struct Export {
     format: Format,
     name: String,
-    target: Option<SqlTarget>,
+    target: Option<InsertTarget>,
     result: QueryResult,
     options: CsvOptions,
 }
@@ -378,13 +392,12 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
             Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title).into_bytes()),
             Format::Xml => Ok(export::render_xml(&result.columns, &result.rows).into_bytes()),
             Format::Sql => match target.as_ref() {
-                Some(target) => Ok(export::render_sql_insert(
-                    tablepro_core::dialect::dialect_for(&target.driver_id),
-                    &target.table,
-                    &result.columns,
-                    &result.rows,
-                )
-                .into_bytes()),
+                Some(target) => {
+                    Ok(
+                        export::render_sql_insert(&*target.dialect, &target.table, &result.columns, &result.rows)
+                            .into_bytes(),
+                    )
+                }
                 // The format is only offered with a target, so this is
                 // unreachable through the dialog.
                 None => Err(crate::i18n::gettext("This result has no table to insert into.")),

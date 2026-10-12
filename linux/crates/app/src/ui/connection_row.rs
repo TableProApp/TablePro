@@ -370,7 +370,7 @@ mod tests {
             port: 1433,
             database: "sales".into(),
             username: username.into(),
-            use_tls: true,
+            tls: tablepro_core::TlsConfig::verify_full(),
             read_only: false,
             auth_mode,
             ssh: None,

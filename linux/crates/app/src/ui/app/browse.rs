@@ -1,10 +1,13 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender, adw};
 
-use tablepro_core::{ColumnInfo, QueryResult};
+use tablepro_core::browse::{PageRequest, SortKey, build_count, build_page, split_page};
+use tablepro_core::meta::{PagePosition, TableRef};
+use tablepro_core::statement::StatementBuilder;
+use tablepro_core::{CallOptions, ColumnInfo, DriverError, FilterSet, QueryResult, RowLimit};
+use tablepro_session::{ConnectionLease, OperationKind, Session};
 use uuid::Uuid;
 
-use crate::services::database_service;
 use crate::ui::browse_tab::BrowseTabInput;
 
 use super::{App, AppMsg, OpenMode};
@@ -21,194 +24,140 @@ impl App {
         self.dispatch_select_table(schema, name, open_mode, sender);
     }
 
-    /// Fire the SELECT * query for a specific browse tab. Result goes to
-    /// the same tab via `AppMsg::RowsLoaded(tab_id, ...)`. Composes the
-    /// SELECT from the tab's current sort + filter + pagination state.
-    /// Filter and sort are server-side; the row window is rendered by
-    /// `sql_dialect::build_order_and_pagination` because the syntax is
-    /// dialect-specific.
+    /// Fetch the current page of a browse tab, under its sort, filter
+    /// and position. The SQL is built inside the operation from the
+    /// connection it runs on, so it matches that server's dialect even
+    /// when a reconnect lands in between.
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table, offset, limit, sort, filter, columns, driver_id) = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
-                return;
-            };
-            let model = controller.model();
-            (
-                model.schema().map(str::to_owned),
-                model.table().to_string(),
-                model.current_offset(),
-                model.page_size(),
-                model.current_sort(),
-                model.current_filter().clone(),
-                model.columns().to_vec(),
-                model.driver_id().to_string(),
-            )
-        };
-
-        let Some(conn) = database_service::instance().active() else {
-            sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
+        let Some(request) = self.browse_request(tab_id) else {
             return;
         };
-        let order_by = sort.and_then(|(idx, asc)| {
-            columns.get(idx).map(|c| {
-                let name = tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name);
-                let dir = if asc { "ASC" } else { "DESC" };
-                format!("{name} {dir}")
-            })
-        });
-
-        // Build WHERE up front so a filter validation error short-
-        // circuits to a toast without spawning the async command.
-        // Build returns None when the filter is empty; that path
-        // matches today's no-filter behaviour exactly.
-        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
-        let (where_sql, params) = match tablepro_core::build_filter(dialect, &columns, &filter, 1) {
-            Ok(Some((sql, bound))) => (Some(sql), bound_values(bound)),
-            Ok(None) => (None, Vec::new()),
-            Err(e) => {
-                sender.input(AppMsg::ShowToast(format!("{e}")));
-                return;
-            }
+        let Some(session) = self.context.active.get() else {
+            sender.input(AppMsg::LoadFailed(
+                Some(tab_id),
+                crate::i18n::gettext("No active connection"),
+            ));
+            return;
         };
-
-        let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    // No WHERE + no ORDER BY: keep the existing
-                    // fetch_rows fast-path so unchanged callers don't
-                    // pay the parametric overhead.
-                    let result = if where_sql.is_none() && order_by.is_none() {
-                        conn.fetch_rows(schema.as_deref(), &table, offset, limit).await
-                    } else {
-                        let qualified = match &schema {
-                            Some(s) => format!(
-                                "{}.{}",
-                                tablepro_core::sql_dialect::quote_ident(&driver_id, s),
-                                tablepro_core::sql_dialect::quote_ident(&driver_id, &table)
-                            ),
-                            None => tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
+        // A filter the dialect cannot write is the user's to fix, so it
+        // is a toast now rather than a failed page later.
+        if let Some(message) = filter_problem(&session, &request) {
+            sender.input(AppMsg::ShowToast(message));
+            return;
+        }
+        let offset = request.offset;
+        let work = async move {
+            session
+                .run(OperationKind::Page, move |lease, options| {
+                    let request = request.clone();
+                    async move {
+                        let columns = request.columns(&lease, &options).await?;
+                        let identity = lease.row_identity(&request.table, options.clone()).await?;
+                        let position = match request.offset {
+                            0 => PagePosition::First,
+                            offset => PagePosition::Offset(offset),
                         };
-                        let mut sql = format!("SELECT * FROM {qualified}");
-                        if let Some(w) = &where_sql {
-                            sql.push_str(" WHERE ");
-                            sql.push_str(w);
-                        }
-                        sql.push_str(&tablepro_core::sql_dialect::build_order_and_pagination(
-                            &driver_id,
-                            order_by.as_deref(),
-                            limit,
-                            offset,
-                        ));
-                        conn.query_params(&sql, &params).await
-                    };
-                    match result {
-                        Ok(query_result) => sender_clone.input(AppMsg::RowsLoaded(tab_id, offset, query_result)),
-                        Err(e) => sender_clone.input(AppMsg::LoadFailed(
-                            Some(tab_id),
-                            crate::ui::error_text::driver_message(&e),
-                        )),
+                        let spec = build_page(
+                            &*lease.dialect(),
+                            &PageRequest {
+                                table: &request.table,
+                                columns: &columns,
+                                filter: &request.filter,
+                                sort: &request.sort,
+                                identity: &identity,
+                                position: &position,
+                                limit: request.limit,
+                            },
+                        )?;
+                        let limit = RowLimit::new(request.limit).unwrap_or(RowLimit::EDITOR_DEFAULT);
+                        let result = lease.query_bound(&spec.statement, limit, options).await?;
+                        let page = split_page(result, &spec)?;
+                        Ok(QueryResult::new(page.columns, page.rows).truncated(page.truncated))
                     }
                 })
-                .drop_on_shutdown()
+                .await
+        };
+        self.context.tasks.spawn_task(async move {
+            match work.await {
+                Ok(result) => sender.input(AppMsg::RowsLoaded(tab_id, offset, result)),
+                Err(error) => sender.input(AppMsg::LoadFailed(
+                    Some(tab_id),
+                    crate::ui::error_text::operation_error_message(&error),
+                )),
+            }
         });
     }
 
     pub(super) fn fetch_browse_columns(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table) = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
-                return;
-            };
-            let model = controller.model();
-            (model.schema().map(str::to_owned), model.table().to_string())
-        };
-
-        let Some(conn) = database_service::instance().active() else {
+        let Some(table) = self.browse_request(tab_id).map(|request| request.table) else {
             return;
         };
-        let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    if let Ok(columns) = conn.fetch_columns(schema.as_deref(), &table).await {
-                        sender_clone.input(AppMsg::ColumnsLoaded(tab_id, columns));
-                    }
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        self.context.tasks.spawn_task(async move {
+            let columns = session
+                .run(OperationKind::Metadata, move |lease, options| {
+                    let table = table.clone();
+                    async move { Ok(lease.fetch_columns(&table, options).await?) }
                 })
-                .drop_on_shutdown()
+                .await;
+            match columns {
+                Ok(columns) => sender.input(AppMsg::ColumnsLoaded(tab_id, columns)),
+                Err(error) => tracing::warn!(%error, "could not read the table's columns"),
+            }
         });
     }
 
+    /// The "of N" total, under the same filter as the page so the two
+    /// agree.
     pub(super) fn fetch_browse_row_count(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table, filter, columns, driver_id) = {
-            let tabs = self.workspace_tabs.borrow();
-            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
-                return;
-            };
-            let model = controller.model();
-            (
-                model.schema().map(str::to_owned),
-                model.table().to_string(),
-                model.current_filter().clone(),
-                model.columns().to_vec(),
-                model.driver_id().to_string(),
-            )
-        };
-
-        let Some(conn) = database_service::instance().active() else {
+        let Some(request) = self.browse_request(tab_id) else {
             return;
         };
-
-        // Same WHERE the page fetch uses, so the "of N" total matches
-        // the filtered result set. Validation errors are silently
-        // suppressed here — fetch_browse_page surfaces the toast for
-        // the same filter on the same tick, no need to double-toast.
-        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
-        let (where_sql, params) = match tablepro_core::build_filter(dialect, &columns, &filter, 1) {
-            Ok(Some((sql, bound))) => (Some(sql), bound_values(bound)),
-            _ => (None, Vec::new()),
+        let Some(session) = self.context.active.get() else {
+            return;
         };
-
-        let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    let qualified = match schema {
-                        Some(s) => format!(
-                            "{}.{}",
-                            tablepro_core::sql_dialect::quote_ident(&driver_id, &s),
-                            tablepro_core::sql_dialect::quote_ident(&driver_id, &table)
-                        ),
-                        None => tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
-                    };
-                    let mut sql = format!("SELECT COUNT(*) FROM {qualified}");
-                    if let Some(w) = &where_sql {
-                        sql.push_str(" WHERE ");
-                        sql.push_str(w);
-                    }
-                    let qr_result = if where_sql.is_some() {
-                        conn.query_params(&sql, &params).await
-                    } else {
-                        conn.query(&sql).await
-                    };
-                    if let Ok(qr) = qr_result
-                        && let Some(row) = qr.rows.first()
-                        && let Some(value) = row.first()
-                    {
-                        let count = match value {
-                            tablepro_core::Value::Int(i) if *i >= 0 => u64::try_from(*i).ok(),
-                            tablepro_core::Value::UInt(i) => Some(*i),
-                            tablepro_core::Value::Decimal(_) => value.as_exact_u64(),
-                            _ => None,
-                        };
-                        if let Some(count) = count {
-                            sender_clone.input(AppMsg::RowCountLoaded(tab_id, count));
-                        }
+        // The page fetch toasts a bad filter on the same tick, so the
+        // count stays quiet about it.
+        if filter_problem(&session, &request).is_some() {
+            return;
+        }
+        self.context.tasks.spawn_task(async move {
+            let counted = session
+                .run(OperationKind::Count, move |lease, options| {
+                    let request = request.clone();
+                    async move {
+                        let columns = request.columns(&lease, &options).await?;
+                        let statement = build_count(&*lease.dialect(), &request.table, &columns, &request.filter)?;
+                        Ok(lease.count_rows(&statement, options).await?)
                     }
                 })
-                .drop_on_shutdown()
+                .await;
+            match counted {
+                Ok(count) => sender.input(AppMsg::RowCountLoaded(tab_id, count)),
+                Err(error) => tracing::debug!(%error, "the row count could not be read"),
+            }
         });
+    }
+
+    /// What a page or count of this tab depends on, read on the GTK
+    /// thread so the work that follows owns its copy.
+    fn browse_request(&self, tab_id: Uuid) -> Option<BrowseRequest> {
+        let tabs = self.workspace_tabs.borrow();
+        let model = tabs.get(&tab_id)?.browse_controller()?.model();
+        Some(BrowseRequest {
+            table: TableRef::new(model.schema().map(str::to_owned), model.table()),
+            columns: model.columns().to_vec(),
+            filter: model.current_filter().clone(),
+            sort: model
+                .current_sort()
+                .map(|(column, ascending)| SortKey { column, ascending })
+                .into_iter()
+                .collect(),
+            offset: model.current_offset(),
+            limit: model.page_size(),
+        })
     }
 
     pub(super) fn on_browse_columns_loaded(&self, tab_id: Uuid, columns: Vec<ColumnInfo>) {
@@ -285,10 +234,42 @@ impl App {
     }
 }
 
-/// The values a dialect bound, for the driver's own parameter list.
+/// One browse tab's view of its table: the part of a page or count
+/// that does not depend on the connection it runs on.
+#[derive(Debug, Clone)]
+struct BrowseRequest {
+    table: TableRef,
+    /// Empty until the tab has read them from the catalogue.
+    columns: Vec<ColumnInfo>,
+    filter: FilterSet,
+    sort: Vec<SortKey>,
+    offset: u64,
+    limit: u64,
+}
+
+impl BrowseRequest {
+    /// The tab's columns, or the catalogue's when the tab has not read
+    /// them yet: a page names every column it selects.
+    async fn columns(&self, lease: &ConnectionLease, options: &CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
+        match self.columns.is_empty() {
+            true => lease.fetch_columns(&self.table, options.clone()).await,
+            false => Ok(self.columns.clone()),
+        }
+    }
+}
+
+/// Why the tab's filter cannot be written for the current server, if it
+/// cannot.
 ///
-/// The bound form carries the type the server expects; the driver
-/// binds by the value, so only that part travels on.
-fn bound_values(bound: Vec<tablepro_core::statement::BoundParam>) -> Vec<tablepro_core::Value> {
-    bound.into_iter().map(|param| param.value().clone()).collect()
+/// Before the tab has its columns there is nothing to check against;
+/// the page reads them and reports a filter that does not fit.
+fn filter_problem(session: &Session, request: &BrowseRequest) -> Option<String> {
+    if request.columns.is_empty() {
+        return None;
+    }
+    let dialect = session.current_dialect()?;
+    let mut builder = StatementBuilder::new();
+    tablepro_core::build_filter(&mut builder, &*dialect, &request.columns, &request.filter)
+        .err()
+        .map(|error| error.to_string())
 }

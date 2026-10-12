@@ -71,7 +71,7 @@ enum ValueShape {
 /// the builder accepts cannot drift apart: an operator the user can
 /// pick is one the filter can be built from.
 fn operators_for(column: &ColumnInfo) -> Vec<OpEntry> {
-    tablepro_core::operators_for(column.column_type.kind())
+    tablepro_core::operators_for(&column.column_type.kind)
         .iter()
         .map(|op| OpEntry {
             op: *op,
@@ -118,7 +118,7 @@ fn shape_for(op: FilterOp) -> ValueShape {
 /// compare against one, so offering it would only lead to a filter
 /// that never matches.
 fn is_filterable(col: &ColumnInfo) -> bool {
-    !matches!(col.column_type.kind(), tablepro_core::column::ColumnKind::Binary)
+    !matches!(col.column_type.kind, tablepro_core::column::ColumnKind::Bytes { .. })
 }
 
 /// A column the dialog can fall back on when the schema has not
@@ -724,7 +724,7 @@ fn build_rule_row(
 
 /// A numeric column gets the number keypad on a touch keyboard.
 fn input_purpose_for(column: &ColumnInfo) -> gtk::InputPurpose {
-    match column.column_type.kind().is_numeric() {
+    match column.column_type.kind.is_numeric() {
         true => gtk::InputPurpose::Number,
         false => gtk::InputPurpose::FreeForm,
     }

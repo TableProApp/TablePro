@@ -40,7 +40,7 @@ tablepro-driver-mysql = { path = "../drivers/mysql" }
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-driver-sqlite = { path = "../drivers/sqlite" }
 chrono.workspace = true
-rust_decimal.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -63,6 +63,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 sqlformat = "0.5"
 
 [dev-dependencies]
+tablepro-session = { path = "../session", features = ["fakes"] }
 tablepro-test-support = { path = "../test-support" }
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 tempfile.workspace = true

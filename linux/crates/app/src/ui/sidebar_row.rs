@@ -5,11 +5,11 @@ use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
 
-use tablepro_core::TableInfo;
+use tablepro_core::meta::ObjectInfo;
 
 #[derive(Debug)]
 pub struct SidebarRow {
-    pub info: TableInfo,
+    pub info: ObjectInfo,
     /// The eagerly-parented context-menu popover. Held on the model
     /// so `shutdown` can `unparent()` it before the row's root widget
     /// is finalized — without this, GTK warns
@@ -54,7 +54,7 @@ pub enum SidebarRowOutput {
 
 #[relm4::factory(pub)]
 impl FactoryComponent for SidebarRow {
-    type Init = TableInfo;
+    type Init = ObjectInfo;
     type Input = SidebarRowMsg;
     type Output = SidebarRowOutput;
     type CommandOutput = ();

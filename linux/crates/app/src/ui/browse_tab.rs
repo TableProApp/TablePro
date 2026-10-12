@@ -6,6 +6,7 @@ use relm4::prelude::*;
 use relm4::{adw, gtk};
 use uuid::Uuid;
 
+use tablepro_core::edit::{CellInput, EditContext, EditParseError};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::grid::{CellPreset, GridMsg, TabGridContext, build_column_view};
@@ -237,9 +238,9 @@ pub enum BrowseTabInput {
     /// Ctrl+Shift+Z. Symmetric to Undo: re-applies the popped op
     /// and mirrors the visual change forward.
     Redo,
-    /// User clicked Save — materialize tracker pending changes and
-    /// emit them as a single `BrowseTabOutput::ExecuteTransaction`
-    /// for atomic commit.
+    /// User clicked Save: hand the tracker's changes to the App as one
+    /// `BrowseTabOutput::ExecuteTransaction`, which saves them as one
+    /// batch.
     CommitSave,
     /// User clicked Discard — clear all pending edits and refetch
     /// the page so the grid shows committed values again.
@@ -317,16 +318,13 @@ pub enum BrowseTabOutput {
     /// `true` = at least one pending edit; the App-side handler
     /// prefixes the tab title with the GNOME-Text-Editor "•" dot.
     DirtyChanged(bool),
-    /// Run a sequence of pending-changeset statements inside a single
-    /// DB transaction. Materialised by the per-tab change tracker on
-    /// Save click. App routes this to `Connection::execute_in_transaction`
-    /// and dispatches `SaveCompleted` / `SaveFailed` back via input.
-    /// `sources[i]` identifies the row that produced `statements[i]`,
-    /// so a `DriverError::Transaction { statement_index, .. }` can be
-    /// mapped back to the offending grid row for scroll-and-select.
+    /// Save the tracker's changes as one batch. The columns are the ones
+    /// the change set was built against, so the plan binds the same
+    /// shape; `changes` maps a failing step back to its grid row.
     ExecuteTransaction {
-        statements: Vec<(String, Vec<Value>)>,
-        sources: Vec<crate::services::change_tracker::StatementSource>,
+        table: tablepro_core::meta::TableRef,
+        columns: Vec<ColumnInfo>,
+        changes: crate::services::change_tracker::TrackedChanges,
     },
 }
 
@@ -340,7 +338,6 @@ impl BrowseTab {
     fn sql_target(&self) -> crate::ui::export_dialog::SqlTarget {
         crate::ui::export_dialog::SqlTarget {
             table: self.table.clone(),
-            driver_id: self.driver_id.clone(),
         }
     }
 
@@ -397,16 +394,22 @@ impl BrowseTab {
     /// an empty string means NULL on a column that takes one, and is
     /// refused on a column that does not, exactly as typing an empty
     /// value into the cell would be.
-    fn resolve_cell_preset(&self, preset: CellPreset, col_index: usize) -> Result<Value, String> {
+    fn resolve_cell_preset(&self, preset: CellPreset, col_index: usize, context: EditContext) -> Result<Value, String> {
         match preset {
             CellPreset::Null => Ok(Value::Null),
-            CellPreset::Empty => {
-                let col = self.current_columns.get(col_index);
-                match col {
-                    Some(c) if c.column_type.kind().accepts_empty_string() => Ok(Value::Text(String::new())),
-                    _ => parse_input_for_column("", col),
-                }
-            }
+            CellPreset::Empty => parse_input_for_column("", self.current_columns.get(col_index), context),
+        }
+    }
+
+    /// Whether an edit at this position lands in a draft row, which is
+    /// the one place an empty cell can mean the server's default.
+    fn edit_context_at(&self, row_position: u32) -> EditContext {
+        match self
+            .row_object_at(row_position)
+            .is_some_and(|row| row.draft_id().is_some())
+        {
+            true => EditContext::InsertDraft,
+            false => EditContext::UpdateRow,
         }
     }
 
@@ -2235,13 +2238,13 @@ impl SimpleComponent for BrowseTab {
                 let keeps_line_breaks = self
                     .current_columns
                     .get(col_index)
-                    .is_some_and(|c| c.column_type.kind().accepts_line_breaks());
+                    .is_some_and(|c| c.column_type.kind.accepts_line_breaks());
                 let normalized = match keeps_line_breaks {
                     true => new_value,
                     false => normalize_single_line_input(&new_value),
                 };
                 let col = self.current_columns.get(col_index);
-                let new = match parse_input_for_column(&normalized, col) {
+                let new = match parse_input_for_column(&normalized, col, self.edit_context_at(row_position)) {
                     Ok(v) => v,
                     Err(message) => {
                         let _ = sender.output(BrowseTabOutput::ShowToast(message));
@@ -2276,7 +2279,7 @@ impl SimpleComponent for BrowseTab {
                 col_index,
                 preset,
             } => {
-                let value = match self.resolve_cell_preset(preset, col_index) {
+                let value = match self.resolve_cell_preset(preset, col_index, self.edit_context_at(row_position)) {
                     Ok(value) => value,
                     Err(message) => {
                         let _ = sender.output(BrowseTabOutput::ShowToast(message));
@@ -2421,14 +2424,9 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::CommitSave => {
                 let columns = self.current_columns.clone();
-                let driver_id = self.driver_id.clone();
-                let schema = self.schema.clone();
-                let table = self.table.clone();
-                let result = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
-                    t.materialize(&driver_id, schema.as_deref(), &table, &columns)
-                });
+                let result = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| t.change_set(&columns));
                 match result {
-                    Some(Ok((statements, sources))) if !statements.is_empty() => {
+                    Some(Ok(changes)) if !changes.changes.is_empty() => {
                         // Disable both buttons for the duration of the
                         // in-flight transaction. SaveCompleted /
                         // SaveFailed re-enable them. This prevents a
@@ -2441,7 +2439,11 @@ impl SimpleComponent for BrowseTab {
                         // the focused row's PK now so it can be re-
                         // selected after the reload.
                         self.capture_focus_for_restore();
-                        let _ = sender.output(BrowseTabOutput::ExecuteTransaction { statements, sources });
+                        let _ = sender.output(BrowseTabOutput::ExecuteTransaction {
+                            table: tablepro_core::meta::TableRef::new(self.schema.clone(), self.table.clone()),
+                            columns,
+                            changes,
+                        });
                     }
                     Some(Ok(_)) => {
                         // Nothing to save (tracker empty) — refresh bar.
@@ -2674,19 +2676,22 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
 ///
 /// Parsing against the typed column rather than a type-name string is
 /// what makes an out-of-range number a message beside the cell instead
-/// of a failed transaction. An empty cell is NULL only where the
-/// column can hold one.
-fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Result<Value, String> {
+/// of a failed transaction. What an empty cell means is core's rule:
+/// the empty string where the column holds one, the server's default
+/// in a draft row, NULL where the column takes it, and a refusal
+/// otherwise.
+fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>, context: EditContext) -> Result<Value, String> {
     let Some(col) = col else {
         return Ok(Value::Text(text.to_string()));
     };
-    if text.is_empty() && !col.column_type.kind().accepts_empty_string() {
-        if col.nullable || !col.default.is_none() {
-            return Ok(Value::Null);
-        }
-        return Err(crate::i18n::gettext("Field is required"));
+    match tablepro_core::edit::parse_edit_text(text, col, context) {
+        Ok(CellInput::Value(value)) => Ok(value),
+        // A draft holds NULL for a cell left to the server; the save
+        // leaves that column out of the INSERT.
+        Ok(CellInput::Default) => Ok(Value::Null),
+        Err(EditParseError::Required) => Err(crate::i18n::gettext("Field is required")),
+        Err(error) => Err(error.to_string()),
     }
-    tablepro_core::edit::parse_literal_text(text, &col.column_type).map_err(|error| error.to_string())
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).
@@ -2739,6 +2744,7 @@ fn result_columns(columns: &[tablepro_core::ColumnInfo]) -> std::sync::Arc<[tabl
 mod tests {
     use super::{build_persisted_row_key, format_thousands, parse_input_for_column};
     use crate::services::change_tracker::RowKey;
+    use tablepro_core::edit::EditContext;
     use tablepro_core::{ColumnInfo, Value};
 
     /// A column carrying the server's spelling and the kind it means.
@@ -2750,13 +2756,16 @@ mod tests {
         let kind = tablepro_core::column::classify_type_name(data_type);
         ColumnInfo {
             name: "x".into(),
-            column_type: tablepro_core::column::ColumnType::new(
-                tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+            column_type: tablepro_core::column::ColumnType {
+                name: data_type.to_owned(),
+                dynamic_storage: tablepro_core::column::has_dynamic_storage(&kind),
                 kind,
-                tablepro_core::column::CatalogType::Unknown,
-                tablepro_core::column::has_dynamic_storage(kind),
-                tablepro_core::column::ReadForm::Native,
-            ),
+                catalog: Some(tablepro_core::column::CatalogType {
+                    declaration: tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                    cast_target: tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                }),
+                read_form: tablepro_core::column::ReadForm::Native,
+            },
             nullable,
             primary_key: false,
             is_auto_increment: false,
@@ -2800,27 +2809,34 @@ mod tests {
         // A text column has an empty value, so clearing the cell is
         // that value rather than NULL. There was no way to type it
         // before.
-        let cleared = parse_input_for_column("", Some(&col("text", true))).expect("an empty string");
+        let cleared =
+            parse_input_for_column("", Some(&col("text", true)), EditContext::UpdateRow).expect("an empty string");
 
         assert_eq!(cleared, Value::Text(String::new()));
     }
 
     #[test]
     fn clearing_a_column_with_no_empty_value_yields_null() {
-        let cleared = parse_input_for_column("", Some(&col("timestamp", true))).expect("a null");
+        let cleared =
+            parse_input_for_column("", Some(&col("timestamp", true)), EditContext::UpdateRow).expect("a null");
 
         assert!(matches!(cleared, Value::Null));
     }
 
     #[test]
-    fn empty_on_not_null_with_default_yields_null() {
-        let r = parse_input_for_column("", Some(&col_with_default("timestamp", "now()"))).unwrap();
-        assert!(matches!(r, Value::Null));
+    fn empty_on_not_null_with_default_is_left_to_the_server_only_in_a_draft() {
+        let column = col_with_default("timestamp", "now()");
+
+        let draft = parse_input_for_column("", Some(&column), EditContext::InsertDraft).unwrap();
+        assert!(matches!(draft, Value::Null), "a draft leaves it to the default");
+
+        let existing = parse_input_for_column("", Some(&column), EditContext::UpdateRow);
+        assert!(existing.is_err(), "an UPDATE cannot ask for the default: {existing:?}");
     }
 
     #[test]
     fn empty_on_a_required_column_with_no_empty_value_is_rejected() {
-        let r = parse_input_for_column("", Some(&col("integer", false)));
+        let r = parse_input_for_column("", Some(&col("integer", false)), EditContext::UpdateRow);
 
         assert!(r.is_err());
         assert!(r.as_ref().is_err_and(|message| message.contains("required")), "{r:?}");
@@ -2829,69 +2845,89 @@ mod tests {
     #[test]
     fn parses_int_decimal_float_bool() {
         assert!(matches!(
-            parse_input_for_column("42", Some(&col("integer", false))).unwrap(),
+            parse_input_for_column("42", Some(&col("integer", false)), EditContext::UpdateRow).unwrap(),
             Value::Int(42)
         ));
         assert!(matches!(
-            parse_input_for_column("3.14", Some(&col("real", false))).unwrap(),
+            parse_input_for_column("3.14", Some(&col("real", false)), EditContext::UpdateRow).unwrap(),
             Value::Float32(_)
         ));
         assert!(matches!(
-            parse_input_for_column("99.99", Some(&col("decimal(10,2)", false))).unwrap(),
+            parse_input_for_column("99.99", Some(&col("decimal(10,2)", false)), EditContext::UpdateRow).unwrap(),
             Value::Decimal(_)
         ));
         assert!(matches!(
-            parse_input_for_column("yes", Some(&col("boolean", false))).unwrap(),
+            parse_input_for_column("yes", Some(&col("boolean", false)), EditContext::UpdateRow).unwrap(),
             Value::Bool(true)
         ));
         // MySQL spells boolean as tinyint(1), so it parses as the
         // integer it is and the grid renders 0 and 1.
         assert!(matches!(
-            parse_input_for_column("0", Some(&col("tinyint(1)", false))).unwrap(),
+            parse_input_for_column("0", Some(&col("tinyint(1)", false)), EditContext::UpdateRow).unwrap(),
             Value::Int(0)
         ));
     }
 
     #[test]
     fn parses_uuid_json_date_time_datetime_timestamptz() {
-        let uuid = parse_input_for_column("550e8400-e29b-41d4-a716-446655440000", Some(&col("uuid", false))).unwrap();
+        let uuid = parse_input_for_column(
+            "550e8400-e29b-41d4-a716-446655440000",
+            Some(&col("uuid", false)),
+            EditContext::UpdateRow,
+        )
+        .unwrap();
         assert!(matches!(uuid, Value::Uuid(_)));
 
-        let json = parse_input_for_column(r#"{"a":1}"#, Some(&col("jsonb", false))).unwrap();
+        let json = parse_input_for_column(r#"{"a":1}"#, Some(&col("jsonb", false)), EditContext::UpdateRow).unwrap();
         assert!(matches!(json, Value::Json(_)));
 
-        let date = parse_input_for_column("2024-01-15", Some(&col("date", false))).unwrap();
+        let date = parse_input_for_column("2024-01-15", Some(&col("date", false)), EditContext::UpdateRow).unwrap();
         assert!(matches!(date, Value::Date(_)));
 
-        let time = parse_input_for_column("14:30:00", Some(&col("time", false))).unwrap();
+        let time = parse_input_for_column("14:30:00", Some(&col("time", false)), EditContext::UpdateRow).unwrap();
         assert!(matches!(time, Value::Time(_)));
-        let time_short = parse_input_for_column("14:30", Some(&col("time", false))).unwrap();
+        let time_short = parse_input_for_column("14:30", Some(&col("time", false)), EditContext::UpdateRow).unwrap();
         assert!(matches!(time_short, Value::Time(_)));
 
-        let datetime = parse_input_for_column("2024-01-15 14:30:00", Some(&col("timestamp", false))).unwrap();
+        let datetime = parse_input_for_column(
+            "2024-01-15 14:30:00",
+            Some(&col("timestamp", false)),
+            EditContext::UpdateRow,
+        )
+        .unwrap();
         assert!(matches!(datetime, Value::Timestamp(_)));
-        let datetime_t = parse_input_for_column("2024-01-15T14:30:00", Some(&col("datetime", false))).unwrap();
+        let datetime_t = parse_input_for_column(
+            "2024-01-15T14:30:00",
+            Some(&col("datetime", false)),
+            EditContext::UpdateRow,
+        )
+        .unwrap();
         assert!(matches!(datetime_t, Value::Timestamp(_)));
     }
 
     #[test]
     fn rejects_invalid_type_specific_input() {
-        assert!(parse_input_for_column("not-a-number", Some(&col("integer", false))).is_err());
-        assert!(parse_input_for_column("not-a-uuid", Some(&col("uuid", false))).is_err());
-        assert!(parse_input_for_column("{not json", Some(&col("jsonb", false))).is_err());
-        assert!(parse_input_for_column("2024/01/15", Some(&col("date", false))).is_err());
-        assert!(parse_input_for_column("13:00:99", Some(&col("time", false))).is_err());
+        assert!(parse_input_for_column("not-a-number", Some(&col("integer", false)), EditContext::UpdateRow).is_err());
+        assert!(parse_input_for_column("not-a-uuid", Some(&col("uuid", false)), EditContext::UpdateRow).is_err());
+        assert!(parse_input_for_column("{not json", Some(&col("jsonb", false)), EditContext::UpdateRow).is_err());
+        assert!(parse_input_for_column("2024/01/15", Some(&col("date", false)), EditContext::UpdateRow).is_err());
+        assert!(parse_input_for_column("13:00:99", Some(&col("time", false)), EditContext::UpdateRow).is_err());
         assert!(
-            parse_input_for_column("128", Some(&col("tinyint", false))).is_err(),
+            parse_input_for_column("128", Some(&col("tinyint", false)), EditContext::UpdateRow).is_err(),
             "a number past the column's range was accepted"
         );
-        assert!(parse_input_for_column("not-a-date", Some(&col("timestamp", false))).is_err());
-        assert!(parse_input_for_column("maybe", Some(&col("boolean", false))).is_err());
+        assert!(parse_input_for_column("not-a-date", Some(&col("timestamp", false)), EditContext::UpdateRow).is_err());
+        assert!(parse_input_for_column("maybe", Some(&col("boolean", false)), EditContext::UpdateRow).is_err());
     }
 
     #[test]
     fn unknown_type_falls_through_to_text() {
-        let r = parse_input_for_column("anything goes here", Some(&col("varchar(255)", false))).unwrap();
+        let r = parse_input_for_column(
+            "anything goes here",
+            Some(&col("varchar(255)", false)),
+            EditContext::UpdateRow,
+        )
+        .unwrap();
         assert!(matches!(r, Value::Text(_)));
     }
 
@@ -2903,7 +2939,7 @@ mod tests {
         // the grid before edit (grid.rs install_double_click_to_edit),
         // so this path is only reached if the user typed `<NULL>` on
         // purpose.
-        let r = parse_input_for_column("<NULL>", Some(&col("text", true))).unwrap();
+        let r = parse_input_for_column("<NULL>", Some(&col("text", true)), EditContext::UpdateRow).unwrap();
         match r {
             Value::Text(s) => assert_eq!(s, "<NULL>"),
             other => panic!("expected Text(\"<NULL>\") got {other:?}"),

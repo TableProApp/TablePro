@@ -85,9 +85,7 @@ impl App {
         let dialog = SavedQueriesDialog::builder()
             .launch(SavedQueriesDialogInit {
                 store: self.history.store().map(|history| history.saved_queries()),
-                active_connection: crate::services::database_service::instance()
-                    .active_metadata()
-                    .map(|metadata| metadata.id),
+                active_connection: self.context.active.metadata().map(|metadata| metadata.id),
             })
             .forward(sender.input_sender(), |out| match out {
                 SavedQueriesDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
@@ -112,10 +110,7 @@ impl App {
             self.show_toast(&crate::i18n::gettext("There is nothing in the editor to save."));
             return;
         }
-        if crate::services::database_service::instance()
-            .active_metadata()
-            .is_none()
-        {
+        if !self.context.active.is_connected() {
             self.show_toast(&crate::i18n::gettext(
                 "Connect to a database first: a saved query is kept under its connection.",
             ));
@@ -157,7 +152,7 @@ impl App {
             self.show_toast(&crate::i18n::gettext("The query database is not open yet."));
             return;
         };
-        let Some(metadata) = crate::services::database_service::instance().active_metadata() else {
+        let Some(metadata) = self.context.active.metadata() else {
             self.show_toast(&crate::i18n::gettext(
                 "Connect to a database first: a saved query is kept under its connection.",
             ));

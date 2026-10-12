@@ -10,7 +10,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::QueryHistory;
 use tablepro_storage::query_history::{Entry, SearchFilter};
 
-use crate::services::database_service::{self, ConnectionMetadata};
+use uuid::Uuid;
 
 pub struct HistoryDialog {
     history: Option<QueryHistory>,
@@ -25,6 +25,8 @@ pub struct HistoryDialog {
     status_page: adw::StatusPage,
 
     filter_connection: adw::ComboRow,
+    /// The connection filter's labels, after "All connections".
+    connection_labels: gtk::StringList,
     filter_status: adw::ComboRow,
     filter_window: adw::ComboRow,
     /// Pending debounced search timeout. Replaces the previous fire-
@@ -37,7 +39,10 @@ pub struct HistoryDialog {
     selection_bar: gtk::Revealer,
     selection_label: gtk::Label,
 
-    connections: Vec<ConnectionMetadata>,
+    /// Every connection the history holds entries for, in the order the
+    /// filter lists them, so a connection that is not open can still be
+    /// picked.
+    connections: Vec<(Uuid, String)>,
     selected_ids: HashSet<i64>,
     entries: Vec<Entry>,
     row_popovers: Vec<gtk::PopoverMenu>,
@@ -72,6 +77,7 @@ pub enum HistoryDialogInput {
     ClearAllRequested,
     ClearAllConfirmed,
     OpenStorageLocation,
+    ConnectionsLoaded(Vec<(Uuid, String)>),
 }
 
 #[derive(Debug)]
@@ -117,13 +123,8 @@ impl Component for HistoryDialog {
             .popover(&filter_popover)
             .build();
 
-        let connections = database_service::instance().all_connections();
-
-        let conn_strings: Vec<String> = std::iter::once(crate::i18n::gettext("All connections"))
-            .chain(connections.iter().map(|m| m.name.clone()))
-            .collect();
-        let conn_strings_ref: Vec<&str> = conn_strings.iter().map(String::as_str).collect();
-        let conn_model = gtk::StringList::new(&conn_strings_ref);
+        // The connections fill in once the history has listed them.
+        let conn_model = gtk::StringList::new(&[crate::i18n::gettext("All connections").as_str()]);
         let filter_connection = adw::ComboRow::builder()
             .title(crate::i18n::gettext("Connection"))
             .model(&conn_model)
@@ -387,12 +388,13 @@ impl Component for HistoryDialog {
             stack,
             status_page,
             filter_connection,
+            connection_labels: conn_model,
             filter_status,
             filter_window,
             filter_debounce: std::rc::Rc::new(std::cell::RefCell::new(None)),
             selection_bar,
             selection_label,
-            connections,
+            connections: Vec::new(),
             selected_ids: HashSet::new(),
             entries: Vec::new(),
             row_popovers: Vec::new(),
@@ -400,6 +402,7 @@ impl Component for HistoryDialog {
             select_mode: false,
         };
 
+        model.load_connections(&sender);
         sender.input(HistoryDialogInput::Refresh);
 
         ComponentParts { model, widgets: () }
@@ -599,6 +602,13 @@ impl Component for HistoryDialog {
                     );
                 }
             }
+
+            HistoryDialogInput::ConnectionsLoaded(connections) => {
+                for (_, name) in &connections {
+                    self.connection_labels.append(name);
+                }
+                self.connections = connections;
+            }
         }
     }
 
@@ -620,6 +630,24 @@ impl Component for HistoryDialog {
 impl HistoryDialog {
     pub fn dialog(&self) -> &adw::Dialog {
         &self.root
+    }
+
+    /// Read which connections the history has entries for, on the
+    /// runtime because the history is a database.
+    fn load_connections(&self, sender: &ComponentSender<Self>) {
+        let Some(history) = self.history.clone() else {
+            return;
+        };
+        let sender = sender.clone();
+        crate::runtime::spawn_and_deliver(
+            &self.tasks,
+            async move { history.known_connections().await },
+            move |listed| match listed {
+                Ok(Ok(connections)) => sender.input(HistoryDialogInput::ConnectionsLoaded(connections)),
+                Ok(Err(error)) => tracing::warn!(%error, "could not list the connections in the history"),
+                Err(failure) => tracing::warn!(%failure, "the history connections task failed"),
+            },
+        );
     }
 
     /// Run the search immediately. Triggered by Refresh (initial load
@@ -677,7 +705,7 @@ impl HistoryDialog {
         } else {
             self.connections
                 .get((self.filter_connection.selected() - 1) as usize)
-                .map(|m| m.id)
+                .map(|(id, _)| *id)
         };
         let (success_only, exclude_cancelled) = match self.filter_status.selected() {
             0 => (None, None),

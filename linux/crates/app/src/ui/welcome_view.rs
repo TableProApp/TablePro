@@ -203,7 +203,7 @@ mod tests {
             port: 5432,
             database: "app".to_owned(),
             username: "postgres".to_owned(),
-            use_tls: true,
+            tls: tablepro_core::TlsConfig::verify_full(),
             read_only: false,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,

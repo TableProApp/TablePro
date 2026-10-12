@@ -8,7 +8,6 @@ use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
 use uuid::Uuid;
 
-use crate::services::database_service;
 use crate::services::workspace_state::{self, ConnectionWorkspaceState, WorkspaceTabRecord};
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
@@ -168,6 +167,9 @@ impl App {
         let settings_for_create = self.settings.clone();
         let history_for_create = self.history.store();
         let tasks_for_create = self.tasks.clone();
+        let session_for_create = self.context.active.clone();
+        let hold_for_create = self.context.hold.clone();
+        let close_timeout_for_create = self.context.close_timeout();
         let sender_for_create = sender.clone();
         tab_overview.connect_create_tab(move |_| {
             let tab_id = Uuid::new_v4();
@@ -178,6 +180,9 @@ impl App {
                     settings: settings_for_create.clone(),
                     history: history_for_create.clone(),
                     tasks: tasks_for_create.clone(),
+                    session: session_for_create.clone(),
+                    hold: hold_for_create.clone(),
+                    close_timeout: close_timeout_for_create,
                 })
                 .forward(sender_for_create.input_sender(), move |out| match out {
                     SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
@@ -420,7 +425,7 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
-        let connection_id = database_service::instance().active_id();
+        let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         let read_only = self.read_only;
 
         let browse_init = BrowseTabInit {
@@ -452,10 +457,11 @@ impl App {
                 BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
                 BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
                 BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
-                BrowseTabOutput::ExecuteTransaction { statements, sources } => AppMsg::ExecuteBrowseTransaction {
+                BrowseTabOutput::ExecuteTransaction { table, columns, changes } => AppMsg::ExecuteBrowseTransaction {
                     tab_id,
-                    statements,
-                    sources,
+                    table,
+                    columns,
+                    changes,
                 },
             });
 
@@ -583,6 +589,9 @@ impl App {
                 settings: self.settings.clone(),
                 history: self.history.store(),
                 tasks: self.tasks.clone(),
+                session: self.context.active.clone(),
+                hold: self.context.hold.clone(),
+                close_timeout: self.context.close_timeout(),
             })
             .forward(sender.input_sender(), move |out| match out {
                 SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
@@ -950,8 +959,11 @@ impl App {
         // end rather than once at the start and never again.
         let workspace_tabs = self.workspace_tabs.clone();
         let tab_view = self.workspace_tab_view.clone();
+        // The tabs belong to the session open now, even if the write
+        // lands after a switch to another one.
+        let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         self.persist_debouncer.request(move || {
-            do_persist_workspace_state(&workspace_tabs, tab_view.as_ref());
+            do_persist_workspace_state(connection_id, &workspace_tabs, tab_view.as_ref());
         });
     }
 
@@ -960,15 +972,17 @@ impl App {
     /// only via `persist_workspace_state`'s debounced timer or
     /// directly from teardown paths that need a synchronous flush.
     pub(super) fn do_persist_workspace_state_now(&self) {
-        do_persist_workspace_state(&self.workspace_tabs, self.workspace_tab_view.as_ref());
+        let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
+        do_persist_workspace_state(connection_id, &self.workspace_tabs, self.workspace_tab_view.as_ref());
     }
 }
 
 fn do_persist_workspace_state(
+    connection_id: Option<Uuid>,
     workspace_tabs: &std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
     tab_view: Option<&adw::TabView>,
 ) {
-    let Some(connection_id) = database_service::instance().active_id() else {
+    let Some(connection_id) = connection_id else {
         return;
     };
     let tabs = workspace_tabs.borrow();

@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_ddl::{BuildDdlError, StructureOp, materialize_ops};
 
 /// Per-tab cache. Holds the current pending-op list emitted by the
@@ -51,8 +52,11 @@ impl StructureChangeTracker {
         self.ops.clear();
     }
 
-    pub fn materialize(&self, driver_id: &str) -> Result<Vec<String>, BuildDdlError> {
-        materialize_ops(&self.ops, driver_id)
+    /// The SQL for the cached ops in `dialect`, which has to be the
+    /// connection's own: renames and default drops are spelled per
+    /// server.
+    pub fn materialize(&self, driver_id: &str, dialect: &dyn SqlDialect) -> Result<Vec<String>, BuildDdlError> {
+        materialize_ops(&self.ops, driver_id, dialect)
     }
 }
 
@@ -177,7 +181,9 @@ mod tests {
             table: "t".into(),
             column: dc("a", "int"),
         }]);
-        let sql = t.materialize("postgres").unwrap();
+        let sql = t
+            .materialize("postgres", tablepro_core::dialect::dialect_for("postgres"))
+            .unwrap();
         assert_eq!(sql.len(), 1);
         assert!(sql[0].contains("ALTER TABLE"));
     }

@@ -4397,6 +4397,7 @@ name = "tablepro"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "futures",
  "gettext-rs",
  "gio",
  "glib",
@@ -4404,7 +4405,6 @@ dependencies = [
  "gtk4",
  "libadwaita",
  "relm4",
- "rust_decimal",
  "secrecy",
  "serde",
  "serde_json",
@@ -5447,7 +5447,6 @@ dependencies = [
  "cfg-if",
  "once_cell",
  "rustversion",
- "serde",
  "wasm-bindgen-macro",
  "wasm-bindgen-shared",
 ]

@@ -1,42 +1,180 @@
+use std::sync::Arc;
+
 use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
-use tablepro_core::TableInfo;
-use tablepro_storage::SavedConnection;
+use tablepro_core::meta::ObjectInfo;
+use tablepro_session::connect::AttemptGeneration;
+use tablepro_session::runtime::WatchForwarder;
+use tablepro_session::{
+    ClaimError, ConnectError, CredentialSource, MonitorSignal, PendingSession, Session, SessionClaim, SessionHealth,
+    SessionKey,
+};
+use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
-use crate::services::database_service::ConnectionHealth;
-use crate::services::{connection_service, database_service};
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogOutput};
 
 use super::{App, AppMsg, qualified_label};
+
+/// A connect that worked, waiting for the window to adopt it.
+pub(crate) struct ReadySession {
+    pub key: SessionKey,
+    pub pending: PendingSession,
+    /// What a reconnect reads its secrets from.
+    pub credentials: Arc<dyn CredentialSource>,
+    /// Secrets the keyring refused to keep, one sentence each.
+    pub warnings: Vec<String>,
+    /// The attempt it came from, when the window started it, so a late
+    /// result loses to a newer attempt.
+    pub generation: Option<AttemptGeneration>,
+}
+
+impl std::fmt::Debug for ReadySession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReadySession")
+            .field("key", &self.key)
+            .field("pending", &self.pending)
+            .field("generation", &self.generation)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What ties the adopted session to this window. Dropping it releases
+/// the registry key and stops the watchers that feed the banner and the
+/// sidebar.
+pub(crate) struct SessionLinks {
+    key: SessionKey,
+    _claim: SessionClaim,
+    _health: WatchForwarder,
+    _catalog: WatchForwarder,
+}
+
+fn spawn_local(future: futures::future::LocalBoxFuture<'static, ()>) {
+    glib::spawn_future_local(future);
+}
 
 impl App {
     pub(super) fn on_open_connect(&mut self, sender: ComponentSender<Self>) {
         let dialog = ConnectDialog::builder()
             .launch(ConnectDialogInit {
+                context: self.context.clone(),
                 storage: self.storage.clone(),
-                registry: self.registry.clone(),
                 settings: self.settings.clone(),
-                tasks: self.tasks.clone(),
             })
             .forward(sender.input_sender(), |out| match out {
-                ConnectDialogOutput::Connected { tables, driver_id } => AppMsg::Connected { tables, driver_id },
-                ConnectDialogOutput::Warning(message) => AppMsg::ShowToast(message),
+                ConnectDialogOutput::Connected(ready) => AppMsg::SessionReady(ready),
                 ConnectDialogOutput::Closed => AppMsg::DialogClosed,
             });
         dialog.widget().present(Some(&self.window));
         self.dialog = Some(dialog);
     }
 
-    pub(super) fn on_connected(&mut self, tables: Vec<TableInfo>, driver_id: String, sender: ComponentSender<Self>) {
+    /// Adopt a session that connected: claim its key, start it, and
+    /// build the workspace on its catalog.
+    pub(super) fn on_session_ready(&mut self, ready: ReadySession, sender: ComponentSender<Self>) {
+        let ReadySession {
+            key,
+            pending,
+            credentials,
+            warnings,
+            generation,
+        } = ready;
+        if generation.is_some_and(|generation| !self.connect_attempts.accepts(generation)) {
+            self.discard_pending(pending);
+            return;
+        }
+        self.dismiss_loading_page();
+        if self.session_links.as_ref().is_some_and(|links| links.key == key) {
+            self.discard_pending(pending);
+            self.show_toast(&crate::i18n::gettext("This connection is already open."));
+            return;
+        }
+        // One window shows one database, so the one open now goes first.
+        if self.context.active.is_connected() {
+            self.release_session(sender.clone());
+        }
+        let claim = match self.context.sessions.claim(key.clone(), self.window.id()) {
+            Ok(claim) => claim,
+            Err(ClaimError::AlreadyOpen { .. }) => {
+                self.discard_pending(pending);
+                self.show_toast(&crate::i18n::gettext("This connection is already open in another window."));
+                return;
+            }
+        };
+        let driver_id = pending.metadata().driver_id.clone();
+        let session = Session::start(pending, self.context.session_deps(credentials));
+        claim.attach(&session);
+        self.context.active.replace(session.clone());
+
+        let catalog = session.catalog();
+        let first = catalog.borrow().clone();
+        let health_sender = sender.clone();
+        let catalog_sender = sender.clone();
+        let mut shown = first.generation;
+        self.session_links = Some(SessionLinks {
+            key,
+            _claim: claim,
+            _health: WatchForwarder::new(
+                session.health(),
+                move |health| health_sender.input(AppMsg::HealthChanged(health)),
+                spawn_local,
+            ),
+            // A reconnect reads the catalog again; the first one is
+            // already on screen.
+            _catalog: WatchForwarder::new(
+                catalog,
+                move |snapshot: tablepro_session::CatalogSnapshot| {
+                    if snapshot.generation != shown {
+                        shown = snapshot.generation;
+                        catalog_sender.input(AppMsg::CatalogChanged(snapshot.objects.to_vec()));
+                    }
+                },
+                spawn_local,
+            ),
+        });
+        for warning in warnings {
+            self.show_toast(&warning);
+        }
+        self.dialog = None;
+        self.on_connected(first.objects.to_vec(), driver_id, sender);
+    }
+
+    /// A connect from the saved list failed. A cancelled one returns to
+    /// the list without an error: the user is the one who stopped it.
+    pub(super) fn on_connect_failed(&mut self, generation: AttemptGeneration, message: Option<String>) {
+        if !self.connect_attempts.accepts(generation) {
+            return;
+        }
+        self.dismiss_loading_page();
+        if let Some(message) = message {
+            tracing::warn!(error = %message, "connect failed");
+            self.set_status_page(super::StatusKind::Error, &crate::i18n::gettext("Failed"), &message);
+        }
+    }
+
+    /// Throw away a connection nobody adopted, closing it under the
+    /// close deadline while the process stays alive for it.
+    fn discard_pending(&self, pending: PendingSession) {
+        let hold = self.context.hold.acquire();
+        let closing = self.context.tasks.spawn_task(pending.discard());
+        glib::spawn_future_local(async move {
+            if let Ok(report) = closing.await {
+                tracing::debug!(?report, "closed a connection that was not adopted");
+            }
+            drop(hold);
+        });
+    }
+
+    fn on_connected(&mut self, objects: Vec<ObjectInfo>, driver_id: String, sender: ComponentSender<Self>) {
         self.dismiss_loading_page();
         self.dialog = None;
         self.connected = true;
         self.current_driver_id = Some(driver_id.clone());
-        self.read_only = database_service::instance().is_active_read_only();
+        self.read_only = self.context.active.read_only();
         self.read_only_badge.set_visible(self.read_only);
+        self.reconnect_banner.set_revealed(false);
         self.split_view.set_show_sidebar(true);
         self.disconnect_action.set_enabled(true);
         self.table_search.set_text("");
@@ -45,14 +183,15 @@ impl App {
         // a tab via sidebar click or Ctrl+T.
         self.ensure_workspace_root(sender.clone());
         self.content_holder.set_content(Some(&self.workspace_outer_stack));
-        self.table_names = tables.iter().map(|t| t.name.clone()).collect();
-        tracing::info!(driver = %driver_id, table_count = tables.len(), "workspace ready");
-        self.repopulate_sidebar(&tables);
+        let browsable = browsable(objects);
+        self.table_names = browsable.iter().map(|object| object.name.clone()).collect();
+        tracing::info!(driver = %driver_id, table_count = browsable.len(), "workspace ready");
+        self.repopulate_sidebar(&browsable);
         self.rebuild_schema_buffer();
         self.refresh_window_title();
         // Restore tabs (browse + editor) persisted from the prior session
         // for this connection.
-        if let Some(connection_id) = database_service::instance().active_id() {
+        if let Some(connection_id) = self.context.active.metadata().map(|metadata| metadata.id) {
             self.restore_workspace_tabs(connection_id, sender.clone());
             // Stamp `last_opened_at = now()` then reload connections so
             // the popover + welcome view re-sort with the fresh
@@ -115,32 +254,53 @@ impl App {
     /// or from a clean `Disconnect` when no tracker has pending
     /// changes.
     pub(super) fn do_disconnect(&mut self, sender: ComponentSender<Self>) {
+        self.release_session(sender.clone());
+        self.split_view.set_show_sidebar(false);
+        self.disconnect_action.set_enabled(false);
+        self.refresh_window_title();
+        self.show_welcome_page(sender);
+        tracing::info!("disconnected");
+    }
+
+    /// Close the workspace and shut the session down. The process is
+    /// held until the close ends, so quitting right after a disconnect
+    /// does not cut the connection off mid-close.
+    fn release_session(&mut self, _sender: ComponentSender<Self>) {
         // Persist + tear down workspace tabs before dropping the
-        // connection (persist needs the active connection_id).
+        // session (persist needs the active connection id).
         self.teardown_workspace_tabs();
         // Drop reopen-stack entries — they reference tables in the
         // connection we're about to release. Reopening one against a
         // different connection would target a non-existent table.
         self.clear_closed_tabs_stack();
-        let svc = database_service::instance();
-        if let Some(id) = svc.active_id() {
-            svc.remove(id);
-        } else {
-            svc.clear_all();
+        self.session_links = None;
+        if let Some(session) = self.context.active.take() {
+            let hold = self.context.hold.acquire();
+            let closing = session.begin_shutdown();
+            glib::spawn_future_local(async move {
+                match closing.await {
+                    Ok(report) => tracing::debug!(?report, "the session closed"),
+                    Err(failure) => tracing::warn!(%failure, "the session close task failed"),
+                }
+                drop(hold);
+            });
         }
+        self.reconnect_banner.set_revealed(false);
         self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
         self.current_driver_id = None;
         self.read_only = false;
         self.read_only_badge.set_visible(false);
         self.connected = false;
-        self.split_view.set_show_sidebar(false);
-        self.disconnect_action.set_enabled(false);
-        self.refresh_window_title();
         self.table_search.set_text("");
         self.sidebar_schemas.borrow_mut().clear();
         self.sidebar_factory.guard().clear();
-        self.show_welcome_page(sender);
-        tracing::info!("disconnected");
+    }
+
+    /// The banner's Retry: the only thing that wakes a parked session.
+    pub(super) fn on_retry_connection(&self) {
+        if let Some(session) = self.context.active.get() {
+            session.signal(MonitorSignal::RetryNow);
+        }
     }
 
     pub(super) fn on_reload_connections(&self, sender: ComponentSender<Self>) {
@@ -185,14 +345,6 @@ impl App {
             ));
         if !self.connected {
             self.show_welcome_page(sender);
-        }
-    }
-
-    pub(super) fn on_poll_health(&mut self) {
-        let current = database_service::instance().active_health();
-        if current != self.health_state {
-            self.refresh_health_banner(current.clone());
-            self.health_state = current;
         }
     }
 
@@ -263,40 +415,37 @@ impl App {
         let connections = self.storage.connections().clone();
         let secrets = self.storage.secrets().clone();
         let tasks = self.tasks.clone();
+        let spawner = self.tasks.clone();
         let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    let copy_id = copy.id;
-                    let saved = tasks
-                        .spawn_blocking_task({
-                            let connections = connections.clone();
-                            move || connections.upsert_blocking(copy)
-                        })
-                        .await;
-                    if let Ok(Err(error)) = saved {
-                        tracing::warn!(%error, "could not save the duplicated connection");
-                        sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
-                            "The connection could not be duplicated.",
-                        )));
-                        return;
-                    }
-                    // A copy with no password still connects once the
-                    // user types one, so a keyring that refuses is
-                    // reported rather than undoing the copy.
-                    let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
-                    sender_clone.input(AppMsg::ReloadConnections);
-                    sender_clone.input(AppMsg::ShowToast(if carried {
-                        crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
-                    } else {
-                        crate::i18n::gettext_f(
-                            "Duplicated as {name}. Its password could not be copied, so enter it again.",
-                            &[("name", &name)],
-                        )
-                    }));
+        drop(spawner.spawn_task(async move {
+            let copy_id = copy.id;
+            let saved = tasks
+                .spawn_blocking_task({
+                    let connections = connections.clone();
+                    move || connections.upsert_blocking(copy)
                 })
-                .drop_on_shutdown()
-        });
+                .await;
+            if let Ok(Err(error)) = saved {
+                tracing::warn!(%error, "could not save the duplicated connection");
+                sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
+                    "The connection could not be duplicated.",
+                )));
+                return;
+            }
+            // A copy with no password still connects once the
+            // user types one, so a keyring that refuses is
+            // reported rather than undoing the copy.
+            let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
+            sender_clone.input(AppMsg::ReloadConnections);
+            sender_clone.input(AppMsg::ShowToast(if carried {
+                crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
+            } else {
+                crate::i18n::gettext_f(
+                    "Duplicated as {name}. Its password could not be copied, so enter it again.",
+                    &[("name", &name)],
+                )
+            }));
+        }));
     }
 
     /// File a connection under a group, or take it out of the one it
@@ -339,21 +488,18 @@ impl App {
     fn write_connection(&self, saved: SavedConnection, failure: String, sender: ComponentSender<Self>) {
         let connections = self.storage.connections().clone();
         let tasks = self.tasks.clone();
+        let spawner = self.tasks.clone();
         let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    let written = tasks
-                        .spawn_blocking_task(move || connections.upsert_blocking(saved))
-                        .await;
-                    if let Ok(Err(error)) = written {
-                        tracing::warn!(%error, "could not save the connection");
-                        sender_clone.input(AppMsg::ShowToast(failure));
-                    }
-                    sender_clone.input(AppMsg::ReloadConnections);
-                })
-                .drop_on_shutdown()
-        });
+        drop(spawner.spawn_task(async move {
+            let written = tasks
+                .spawn_blocking_task(move || connections.upsert_blocking(saved))
+                .await;
+            if let Ok(Err(error)) = written {
+                tracing::warn!(%error, "could not save the connection");
+                sender_clone.input(AppMsg::ShowToast(failure));
+            }
+            sender_clone.input(AppMsg::ReloadConnections);
+        }));
     }
 
     /// Write the connection list to a file the user picks.
@@ -434,90 +580,124 @@ impl App {
     ) {
         let connections = self.storage.connections().clone();
         let tasks = self.tasks.clone();
+        let spawner = self.tasks.clone();
         let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    let imported = tasks
-                        .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
-                        .await;
-                    let message = match imported {
-                        Ok(Ok(report)) if report.total() == 0 => {
-                            crate::i18n::gettext("That file has no connections in it.")
-                        }
-                        Ok(Ok(report)) => crate::i18n::ngettext_f(
-                            "Imported {n} connection.",
-                            "Imported {n} connections.",
-                            report.total() as u32,
-                            &[("n", &report.total().to_string())],
-                        ),
-                        Ok(Err(error)) => {
-                            tracing::warn!(%error, "could not import the connections");
-                            crate::i18n::gettext("That file is not a TablePro connection export.")
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "the import task did not finish");
-                            crate::i18n::gettext("The connections could not be imported.")
-                        }
-                    };
-                    sender_clone.input(AppMsg::ReloadConnections);
-                    sender_clone.input(AppMsg::ShowToast(message));
-                })
-                .drop_on_shutdown()
-        });
+        drop(spawner.spawn_task(async move {
+            let imported = tasks
+                .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
+                .await;
+            let message = match imported {
+                Ok(Ok(report)) if report.total() == 0 => {
+                    crate::i18n::gettext("That file has no connections in it.")
+                }
+                Ok(Ok(report)) => crate::i18n::ngettext_f(
+                    "Imported {n} connection.",
+                    "Imported {n} connections.",
+                    report.total() as u32,
+                    &[("n", &report.total().to_string())],
+                ),
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "could not import the connections");
+                    crate::i18n::gettext("That file is not a TablePro connection export.")
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "the import task did not finish");
+                    crate::i18n::gettext("The connections could not be imported.")
+                }
+            };
+            sender_clone.input(AppMsg::ReloadConnections);
+            sender_clone.input(AppMsg::ShowToast(message));
+        }));
     }
 
     pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
+        let key = SessionKey::Saved(saved.id);
+        if self.session_links.as_ref().is_some_and(|links| links.key == key) {
+            self.show_toast(&crate::i18n::gettext("This connection is already open."));
+            return;
+        }
         self.set_loading_page(
             &crate::i18n::gettext("Connecting…"),
             &crate::i18n::gettext_f("Opening {name}", &[("name", &saved.name)]),
         );
-        let driver_id = saved.driver_id.clone();
-        let registry = self.registry.clone();
-        let secrets = self.storage.secrets().clone();
-        let sender_clone = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    match connection_service::open_saved(registry, secrets, saved).await {
-                        Ok(tables) => sender_clone.input(AppMsg::Connected { tables, driver_id }),
-                        Err(e) => sender_clone.input(AppMsg::LoadFailed(None, e)),
-                    }
-                })
-                .drop_on_shutdown()
+        let ticket = self.connect_attempts.begin();
+        let generation = ticket.generation();
+        let cancel = ticket.cancel().clone();
+        let drivers = self.context.drivers.clone();
+        let connector = self.context.connector.clone();
+        let interaction = self.context.attended();
+        let credentials = self.context.keyring_credentials(&saved);
+        let source: Arc<dyn CredentialSource> = Arc::new(credentials.clone());
+        // Reading the keyring, asking for what it lacks and connecting
+        // all happen off the GTK thread; only the outcome comes back.
+        let connecting = async move {
+            let refreshed = tablepro_session::resolve_saved(
+                &saved,
+                &drivers,
+                &credentials,
+                interaction.clone(),
+                CredentialDemand::default(),
+            )
+            .await?;
+            let pending = connector.establish(refreshed.request, interaction, cancel).await?;
+            // A secret typed into a prompt is kept only once the login
+            // it was typed for has worked.
+            let refused = credentials.remember(refreshed.remember).await;
+            Ok::<_, ConnectError>((pending, refused))
+        };
+        crate::runtime::spawn_and_deliver(&self.tasks, connecting, move |outcome| match outcome {
+            Ok(Ok((pending, refused))) => sender.input(AppMsg::SessionReady(Box::new(ReadySession {
+                key,
+                pending,
+                credentials: source,
+                warnings: refused
+                    .iter()
+                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
+                    .collect(),
+                generation: Some(generation),
+            }))),
+            Ok(Err(ConnectError::Cancelled)) => sender.input(AppMsg::ConnectFailed {
+                generation,
+                message: None,
+            }),
+            Ok(Err(error)) => sender.input(AppMsg::ConnectFailed {
+                generation,
+                message: Some(crate::ui::error_text::connect_error_message(&error)),
+            }),
+            Err(failure) => sender.input(AppMsg::ConnectFailed {
+                generation,
+                message: Some(crate::ui::error_text::task_failure_message(&failure)),
+            }),
         });
     }
 
-    pub(super) fn repopulate_sidebar(&mut self, tables: &[TableInfo]) {
+    /// Only what the grid can page through goes in the sidebar.
+    pub(super) fn repopulate_sidebar(&mut self, objects: &[ObjectInfo]) {
+        let objects = browsable(objects.to_vec());
         {
             let mut schemas = self.sidebar_schemas.borrow_mut();
             schemas.clear();
-            schemas.extend(tables.iter().map(|t| t.schema.clone()));
+            schemas.extend(objects.iter().map(|object| object.schema.clone()));
         }
         let mut guard = self.sidebar_factory.guard();
         guard.clear();
-        for table in tables {
-            guard.push_back(table.clone());
+        for object in objects {
+            guard.push_back(object);
         }
         drop(guard);
         self.sidebar_factory.widget().invalidate_headers();
     }
 
-    /// Surfaces connection health via `adw::Banner` only when degraded —
-    /// healthy/disconnected states show no chrome, matching GNOME apps that
-    /// reserve banners for "abnormal, user-actionable" situations (Files
-    /// uses the same pattern for unmounted volumes).
-    pub(super) fn refresh_health_banner(&self, health: Option<ConnectionHealth>) {
-        match health {
-            Some(ConnectionHealth::Reconnecting { attempt }) => {
-                self.reconnect_banner.set_title(&crate::i18n::gettext_f(
-                    "Connection lost. Reconnecting (attempt {n}, will keep retrying)",
-                    &[("n", &attempt.to_string())],
-                ));
+    /// Surfaces session health via `adw::Banner` only when degraded:
+    /// GNOME apps reserve banners for abnormal, user-actionable states.
+    pub(super) fn refresh_health_banner(&self, health: &SessionHealth) {
+        match health_banner_text(health) {
+            Some(title) => {
+                self.reconnect_banner.set_title(&title);
                 self.reconnect_banner.set_revealed(true);
             }
-            _ => self.reconnect_banner.set_revealed(false),
+            None => self.reconnect_banner.set_revealed(false),
         }
     }
 
@@ -530,7 +710,7 @@ impl App {
         // when the tab strip already serves that role. Matches GNOME
         // Builder (subtitle = branch name only) and Text Editor
         // (subtitle = filename only) — short, single-purpose.
-        let metadata = database_service::instance().active_metadata();
+        let metadata = self.context.active.metadata();
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
         let active = self.selected_browse_slot_table();
         let table_pair = active.as_ref().map(|(s, t)| (s.as_deref(), t.as_str()));
@@ -612,35 +792,32 @@ fn execute_delete_connection(
     sender: ComponentSender<App>,
 ) {
     let sender_clone = sender.clone();
-    sender.command(move |_, shutdown| {
-        shutdown
-            .register(async move {
-                // Secrets first: an entry with no secrets is recoverable,
-                // a secret with no entry is orphaned in the keyring.
-                if let Err(error) = secrets.delete_connection(id).await {
-                    // Keep the entry: an entry with no secrets can be
-                    // fixed, a secret with no entry is orphaned.
-                    tracing::warn!(%error, "could not delete the connection secrets; keeping the entry");
-                    sender_clone.input(AppMsg::SecretDeleteFailed(id));
-                    return;
-                }
-                let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
-                if let Ok(Err(error)) = removed {
-                    tracing::warn!(%error, "could not remove the saved connection");
-                }
-                // The queries saved here name tables only this database
-                // has, so they go with it. A failure leaves them listed
-                // under the connection's last name, which the user can
-                // still delete one by one.
-                if let Some(saved_queries) = saved_queries
-                    && let Err(error) = saved_queries.delete_for_connection(id).await
-                {
-                    tracing::warn!(%error, "could not remove the connection's saved queries");
-                }
-                sender_clone.input(AppMsg::ReloadConnections);
-            })
-            .drop_on_shutdown()
-    });
+    let spawner = tasks.clone();
+    drop(spawner.spawn_task(async move {
+        // Secrets first: an entry with no secrets is recoverable,
+        // a secret with no entry is orphaned in the keyring.
+        if let Err(error) = secrets.delete_connection(id).await {
+            // Keep the entry: an entry with no secrets can be
+            // fixed, a secret with no entry is orphaned.
+            tracing::warn!(%error, "could not delete the connection secrets; keeping the entry");
+            sender_clone.input(AppMsg::SecretDeleteFailed(id));
+            return;
+        }
+        let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
+        if let Ok(Err(error)) = removed {
+            tracing::warn!(%error, "could not remove the saved connection");
+        }
+        // The queries saved here name tables only this database
+        // has, so they go with it. A failure leaves them listed
+        // under the connection's last name, which the user can
+        // still delete one by one.
+        if let Some(saved_queries) = saved_queries
+            && let Err(error) = saved_queries.delete_for_connection(id).await
+        {
+            tracing::warn!(%error, "could not remove the connection's saved queries");
+        }
+        sender_clone.input(AppMsg::ReloadConnections);
+    }));
 }
 
 impl App {
@@ -730,4 +907,100 @@ fn json_filters() -> gio::ListStore {
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&json_filter());
     filters
+}
+
+/// Only what the grid can page through: routines and sequences have no
+/// rows to show.
+fn browsable(objects: Vec<ObjectInfo>) -> Vec<ObjectInfo> {
+    objects.into_iter().filter(|object| object.kind.is_browsable()).collect()
+}
+
+/// The banner's sentence for a session that needs attention, `None`
+/// while it is online.
+fn health_banner_text(health: &SessionHealth) -> Option<String> {
+    match health {
+        SessionHealth::Online => None,
+        SessionHealth::Reconnecting { attempt } => Some(crate::i18n::gettext_f(
+            "Connection lost. Reconnecting (attempt {n}).",
+            &[("n", &attempt.to_string())],
+        )),
+        SessionHealth::Offline => Some(crate::i18n::gettext(
+            "The server cannot be reached. TablePro will keep checking.",
+        )),
+        SessionHealth::Failed { cause } => Some(failed_banner_text(*cause)),
+    }
+}
+
+fn failed_banner_text(cause: tablepro_session::FailureCause) -> String {
+    use tablepro_session::FailureCause;
+    match cause {
+        FailureCause::Authentication => {
+            crate::i18n::gettext("The server refused the login. Retry to enter the password again.")
+        }
+        FailureCause::Tls => crate::i18n::gettext("The secure connection failed. Check the connection's TLS settings."),
+        FailureCause::Configuration => {
+            crate::i18n::gettext("The connection settings no longer work. Check them and retry.")
+        }
+        FailureCause::HostKeyUnknown => crate::i18n::gettext("The SSH server's host key is not trusted yet."),
+        FailureCause::HostKeyChanged => crate::i18n::gettext(
+            "The SSH server's host key changed. Check with its administrator before connecting again.",
+        ),
+        FailureCause::HostKeyRevoked => crate::i18n::gettext("The SSH server's host key was revoked."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::meta::ObjectKind;
+    use tablepro_session::FailureCause;
+
+    use super::*;
+
+    fn object(name: &str, kind: ObjectKind) -> ObjectInfo {
+        ObjectInfo {
+            schema: Some("public".to_owned()),
+            name: name.to_owned(),
+            kind,
+        }
+    }
+
+    #[test]
+    fn the_sidebar_lists_only_what_the_grid_can_page() {
+        let listed = browsable(vec![
+            object("users", ObjectKind::Table),
+            object("active_users", ObjectKind::View),
+            object("next_id", ObjectKind::Sequence),
+            object("refresh", ObjectKind::Function),
+        ]);
+
+        let names: Vec<&str> = listed.iter().map(|object| object.name.as_str()).collect();
+        assert_eq!(names, ["users", "active_users"]);
+    }
+
+    #[test]
+    fn the_banner_shows_only_when_the_session_needs_attention() {
+        assert_eq!(health_banner_text(&SessionHealth::Online), None);
+        let reconnecting = health_banner_text(&SessionHealth::Reconnecting { attempt: 3 }).expect("a banner");
+        assert!(reconnecting.contains('3'), "{reconnecting}");
+        assert!(health_banner_text(&SessionHealth::Offline).is_some());
+    }
+
+    #[test]
+    fn each_parked_cause_has_its_own_banner() {
+        let causes = [
+            FailureCause::Authentication,
+            FailureCause::Tls,
+            FailureCause::Configuration,
+            FailureCause::HostKeyUnknown,
+            FailureCause::HostKeyChanged,
+            FailureCause::HostKeyRevoked,
+        ];
+
+        let texts: std::collections::HashSet<String> = causes
+            .into_iter()
+            .map(|cause| health_banner_text(&SessionHealth::Failed { cause }).expect("a banner"))
+            .collect();
+
+        assert_eq!(texts.len(), causes.len());
+    }
 }

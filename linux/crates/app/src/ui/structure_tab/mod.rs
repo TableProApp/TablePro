@@ -32,13 +32,16 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use relm4::adw::prelude::*;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, adw, gtk};
 use sourceview5::prelude::BufferExt;
 
+use tablepro_core::ddl::{ColumnDefinition, TableDefinition};
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
-use tablepro_core::{ColumnInfo, ForeignKeyInfo, IndexInfo};
+use tablepro_core::{ForeignKeyInfo, IndexInfo};
 use uuid::Uuid;
 
 use crate::services::structure_tracker;
@@ -94,9 +97,13 @@ pub struct StructureTab {
     /// produces SQL by walking that diff. Discard simply copies the
     /// snapshots back over the live fields.
     original_table_name: Rc<RefCell<String>>,
-    original_columns: Rc<RefCell<Vec<tablepro_core::ColumnInfo>>>,
+    original_columns: Rc<RefCell<Vec<ColumnDefinition>>>,
     original_indexes: Rc<RefCell<Vec<IndexInfo>>>,
     original_fks: Rc<RefCell<Vec<ForeignKeyInfo>>>,
+    /// The connection's dialect, which spells renames and default drops
+    /// per server. `None` until the session hands it over, and the SQL
+    /// cannot be written before then.
+    dialect: Rc<RefCell<Option<Arc<dyn SqlDialect>>>>,
 
     // Widget refs we touch from `update`.
     inner_stack: gtk::Stack,
@@ -160,10 +167,11 @@ pub struct StructureTab {
 #[derive(Debug)]
 pub enum StructureTabInput {
     StructureLoaded {
-        columns: Vec<ColumnInfo>,
-        indexes: Vec<IndexInfo>,
-        fks: Vec<ForeignKeyInfo>,
+        definition: Box<TableDefinition>,
+        dialect: Arc<dyn SqlDialect>,
     },
+    /// The dialect for a New-mode draft, which has no table to read.
+    DialectReady(Arc<dyn SqlDialect>),
     LoadFailed(String),
     Save,
     Discard,
@@ -304,11 +312,19 @@ impl StructureTab {
         }
     }
 
+    /// The statements `ops` become on this connection, or `None` while
+    /// the tab has no dialect to spell them in.
+    fn materialize(&self, ops: &[StructureOp]) -> Option<Result<Vec<String>, BuildDdlError>> {
+        let dialect = self.dialect.borrow().clone()?;
+        Some(materialize_ops(ops, &self.driver_id, &*dialect))
+    }
+
     fn regenerate_sql_preview_from(&self, ops: &[StructureOp]) {
-        let text = match materialize_ops(ops, &self.driver_id) {
-            Ok(stmts) if !stmts.is_empty() => stmts.join(";\n\n") + ";",
-            Ok(_) => crate::i18n::gettext("-- No pending changes."),
-            Err(e) => format!("-- {e}"),
+        let text = match self.materialize(ops) {
+            Some(Ok(stmts)) if !stmts.is_empty() => stmts.join(";\n\n") + ";",
+            Some(Ok(_)) => crate::i18n::gettext("-- No pending changes."),
+            Some(Err(e)) => format!("-- {e}"),
+            None => crate::i18n::gettext("-- Connect to a database to see the SQL."),
         };
         self.sql_buffer.set_text(&text);
     }
@@ -810,6 +826,7 @@ impl SimpleComponent for StructureTab {
             original_columns: Rc::new(RefCell::new(Vec::new())),
             original_indexes: Rc::new(RefCell::new(Vec::new())),
             original_fks: Rc::new(RefCell::new(Vec::new())),
+            dialect: Rc::new(RefCell::new(None)),
             inner_stack,
             error_status: error_status.clone(),
             name_entry,
@@ -837,19 +854,25 @@ impl SimpleComponent for StructureTab {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
-            StructureTabInput::StructureLoaded { columns, indexes, fks } => {
-                // App coalesces the three fetches into one message.
+            StructureTabInput::StructureLoaded { definition, dialect } => {
                 // Snapshot all three lists into `original_*` slots so
                 // Discard restores the canonical loaded state without
                 // a refetch — including columns the user later removed
                 // (whose `DraftColumn.original` would otherwise vanish
                 // when the row is dropped from `self.columns`).
+                let TableDefinition {
+                    columns,
+                    indexes,
+                    foreign_keys,
+                    ..
+                } = *definition;
+                *self.dialect.borrow_mut() = Some(dialect);
                 *self.original_columns.borrow_mut() = columns.clone();
-                *self.columns.borrow_mut() = columns.into_iter().map(DraftColumn::from_info).collect();
+                *self.columns.borrow_mut() = columns.into_iter().map(DraftColumn::from_definition).collect();
                 *self.indexes.borrow_mut() = indexes.clone();
                 *self.original_indexes.borrow_mut() = indexes;
-                *self.foreign_keys.borrow_mut() = fks.clone();
-                *self.original_fks.borrow_mut() = fks;
+                *self.foreign_keys.borrow_mut() = foreign_keys.clone();
+                *self.original_fks.borrow_mut() = foreign_keys;
                 self.inner_stack.set_visible_child_name("editor");
                 // End of refetch window: snapshots are now authoritative,
                 // so resume diff-based dirty tracking. The recompute call
@@ -859,6 +882,10 @@ impl SimpleComponent for StructureTab {
                 self.refetching.set(false);
                 self.recompute_dirty_state(&sender);
                 sender.input(StructureTabInput::Refresh);
+            }
+            StructureTabInput::DialectReady(dialect) => {
+                *self.dialect.borrow_mut() = Some(dialect);
+                self.regenerate_sql_preview_from(&self.current_diff_ops());
             }
             StructureTabInput::LoadFailed(message) => {
                 // Surface the driver error inline on the StatusPage —
@@ -997,22 +1024,27 @@ impl SimpleComponent for StructureTab {
                     return;
                 }
                 let ops = self.current_diff_ops();
-                match materialize_ops(&ops, &self.driver_id) {
-                    Ok(statements) if !statements.is_empty() => {
+                match self.materialize(&ops) {
+                    Some(Ok(statements)) if !statements.is_empty() => {
                         self.save_button.set_sensitive(false);
                         self.discard_button.set_sensitive(false);
                         let _ = sender.output(StructureTabOutput::ExecuteTransaction { statements });
                     }
-                    Ok(_) => {
+                    Some(Ok(_)) => {
                         let _ = sender.output(StructureTabOutput::ShowToast(crate::i18n::gettext("Nothing to save.")));
                     }
-                    Err(BuildDdlError::SqliteNotSupported(detail)) => {
+                    None => {
+                        let _ = sender.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                            "Connect to a database first.",
+                        )));
+                    }
+                    Some(Err(BuildDdlError::SqliteNotSupported(detail))) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
                             title: crate::i18n::gettext("Cannot save"),
                             body: crate::i18n::gettext_f("SQLite doesn't support: {detail}", &[("detail", detail)]),
                         });
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
                             title: crate::i18n::gettext("Cannot save"),
                             body: format!("{e}"),
@@ -1036,7 +1068,7 @@ impl SimpleComponent for StructureTab {
                         .borrow()
                         .iter()
                         .cloned()
-                        .map(DraftColumn::from_info)
+                        .map(DraftColumn::from_definition)
                         .collect();
                     *self.indexes.borrow_mut() = self.original_indexes.borrow().clone();
                     *self.foreign_keys.borrow_mut() = self.original_fks.borrow().clone();

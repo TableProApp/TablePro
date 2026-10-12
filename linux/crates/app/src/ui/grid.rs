@@ -217,7 +217,7 @@ pub fn build_column_view(
         let cell_editable = editable
             && match schema_columns.get(i) {
                 Some(catalog) => is_cell_editable(catalog),
-                None => !is_bytes_kind(column.column_type.kind()),
+                None => !is_bytes_kind(&column.column_type.kind),
             };
         let col = build_column(
             column,
@@ -317,9 +317,9 @@ fn build_column(
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
 
-    let column_data_type = info.column_type.name().as_sql().to_owned();
+    let column_data_type = info.column_type.name.clone();
     let column_name = info.name.clone();
-    let accepts_empty = info.column_type.kind().accepts_empty_string();
+    let accepts_empty = info.column_type.kind.accepts_empty_string();
     let column_view_for_setup = column_view.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -2015,12 +2015,12 @@ fn is_cell_editable(col: &ColumnInfo) -> bool {
     // a user-supplied value would be rejected at commit.
     // Auto-increment non-PK: rare but possible; same rejection at commit.
     // Bytes / blobs: not text-editable in any meaningful way.
-    !col.primary_key && !col.is_generated && !col.is_auto_increment && !is_bytes_kind(col.column_type.kind())
+    !col.primary_key && !col.is_generated && !col.is_auto_increment && !is_bytes_kind(&col.column_type.kind)
 }
 
 /// A blob has no text form to type into, so the grid never offers one.
-fn is_bytes_kind(kind: tablepro_core::column::ColumnKind) -> bool {
-    matches!(kind, tablepro_core::column::ColumnKind::Binary)
+fn is_bytes_kind(kind: &tablepro_core::column::ColumnKind) -> bool {
+    matches!(kind, tablepro_core::column::ColumnKind::Bytes { .. })
 }
 
 #[derive(Debug)]
@@ -2191,13 +2191,16 @@ mod tests {
         let kind = tablepro_core::column::classify_type_name(data_type);
         ColumnInfo {
             name: "x".into(),
-            column_type: tablepro_core::column::ColumnType::new(
-                tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+            column_type: tablepro_core::column::ColumnType {
+                name: data_type.to_owned(),
+                dynamic_storage: tablepro_core::column::has_dynamic_storage(&kind),
                 kind,
-                tablepro_core::column::CatalogType::Unknown,
-                tablepro_core::column::has_dynamic_storage(kind),
-                tablepro_core::column::ReadForm::Native,
-            ),
+                catalog: Some(tablepro_core::column::CatalogType {
+                    declaration: tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                    cast_target: tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                }),
+                read_form: tablepro_core::column::ReadForm::Native,
+            },
             nullable: true,
             primary_key,
             is_auto_increment: false,
@@ -2247,7 +2250,7 @@ mod tests {
         // number or a date can only mean NULL.
         for text in ["text", "VARCHAR(255)", "char(3)", "longtext"] {
             assert!(
-                col(text, false).column_type.kind().accepts_empty_string(),
+                col(text, false).column_type.kind.accepts_empty_string(),
                 "{text} should accept an empty string"
             );
         }
@@ -2261,7 +2264,7 @@ mod tests {
             "boolean",
         ] {
             assert!(
-                !col(other, false).column_type.kind().accepts_empty_string(),
+                !col(other, false).column_type.kind.accepts_empty_string(),
                 "{other} should not accept an empty string"
             );
         }

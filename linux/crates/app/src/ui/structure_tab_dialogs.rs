@@ -21,6 +21,8 @@ use std::rc::Rc;
 use relm4::adw::prelude::*;
 use relm4::{ComponentSender, adw, gtk};
 
+use tablepro_core::ddl::ReferentialAction;
+use tablepro_core::meta::IndexKey;
 use tablepro_core::sql_ddl::DraftColumn;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 
@@ -178,9 +180,16 @@ pub(super) fn present_index_dialog(
         }
         sender_for_resp.input(StructureTabInput::AddIndex(IndexInfo {
             name,
-            columns: cols,
+            keys: cols
+                .into_iter()
+                .map(|name| IndexKey::Column {
+                    name,
+                    descending: false,
+                })
+                .collect(),
             unique: unique_row.is_active(),
             primary: false,
+            predicate: None,
         }));
         dialog_for_submit.close();
     });
@@ -195,6 +204,7 @@ pub(super) fn present_fk_dialog(
     sender: ComponentSender<StructureTab>,
 ) {
     let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
+    let action_labels = action_labels(fk_actions);
     let (dialog, body, submit_btn) =
         build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
 
@@ -230,12 +240,12 @@ pub(super) fn present_fk_dialog(
     ref_group.add(&ref_cols_row);
     let on_delete_row = adw::ComboRow::builder()
         .title(crate::i18n::gettext("On delete"))
-        .model(&gtk::StringList::new(fk_actions))
+        .model(&gtk::StringList::new(&action_labels))
         .build();
     ref_group.add(&on_delete_row);
     let on_update_row = adw::ComboRow::builder()
         .title(crate::i18n::gettext("On update"))
-        .model(&gtk::StringList::new(fk_actions))
+        .model(&gtk::StringList::new(&action_labels))
         .build();
     ref_group.add(&on_update_row);
     body.append(&ref_group);
@@ -294,12 +304,9 @@ pub(super) fn present_fk_dialog(
             Some((s, t)) => (Some(s.trim().to_string()), t.trim().to_string()),
             None => (None, ref_table),
         };
-        // Preserve the user's explicit "NO ACTION" choice as
-        // `Some("NO ACTION")`. Reserve `None` for the
-        // driver-returned-unknown case so the SQL emitter can choose
-        // sensibly per dialect (MySQL implicit RESTRICT vs Postgres
-        // implicit NO ACTION).
-        let action_at = |idx: u32| -> Option<String> { fk_actions.get(idx as usize).map(|s| (*s).to_string()) };
+        // An explicit NO ACTION stays `Some`: `None` is reserved for an
+        // action the driver reported that this build does not know.
+        let action_at = |row: u32| action_for_row(fk_actions, row);
         sender_for_resp.input(StructureTabInput::AddForeignKey(ForeignKeyInfo {
             name,
             columns: cols,
@@ -313,6 +320,17 @@ pub(super) fn present_fk_dialog(
     });
 
     dialog.present(Some(parent));
+}
+
+/// The combo labels for the actions an engine accepts, in its order.
+fn action_labels(actions: &[ReferentialAction]) -> Vec<&'static str> {
+    actions.iter().map(|action| action.as_sql()).collect()
+}
+
+/// The action a combo row stands for. The rows are built from the
+/// same list, so a row past its end can only be a stale selection.
+fn action_for_row(actions: &[ReferentialAction], row: u32) -> Option<ReferentialAction> {
+    actions.get(row as usize).copied()
 }
 
 #[cfg(test)]
@@ -389,6 +407,20 @@ mod tests {
             crate::test_support::wait_until(Duration::from_secs(1), || clicks.load(Ordering::Relaxed) > 0).is_err(),
             "a row without activates-default submitted the form"
         );
+    }
+
+    #[test]
+    fn combo_rows_decode_to_the_actions_they_are_labelled_with() {
+        let mssql = tablepro_core::sql_ddl::supported_fk_actions("mssql");
+
+        let labels = action_labels(mssql);
+
+        assert!(!labels.contains(&"RESTRICT"), "SQL Server has no RESTRICT: {labels:?}");
+        for (row, label) in labels.iter().enumerate() {
+            let action = action_for_row(mssql, row as u32).expect("a row the combo shows");
+            assert_eq!(action.as_sql(), *label);
+        }
+        assert_eq!(action_for_row(mssql, labels.len() as u32), None);
     }
 
     #[gtk4::test]

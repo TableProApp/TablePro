@@ -1,67 +1,24 @@
 use tablepro_core::credentials::SecretKind;
 use tablepro_storage::SavedConnection;
 
-/// What the secret belongs to, in the user's own terms. This is what
-/// Seahorse and GNOME Settings show, so it has to identify the
-/// connection without the user opening TablePro.
-pub(crate) fn secret_target(kind: SecretKind, connection: &SavedConnection) -> String {
-    match kind {
-        SecretKind::DatabasePassword => database_target(connection),
-        SecretKind::SshPassword => ssh_target(connection),
-        SecretKind::SshPassphrase => passphrase_target(connection),
-    }
+/// The keyring label for a connection's secret. Seahorse shows it, so
+/// it names what the secret opens in the user's own terms.
+pub(crate) fn secret_label(kind: SecretKind, connection: &SavedConnection) -> String {
+    label_for_target(kind, &connection.secret_target(kind))
 }
 
-pub(crate) fn secret_label(kind: SecretKind, connection: &SavedConnection) -> String {
-    let target = secret_target(kind, connection);
+/// The label for a secret whose target is already worked out, as the
+/// keyring credentials hand it over when the user asks to remember a
+/// secret they typed.
+pub(crate) fn label_for_target(kind: SecretKind, target: &str) -> String {
     match kind {
         SecretKind::DatabasePassword => {
-            crate::i18n::gettext_f("TablePro database password for {target}", &[("target", &target)])
+            crate::i18n::gettext_f("TablePro database password for {target}", &[("target", target)])
         }
-        SecretKind::SshPassword => crate::i18n::gettext_f("TablePro SSH password for {target}", &[("target", &target)]),
+        SecretKind::SshPassword => crate::i18n::gettext_f("TablePro SSH password for {target}", &[("target", target)]),
         SecretKind::SshPassphrase => {
-            crate::i18n::gettext_f("TablePro SSH key passphrase for {target}", &[("target", &target)])
+            crate::i18n::gettext_f("TablePro SSH key passphrase for {target}", &[("target", target)])
         }
-    }
-}
-
-fn database_target(connection: &SavedConnection) -> String {
-    let mut target = String::new();
-    if !connection.username.is_empty() {
-        target.push_str(&connection.username);
-        target.push('@');
-    }
-    target.push_str(&connection.host);
-    target.push(':');
-    target.push_str(&connection.port.to_string());
-    if !connection.database.is_empty() {
-        target.push('/');
-        target.push_str(&connection.database);
-    }
-    target
-}
-
-fn ssh_target(connection: &SavedConnection) -> String {
-    let Some(ssh) = &connection.ssh else {
-        return connection.host.clone();
-    };
-    match ssh.username.as_deref().filter(|user| !user.is_empty()) {
-        Some(user) => format!("{user}@{}", ssh.host),
-        None => ssh.host.clone(),
-    }
-}
-
-/// A passphrase belongs to a key file, so the path identifies it better
-/// than the host does. Without a path the key comes from the agent or
-/// the SSH config, and the host is all there is.
-fn passphrase_target(connection: &SavedConnection) -> String {
-    let path = connection.ssh.as_ref().and_then(|ssh| match &ssh.auth {
-        tablepro_storage::SavedSshAuth::PrivateKey { path, .. } => path.as_ref(),
-        _ => None,
-    });
-    match path {
-        Some(path) => path.display().to_string(),
-        None => ssh_target(connection),
     }
 }
 
@@ -84,7 +41,7 @@ mod tests {
             port: 5432,
             database: "shop".into(),
             username: "app".into(),
-            use_tls: true,
+            tls: tablepro_core::TlsConfig::verify_full(),
             read_only: false,
             auth_mode: AuthMode::Password,
             ssh: None,
@@ -111,7 +68,7 @@ mod tests {
     fn secret_label_and_target_per_kind() {
         let plain = connection();
         assert_eq!(
-            secret_target(SecretKind::DatabasePassword, &plain),
+            plain.secret_target(SecretKind::DatabasePassword),
             "app@db.example.com:5432/shop"
         );
         assert_eq!(
@@ -121,7 +78,7 @@ mod tests {
 
         let with_user = with_ssh(SavedSshAuth::Password, Some("deploy"));
         assert_eq!(
-            secret_target(SecretKind::SshPassword, &with_user),
+            with_user.secret_target(SecretKind::SshPassword),
             "deploy@bastion.example.com"
         );
 
@@ -133,13 +90,13 @@ mod tests {
             Some("deploy"),
         );
         assert_eq!(
-            secret_target(SecretKind::SshPassphrase, &keyed),
+            keyed.secret_target(SecretKind::SshPassphrase),
             "/home/u/.ssh/id_ed25519"
         );
 
         let agent = with_ssh(SavedSshAuth::Agent, Some("deploy"));
         assert_eq!(
-            secret_target(SecretKind::SshPassphrase, &agent),
+            agent.secret_target(SecretKind::SshPassphrase),
             "deploy@bastion.example.com"
         );
     }
@@ -151,19 +108,19 @@ mod tests {
             ..connection()
         };
         assert_eq!(
-            secret_target(SecretKind::DatabasePassword, &anonymous),
+            anonymous.secret_target(SecretKind::DatabasePassword),
             "db.example.com:5432/shop"
         );
 
         let no_ssh_user = with_ssh(SavedSshAuth::Password, None);
         assert_eq!(
-            secret_target(SecretKind::SshPassword, &no_ssh_user),
+            no_ssh_user.secret_target(SecretKind::SshPassword),
             "bastion.example.com"
         );
 
         let empty_ssh_user = with_ssh(SavedSshAuth::Password, Some(""));
         assert_eq!(
-            secret_target(SecretKind::SshPassword, &empty_ssh_user),
+            empty_ssh_user.secret_target(SecretKind::SshPassword),
             "bastion.example.com"
         );
     }

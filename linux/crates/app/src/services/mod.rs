@@ -2,14 +2,13 @@ use std::sync::OnceLock;
 
 use tablepro_storage::StoragePaths;
 
+pub mod active_session;
 pub mod change_tracker;
-pub mod connection_monitor;
-pub mod connection_service;
-pub mod database_service;
 pub mod history_availability;
 pub mod history_service;
 pub mod secret_labels;
 pub mod secret_save_report;
+pub mod session_context;
 pub mod single_instance;
 pub mod structure_tracker;
 pub mod workspace_state;

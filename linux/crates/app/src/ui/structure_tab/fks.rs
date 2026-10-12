@@ -5,6 +5,7 @@ use relm4::adw::prelude::*;
 use relm4::{ComponentSender, adw, gtk};
 
 use tablepro_core::ForeignKeyInfo;
+use tablepro_core::ddl::ReferentialAction;
 
 use super::{StructureTab, StructureTabInput};
 
@@ -30,16 +31,13 @@ pub(super) fn build_fk_row(
         fk.columns.join(", "),
         fk.ref_columns.join(", "),
     );
-    // Show ON DELETE / ON UPDATE inline so the user can read the
-    // referential semantics without re-opening the row. Both fields
-    // are `Option<String>` — `None` means the driver returned an
-    // unrecognised value, render a dash; `Some` is the explicit
-    // action chosen at create time (including "NO ACTION").
+    // `None` is an action this build does not know, so it says so rather
+    // than claiming the default it may not be.
     if fk.on_delete.is_some() || fk.on_update.is_some() {
         subtitle.push_str(&format!(
             " · ON DELETE {} · ON UPDATE {}",
-            fk.on_delete.as_deref().unwrap_or("—"),
-            fk.on_update.as_deref().unwrap_or("—"),
+            action_text(fk.on_delete),
+            action_text(fk.on_update),
         ));
     }
 
@@ -65,4 +63,22 @@ pub(super) fn build_fk_row(
     row.add_suffix(&remove_button);
 
     row
+}
+
+fn action_text(action: Option<ReferentialAction>) -> String {
+    action.map_or_else(
+        || crate::i18n::gettext("not reported"),
+        |action| action.as_sql().to_owned(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unknown_action_says_it_was_not_reported() {
+        assert_eq!(action_text(Some(ReferentialAction::SetNull)), "SET NULL");
+        assert_eq!(action_text(None), "not reported");
+    }
 }
