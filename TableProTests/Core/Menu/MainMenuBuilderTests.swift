@@ -15,14 +15,12 @@ import Testing
 
 @MainActor
 private func buildMenu(_ keyboard: KeyboardSettings = KeyboardSettings()) -> NSMenu {
-    MainMenuBuilder.build(keyboard: keyboard)
+    MainMenuBuilder.build(keyboard: keyboard).bar
 }
 
-/// Skips the Services submenu: assigning it to `NSApp.servicesMenu` hands it to
-/// AppKit, which fills it with its own targeted items.
 private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
     menu.items.flatMap { item -> [NSMenuItem] in
-        guard let submenu = item.submenu, submenu !== NSApp.servicesMenu else { return [item] }
+        guard let submenu = item.submenu else { return [item] }
         return [item] + flatten(submenu)
     }
 }
@@ -150,14 +148,10 @@ struct MainMenuStructureTests {
         #expect(dead.isEmpty, "Items without an action can never enable: \(dead)")
     }
 
-    /// Only leaf commands are checked. AppKit points a submenu container at its own
-    /// `submenuAction:`, and it owns Window and Help outright once they are assigned
-    /// to `NSApp.windowsMenu` / `NSApp.helpMenu`.
+    /// Only leaf commands are checked: AppKit points a submenu container at its own `submenuAction:`.
     @Test("Every authored command leaves its target nil so the responder chain resolves it")
     func targetsAreNil() {
-        let systemOwned = [String(localized: "Window"), String(localized: "Help")]
         let targeted = buildMenu().items
-            .filter { !systemOwned.contains($0.title) }
             .compactMap(\.submenu)
             .flatMap(flatten)
             .filter { !$0.isSeparatorItem && $0.submenu == nil && $0.target != nil }

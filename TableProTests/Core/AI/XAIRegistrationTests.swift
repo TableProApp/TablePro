@@ -16,9 +16,9 @@ struct XAIRegistrationTests {
         AIProviderRegistry.shared.descriptor(for: AIProviderType.xai.rawValue)
     }
 
-    @Test("xAI allows an optional API key and is a known type")
+    @Test("xAI takes an API key and is a known type")
     func authStyleAndType() {
-        #expect(AIProviderType.xai.authStyle == .optionalApiKey)
+        #expect(AIProviderType.xai.authStyle == .apiKey)
         #expect(AIProviderType.allCases.contains(.xai))
         #expect(AIProviderType(rawValue: "xai") == .xai)
         #expect(AIProviderType.xai.displayName == "xAI")
@@ -58,11 +58,10 @@ struct XAIRegistrationTests {
         #expect(!fallback.contains(.xhigh))
     }
 
-    @Test("A key selects the api.x.ai Responses provider, no key selects the Grok subscription provider")
-    func makeProviderBranchesOnKey() {
+    @Test("xAI always talks to the api.x.ai Responses endpoint")
+    func makeProviderIsResponses() {
         let config = AIProviderConfig(type: .xai, model: "grok-4.5")
         #expect(descriptor()?.makeProvider(config, "xai-test-key") is OpenAIResponsesProvider)
-        #expect(descriptor()?.makeProvider(config, nil) is XAIGrokProvider)
-        #expect(descriptor()?.makeProvider(config, "") is XAIGrokProvider)
+        #expect(descriptor()?.makeProvider(config, nil) is OpenAIResponsesProvider)
     }
 }

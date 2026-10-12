@@ -20,11 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
+- Edit > Data shown only in data file windows.
+- Delta updates from the last five releases, about 6 MB instead of the full 34 MB download.
 
 ### Removed
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Cursor AI provider. A saved Cursor provider is dropped; Cursor still reaches TablePro through the MCP server.
+- Sign in with xAI. An xAI provider now needs an xAI API key.
 
 ### Fixed
 
@@ -46,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
+- One unreadable setting, or one unknown AI provider, resetting its whole settings group to defaults.
 
 ## [0.80.0] - 2026-10-11
 
