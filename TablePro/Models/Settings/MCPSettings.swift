@@ -7,7 +7,6 @@ struct MCPSettings: Codable, Equatable {
     var maxRowLimit: Int
     var queryTimeoutSeconds: Int
     var logQueriesInHistory: Bool
-    var requireAuthentication: Bool
     var connectionApproval: MCPConnectionApproval
     var allowsHiddenConnectionListing: Bool
 
@@ -18,7 +17,6 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: 10_000,
         queryTimeoutSeconds: 30,
         logQueriesInHistory: true,
-        requireAuthentication: true,
         connectionApproval: .oncePerConnection,
         allowsHiddenConnectionListing: false
     )
@@ -30,7 +28,6 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: Int = 10_000,
         queryTimeoutSeconds: Int = 30,
         logQueriesInHistory: Bool = true,
-        requireAuthentication: Bool = true,
         connectionApproval: MCPConnectionApproval = .oncePerConnection,
         allowsHiddenConnectionListing: Bool = false
     ) {
@@ -40,7 +37,6 @@ struct MCPSettings: Codable, Equatable {
         self.maxRowLimit = maxRowLimit
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.logQueriesInHistory = logQueriesInHistory
-        self.requireAuthentication = requireAuthentication
         self.connectionApproval = connectionApproval
         self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
     }
@@ -55,7 +51,6 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit = container.decodeSetting(.maxRowLimit, default: fallback.maxRowLimit)
         queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
         logQueriesInHistory = container.decodeSetting(.logQueriesInHistory, default: fallback.logQueriesInHistory)
-        requireAuthentication = container.decodeSetting(.requireAuthentication, default: fallback.requireAuthentication)
         connectionApproval = container.decodeSetting(.connectionApproval, default: fallback.connectionApproval)
         allowsHiddenConnectionListing = container.decodeSetting(
             .allowsHiddenConnectionListing, default: fallback.allowsHiddenConnectionListing

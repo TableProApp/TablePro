@@ -239,7 +239,7 @@ public actor MCPAuthPolicy {
                 connectionName: snapshot.name,
                 databaseType: snapshot.databaseType,
                 clientLabel: principal.auditLabel,
-                memory: Self.memory(of: approval, for: principal)
+                memory: approval.remembersAnswer ? .untilRevoked : .thisRequestOnly
             )
         )
     }
@@ -252,14 +252,9 @@ public actor MCPAuthPolicy {
     /// 45 minutes and deletes the one it replaces, which reaches here as a revocation; treating that
     /// as the user withdrawing consent is what made the prompt come back all day, so the caller
     /// passes the token's name and the bridge's own rotation is skipped.
-    func clearApprovals(tokenId: UUID?, wasBridgeCredential: Bool = false) async {
+    func clearApprovals(tokenId: UUID, wasBridgeCredential: Bool = false) async {
         guard !wasBridgeCredential else { return }
-        await approvalLedger.clear(subject: tokenId.map { .token($0) })
-    }
-
-    /// Ends this session's approvals. A grant the user chose to remember is not one of them.
-    func clearAllApprovals() async {
-        await approvalLedger.clearSessionApprovals()
+        await approvalLedger.clear(subject: .token(tokenId))
     }
 
     func forgetEveryGrant() async {
@@ -345,7 +340,7 @@ public actor MCPAuthPolicy {
         _ capabilities: CallerCapabilities,
         for principal: MCPPrincipal
     ) -> CallerCapabilities {
-        guard !principal.has(.admin) || principal.isAnonymous else { return capabilities }
+        guard !principal.has(.admin) else { return capabilities }
         var effective = capabilities
         effective.remove(.confirmationPreCleared)
         effective.remove(.preCleared)
@@ -392,19 +387,9 @@ public actor MCPAuthPolicy {
         )
     }
 
-    /// A caller with no durable identity keeps its answer only for this session, so the prompt says
-    /// that rather than promising a grant the ledger will not file.
-    private static func memory(
-        of approval: MCPConnectionApproval,
-        for principal: MCPPrincipal
-    ) -> MCPApprovalMemory {
-        guard approval.remembersAnswer else { return .thisRequestOnly }
-        return principal.grantSubject == nil ? .thisSession : .untilRevoked
-    }
-
     private static func adminScopeDenial(principal: MCPPrincipal, tool: MCPToolName) -> AuthDecision? {
         guard MCPToolName.requiresAdminScope.contains(tool) else { return nil }
-        guard !principal.has(.admin) || principal.isAnonymous else { return nil }
+        guard !principal.has(.admin) else { return nil }
         return .deniedInsufficientScope(
             required: [.admin],
             reason: "Tool '\(tool)' requires an issued token carrying the admin scope"
@@ -421,7 +406,7 @@ public actor MCPAuthPolicy {
         guard QueryClassifier.isWriteQuery(sql, databaseType: DatabaseType(rawValue: databaseType)) else {
             return nil
         }
-        guard !principal.has(.toolsWrite) || principal.isAnonymous else { return nil }
+        guard !principal.has(.toolsWrite) else { return nil }
         return .deniedInsufficientScope(
             required: [.toolsWrite],
             reason: "Writing requires an issued token carrying the tools:write scope"

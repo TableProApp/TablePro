@@ -20,29 +20,19 @@ struct ListConnectionsToolTests {
         )
     }
 
-    private func callForDisplay(
-        scopes: Set<MCPScope>,
-        settingOn: Bool,
-        principal: MCPPrincipal? = nil
-    ) async throws -> MCPToolCallResult {
+    private func callForDisplay(scopes: Set<MCPScope>, settingOn: Bool) async throws -> MCPToolCallResult {
         try await tool.call(
             arguments: .object(["purpose": .string("display")]),
-            context: MCPToolTestHarness.context(
-                principal: principal ?? MCPToolTestHarness.principal(scopes: scopes)
-            ),
+            context: MCPToolTestHarness.context(principal: MCPToolTestHarness.principal(scopes: scopes)),
             services: MCPToolTestHarness.services(
                 settings: MCPSettings(allowsHiddenConnectionListing: settingOn)
             )
         )
     }
 
-    private func expectDisplayRefused(
-        scopes: Set<MCPScope>,
-        settingOn: Bool,
-        principal: MCPPrincipal? = nil
-    ) async {
+    private func expectDisplayRefused(scopes: Set<MCPScope>, settingOn: Bool) async {
         do {
-            _ = try await callForDisplay(scopes: scopes, settingOn: settingOn, principal: principal)
+            _ = try await callForDisplay(scopes: scopes, settingOn: settingOn)
             Issue.record("Expected purpose display to be refused")
         } catch let error as MCPProtocolError {
             let required = error.data?["requiredScopes"]?.arrayValue?.compactMap { $0.stringValue }
@@ -118,17 +108,6 @@ struct ListConnectionsToolTests {
     @Test("purpose display is refused while the setting is off, even for a token holding the scope")
     func displayRefusedWhileSettingIsOff() async {
         await expectDisplayRefused(scopes: [.toolsRead, .connectionsDisplay], settingOn: false)
-    }
-
-    @Test("An anonymous caller never gets purpose display")
-    func anonymousNeverGetsDisplay() async {
-        let anonymous = MCPPrincipal(
-            tokenFingerprint: MCPPrincipal.anonymousFingerprint,
-            tokenId: nil,
-            scopes: [.toolsRead, .connectionsDisplay],
-            metadata: MCPPrincipal.anonymousLoopback.metadata
-        )
-        await expectDisplayRefused(scopes: [], settingOn: true, principal: anonymous)
     }
 
     @Test("With the scope and the setting on, purpose display lists display fields only")

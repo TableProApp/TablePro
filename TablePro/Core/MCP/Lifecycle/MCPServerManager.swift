@@ -178,11 +178,10 @@ internal final class MCPServerManager: ObservableObject {
         await store.loadFromDisk()
         tokenStore = store
 
-        let settings = AppSettingsManager.shared.mcp
         var lastFailure = ""
 
         for candidate in MCPPortAllocator.candidates(preferred: Int(port)) {
-            let built = MCPServerComposition.build(port: candidate, settings: settings, tokenStore: store)
+            let built = MCPServerComposition.build(port: candidate, tokenStore: store)
             do {
                 try await built.transport.start()
             } catch {

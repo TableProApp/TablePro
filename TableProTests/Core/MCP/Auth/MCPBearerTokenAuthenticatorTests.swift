@@ -144,7 +144,6 @@ struct MCPBearerTokenAuthenticatorTests {
         #expect(principal.scopes == MCPScope.readWriteSet)
         #expect(principal.connectionAccess.allows(allowed))
         #expect(principal.connectionAccess.allows(UUID()) == false)
-        #expect(principal.isAnonymous == false)
     }
 
     @Test("The principal fingerprint is a digest, never the presented token")
@@ -480,5 +479,57 @@ struct MCPBearerTokenAuthenticatorTests {
         #expect(MCPBearerTokenAuthenticator.parseBearerToken("Bearer") == nil)
         #expect(MCPBearerTokenAuthenticator.parseBearerToken("Bearer   ") == nil)
         #expect(MCPBearerTokenAuthenticator.parseBearerToken("  Bearer tp_abc  ") == "tp_abc")
+    }
+
+    @Test("No caller gets in without a token, loopback included")
+    func everyAddressNeedsAToken() async throws {
+        let (authenticator, _) = makeAuthenticator(store: FakeMCPTokenStore())
+
+        for address in [MCPClientAddress.loopback, .remote("192.168.1.5")] {
+            let decision = await authenticator.authenticate(authorizationHeader: nil, clientAddress: address)
+            let reason = try #require(denial(decision))
+            #expect(reason.kind == .unauthenticated)
+            #expect(reason.httpStatus == 401)
+        }
+    }
+
+    @Test("A valid token is accepted from a remote address")
+    func validTokenFromARemoteAddress() async {
+        let store = FakeMCPTokenStore()
+        await store.register("tp_remote", validated: makeValidated(label: "Remote Token"))
+        let (authenticator, _) = makeAuthenticator(store: store)
+
+        let decision = await authenticator.authenticate(
+            authorizationHeader: "Bearer tp_remote",
+            clientAddress: .remote("192.168.1.5")
+        )
+
+        guard case .allow(let principal) = decision else {
+            Issue.record("Expected allow, got \(decision)")
+            return
+        }
+        #expect(principal.metadata.label == "Remote Token")
+    }
+
+    @Test("A scope refusal names the missing scope in the WWW-Authenticate challenge")
+    func scopeRefusalCarriesAChallenge() throws {
+        let readOnly = MCPPrincipal(
+            tokenFingerprint: "fp",
+            tokenId: UUID(),
+            scopes: MCPScope.readOnlySet,
+            metadata: MCPPrincipalMetadata(label: "read only", issuedAt: .distantPast, expiresAt: nil)
+        )
+
+        do {
+            try readOnly.requireScopes([.toolsWrite], reason: "writing requires the write scope")
+            Issue.record("Expected the write scope to be refused")
+        } catch let error as MCPProtocolError {
+            #expect(error.httpStatus.code == 403)
+            let header = try #require(error.extraHeaders.first(where: { $0.0 == "WWW-Authenticate" })?.1)
+            #expect(header.hasPrefix("Bearer "))
+            #expect(header.contains("realm=\"TablePro\""))
+            #expect(header.contains("error=\"insufficient_scope\""))
+            #expect(header.contains("scope=\"tools:write\""))
+        }
     }
 }

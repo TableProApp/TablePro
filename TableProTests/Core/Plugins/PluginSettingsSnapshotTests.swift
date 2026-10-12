@@ -5,9 +5,9 @@
 
 import Foundation
 import SwiftUI
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("PluginSettingsSnapshot", .serialized)
 struct PluginSettingsSnapshotTests {
@@ -89,5 +89,33 @@ struct PluginSettingsSnapshotTests {
         snapshot.restore()
 
         #expect(plugin.settings == TestOptions(flag: true, count: 3))
+    }
+
+    @Test("A plugin installed after the capture is rolled back too")
+    func includeAddsALaterPlugin() {
+        defer { cleanup() }
+        var snapshot = PluginSettingsSnapshot(plugins: [])
+        let plugin = TestPlugin()
+        plugin.settings = TestOptions(flag: true, count: 4)
+
+        snapshot.include(plugin)
+        plugin.settings = TestOptions(flag: false, count: 8)
+        snapshot.restore()
+
+        #expect(plugin.settings == TestOptions(flag: true, count: 4))
+    }
+
+    @Test("Including a captured plugin keeps its original baseline")
+    func includeKeepsTheFirstBaseline() {
+        defer { cleanup() }
+        let plugin = TestPlugin()
+        plugin.settings = TestOptions(flag: true, count: 1)
+        var snapshot = PluginSettingsSnapshot(plugins: [plugin])
+
+        plugin.settings = TestOptions(flag: false, count: 6)
+        snapshot.include(plugin)
+        snapshot.restore()
+
+        #expect(plugin.settings == TestOptions(flag: true, count: 1))
     }
 }

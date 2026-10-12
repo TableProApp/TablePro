@@ -153,8 +153,7 @@ final class AppSettingsManager: ObservableObject {
             storage.saveMCP(validated)
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
-            let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
-            if enabledChanged || portChanged || authChanged {
+            if enabledChanged || portChanged {
                 if mcp.enabled {
                     mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
                 } else {
@@ -162,36 +161,6 @@ final class AppSettingsManager: ObservableObject {
                 }
             }
         }
-    }
-
-    @MainActor
-    func setRequireAuthentication(_ value: Bool) async -> (token: MCPAuthToken, plaintext: String)? {
-        guard value, !mcp.requireAuthentication else {
-            mcp.requireAuthentication = value
-            return nil
-        }
-
-        let tokenStore = mcpServerManager.tokenStore ?? MCPTokenStore()
-        if mcpServerManager.tokenStore == nil {
-            await tokenStore.loadFromDisk()
-        }
-        let existing = await tokenStore.list().filter { !$0.isBridgeCredential }
-        guard existing.isEmpty else {
-            mcp.requireAuthentication = value
-            return nil
-        }
-
-        let defaultName = String(localized: "Default token")
-        let result = try? await tokenStore.generate(
-            name: defaultName,
-            permissions: .readWrite,
-            connectionAccess: .all,
-            expiresAt: nil,
-            isBridgeCredential: false,
-            extraScopes: []
-        )
-        mcp.requireAuthentication = value
-        return result
     }
 
     private let storage: AppSettingsStorage

@@ -4,36 +4,12 @@ import SwiftUI
 struct MCPSection: View {
     @Binding var settings: MCPSettings
     @ObservedObject private var manager = MCPServerManager.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var tokenList: [MCPAuthToken] = []
     @State private var showSetupSheet = false
     @State private var showCreateSheet = false
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
-    @State private var isAuthBootstrapping = false
-
-    private var requireAuthBinding: Binding<Bool> {
-        Binding(
-            get: { settings.requireAuthentication },
-            set: { applyRequireAuthentication($0) }
-        )
-    }
-
-    private func applyRequireAuthentication(_ newValue: Bool) {
-        guard !isAuthBootstrapping else { return }
-        isAuthBootstrapping = true
-        Task { @MainActor in
-            defer { isAuthBootstrapping = false }
-            let bootstrap = await settingsManager.setRequireAuthentication(newValue)
-            if let bootstrap {
-                revealedToken = bootstrap.token
-                revealedPlaintext = bootstrap.plaintext
-                showRevealSheet = true
-            }
-            await refreshTokens()
-        }
-    }
 
     var body: some View {
         Section {
@@ -126,16 +102,12 @@ struct MCPSection: View {
 
     private var authenticationSection: some View {
         Section(String(localized: "Authentication")) {
-            Toggle(String(localized: "Require authentication"), isOn: requireAuthBinding)
-
-            if settings.requireAuthentication {
-                MCPTokenListView(
-                    tokens: tokenList,
-                    onGenerate: { showCreateSheet = true },
-                    onRevoke: { id in Task { await manager.tokenStore?.revoke(tokenId: id); await refreshTokens() } },
-                    onDelete: { id in Task { await manager.tokenStore?.delete(tokenId: id); await refreshTokens() } }
-                )
-            }
+            MCPTokenListView(
+                tokens: tokenList,
+                onGenerate: { showCreateSheet = true },
+                onRevoke: { id in Task { await manager.tokenStore?.revoke(tokenId: id); await refreshTokens() } },
+                onDelete: { id in Task { await manager.tokenStore?.delete(tokenId: id); await refreshTokens() } }
+            )
         }
         .task { await refreshTokens() }
         .sheet(isPresented: $showCreateSheet) {

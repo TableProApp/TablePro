@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Panel and status colors in the theme editor, covering the results, inspector, structure, compare and query plan panes.
 - Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
 - Reason shown in Settings > Appearance for a theme file that could not be loaded.
+- Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 
 ### Changed
 
@@ -47,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cursor AI provider. A saved Cursor provider is dropped; Cursor still reaches TablePro through the MCP server.
 - Sign in with xAI. An xAI provider now needs an xAI API key.
 - Per-kind toggles in Settings > Notifications. Kinds you turned off notify again while notifications are on.
+- Require authentication switch in Settings > MCP. Every MCP request needs a token, including one from this Mac.
 
 ### Fixed
 
@@ -65,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme color wells and the theme preview unreadable to VoiceOver.
 - Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
 - GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
+- Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
 
 ### Security
 

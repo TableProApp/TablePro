@@ -55,11 +55,11 @@ struct SettingsFieldDecodingTests {
     func mcpKeepsOtherFields() throws {
         let settings = try decode(
             MCPSettings.self,
-            #"{"enabled":true,"port":24000,"requireAuthentication":"no","connectionApproval":"whenever"}"#
+            #"{"enabled":true,"port":24000,"allowsHiddenConnectionListing":"yes","connectionApproval":"whenever"}"#
         )
         #expect(settings.enabled == true)
         #expect(settings.port == 24_000)
-        #expect(settings.requireAuthentication == true)
+        #expect(settings.allowsHiddenConnectionListing == false)
         #expect(settings.connectionApproval == MCPSettings.default.connectionApproval)
     }
 

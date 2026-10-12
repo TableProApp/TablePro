@@ -22,7 +22,7 @@ struct MCPStatementConsentGuardTests {
         return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }()
 
-    private func principal(scopes: Set<MCPScope>, tokenId: UUID?) -> MCPPrincipal {
+    private func principal(scopes: Set<MCPScope>, tokenId: UUID) -> MCPPrincipal {
         MCPPrincipal(
             tokenFingerprint: "test",
             tokenId: tokenId,
@@ -40,16 +40,6 @@ struct MCPStatementConsentGuardTests {
         #expect(!effective.contains(.confirmationPreCleared))
         #expect(!effective.contains(.preCleared))
         #expect(effective.contains(.mayWrite))
-    }
-
-    @Test("An anonymous caller cannot pre-clear even holding admin")
-    func anonymousAdminCannotPreClear() {
-        let effective = MCPAuthPolicy.effectiveCapabilities(
-            [.mayWrite, .preCleared, .confirmationPreCleared],
-            for: principal(scopes: [.toolsWrite, .admin], tokenId: nil)
-        )
-        #expect(!effective.contains(.confirmationPreCleared))
-        #expect(!effective.contains(.preCleared))
     }
 
     @Test("An admin-scoped token keeps its pre-clearance")

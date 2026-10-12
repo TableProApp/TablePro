@@ -1,6 +1,6 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 
 actor RecordingResponderSink: MCPResponderSink {
     struct WriteJsonRecord {
@@ -350,17 +350,18 @@ typealias StubResourcesReadHandler = StubHandler<StubResourcesReadIdentity>
 
 enum MCPProtocolTestSupport {
     static let referenceDate = Date(timeIntervalSince1970: 1_700_000_000)
+    static let defaultTokenId = UUID(uuid: (0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11))
 
     static func makePrincipal(
         fingerprint: String = "test-fp",
-        tokenId: UUID? = UUID(uuidString: "11111111-1111-1111-1111-111111111111"),
+        tokenId: UUID? = nil,
         scopes: Set<MCPScope> = [.toolsRead, .toolsWrite],
         connectionAccess: ConnectionAccess = .all,
         label: String = "test"
     ) -> MCPPrincipal {
         MCPPrincipal(
             tokenFingerprint: fingerprint,
-            tokenId: tokenId,
+            tokenId: tokenId ?? defaultTokenId,
             scopes: scopes,
             connectionAccess: connectionAccess,
             metadata: MCPPrincipalMetadata(label: label, issuedAt: referenceDate, expiresAt: nil)

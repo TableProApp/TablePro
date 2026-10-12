@@ -4,7 +4,6 @@ import Foundation
 /// How long an Allow lasts, so the prompt can say so rather than guess.
 enum MCPApprovalMemory: Sendable, Equatable {
     case thisRequestOnly
-    case thisSession
     case untilRevoked
 }
 
@@ -63,8 +62,6 @@ struct MCPApprovalAlertPresenter: MCPApprovalPresenting {
         switch memory {
         case .thisRequestOnly:
             return String(localized: "Allowing covers this request only.")
-        case .thisSession:
-            return String(localized: "Allowing is remembered until TablePro quits.")
         case .untilRevoked:
             return String(localized: "Allowing is remembered for this client until you revoke it.")
         }

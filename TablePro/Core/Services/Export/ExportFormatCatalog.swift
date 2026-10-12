@@ -6,10 +6,29 @@
 import Foundation
 import TableProPluginKit
 
+internal struct InstallableExportFormat: Equatable, Sendable {
+    internal let formatId: String
+    internal let displayName: String
+    internal let registryPluginId: String
+}
+
 internal enum ExportFormatCatalog {
     private static let displayOrder = [
         "csv", "json", "sql", "xlsx", "md", "parquet", "mql"
     ]
+
+    // The registry manifest names no format id, so the app keeps the one mapping it offers.
+    internal static let installable = [
+        InstallableExportFormat(
+            formatId: "parquet",
+            displayName: "Parquet",
+            registryPluginId: "com.TablePro.ParquetExportPlugin"
+        )
+    ]
+
+    internal static func notInstalled(installedFormatIds: Set<String>) -> [InstallableExportFormat] {
+        installable.filter { !installedFormatIds.contains($0.formatId) }
+    }
 
     internal static func available(
         _ plugins: [any ExportFormatPlugin],
