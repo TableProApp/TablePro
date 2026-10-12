@@ -150546,6 +150546,7 @@
       }
     },
     "Rows are written into tables that already exist on the destination." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
