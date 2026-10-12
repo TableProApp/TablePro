@@ -414,9 +414,8 @@ impl Component for ConnectDialog {
                 let work = run_connect(attempt, ticket.cancel().clone());
                 let commands = sender.command_sender().clone();
                 crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |outcome| {
-                    let outcome = outcome.unwrap_or_else(|failure| {
-                        Err(Some(crate::ui::error_text::task_failure_message(&failure)))
-                    });
+                    let outcome = outcome
+                        .unwrap_or_else(|failure| Err(Some(crate::ui::error_text::task_failure_message(&failure))));
                     commands.emit(ConnectDialogCmd::Result(generation, Box::new(outcome)));
                 });
             }
@@ -435,9 +434,8 @@ impl Component for ConnectDialog {
                 let work = run_test(attempt, ticket.cancel().clone());
                 let commands = sender.command_sender().clone();
                 crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |outcome| {
-                    let outcome = outcome.unwrap_or_else(|failure| {
-                        Err(Some(crate::ui::error_text::task_failure_message(&failure)))
-                    });
+                    let outcome = outcome
+                        .unwrap_or_else(|failure| Err(Some(crate::ui::error_text::task_failure_message(&failure))));
                     commands.emit(ConnectDialogCmd::TestResult(generation, outcome));
                 });
             }
@@ -1114,7 +1112,12 @@ mod tests {
     fn a_network_entry_still_distinguishes_user_and_auth_mode() {
         let entry = saved("mssql", "sa", AuthMode::Password);
         assert!(matches_existing(&entry, "mssql", &form("sa", AuthMode::Password), None));
-        assert!(!matches_existing(&entry, "mssql", &form("other", AuthMode::Password), None));
+        assert!(!matches_existing(
+            &entry,
+            "mssql",
+            &form("other", AuthMode::Password),
+            None
+        ));
         assert!(!matches_existing(&entry, "mssql", &form("", AuthMode::Kerberos), None));
     }
 
@@ -1139,7 +1142,10 @@ mod tests {
 
         assert_eq!(on.tls(Some(&existing)), existing.tls, "a CA file was dropped");
         assert_eq!(on.tls(None), TlsConfig::verify_full());
-        assert_eq!(form("sa", AuthMode::Password).tls(Some(&existing)), TlsConfig::disabled());
+        assert_eq!(
+            form("sa", AuthMode::Password).tls(Some(&existing)),
+            TlsConfig::disabled()
+        );
         assert_eq!(file_form("/srv/app.db").tls(Some(&existing)), TlsConfig::disabled());
     }
 
@@ -1166,7 +1172,8 @@ mod tests {
         std::fs::write(&present, b"").expect("seed");
         let absent = root.path().join("absent.db");
 
-        let mode = |path: &std::path::Path| match file_form(&path.to_string_lossy()).target(TlsConfig::disabled(), None) {
+        let mode = |path: &std::path::Path| match file_form(&path.to_string_lossy()).target(TlsConfig::disabled(), None)
+        {
             Ok(RequestTarget::File(endpoint)) => endpoint.mode(),
             other => panic!("expected a file target, got {other:?}"),
         };

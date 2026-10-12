@@ -17,7 +17,10 @@ use super::*;
 fn one_per_category() -> Vec<(ErrorCategory, DriverError)> {
     let endpoint = NetworkEndpoint::new("db.internal", 5432).expect("an endpoint");
     vec![
-        (ErrorCategory::Configuration, DriverError::Config(ConfigError::DatabaseRequired)),
+        (
+            ErrorCategory::Configuration,
+            DriverError::Config(ConfigError::DatabaseRequired),
+        ),
         (
             ErrorCategory::Network,
             DriverError::Transport(TransportError::Refused { endpoint }),
@@ -30,7 +33,10 @@ fn one_per_category() -> Vec<(ErrorCategory, DriverError)> {
             },
         ),
         (ErrorCategory::Authentication, DriverError::auth(None)),
-        (ErrorCategory::ReadOnly, DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
+        (
+            ErrorCategory::ReadOnly,
+            DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard),
+        ),
         (ErrorCategory::Server, DriverError::server("syntax error")),
         (ErrorCategory::Interrupted, DriverError::Cancelled),
         (
@@ -216,13 +222,15 @@ fn integrated_auth_names_the_remedy_and_keeps_the_gssapi_detail() {
 
 #[test]
 fn ssh_failures_say_what_to_change() {
-    let changed = driver_message(&DriverError::Transport(TransportError::Ssh(SshFailure::HostKeyChanged {
-        host: "bastion".to_owned(),
-        algorithm: "ED25519".to_owned(),
-        sha256_fingerprint: "SHA256:new".to_owned(),
-        known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
-        line: 7,
-    })));
+    let changed = driver_message(&DriverError::Transport(TransportError::Ssh(
+        SshFailure::HostKeyChanged {
+            host: "bastion".to_owned(),
+            algorithm: "ED25519".to_owned(),
+            sha256_fingerprint: "SHA256:new".to_owned(),
+            known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
+            line: 7,
+        },
+    )));
     assert!(changed.contains("known_hosts"), "{changed}");
     assert!(changed.contains('7'), "{changed}");
 

@@ -32,10 +32,9 @@ pub fn connect_error_message(error: &ConnectError) -> String {
             "No password is saved for this connection, and none was entered. Connect again to type it.",
         ),
         ConnectError::Keyring(KeyringError::Secret { error, .. }) => secret_message(error),
-        ConnectError::UnknownDriver(driver) => crate::i18n::gettext_f(
-            "This build of TablePro has no {driver} driver.",
-            &[("driver", driver)],
-        ),
+        ConnectError::UnknownDriver(driver) => {
+            crate::i18n::gettext_f("This build of TablePro has no {driver} driver.", &[("driver", driver)])
+        }
         ConnectError::Cancelled => crate::i18n::gettext("The connection was cancelled."),
         ConnectError::Panicked(panic) => crate::i18n::gettext_f(
             "TablePro hit an internal error: {detail}",
@@ -65,9 +64,10 @@ fn sql_build_message(error: &SqlBuildError) -> String {
             "This filter cannot be applied: {reason}",
             &[("reason", &bind.to_string())],
         ),
-        SqlBuildError::Ddl(reason) => {
-            crate::i18n::gettext_f("This structure change cannot be written: {reason}", &[("reason", reason)])
-        }
+        SqlBuildError::Ddl(reason) => crate::i18n::gettext_f(
+            "This structure change cannot be written: {reason}",
+            &[("reason", reason)],
+        ),
     }
 }
 
@@ -90,9 +90,7 @@ fn build_message(error: &BuildSqlError) -> String {
         BuildSqlError::NoRowIdentity | BuildSqlError::ReadOnlyRows => crate::i18n::gettext(
             "Rows in this table cannot be edited, because nothing identifies a single row. Add a primary key to edit them.",
         ),
-        BuildSqlError::NothingToUpdate | BuildSqlError::NoInsertValues => {
-            crate::i18n::gettext("No changes to save.")
-        }
+        BuildSqlError::NothingToUpdate | BuildSqlError::NoInsertValues => crate::i18n::gettext("No changes to save."),
         BuildSqlError::UndecodableKey => crate::i18n::gettext(
             "Part of this row's key could not be read from the server, so the row cannot be changed.",
         ),

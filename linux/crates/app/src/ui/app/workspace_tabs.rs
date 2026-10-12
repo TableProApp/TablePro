@@ -424,7 +424,6 @@ impl App {
             return;
         };
         let tab_id = Uuid::new_v4();
-        let driver_id = self.driver_id().to_string();
         let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
         let read_only = self.read_only;
 
@@ -432,7 +431,6 @@ impl App {
             tab_id,
             schema: schema.clone(),
             table: table.clone(),
-            driver_id,
             connection_id,
             read_only,
             page_size,
@@ -457,7 +455,11 @@ impl App {
                 BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
                 BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
                 BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
-                BrowseTabOutput::ExecuteTransaction { table, columns, changes } => AppMsg::ExecuteBrowseTransaction {
+                BrowseTabOutput::ExecuteTransaction {
+                    table,
+                    columns,
+                    changes,
+                } => AppMsg::ExecuteBrowseTransaction {
                     tab_id,
                     table,
                     columns,

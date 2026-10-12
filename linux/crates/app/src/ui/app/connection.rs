@@ -99,7 +99,9 @@ impl App {
             Ok(claim) => claim,
             Err(ClaimError::AlreadyOpen { .. }) => {
                 self.discard_pending(pending);
-                self.show_toast(&crate::i18n::gettext("This connection is already open in another window."));
+                self.show_toast(&crate::i18n::gettext(
+                    "This connection is already open in another window.",
+                ));
                 return;
             }
         };
@@ -587,9 +589,7 @@ impl App {
                 .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
                 .await;
             let message = match imported {
-                Ok(Ok(report)) if report.total() == 0 => {
-                    crate::i18n::gettext("That file has no connections in it.")
-                }
+                Ok(Ok(report)) if report.total() == 0 => crate::i18n::gettext("That file has no connections in it."),
                 Ok(Ok(report)) => crate::i18n::ngettext_f(
                     "Imported {n} connection.",
                     "Imported {n} connections.",
@@ -912,7 +912,10 @@ fn json_filters() -> gio::ListStore {
 /// Only what the grid can page through: routines and sequences have no
 /// rows to show.
 fn browsable(objects: Vec<ObjectInfo>) -> Vec<ObjectInfo> {
-    objects.into_iter().filter(|object| object.kind.is_browsable()).collect()
+    objects
+        .into_iter()
+        .filter(|object| object.kind.is_browsable())
+        .collect()
 }
 
 /// The banner's sentence for a session that needs attention, `None`

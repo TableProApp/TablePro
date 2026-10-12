@@ -18,7 +18,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_session::{ConnectError, PendingSave, RequestTarget, persist_pending_save, resolve_saved};
 use tablepro_storage::{
     ConnectionStore, CredentialDemand, KeyringCredentials, KeyringError, SavedConnection, SavedSshAuth, SavedSshConfig,
-    StoragePaths, StorageError,
+    StorageError, StoragePaths,
 };
 use tablepro_test_support::{Call, ConnectionScript, FakeDriver, FakePrompter, FakeSecretVault};
 use uuid::Uuid;
@@ -125,8 +125,14 @@ async fn passphrase_store_failure_saves_has_passphrase_false_in_one_write() {
         .await
         .expect("the entry is saved without the secret");
 
-    assert!(!has_passphrase(&report.saved), "the record claims a passphrase the keyring refused");
-    assert_eq!(report.secret_failures, [(SecretKind::SshPassphrase, SecretError::Locked)]);
+    assert!(
+        !has_passphrase(&report.saved),
+        "the record claims a passphrase the keyring refused"
+    );
+    assert_eq!(
+        report.secret_failures,
+        [(SecretKind::SshPassphrase, SecretError::Locked)]
+    );
     // One load plus one write, not a write followed by a correction.
     assert_eq!(store.snapshot().revision, revision_before + 2);
 }
@@ -177,13 +183,13 @@ fn drivers() -> DriverRegistry {
     drivers
 }
 
-fn database_password(target: &RequestTarget) -> String {
+fn database_password(target: &RequestTarget) -> Option<String> {
     match target {
         RequestTarget::Network {
             credentials: Credentials::Password { password, .. },
             ..
-        } => password.expose_secret().to_owned(),
-        other => panic!("expected a password login, got {other:?}"),
+        } => Some(password.expose_secret().to_owned()),
+        _ => None,
     }
 }
 
@@ -232,7 +238,7 @@ async fn a_saved_connection_without_a_password_asks_for_one() {
     .await
     .expect("the prompt supplies the password");
 
-    assert_eq!(database_password(&refreshed.request.target), "typed");
+    assert_eq!(database_password(&refreshed.request.target).as_deref(), Some("typed"));
     assert_eq!(refreshed.remember.len(), 1, "remember was asked for and dropped");
     assert_eq!(refreshed.remember[0].kind, SecretKind::DatabasePassword);
 }
@@ -262,6 +268,6 @@ async fn keyring_credentials_found_injects_secret() {
     .await
     .expect("the stored password is used");
 
-    assert_eq!(database_password(&refreshed.request.target), "stored");
+    assert_eq!(database_password(&refreshed.request.target).as_deref(), Some("stored"));
     assert!(refreshed.remember.is_empty());
 }

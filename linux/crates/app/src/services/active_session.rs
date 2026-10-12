@@ -42,6 +42,9 @@ impl ActiveSession {
     /// What the connection enforces. False with no session, because
     /// nothing can be written then anyway.
     pub fn read_only(&self) -> bool {
-        self.current.borrow().as_ref().is_some_and(|session| session.read_only())
+        self.current
+            .borrow()
+            .as_ref()
+            .is_some_and(|session| session.read_only())
     }
 }

@@ -144,17 +144,15 @@ impl App {
             return;
         };
         let batch = schema_write(TableRef::new(schema.clone(), table.clone()), &[sql]);
-        crate::runtime::spawn_and_deliver(
-            &self.context.tasks,
-            run_schema_write(session, batch),
-            move |result| match settled(result) {
+        crate::runtime::spawn_and_deliver(&self.context.tasks, run_schema_write(session, batch), move |result| {
+            match settled(result) {
                 Ok(_) => sender.input(AppMsg::DropTableSucceeded { schema, table }),
                 Err(error) => sender.input(AppMsg::ShowAlert {
                     title: crate::i18n::gettext("Drop failed"),
                     body: error_text::operation_error_message(&error),
                 }),
-            },
-        );
+            }
+        });
     }
 
     /// Targeted save: commit a specific Structure tab's pending DDL
@@ -497,10 +495,8 @@ impl App {
             });
             return;
         };
-        crate::runtime::spawn_and_deliver(
-            &self.context.tasks,
-            read_definition(session, table),
-            move |result| match settled(result) {
+        crate::runtime::spawn_and_deliver(&self.context.tasks, read_definition(session, table), move |result| {
+            match settled(result) {
                 Ok((definition, dialect)) => sender.input(AppMsg::StructureDataLoaded {
                     tab_id,
                     definition: Box::new(definition),
@@ -510,8 +506,8 @@ impl App {
                     tab_id,
                     message: error_text::operation_error_message(&error),
                 }),
-            },
-        );
+            }
+        });
     }
 
     pub(super) fn on_structure_data_loaded(
@@ -526,12 +522,10 @@ impl App {
             .get(&tab_id)
             .and_then(|t| t.structure_controller())
         {
-            let _ = controller
-                .sender()
-                .send(StructureTabInput::StructureLoaded {
-                    definition: Box::new(definition),
-                    dialect,
-                });
+            let _ = controller.sender().send(StructureTabInput::StructureLoaded {
+                definition: Box::new(definition),
+                dialect,
+            });
         }
     }
 
@@ -727,7 +721,9 @@ fn settled<T>(result: Result<Result<T, OperationError>, TaskFailure>) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::column::{CatalogType, ColumnDefault, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextLength};
+    use tablepro_core::column::{
+        CatalogType, ColumnDefault, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextLength,
+    };
     use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition};
     use tablepro_core::{ColumnInfo, ForeignKeyInfo};
 
@@ -825,7 +821,10 @@ mod tests {
     #[test]
     fn a_schema_write_carries_each_statement_unguarded_and_unbound() {
         let table = TableRef::new(None, "users");
-        let statements = ["ALTER TABLE users ADD COLUMN a text".to_owned(), "DROP INDEX i".to_owned()];
+        let statements = [
+            "ALTER TABLE users ADD COLUMN a text".to_owned(),
+            "DROP INDEX i".to_owned(),
+        ];
 
         let batch = schema_write(table.clone(), &statements);
 

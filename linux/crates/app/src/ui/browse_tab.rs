@@ -25,7 +25,6 @@ pub struct BrowseTabInit {
     pub tab_id: Uuid,
     pub schema: Option<String>,
     pub table: String,
-    pub driver_id: String,
     pub connection_id: Option<Uuid>,
     pub read_only: bool,
     pub page_size: u64,
@@ -39,7 +38,6 @@ pub struct BrowseTab {
     tab_id: Uuid,
     schema: Option<String>,
     table: String,
-    driver_id: String,
     connection_id: Option<Uuid>,
     read_only: bool,
     column_widths: crate::persistence::ColumnWidthStore,
@@ -446,10 +444,6 @@ impl BrowseTab {
 
     pub fn current_filter(&self) -> &tablepro_core::FilterSet {
         &self.current_filter
-    }
-
-    pub fn driver_id(&self) -> &str {
-        &self.driver_id
     }
 
     /// Build the navigation toolbar — Prev / Next / page label / page
@@ -1726,7 +1720,6 @@ impl SimpleComponent for BrowseTab {
             tab_id: init.tab_id,
             schema: init.schema,
             table: init.table,
-            driver_id: init.driver_id,
             connection_id: init.connection_id,
             read_only: init.read_only,
             column_widths: init.column_widths,

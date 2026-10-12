@@ -88,7 +88,9 @@ impl PromptText {
 fn with_reason(request: String, reason: &PromptReason) -> String {
     let because = match reason {
         PromptReason::NotStored => crate::i18n::gettext("No password is saved for this connection."),
-        PromptReason::KeyringLocked => crate::i18n::gettext("The keyring is locked, so the saved one could not be read."),
+        PromptReason::KeyringLocked => {
+            crate::i18n::gettext("The keyring is locked, so the saved one could not be read.")
+        }
         PromptReason::KeyringUnavailable { .. } => {
             crate::i18n::gettext("No keyring is available, so it cannot be read or saved.")
         }

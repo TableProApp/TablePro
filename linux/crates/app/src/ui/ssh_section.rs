@@ -186,59 +186,6 @@ fn default_ssh_key_path() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use secrecy::ExposeSecret;
-    use tablepro_storage::SavedSshAuth;
-
-    use super::*;
-
-    fn config(auth: SavedSshAuth) -> SshConfig {
-        tablepro_session::connect::ssh_config(&SavedSshConfig {
-            host: "bastion.example.com".to_owned(),
-            port: Some(22),
-            username: Some("deploy".to_owned()),
-            jump_hosts: Vec::new(),
-            auth,
-        })
-        .expect("a valid SSH section")
-    }
-
-    #[test]
-    fn a_password_login_carries_and_keeps_the_typed_password() {
-        let mut cfg = config(SavedSshAuth::Password);
-
-        let kept = fill_secret(&mut cfg, SecretString::from("s3cret"), SecretString::from(""));
-
-        let SshAuth::Password { password } = &cfg.auth else {
-            panic!("expected password auth");
-        };
-        assert_eq!(password.expose_secret(), "s3cret");
-        assert!(matches!(kept, SshSecretToStore::Password(_)));
-    }
-
-    #[test]
-    fn a_key_with_no_passphrase_typed_keeps_none() {
-        let key = SavedSshAuth::PrivateKey {
-            path: Some("/home/u/.ssh/id_ed25519".into()),
-            has_passphrase: false,
-        };
-        let mut cfg = config(key.clone());
-        assert!(matches!(
-            fill_secret(&mut cfg, SecretString::from(""), SecretString::from("")),
-            SshSecretToStore::None
-        ));
-
-        let mut cfg = config(key);
-        let kept = fill_secret(&mut cfg, SecretString::from(""), SecretString::from("phrase"));
-        let SshAuth::PrivateKey { passphrase, .. } = &cfg.auth else {
-            panic!("expected key auth");
-        };
-        assert_eq!(passphrase.as_ref().map(ExposeSecret::expose_secret), Some("phrase"));
-        assert!(matches!(kept, SshSecretToStore::Passphrase(_)));
-    }
-}
-
-#[cfg(test)]
 impl SshSection {
     /// Every text row in the section, with whether Enter submits from
     /// it. The port is a spin row, which has no text to submit.
@@ -292,4 +239,57 @@ fn attach_key_browse_button(key_path: &adw::EntryRow) {
         });
     });
     key_path.add_suffix(&button);
+}
+
+#[cfg(test)]
+mod tests {
+    use secrecy::ExposeSecret;
+    use tablepro_storage::SavedSshAuth;
+
+    use super::*;
+
+    fn config(auth: SavedSshAuth) -> SshConfig {
+        tablepro_session::connect::ssh_config(&SavedSshConfig {
+            host: "bastion.example.com".to_owned(),
+            port: Some(22),
+            username: Some("deploy".to_owned()),
+            jump_hosts: Vec::new(),
+            auth,
+        })
+        .expect("a valid SSH section")
+    }
+
+    #[test]
+    fn a_password_login_carries_and_keeps_the_typed_password() {
+        let mut cfg = config(SavedSshAuth::Password);
+
+        let kept = fill_secret(&mut cfg, SecretString::from("s3cret"), SecretString::from(""));
+
+        let SshAuth::Password { password } = &cfg.auth else {
+            panic!("expected password auth");
+        };
+        assert_eq!(password.expose_secret(), "s3cret");
+        assert!(matches!(kept, SshSecretToStore::Password(_)));
+    }
+
+    #[test]
+    fn a_key_with_no_passphrase_typed_keeps_none() {
+        let key = SavedSshAuth::PrivateKey {
+            path: Some("/home/u/.ssh/id_ed25519".into()),
+            has_passphrase: false,
+        };
+        let mut cfg = config(key.clone());
+        assert!(matches!(
+            fill_secret(&mut cfg, SecretString::from(""), SecretString::from("")),
+            SshSecretToStore::None
+        ));
+
+        let mut cfg = config(key);
+        let kept = fill_secret(&mut cfg, SecretString::from(""), SecretString::from("phrase"));
+        let SshAuth::PrivateKey { passphrase, .. } = &cfg.auth else {
+            panic!("expected key auth");
+        };
+        assert_eq!(passphrase.as_ref().map(ExposeSecret::expose_secret), Some("phrase"));
+        assert!(matches!(kept, SshSecretToStore::Passphrase(_)));
+    }
 }

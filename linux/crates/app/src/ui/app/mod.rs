@@ -346,7 +346,6 @@ pub enum AppMsg {
     /// `Some(tab_id)` for tab-scoped failures; `None` for app-level
     /// failures (e.g. connect failure during open_saved).
     LoadFailed(Option<Uuid>, String),
-    RowOpStarted,
     ReloadConnections,
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,
@@ -1481,7 +1480,6 @@ impl SimpleComponent for App {
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
             AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
             AppMsg::TablesReloaded(tables) => self.on_tables_reloaded(tables),
-            AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionListUnavailable => self.show_connection_list_banner(),
             AppMsg::SecretDeleteFailed(id) => self.on_secret_delete_failed(id, sender),

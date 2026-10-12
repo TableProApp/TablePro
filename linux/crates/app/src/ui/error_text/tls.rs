@@ -17,10 +17,9 @@ pub(super) fn tls_message(failure: TlsFailure, detail: &str) -> String {
         TlsFailure::ServerRequiresTls => {
             crate::i18n::gettext("The server requires TLS. Turn TLS on for this connection.")
         }
-        TlsFailure::HandshakeRejected => crate::i18n::gettext_f(
-            "The server ended the secure handshake: {detail}",
-            &[("detail", detail)],
-        ),
+        TlsFailure::HandshakeRejected => {
+            crate::i18n::gettext_f("The server ended the secure handshake: {detail}", &[("detail", detail)])
+        }
         TlsFailure::CaFileInvalid => crate::i18n::gettext("The chosen CA certificate file could not be read."),
         TlsFailure::ClientIdentityInvalid => crate::i18n::gettext("The client certificate or key could not be read."),
         TlsFailure::Other => crate::i18n::gettext_f("TLS failed: {detail}", &[("detail", detail)]),

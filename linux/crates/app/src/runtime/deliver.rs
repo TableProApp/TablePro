@@ -35,13 +35,9 @@ mod tests {
         let seen = Rc::new(RefCell::new(None));
         let sink = seen.clone();
 
-        let _delivery = spawn_and_deliver(
-            &runtime.tasks(),
-            async { std::thread::current().id() },
-            move |worker| {
-                *sink.borrow_mut() = Some((worker.ok(), std::thread::current().id()));
-            },
-        );
+        let _delivery = spawn_and_deliver(&runtime.tasks(), async { std::thread::current().id() }, move |worker| {
+            *sink.borrow_mut() = Some((worker.ok(), std::thread::current().id()));
+        });
         crate::test_support::wait_until(std::time::Duration::from_secs(5), || seen.borrow().is_some())
             .expect("the delivery");
 
