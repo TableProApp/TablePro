@@ -5,10 +5,12 @@ use std::sync::Arc;
 use rustls::RootCertStore;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
+use std::process::Stdio;
+
 use tablepro_test_fixtures::{
     ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode, HostKeyRevocation, MssqlFixture, MysqlFixture,
-    MysqlFlavour, OpenSshFixture, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture, ScriptedAskpass,
-    SshAuthVariant, SshKeyPair, TestPki,
+    MysqlFlavour, MysqlOptions, OpenSshFixture, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture, PostgresVersion,
+    ScriptedAskpass, SshAuthVariant, SshKeyPair, TestNetwork, TestPki,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -408,12 +410,144 @@ async fn revoked_host_key_is_refused_by_ssh() -> TestResult {
 }
 
 #[tokio::test]
-#[ignore = "requires docker"]
 async fn generated_pki_matches_the_files_the_fixtures_copy() -> TestResult {
     let pki = TestPki::generate()?;
 
     for file in PkiFile::ALL {
         assert!(!pki.read(file)?.is_empty(), "{}", file.file_name());
     }
+    Ok(())
+}
+
+/// Open a direct-tcpip channel through the server to `target` with
+/// `ssh -W`, write `request` into it and return what comes back.
+async fn through_ssh(
+    fixture: &OpenSshFixture,
+    key: &SshKeyPair,
+    target: &str,
+    request: &[u8],
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let credentials = fixture.password_credentials();
+    let mut child = tokio::process::Command::new("ssh")
+        .args(["-p", &fixture.port().to_string(), "-i"])
+        .arg(key.private_key())
+        .args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-W",
+            target,
+        ])
+        .arg(format!("{}@{}", credentials.username, fixture.host()))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    stdin.write_all(request).await?;
+    let mut stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut reply = vec![0_u8; 64];
+    let read = tokio::time::timeout(std::time::Duration::from_secs(30), stdout.read(&mut reply)).await??;
+    reply.truncate(read);
+    drop(stdin);
+    child.kill().await?;
+    Ok(reply)
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn postgres_fixture_runs_the_requested_major() -> TestResult {
+    for version in [PostgresVersion::V13, PostgresVersion::V18] {
+        let fixture = PostgresFixture::start_version(version, HbaMode::Password).await?;
+        let output = fixture
+            .exec(&[
+                "psql",
+                "-U",
+                "tablepro",
+                "-d",
+                "tablepro",
+                "-tAc",
+                "SHOW server_version_num",
+            ])
+            .await?;
+
+        assert!(output.succeeded(), "{}", output.stderr_text());
+        assert!(
+            output.stdout_text().trim().starts_with(&version.major().to_string()),
+            "{version:?} reported {}",
+            output.stdout_text()
+        );
+        assert_eq!(fixture.version(), version);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn openssh_fixture_on_a_network_forwards_to_postgres_by_alias() -> TestResult {
+    let network = TestNetwork::new();
+    let database = PostgresFixture::start_in(HbaMode::Password, &network).await?;
+    let key = SshKeyPair::generate("tablepro-network-test").await?;
+    let fixture = OpenSshFixture::start_in(SshAuthVariant::PublicKey(key), &network).await?;
+    let SshAuthVariant::PublicKey(key) = fixture.variant() else {
+        return Err("the fixture lost its key".into());
+    };
+    let alias = database.network_alias().ok_or("no alias")?;
+
+    let reply = through_ssh(&fixture, key, &format!("{alias}:5432"), &PG_SSL_REQUEST).await?;
+
+    assert_eq!(reply, b"N", "the image's default server answers SSLRequest with N");
+    assert!(
+        fixture
+            .network_alias()
+            .is_some_and(|own| own.starts_with(network.name()))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn clickhouse_fixture_on_a_network_answers_by_alias() -> TestResult {
+    let network = TestNetwork::new();
+    let clickhouse = ClickHouseFixture::start_in(&network).await?;
+    let key = SshKeyPair::generate("tablepro-network-test").await?;
+    let fixture = OpenSshFixture::start_in(SshAuthVariant::PublicKey(key), &network).await?;
+    let SshAuthVariant::PublicKey(key) = fixture.variant() else {
+        return Err("the fixture lost its key".into());
+    };
+    let alias = clickhouse.network_alias().ok_or("no alias")?;
+    let target = format!("{alias}:{}", ClickHouseFixture::HTTP_PORT);
+
+    let reply = through_ssh(&fixture, key, &target, b"GET /ping HTTP/1.0\r\n\r\n").await?;
+
+    assert!(String::from_utf8_lossy(&reply).starts_with("HTTP/1.0 200"), "{reply:?}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn mysql_options_set_root_plaintext_and_server_globals() -> TestResult {
+    let options = MysqlOptions::new(MysqlFlavour::Mysql)
+        .allowing_plaintext()
+        .with_server_argument("--sql-mode=NO_BACKSLASH_ESCAPES");
+    let fixture = MysqlFixture::start_with(options, None).await?;
+    let script = |credentials: FixtureCredentials, sql: &str| {
+        format!(
+            "mysql --protocol=TCP -h 127.0.0.1 -u '{}' -p'{}' --ssl-mode=DISABLED --get-server-public-key -N -e '{sql}'",
+            credentials.username, credentials.password,
+        )
+    };
+
+    let global = script(fixture.root_credentials(), "SELECT @@GLOBAL.sql_mode");
+    let global = fixture.exec(&["sh", "-c", &global]).await?;
+    let plaintext = script(fixture.password_credentials(), "SELECT 1");
+    let plaintext = fixture.exec(&["sh", "-c", &plaintext]).await?;
+
+    assert!(global.succeeded(), "{}", global.stderr_text());
+    assert_eq!(global.stdout_text().trim(), "NO_BACKSLASH_ESCAPES");
+    assert!(plaintext.succeeded(), "{}", plaintext.stderr_text());
     Ok(())
 }

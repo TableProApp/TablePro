@@ -53,7 +53,7 @@ pub(crate) fn with_files<I: Image>(request: ContainerRequest<I>, files: Vec<Cont
 
 #[cfg(test)]
 mod tests {
-    use crate::{ClickHouseFixture, MssqlFixture, MysqlFixture, TestPki};
+    use crate::{ClickHouseFixture, MssqlFixture, MysqlFixture, MysqlFlavour, MysqlOptions, TestPki};
 
     use super::*;
 
@@ -61,7 +61,7 @@ mod tests {
     fn other_engines_copy_at_0644() {
         let pki = TestPki::generate().unwrap();
         let files = [
-            MysqlFixture::files(&pki, "secret").unwrap(),
+            MysqlFixture::files(&pki, &MysqlOptions::new(MysqlFlavour::Mysql), "secret").unwrap(),
             MssqlFixture::files(&pki).unwrap(),
             ClickHouseFixture::files(&pki, "secret").unwrap(),
         ]

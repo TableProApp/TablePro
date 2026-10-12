@@ -5,14 +5,15 @@ use std::path::{Path, PathBuf};
 
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
-    KeyUsagePurpose, PKCS_RSA_SHA256,
+    KeyUsagePurpose,
 };
 use tempfile::TempDir;
 
-use crate::{FixtureError, PkiFile};
+use crate::{FixtureError, PkiAlgorithm, PkiFile};
 
 pub struct TestPki {
     dir: TempDir,
+    algorithm: PkiAlgorithm,
 }
 
 impl TestPki {
@@ -20,25 +21,30 @@ impl TestPki {
     pub const CLIENT_COMMON_NAME: &'static str = "tablepro_client";
 
     pub fn generate() -> Result<Self, FixtureError> {
-        let (ca_pem, ca) = certificate_authority("TablePro Test CA")?;
-        let (unrelated_ca_pem, _) = certificate_authority("Unrelated Test CA")?;
+        Self::generate_with(PkiAlgorithm::default())
+    }
 
-        let server_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
+    pub fn generate_with(algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
+        let (ca_pem, ca) = certificate_authority("TablePro Test CA", algorithm)?;
+        let (unrelated_ca_pem, _) = certificate_authority("Unrelated Test CA", algorithm)?;
+
+        let server_key = KeyPair::generate_for(algorithm.signature_algorithm())?;
         let mut server = CertificateParams::new(Self::SERVER_NAMES.map(str::to_owned).to_vec())?;
         server.distinguished_name = common_name(Self::SERVER_NAMES[0]);
-        server.key_usages = vec![KeyUsagePurpose::DigitalSignature, KeyUsagePurpose::KeyEncipherment];
+        server.key_usages = leaf_key_usages(algorithm);
         server.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
         let server_certificate = server.signed_by(&server_key, &ca)?;
 
-        let client_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
+        let client_key = KeyPair::generate_for(algorithm.signature_algorithm())?;
         let mut client = CertificateParams::new(Vec::<String>::new())?;
         client.distinguished_name = common_name(Self::CLIENT_COMMON_NAME);
-        client.key_usages = vec![KeyUsagePurpose::DigitalSignature, KeyUsagePurpose::KeyEncipherment];
+        client.key_usages = leaf_key_usages(algorithm);
         client.extended_key_usages = vec![ExtendedKeyUsagePurpose::ClientAuth];
         let client_certificate = client.signed_by(&client_key, &ca)?;
 
         let pki = Self {
             dir: tempfile::tempdir()?,
+            algorithm,
         };
         pki.write(PkiFile::Ca, ca_pem.as_bytes())?;
         pki.write(PkiFile::UnrelatedCa, unrelated_ca_pem.as_bytes())?;
@@ -51,6 +57,10 @@ impl TestPki {
 
     pub fn dir(&self) -> &Path {
         self.dir.path()
+    }
+
+    pub fn algorithm(&self) -> PkiAlgorithm {
+        self.algorithm
     }
 
     pub fn path(&self, file: PkiFile) -> PathBuf {
@@ -73,8 +83,11 @@ impl TestPki {
     }
 }
 
-fn certificate_authority(name: &str) -> Result<(String, Issuer<'static, KeyPair>), FixtureError> {
-    let key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
+fn certificate_authority(
+    name: &str,
+    algorithm: PkiAlgorithm,
+) -> Result<(String, Issuer<'static, KeyPair>), FixtureError> {
+    let key = KeyPair::generate_for(algorithm.signature_algorithm())?;
     let mut params = CertificateParams::new(Vec::<String>::new())?;
     params.distinguished_name = common_name(name);
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
@@ -85,6 +98,14 @@ fn certificate_authority(name: &str) -> Result<(String, Issuer<'static, KeyPair>
     ];
     let certificate = params.self_signed(&key)?;
     Ok((certificate.pem(), Issuer::new(params, key)))
+}
+
+fn leaf_key_usages(algorithm: PkiAlgorithm) -> Vec<KeyUsagePurpose> {
+    if algorithm.enciphers_keys() {
+        vec![KeyUsagePurpose::DigitalSignature, KeyUsagePurpose::KeyEncipherment]
+    } else {
+        vec![KeyUsagePurpose::DigitalSignature]
+    }
 }
 
 fn common_name(name: &str) -> DistinguishedName {
@@ -131,9 +152,46 @@ mod tests {
 
     #[test]
     fn server_certificate_verifies_against_the_issuing_ca() {
-        let pki = TestPki::generate().unwrap();
-        for name in TestPki::SERVER_NAMES {
-            verify(&pki, PkiFile::Ca, name).unwrap();
+        for algorithm in PkiAlgorithm::ALL {
+            let pki = TestPki::generate_with(algorithm).unwrap();
+            for name in TestPki::SERVER_NAMES {
+                verify(&pki, PkiFile::Ca, name).unwrap_or_else(|error| panic!("{algorithm:?}: {error}"));
+            }
+            let error = verify(&pki, PkiFile::UnrelatedCa, "localhost").unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    rustls::Error::InvalidCertificate(CertificateError::UnknownIssuer)
+                ),
+                "{algorithm:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_certificate_is_signed_with_the_chosen_algorithm() {
+        let signature_oids: [(PkiAlgorithm, &[u8]); 3] = [
+            (
+                PkiAlgorithm::RsaSha256,
+                &[0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b],
+            ),
+            (
+                PkiAlgorithm::EcdsaP384Sha384,
+                &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x03],
+            ),
+            (PkiAlgorithm::Ed25519, &[0x06, 0x03, 0x2b, 0x65, 0x70]),
+        ];
+        for (algorithm, oid) in signature_oids {
+            let pki = TestPki::generate_with(algorithm).unwrap();
+            assert_eq!(pki.algorithm(), algorithm);
+            for file in [PkiFile::Ca, PkiFile::ServerCertificate, PkiFile::ClientCertificate] {
+                let certificate = CertificateDer::from_pem_file(pki.path(file)).unwrap();
+                assert!(
+                    certificate.windows(oid.len()).any(|window| window == oid),
+                    "{algorithm:?} {}",
+                    file.file_name()
+                );
+            }
         }
     }
 

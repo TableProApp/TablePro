@@ -4,7 +4,8 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::container_file::with_files;
 use crate::{
-    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, HbaMode, PkiFile, TestNetwork, TestPki,
+    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HbaMode, PkiFile, PostgresVersion, TestNetwork,
+    TestPki,
 };
 
 const DATABASE: &str = "tablepro";
@@ -19,6 +20,7 @@ pub struct PostgresFixture {
     container: ContainerAsync<Postgres>,
     pki: TestPki,
     hba: HbaMode,
+    version: PostgresVersion,
     password: String,
     host: String,
     port: u16,
@@ -30,22 +32,31 @@ impl PostgresFixture {
     pub const NETWORK_ROLE: &'static str = "postgres";
 
     pub async fn start(hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, None).await
+        Self::launch(hba, PostgresVersion::default(), None).await
     }
 
     pub async fn start_in(hba: HbaMode, network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(hba, Some(network)).await
+        Self::launch(hba, PostgresVersion::default(), Some(network)).await
     }
 
-    async fn launch(hba: HbaMode, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
+    pub async fn start_version(version: PostgresVersion, hba: HbaMode) -> Result<Self, FixtureError> {
+        Self::launch(hba, version, None).await
+    }
+
+    async fn launch(
+        hba: HbaMode,
+        version: PostgresVersion,
+        network: Option<&TestNetwork>,
+    ) -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
+        let image = version.image();
         let mut request = Postgres::default()
             .with_db_name(DATABASE)
             .with_user(PASSWORD_USER)
             .with_password(&password)
-            .with_name(FixtureImage::POSTGRES.name)
-            .with_tag(FixtureImage::POSTGRES.tag);
+            .with_name(image.name)
+            .with_tag(image.tag);
         if let Some(command) = Self::server_command(hba) {
             request = request.with_cmd(command);
         }
@@ -60,6 +71,7 @@ impl PostgresFixture {
             container,
             pki,
             hba,
+            version,
             password,
             host,
             port,
@@ -116,6 +128,10 @@ impl PostgresFixture {
 
     pub fn hba(&self) -> HbaMode {
         self.hba
+    }
+
+    pub fn version(&self) -> PostgresVersion {
+        self.version
     }
 
     pub fn pki(&self) -> &TestPki {

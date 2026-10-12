@@ -4,10 +4,10 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
 use crate::container_file::with_files;
-use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, PkiFile, TestPki};
+use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, PkiFile, TestNetwork, TestPki};
 
-const HTTP_PORT: u16 = 8123;
-const HTTPS_PORT: u16 = 8443;
+const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
+const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
 
 pub struct ClickHouseFixture {
@@ -17,23 +17,39 @@ pub struct ClickHouseFixture {
     host: String,
     http_port: u16,
     https_port: u16,
+    network_alias: Option<String>,
 }
 
 impl ClickHouseFixture {
     pub const TLS_DIR: &'static str = "/etc/clickhouse-server/tls";
+    pub const NETWORK_ROLE: &'static str = "clickhouse";
+    pub const HTTP_PORT: u16 = 8123;
+    pub const HTTPS_PORT: u16 = 8443;
 
     pub async fn start() -> Result<Self, FixtureError> {
+        Self::launch(None).await
+    }
+
+    pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
+        Self::launch(Some(network)).await
+    }
+
+    async fn launch(network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let ready = HttpWaitStrategy::new("/ping")
             .with_port(HTTP_PORT.tcp())
             .with_expected_status_code(200_u16);
-        let request = FixtureImage::CLICKHOUSE
+        let mut request = FixtureImage::CLICKHOUSE
             .generic()
             .with_exposed_port(HTTP_PORT.tcp())
             .with_exposed_port(HTTPS_PORT.tcp())
             .with_wait_for(WaitFor::http(ready))
             .with_env_var("CLICKHOUSE_DB", "tablepro");
+        let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
+        if let (Some(network), Some(alias)) = (network, &network_alias) {
+            request = request.with_network(network.name()).with_container_name(alias);
+        }
         let container = with_files(request, Self::files(&pki, &password)?).start().await?;
         let host = container.get_host().await?.to_string();
         let http_port = container.get_host_port_ipv4(HTTP_PORT).await?;
@@ -45,6 +61,7 @@ impl ClickHouseFixture {
             host,
             http_port,
             https_port,
+            network_alias,
         })
     }
 
@@ -96,6 +113,10 @@ impl ClickHouseFixture {
 
     pub fn https_port(&self) -> u16 {
         self.https_port
+    }
+
+    pub fn network_alias(&self) -> Option<&str> {
+        self.network_alias.as_deref()
     }
 
     pub fn pki(&self) -> &TestPki {

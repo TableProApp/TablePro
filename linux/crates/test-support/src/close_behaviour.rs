@@ -7,3 +7,13 @@ pub enum CloseBehaviour {
     Delay(Duration),
     Hang,
 }
+
+impl CloseBehaviour {
+    pub(crate) async fn run(self) {
+        match self {
+            Self::Immediate => {}
+            Self::Delay(delay) => tokio::time::sleep(delay).await,
+            Self::Hang => std::future::pending().await,
+        }
+    }
+}

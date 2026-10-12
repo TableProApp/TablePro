@@ -6,13 +6,14 @@ use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::time::Instant;
+use uuid::Uuid;
 
 use crate::container_file::with_files;
 use crate::{
     ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, HostCertificate, SshAuthVariant,
+    TestNetwork,
 };
 
-const CONTAINER_PORT: u16 = 2222;
 const USERNAME: &str = "tablepro";
 const BANNER_TIMEOUT: Duration = Duration::from_secs(60);
 const BANNER_ATTEMPT: Duration = Duration::from_secs(2);
@@ -25,13 +26,26 @@ pub struct OpenSshFixture {
     password: String,
     host: String,
     port: u16,
+    network_alias: Option<String>,
 }
 
 impl OpenSshFixture {
     pub const DROP_IN: &'static str = "/config/sshd/sshd_config.d/tablepro.conf";
     pub const SSHD_CONFIG: &'static str = "/config/sshd/sshd_config";
+    pub const CONTAINER_PORT: u16 = 2222;
 
     pub async fn start(variant: SshAuthVariant) -> Result<Self, FixtureError> {
+        Self::launch(variant, None).await
+    }
+
+    /// Start a server that reaches the network's other containers by
+    /// alias. Each server gets its own alias, so a two-hop chain can put
+    /// two of them on one network.
+    pub async fn start_in(variant: SshAuthVariant, network: &TestNetwork) -> Result<Self, FixtureError> {
+        Self::launch(variant, Some(network)).await
+    }
+
+    async fn launch(variant: SshAuthVariant, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let host_certificate = match variant {
             SshAuthVariant::HostCertificate => Some(HostCertificate::generate().await?),
@@ -39,7 +53,7 @@ impl OpenSshFixture {
         };
         let mut request = FixtureImage::OPENSSH
             .generic()
-            .with_exposed_port(CONTAINER_PORT.tcp())
+            .with_exposed_port(Self::CONTAINER_PORT.tcp())
             .with_wait_for(WaitFor::message_on_stdout("[ls.io-init] done."))
             .with_env_var("USER_NAME", USERNAME)
             .with_env_var("USER_PASSWORD", &password)
@@ -54,9 +68,16 @@ impl OpenSshFixture {
         if let Some(certificate) = &host_certificate {
             files.extend(certificate.files()?);
         }
+        let network_alias = network.map(|network| {
+            let suffix = Uuid::new_v4().simple().to_string();
+            network.container_name(&format!("sshd-{}", &suffix[..8]))
+        });
+        if let (Some(network), Some(alias)) = (network, &network_alias) {
+            request = request.with_network(network.name()).with_container_name(alias);
+        }
         let container = with_files(request, files).start().await?;
         let host = container.get_host().await?.to_string();
-        let port = container.get_host_port_ipv4(CONTAINER_PORT).await?;
+        let port = container.get_host_port_ipv4(Self::CONTAINER_PORT).await?;
         wait_for_banner(&host, port).await?;
         Ok(Self {
             container,
@@ -65,6 +86,7 @@ impl OpenSshFixture {
             password,
             host,
             port,
+            network_alias,
         })
     }
 
@@ -91,6 +113,10 @@ impl OpenSshFixture {
 
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    pub fn network_alias(&self) -> Option<&str> {
+        self.network_alias.as_deref()
     }
 
     pub fn variant(&self) -> &SshAuthVariant {

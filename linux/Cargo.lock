@@ -5275,7 +5275,10 @@ dependencies = [
  "futures",
  "secrecy",
  "tablepro-core",
+ "tablepro-net",
+ "tempfile",
  "tokio",
+ "tokio-util",
  "uuid",
 ]
 
