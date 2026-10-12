@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
+- Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
 
 ## [0.80.0] - 2026-10-11
 

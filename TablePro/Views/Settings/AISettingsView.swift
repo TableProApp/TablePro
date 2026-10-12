@@ -35,13 +35,9 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .task { refreshKeyAvailability() }
-        .task { await chatGPTCodexService.refreshAuthState() }
-        .task { await cursorAgentService.refreshStatus() }
-        .task { await xaiService.refreshAuthState() }
-        .task { await claudeAgentService.performRefresh() }
-        .onChange(of: settings.providers.map(\.id)) { _ in
-            refreshKeyAvailability()
+        .task(id: settings.enabled ? settings.providers.map(\.id) : []) { refreshKeyAvailability() }
+        .task(id: AIProviderAccountProbes.types(toProbe: settings)) {
+            await refreshAccountStatus(of: AIProviderAccountProbes.types(toProbe: settings))
         }
         .sheet(item: editingProviderBinding) { provider in
             AIProviderDetailSheet(
@@ -441,7 +437,29 @@ struct AISettingsView: View {
         return String(localized: "Not configured")
     }
 
+    private func refreshAccountStatus(of types: Set<AIProviderType>) async {
+        let chatGPT = chatGPTCodexService
+        let cursor = cursorAgentService
+        let xai = xaiService
+        let claudeAgent = claudeAgentService
+        await withTaskGroup(of: Void.self) { group in
+            if types.contains(.chatgptCodex) {
+                group.addTask { await chatGPT.refreshAuthState() }
+            }
+            if types.contains(.cursor) {
+                group.addTask { await cursor.refreshStatus() }
+            }
+            if types.contains(.xai) {
+                group.addTask { await xai.refreshAuthState() }
+            }
+            if types.contains(.claudeAgent) {
+                group.addTask { await claudeAgent.performRefresh() }
+            }
+        }
+    }
+
     private func refreshKeyAvailability() {
+        guard settings.enabled else { return }
         var ids: Set<UUID> = []
         for provider in settings.providers where provider.authStyle.usesAPIKey {
             if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
