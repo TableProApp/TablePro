@@ -3243,86 +3243,6 @@
         }
       }
     },
-    "%@ download" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ téléchargement"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@회 다운로드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ indirme"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ lượt tải"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 次下载"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 次下載"
-          }
-        }
-      }
-    },
-    "%@ downloads" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ téléchargements"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@회 다운로드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ indirme"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ lượt tải"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 次下载"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 次下載"
-          }
-        }
-      }
-    },
     "%@ duplicate rows" : {
       "localizations" : {
         "fr" : {
@@ -7142,46 +7062,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ est introuvable sur ce système. %2$@"
-          }
-        }
-      }
-    },
-    "%1$@ was signed by %2$@ (Team ID %3$@) and notarized by Apple. TablePro did not write it.\n\nA database plugin runs as part of TablePro and can read the credentials of every connection you open. Trust this developer only if you would give them that access.\n\nTrusting applies to every plugin this developer signs, now and later. You can withdraw it in Settings > Plugins." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ a été signé par %2$@ (identifiant d’équipe %3$@) et notarié par Apple. TablePro n’en est pas l’auteur.\n\nUn plugin de base de données s’exécute au sein de TablePro et peut lire les identifiants de toutes les connexions que vous ouvrez. Ne faites confiance à ce développeur que si vous êtes prêt à lui accorder cet accès.\n\nLa confiance s’applique à tous les plugins que ce développeur signe, maintenant et à l’avenir. Vous pouvez la retirer dans Réglages > Plugins."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "플러그인: %1$@. 서명자: %2$@ (팀 ID %3$@). Apple의 공증을 받았습니다. TablePro에서 만든 플러그인이 아닙니다.\n\n데이터베이스 플러그인은 TablePro의 일부로 실행되며 사용자가 여는 모든 연결의 자격 증명을 읽을 수 있습니다. 해당 접근 권한을 부여해도 되는 개발자만 신뢰하십시오.\n\n개발자를 신뢰하면 현재와 이후에 이 개발자가 서명하는 모든 플러그인에 적용됩니다. 설정 > 플러그인에서 언제든지 신뢰를 해제할 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@, %2$@ tarafından imzalandı (Takım Kimliği %3$@) ve Apple tarafından onaylandı. TablePro bunu yazmadı.\n\nBir veritabanı eklentisi TablePro'nun parçası olarak çalışır ve açtığınız her bağlantının kimlik bilgilerini okuyabilir. Bu geliştiriciye yalnızca ona bu erişimi vermeye razıysanız güvenin.\n\nGüven, bu geliştiricinin şimdi ve sonra imzaladığı her eklenti için geçerlidir. Ayarlar > Eklentiler bölümünden geri alabilirsiniz."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ được ký bởi %2$@ (Team ID %3$@) và đã được Apple công chứng. TablePro không viết nó.\n\nMột plugin cơ sở dữ liệu chạy như một phần của TablePro và có thể đọc thông tin đăng nhập của mọi kết nối bạn mở. Chỉ tin cậy nhà phát triển này nếu bạn sẵn sàng cấp quyền truy cập đó.\n\nViệc tin cậy áp dụng cho mọi plugin mà nhà phát triển này ký, bây giờ và về sau. Bạn có thể thu hồi trong Cài đặt > Plugin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ 由 %2$@（团队 ID %3$@）签名并经 Apple 公证。它不是 TablePro 编写的。\n\n数据库插件作为 TablePro 的一部分运行，可以读取你打开的每个连接的凭据。只有在你愿意授予该访问权限时才信任此开发者。\n\n信任适用于该开发者现在和以后签名的每个插件。你可以在“设置 > 插件”中撤销。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ 由 %2$@（團隊 ID %3$@）簽署並經 Apple 公證。它不是 TablePro 編寫的。\n\n資料庫外掛作為 TablePro 的一部分執行，可以讀取你開啟的每個連線的認證資訊。只有在你願意授予該存取權時才信任此開發者。\n\n信任適用於該開發者現在與日後簽署的每個外掛。你可以在「設定 > 外掛」中撤銷。"
           }
         }
       }
@@ -15504,46 +15384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Une clé ne peut être renommée qu’avec du texte."
-          }
-        }
-      }
-    },
-    "A key from the xAI Console bills xAI API credits. Grok 4.5 and Grok 4.3 are available." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une clé de la console xAI consomme des crédits de l’API xAI. Grok 4.5 et Grok 4.3 sont disponibles."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI Console 키를 사용하면 xAI API 크레딧이 차감됩니다. Grok 4.5와 Grok 4.3을 사용할 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI Console'dan alınan bir anahtar xAI API kredilerinden düşer. Grok 4.5 ve Grok 4.3 kullanılabilir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Khóa lấy từ xAI Console sẽ tính phí vào tín dụng API của xAI. Có sẵn Grok 4.5 và Grok 4.3."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI Console 的密钥会扣除 xAI API 额度。可用 Grok 4.5 和 Grok 4.3。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI Console 的金鑰會扣除 xAI API 額度。可使用 Grok 4.5 和 Grok 4.3。"
           }
         }
       }
@@ -23893,16 +23733,6 @@
         }
       }
     },
-    "An HTML table. Open in a browser or paste into a page." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Une table HTML. Ouvrez-la dans un navigateur ou collez-la dans une page."
-          }
-        }
-      }
-    },
     "An identity column keeps its value, but its sequence is recreated under a new name because the old table still holds the original name when the new one is created." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -28320,46 +28150,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "執行寫入操作需要身分驗證"
-          }
-        }
-      }
-    },
-    "Author" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auteur"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "작성자"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yazar"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tác giả"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作者"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作者"
           }
         }
       }
@@ -45689,6 +45479,9 @@
         }
       }
     },
+    "Connect again to review the script and run it." : {
+
+    },
     "Connect from the connection's window in TablePro to review them." : {
       "localizations" : {
         "fr" : {
@@ -49726,46 +49519,6 @@
         }
       }
     },
-    "Copy install command" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copier la commande d’installation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설치 명령 복사"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kurulum komutunu kopyala"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sao chép lệnh cài đặt"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制安装命令"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "複製安裝指令"
-          }
-        }
-      }
-    },
     "Copy JSON" : {
       "localizations" : {
         "fr" : {
@@ -52848,46 +52601,6 @@
         }
       }
     },
-    "Could not start the sign-in listener. Please try again." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de démarrer l’écouteur de connexion. Réessayez."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "로그인 리스너를 시작할 수 없습니다. 다시 시도하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oturum açma dinleyicisi başlatılamadı. Lütfen tekrar deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể khởi động trình lắng nghe đăng nhập. Vui lòng thử lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法启动登录监听器。请重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法啟動登入監聽器。請再試一次。"
-          }
-        }
-      }
-    },
     "Could not write %@." : {
       "localizations" : {
         "fr" : {
@@ -55470,46 +55183,6 @@
         }
       }
     },
-    "Cursor CLI failed: %@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de la CLI Cursor : %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 실패: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI başarısız oldu: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI thất bại: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 失败：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI 失敗：%@"
-          }
-        }
-      }
-    },
     "Cursor position %d exceeds SQL length (%d)" : {
       "localizations" : {
         "en" : {
@@ -55599,46 +55272,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "游標位置 %1$lld 超出 SQL 長度（%2$lld）"
-          }
-        }
-      }
-    },
-    "Cursor sign-in failed." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de la connexion à Cursor."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 로그인에 실패했습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor girişi başarısız oldu."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập Cursor thất bại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 登录失败。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor 登入失敗。"
           }
         }
       }
@@ -56872,46 +56505,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Veritabanı Sürücüsü"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trình điều khiển cơ sở dữ liệu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "数据库驱动"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "資料庫驅動程式"
-          }
-        }
-      }
-    },
-    "Database Drivers" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pilotes de base de données"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "데이터베이스 드라이버"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veritabanı Sürücüleri"
           }
         },
         "vi" : {
@@ -64922,46 +64515,6 @@
         }
       }
     },
-    "Downloads" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Téléchargements"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다운로드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İndirmeler"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lượt tải"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下载次数"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下載次數"
-          }
-        }
-      }
-    },
     "Downtrend" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -69307,46 +68860,6 @@
         }
       }
     },
-    "Enable %@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activer %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 활성화"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ Etkinleştir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bật %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "启用 %@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "啟用 %@"
-          }
-        }
-      }
-    },
     "Enable AI Features" : {
       "localizations" : {
         "fr" : {
@@ -69584,16 +69097,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "啟用或停用所有篩選"
-          }
-        }
-      }
-    },
-    "Enable Plugin" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activer le plugin"
           }
         }
       }
@@ -75769,46 +75272,6 @@
         }
       }
     },
-    "Export Formats" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Formats d’exportation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "내보내기 형식"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dışa Aktarma Biçimleri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Định dạng xuất"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导出格式"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "匯出格式"
-          }
-        }
-      }
-    },
     "Export multiple tables" : {
       "localizations" : {
         "fr" : {
@@ -77719,46 +77182,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Yüklenemedi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tải thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加载失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "載入失敗"
-          }
-        }
-      }
-    },
-    "Failed to Load" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de charger"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "불러오지 못했습니다"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yükleme Başarısız"
           }
         },
         "vi" : {
@@ -89662,46 +89085,6 @@
         }
       }
     },
-    "Import Formats" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Formats d’importation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "가져오기 형식"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İçe Aktarma Biçimleri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Định dạng nhập"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导入格式"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "匯入格式"
-          }
-        }
-      }
-    },
     "Import from %@" : {
       "localizations" : {
         "fr" : {
@@ -93204,46 +92587,6 @@
         }
       }
     },
-    "Install Plugin" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installer le plugin"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "플러그인 설치"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eklentiyi Yükle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cài đặt Plugin"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装插件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安裝外掛"
-          }
-        }
-      }
-    },
     "Install plugin from file" : {
       "localizations" : {
         "fr" : {
@@ -93336,86 +92679,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Installer le plugin %1$@ pour ouvrir « %2$@ » ?"
-          }
-        }
-      }
-    },
-    "Install Theme" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installer le thème"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "테마 설치"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Temayı Yükle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cài đặt chủ đề"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装主题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安裝主題"
-          }
-        }
-      }
-    },
-    "Installation Failed" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de l’installation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설치 실패"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yükleme Başarısız"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cài đặt thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安裝失敗"
           }
         }
       }
@@ -114406,45 +113669,8 @@
         }
       }
     },
-    "No export formats available. Enable export plugins in Settings > Plugins." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucun format d’exportation disponible. Activez des plugins d’exportation dans Réglages > Plugins."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "사용 가능한 내보내기 형식이 없습니다. 설정 > 플러그인에서 내보내기 플러그인을 활성화하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kullanılabilir dışa aktarma biçimi yok. Ayarlar > Eklentiler bölümünden dışa aktarma eklentilerini etkinleştirin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không có định dạng xuất khả dụng. Bật plugin xuất trong Cài đặt > Plugin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无可用的导出格式。请在设置 > 插件中启用导出插件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有可用的匯出格式。請在「設定 > 外掛」中啟用匯出外掛。"
-          }
-        }
-      }
+    "No export formats available." : {
+
     },
     "No Extensions" : {
       "localizations" : {
@@ -116108,46 +115334,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有可用的執行計畫"
-          }
-        }
-      }
-    },
-    "No plugin developers trusted yet." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucun développeur de plugins approuvé pour l’instant."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "아직 신뢰하는 플러그인 개발자가 없습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Henüz güvenilen eklenti geliştiricisi yok."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa tin cậy nhà phát triển plugin nào."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未信任任何插件开发者。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未信任任何外掛開發者。"
           }
         }
       }
@@ -118602,6 +117788,9 @@
         }
       }
     },
+    "Nobody answered the pre-connect script prompt in time." : {
+
+    },
     "Nobody has joined this team yet." : {
       "localizations" : {
         "fr" : {
@@ -120282,46 +119471,6 @@
         }
       }
     },
-    "Not signed in to Cursor. Sign in first." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non connecté à Cursor. Connectez-vous d’abord."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor에 로그인되지 않았습니다. 먼저 로그인하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor'a giriş yapılmadı. Önce giriş yapın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa đăng nhập Cursor. Hãy đăng nhập trước."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未登录 Cursor。请先登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登入 Cursor。請先登入。"
-          }
-        }
-      }
-    },
     "Not signed in to GitHub Copilot" : {
       "localizations" : {
         "fr" : {
@@ -120364,46 +119513,6 @@
     },
     "Not Signed In to iCloud" : {
 
-    },
-    "Not signed in to xAI." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non connecté à xAI."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI에 로그인되지 않았습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI'da oturum açılmamış."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa đăng nhập xAI."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登录 xAI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未登入 xAI。"
-          }
-        }
-      }
     },
     "Not started" : {
       "localizations" : {
@@ -123196,16 +122305,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Un bastion, plusieurs connexions. Toute modification du serveur ou de ses identifiants s’applique à chaque connexion qui passe par son tunnel."
-          }
-        }
-      }
-    },
-    "One element per row. Use where a parser expects XML." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un élément par ligne. À utiliser lorsqu’un analyseur attend du XML."
           }
         }
       }
@@ -126192,46 +125291,6 @@
         }
       }
     },
-    "Operation Failed" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de l’opération"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "작업 실패"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İşlem Başarısız"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thao tác thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "操作失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "操作失敗"
-          }
-        }
-      }
-    },
     "Operation name from list_maintenance_operations" : {
       "localizations" : {
         "fr" : {
@@ -126730,46 +125789,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Facultatif, par exemple http://localhost:8000"
-          }
-        }
-      }
-    },
-    "Optional. A key from the Cursor dashboard is used instead of signing in." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Facultatif. Une clé du tableau de bord Cursor est utilisée au lieu de la connexion."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택 사항입니다. 로그인하는 대신 Cursor 대시보드에서 발급한 키를 사용합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İsteğe bağlı. Giriş yapmak yerine Cursor panosundan bir anahtar kullanılır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tùy chọn. Một khóa từ bảng điều khiển Cursor được dùng thay cho đăng nhập."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选。使用来自 Cursor 仪表板的密钥，而不是登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選用。使用來自 Cursor 儀表板的金鑰，而非登入。"
           }
         }
       }
@@ -132317,46 +131336,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "外掛"
-          }
-        }
-      }
-    },
-    "Plugins signed by this developer stop loading the next time TablePro starts." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les plugins signés par ce développeur ne seront plus chargés au prochain démarrage de TablePro."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 개발자가 서명한 플러그인은 다음에 TablePro를 시작할 때부터 로드되지 않습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu geliştiricinin imzaladığı eklentiler, TablePro'nun bir sonraki açılışında yüklenmeyi bırakır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các plugin do nhà phát triển này ký sẽ ngừng được tải trong lần khởi động TablePro tiếp theo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此开发者签名的插件将在下次启动 TablePro 时停止加载。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此開發者簽署的外掛將在下次啟動 TablePro 時停止載入。"
           }
         }
       }
@@ -142207,46 +141186,6 @@
         }
       }
     },
-    "Refresh plugin list" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Actualiser la liste des plugins"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "플러그인 목록 새로 고침"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eklenti listesini yenile"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Làm mới danh sách plugin"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新插件列表"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重新整理外掛清單"
-          }
-        }
-      }
-    },
     "Refresh the materialized view “%@”?" : {
       "localizations" : {
         "fr" : {
@@ -142445,46 +141384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Régions"
-          }
-        }
-      }
-    },
-    "Registry" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Registre"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "레지스트리"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Registry"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kho plugin"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "插件仓库"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外掛註冊"
           }
         }
       }
@@ -145937,46 +144836,6 @@
         }
       }
     },
-    "Requires" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nécessite"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "필요 버전"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Requires"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yêu cầu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要"
-          }
-        }
-      }
-    },
     "Reserved Shortcut" : {
       "localizations" : {
         "fr" : {
@@ -148313,46 +147172,6 @@
         }
       }
     },
-    "Retry Install" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Réessayer l’installation"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설치 재시도"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kurulumu Yeniden Dene"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thử cài đặt lại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重试安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重試安裝"
-          }
-        }
-      }
-    },
     "Retry Update" : {
       "localizations" : {
         "fr" : {
@@ -150546,6 +149365,7 @@
       }
     },
     "Rows are written into tables that already exist on the destination." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -156699,46 +155519,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜尋值"
-          }
-        }
-      }
-    },
-    "Search…" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rechercher…"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "검색…"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ara…"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tìm kiếm…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜尋…"
           }
         }
       }
@@ -163390,46 +162170,6 @@
         }
       }
     },
-    "Showing saved plugin list. %@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affichage de la liste de plugins enregistrée. %@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "저장된 플러그인 목록을 표시합니다. %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kaydedilmiş eklenti listesi gösteriliyor. %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đang hiển thị danh sách plugin đã lưu. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在显示已保存的插件列表。%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在顯示已儲存的外掛清單。%@"
-          }
-        }
-      }
-    },
     "Showing the %d most recent commits." : {
       "localizations" : {
         "fr" : {
@@ -164149,46 +162889,6 @@
         }
       }
     },
-    "Sign in with Cursor" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se connecter avec Cursor"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor로 로그인"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor ile giriş yap"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập bằng Cursor"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Cursor 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Cursor 登入"
-          }
-        }
-      }
-    },
     "Sign in with GitHub" : {
       "localizations" : {
         "fr" : {
@@ -164225,46 +162925,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 GitHub 登入"
-          }
-        }
-      }
-    },
-    "Sign in with xAI" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se connecter avec xAI"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI로 로그인"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI ile giriş yap"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đăng nhập bằng xAI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 xAI 登入"
           }
         }
       }
@@ -164698,86 +163358,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已以 %@ 身分登入。"
-          }
-        }
-      }
-    },
-    "Signed in with Cursor" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connecté avec Cursor"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor로 로그인됨"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor ile giriş yapıldı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã đăng nhập bằng Cursor"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 Cursor 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 Cursor 登入"
-          }
-        }
-      }
-    },
-    "Signed in with xAI" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connecté avec xAI"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI로 로그인됨"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI ile oturum açıldı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã đăng nhập bằng xAI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 xAI 登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已使用 xAI 登入"
           }
         }
       }
@@ -171573,126 +170153,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Stop Trusting" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ne plus faire confiance"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "신뢰 해제"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güvenmeyi Bırak"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ngừng tin cậy"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止信任"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止信任"
-          }
-        }
-      }
-    },
-    "Stop trusting %@?" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ne plus faire confiance à %@ ?"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@에 대한 신뢰를 해제하시겠습니까?"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ için güven kaldırılsın mı?"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ngừng tin cậy %@?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止信任 %@？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要停止信任 %@ 嗎？"
-          }
-        }
-      }
-    },
-    "Stop trusting this developer?" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ne plus faire confiance à ce développeur ?"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 개발자에 대한 신뢰를 해제하시겠습니까?"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu geliştiriciye güven kaldırılsın mı?"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ngừng tin cậy nhà phát triển này?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "停止信任此开发者？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要停止信任此開發者嗎？"
-          }
-        }
-      }
-    },
     "Stopped" : {
       "localizations" : {
         "fr" : {
@@ -176972,6 +175432,9 @@
         }
       }
     },
+    "TablePro does not run a pre-connect script on its own." : {
+
+    },
     "TablePro doesn't recognize the database type “%@”." : {
       "localizations" : {
         "fr" : {
@@ -180359,16 +178822,6 @@
         }
       }
     },
-    "The %@ plugin is turned off." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le plugin %@ est désactivé."
-          }
-        }
-      }
-    },
     "The %@ request must be a JSON object" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -182380,6 +180833,7 @@
       }
     },
     "The connection's pre-connect script was not approved." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -182606,86 +181060,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "les identifiants ont été refusés"
-          }
-        }
-      }
-    },
-    "The Cursor CLI is not installed." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le CLI Cursor n’est pas installé."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI가 설치되어 있지 않습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI yüklü değil."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI chưa được cài đặt."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 Cursor CLI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未安裝 Cursor CLI。"
-          }
-        }
-      }
-    },
-    "The Cursor CLI is not installed. Install it, then sign in." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le CLI Cursor n’est pas installé. Installez-le, puis connectez-vous."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI가 설치되어 있지 않습니다. 설치한 다음 로그인하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI yüklü değil. Yükleyin, sonra giriş yapın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cursor CLI chưa được cài đặt. Hãy cài đặt rồi đăng nhập."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 Cursor CLI。请先安装，然后登录。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未安裝 Cursor CLI。請先安裝，然後登入。"
           }
         }
       }
@@ -185781,6 +184155,9 @@
           }
         }
       }
+    },
+    "The pre-connect script was not approved." : {
+
     },
     "The prepared connection no longer matches this driver." : {
       "localizations" : {
@@ -190201,46 +188578,6 @@
     "Theme format %1$d was made for a newer TablePro. This version reads format %2$d." : {
 
     },
-    "Theme Update Failed" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec de la mise à jour du thème"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "테마 업데이트 실패"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tema Güncellemesi Başarısız Oldu"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cập nhật theme thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主题更新失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "佈景主題更新失敗"
-          }
-        }
-      }
-    },
     "Theme:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -190278,46 +188615,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "佈景主題："
-          }
-        }
-      }
-    },
-    "Themes" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thèmes"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "테마"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Themes"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Giao diện"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "佈景主題"
           }
         }
       }
@@ -195018,46 +193315,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此外掛不在外掛註冊中，因此無法自動更新。"
-          }
-        }
-      }
-    },
-    "This plugin is signed by %@, a developer you have not trusted yet." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ce plugin est signé par %@, un développeur auquel vous ne faites pas encore confiance."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 개발자가 서명한 플러그인입니다. 이 개발자는 아직 신뢰하지 않았습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu eklenti %@ tarafından imzalandı; bu geliştiriciye henüz güvenmediniz."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plugin này được ký bởi %@, một nhà phát triển mà bạn chưa tin cậy."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此插件由 %@ 签名，你尚未信任该开发者。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此外掛由 %@ 簽署，你尚未信任該開發者。"
           }
         }
       }
@@ -200131,86 +198388,6 @@
         }
       }
     },
-    "Trust and Install" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faire confiance et installer"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "신뢰하고 설치"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güven ve Kur"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tin cậy và cài đặt"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "信任并安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "信任並安裝"
-          }
-        }
-      }
-    },
-    "Trust plugins from %@?" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faire confiance aux plugins de %@ ?"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@의 플러그인을 신뢰하시겠습니까?"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ eklentilerine güvenilsin mi?"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tin cậy các plugin từ %@?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "信任来自 %@ 的插件？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要信任來自 %@ 的外掛嗎？"
-          }
-        }
-      }
-    },
     "Trusted" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -200255,46 +198432,6 @@
         }
       }
     },
-    "Trusted Plugin Developers" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Développeurs de plugins approuvés"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "신뢰하는 플러그인 개발자"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güvenilen Eklenti Geliştiricileri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhà phát triển plugin được tin cậy"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已信任的插件开发者"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已信任的外掛開發者"
-          }
-        }
-      }
-    },
     "Try Again" : {
       "localizations" : {
         "fr" : {
@@ -200334,6 +198471,9 @@
           }
         }
       }
+    },
+    "Try again and answer the prompt in TablePro." : {
+
     },
     "Try again, or install the plugin from Settings > Plugins." : {
       "localizations" : {
@@ -200550,16 +198690,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "把一張資料表的結構轉成一份可執行的資料品質查詢清單"
-          }
-        }
-      }
-    },
-    "Turn the plugin on to connect." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activez le plugin pour vous connecter."
           }
         }
       }
@@ -203869,46 +201999,6 @@
         }
       }
     },
-    "Update to v%@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mettre à jour vers v%@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "버전 v%@ 업데이트"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@ sürümüne güncelle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cập nhật lên v%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新到 v%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新至 v%@"
-          }
-        }
-      }
-    },
     "Updated" : {
       "localizations" : {
         "fr" : {
@@ -204389,6 +202479,7 @@
       }
     },
     "Use" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -204691,6 +202782,7 @@
       }
     },
     "Use clipboard URL" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -205118,86 +203210,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Utiliser le même filtre pour la cible"
-          }
-        }
-      }
-    },
-    "Use your Cursor subscription with no API key. Requires the Cursor CLI." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez votre abonnement Cursor sans clé API. Nécessite la CLI Cursor."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 키 없이 Cursor 구독을 사용합니다. Cursor CLI가 필요합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API anahtarı olmadan Cursor aboneliğinizi kullanın. Cursor CLI gerektirir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng gói đăng ký Cursor của bạn mà không cần khóa API. Yêu cầu Cursor CLI."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无需 API 密钥即可使用你的 Cursor 订阅。需要 Cursor CLI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無需 API 金鑰即可使用你的 Cursor 訂閱。需要 Cursor CLI。"
-          }
-        }
-      }
-    },
-    "Use your SuperGrok or X Premium+ subscription with no API key. Sign-in opens the Grok Build consent screen. This is an unofficial interface that may change." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez votre abonnement SuperGrok ou X Premium+ sans clé API. La connexion ouvre l’écran de consentement Grok Build. Il s’agit d’une interface non officielle susceptible de changer."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API 키 없이 SuperGrok 또는 X Premium+ 구독을 사용합니다. 로그인하면 Grok Build 동의 화면이 열립니다. 이는 변경될 수 있는 비공식 인터페이스입니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API anahtarı olmadan SuperGrok veya X Premium+ aboneliğinizi kullanın. Oturum açma, Grok Build onay ekranını açar. Bu, değişebilecek resmi olmayan bir arayüzdür."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng gói SuperGrok hoặc X Premium+ của bạn mà không cần khóa API. Khi đăng nhập sẽ mở màn hình đồng ý của Grok Build. Đây là giao diện không chính thức và có thể thay đổi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无需 API 密钥即可使用你的 SuperGrok 或 X Premium+ 订阅。登录时会打开 Grok Build 的授权页面。这是非官方接口，可能会变动。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無需 API 金鑰即可使用你的 SuperGrok 或 X Premium+ 訂閱。登入時會開啟 Grok Build 的授權畫面。這是非官方介面，可能會變動。"
           }
         }
       }
@@ -206129,46 +204141,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "v%@ 已就緒，可啟用"
-          }
-        }
-      }
-    },
-    "v%@+" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "v%@+"
           }
         }
       }
@@ -211682,46 +209654,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "X 軸"
-          }
-        }
-      }
-    },
-    "xAI did not return an access token." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI n’a pas renvoyé de jeton d’accès."
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI에서 접근 토큰을 반환하지 않았습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI bir erişim belirteci döndürmedi."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI không trả về access token."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI 未返回访问令牌。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI 未回傳存取權杖。"
           }
         }
       }

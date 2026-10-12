@@ -74,10 +74,6 @@ struct MenuContentModeParityTests {
             identifier: MainWindowToolbar.importTables
         ),
         CommandPair(
-            selector: #selector(MainSplitViewController.showServerDashboard(_:)),
-            identifier: MainWindowToolbar.dashboard
-        ),
-        CommandPair(
             selector: #selector(MainSplitViewController.navigateBack(_:)),
             identifier: MainWindowToolbar.navigateBack
         ),
@@ -107,7 +103,6 @@ struct MenuContentModeParityTests {
             canNavigateForward: true,
             supportsContainerSwitching: true,
             supportsImport: true,
-            supportsServerDashboard: true,
             isAIEnabled: true
         )
     }
@@ -130,7 +125,6 @@ struct MenuContentModeParityTests {
         context.canNavigateBack = true
         context.canNavigateForward = true
         context.hasImportFormats = true
-        context.supportsServerDashboard = true
         context.hasAssistantConversation = true
         context.hasStoredConversations = true
         return context

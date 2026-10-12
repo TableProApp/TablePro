@@ -569,6 +569,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             guard let self, self.copilotDocumentSync === sync, self.resolvedInlineSourceKind == .copilot else {
                 return
             }
+            await CopilotService.shared.start()
+            guard self.copilotDocumentSync === sync else { return }
             if let tabID = capturedTabID {
                 sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
                 await sync.didActivateTab(tabID: tabID, text: capturedText)

@@ -30,7 +30,7 @@ protocol MCPApprovalPresenting: Sendable {
 /// so that stepping away costs at most the one call.
 struct MCPApprovalAlertPresenter: MCPApprovalPresenting {
     func requestApproval(_ request: MCPApprovalRequest) async -> Bool {
-        await AlertHelper.runApprovalModal(
+        await AlertHelper.runCrossProcessApproval(
             title: String(localized: "MCP Access Request"),
             message: Self.message(for: request),
             confirm: String(localized: "Allow"),
@@ -38,8 +38,12 @@ struct MCPApprovalAlertPresenter: MCPApprovalPresenting {
         )
     }
 
+    static let maximumClientLabelLength = 80
+
+    /// A paired client names itself, at any length, and the connection it wants comes after that
+    /// name, so the name is cut short enough for the connection to stay on screen.
     static func message(for request: MCPApprovalRequest) -> String {
-        let client = request.clientLabel ?? String(localized: "An MCP client")
+        let client = request.clientLabel.map(Self.bounded) ?? String(localized: "An MCP client")
         let opening = String(
             format: String(localized: "%@ wants to access '%@' (%@)."),
             client,
@@ -48,6 +52,11 @@ struct MCPApprovalAlertPresenter: MCPApprovalPresenting {
         )
         let pointer = String(localized: "Change this in Settings > MCP.")
         return opening + "\n\n" + Self.consequence(of: request.memory) + " " + pointer
+    }
+
+    private static func bounded(_ label: String) -> String {
+        guard label.count > maximumClientLabelLength else { return label }
+        return String(label.prefix(maximumClientLabelLength)) + "…"
     }
 
     private static func consequence(of memory: MCPApprovalMemory) -> String {

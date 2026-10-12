@@ -322,12 +322,11 @@ struct InstalledPluginsView: View {
             PluginIconView(name: plugin.pluginIconName)
                 .font(.title3)
                 .frame(width: 24, height: 24)
-                .foregroundStyle(plugin.isEnabled ? .secondary : .tertiary)
+                .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(plugin.name)
                     .lineLimit(1)
-                    .foregroundStyle(plugin.isEnabled ? .primary : .secondary)
 
                 HStack(spacing: 4) {
                     Text("v\(plugin.version)")
@@ -367,19 +366,8 @@ struct InstalledPluginsView: View {
         if let selected = selectedPlugin {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text(selected.name)
-                            .font(.title3.weight(.semibold))
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { selected.isEnabled },
-                            set: { pluginManager.setEnabled($0, pluginId: selected.id) }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .controlSize(.small)
-                        .accessibilityLabel(String(format: String(localized: "Enable %@"), selected.name))
-                    }
+                    Text(selected.name)
+                        .font(.title3.weight(.semibold))
 
                     Text("v\(selected.version) · \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
                         .font(.subheadline)
@@ -458,10 +446,15 @@ struct InstalledPluginsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            Form {
-                TrustedDevelopersView()
+            VStack(spacing: 8) {
+                Image(systemName: "puzzlepiece.extension")
+                    .font(.title)
+                    .foregroundStyle(.tertiary)
+                Text("Select a plugin to view details")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
             }
-            .formStyle(.grouped)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

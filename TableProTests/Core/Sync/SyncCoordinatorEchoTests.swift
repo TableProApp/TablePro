@@ -354,31 +354,6 @@ struct SyncCoordinatorEchoTests {
         #expect(SyncRecordMapper.toTag(cached)?.name == "staging")
     }
 
-    @Test("A notification pull that arrives mid-push waits for the cycle and applies no echo")
-    func notificationDuringPushIsDeferred() async throws {
-        let tag = ConnectionTag(name: "staging")
-        try tags.addTag(tag)
-        let tagStorage = tags
-        let box = CoordinatorBox()
-        let transport = ScriptedSyncTransport(
-            zoneID: Self.zoneID,
-            duringPush: {
-                Self.rename(tag.id, to: "stage", in: tagStorage)
-                await box.coordinator?.pullForRemoteNotification()
-            },
-            pulled: { pushed in PullResult(changedRecords: pushed, deletedRecordIDs: [], newToken: nil) }
-        )
-        let coordinator = makeCoordinator(transport: transport)
-        box.coordinator = coordinator
-
-        let failure = await coordinator.runSyncCycle()
-
-        #expect(failure == nil)
-        #expect(tags.tag(for: tag.id)?.name == "stage")
-        #expect(tracker.dirtyRecords(for: .tag).contains(tag.id.uuidString))
-        #expect(await transport.pullCount == 2)
-    }
-
     @Test("A push cut short after saving some records still holds back their echoes and clears the rest")
     func interruptedPushStillGuardsEchoes() async throws {
         let tag = ConnectionTag(name: "staging")
@@ -727,9 +702,4 @@ struct SyncCoordinatorEchoTests {
     ) -> SyncCoordinator {
         environment.makeCoordinator(transport: transport, favorites: favorites)
     }
-}
-
-@MainActor
-private final class CoordinatorBox {
-    var coordinator: SyncCoordinator?
 }

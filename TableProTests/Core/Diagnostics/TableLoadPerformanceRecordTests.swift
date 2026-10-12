@@ -214,7 +214,7 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        let encoder = TableLoadHistoryStore.makeEncoder(prettyPrinted: false)
+        let encoder = TableLoadHistoryStore.makeEncoder()
         let decoder = TableLoadHistoryStore.makeDecoder()
         let decoded = try decoder.decode(TableLoadPerformanceRecord.self, from: encoder.encode(record))
 
@@ -242,7 +242,7 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: .now
         )
 
-        let data = try TableLoadHistoryStore.makeEncoder(prettyPrinted: false).encode(record)
+        let data = try TableLoadHistoryStore.makeEncoder().encode(record)
         let json = try #require(String(data: data, encoding: .utf8))
 
         for secret in secrets {

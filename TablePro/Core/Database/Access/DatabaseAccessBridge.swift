@@ -23,7 +23,15 @@ import TableProSQLGrammar
 internal actor DatabaseAccessBridge {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseAccess")
 
-    internal init() {}
+    private let managerOverride: DatabaseManager?
+
+    internal init(manager: DatabaseManager? = nil) {
+        self.managerOverride = manager
+    }
+
+    internal var databaseManager: DatabaseManager {
+        get async { await MainActor.run { managerOverride ?? .shared } }
+    }
 
     // MARK: - Connect
 
@@ -43,17 +51,22 @@ internal actor DatabaseAccessBridge {
     }
 
     internal func connect(connectionId: UUID) async throws -> ConnectionSnapshot {
+        let manager = await databaseManager
         let connection = try await resolveConnection(connectionId)
 
         let alreadyLive = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId]?.driver != nil
+            manager.activeSessions[connectionId]?.driver != nil
         }
         if !alreadyLive {
-            try await DatabaseManager.shared.ensureConnected(connection)
+            do {
+                try await manager.ensureConnected(connection)
+            } catch let refusal as PreConnectScriptConsentError {
+                throw Self.accessError(for: refusal)
+            }
         }
 
         let snapshot = await MainActor.run { () -> ConnectionSnapshot? in
-            guard let session = DatabaseManager.shared.activeSessions[connectionId],
+            guard let session = manager.activeSessions[connectionId],
                   let driver = session.driver
             else {
                 return nil
@@ -70,16 +83,18 @@ internal actor DatabaseAccessBridge {
     }
 
     internal func disconnect(connectionId: UUID) async throws {
+        let manager = await databaseManager
         let sessionExists = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId] != nil
+            manager.activeSessions[connectionId] != nil
         }
         guard sessionExists else { throw DatabaseAccessError.notConnected(connectionId) }
-        await DatabaseManager.shared.disconnectSession(connectionId)
+        await manager.disconnectSession(connectionId)
     }
 
     internal func connectionStatus(connectionId: UUID) async throws -> ConnectionStatusSnapshot {
+        let manager = await databaseManager
         let snapshot = await MainActor.run { () -> ConnectionStatusSnapshot? in
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else { return nil }
+            guard let session = manager.activeSessions[connectionId] else { return nil }
             return ConnectionStatusSnapshot(
                 status: session.reportedStatus,
                 database: session.resolvedBrowseDatabase,
@@ -96,8 +111,9 @@ internal actor DatabaseAccessBridge {
     // MARK: - Resolve
 
     internal func resolveConnection(_ connectionId: UUID) async throws -> DatabaseConnection {
-        try await MainActor.run {
-            let connections = ConnectionStorage.shared.loadConnections()
+        let manager = await databaseManager
+        return try await MainActor.run {
+            let connections = manager.connectionStorage.loadConnections()
             guard let connection = connections.first(where: { $0.id == connectionId }) else {
                 throw DatabaseAccessError.notFound(
                     String(localized: "No saved connection has that id.")
@@ -108,22 +124,27 @@ internal actor DatabaseAccessBridge {
     }
 
     internal func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
+        let manager = await databaseManager
         let pending: DatabaseConnection? = await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
+            switch manager.connectionState(connectionId) {
             case .live: return nil
             case .stored(let connection): return connection
             case .unknown: return nil
             }
         }
         if let pending {
-            try await DatabaseManager.shared.ensureConnected(pending)
+            do {
+                try await manager.ensureConnected(pending)
+            } catch let refusal as PreConnectScriptConsentError {
+                throw Self.accessError(for: refusal)
+            }
         }
         /// An automation client is the likeliest thing to reach a connection nobody has touched
         /// for hours, and it never passes through `ensureConnected` once a session exists, so this
         /// is where the check has to be for MCP and for Cocoa Scripting.
-        await DatabaseManager.shared.verifyBeforeUse(connectionId)
+        await manager.verifyBeforeUse(connectionId)
         return try await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
+            switch manager.connectionState(connectionId) {
             case .live(let driver, let session):
                 return (driver, session.connection.type)
             case .stored, .unknown:
@@ -138,10 +159,22 @@ internal actor DatabaseAccessBridge {
         return databaseType
     }
 
+    /// A refused pre-connect script reaches a client as a refusal or a timeout, not a failure.
+    private static func accessError(for refusal: PreConnectScriptConsentError) -> DatabaseAccessError {
+        let detail = refusal.errorDescription ?? ""
+        switch refusal {
+        case .unanswered:
+            return .timeout(detail)
+        case .declined, .needsPerson:
+            return .forbidden(detail)
+        }
+    }
+
     internal func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        let manager = await databaseManager
         try await ensureConnected(connectionId)
         return try await MainActor.run {
-            guard let scope = DatabaseManager.shared.resolvedScope(
+            guard let scope = manager.resolvedScope(
                 database: database,
                 schema: schema,
                 for: connectionId
@@ -155,11 +188,13 @@ internal actor DatabaseAccessBridge {
     }
 
     internal func switchDatabase(connectionId: UUID, database: String) async throws {
-        try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+        let manager = await databaseManager
+        try await manager.switchDatabase(to: database, for: connectionId)
     }
 
     internal func switchSchema(connectionId: UUID, schema: String) async throws {
-        try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+        let manager = await databaseManager
+        try await manager.switchSchema(to: schema, for: connectionId)
     }
 
     // MARK: - Run
@@ -208,7 +243,8 @@ internal actor DatabaseAccessBridge {
 
         await forwardCancellation(cancellation, to: owner, on: connectionId)
 
-        let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
+        let manager = await databaseManager
+        let route = await MainActor.run { manager.executionRoute(for: scope) }
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementRan = CatalogEvent.statementsRan(
             connectionId: connectionId, statements: [normalizedQuery], databaseType: databaseType
@@ -263,9 +299,10 @@ internal actor DatabaseAccessBridge {
         on connectionId: UUID
     ) async {
         guard let cancellation else { return }
+        let manager = await databaseManager
         await cancellation.onCancelRequested {
             await MainActor.run {
-                try? DatabaseManager.shared.cancelRunningQuery(
+                try? manager.cancelRunningQuery(
                     owner: owner, on: connectionId, delivery: .immediate
                 )
             }
@@ -281,9 +318,10 @@ internal actor DatabaseAccessBridge {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> Output
     ) async throws -> Output {
         let connectionId = scope.connectionId
+        let manager = await databaseManager
         return try await withThrowingTaskGroup(of: Output.self) { group in
             group.addTask {
-                try await DatabaseManager.shared.withScopedDriver(
+                try await manager.withScopedDriver(
                     scope: scope,
                     route: route,
                     cancellation: policy,
@@ -293,7 +331,7 @@ internal actor DatabaseAccessBridge {
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
                 await MainActor.run {
-                    try? DatabaseManager.shared.cancelRunningQuery(
+                    try? manager.cancelRunningQuery(
                         owner: owner, on: connectionId, delivery: .immediate
                     )
                 }

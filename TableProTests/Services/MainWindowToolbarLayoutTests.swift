@@ -81,6 +81,14 @@ struct MainWindowToolbarInspectorPlacementTests {
         #expect(!identifiers.contains { $0.rawValue.hasSuffix(".assistant") })
     }
 
+    @Test("No toolbar item opens the Server Dashboard")
+    func dashboardHasNoToolbarItem() {
+        let identifiers = Set(MainWindowToolbar.allowedItemIdentifiers).union(
+            MainWindowToolbar.defaultItemIdentifiers
+        )
+        #expect(!identifiers.contains { $0.rawValue.hasSuffix(".dashboard") })
+    }
+
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both
     /// the open and the closed state.
     @available(macOS 14.0, *)
@@ -167,7 +175,6 @@ struct MainWindowToolbarOverflowValidationTests {
             #selector(MainWindowToolbar.performExport(_:)): MainWindowToolbar.exportTables,
             #selector(MainWindowToolbar.performOpenDatabaseSwitcher(_:)): MainWindowToolbar.database,
             #selector(MainWindowToolbar.performToggleResults(_:)): MainWindowToolbar.results,
-            #selector(MainWindowToolbar.performShowDashboard(_:)): MainWindowToolbar.dashboard,
             #selector(MainWindowToolbar.performAddRow(_:)): MainWindowToolbar.addRow,
             #selector(MainWindowToolbar.performRestorePreviousValues(_:)): MainWindowToolbar.restorePreviousValues,
         ]

@@ -12,11 +12,7 @@ internal struct ThemeListRowView: View {
                     .font(.callout)
                     .lineLimit(1)
 
-                Text(theme.isBuiltIn
-                    ? String(localized: "Built-in")
-                    : theme.isRegistry
-                        ? String(localized: "Registry")
-                        : String(localized: "Custom"))
+                Text(theme.isBuiltIn ? String(localized: "Built-in") : String(localized: "Custom"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

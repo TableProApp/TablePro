@@ -19,7 +19,7 @@ struct AIProviderAccountProbesTests {
 
     @Test("Nothing is probed while AI is off, even with sign-in providers configured")
     func aiOffProbesNothing() {
-        let configured = settings(enabled: false, .claudeAgent, .chatgptCodex, .cursor, .xai)
+        let configured = settings(enabled: false, .claudeAgent, .chatgptCodex)
         #expect(AIProviderAccountProbes.types(toProbe: configured).isEmpty)
     }
 
@@ -31,13 +31,13 @@ struct AIProviderAccountProbesTests {
 
     @Test("Every configured sign-in provider is probed once")
     func everyConfiguredSignInProviderIsProbed() {
-        let configured = settings(.chatgptCodex, .cursor, .xai, .claudeAgent, .claudeAgent)
-        #expect(AIProviderAccountProbes.types(toProbe: configured) == [.chatgptCodex, .cursor, .xai, .claudeAgent])
+        let configured = settings(.chatgptCodex, .claudeAgent, .claudeAgent)
+        #expect(AIProviderAccountProbes.types(toProbe: configured) == [.chatgptCodex, .claudeAgent])
     }
 
     @Test("API key providers never need an account probe")
     func apiKeyProvidersAreNotProbed() {
-        let configured = settings(.claude, .openAI, .openRouter, .gemini, .ollama, .custom, .copilot)
+        let configured = settings(.claude, .openAI, .openRouter, .gemini, .xai, .ollama, .custom, .copilot)
         #expect(AIProviderAccountProbes.types(toProbe: configured).isEmpty)
     }
 }

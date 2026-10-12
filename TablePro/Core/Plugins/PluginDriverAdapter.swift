@@ -728,18 +728,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         UserDefinedTypeInfo(try await pluginDriver.fetchUserDefinedType(type.pluginType))
     }
 
-    func createTypeTemplate(schema: String?) -> String? {
-        pluginDriver.createTypeTemplate(schema: schema ?? pluginDriver.currentSchema)
-    }
-
-    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
-        pluginDriver.generateAddEnumLabelSQL(type: type.pluginType, label: label, placement: placement?.pluginPlacement)
-    }
-
-    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
-        pluginDriver.generateRenameEnumLabelSQL(type: type.pluginType, from: oldLabel, to: newLabel)
-    }
-
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)
