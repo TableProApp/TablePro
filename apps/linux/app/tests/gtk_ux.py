@@ -1285,6 +1285,118 @@ GLib.MainLoop().run()
         assert ui.find_node(name="Approve once") is None, "a plain enum/set grid edit asked for approval"
         ui.wait_for_node(name="2 unsaved changes", present=False)
 
+    def page_tab_names():
+        return [
+            ui.node_name(node) for node in ui.descendants(ui.application_node())
+            if ui.node_role(node) == pyatspi.ROLE_PAGE_TAB
+        ]
+
+    def wait_until(predicate, describe):
+        deadline = time.monotonic() + ui.WAIT_SECONDS
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(ui.POLL_SECONDS)
+        raise AssertionError(f"{describe}:\n{ui.accessible_snapshot()}")
+
+    def own_clipboard(text):
+        clipboard_code = """import sys, gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gdk, GLib, Gtk
+Gtk.init()
+Gdk.Display.get_default().get_clipboard().set(sys.argv[1])
+GLib.MainLoop().run()
+"""
+        owner = subprocess.Popen(
+            [sys.executable, "-c", clipboard_code, text],
+            env=os.environ.copy(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(0.3)
+        assert owner.poll() is None, owner.stderr.read().decode()
+        return owner
+
+    def invoke_menu_item(position):
+        menu = ui.wait_for_node(role=pyatspi.ROLE_MENU)
+        items = [node for node in ui.descendants(menu) if ui.node_role(node) == pyatspi.ROLE_MENU_ITEM]
+        actions = items[position].queryAction()
+        click = next(index for index in range(actions.nActions) if actions.getName(index) == "click")
+        assert actions.doAction(click)
+
+    def pinned_results_stay_ahead_of_the_next_run(_database, _base):
+        ui.run_sql("SELECT 1 AS one;\nSELECT 2 AS two;")
+        wait_until(lambda: sum("SELECT (1)" in name for name in page_tab_names()) == 2, "two results did not appear")
+        ui.invoke(ui.wait_for_node(name="Pin results", role=pyatspi.ROLE_PUSH_BUTTON))
+        ui.run_sql("SELECT 3 AS three;")
+        pinned = lambda: [name for name in page_tab_names() if "\U0001F4CC" in name]
+        wait_until(lambda: len(pinned()) == 2 and len(page_tab_names()) >= 4, "pinned results did not stay")
+        unpin = ui.wait_for_node_containing("Unpin results", role=pyatspi.ROLE_PUSH_BUTTON)
+        ui.invoke(unpin)
+        wait_until(lambda: not pinned(), "unpinning did not drop the pinned results")
+
+    def filter_by_this_value_narrows_the_browse_rows(database, _base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.executemany(
+                "INSERT INTO safety_items(id, note) VALUES (?, ?)", [(1, "alpha"), (2, "beta"), (3, "alpha")]
+            )
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL)
+        open_cell_menu("beta")
+        invoke_menu_item(4)
+        ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL, present=False)
+        ui.wait_for_node(name="beta", role=pyatspi.ROLE_LABEL)
+
+    def selection_statistics_summarise_the_selected_rows(database, _base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.executemany(
+                "INSERT INTO safety_items(id, note) VALUES (?, ?)", [(2, "alpha"), (4, "beta"), (9, "gamma")]
+            )
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        click_cell("alpha")
+        ui.press_x11_key("Down", ("Shift_L",), presses=2)
+        badge = ui.wait_for_node_containing("3 selected", role=pyatspi.ROLE_PUSH_BUTTON)
+        summary = badge.description
+        for fact in ("count 3", "min 2", "max 9", "sum 15", "average 5"):
+            assert fact in summary, (fact, summary)
+
+    def paste_past_the_loaded_rows_changes_nothing(database, _base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.executemany("INSERT INTO safety_items(id, note) VALUES (?, ?)", [(1, "alpha"), (2, "beta")])
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        click_cell("beta")
+        owner = own_clipboard("one\ntwo")
+        try:
+            ui.press_x11_key("v", ("Control_L",))
+            time.sleep(ui.SETTLE_SECONDS / 3)
+            assert ui.find_node_containing("unsaved change") is None, "a paste past the last row was applied"
+            assert stored_notes(database) == [(1, "alpha"), (2, "beta")]
+        finally:
+            owner.terminate()
+            owner.wait(timeout=ui.WAIT_SECONDS)
+
+    def window_controls_follow_the_desktop_button_layout(_database, _base, restart):
+        def use_layout(layout):
+            def write(environment):
+                settings = Path(environment["XDG_CONFIG_HOME"]) / "gtk-4.0" / "settings.ini"
+                settings.parent.mkdir(parents=True, exist_ok=True)
+                settings.write_text(f"[Settings]\ngtk-decoration-layout={layout}\n", encoding="utf-8")
+            return write
+
+        restart(use_layout("appmenu:close"))
+        ui.wait_for_node(name="Close", role=pyatspi.ROLE_PUSH_BUTTON)
+        assert ui.find_node(name="Minimize", role=pyatspi.ROLE_PUSH_BUTTON) is None, "a close-only layout showed Minimize"
+        restart(use_layout("icon:minimize,maximize,close"))
+        ui.wait_for_node(name="Minimize", role=pyatspi.ROLE_PUSH_BUTTON)
+        ui.wait_for_node(name="Maximize", role=pyatspi.ROLE_PUSH_BUTTON)
+
+    window_controls_follow_the_desktop_button_layout.needs_restart = True
+    window_controls_follow_the_desktop_button_layout.requires_editor = False
+
     result = [
         sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
@@ -1306,6 +1418,11 @@ GLib.MainLoop().run()
         row_inspector_lists_every_column_of_the_selected_row,
         query_history_opens_as_a_docked_panel_and_closes_without_leaving_the_workspace,
         find_in_loaded_rows_lists_matches_and_selects_one,
+        pinned_results_stay_ahead_of_the_next_run,
+        filter_by_this_value_narrows_the_browse_rows,
+        selection_statistics_summarise_the_selected_rows,
+        paste_past_the_loaded_rows_changes_nothing,
+        window_controls_follow_the_desktop_button_layout,
     ]
     if os.environ.get("TABLEPRO_PROFILE_ROWS"):
         result.append(profile_large_result_in_the_grid)

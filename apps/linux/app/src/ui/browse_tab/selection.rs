@@ -200,7 +200,9 @@ pub(super) fn update_selection_chrome(
         return;
     }
     let count = n.to_string();
-    count_label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
+    let selected_label = crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count);
+    count_label.set_label(&selected_label);
+    button.update_property(&[gtk::accessible::Property::Label(&selected_label)]);
     let summary = selection_details(n, stats_tooltip);
     details.set_label(&summary);
     button.set_tooltip_text(stats_tooltip.filter(|text| !text.is_empty()));
