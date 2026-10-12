@@ -268,11 +268,6 @@ struct PairingApprovalSheet: View {
 
     private var actionBar: some View {
         DialogFooter {
-            Button(String(localized: "Deny"), role: .cancel) {
-                onComplete(.failure(DatabaseAccessError.userCancelled))
-            }
-            .keyboardShortcut(.cancelAction)
-
             Button(String(localized: "Approve")) {
                 let approval = PairingApproval(
                     grantedPermissions: permissions,
@@ -282,9 +277,12 @@ struct PairingApprovalSheet: View {
                 )
                 onComplete(.success(approval))
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
             .disabled(approveDisabled)
+
+            Button(String(localized: "Deny"), role: .cancel) {
+                onComplete(.failure(DatabaseAccessError.userCancelled))
+            }
+            .keyboardShortcut(.defaultAction)
         }
     }
 

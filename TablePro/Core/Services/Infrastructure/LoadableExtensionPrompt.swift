@@ -19,14 +19,13 @@ internal enum LoadableExtensionPrompt {
     ) async -> Bool {
         let pending = LoadableExtensionGate.pendingApproval(for: connection, approvals: approvals)
         guard !pending.isEmpty else { return true }
-        let approved = await AlertHelper.confirmDestructive(
+        let answer = await AlertHelper.askConsent(
             title: String(localized: "Load Extensions"),
             message: message(for: connection, pending: pending),
             confirmButton: String(localized: "Load Extensions"),
-            cancelButton: String(localized: "Cancel"),
             window: NSApp.keyWindow
         )
-        guard approved else { return false }
+        guard answer == .approved else { return false }
         approvals.approve(pending, for: connection.id)
         return true
     }
@@ -57,15 +56,24 @@ internal enum LoadableExtensionPrompt {
 
 /// Everything a connect started by a person has to clear before it may run code the connection
 /// carries: its pre-connect script, then its extensions. One call, so no route can ask for one and
-/// forget the other.
+/// forget the other. A session that is already live runs neither, so it is not asked about.
 @MainActor
 internal enum ConnectConsent {
     internal static func requiresPrompt(for connection: DatabaseConnection) -> Bool {
         connection.hasPreConnectScript || !LoadableExtensionGate.pendingApproval(for: connection).isEmpty
     }
 
-    internal static func confirmIfNeeded(for connection: DatabaseConnection) async -> Bool {
-        guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else { return false }
-        return await LoadableExtensionPrompt.confirmIfNeeded(for: connection)
+    internal static func confirmIfNeeded(
+        for connection: DatabaseConnection,
+        manager: DatabaseManager = .shared
+    ) async -> Bool {
+        if case .live = manager.connectionState(connection.id) { return true }
+        let scriptConsent = manager.preConnectScriptConsent
+        guard await scriptConsent.confirm(connection) else { return false }
+        guard await LoadableExtensionPrompt.confirmIfNeeded(for: connection) else {
+            scriptConsent.withdrawApproval(for: connection.id)
+            return false
+        }
+        return true
     }
 }

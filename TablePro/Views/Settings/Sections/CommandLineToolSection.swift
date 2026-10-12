@@ -7,48 +7,31 @@ import AppKit
 import SwiftUI
 
 struct CommandLineToolSection: View {
-    private let installer: CommandLineToolInstalling
+    private let tool: CommandLineShim
 
-    @State private var status: CommandLineToolStatus = .notInstalled
-    @State private var manualCommand: String?
-    @State private var errorMessage: String?
+    @State private var status: CommandLineShimStatus = .notLinked
 
-    init(installer: CommandLineToolInstalling = CommandLineToolInstaller.shared) {
-        self.installer = installer
+    init(tool: CommandLineShim = CommandLineShim()) {
+        self.tool = tool
     }
 
     var body: some View {
         Section {
             LabeledContent {
-                switch status {
-                case .notInstalled:
-                    Button("Install") { install() }
-                case .installed:
-                    Button("Uninstall") { uninstall() }
-                case .conflict:
-                    Button("Install") { install() }
-                        .disabled(true)
-                }
+                Text(statusText)
+                    .foregroundStyle(.secondary)
             } label: {
                 Text("tablepro command")
-                Text(installer.toolPath)
+                Text(tool.linkPath)
                     .font(.system(.caption, design: .monospaced))
             }
 
-            if let manualCommand {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("TablePro could not do this for you. Run this in Terminal instead:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    CopyableCodeBlock(text: manualCommand)
-                }
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(instruction)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
+
+                CopyableCodeBlock(text: status == .linked ? tool.unlinkCommand : tool.linkCommand)
             }
         } header: {
             Text("Command Line")
@@ -61,44 +44,29 @@ struct CommandLineToolSection: View {
         }
     }
 
+    private var statusText: String {
+        switch status {
+        case .linked:
+            String(localized: "Linked")
+        case .notLinked:
+            String(localized: "Not linked")
+        case .otherFile:
+            String(localized: "Another file is there")
+        }
+    }
+
+    private var instruction: String {
+        switch status {
+        case .linked:
+            String(localized: "To remove it, run this in Terminal:")
+        case .notLinked:
+            String(localized: "To add it to your PATH, run this in Terminal:")
+        case .otherFile:
+            String(localized: "To replace that file with a link to this app, run this in Terminal:")
+        }
+    }
+
     private func syncStatus() {
-        let updated = installer.status
-        guard updated != status else { return }
-        status = updated
-        manualCommand = nil
-        errorMessage = nil
-    }
-
-    private func install() {
-        do {
-            try installer.install()
-            manualCommand = nil
-            errorMessage = nil
-        } catch CommandLineToolError.cancelled {
-            manualCommand = nil
-            errorMessage = nil
-        } catch CommandLineToolError.conflict(let path) {
-            manualCommand = nil
-            errorMessage = CommandLineToolError.conflict(path).localizedDescription
-        } catch {
-            manualCommand = installer.manualInstallCommand
-            errorMessage = error.localizedDescription
-        }
-        status = installer.status
-    }
-
-    private func uninstall() {
-        do {
-            try installer.uninstall()
-            manualCommand = nil
-            errorMessage = nil
-        } catch CommandLineToolError.cancelled {
-            manualCommand = nil
-            errorMessage = nil
-        } catch {
-            manualCommand = installer.manualUninstallCommand
-            errorMessage = error.localizedDescription
-        }
-        status = installer.status
+        status = tool.status()
     }
 }

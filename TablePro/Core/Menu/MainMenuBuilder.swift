@@ -5,32 +5,49 @@
 
 import AppKit
 
+/// AppKit adds items of its own to whichever menus are registered as the Services, Window and
+/// Help menus, so building keeps them apart and only `install` registers them.
+@MainActor
+struct BuiltMainMenu {
+    let bar: NSMenu
+    let servicesMenu: NSMenu
+    let windowsMenu: NSMenu?
+    let helpMenu: NSMenu?
+}
+
 /// Builds the whole menu bar. Menu order follows the macOS HIG: the app menu, the
 /// standard File/Edit/View menus, app-specific menus, then Window and Help.
 @MainActor
 enum MainMenuBuilder {
-    static func build(keyboard: KeyboardSettings) -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(AppMenuBuilder.build())
-        menu.addItem(FileMenuBuilder.build(keyboard: keyboard))
-        menu.addItem(EditMenuBuilder.build(keyboard: keyboard))
-        menu.addItem(ViewMenuBuilder.build(keyboard: keyboard))
-        menu.addItem(DatabaseMenuBuilder.build(keyboard: keyboard))
-        menu.addItem(QueryMenuBuilder.build(keyboard: keyboard))
-
+    static func build(keyboard: KeyboardSettings) -> BuiltMainMenu {
+        let services = NSMenu(title: String(localized: "Services"))
         let window = WindowMenuBuilder.build(keyboard: keyboard)
-        menu.addItem(window)
-
         let help = HelpMenuBuilder.build()
-        menu.addItem(help)
 
-        NSApp.windowsMenu = window.submenu
-        NSApp.helpMenu = help.submenu
-        return menu
+        let bar = NSMenu()
+        bar.addItem(AppMenuBuilder.build(servicesMenu: services))
+        bar.addItem(FileMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(EditMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(ViewMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(DatabaseMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(QueryMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(window)
+        bar.addItem(help)
+
+        return BuiltMainMenu(
+            bar: bar,
+            servicesMenu: services,
+            windowsMenu: window.submenu,
+            helpMenu: help.submenu
+        )
     }
 
     static func install(keyboard: KeyboardSettings) {
-        NSApp.mainMenu = build(keyboard: keyboard)
+        let built = build(keyboard: keyboard)
+        NSApp.servicesMenu = built.servicesMenu
+        NSApp.windowsMenu = built.windowsMenu
+        NSApp.helpMenu = built.helpMenu
+        NSApp.mainMenu = built.bar
     }
 
     /// The menu bar's key equivalents are one global resource, so exactly one function

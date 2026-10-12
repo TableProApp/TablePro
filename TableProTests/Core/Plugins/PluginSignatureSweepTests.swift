@@ -102,7 +102,6 @@ final class PluginSignatureSweepTests: XCTestCase {
             version: "1.0",
             pluginDescription: "",
             capabilities: [.databaseDriver],
-            isEnabled: true,
             databaseTypeId: "ExampleDB",
             additionalTypeIds: [],
             pluginIconName: "puzzlepiece",

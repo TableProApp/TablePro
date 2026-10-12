@@ -36,7 +36,7 @@ struct MoveTabToConnectionMenuTests {
     private static let selector = #selector(MainSplitViewController.moveTabToConnection(_:))
 
     private func databaseMenu() -> NSMenu? {
-        MainMenuBuilder.build(keyboard: KeyboardSettings())
+        MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
             .items.first { $0.title == String(localized: "Database") }?.submenu
     }
 

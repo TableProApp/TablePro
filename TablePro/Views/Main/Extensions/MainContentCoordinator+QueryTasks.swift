@@ -9,7 +9,8 @@ import TableProPluginKit
 
 extension MainContentCoordinator {
     /// An auto-load that cannot connect is parked as the pending load, so it runs once the
-    /// connection comes back instead of failing the tab.
+    /// connection comes back instead of failing the tab. It is the app's connect, not a person's,
+    /// so it never puts a pre-connect script prompt on screen.
     internal func connectBeforeAutoLoad(
         _ connection: DatabaseConnection,
         claim: TabExecutionClaim,
@@ -17,7 +18,7 @@ extension MainContentCoordinator {
         traceToken: TableLoadTraceToken?
     ) async -> Bool {
         do {
-            try await services.databaseManager.ensureConnected(connection)
+            try await services.databaseManager.ensureConnected(connection, trigger: .background)
             return true
         } catch {
             traceConnectUnavailable(traceToken)
