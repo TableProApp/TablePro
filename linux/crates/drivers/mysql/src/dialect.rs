@@ -436,6 +436,23 @@ mod tests {
     }
 
     #[test]
+    fn an_sql_export_quotes_with_backticks() {
+        let columns = [tablepro_core::column::ResultColumn::new(
+            "a`b",
+            tablepro_core::column::ColumnType::untyped_text("int"),
+        )];
+
+        let sql = tablepro_core::export::render_sql_insert(
+            &dialect(MySqlFlavour::MySql),
+            "t",
+            &columns,
+            &[vec![Value::Int(1)]],
+        );
+
+        assert_eq!(sql, "INSERT INTO `t` (`a``b`) VALUES (1);\n");
+    }
+
+    #[test]
     fn functional_key_parts_are_gated_on_mysql_8_0_13() {
         let mysql = |patch| {
             MySqlDialect::new(

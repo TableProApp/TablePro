@@ -60,10 +60,13 @@ pub fn literal(dialect: &dyn SqlDialect, value: &Value, column: &ResultColumn) -
 
 #[cfg(test)]
 mod tests {
-    use crate::dialect::dialect_for;
-
     use super::super::test_columns::cols;
     use super::*;
+    use crate::dialect::TestDialect;
+
+    fn render(table: &str, columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
+        render_sql_insert(&TestDialect::default(), table, columns, rows)
+    }
 
     #[test]
     fn a_row_becomes_one_statement_per_row() {
@@ -72,7 +75,7 @@ mod tests {
             vec![Value::Int(2), Value::Text("b".into())],
         ];
 
-        let sql = render_sql_insert(dialect_for("postgres"), "users", &cols(&["id", "name"]), &rows);
+        let sql = render("users", &cols(&["id", "name"]), &rows);
 
         assert_eq!(
             sql,
@@ -82,34 +85,17 @@ mod tests {
     }
 
     #[test]
-    fn each_engine_quotes_the_way_it_reads() {
-        let rows = vec![vec![Value::Int(1)]];
-        let columns = cols(&["id"]);
-
-        let postgres = render_sql_insert(dialect_for("postgres"), "t", &columns, &rows);
-        let mysql = render_sql_insert(dialect_for("mysql"), "t", &columns, &rows);
-
-        assert!(postgres.starts_with("INSERT INTO \"t\" (\"id\")"), "{postgres}");
-        assert!(mysql.starts_with("INSERT INTO `t` (`id`)"), "{mysql}");
-    }
-
-    #[test]
     fn a_quote_in_a_value_cannot_end_the_literal() {
         let rows = vec![vec![Value::Text("O'Brien".into())]];
 
-        let sql = render_sql_insert(dialect_for("postgres"), "t", &cols(&["name"]), &rows);
+        let sql = render("t", &cols(&["name"]), &rows);
 
         assert!(sql.contains("'O''Brien'"), "{sql}");
     }
 
     #[test]
     fn a_quote_in_an_identifier_cannot_end_it_either() {
-        let sql = render_sql_insert(
-            dialect_for("postgres"),
-            "we\"ird",
-            &cols(&["a\"b"]),
-            &[vec![Value::Int(1)]],
-        );
+        let sql = render("we\"ird", &cols(&["a\"b"]), &[vec![Value::Int(1)]]);
 
         assert!(sql.contains("\"we\"\"ird\""), "{sql}");
         assert!(sql.contains("\"a\"\"b\""), "{sql}");
@@ -119,7 +105,7 @@ mod tests {
     fn a_null_is_written_as_null() {
         let rows = vec![vec![Value::Null]];
 
-        let sql = render_sql_insert(dialect_for("postgres"), "t", &cols(&["a"]), &rows);
+        let sql = render("t", &cols(&["a"]), &rows);
 
         assert!(sql.contains("VALUES (NULL)"), "{sql}");
     }
@@ -128,7 +114,7 @@ mod tests {
     fn a_value_the_engine_has_no_literal_for_says_so_rather_than_guessing() {
         let rows = vec![vec![Value::Bytes(vec![0xde, 0xad])]];
 
-        let sql = render_sql_insert(dialect_for("postgres"), "t", &cols(&["blob"]), &rows);
+        let sql = render("t", &cols(&["blob"]), &rows);
 
         assert!(sql.contains("omitted"), "{sql}");
         assert!(sql.contains("NULL"), "{sql}");
@@ -139,13 +125,13 @@ mod tests {
     fn a_short_row_still_fills_every_column() {
         let rows = vec![vec![Value::Int(1)]];
 
-        let sql = render_sql_insert(dialect_for("postgres"), "t", &cols(&["a", "b"]), &rows);
+        let sql = render("t", &cols(&["a", "b"]), &rows);
 
         assert!(sql.contains("VALUES (1, NULL)"), "{sql}");
     }
 
     #[test]
     fn a_result_with_no_columns_writes_nothing() {
-        assert_eq!(render_sql_insert(dialect_for("postgres"), "t", &[], &[]), "");
+        assert_eq!(render("t", &[], &[]), "");
     }
 }

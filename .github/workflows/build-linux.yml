@@ -204,3 +204,65 @@ jobs:
         with:
           name: junit-${{ matrix.package }}
           path: linux/target/nextest/ci/junit.xml
+
+  integration-session:
+    # The session crate builds tablepro-storage, which links GIO 2.88,
+    # and the host runner ships 2.80, so this entry runs in the fast
+    # job's image instead of the matrix above. The host's Docker socket
+    # is mounted; testcontainers sees /.dockerenv and reaches the
+    # containers it starts through the bridge gateway.
+    name: Docker tests (tablepro-session)
+    runs-on: ubuntu-24.04
+    needs: fast
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      options: -v /var/run/docker.sock:/var/run/docker.sock
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
+      - name: Install system dependencies
+        # The glib, sqlite and clang development packages the fast job
+        # builds storage with, plus openssh-client for the tunnel tests.
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            pkgconf \
+            libglib2.0-dev \
+            libsqlite3-dev \
+            clang \
+            libclang-dev \
+            openssh-client
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: linux
+          key: tablepro-session
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-nextest@0.9.144
+      - name: Verify docker is available
+        # No Docker CLI in the image; the API answers on the socket.
+        run: curl --fail --silent --show-error --unix-socket /var/run/docker.sock http://localhost/_ping
+      - name: Docker tests
+        run: cargo nextest run --locked --profile ci -p tablepro-session --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-tablepro-session
+          path: linux/target/nextest/ci/junit.xml

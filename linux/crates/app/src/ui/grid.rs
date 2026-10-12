@@ -844,8 +844,8 @@ fn is_int_type(data_type: &str) -> bool {
 }
 
 /// Detect whether a column is floating-point typed. Decimal /
-/// numeric / money are intentionally excluded because `rust_decimal`
-/// is arbitrary-precision and `GtkSpinButton` is f64-internally.
+/// numeric / money are left out because `SqlDecimal` keeps every digit
+/// and `GtkSpinButton` holds an f64.
 fn is_float_type(data_type: &str) -> bool {
     let dt = data_type.to_ascii_lowercase();
     matches!(dt.as_str(), "float" | "double" | "real" | "double precision") || dt.starts_with("float(")
@@ -1092,8 +1092,8 @@ fn show_calendar_popover(label: &super::cell_editor::CellEditor, col_index: usiz
 /// commits and closes; Esc / click-outside cancels. `is_float = true`
 /// configures the adjustment for fractional values with 6 digits of
 /// precision; `false` for integers (no decimals). Decimal columns
-/// stay on the text-edit path because GtkSpinButton is f64-internally
-/// and would lose `rust_decimal` precision.
+/// stay on the text-edit path because GtkSpinButton holds an f64 and
+/// would drop digits a `SqlDecimal` keeps.
 fn show_spin_button_popover(
     label: &super::cell_editor::CellEditor,
     col_index: usize,

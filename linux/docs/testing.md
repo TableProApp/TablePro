@@ -6,8 +6,9 @@ Three layers, three tools. Each crate's test policy follows from its position in
 |---|---|---|---|
 | `core` | Pure traits + types | Unit tests in `src/`, table-driven for type mappers | Yes |
 | `storage` | Filesystem + libsecret + GSchema | Unit tests + integration tests with `tempfile` | Yes |
-| `drivers/<engine>` | Real engines | Unit tests + `testcontainers-rs` integration tests | Yes |
-| `app` | GTK4 + Relm4 components | Limited; pure logic in `services/` is unit-tested | No |
+| `session` | Sessions, connect, health | Unit tests with the `fakes` feature + `testcontainers-rs` tests | Yes |
+| `drivers/<engine>` | Real engines | Unit tests, the conformance suites, `testcontainers-rs` integration tests | Yes |
+| `app` | GTK 4 widgets | `#[gtk4::test]` widget tests; pure logic is unit-tested | Yes |
 
 ## Unit tests
 
@@ -19,10 +20,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_unique_violation_to_query_error() {
-        let err = sqlx::Error::Database(/* ... */);
-        let mapped = map_sqlx_error(err);
-        assert!(matches!(mapped, DriverError::Query { sqlstate: Some(_), .. }));
+    fn verify_full_is_default() {
+        let form = ConnectForm::new("postgres", drivers_postgres::PgDriver.capabilities());
+
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
     }
 }
 ```
@@ -54,29 +55,30 @@ Per-crate `tests/` directory. One file per scenario.
 
 For `storage`, integration tests use `tempfile::TempDir` to run against an isolated filesystem root, with `XDG_CONFIG_HOME` overridden via env var.
 
-For drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) to spin up a real database. The pattern is identical for every driver:
+For drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each driver's `tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`:
 
 ```rust
-use testcontainers::ImageExt;
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::runners::AsyncRunner;
+use tablepro_core::meta::{ObjectKind, ObjectScope};
 
-#[tokio::test]
+use crate::support::{CALL, connect, setup, start, within};
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn list_tables_returns_seeded_tables() {
-    let container = Postgres::default().with_tag("16-alpine").start().await.unwrap();
-    let host = container.get_host().await.unwrap().to_string();
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
+async fn a_created_table_is_listed() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), &["CREATE TABLE plain (id int)"]).await;
 
-    let conn = PgDriver.connect(opts_for(host, port)).await.unwrap();
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
 
-    conn.execute("CREATE TABLE foo (id INT)").await.unwrap();
-    let tables = conn.list_tables().await.unwrap();
-    assert!(tables.iter().any(|t| t.name == "foo"));
+    assert!(objects.iter().any(|object| object.name == "plain" && object.kind == ObjectKind::Table));
 }
 ```
 
-Keep the container alive for the whole test: dropping the handle stops it.
+Keep the fixture alive for the whole test: dropping it stops the container.
 
 ### Container fixtures
 
@@ -93,6 +95,49 @@ SQL Server has only the `sa` principal, because its TLS contract carries no clie
 
 `HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
+### Conformance
+
+Every driver runs the same contract tests against its real server. `tablepro_test_support::connection_conformance_suite!` emits them from an engine adapter the driver's `tests/integration/conformance_engine.rs` implements (`ConformanceEngine`: how to start the server, connect, and spell a scratch table, a statement that never ends and a row source):
+
+```rust
+tablepro_test_support::connection_conformance_suite! {
+    engine: PgEngine,
+    docker: true,
+    endpoint: network,
+    pool: pooled,
+    editor_transactions: true,
+    unsupported_types: true,
+    bounded_ddl: true,
+}
+```
+
+The cases every engine runs: a created table is listed with its key, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, and `stream_read` streams every row in bounded batches.
+
+Each flag adds cases and needs its engine trait:
+
+| Flag | Adds | Needs |
+|---|---|---|
+| `endpoint: network` | a dropped caller stops the server's statement; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `pool: pooled` | a probe succeeds while every pool slot is busy | `PooledConformanceEngine` |
+| `editor_transactions: true` | the row limit keeps the transaction and the statements after it | `EditorTransactionEngine` |
+| `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |
+| `bounded_ddl: true` | a schema-change batch is not cut off by the statement timeout | `BoundedDdlEngine` |
+
+A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so a driver cannot skip a case by declaring less. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
+
+### TLS conformance
+
+Every network driver also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
+
+```rust
+tablepro_test_support::tls_conformance_suite! {
+    engine: PgTlsEngine,
+    client_identity: true,
+}
+```
+
+The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
+
 ### Ignore reasons
 
 Two reasons are allowed:
@@ -104,7 +149,7 @@ The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fail
 
 ### Running the docker tests
 
-CI runs one job per driver package:
+CI runs one job per package with docker tests:
 
 ```bash
 cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
@@ -174,12 +219,12 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 
 ## CI
 
-GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
+GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner:
 
 1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
-2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
+2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted.
 
-PRs only merge when both jobs are green.
+A Translations job also checks `po/POTFILES.in` and extracts the POT template. PRs only merge when every job is green.
 
 ## Coverage
 

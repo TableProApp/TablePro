@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use crate::column::ColumnType;
 use crate::ddl::{ColumnDefinition, DdlDialect, ReferentialAction};
-use crate::dialect::{SqlDialect, quote_ident};
+use crate::dialect::SqlDialect;
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, IndexKey, TableRef};
 
@@ -348,6 +348,32 @@ fn qualified_table(driver_id: &str, schema: Option<&str>, table: &str) -> String
         Some(s) if !s.is_empty() => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
         _ => quote_ident(driver_id, table),
     }
+}
+
+/// An identifier in the engine's own quotes, keyed by driver id like
+/// the rest of this builder until the per-engine DDL dialects take over.
+fn quote_ident(driver_id: &str, name: &str) -> String {
+    match driver_id {
+        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "clickhouse" => quote_clickhouse_ident(name),
+        "mssql" => format!("[{}]", name.replace(']', "]]")),
+        _ => format!("\"{}\"", name.replace('"', "\"\"")),
+    }
+}
+
+/// ClickHouse's lexer reads a backslash inside backticks as an escape,
+/// so doubling the delimiter alone lets `\`` close the identifier early.
+fn quote_clickhouse_ident(name: &str) -> String {
+    let mut quoted = String::with_capacity(name.len() + 2);
+    quoted.push('`');
+    for character in name.chars() {
+        if matches!(character, '\\' | '\'' | '`' | '\t' | '\n') {
+            quoted.push('\\');
+        }
+        quoted.push(character);
+    }
+    quoted.push('`');
+    quoted
 }
 
 /// Escape a value for inclusion in a SQL string literal. Bracket
@@ -1441,6 +1467,14 @@ mod tests {
             default_value: None,
             comment: None,
         }
+    }
+
+    #[test]
+    fn each_engine_quotes_identifiers_the_way_it_reads() {
+        assert_eq!(quote_ident("postgres", "a\"b"), "\"a\"\"b\"");
+        assert_eq!(quote_ident("mysql", "a`b"), "`a``b`");
+        assert_eq!(quote_ident("mssql", "a]b"), "[a]]b]");
+        assert_eq!(quote_ident("clickhouse", "a\\`b"), "`a\\\\\\`b`");
     }
 
     #[test]

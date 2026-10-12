@@ -182,7 +182,10 @@ mod tests {
             column: dc("a", "int"),
         }]);
         let sql = t
-            .materialize("postgres", tablepro_core::dialect::dialect_for("postgres"))
+            .materialize(
+                "postgres",
+                &drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0)),
+            )
             .unwrap();
         assert_eq!(sql.len(), 1);
         assert!(sql[0].contains("ALTER TABLE"));

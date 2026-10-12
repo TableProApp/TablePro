@@ -836,11 +836,15 @@ mod tests {
         assert!(batch.steps.iter().all(|step| step.statement.params().is_empty()));
     }
 
+    fn postgres_dialect() -> drivers_postgres::PgDialect {
+        drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
+    }
+
     #[test]
     fn create_table_sql_restates_the_definition() {
-        let dialect = tablepro_core::dialect::dialect_for("postgres");
+        let dialect = postgres_dialect();
 
-        let sql = create_table_sql(&definition(vec![text_column("id")]), "postgres", dialect)
+        let sql = create_table_sql(&definition(vec![text_column("id")]), "postgres", &dialect)
             .expect("the SQL builds")
             .expect("a table with columns");
 
@@ -851,10 +855,10 @@ mod tests {
 
     #[test]
     fn a_table_without_columns_has_nothing_to_create() {
-        let dialect = tablepro_core::dialect::dialect_for("postgres");
+        let dialect = postgres_dialect();
 
         assert!(matches!(
-            create_table_sql(&definition(Vec::new()), "postgres", dialect),
+            create_table_sql(&definition(Vec::new()), "postgres", &dialect),
             Ok(None)
         ));
     }

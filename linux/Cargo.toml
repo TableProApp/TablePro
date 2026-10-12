@@ -36,13 +36,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # The driver dials through its own hyper-rustls connector, so the crate's
 # own TLS features would only add a second, unused TLS stack.
 clickhouse = { version = "0.15", default-features = false }
-# rust_decimal stays until the app reads decimals as SqlDecimal.
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "rust_decimal", "uuid", "json"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "uuid", "json"] }
 # The driver reads and writes DECIMAL through tiberius's own Numeric.
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
-rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency.
 rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono"] }
