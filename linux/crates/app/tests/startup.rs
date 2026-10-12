@@ -14,16 +14,26 @@ use std::time::{Duration, Instant};
 const RUN_LIMIT: Duration = Duration::from_secs(30);
 
 fn main() -> ExitCode {
-    let (Ok(schemas), Ok(empty)) = (compiled_schema_dir(), empty_dir()) else {
+    let (Ok(schemas), Ok(empty), Ok(runtime)) = (compiled_schema_dir(), empty_dir(), runtime_dir()) else {
         return ExitCode::FAILURE;
     };
-    if help_lists_the_gapplication_options(&schemas, &empty).is_err() {
+    let sandbox = Sandbox {
+        empty: &empty,
+        runtime: &runtime,
+    };
+    if help_lists_the_gapplication_options(&schemas, &sandbox).is_err() {
         return ExitCode::FAILURE;
     }
-    if a_missing_schema_is_reported(&empty).is_err() {
+    if a_missing_schema_is_reported(&sandbox).is_err() {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+/// The directories a run is confined to.
+struct Sandbox<'a> {
+    empty: &'a Path,
+    runtime: &'a Path,
 }
 
 fn target_tmp(name: &str) -> PathBuf {
@@ -65,13 +75,18 @@ fn compiled_schema_dir() -> Result<PathBuf, ()> {
 /// the second of those, and the case that asks what happens when no
 /// schema is installed would be answered by their machine instead of
 /// by the code.
-fn tablepro(empty: &Path) -> Command {
+///
+/// The single-instance lock lives under `XDG_RUNTIME_DIR`, so a TablePro
+/// the developer has open would otherwise hold it, and the binary under
+/// test would exit at once without printing or reporting anything.
+fn tablepro(sandbox: &Sandbox<'_>) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tablepro"));
     command
         .env("LC_ALL", "C.UTF-8")
         .env("GSETTINGS_BACKEND", "memory")
-        .env("XDG_DATA_HOME", empty)
-        .env("XDG_DATA_DIRS", empty)
+        .env("XDG_DATA_HOME", sandbox.empty)
+        .env("XDG_DATA_DIRS", sandbox.empty)
+        .env("XDG_RUNTIME_DIR", sandbox.runtime)
         .env_remove("LANGUAGE")
         .stdin(Stdio::null());
     command
@@ -82,6 +97,22 @@ fn tablepro(empty: &Path) -> Command {
 fn empty_dir() -> Result<PathBuf, ()> {
     let dir = target_tmp("no-schemas");
     std::fs::create_dir_all(&dir).map_err(|error| eprintln!("could not create {}: {error}", dir.display()))?;
+    Ok(dir)
+}
+
+/// A runtime directory of the test's own. GLib and the XDG base directory
+/// specification expect it to be private to the user, so it is created
+/// with mode 0700.
+fn runtime_dir() -> Result<PathBuf, ()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+    let dir = target_tmp("runtime");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .and_then(|()| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)))
+        .map_err(|error| eprintln!("could not create {}: {error}", dir.display()))?;
     Ok(dir)
 }
 
@@ -129,9 +160,9 @@ fn combined(output: &Output) -> String {
 /// `--help-gapplication` appears only once GApplication has parsed the
 /// command line, which happens after `run()` registered the embedded
 /// GResource. A missing or malformed gresource aborts before that.
-fn help_lists_the_gapplication_options(schemas: &Path, empty: &Path) -> Result<(), ()> {
+fn help_lists_the_gapplication_options(schemas: &Path, sandbox: &Sandbox<'_>) -> Result<(), ()> {
     let output = run(
-        tablepro(empty).arg("--help").env("GSETTINGS_SCHEMA_DIR", schemas),
+        tablepro(sandbox).arg("--help").env("GSETTINGS_SCHEMA_DIR", schemas),
         "--help",
     )?;
 
@@ -149,8 +180,11 @@ fn help_lists_the_gapplication_options(schemas: &Path, empty: &Path) -> Result<(
 
 /// Without the schema installed the app must name what is missing and
 /// exit, not abort inside GIO with nothing to go on.
-fn a_missing_schema_is_reported(empty: &Path) -> Result<(), ()> {
-    let output = run(tablepro(empty).env("GSETTINGS_SCHEMA_DIR", empty), "a missing schema")?;
+fn a_missing_schema_is_reported(sandbox: &Sandbox<'_>) -> Result<(), ()> {
+    let output = run(
+        tablepro(sandbox).env("GSETTINGS_SCHEMA_DIR", sandbox.empty),
+        "a missing schema",
+    )?;
 
     if output.status.success() {
         eprintln!("tablepro started with no settings schema installed");
