@@ -310,7 +310,7 @@ jobs:
           Plugin release for TablePro (PluginKit $PKV).
 
           ### Installation
-          TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via Settings > Plugins > Browse.
+          TablePro offers to install this plugin where it is needed. To install it by hand, add the zip below in Settings > Plugins.
 
           ### SHA-256
           - ARM64: \`$ARM64_SHA\`

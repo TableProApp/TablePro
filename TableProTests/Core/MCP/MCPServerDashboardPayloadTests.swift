@@ -110,7 +110,7 @@ struct MCPSessionControlStatementTests {
 
     @Test("An engine with no session control keeps saying so")
     func engineWithoutSessionControl() throws {
-        let error = try #require(try refusal(.duckdb, processId: "1", cancelOnly: true))
+        let error = try #require(try refusal(.typesense, processId: "1", cancelOnly: true))
         #expect(error.code == .queryFailed)
         #expect(error.message == "This engine cannot stop a session from TablePro.")
     }

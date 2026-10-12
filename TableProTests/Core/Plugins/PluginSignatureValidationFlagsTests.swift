@@ -8,10 +8,6 @@ import Security
 @testable import TablePro
 import Testing
 
-/// The app carries `com.apple.security.cs.disable-library-validation` because it loads plugins
-/// signed by other teams, so dyld validates nothing and `SecStaticCodeCheckValidity` is the entire
-/// load decision. Two of its flags are what make that decision cover a real bundle: nested code,
-/// and the strict resource envelope.
 struct PluginSignatureValidationFlagsTests {
     @Test("Nested Mach-O inside a plugin bundle is verified")
     func flagsCheckNestedCode() {
@@ -21,6 +17,11 @@ struct PluginSignatureValidationFlagsTests {
     @Test("Resource envelope anomalies are rejected rather than permitted")
     func flagsValidateStrictly() {
         #expect(PluginCodeSignatureVerifier.validationFlags & kSecCSStrictValidate != 0)
+    }
+
+    @Test("A symbolic link pointing outside the bundle is rejected")
+    func flagsRestrictSymlinks() {
+        #expect(PluginCodeSignatureVerifier.validationFlags & kSecCSRestrictSymlinks != 0)
     }
 
     @Test("Every architecture is still checked")

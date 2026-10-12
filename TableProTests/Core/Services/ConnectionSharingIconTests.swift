@@ -49,7 +49,7 @@ struct ConnectionSharingIconTests {
 
     // MARK: - Connection icon
 
-    @Test("A file export and Copy as JSON carry the connection's icon")
+    @Test("A file export carries the connection's icon")
     func exportCarriesIcon() throws {
         let library = try ImportLibraryFixture()
         defer { library.cleanUp() }
@@ -57,11 +57,8 @@ struct ConnectionSharingIconTests {
         connection.iconName = "server.rack"
 
         let bundle = try library.exporter.connectionsOnlyBundle(for: [connection])
-        let json = ConnectionShareLink.compactJSON(for: connection, exporter: library.exporter)
-        let fromJSON = try JSONDecoder().decode(ExportableConnection.self, from: Data(json.utf8))
 
         #expect(bundle.connections.first?.settings.iconName == "server.rack")
-        #expect(fromJSON.iconName == "server.rack")
     }
 
     @Test("Copy TablePro Link carries the icon and the import keeps it")

@@ -11,19 +11,12 @@ struct MCPSection: View {
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
 
-    /// The server starts on demand whether or not the toggle is on, so the toggle cannot be what
-    /// decides whether a running one is reported. With it off this was the only place left that
-    /// could say a server was running, and it said nothing at all.
-    private var showsStatus: Bool {
-        settings.enabled || manager.state != .stopped
-    }
-
     var body: some View {
         Section {
             Toggle(String(localized: "Enable MCP Server"), isOn: $settings.enabled)
                 .accessibilityIdentifier("mcp-enable-server-toggle")
 
-            if showsStatus {
+            if settings.enabled {
                 LabeledContent(String(localized: "Status")) {
                     MCPStatusIndicator()
                 }

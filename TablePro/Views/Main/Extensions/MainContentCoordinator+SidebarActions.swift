@@ -131,25 +131,6 @@ extension MainContentCoordinator {
         WindowManager.shared.openTab(payload: payload)
     }
 
-    /// Opens the engine's CREATE TYPE template in a query tab, the way Create New View does. A type
-    /// has no form of its own: its shape is the statement, and the editor is where that is written.
-    func createType(database: String?, schema: String?) {
-        guard !safeModeLevel.blocksAllWrites else { return }
-        guard let driver = DatabaseManager.shared.driver(for: connection.id),
-              let template = driver.createTypeTemplate(schema: schema ?? toolbarState.currentSchema)
-        else { return }
-
-        let targetDatabase = database.flatMap { $0.isEmpty ? nil : $0 } ?? browseDatabaseName
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: targetDatabase,
-            schemaName: schema,
-            initialQuery: template
-        )
-        WindowManager.shared.openTab(payload: payload)
-    }
-
     /// Reads the view the row names, in the database and schema the row names, and opens the query
     /// tab there. It used to read through the browse scope with the name alone, so a view selected
     /// in another schema opened the definition of a same-named view in the browsed one, and running

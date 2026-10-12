@@ -27,17 +27,6 @@ struct GeneralPaneView: View {
 
     var body: some View {
         Form {
-            if let candidate = coordinator.clipboardCandidate {
-                Section {
-                    ClipboardConnectionBanner(
-                        candidate: candidate,
-                        onUse: { coordinator.applyClipboardCandidate(candidate) },
-                        onDismiss: { coordinator.dismissClipboardCandidate() }
-                    )
-                    .listRowInsets(EdgeInsets())
-                }
-            }
-
             identitySection
             connectionSection
             authenticationSection
