@@ -203,14 +203,16 @@ pub fn was_cancelled(token: Option<&tokio_util::sync::CancellationToken>) -> boo
 pub fn is_permanent_failure(error: &TransportError) -> bool {
     use tablepro_core::DriverError;
     match error {
-        TransportError::Driver(driver) => matches!(
-            driver,
-            DriverError::AuthFailed
-                | DriverError::Tls(_)
-                | DriverError::IntegratedAuth(_)
-                | DriverError::PolicyDenied(_)
-                | DriverError::Unsupported(_)
-        ),
+        TransportError::Driver(driver) => {
+            matches!(
+                driver,
+                DriverError::AuthFailed
+                    | DriverError::Tls(_)
+                    | DriverError::IntegratedAuth(_)
+                    | DriverError::PolicyDenied(_)
+                    | DriverError::Unsupported(_)
+            ) || matches!(driver, DriverError::Query { sqlstate: Some(state), .. } if state.starts_with("28") || state == "3D000")
+        }
         TransportError::Keyring(_)
         | TransportError::Secret(_)
         | TransportError::IntegratedAuthUnsupported(_)
@@ -274,6 +276,24 @@ mod failure_tests {
         ] {
             assert!(is_permanent_failure(&error), "{error} should stop a reconnect");
         }
+    }
+
+    #[test]
+    fn a_server_that_refuses_the_login_or_the_database_is_not_retried() {
+        for sqlstate in ["28P01", "28000", "3D000"] {
+            let error = TransportError::Driver(DriverError::Query {
+                message: "refused".into(),
+                sqlstate: Some(sqlstate.into()),
+                position: None,
+            });
+            assert!(is_permanent_failure(&error), "{sqlstate} must stop a reconnect");
+        }
+        let busy = TransportError::Driver(DriverError::Query {
+            message: "too many connections".into(),
+            sqlstate: Some("53300".into()),
+            position: None,
+        });
+        assert!(!is_permanent_failure(&busy), "a busy server is worth retrying");
     }
 
     #[test]

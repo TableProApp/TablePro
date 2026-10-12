@@ -10,6 +10,8 @@ Saved UUID, live handle, editor session and namespace are distinct owners. The G
 
 GUI uncertainty is scoped to a live connection generation. Journal failure remains shared. Agentd still supplies one shared `AuditState` and has no guard fault sink; headless generation isolation and forced retirement remain open. Successful ping alone cannot prove safe reuse after a caught driver panic.
 
+A login the server refuses is never retried. PostgreSQL reports a wrong password or unknown role (28P01) as an authentication failure, and any other class 28 refusal (for example no `pg_hba.conf` entry) or a missing database (3D000) also stops reconnect attempts, so a bad credential cannot lock an account by repeated tries; a busy server (53300) and network faults are still retried.
+
 ## TLS identity and evidence
 
 The dial endpoint and authenticated service hostname are separate. SSH retains the saved service identity. Where supported, verifying connections forward a private Unix socket; other drivers must explicitly verify the original hostname over TCP or refuse. Local PostgreSQL sockets reject SSH and TLS; forwarded sockets retain the remote identity.

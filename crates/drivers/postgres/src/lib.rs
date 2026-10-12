@@ -1035,6 +1035,8 @@ fn map_sqlx_connect_error(err: sqlx::Error) -> DriverError {
         // then erases the underlying I/O error into PoolTimedOut. During
         // initial setup there is no established connection to disconnect.
         DriverError::ConnectionRefused
+    } else if matches!(&err, sqlx::Error::Database(e) if e.code().as_deref() == Some("28P01")) {
+        DriverError::AuthFailed
     } else {
         map_sqlx_error(err)
     }
