@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
 - Fonts from the theme file.
+- Clipboard URL banner in the New Connection form. Import from URL fills the form from a pasted link.
+- Share > Copy as JSON in the connection list. Copy as JSON in the data grid stays.
+- Export as SQL in the ER diagram. File > Export > Export Tables… to SQL with Structure writes the DDL.
 - Enum label editing and New Type… for PostgreSQL types. Run `ALTER TYPE` or `CREATE TYPE` in a query tab.
 - Server Dashboard for SQLite and DuckDB.
 - Dashboard button from Customize Toolbar. Open the Server Dashboard from the Database menu or Actions.
@@ -75,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Pre-connect scripts running without a prompt when MCP, AppleScript, the AI assistant, Compare or Copy To opened the connection.
+
+### Security
+
+- Import and Transfer To writing rows without Safe Mode's confirmation, Touch ID or audit log entry.
 
 ## [0.80.0] - 2026-10-11
 

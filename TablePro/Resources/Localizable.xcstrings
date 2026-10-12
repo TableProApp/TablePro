@@ -149365,6 +149365,7 @@
       }
     },
     "Rows are written into tables that already exist on the destination." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -202478,6 +202479,7 @@
       }
     },
     "Use" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -202780,6 +202782,7 @@
       }
     },
     "Use clipboard URL" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
