@@ -916,7 +916,7 @@ def write_fixture(base, audit_available=True, environment="prod", mcp_token=Fals
 
 
 def start_application(binary, environment, restored=False):
-    environment["G_DEBUG"] = "fatal-criticals"
+    environment.setdefault("G_DEBUG", "fatal-criticals")
     process = subprocess.Popen(
         [str(binary)],
         env=environment,
@@ -985,7 +985,7 @@ def run_scenario(binary, scenario):
         process = start_application(binary, environment)
         if getattr(scenario, "requires_editor", True):
             open_editor()
-        def restart(before_start=None, empty=False):
+        def restart(before_start=None, empty=False, restored=None):
             nonlocal process, stderr
             invoke_accessible_action("win.quit")
             process.wait(timeout=WAIT_SECONDS)
@@ -995,7 +995,7 @@ def run_scenario(binary, scenario):
             wait_for_frame_containing(" — BookiE", present=False)
             if before_start is not None:
                 before_start(environment)
-            restored = "empty" if empty else "welcome" if before_start else True
+            restored = "empty" if empty else restored or ("welcome" if before_start else True)
             process = start_application(binary, environment, restored=restored)
 
         if getattr(scenario, "needs_restart", False):
@@ -2020,6 +2020,88 @@ def two_windows_hold_two_connections(database, base):
 two_windows_hold_two_connections.environment = "local"
 
 
+def closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab(database, base, restart):
+    sql_file = base / "saved-query.sql"
+    sql_file.write_text("SELECT 1;\n", encoding="utf-8")
+
+    def seed_file_tab(environment):
+        environment["G_DEBUG"] = ""
+        path = Path(environment["XDG_CONFIG_HOME"]) / storage_dir_name() / "workspace_state.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "connections": {
+                        "d4f5e246-c40a-4a30-90f2-39e93e94d920": {
+                            "tabs": [
+                                {"kind": "editor", "query": "SELECT 7;", "draft_id": None},
+                                {"kind": "editor", "query": "", "draft_id": None, "file": str(sql_file)},
+                            ],
+                            "active_idx": 1,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    restart(before_start=seed_file_tab, restored=True)
+    wait_for_node_containing("saved-query.sql", role=pyatspi.ROLE_PAGE_TAB)
+    set_editor_text("SELECT 2;")
+    wait_for_node(name="Close Tab", role=pyatspi.ROLE_PUSH_BUTTON)
+    close_buttons = [
+        node
+        for application in desktop_applications()
+        for node in descendants(application)
+        if node_name(node) == "Close Tab" and node_role(node) == pyatspi.ROLE_PUSH_BUTTON
+    ]
+    invoke(close_buttons[-1])
+    invoke(wait_for_node(name="Save", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node_containing("saved-query.sql", role=pyatspi.ROLE_PAGE_TAB, present=False)
+    assert sql_file.read_text(encoding="utf-8").strip() == "SELECT 2;", "the file was not saved"
+
+
+def closing_a_clean_editor_tab_removes_it_and_keeps_the_other(database, base, restart):
+    def seed_two_tabs(environment):
+        environment["G_DEBUG"] = ""
+        path = Path(environment["XDG_CONFIG_HOME"]) / storage_dir_name() / "workspace_state.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "connections": {
+                        "d4f5e246-c40a-4a30-90f2-39e93e94d920": {
+                            "tabs": [
+                                {"kind": "editor", "query": "SELECT 7;", "draft_id": None},
+                                {"kind": "editor", "query": "SELECT 8;", "draft_id": None},
+                            ],
+                            "active_idx": 1,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    restart(before_start=seed_two_tabs, restored=True)
+    wait_for_node_containing("SELECT 8;", role=pyatspi.ROLE_PAGE_TAB)
+    close_buttons = [
+        node
+        for application in desktop_applications()
+        for node in descendants(application)
+        if node_name(node) == "Close Tab" and node_role(node) == pyatspi.ROLE_PUSH_BUTTON
+    ]
+    invoke(close_buttons[-1])
+    wait_for_node_containing("SELECT 8;", role=pyatspi.ROLE_PAGE_TAB, present=False)
+    wait_for_node_containing("SELECT 7;", role=pyatspi.ROLE_PAGE_TAB)
+
+
+closing_a_clean_editor_tab_removes_it_and_keeps_the_other.environment = "local"
+closing_a_clean_editor_tab_removes_it_and_keeps_the_other.needs_restart = True
+
+
+closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab.environment = "local"
+closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab.needs_restart = True
+
+
 def switched_connection_keeps_workspace_tabs_after_debounce(database, _base):
     with sqlite3.connect(database) as connection:
         connection.executemany(
@@ -2183,6 +2265,8 @@ def main():
         a_browse_tab_reads_the_new_connection_after_a_switch,
         two_windows_hold_two_connections,
         switched_connection_keeps_workspace_tabs_after_debounce,
+        closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab,
+        closing_a_clean_editor_tab_removes_it_and_keeps_the_other,
         switching_one_window_leaves_the_other_windows_edits,
         sidebar_tables_group_collapses_and_expands,
         restart_with_a_deleted_connection_opens_the_welcome_list,

@@ -71,7 +71,7 @@ impl App {
         });
     }
 
-    pub(super) fn on_editor_file_saved(&mut self, tab: Uuid, file: TextFile, sender: ComponentSender<Self>) {
+    pub(super) fn on_editor_file_saved(&mut self, tab: Uuid, file: TextFile) {
         self.bind_editor_file(tab, EditorFile::from_disk(file));
         self.show_toast(&crate::tr!("Saved"));
         if matches!(
@@ -82,7 +82,7 @@ impl App {
             return;
         }
         if dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab) {
-            sender.input(AppMsg::WorkspaceTabClosed(tab));
+            self.request_workspace_tab_close(tab);
         }
     }
 

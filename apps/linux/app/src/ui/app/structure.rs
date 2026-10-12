@@ -468,7 +468,7 @@ impl App {
         // the counter membership was consumed either way.
         let drained = super::dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
         if drained && !kind_promoted {
-            sender.input(AppMsg::WorkspaceTabClosed(tab_id));
+            self.request_workspace_tab_close(tab_id);
         }
         if self.close_window_after_save.get() && self.close_after_save.borrow().is_empty() {
             self.close_window_after_save.set(false);

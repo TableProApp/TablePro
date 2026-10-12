@@ -752,7 +752,7 @@ impl SimpleComponent for App {
                 // structure-dirty waits for both saves before closing.
                 let drained = dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
                 if drained {
-                    sender.input(AppMsg::WorkspaceTabClosed(tab_id));
+                    self.request_workspace_tab_close(tab_id);
                 }
                 // If we're in a window-close-Save-all flow and the map
                 // just drained, the window can finally close.
@@ -887,7 +887,7 @@ impl SimpleComponent for App {
             }
             AppMsg::SaveEditorFileAs(tab) => self.save_editor_file_as(tab, sender),
             AppMsg::SaveEditorFile { tab, overwrite } => self.save_editor_file(tab, overwrite, sender),
-            AppMsg::EditorFileSaved(tab, file) => self.on_editor_file_saved(tab, file, sender),
+            AppMsg::EditorFileSaved(tab, file) => self.on_editor_file_saved(tab, file),
             AppMsg::EditorFileSaveFailed(tab, message) => self.on_editor_file_save_failed(tab, &message),
             AppMsg::EditorFileSaveCancelled(tab) => self.on_editor_file_save_cancelled(tab),
             AppMsg::EditorFileChangedOnDisk(tab) => self.on_editor_file_changed_on_disk(tab, sender),

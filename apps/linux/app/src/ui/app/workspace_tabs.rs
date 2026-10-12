@@ -763,7 +763,6 @@ impl App {
                 WorkspaceTab::Table(slot) => slot.page.clone(),
             }) {
                 self.recent_pages.borrow_mut().forget(&page);
-                tab_view.close_page_finish(&page, false);
             }
             self.close_tab_after_session_cleanup(id, sender);
             return;

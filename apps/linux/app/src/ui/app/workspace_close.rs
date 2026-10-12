@@ -55,6 +55,20 @@ impl App {
         }
     }
 
+    pub(super) fn request_workspace_tab_close(&self, id: Uuid) {
+        let Some(tab_view) = self.workspace_tab_view.as_ref() else {
+            return;
+        };
+        let page = self.workspace_tabs.borrow().get(&id).map(|tab| match tab {
+            WorkspaceTab::Editor(slot) => slot.page.clone(),
+            WorkspaceTab::Structure(slot) => slot.page.clone(),
+            WorkspaceTab::Table(slot) => slot.page.clone(),
+        });
+        if let Some(page) = page {
+            tab_view.close_page(&page);
+        }
+    }
+
     pub(super) fn close_active_workspace_tab(&mut self, sender: ComponentSender<Self>) {
         let Some(tab_view) = self.workspace_tab_view.as_ref() else {
             self.window.close();
