@@ -35,6 +35,12 @@ def package_owning(path, packages):
     raise RuntimeError(f"no workspace package owns {path}")
 
 
+def registered_modules(integration):
+    text = integration.read_text()
+    nested = [integration.parent / found for found in re.findall(r'#\[path = "([^"]+)"\]', text)]
+    return text + "".join(file.read_text() for file in nested if file.is_file())
+
+
 def docker_activation(path, name, packages):
     package = package_owning(path, packages)
     relative = path.relative_to(root)
@@ -46,7 +52,7 @@ def docker_activation(path, name, packages):
         module = relative.parts[-2][:-6]
         tests_dir = path.parents[2]
         integration = tests_dir / "integration.rs"
-        if not integration.is_file() or f"mod {module};" not in integration.read_text():
+        if not integration.is_file() or f"mod {module};" not in registered_modules(integration):
             raise RuntimeError(f"included Docker test source has no integration module: {relative}")
         selector = "--test integration"
     elif relative.parts[-2] == "tests":
@@ -60,7 +66,7 @@ def docker_activation(path, name, packages):
             if tests_dir == root:
                 raise RuntimeError(f"docker ignored test is outside src and tests: {relative}")
         integration = tests_dir / "integration.rs"
-        if not integration.is_file() or f"mod {path.stem};" not in integration.read_text():
+        if not integration.is_file() or f"mod {path.stem};" not in registered_modules(integration):
             raise RuntimeError(f"docker ignored test is not an integration module: {relative}")
         selector = "--test integration"
     return (
