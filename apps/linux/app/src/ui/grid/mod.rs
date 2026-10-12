@@ -7,6 +7,7 @@ mod context_menu;
 mod display;
 mod editing;
 mod export;
+mod local_sort;
 mod presentation;
 mod row_find;
 mod types;
@@ -88,6 +89,8 @@ pub struct TabGridContext {
     pub preview_long_values: bool,
     pub preview_redis_strings: bool,
     pub preview_result_values: bool,
+    pub local_result_sort: bool,
+    pub sortable_result_columns: std::collections::HashSet<usize>,
     /// Names of columns that are part of a foreign key on this table.
     /// Marks the column header so a reference is visible before the
     /// cell value picker (a later slice) exists.
@@ -160,7 +163,7 @@ pub fn build_column_view(
     } else {
         &result.columns
     };
-    let selection = gtk4::MultiSelection::new(Some(store));
+    let selection = gtk4::MultiSelection::new(Some(store.clone()));
     let column_view = gtk4::ColumnView::builder()
         .model(&selection)
         .show_row_separators(true)
@@ -197,9 +200,9 @@ pub fn build_column_view(
             editable,
             table.to_string(),
             edit_sender.clone(),
-            sort_sender.clone(),
             connection_id,
             tab_ctx.clone(),
+            sort_sender.is_some() || (tab_ctx.local_result_sort && tab_ctx.sortable_result_columns.contains(&i)),
             default_min_width,
             column_view.clone(),
             grid_menus.clone(),
@@ -253,25 +256,29 @@ pub fn build_column_view(
         column_view.sort_by_column(Some(col), direction);
     }
 
-    if let Some(app_sender) = sort_sender
-        && let Some(view_sorter) = column_view
-            .sorter()
-            .and_then(|s| s.downcast::<gtk4::ColumnViewSorter>().ok())
+    if let Some(view_sorter) = column_view
+        .sorter()
+        .and_then(|sorter| sorter.downcast::<gtk4::ColumnViewSorter>().ok())
+        && (sort_sender.is_some() || tab_ctx.local_result_sort)
     {
-        let dispatch = {
-            let app_sender = app_sender.clone();
-            let columns = view_columns.clone();
-            move |sorter: &gtk4::ColumnViewSorter| {
-                let Some(active) = sorter.primary_sort_column() else {
-                    return;
-                };
-                let ascending = matches!(sorter.primary_sort_order(), gtk4::SortType::Ascending);
-                for (idx, col) in columns.iter().enumerate() {
-                    if col == &active {
-                        app_sender.send(GridMsg::SortChanged(idx, ascending)).ok();
-                        break;
-                    }
-                }
+        let columns_for_sort = view_columns.clone();
+        let local = tab_ctx.local_result_sort;
+        let store_for_sort = store.clone();
+        let selection_for_sort = selection.clone();
+        let result_for_sort = shared.clone();
+        let sender_for_sort = sort_sender.clone();
+        let dispatch = move |sorter: &gtk4::ColumnViewSorter| {
+            let Some(active) = sorter.primary_sort_column() else {
+                return;
+            };
+            let ascending = matches!(sorter.primary_sort_order(), gtk4::SortType::Ascending);
+            let Some(index) = columns_for_sort.iter().position(|column| column == &active) else {
+                return;
+            };
+            if local {
+                sort_local_result(&result_for_sort, index, ascending, &store_for_sort, &selection_for_sort);
+            } else if let Some(sender) = &sender_for_sort {
+                sender.send(GridMsg::SortChanged(index, ascending)).ok();
             }
         };
         view_sorter.connect_primary_sort_column_notify({
@@ -284,6 +291,84 @@ pub fn build_column_view(
     (column_view, selection)
 }
 
+fn sort_local_result(
+    result: &std::sync::Arc<QueryResult>,
+    column: usize,
+    ascending: bool,
+    store: &RowStore,
+    selection: &gtk4::MultiSelection,
+) {
+    let Some(order) = local_sort::sorted_source_indices(result, column, ascending) else {
+        return;
+    };
+    let selected_sources = (0..selection.n_items())
+        .filter(|position| selection.is_selected(*position))
+        .filter_map(|position| store.source_index_at(position))
+        .collect::<std::collections::HashSet<_>>();
+    if !store.reorder_source_rows(&order) {
+        return;
+    }
+    selection.unselect_all();
+    for (position, source_index) in order.iter().enumerate() {
+        if selected_sources.contains(source_index) {
+            selection.select_item(position as u32, false);
+        }
+    }
+}
+
+pub(crate) fn sortable_result_columns(result: &QueryResult) -> std::collections::HashSet<usize> {
+    (0..result.columns.len())
+        .filter(|column| local_sort::is_sortable_column(result, *column))
+        .collect()
+}
+
 pub(crate) fn jump_to_column(widget: &gtk4::Widget) -> bool {
     column_jump::open_in(widget)
+}
+
+#[cfg(test)]
+mod local_sort_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn local_sort_keeps_selection_attached_to_its_source_row() {
+        gtk4::init().unwrap();
+        let result = std::sync::Arc::new(QueryResult {
+            columns: vec![tablepro_core::ColumnInfo {
+                name: "value".into(),
+                data_type: "INTEGER".into(),
+                nullable: false,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            rows: vec![
+                vec![tablepro_core::Value::Int(3)],
+                vec![tablepro_core::Value::Int(1)],
+                vec![tablepro_core::Value::Int(2)],
+            ],
+            truncated: false,
+        });
+        let store = RowStore::from_shared(result.clone());
+        let selection = gtk4::MultiSelection::new(Some(store.clone()));
+        selection.select_item(0, true);
+        selection.select_item(2, false);
+
+        sort_local_result(&result, 0, true, &store, &selection);
+
+        let positions = selection.selection();
+        assert_eq!(positions.size(), 2);
+        assert_eq!(store.source_index_at(positions.nth(0)), Some(2));
+        assert_eq!(store.source_index_at(positions.nth(1)), Some(0));
+        assert_eq!(
+            store.source_value_at(positions.nth(1), 0),
+            Some(tablepro_core::Value::Int(3))
+        );
+    }
 }

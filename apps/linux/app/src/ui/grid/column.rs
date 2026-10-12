@@ -43,9 +43,9 @@ pub(super) fn build_column(
     editable: bool,
     table: String,
     sender: Option<relm4::Sender<GridMsg>>,
-    sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
+    sort_enabled: bool,
     default_min_width: Option<i32>,
     column_view: gtk4::ColumnView,
     grid_menus: Option<GridMenus>,
@@ -276,7 +276,7 @@ pub(super) fn build_column(
         .resizable(true)
         .expand(true)
         .build();
-    if sort_sender.is_some() {
+    if sort_enabled {
         let dummy = gtk4::CustomSorter::new(|_, _| gtk4::Ordering::Equal);
         column.set_sorter(Some(&dummy));
     }

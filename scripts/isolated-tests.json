@@ -280,6 +280,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::local_sort_tests::local_sort_keeps_selection_attached_to_its_source_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::schema::vim_tests::vim_keys_are_attached_only_when_enabled"
     ],
     [

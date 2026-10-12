@@ -326,6 +326,37 @@ impl RowStore {
         self.source_cells(source_index)?.get(column)?.clone()
     }
 
+    pub fn source_index_at(&self, position: u32) -> Option<usize> {
+        match self.imp().slots.borrow().get(position as usize)? {
+            Slot::Shared(index)
+            | Slot::Cached {
+                source_index: index, ..
+            } => Some(*index),
+            Slot::Object(_) => None,
+        }
+    }
+
+    pub fn reorder_source_rows(&self, order: &[usize]) -> bool {
+        let count = self.n_items() as usize;
+        if order.len() != count || order.iter().any(|index| *index >= count) {
+            return false;
+        }
+        let unique = order.iter().copied().collect::<std::collections::HashSet<_>>();
+        if unique.len() != count
+            || self
+                .imp()
+                .slots
+                .borrow()
+                .iter()
+                .any(|slot| matches!(slot, Slot::Object(_)))
+        {
+            return false;
+        }
+        *self.imp().slots.borrow_mut() = order.iter().copied().map(Slot::Shared).collect();
+        self.items_changed(0, count as u32, count as u32);
+        true
+    }
+
     pub fn insert(&self, position: u32, row: &RowObject) {
         self.splice(position, 0, std::slice::from_ref(row));
     }
@@ -409,6 +440,30 @@ mod tests {
         assert_eq!(first, again);
         assert_eq!(again.cell_value(0), Value::Int(99));
         assert_eq!(store.find(&again), Some(1));
+    }
+
+    #[test]
+    fn source_identity_tracks_rows_after_local_reordering() {
+        let store = RowStore::from_shared(shared(3));
+
+        assert!(store.reorder_source_rows(&[2, 0, 1]));
+        assert_eq!(
+            (0..3)
+                .map(|position| store.source_index_at(position))
+                .collect::<Vec<_>>(),
+            vec![Some(2), Some(0), Some(1)]
+        );
+        assert_eq!(first_cell(&store, 0), Value::Int(2));
+    }
+
+    #[test]
+    fn local_reordering_rejects_non_permutations_and_draft_rows() {
+        let store = RowStore::from_shared(shared(3));
+        assert!(!store.reorder_source_rows(&[0, 0, 2]));
+        assert!(!store.reorder_source_rows(&[0, 1]));
+
+        store.insert(0, &RowObject::new_draft(7, vec![Value::Int(-1)]));
+        assert!(!store.reorder_source_rows(&[0, 1, 2, 3]));
     }
 
     #[test]

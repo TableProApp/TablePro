@@ -242,6 +242,8 @@ impl BrowseTab {
             preview_long_values: self.driver_id != "redis",
             preview_redis_strings: self.driver_id == "redis",
             preview_result_values: false,
+            local_result_sort: false,
+            sortable_result_columns: Default::default(),
             foreign_key_columns,
             choices: self.choice_labels.clone(),
         };

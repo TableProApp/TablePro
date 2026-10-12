@@ -305,6 +305,8 @@ fn build_result_set_widget(
         connection_id,
         TabGridContext {
             preview_result_values: true,
+            local_result_sort: true,
+            sortable_result_columns: crate::ui::grid::sortable_result_columns(result),
             ..Default::default()
         },
         None,
