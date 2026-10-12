@@ -7,7 +7,7 @@
 import Testing
 
 struct SettingsPaneURLIdentifierTests {
-    // Published in docs/developers/url-scheme.mdx. Changing a value breaks links in other apps.
+    // Published at docs.tablepro.app/developers/url-scheme. Changing a value breaks links in other apps.
     private static let published: [SettingsPane: String] = [
         .general: "general",
         .appearance: "appearance",

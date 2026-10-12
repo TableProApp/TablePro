@@ -1,0 +1,162 @@
+# Releasing
+
+`scripts/build-release.sh` is the whole release build. It signs every binary in the bundle itself,
+each plugin, helper and framework first and the app bundle last, so signing again by hand
+afterwards undoes its work.
+
+Everything here needs credentials the maintainer holds. A contributor building from source wants
+[CONTRIBUTING.md](CONTRIBUTING.md#building) instead. The `release` skill in `.claude/skills/release`
+runs a whole release, from the version bump to the announcement, on top of what this file describes.
+
+## Release builds
+
+```bash
+scripts/build-release.sh arm64      # Apple silicon
+scripts/build-release.sh x86_64     # Intel
+scripts/build-release.sh both       # both, the default with no argument
+```
+
+Output lands in `build/Release/TablePro-arm64.app` and `build/Release/TablePro-x86_64.app`.
+
+The script extracts the matching slice from the universal static libraries, copies every
+non-system dynamic library the binaries reference into `Contents/Frameworks` and rewrites their
+install names, strips the main binary and the helpers, then signs with hardened runtime and
+`TablePro/TablePro.entitlements`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SIGN_IDENTITY` | The maintainer's Developer ID Application identity | Codesign identity for every binary |
+| `NOTARIZE` | `false` | Set `true` to notarize and staple after building |
+| `NOTARY_PROFILE` | `TablePro` | `notarytool` keychain profile holding the credentials |
+
+Create the notarization profile once:
+
+```bash
+xcrun notarytool store-credentials "TablePro" --apple-id … --team-id … --password …
+```
+
+Notarization zips each app, submits it, waits, and staples the ticket. `scripts/lib/notarize.sh`
+reads both the exit status and the reported status: `notarytool` has exited 0 on a rejected
+submission.
+
+## Packaging a DMG
+
+`scripts/create-dmg.sh` takes a version, an architecture (default `universal`) and a source app
+(default `build/Release/TablePro.app`). With no version it reads `MARKETING_VERSION` from
+`Configs/Version.xcconfig`, which is the only place the app version is declared.
+
+```bash
+scripts/build-release.sh arm64
+scripts/create-dmg.sh 0.67.0 arm64 build/Release/TablePro-arm64.app
+```
+
+That writes `build/Release/TablePro-0.67.0-arm64.dmg`. The script prefers `create-dmg`
+(`brew install create-dmg`) and falls back to `hdiutil` when it is missing.
+
+## Static libraries
+
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the `libs-v1` GitHub
+Release, not in git. Each has a checksum baseline committed beside it, and
+`scripts/download-libs.sh` verifies the working copy against the baseline at `HEAD` on every run,
+including runs that download nothing.
+
+That means an archive and its baseline have to move together. Publish through the scripts, which do
+both:
+
+```bash
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
+git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+```
+
+Name every library you rebuilt. `publish-libs.sh` verifies each library you did *not* name against
+the checksums at `HEAD`, regenerates `Libs/checksums.sha256`, and uploads the archive with
+`--clobber`. `libs-v1` predates release immutability, so GitHub keeps it mutable. Both publish
+scripts stop before touching a checksum file if it ever reports immutable.
+
+The iOS xcframeworks go through their own script, which takes `--dry-run` and refuses a publish
+that changes nothing:
+
+```bash
+scripts/publish-ios-libs.sh
+git add Libs/ios/checksums.sha256 && git commit -m "build: update iOS xcframework checksums"
+```
+
+Never write `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand. Regenerating from a stale
+`Libs/` silently reverts every library you did not rebuild, which shipped a broken libmongoc and
+rolled DuckDB back a version. Uploading the xcframeworks with a bare `tar` and `gh release upload`
+fails from the other side: 299 MB published with no baseline behind it, and the next
+`download-libs.sh` run on every machine and every CI job stops.
+
+## Shipping a version
+
+`.github/workflows/build.yml` fires on a `v*` tag push, and otherwise only on a manual dispatch. Bump
+`Configs/Version.xcconfig` first: the release job compares the tag against `MARKETING_VERSION` and
+fails with `tag v… does not match MARKETING_VERSION …` when they disagree. It also fails when
+`CURRENT_PROJECT_VERSION` is not above the newest published release's. That number is what Sparkle
+compares as `<sparkle:version>`, so a flat build number ships a release no installed app is offered.
+
+Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64` and `x86_64`) and
+Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
+app blocks the tag.
+
+The release job then verifies the artifacts, signs both update archives with the Sparkle key and
+extracts the release notes from `CHANGELOG.md`. It creates the GitHub release as a draft with both
+DMGs and both ZIPs on it, publishes the draft in one step, and only then commits `appcast.xml`, whose
+download URLs 404 until the release is public. A tag containing `-alpha`, `-beta` or `-rc` publishes
+as a prerelease.
+
+A published release is immutable: GitHub refuses to add, replace or delete an asset, or to move the
+tag. When a run fails:
+
+- Before **Publish the release**, only a draft exists. Fix forward on `main`, move the tag and push it
+  again. The next run reuses the draft.
+- After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
+  the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
+  refuses the new files.
+- A published build that is wrong ships as a new version.
+
+`generate_appcast` sees only the release being published, never the existing feed, and
+`scripts/ci/merge-appcast.py` splices its two items into `appcast.xml` afterwards. Items already
+published are moved byte for byte rather than regenerated, because Sparkle rewrites the download URL
+and drops the release notes of any existing item a staged archive happens to match.
+
+## Staged rollout and critical releases
+
+Every release carries `<sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>`. Sparkle
+spreads a release over seven cohorts keyed on a per-install random identifier, so six intervals is
+the tail: the last cohort is offered the build 36 hours after the first. A user who runs **Check for
+Updates…** is never phased and always gets the newest build.
+
+`.github/release-flags.json` decides whether a release may interrupt anyone:
+
+```json
+{ "criticalUpdate": false }
+```
+
+Setting it `true` passes `--critical-update-version ""` to `generate_appcast`, which writes
+`<sparkle:criticalUpdate/>` with no version attribute, making the item critical for every host.
+Sparkle then bypasses phasing, hides Skip and Remind Me Later, retitles the alert, and shows the
+update even under automatic downloads.
+
+The bar is data loss, an exposed security issue, a crash or hang on a common path, or a regression
+with no workaround. Set it in the release commit and set it back in the next one. The release job
+fails when the flag is `true` and the file has not changed since the previous tag, which is what a
+leftover flag looks like.
+
+## Withdrawing a release
+
+Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.
+
+```bash
+python3 scripts/ci/pull-release.py 0.75.0 --dry-run   # reports what it would remove
+python3 scripts/ci/pull-release.py 0.75.0             # edits, commits and pushes
+```
+
+The GitHub release stays up, so a direct download link still resolves. Anyone already on the bad
+build is reached by shipping the fix, not by the withdrawal.
+
+## Plugins
+
+Driver plugins release on their own `plugin-*-v*` tags through a separate workflow, and the registry
+decides which binary a user gets. [Plugin Registry](https://docs.tablepro.app/development/plugin-registry) covers the
+manifest, the tag names, and the bulk re-release after a PluginKit ABI change.

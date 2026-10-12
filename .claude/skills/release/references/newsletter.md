@@ -91,8 +91,8 @@ Each rule is a yes or no against the draft, and a no is a rewrite.
 9. Backticks on every shortcut, SQL keyword, type name and literal (`Cmd+F`, `EXPLAIN ANALYZE`), at
    most about eight in a sentence. Bold for menu paths and the first mention of a new proper noun,
    not for run-in headlines.
-10. US spelling (color, behavior), the same as the docs, whose `docs/scripts/check-writing-style.sh`
-    rejects British spelling, and as the app's own strings.
+10. US spelling (color, behavior), the same as the docs, whose writing check rejects British
+    spelling, and as the app's own strings.
 
 Run the lint before reading for facts:
 

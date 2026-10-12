@@ -23,6 +23,6 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 Building and structure:
 
 - **The app scheme builds only the bundled plugins**; run `verify.sh plugins` (the `AllPlugins` aggregate) whenever `Plugins/` changes.
-- **A new driver** needs its `project.yml` target and an entry in the `AllPlugins` list, a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `docs/databases/index.mdx`, and a CHANGELOG entry.
+- **A new driver** needs its `project.yml` target and an entry in the `AllPlugins` list, a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` (a paired docs pull request), and a CHANGELOG entry.
 - **A `Plugins/` file that `TableProMobile/project.yml` also compiles** marks every top-level declaration `nonisolated` and depends on no plugin-only code, because the iOS target defaults to `MainActor` (`scripts/ci/check-ios-shared-isolation.py` checks it).
 - **Plugin tags** are `plugin-<slug>-v<version>`, where the slug is a key in `.github/plugin-registry.json`; check `git tag -l "plugin-*"` before creating one.

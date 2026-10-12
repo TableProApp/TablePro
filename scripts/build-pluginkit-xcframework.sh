@@ -14,7 +14,7 @@ set -euo pipefail
 #
 # Produces build/pluginkit/TableProPluginKit.xcframework and a zip with its SHA-256. No prebuilt
 # XCFramework is published: run this at the release tag of the oldest app your plugin supports and
-# link the result as Do Not Embed (docs/development/plugin-development.mdx).
+# link the result as Do Not Embed (https://docs.tablepro.app/development/plugin-development).
 
 FRAMEWORK="TableProPluginKit"
 PROJECT="TablePro.xcodeproj"

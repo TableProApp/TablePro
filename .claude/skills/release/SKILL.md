@@ -122,8 +122,9 @@ rise. Touch no other version: plugins and PluginKit pin `1.0` in `project.yml`, 
 
 ### Docs changelog
 
-Add an `<Update>` block at the top of `docs/changelog.mdx`, right after the frontmatter. The docs are
-English only, so there is no translated copy.
+Add an `<Update>` block at the top of `changelog.mdx` in the docs repository (`../tablepro-docs`,
+TableProApp/docs; confirm the path and `git pull --ff-only` first), right after the frontmatter. The
+docs are English only, so there is no translated copy.
 
 ```mdx
 <Update label="v<version>" description="<Month Day, Year>">
@@ -161,7 +162,7 @@ release with the flag.
 ### Commit, tag, push
 
 ```bash
-git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx .github/release-flags.json \
+git add Configs/Version.xcconfig CHANGELOG.md .github/release-flags.json \
     TablePro/Resources/WhatsNew.md
 scripts/check-banned-words.sh --staged
 git commit -m "release: v<version>"
@@ -169,6 +170,18 @@ git tag -a v<version> -m "v<version>"
 git push origin main
 git push origin v<version>
 ```
+
+Then publish the docs changelog. It goes straight to the docs `main` under the admin bypass, and
+Mintlify deploys it:
+
+```bash
+git -C ../tablepro-docs add changelog.mdx
+git -C ../tablepro-docs commit -m "docs(changelog): v<version>"
+git -C ../tablepro-docs push origin main
+```
+
+The docs CI fails while the app's `CHANGELOG.md` carries a version the page does not, so push it in
+the same sitting as the tag.
 
 - Keep the subject exactly `release: v<version>`: `scripts/ci/detect-changed-paths.sh` matches it to
   skip the duplicate test run on `main`, since the tag's run is the one that gates.
@@ -255,7 +268,8 @@ To get one driver fix to users who have not updated, build it against their rele
 1. **Blog post**, by `references/blog-post.md`: one file in `resources/blog/` of the marketing site
    repo (`../tablepro-web` by default; confirm the path). It goes live first, because the newsletter
    and the X posts link to it. Once it is live, link it from the version's `<Update>` block in
-   `docs/changelog.mdx`, on its own line before the first `###`:
+   `changelog.mdx` of the docs repository, on its own line before the first `###`, and push it as
+   `docs(changelog): link the <version> announcement`:
    `[Read the announcement](https://tablepro.app/blog/<slug>)`.
 2. **Newsletter**, by `references/newsletter.md`: 150 to 250 words that name the headline items and
    link the post.

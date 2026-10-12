@@ -20,6 +20,7 @@ export const meta = {
 }
 
 const SKILL = '<tree>/.claude/skills/fix-issue'
+const PROFILE = `${SKILL}/references/platform-<name>.md`
 const TREE = '<tree>'
 const RUN = `${TREE}/.analysis/<slug>`
 const SUBSYSTEM = '<the folders the fix lands in>'
@@ -51,7 +52,7 @@ const DIGEST = {
 
 const brief = lane => `
 You are the ${lane} lane of a TablePro fix investigation. The code is in ${TREE}: read it there.
-Read ${SKILL}/references/lanes.md: "Rules for every lane" and "${lane}".
+Read ${SKILL}/references/lanes.md: "Rules for every lane" and "${lane}". The platform profile is ${PROFILE}.
 The problem statement is ${RUN}/problem.md. The subsystem in play: ${SUBSYSTEM}.
 Write your full report to ${RUN}/lanes/${lane}.md, then return the digest schema.
 ${lane === 'hunt' ? 'Put every finding in the findings array too.' : 'Leave findings empty.'}
@@ -67,7 +68,7 @@ const candidates = (hunt && hunt.findings) || []
 phase('Verify')
 const verdict = candidates.length === 0 ? null : await agent(`
 You are the verify lane of a TablePro fix investigation. The code is in ${TREE}.
-Read ${SKILL}/references/lanes.md: "Rules for every lane" and "verify".
+Read ${SKILL}/references/lanes.md: "Rules for every lane" and "verify". The platform profile is ${PROFILE}.
 Findings to refute, as JSON:
 ${JSON.stringify(candidates, null, 2)}
 Write one row per finding to ${RUN}/lanes/verify.md, then return the digest schema
@@ -88,7 +89,7 @@ Parallel implementers (`SKILL.md` Phase 3) are background `Agent`s in one messag
 
 ## Long commands
 
-Run `build`, `plugins`, `test`, `uitest`, the Codex review and the CI watch with `run_in_background: true`. You are re-invoked when each exits, so never poll in between. Keep `generate` and `lint` in the foreground, and never run two `xcodebuild` in one tree.
+Run the profile's build and test steps, the Codex review and the CI watch with `run_in_background: true`. You are re-invoked when each exits, so never poll in between. Keep the quick steps (generating the project, lint) in the foreground, and never run two builds in one tree.
 
 CI watch: `gh pr checks <n> --repo TableProApp/TablePro --watch --interval 60` exits when every check finishes, non-zero on a failure; `gh run view <run-id> --log-failed` gives the log. A background command stops after two hours; if checks are still queued then, Phase 7's backlog rule applies.
 
@@ -98,7 +99,7 @@ Run the Codex plugin's companion from inside the tree (`cd <tree> &&` on every c
 
 ```bash
 CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)"
-node "$CODEX" review --wait --scope working-tree        # --base main once the work is committed
+node "$CODEX" review --wait --scope working-tree        # --base <base> once the work is committed
 node "$CODEX" adversarial-review --wait --scope working-tree "<the mechanism the fix rests on>"
 node "$CODEX" status
 node "$CODEX" result <job-id>
@@ -107,8 +108,8 @@ node "$CODEX" result <job-id>
 - `review` every round; `adversarial-review` in Full mode on the first round. One at a time, each in the background with `--wait`.
 - Read the findings with `result`, never from stdout, which shows only progress whether the job succeeded or died. `status` says whether it finished.
 - When `status` shows Codex cannot review (not installed, out of credits, usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
-- The security pass is a background `Agent` told to review `git -C <tree> diff origin/main...HEAD` for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
+- The security pass is a background `Agent` told to review `git -C <tree> diff origin/<base>...HEAD` (the profile's pull request base) for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
 
 ## Screenshots
 
-Drive a Debug build with `osascript` and capture with `screencapture`; Screen Recording must be granted to whatever runs them.
+The profile's "Screen" section names the tools that launch, drive and capture the app. Open each shot with `Read` before using it.

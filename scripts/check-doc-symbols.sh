@@ -63,6 +63,9 @@ SCRIPT_PATH_REGEX='(\.claude/hooks|([A-Za-z0-9_.-]+/)*scripts)(/[A-Za-z0-9_-]+)*
 # and blog-post.md runs every command from there, so the names it uses are the site's own.
 SITE_REPO_ROOTS="app public resources routes tests"
 SITE_REPO_DOCS=".claude/skills/release/references/blog-post.md"
+# The docs site is its own repository, cloned beside this one. A path under it names that repo, so
+# it is checked against the clone when one is there and skipped when it is not.
+DOCS_REPO="../tablepro-docs"
 
 findings=0
 checked=0
@@ -175,7 +178,9 @@ resolve_path() {
     done
     # A gitignored path is per-developer or downloaded, so a fresh checkout not having it is the
     # expected state, and flagging Secrets.xcconfig or Libs/*.a would train everyone to ignore this.
-    if git check-ignore -q "$token" 2> /dev/null; then
+    # A pattern ending in a slash, like Libs/dylibs/, matches only a directory, and git cannot tell
+    # that a path it has never seen is one, so an absent directory is asked about with the slash.
+    if git check-ignore -q "$token" 2> /dev/null || git check-ignore -q "$token/" 2> /dev/null; then
         printf '%s\t (gitignored, optional by design)\n' "$token"
         return 0
     fi
@@ -199,6 +204,18 @@ check_paths() {
         line="${hit%%:*}"; token="${hit#*:}"
         case "$token" in
             http* | /* | *' '* | *'*'* | *'<'* | *'$'* | *'|'* | *'{'*) continue ;;
+        esac
+        case "$token" in
+            "$DOCS_REPO" | "$DOCS_REPO"/*)
+                if [ ! -d "$DOCS_REPO" ]; then
+                    skip "$token (docs repo, not cloned)" "$doc:$line"
+                elif [ -e "${token%/}" ]; then
+                    pass "$token (docs repo)" "$doc:$line"
+                else
+                    report "$doc:$line" "path does not exist in the docs repo: $token"
+                fi
+                continue
+                ;;
             # A first segment carrying a dot is a hostname, not a path in this tree.
             *.*/*) [ "${token%%/*}" != "${token%%.*}" ] && continue ;;
         esac
