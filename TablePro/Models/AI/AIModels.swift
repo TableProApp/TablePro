@@ -10,7 +10,6 @@ import Foundation
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
     case chatgptCodex
-    case cursor
     case claude
     case claudeAgent
     case openAI
@@ -29,7 +28,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "GitHub Copilot"
         case .chatgptCodex: return "ChatGPT"
-        case .cursor:       return "Cursor"
         case .claude:       return "Claude"
         case .claudeAgent:  return "Claude Agent"
         case .openAI:       return "OpenAI"
@@ -48,7 +46,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return ""
         case .chatgptCodex: return ""
-        case .cursor:       return ""
         case .claude:       return "https://api.anthropic.com"
         case .claudeAgent:  return ""
         case .openAI:       return "https://api.openai.com"
@@ -73,13 +70,12 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return .oauth
         case .chatgptCodex: return .oauth
-        case .cursor:       return .optionalApiKey
         case .claude:       return .apiKey
         case .claudeAgent:  return .none
         case .openAI:       return .apiKey
         case .openRouter:   return .apiKey
         case .gemini:       return .apiKey
-        case .xai:          return .optionalApiKey
+        case .xai:          return .apiKey
         case .ollama:       return .none
         case .llamaCpp:     return .none
         case .mlx:          return .none
@@ -100,7 +96,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
             return .gemini
         case .ollama:
             return .ollama
-        case .copilot, .chatgptCodex, .cursor, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
+        case .copilot, .chatgptCodex, .claudeAgent, .openRouter, .llamaCpp, .mlx, .openCode, .custom:
             return .chatCompletions
         }
     }
@@ -112,7 +108,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .copilot:      return "chevron.left.forwardslash.chevron.right"
         case .chatgptCodex: return "bubble.left.and.bubble.right"
-        case .cursor:       return "cursorarrow"
         case .claude:       return "brain"
         case .claudeAgent:  return "terminal"
         case .openAI:       return "cpu"
