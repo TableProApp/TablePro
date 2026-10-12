@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "scripts/**"
+      - ".claude/skills/**/*.sh"
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/scripts/**"
@@ -27,6 +28,7 @@ on:
     branches: [main]
     paths:
       - "scripts/**"
+      - ".claude/skills/**/*.sh"
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/scripts/**"
