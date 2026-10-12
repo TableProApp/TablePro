@@ -17,7 +17,6 @@ docker run --rm -v "$PWD/..:/src:ro" -e RELEASED_URL="$released_url" -e VERSION=
     cd /home/builder/src
     git init -q && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm candidate
     curl -fsSL -o /home/builder/released.pkg.tar.zst \"$RELEASED_URL\"
-    cd linux
     TABLEPRO_RC_COMMIT=\$(git rev-parse HEAD) TABLEPRO_RC_VERSION=$VERSION bash scripts/build-arch-rc.sh
     bash scripts/test-arch-package.sh /home/builder/released.pkg.tar.zst apps/linux/packaging/arch/bookie-$VERSION-1-x86_64.pkg.tar.zst
   "

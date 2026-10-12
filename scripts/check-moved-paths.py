@@ -11,6 +11,7 @@ OLD = re.compile(
     r"(?<![\w./\-])linux/(crates|scripts|docs|ci|vendor|packaging|flatpak|po|data|tests|testdata"
     r"|Cargo\.(toml|lock)|ARCHITECTURE\.md|ROADMAP\.md)\b"
     r"|(?<![\w.\-])crates/(app|release-tests|driver-tls-tests)\b|(?<![\w.\-])testdata/value-contract"
+    r"|^\s*cd\s+['\"]?linux['\"]?\s*(?:#.*)?$"
 )
 SKIP = ("docs/archive/", "docs/evidence/", "CHANGELOG.md",
         "scripts/check-moved-paths.py", "scripts/tests/test_check_moved_paths.py", "vendor/", "apps/linux/po/")

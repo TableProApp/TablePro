@@ -9,6 +9,12 @@ spec.loader.exec_module(moved)
 
 
 class MovedPathTests(unittest.TestCase):
+    def test_bare_cd_into_removed_linux_directory_is_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = Path(tmp, "old.sh")
+            old.write_text("  cd linux\n")
+            self.assertEqual([hit[0] for hit in moved.stale([str(old)])], [str(old)])
+
     def test_old_prefix_is_found_and_new_names_are_not(self):
         with tempfile.TemporaryDirectory() as tmp:
             old, new = Path(tmp, "a.md"), Path(tmp, "b.md")
