@@ -45689,6 +45689,9 @@
         }
       }
     },
+    "Connect again to review the script and run it." : {
+
+    },
     "Connect from the connection's window in TablePro to review them." : {
       "localizations" : {
         "fr" : {
@@ -118602,6 +118605,9 @@
         }
       }
     },
+    "Nobody answered the pre-connect script prompt in time." : {
+
+    },
     "Nobody has joined this team yet." : {
       "localizations" : {
         "fr" : {
@@ -176972,6 +176978,9 @@
         }
       }
     },
+    "TablePro does not run a pre-connect script on its own." : {
+
+    },
     "TablePro doesn't recognize the database type “%@”." : {
       "localizations" : {
         "fr" : {
@@ -182380,6 +182389,7 @@
       }
     },
     "The connection's pre-connect script was not approved." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -185781,6 +185791,9 @@
           }
         }
       }
+    },
+    "The pre-connect script was not approved." : {
+
     },
     "The prepared connection no longer matches this driver." : {
       "localizations" : {
@@ -200334,6 +200347,9 @@
           }
         }
       }
+    },
+    "Try again and answer the prompt in TablePro." : {
+
     },
     "Try again, or install the plugin from Settings > Plugins." : {
       "localizations" : {

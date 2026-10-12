@@ -76,10 +76,10 @@ struct ScriptingVisibilityGuardTests {
         #expect(check.lowerBound < read.lowerBound, "visibility is checked after the rows are read")
     }
 
-    /// `ensureConnected` runs the connection's pre-connect shell script, so the routes that can
-    /// cause a connect have to ask first, the same as every route a person takes.
-    @Test("Every path that can cause a connect asks about the pre-connect script first")
-    func connectPathsAskAboutThePreConnectScript() throws {
+    /// A connect loads the connection's SQLite extensions, so the routes that can cause one have to
+    /// ask about any this Mac has not approved, the same as every route a person takes.
+    @Test("Every path that can cause a connect asks about unapproved extensions first")
+    func connectPathsAskAboutExtensions() throws {
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0 ..< 4 {
             root.deleteLastPathComponent()
@@ -92,7 +92,7 @@ struct ScriptingVisibilityGuardTests {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             #expect(
                 source.contains("ScriptConnectGate.authorizeConnect"),
-                "\(path) can reach ensureConnected without asking about the pre-connect script"
+                "\(path) can reach ensureConnected without asking about unapproved extensions"
             )
         }
     }

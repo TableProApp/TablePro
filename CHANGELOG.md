@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
+- Pre-connect script and SQLite extension prompts close as Cancel after 60 seconds without an answer.
+- Connections with a pre-connect script no longer reconnect a dropped tunnel on their own.
 
 ### Removed
 
@@ -41,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
 - Theme color wells and the theme preview unreadable to VoiceOver.
+
+### Security
+
+- Pre-connect scripts running without a prompt when MCP, AppleScript, the AI assistant, Compare or Copy To opened the connection.
 
 ## [0.80.0] - 2026-10-11
 
