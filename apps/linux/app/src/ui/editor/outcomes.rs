@@ -294,6 +294,7 @@ fn build_result_set_widget(
             .build()
             .upcast();
     }
+    let local_result_view = super::super::grid::local_filter::LocalResultView::new(result.clone());
     let (column_view, _selection) = build_column_view(
         result,
         &result.columns,
@@ -306,18 +307,23 @@ fn build_result_set_widget(
         TabGridContext {
             preview_result_values: true,
             local_result_sort: true,
+            local_result_view: Some(local_result_view.clone()),
             sortable_result_columns: crate::ui::grid::sortable_result_columns(result),
             ..Default::default()
         },
         None,
         database,
     );
-    gtk::ScrolledWindow::builder()
-        .child(&column_view)
-        .hexpand(true)
-        .vexpand(true)
-        .build()
-        .upcast()
+    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    holder.append(&local_result_view.controls());
+    holder.append(
+        &gtk::ScrolledWindow::builder()
+            .child(&column_view)
+            .hexpand(true)
+            .vexpand(true)
+            .build(),
+    );
+    holder.upcast()
 }
 
 fn clean_identifier(token: &str) -> String {

@@ -7,6 +7,7 @@ mod context_menu;
 mod display;
 mod editing;
 mod export;
+pub(crate) mod local_filter;
 mod local_sort;
 mod presentation;
 mod row_find;
@@ -81,7 +82,7 @@ pub enum GridMsg {
     },
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TabGridContext {
     pub tab_id: Option<uuid::Uuid>,
     pub pk_col_indices: Vec<usize>,
@@ -90,6 +91,7 @@ pub struct TabGridContext {
     pub preview_redis_strings: bool,
     pub preview_result_values: bool,
     pub local_result_sort: bool,
+    pub local_result_view: Option<local_filter::LocalResultView>,
     pub sortable_result_columns: std::collections::HashSet<usize>,
     /// Names of columns that are part of a foreign key on this table.
     /// Marks the column header so a reference is visible before the
@@ -164,6 +166,9 @@ pub fn build_column_view(
         &result.columns
     };
     let selection = gtk4::MultiSelection::new(Some(store.clone()));
+    if let Some(local_result_view) = &tab_ctx.local_result_view {
+        local_result_view.attach(store.clone(), selection.clone());
+    }
     let column_view = gtk4::ColumnView::builder()
         .model(&selection)
         .show_row_separators(true)
@@ -181,8 +186,11 @@ pub fn build_column_view(
             columns,
             result.truncated,
             driver_id,
-            tab_ctx.tab_id.is_some(),
-            tab_ctx.foreign_key_columns.clone(),
+            context_menu::GridMenuOptions {
+                filterable: tab_ctx.tab_id.is_some(),
+                foreign_key_columns: tab_ctx.foreign_key_columns.clone(),
+                local_result_view: tab_ctx.local_result_view.clone(),
+            },
         )
     });
 
@@ -267,6 +275,7 @@ pub fn build_column_view(
         let store_for_sort = store.clone();
         let selection_for_sort = selection.clone();
         let result_for_sort = shared.clone();
+        let local_result_view = tab_ctx.local_result_view.clone();
         let sender_for_sort = sort_sender.clone();
         let dispatch = move |sorter: &gtk4::ColumnViewSorter| {
             let Some(active) = sorter.primary_sort_column() else {
@@ -277,7 +286,11 @@ pub fn build_column_view(
                 return;
             };
             if local {
-                sort_local_result(&result_for_sort, index, ascending, &store_for_sort, &selection_for_sort);
+                if let Some(view) = &local_result_view {
+                    view.sort_by(index, ascending);
+                } else {
+                    sort_local_result(&result_for_sort, index, ascending, &store_for_sort, &selection_for_sort);
+                }
             } else if let Some(sender) = &sender_for_sort {
                 sender.send(GridMsg::SortChanged(index, ascending)).ok();
             }

@@ -295,6 +295,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::local_filter::tests::local_filter_and_sort_keep_selection_attached_to_the_source_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::schema::vim_tests::vim_keys_are_attached_only_when_enabled"
     ],
     [

@@ -13,6 +13,7 @@ What the application does not do, or does differently from what you might expect
   measurement was about 2.5 times the result memory; #518 now shares immutable
   values with materialized rows, and comparable profiling remains open. Nothing
   is streamed yet.
+- **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows; running a new query creates a new result view and resets its filter.
 - **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a
   typed preview and its byte count; View Value fetches the whole value by primary
   key. A table without a primary key cannot refetch.

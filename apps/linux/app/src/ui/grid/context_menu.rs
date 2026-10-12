@@ -9,6 +9,7 @@ use super::GridMsg;
 use super::display::{FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POSITION_SLOT, ROW_KEY_SLOT};
 use super::editing::enter_edit_mode;
 use super::export;
+use super::local_filter::LocalResultView;
 use super::value_viewer;
 
 const CELL_MENU_TRIGGER: &str = "Menu|<Shift>F10";
@@ -30,19 +31,25 @@ pub(super) struct GridMenus {
     foreign_key_columns: Rc<std::collections::HashSet<String>>,
 }
 
+pub(super) struct GridMenuOptions {
+    pub(super) filterable: bool,
+    pub(super) foreign_key_columns: std::collections::HashSet<String>,
+    pub(super) local_result_view: Option<LocalResultView>,
+}
+
 pub(super) fn install_grid_context_menus(
     column_view: &gtk::ColumnView,
     sender: relm4::Sender<GridMsg>,
     result_columns: &[ColumnInfo],
     truncated: bool,
     driver_id: String,
-    filterable: bool,
-    foreign_key_columns: std::collections::HashSet<String>,
+    options: GridMenuOptions,
 ) -> GridMenus {
     let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
     let columns = Rc::new(result_columns.to_vec());
-    let editable_menu = build_menu(true, true, true, filterable);
-    let readonly_menu = build_menu(false, false, true, filterable);
+    let local_result = options.local_result_view.is_some();
+    let editable_menu = build_menu(true, true, true, options.filterable, local_result);
+    let readonly_menu = build_menu(false, false, true, options.filterable, local_result);
     let empty_menu = gio::Menu::new();
     empty_menu.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
     empty_menu.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
@@ -301,7 +308,13 @@ pub(super) fn install_grid_context_menus(
             })
             .build()
     };
-    let filter_action = filter_by_value_action(context.clone(), sender.clone(), column_view, columns.clone());
+    let filter_action = filter_by_value_action(
+        context.clone(),
+        sender.clone(),
+        column_view,
+        columns.clone(),
+        options.local_result_view,
+    );
     let reference_action = go_to_reference_action(context.clone(), sender.clone(), column_view, columns.clone());
     let duplicate_row_action = {
         let context = context.clone();
@@ -391,11 +404,17 @@ pub(super) fn install_grid_context_menus(
         readonly_popover,
         edit_action,
         reference_action,
-        foreign_key_columns: Rc::new(foreign_key_columns),
+        foreign_key_columns: Rc::new(options.foreign_key_columns),
     }
 }
 
-fn build_menu(editable: bool, row_operations: bool, insert_copy: bool, filterable: bool) -> gio::Menu {
+fn build_menu(
+    editable: bool,
+    row_operations: bool,
+    insert_copy: bool,
+    filterable: bool,
+    local_result: bool,
+) -> gio::Menu {
     let menu = gio::Menu::new();
     if editable {
         let section = gio::Menu::new();
@@ -421,15 +440,22 @@ fn build_menu(editable: bool, row_operations: bool, insert_copy: bool, filterabl
     copy.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
     menu.append_section(None, &copy);
     let display = gio::Menu::new();
-    if filterable {
+    if filterable || local_result {
         display.append(Some(&crate::tr!("Filter by This Value")), Some("cell.filter-by-value"));
+    }
+    if filterable {
         display.append(Some(&crate::tr!("Go to Referenced Row")), Some("cell.go-to-reference"));
     }
     display.append(Some(&crate::tr!("View Value…")), Some("cell.view-value"));
     display.append(Some(&crate::tr!("Show Row as JSON")), Some("cell.show-row-json"));
     menu.append_section(None, &display);
     let actions = gio::Menu::new();
-    actions.append(Some(&crate::tr!("Export Results…")), Some("cell.export"));
+    let export_label = if local_result {
+        crate::tr!("Export Visible Rows…")
+    } else {
+        crate::tr!("Export Results…")
+    };
+    actions.append(Some(&export_label), Some("cell.export"));
     actions.append(Some(&crate::tr!("Columns…")), Some("grid.columns"));
     actions.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
     actions.append(Some(&crate::tr!("Find in Loaded Rows…")), Some("grid.find-row"));
@@ -479,6 +505,7 @@ fn filter_by_value_action(
     sender: relm4::Sender<GridMsg>,
     column_view: &gtk::ColumnView,
     columns: Rc<Vec<ColumnInfo>>,
+    local_result_view: Option<LocalResultView>,
 ) -> gio::ActionEntry<gio::SimpleActionGroup> {
     let view = column_view.downgrade();
     gio::ActionEntry::builder("filter-by-value")
@@ -486,9 +513,15 @@ fn filter_by_value_action(
             let context = context.borrow();
             let Some(slot) = context.as_ref() else { return };
             let Some(view) = view.upgrade() else { return };
-            let Some(value) = row_at(&view, position(slot)).and_then(|row| row.get(slot.col_index).cloned()) else {
-                return;
+            let value = match &local_result_view {
+                Some(_) => source_value_at(&view, position(slot), slot.col_index),
+                None => row_at(&view, position(slot)).and_then(|row| row.get(slot.col_index).cloned()),
             };
+            let Some(value) = value else { return };
+            if let Some(local_result_view) = &local_result_view {
+                local_result_view.filter_by_value(slot.col_index, value);
+                return;
+            }
             let Some(column) = columns.get(slot.col_index) else {
                 return;
             };
@@ -500,6 +533,16 @@ fn filter_by_value_action(
                 .ok();
         })
         .build()
+}
+
+fn source_value_at(view: &gtk::ColumnView, position: u32, column: usize) -> Option<Value> {
+    view.model()?
+        .downcast::<gtk::MultiSelection>()
+        .ok()?
+        .model()?
+        .downcast::<crate::ui::row_store::RowStore>()
+        .ok()?
+        .source_value_at(position, column)
 }
 
 fn copy_rows_action<F>(

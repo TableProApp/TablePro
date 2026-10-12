@@ -524,7 +524,7 @@ GLib.MainLoop().run()
     def view_value_opens_the_whole_cell_with_pretty_json(database, base):
         ui.run_sql("""SELECT '{"a":1}' AS payload""")
         open_cell_menu('{"a":1}')
-        choose_menu_item(3)
+        choose_menu_item(4)
         wait_for_adw_dialog("payload")
         deadline = time.monotonic() + ui.WAIT_SECONDS
         while time.monotonic() < deadline:
@@ -542,7 +542,7 @@ GLib.MainLoop().run()
         ui.run_sql("SELECT 1 AS alpha, 2 AS beta")
         wait_for_result_column("beta")
         open_cell_menu("1")
-        choose_menu_item(6)
+        choose_menu_item(7)
         wait_for_adw_dialog("Columns")
         switch_roles = {getattr(pyatspi, "ROLE_SWITCH", pyatspi.ROLE_TOGGLE_BUTTON), pyatspi.ROLE_CHECK_BOX}
         switches = [
@@ -720,7 +720,7 @@ GLib.MainLoop().run()
         ui.wait_for_node(name="Ada Lovelace", role=pyatspi.ROLE_LABEL)
         ui.wait_for_node(name="Grace Hopper", role=pyatspi.ROLE_LABEL)
         open_cell_menu("Ada Lovelace")
-        choose_menu_item(3)
+        choose_menu_item(4)
         wait_for_adw_dialog("name")
         ui.wait_for_node(name="Copy value", role=pyatspi.ROLE_PUSH_BUTTON)
         ui.press_x11_key("Escape")

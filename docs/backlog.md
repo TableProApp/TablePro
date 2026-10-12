@@ -14,6 +14,7 @@ candidate inventory as a release commitment.
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 / SNAP-1 accepted the feature for 0.2.x (not a 0.2.0 blocker); limit 5 snapshots per database |
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
+| UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented for one result view; filter/sort state retention across refresh and re-execution remains |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-17b, UI-22, UI-23, UI-26 | Preview tabs, code folding, typed PostgreSQL activity console, editable SSH profiles | accepted for later; split panes and the docked query history panel have landed (#630, #619); PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
@@ -80,6 +81,7 @@ Each backlog theme has an issue, created 2026-10-11 so the work can be picked up
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); merged; installed-form acceptance remaining |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
+| [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
 | [#632](https://github.com/cozyGarage/BookiE/issues/632) | Paste TSV strips a leading quote from ordinary text |
 | [#633](https://github.com/cozyGarage/BookiE/issues/633) | Docked history panel is stale after reopening |
 | [#634](https://github.com/cozyGarage/BookiE/issues/634) | CSV import always skips auto-increment columns |

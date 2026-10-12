@@ -338,11 +338,9 @@ impl RowStore {
 
     pub fn reorder_source_rows(&self, order: &[usize]) -> bool {
         let count = self.n_items() as usize;
-        if order.len() != count || order.iter().any(|index| *index >= count) {
-            return false;
-        }
-        let unique = order.iter().copied().collect::<std::collections::HashSet<_>>();
-        if unique.len() != count
+        if order.len() != count
+            || order.iter().any(|index| *index >= count)
+            || order.iter().copied().collect::<std::collections::HashSet<_>>().len() != count
             || self
                 .imp()
                 .slots
@@ -352,8 +350,33 @@ impl RowStore {
         {
             return false;
         }
-        *self.imp().slots.borrow_mut() = order.iter().copied().map(Slot::Shared).collect();
-        self.items_changed(0, count as u32, count as u32);
+        self.replace_source_rows(order)
+    }
+
+    pub fn replace_source_rows(&self, source_indices: &[usize]) -> bool {
+        let Some(source_count) = self.imp().source.borrow().as_ref().map(|result| result.rows.len()) else {
+            return false;
+        };
+        if source_indices.iter().any(|index| *index >= source_count)
+            || source_indices
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != source_indices.len()
+            || self
+                .imp()
+                .slots
+                .borrow()
+                .iter()
+                .any(|slot| matches!(slot, Slot::Object(_)))
+        {
+            return false;
+        }
+        let removed = self.n_items();
+        self.detach_cached_rows();
+        *self.imp().slots.borrow_mut() = source_indices.iter().copied().map(Slot::Shared).collect();
+        self.items_changed(0, removed, source_indices.len() as u32);
         true
     }
 
@@ -454,6 +477,27 @@ mod tests {
             vec![Some(2), Some(0), Some(1)]
         );
         assert_eq!(first_cell(&store, 0), Value::Int(2));
+    }
+
+    #[test]
+    fn a_local_filter_can_show_a_unique_subset_of_source_rows() {
+        let store = RowStore::from_shared(shared(3));
+
+        assert!(store.replace_source_rows(&[2, 0]));
+
+        assert_eq!(store.n_items(), 2);
+        assert_eq!(store.source_index_at(0), Some(2));
+        assert_eq!(store.source_index_at(1), Some(0));
+        assert_eq!(first_cell(&store, 0), Value::Int(2));
+    }
+
+    #[test]
+    fn a_local_filter_rejects_duplicate_and_out_of_range_source_rows() {
+        let store = RowStore::from_shared(shared(3));
+
+        assert!(!store.replace_source_rows(&[1, 1]));
+        assert!(!store.replace_source_rows(&[3]));
+        assert_eq!(store.n_items(), 3);
     }
 
     #[test]
