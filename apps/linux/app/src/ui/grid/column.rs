@@ -21,6 +21,12 @@ const PENDING_CSS_CLASSES: &[&str] = &[
 
 const TOOLTIP_MIN_CHARS: usize = 40;
 
+pub(super) fn header_column(column: &ColumnInfo, schema: Option<&ColumnInfo>) -> ColumnInfo {
+    let mut header = column.clone();
+    header.primary_key |= schema.is_some_and(|known| known.name == column.name && known.primary_key);
+    header
+}
+
 fn column_header_title(info: &ColumnInfo, is_foreign_key: bool) -> String {
     let mut title = info.name.clone();
     if info.primary_key {
@@ -424,6 +430,18 @@ mod tests {
         info.name = "id".into();
         assert_eq!(column_header_title(&info, false), "id \u{1F511}\ninteger");
         assert_eq!(column_header_title(&info, true), "id \u{1F511} \u{1F517}\ninteger");
+    }
+
+    #[test]
+    fn a_result_column_takes_the_primary_key_flag_from_the_table_metadata() {
+        let mut result = col("int4", false);
+        result.name = "id".into();
+        let mut schema = col("int4", true);
+        schema.name = "id".into();
+        assert!(header_column(&result, Some(&schema)).primary_key);
+        assert!(!header_column(&result, None).primary_key);
+        schema.name = "other".into();
+        assert!(!header_column(&result, Some(&schema)).primary_key);
     }
 
     #[test]

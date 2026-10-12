@@ -21,7 +21,7 @@ use tablepro_core::{ColumnInfo, QueryResult};
 use crate::services::database_service::DatabaseService;
 use crate::ui::row_store::RowStore;
 
-use column::{build_column, is_cell_editable};
+use column::{build_column, header_column, is_cell_editable};
 use context_menu::install_grid_context_menus;
 
 pub(crate) use display::preview_to_display_text;
@@ -194,8 +194,9 @@ pub fn build_column_view(
     let mut view_columns: Vec<gtk4::ColumnViewColumn> = Vec::with_capacity(columns.len());
     for (i, column) in columns.iter().enumerate() {
         let editable = is_cell_editable(schema_columns.get(i).unwrap_or(column));
+        let header = header_column(column, schema_columns.get(i));
         let col = build_column(
-            column,
+            &header,
             i,
             editable,
             table.to_string(),
