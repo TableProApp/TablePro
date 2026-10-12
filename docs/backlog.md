@@ -16,7 +16,7 @@ candidate inventory as a release commitment.
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-36 | Selection statistics popover with count, min/max and copy for selected loaded rows | Existing sum/average stays exact for numeric values; [#625](https://github.com/cozyGarage/BookiE/issues/625) |
-| UI-17b, UI-18, UI-22, UI-23, UI-26 | Preview tabs, history as a panel, code folding and split panes, typed PostgreSQL activity console, editable SSH profiles | accepted for later; PostgreSQL catalog objects are already built (UI-23) |
+| UI-17b, UI-22, UI-23, UI-26 | Preview tabs, code folding and split panes, typed PostgreSQL activity console, editable SSH profiles | accepted for later; query history is now a docked panel; PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
 | PKG-4, PKG-8 | Flatpak Flathub submission and screenshots, and the file-access decision (`--filesystem=home` or portal only) | guest build/install/launch is proven; not part of 0.2.0; decide PKG-8 before PKG-4 |
 

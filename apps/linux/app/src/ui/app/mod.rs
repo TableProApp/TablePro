@@ -117,6 +117,7 @@ pub struct App {
     catalog_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     schema_fetch_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     content_holder: adw::ToolbarView,
+    history_paned: gtk::Paned,
     toast_overlay: adw::ToastOverlay,
     /// Persistent "Connecting…" toast handle. Held so we can dismiss it
     /// when the connect attempt resolves (success or failure). Native
@@ -539,6 +540,11 @@ impl SimpleComponent for App {
             catalog_cancel: Default::default(),
             schema_fetch_cancel: Default::default(),
             content_holder: widgets.content_holder.clone(),
+            history_paned: gtk::Paned::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .vexpand(true)
+                .wide_handle(true)
+                .build(),
             toast_overlay: widgets.toast_overlay.clone(),
             connect_progress_toast: None,
             connect_cancel: None,
@@ -600,6 +606,7 @@ impl SimpleComponent for App {
             history_prune_source: None,
         };
         sender.input(AppMsg::ReloadConnections);
+        model.content_holder.set_content(Some(&model.history_paned));
         model.show_welcome_page(sender.clone());
 
         widgets
@@ -900,6 +907,7 @@ impl SimpleComponent for App {
             AppMsg::ShowQuickSwitcher => self.on_show_quick_switcher(sender),
             AppMsg::QuickSwitcherChose(target) => self.on_quick_switcher_chose(target, sender),
             AppMsg::ShowHistory => self.on_show_history(sender),
+            AppMsg::CloseHistory => self.hide_history_panel(),
             AppMsg::OpenHistoryQuery(text) => {
                 if self.connected {
                     self.append_editor_tab(Some(text), sender);

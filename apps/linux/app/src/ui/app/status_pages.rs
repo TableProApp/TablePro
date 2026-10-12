@@ -14,8 +14,11 @@ impl App {
     }
 
     pub(super) fn show_in_content_holder(&self, widget: &impl IsA<gtk::Widget>) {
-        if self.content_holder.content().as_ref() != Some(widget.upcast_ref()) {
-            self.content_holder.set_content(Some(widget));
+        if self.content_holder.content().as_ref() != Some(self.history_paned.upcast_ref()) {
+            self.content_holder.set_content(Some(&self.history_paned));
+        }
+        if self.history_paned.start_child().as_ref() != Some(widget.upcast_ref()) {
+            self.history_paned.set_start_child(Some(widget));
         }
     }
 
@@ -79,11 +82,19 @@ impl App {
     }
 
     pub(super) fn on_show_history(&mut self, sender: ComponentSender<Self>) {
+        if self.history_paned.end_child().is_some() {
+            self.hide_history_panel();
+            return;
+        }
         let Some(history) = self.history.clone() else {
             self.show_toast(&crate::tr!("Query history is unavailable"));
             return;
         };
-        let dialog = HistoryDialog::builder()
+        if let Some(panel) = self.history_dialog.as_ref() {
+            self.history_paned.set_end_child(Some(panel.widget()));
+            return;
+        }
+        let panel = HistoryDialog::builder()
             .launch(HistoryDialogInit {
                 history,
                 database: self.database.clone(),
@@ -91,9 +102,15 @@ impl App {
             .forward(sender.input_sender(), |out| match out {
                 HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
                 HistoryDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
+                HistoryDialogOutput::Close => AppMsg::CloseHistory,
             });
-        dialog.model().dialog().present(Some(&self.window));
-        self.history_dialog = Some(dialog);
+        self.history_paned.set_end_child(Some(panel.widget()));
+        self.history_paned.set_position(self.window.default_height() / 2);
+        self.history_dialog = Some(panel);
+    }
+
+    pub(super) fn hide_history_panel(&self) {
+        self.history_paned.set_end_child(None::<&gtk::Widget>);
     }
 
     pub(super) fn on_show_shortcuts(&self) {

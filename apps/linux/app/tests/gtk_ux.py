@@ -666,6 +666,17 @@ GLib.MainLoop().run()
         ui.press_x11_key("Return")
         ui.wait_for_node(name="Search the loaded rows", present=False)
 
+    def query_history_opens_as_a_docked_panel_and_closes_without_leaving_the_workspace(database, base):
+        ui.open_saved_connection(ui.CONNECTION_NAME)
+        ui.wait_for_frame_containing(f"{ui.CONNECTION_NAME} — BookiE")
+        ui.invoke_accessible_action("win.show-history")
+        ui.wait_for_node(name="Close history", role=pyatspi.ROLE_PUSH_BUTTON)
+        assert ui.find_node(name="Query History", role=pyatspi.ROLE_DIALOG) is None
+        ui.invoke(ui.wait_for_node(name="Close history", role=pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node(name="Close history", present=False)
+        ui.wait_for_frame_containing(f"{ui.CONNECTION_NAME} — BookiE")
+        ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+
     def ctrl_slash_toggles_a_comment_in_the_editor(database, base):
         editor = ui.set_editor_text("select 1")
         extents = editor.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
@@ -1271,6 +1282,7 @@ GLib.MainLoop().run()
         interactive_controls_have_accessible_names,
         alt_arrows_jump_between_statements,
         row_inspector_lists_every_column_of_the_selected_row,
+        query_history_opens_as_a_docked_panel_and_closes_without_leaving_the_workspace,
         find_in_loaded_rows_lists_matches_and_selects_one,
     ]
     if os.environ.get("TABLEPRO_PROFILE_ROWS"):

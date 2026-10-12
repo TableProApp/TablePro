@@ -12,7 +12,7 @@ use crate::services::database_service::ConnectionMetadata;
 
 pub struct HistoryDialog {
     history: HistoryStore,
-    root: adw::Dialog,
+    root: gtk::Box,
     search: gtk::SearchEntry,
     pinned_group: adw::PreferencesGroup,
     pinned_listbox: gtk::ListBox,
@@ -78,6 +78,7 @@ pub enum HistoryDialogInput {
 pub enum HistoryDialogOutput {
     OpenInNewTab(String),
     ReplaceCurrentTabQuery(String),
+    Close,
 }
 
 #[derive(Debug)]
@@ -93,21 +94,26 @@ impl Component for HistoryDialog {
     type Input = HistoryDialogInput;
     type Output = HistoryDialogOutput;
     type CommandOutput = HistoryDialogCmd;
-    type Root = adw::Dialog;
+    type Root = gtk::Box;
     type Widgets = ();
 
     fn init_root() -> Self::Root {
-        adw::Dialog::builder()
-            .title(crate::tr!("Query History"))
-            .content_width(640)
-            .content_height(640)
-            .build()
+        gtk::Box::builder().orientation(gtk::Orientation::Vertical).build()
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let toolbar = adw::ToolbarView::new();
-        let header = adw::HeaderBar::builder().show_end_title_buttons(true).build();
+        let header = adw::HeaderBar::builder().show_end_title_buttons(false).build();
         header.set_title_widget(Some(&adw::WindowTitle::new(&crate::tr!("Query History"), "")));
+        let close_button = gtk::Button::builder()
+            .label(crate::tr!("Close history"))
+            .tooltip_text(crate::tr!("Close history"))
+            .build();
+        let close_sender = sender.clone();
+        close_button.connect_clicked(move |_| {
+            let _ = close_sender.output(HistoryDialogOutput::Close);
+        });
+        header.pack_end(&close_button);
 
         let filter_popover = gtk::Popover::new();
         let filter_button = gtk::MenuButton::builder()
@@ -380,7 +386,7 @@ impl Component for HistoryDialog {
 
         toolbar.add_top_bar(&header);
         toolbar.set_content(Some(&inner));
-        root.set_child(Some(&toolbar));
+        root.append(&toolbar);
         root.insert_action_group("history", Some(&action_group));
 
         let model = Self {
@@ -430,14 +436,14 @@ impl Component for HistoryDialog {
             HistoryDialogInput::Activate(id) => {
                 if let Some(query) = self.query_for_id(id) {
                     let _ = sender.output(HistoryDialogOutput::OpenInNewTab(query));
-                    self.root.close();
+                    let _ = sender.output(HistoryDialogOutput::Close);
                 }
             }
 
             HistoryDialogInput::ReplaceCurrent(id) => {
                 if let Some(query) = self.query_for_id(id) {
                     let _ = sender.output(HistoryDialogOutput::ReplaceCurrentTabQuery(query));
-                    self.root.close();
+                    let _ = sender.output(HistoryDialogOutput::Close);
                 }
             }
 
@@ -619,10 +625,6 @@ impl Component for HistoryDialog {
 }
 
 impl HistoryDialog {
-    pub fn dialog(&self) -> &adw::Dialog {
-        &self.root
-    }
-
     /// Run the search immediately. Triggered by Refresh (initial load
     /// + after any mutation) and by the debounced timeout firing.
     fn run_search(&self, sender: ComponentSender<Self>) {

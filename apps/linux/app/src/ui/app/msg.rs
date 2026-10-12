@@ -101,6 +101,7 @@ pub enum AppMsg {
     QuickSwitcherChose(crate::services::quick_switcher::QuickTarget),
     SchemaColumnsFetched(crate::ui::editor::SchemaRequest, Result<Vec<String>, ()>),
     ShowHistory,
+    CloseHistory,
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
