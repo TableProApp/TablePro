@@ -1649,6 +1649,21 @@ def successful_switch_keeps_database_ownership(database, base):
 successful_switch_keeps_database_ownership.environment = "local"
 
 
+def history_panel_refreshes_after_queries_run_while_closed(database, base):
+    open_saved_connection(CONNECTION_NAME)
+    wait_for_frame_containing(f"{CONNECTION_NAME} — BookiE")
+    invoke_accessible_action("win.show-history")
+    close_history = wait_for_node(name="Close history", role=pyatspi.ROLE_PUSH_BUTTON)
+    invoke(close_history)
+    wait_for_node(name="Close history", present=False)
+
+    run_sql("SELECT 918273 AS history_refresh_marker")
+    wait_for_node_containing("done in")
+    invoke_accessible_action("win.show-history")
+    wait_for_node(name="Close history", role=pyatspi.ROLE_PUSH_BUTTON)
+    wait_for_node_containing("history_refresh_marker")
+
+
 def failed_switch_preserves_the_old_workspace(database, _base):
     open_saved_connection(BROKEN_CONNECTION_NAME)
     wait_for_node(name="Connection failed")
@@ -2141,6 +2156,7 @@ def main():
         named_parameter_binds_a_value,
         favorite_round_trips_through_open_quickly,
         successful_switch_keeps_database_ownership,
+        history_panel_refreshes_after_queries_run_while_closed,
         failed_switch_preserves_the_old_workspace,
         running_query_is_cancelled_before_switch,
         current_page_csv_export_is_pk_ordered,

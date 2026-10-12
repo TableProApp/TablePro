@@ -1,7 +1,7 @@
 use relm4::adw::prelude::*;
 use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
-use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
+use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogInput, HistoryDialogOutput};
 
 use super::{App, AppMsg, shortcuts};
 
@@ -91,6 +91,7 @@ impl App {
             return;
         };
         if let Some(panel) = self.history_dialog.as_ref() {
+            let _ = panel.sender().send(HistoryDialogInput::Refresh);
             self.history_paned.set_end_child(Some(panel.widget()));
             return;
         }
