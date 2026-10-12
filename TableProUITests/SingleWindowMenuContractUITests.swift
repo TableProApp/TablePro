@@ -111,6 +111,20 @@ final class SingleWindowMenuContractUITests: UITestCase {
         XCTAssertFalse(menuItems["Hide Workspace Rail"].exists, "The invented noun must be gone")
     }
 
+    /// Edit > Data acts only on a data file window, so a connection window leaves it out.
+    /// `DataFileWindowUITests` opens the same submenu from a data file window.
+    func testConnectionWindowLeavesOutEditData() throws {
+        let app = try launchWithSampleDatabase()
+        let menuItems = app.menuBars.menuItems
+
+        XCTAssertTrue(
+            menuItems["Restore Previous Values…"].waitToExist(timeout: 5),
+            "The Edit menu must be listed for the checks below to mean anything"
+        )
+        XCTAssertFalse(menuItems["Column Statistics…"].exists, "A connection window must not list Edit > Data")
+        XCTAssertFalse(menuItems["Import into Table…"].exists, "A connection window must not list Edit > Data")
+    }
+
     /// Launching shows the welcome window and nothing else. A second main window appearing here
     /// is the shape of the bug the single-window model exists to prevent.
     func testLaunchOpensExactlyOneWindow() throws {
