@@ -528,6 +528,15 @@ struct ImportDialog: View {
                         window: hostWindow
                     ) {}
                 }
+            } catch let refusal as ExecutionGateError {
+                /// Nothing ran, so the catalog has nothing to catch up on, and a Cancel needs no reply.
+                await MainActor.run {
+                    showProgressDialog = false
+                    guard case .denied = refusal else { return }
+                    importError = refusal
+                    showErrorDialog = true
+                }
+                return
             } catch {
                 await MainActor.run {
                     showProgressDialog = false

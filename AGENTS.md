@@ -13,6 +13,21 @@ This file is the project guide for every agent, and it covers the macOS and iOS 
 5. **Tests define behavior.** Every testable change has a test. When a test fails, fix the code, never the test.
 6. **Open plugin domain.** `DatabaseType` is a string-backed struct, so unknown types from future plugins round-trip. A `switch` over an open type keeps a `default:`; a `switch` over a closed enum stays exhaustive so the compiler flags new cases.
 
+## Scope
+
+Every capability is core, a module or a plugin. The first rule that fits decides:
+
+1. Used weekly by an app or backend developer or an AI-first user, or only a row that runs nothing until clicked: **core**, with no toggle.
+2. UI for one engine: core, shown only for the drivers that support it.
+3. A database driver or a heavy native dependency: **plugin**, shipped through the plugin registry and signed by TablePro.
+4. Any other advanced tool that needs a session, the grid, the editor or native UI: **module**, compiled in and turned on or off as a unit.
+5. A duplicate, or not worth maintaining: delete it. Never move it to the registry as a halfway step.
+
+- A new database engine ships only as a registry plugin. Engine-specific code never goes into `TablePro/`; engine UI goes through a PluginKit capability or plugin metadata.
+- A new advanced tool ships as a module, off by default.
+- A module PR declares its module id, its default, the sink that refuses it while it is off, its residue test and its docs page.
+- An off module leaves nothing behind: no menu item, key equivalent, context item, Settings section or Keyboard row; no launch work, observer, timer, listener or child process; no Keychain read or network call. A URL, AppleScript or MCP request for it gets an error that says where to turn it on, and only a click in TablePro turns it on.
+
 ## Repository map
 
 - `TablePro/`: the app. `Core/` (services, business logic), `Views/`, `Models/`, `ViewModels/`, `Extensions/`, `Theme/`.

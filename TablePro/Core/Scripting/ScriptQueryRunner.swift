@@ -73,9 +73,7 @@ internal enum ScriptQueryRunner {
             )
         )
 
-        /// Before anything connects. `resolveScope` calls `ensureConnected`, which runs the
-        /// connection's pre-connect shell script, and a script asking for rows is not consent to run
-        /// that code.
+        /// Before anything connects: a script asking for rows is not consent to load extensions.
         try await ScriptConnectGate.authorizeConnect(connectionId: request.connectionId)
 
         let scope = try await bridge.resolveScope(

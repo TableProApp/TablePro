@@ -441,9 +441,6 @@ extension WelcomeViewModel {
             guard let connection = connectionsById[id],
                   let link = ConnectionShareLink.deeplink(for: connection) else { return }
             ClipboardService.shared.writeText(link)
-        case .copyJSON(let id):
-            guard let connection = connectionsById[id] else { return }
-            ClipboardService.shared.writeText(ConnectionShareLink.compactJSON(for: connection))
         case .exportToFile(let ids):
             exportConnections(ids.compactMap { connectionsById[$0] })
         case .publishToTeamCatalog(let ids):

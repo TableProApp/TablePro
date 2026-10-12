@@ -135,25 +135,18 @@ struct GeneralSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        startupBehavior = try container.decode(StartupBehavior.self, forKey: .startupBehavior)
-        language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
-        queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 60
-        shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
-        showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
-        showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
-        showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
-        showSystemContainers = try container.decodeIfPresent(Bool.self, forKey: .showSystemContainers) ?? false
-        showPartitions = try container.decodeIfPresent(Bool.self, forKey: .showPartitions) ?? true
-        showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
-        sidebarRowSize = try container.decodeIfPresent(
-            SidebarRowSizePreference.self, forKey: .sidebarRowSize
-        ) ?? .matchSystem
-        /// Decoded through its raw value rather than as the enum. Settings sync between devices,
-        /// so a newer TablePro can write an interval this build has no case for, and decoding that
-        /// as the enum throws and takes the whole of General down with it.
-        connectionHealthCheck = ConnectionHealthCheck(
-            rawValue: try container.decodeIfPresent(Int.self, forKey: .connectionHealthCheck)
-                ?? ConnectionHealthCheck.every30Seconds.rawValue
-        ) ?? .every30Seconds
+        let fallback = Self.default
+        startupBehavior = container.decodeSetting(.startupBehavior, default: fallback.startupBehavior)
+        language = container.decodeSetting(.language, default: fallback.language)
+        queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
+        shareAnalytics = container.decodeSetting(.shareAnalytics, default: fallback.shareAnalytics)
+        showRecentTables = container.decodeSetting(.showRecentTables, default: fallback.showRecentTables)
+        showObjectComments = container.decodeSetting(.showObjectComments, default: fallback.showObjectComments)
+        showObjectIcons = container.decodeSetting(.showObjectIcons, default: fallback.showObjectIcons)
+        showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)
+        showPartitions = container.decodeSetting(.showPartitions, default: fallback.showPartitions)
+        showWorkspaceRail = container.decodeSetting(.showWorkspaceRail, default: fallback.showWorkspaceRail)
+        sidebarRowSize = container.decodeSetting(.sidebarRowSize, default: fallback.sidebarRowSize)
+        connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)
     }
 }

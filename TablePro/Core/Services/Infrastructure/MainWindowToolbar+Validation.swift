@@ -46,9 +46,9 @@ internal final class ContextValidatedToolbar: NSToolbar {
 
 /// AppKit validates toolbar overflow entries as menu items rather than visible toolbar items, so
 /// `validateToolbarItem(_:)` never sees them and every entry it does not answer for stays enabled.
-/// A hand-written selector list here only covered three of the twelve actions, which left Refresh,
-/// New Tab, Open Quickly, Export, Database, Results and Dashboard live in the overflow menu of a
-/// narrow window while the same buttons were disabled on a wide one, and clicking one did nothing.
+/// A hand-written selector list here only covered three of the actions, which left Refresh, New
+/// Tab, Open Quickly, Export, Database and Results live in the overflow menu of a narrow window
+/// while the same buttons were disabled on a wide one, and clicking one did nothing.
 /// The mapping now comes from the factory that built the item, so it cannot fall behind again.
 ///
 /// The Actions pull-down never reaches here. Its entries carry no target, so AppKit resolves them

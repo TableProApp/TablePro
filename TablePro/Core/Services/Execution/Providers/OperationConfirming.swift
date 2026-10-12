@@ -97,11 +97,10 @@ internal enum OperationConfirmationPrompt {
 internal struct AlertOperationConfirming: OperationConfirming {
     @MainActor
     func confirm(_ request: OperationConfirmationRequest) async -> Bool {
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let window = WindowLifecycleMonitor.shared.activeWindow(
             for: request.connectionId,
             preferring: NSApp.keyWindow
-        )
+        ).map(Self.frontmostSheet(of:))
 
         guard let statement = OperationConfirmationPrompt.statement(of: request) else {
             let alert = OperationConfirmationPrompt.makeAlert(for: request)
@@ -118,5 +117,16 @@ internal struct AlertOperationConfirming: OperationConfirming {
             isDestructive: request.isDestructive,
             window: window
         )
+    }
+
+    /// A run started from a sheet, Import or Transfer To, is asked about on that sheet. An alert
+    /// begun on the window queues behind the sheet, and the sheet is waiting on the answer. An alert
+    /// or a decision still waiting for its own answer is never the parent.
+    private static func frontmostSheet(of window: NSWindow) -> NSWindow {
+        var frontmost = window
+        while let sheet = frontmost.attachedSheet, !(sheet is NSPanel), !(sheet is ModalDecisionWindow) {
+            frontmost = sheet
+        }
+        return frontmost
     }
 }
