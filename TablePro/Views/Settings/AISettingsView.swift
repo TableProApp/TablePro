@@ -15,8 +15,6 @@ struct AISettingsView: View {
     @State private var addingProvider: AIProviderConfig?
     @State private var pendingDeleteID: UUID?
     @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
-    @ObservedObject private var cursorAgentService = CursorAgentService.shared
-    @ObservedObject private var xaiService = XAIService.shared
     @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
     @State private var providersWithKey: Set<UUID> = []
 
@@ -37,8 +35,6 @@ struct AISettingsView: View {
         .scrollContentBackground(.hidden)
         .task { refreshKeyAvailability() }
         .task { await chatGPTCodexService.refreshAuthState() }
-        .task { await cursorAgentService.refreshStatus() }
-        .task { await xaiService.refreshAuthState() }
         .task { await claudeAgentService.performRefresh() }
         .onChange(of: settings.providers.map(\.id)) { _ in
             refreshKeyAvailability()
@@ -353,12 +349,6 @@ struct AISettingsView: View {
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
-            if provider.type == .cursor {
-                return cursorStatusText(for: provider)
-            }
-            if provider.type == .xai {
-                return xaiStatusText(for: provider)
-            }
             return apiKeyStatusText(for: provider)
         case .none:
             if provider.type == .claudeAgent {
@@ -390,26 +380,6 @@ struct AISettingsView: View {
         case .signedOut:
             return String(localized: "Not signed in")
         }
-    }
-
-    private func cursorStatusText(for provider: AIProviderConfig) -> String {
-        if providersWithKey.contains(provider.id) {
-            return String(localized: "API key set")
-        }
-        if cursorAgentService.authState.isSignedIn {
-            return String(localized: "Signed in with Cursor")
-        }
-        return String(localized: "Not configured")
-    }
-
-    private func xaiStatusText(for provider: AIProviderConfig) -> String {
-        if providersWithKey.contains(provider.id) {
-            return String(localized: "API key set")
-        }
-        if xaiService.authState.isSignedIn {
-            return String(localized: "Signed in with xAI")
-        }
-        return String(localized: "Not configured")
     }
 
     /// Claude Agent authenticates through the CLI rather than an endpoint or a key, so the endpoint

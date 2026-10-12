@@ -126,18 +126,27 @@ struct EditorSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        showLineNumbers = try container.decodeIfPresent(Bool.self, forKey: .showLineNumbers) ?? true
-        highlightCurrentLine = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentLine) ?? true
-        tabWidth = try container.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
-        wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
-        vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
-        keywordCase = try Self.decodeKeywordCase(from: container)
-        queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
-        codeFoldingEnabled = try container.decodeIfPresent(Bool.self, forKey: .codeFoldingEnabled) ?? true
-        highlightCurrentStatement = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentStatement) ?? true
-        showStatementRunControls = try container.decodeIfPresent(Bool.self, forKey: .showStatementRunControls) ?? true
-        showInvisibleCharacters = try container.decodeIfPresent(Bool.self, forKey: .showInvisibleCharacters) ?? true
-        jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
+        let fallback = Self.default
+        showLineNumbers = container.decodeSetting(.showLineNumbers, default: fallback.showLineNumbers)
+        highlightCurrentLine = container.decodeSetting(.highlightCurrentLine, default: fallback.highlightCurrentLine)
+        tabWidth = container.decodeSetting(.tabWidth, default: fallback.tabWidth)
+        wordWrap = container.decodeSetting(.wordWrap, default: fallback.wordWrap)
+        vimModeEnabled = container.decodeSetting(.vimModeEnabled, default: fallback.vimModeEnabled)
+        keywordCase = Self.decodeKeywordCase(from: container)
+        queryParametersEnabled = container.decodeSetting(.queryParametersEnabled, default: fallback.queryParametersEnabled)
+        codeFoldingEnabled = container.decodeSetting(.codeFoldingEnabled, default: fallback.codeFoldingEnabled)
+        highlightCurrentStatement = container.decodeSetting(
+            .highlightCurrentStatement, default: fallback.highlightCurrentStatement
+        )
+        showStatementRunControls = container.decodeSetting(
+            .showStatementRunControls, default: fallback.showStatementRunControls
+        )
+        showInvisibleCharacters = container.decodeSetting(
+            .showInvisibleCharacters, default: fallback.showInvisibleCharacters
+        )
+        jsonViewerPreferredMode = container.decodeSetting(
+            .jsonViewerPreferredMode, default: fallback.jsonViewerPreferredMode
+        )
     }
 
     /// Spelled out rather than synthesized so `uppercaseKeywords` survives as a wire key after the
@@ -159,16 +168,11 @@ struct EditorSettings: Codable, Equatable {
         case jsonViewerPreferredMode
     }
 
-    private static func decodeKeywordCase(
-        from container: KeyedDecodingContainer<CodingKeys>
-    ) throws -> SQLKeywordCase {
-        /// A raw value this build does not know falls back rather than throwing. Editor settings
-        /// decode as one blob, so a value written by a newer build would otherwise take every
-        /// other editor setting down with it.
-        if let stored = try? container.decodeIfPresent(SQLKeywordCase.self, forKey: .keywordCase) {
+    private static func decodeKeywordCase(from container: KeyedDecodingContainer<CodingKeys>) -> SQLKeywordCase {
+        if let stored: SQLKeywordCase = container.decodeSetting(.keywordCase) {
             return stored
         }
-        guard let legacy = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) else {
+        guard let legacy: Bool = container.decodeSetting(.uppercaseKeywords) else {
             return .default
         }
         return legacy ? .upper : .matchTypedElseUpper
